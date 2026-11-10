@@ -95,6 +95,27 @@ func.func @Int8SrqFullyConnectedBlockwiseFilterF16ResourceScales(%arg0: tensor<2
   func.return %out_dq : tensor<2x4xf32>
 }
 
+// Float16 graph (e.g. float16 activations): the int32 bias gets the float16
+// expressed type of the input and filter.
+// CHECK-LABEL: Int8SrqFullyConnectedBlockwiseFilterWithBiasF16
+func.func @Int8SrqFullyConnectedBlockwiseFilterWithBiasF16(%arg0: tensor<2x8xf16>) -> tensor<2x4xf16> {
+  // CHECK-DAG: %[[W:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<i2 -> f16, block_shape = [1, 8], scales = {{.*}} : tensor<4x1xf16>, zero_points = dense<-5.000000e-01> : tensor<1x1xf32>>>
+  // CHECK-DAG: %[[B:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x!quant.uniform<i32:f16:0, {2.500000e-01,5.000000e-01,7.500000e-01,1.250000e-01}>>
+  // CHECK: "tfl.fully_connected"(%{{.*}}, %[[W]], %[[B]]) {{.*}} -> tensor<2x4x!quant.uniform<i8:f16, 2.500000e-01:1>>
+  // CHECK-NOT: "tfl.blockwise_dequantize"
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense_resource<blockwise_scales_f16> : tensor<4x1xf16>} : () -> tensor<4x1xf16>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf16>, tensor<1x1xf32>) -> tensor<4x8xf16>
+  %bias = arith.constant dense<1.0> : tensor<4xf16>
+  %in_q = "tfl.quantize"(%arg0) <{qtype = tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>}> : (tensor<2x8xf16>) -> tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>
+  %in_dq = "tfl.dequantize"(%in_q) : (tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>) -> tensor<2x8xf16>
+  %fc = "tfl.fully_connected"(%in_dq, %w_dq, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf16>, tensor<4x8xf16>, tensor<4xf16>) -> tensor<2x4xf16>
+  %out_q = "tfl.quantize"(%fc) <{qtype = tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>}> : (tensor<2x4xf16>) -> tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>
+  %out_dq = "tfl.dequantize"(%out_q) : (tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>) -> tensor<2x4xf16>
+  func.return %out_dq : tensor<2x4xf16>
+}
+
 // Scales [0.5, 1.0, 1.5, 0.25] stored as dense resources.
 {-#
   dialect_resources: {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -88,16 +89,26 @@ bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc);
 ElementsAttr GetConstantElements(mlir::Value value);
 
 // Returns true if `bw_deq` dequantizes a constant integer tensor with constant
-// scales and zero points (if any) into an f32 tensor, i.e. if it can be folded
-// into a `!tfl.blockwise_quant` constant.
-bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq);
+// scales and zero points (if any) into an f32 tensor (or f16 / bf16 if
+// `allow_16_bit_float`), i.e. if it can be folded into a `!tfl.blockwise_quant`
+// constant.
+bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq,
+                                   bool allow_16_bit_float = false);
 
 // Returns true if `operand` of `op` is a `tfl.blockwise_dequantize` with a
-// float32 result (of rank 2 if `op` is a `tfl.fully_connected`) and constant
-// integer values, scales and zero points (if any), i.e. one that can be folded
-// into a `!tfl.blockwise_quant` constant.
+// float32 result (or float16 / bfloat16 if `allow_16_bit_float`; of rank 2 if
+// `op` is a `tfl.fully_connected`) and constant integer values, scales and
+// zero points (if any), i.e. one that can be folded into a
+// `!tfl.blockwise_quant` constant.
 bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
-                                          mlir::Value operand);
+                                          mlir::Value operand,
+                                          bool allow_16_bit_float = false);
+
+// Reads the elements of a float constant (f16, bf16, f32 or f64), which may be
+// a dense resource, as doubles. Returns std::nullopt for other attributes or
+// element types, or a resource blob of the wrong size.
+std::optional<SmallVector<double>> ReadFloatElementsAsDoubles(
+    ElementsAttr attr);
 
 // Returns true if `operand` at `operand_index` of `op` is a constant
 // `tfl.blockwise_dequantize` that can be folded into a `!tfl.blockwise_quant`

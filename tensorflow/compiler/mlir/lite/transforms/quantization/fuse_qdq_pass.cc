@@ -72,6 +72,22 @@ enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 enum class OpQuantizationType { kSRQ, kDRQ, kWeightOnly, kUnsupported };
 
+// Float activation types: f32, and f16 / bf16 in float16 graphs.
+bool IsFloatActivationType(Type type) {
+  return type.isF32() || type.isF16() || type.isBF16();
+}
+
+// Whether an unquantized float operand or result of type `type` can pass
+// through an op of quantization type `op_quant_type` unchanged. f16 / bf16
+// pass through SRQ and weight-only ops like f32, but not DRQ ops: the hybrid
+// kernels only take float16 activations with blockwise filters, which are
+// produced by casting to float32 around the op and folding the casts
+// (`FoldFp16CastsIntoFullyConnectedPass`) instead.
+bool IsPassThroughFloatType(Type type, OpQuantizationType op_quant_type) {
+  if (op_quant_type == OpQuantizationType::kDRQ) return type.isF32();
+  return IsFloatActivationType(type);
+}
+
 LogicalResult IsDrqTensor(mlir::Value value, mlir::Value& fq_input) {
   if (auto composite_op = llvm::dyn_cast_or_null<stablehlo::CompositeOp>(
           value.getDefiningOp())) {
@@ -213,12 +229,13 @@ OpQuantizationType GetOpQuantizationType(mlir::Operation* op) {
 
     auto element_type = getElementTypeOrSelf(operand.getType());
 
-    // Ignore non-f32 tensors when determining the quantization type.
+    // Ignore non-float tensors when determining the quantization type.
     // Examples:
     //  - i32 operands are generally index tensors (e.g. in transpose
     // permutation)
     //  - bool operands can be the `condition` operand in a select_v2 op.
-    if (element_type.isF32()) {
+    // f16 and bf16 (float16 graphs) count like f32.
+    if (IsFloatActivationType(element_type)) {
       non_fq_float_input_seen = true;
     }
   }
@@ -311,10 +328,10 @@ LogicalResult GetQuantizedInputs(mlir::Operation* quantizing_op,
       updated = true;
       inputs.push_back(fq_input);
     } else if (auto ele_type = getElementTypeOrSelf(operand_type);
-               ele_type.isF32() || ele_type.isInteger(32) ||
-               ele_type.isInteger(64) || ele_type.isInteger(1) ||
-               mlir::isa<NoneType>(ele_type)) {
-      // If it's F32 (non-weight-only and non-drq) or I32 or bool, just
+               IsPassThroughFloatType(ele_type, op_quant_type) ||
+               ele_type.isInteger(32) || ele_type.isInteger(64) ||
+               ele_type.isInteger(1) || mlir::isa<NoneType>(ele_type)) {
+      // If it's float (non-weight-only and non-drq) or I32 or bool, just
       // directly add the input.
       inputs.push_back(operand);
     } else {
@@ -383,13 +400,14 @@ LogicalResult GetQuantizedOutputTypes(
             dyn_cast_or_null<QuantizeOp>(*result.user_begin()).getOutput();
         output_types.push_back(q_user.getType());
       }
-    } else if (result_ele_type.isF32() || mlir::isa<NoneType>(result_type)) {
+    } else if (IsPassThroughFloatType(result_ele_type, op_quant_type) ||
+               mlir::isa<NoneType>(result_type)) {
       outputs_replaced.insert({result, {enumerated_result.index(), nullptr}});
       output_types.push_back(result.getType());
     } else {
       return rewriter.notifyMatchFailure(
           quantizing_op,
-          "is a fake quantized op with an output that is not float32.");
+          "is a fake quantized op with an output that is not float.");
     }
   }
   return success();

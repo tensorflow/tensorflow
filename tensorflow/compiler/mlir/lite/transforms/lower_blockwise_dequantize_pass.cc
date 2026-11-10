@@ -68,10 +68,16 @@ struct LowerBlockwiseDequantizePattern
 
   LogicalResult matchAndRewrite(BlockwiseDequantizeOp op,
                                 PatternRewriter& rewriter) const override {
-    // `tfl.dequantize` produces f32.
+    // `tfl.dequantize` produces f32; a float16 / bfloat16 output casts it.
     auto output_type = mlir::dyn_cast<RankedTensorType>(op.getType());
-    if (!output_type || !output_type.getElementType().isF32()) {
-      return rewriter.notifyMatchFailure(op, "expects an f32 output");
+    if (!output_type) {
+      return rewriter.notifyMatchFailure(op, "expects a ranked output");
+    }
+    Type output_element_type = output_type.getElementType();
+    if (!output_element_type.isF32() && !output_element_type.isF16() &&
+        !output_element_type.isBF16()) {
+      return rewriter.notifyMatchFailure(op,
+                                         "expects an f32, f16 or bf16 output");
     }
 
     ElementsAttr values = GetConstantElements(op.getInput());
@@ -105,16 +111,25 @@ struct LowerBlockwiseDequantizePattern
     // The verifier of `tfl.blockwise_dequantize` already guarantees what the
     // type requires: an integer input of at most 16 bits, floating point
     // scales, and parameter tensors shaped like the block grid.
-    auto blockwise_type =
-        BlockwiseQuantType::get(storage_type, output_type.getElementType(),
-                                block_shape, scales, zero_points);
+    auto f32_type = output_type.clone(rewriter.getF32Type());
+    auto blockwise_type = BlockwiseQuantType::get(
+        storage_type, rewriter.getF32Type(), block_shape, scales, zero_points);
 
     auto qtype = RankedTensorType::get(values.getShapedType().getShape(),
                                        blockwise_type);
     auto qconst =
         rewriter.create<QConstOp>(op.getLoc(), TypeAttr::get(qtype), values);
-    rewriter.replaceOpWithNewOp<DequantizeOp>(op, output_type,
-                                              qconst.getOutput());
+    if (output_element_type.isF32()) {
+      rewriter.replaceOpWithNewOp<DequantizeOp>(op, output_type,
+                                                qconst.getOutput());
+      return success();
+    }
+    // Cost: the DEQUANTIZE of a constant is computed once, but this CAST of
+    // its float32 result runs on every invocation (e.g. for a weight-only
+    // float16 filter).
+    auto dequantize = rewriter.create<DequantizeOp>(op.getLoc(), f32_type,
+                                                    qconst.getOutput());
+    rewriter.replaceOpWithNewOp<CastOp>(op, output_type, dequantize);
     return success();
   }
 };

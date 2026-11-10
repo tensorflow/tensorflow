@@ -17,17 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -94,50 +89,6 @@ std::optional<int> GetAdjustedQuantizationDimension(
   return adjusted_quant_dim;
 }
 
-// Reads the elements of a float constant (f32, f16 or bf16), which may be
-// stored as a dense resource, as doubles.
-std::optional<SmallVector<double>> ReadFloatElements(ElementsAttr attr) {
-  auto float_type = dyn_cast<FloatType>(attr.getElementType());
-  if (!float_type) return std::nullopt;
-  SmallVector<double> values;
-  values.reserve(attr.getNumElements());
-  auto append = [&](APFloat value) {
-    bool loses_info;
-    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
-                  &loses_info);
-    values.push_back(value.convertToDouble());
-  };
-  if (auto dense = dyn_cast<DenseFPElementsAttr>(attr)) {
-    for (APFloat value : dense.getValues<APFloat>()) append(value);
-    return values;
-  }
-  auto resource = dyn_cast<DenseResourceElementsAttr>(attr);
-  if (!resource || !resource.getRawHandle().getBlob()) return std::nullopt;
-  ArrayRef<char> data = resource.getRawHandle().getBlob()->getData();
-  const unsigned bit_width = float_type.getWidth();
-  if (bit_width != 16 && bit_width != 32) return std::nullopt;
-  const size_t bytes_per_element = bit_width / 8;
-  if (data.size() != attr.getNumElements() * bytes_per_element) {
-    return std::nullopt;
-  }
-  for (size_t offset = 0; offset < data.size(); offset += bytes_per_element) {
-    // Read with the element's own width so the value lands in the low bits on
-    // hosts of either byte order.
-    uint64_t bits;
-    if (bit_width == 16) {
-      uint16_t value;
-      std::memcpy(&value, data.data() + offset, sizeof(value));
-      bits = value;
-    } else {
-      uint32_t value;
-      std::memcpy(&value, data.data() + offset, sizeof(value));
-      bits = value;
-    }
-    append(APFloat(float_type.getFloatSemantics(), APInt(bit_width, bits)));
-  }
-  return values;
-}
-
 // Returns a per output channel quantized type standing in for a constant
 // `tfl.blockwise_dequantize` filter of a `tfl.fully_connected`, from which the
 // bias scale is derived. The filter has no single per-channel scale when it
@@ -179,7 +130,7 @@ std::optional<quant::QuantizedType> GetQTypeForBlockwiseFilter(
   if (unit_block_size <= 0) return std::nullopt;
 
   std::optional<SmallVector<double>> maybe_block_scales =
-      ReadFloatElements(scales_attr);
+      ReadFloatElementsAsDoubles(scales_attr);
   if (!maybe_block_scales.has_value() ||
       static_cast<int64_t>(maybe_block_scales->size()) !=
           num_unit_blocks * num_depth_blocks) {
@@ -201,9 +152,11 @@ std::optional<quant::QuantizedType> GetQTypeForBlockwiseFilter(
 
   Builder builder(op->getContext());
   SmallVector<int64_t> zero_points(num_units, 0);
+  // The expressed type of the filter (f32, or f16 / bf16 in float16 graphs),
+  // which `GetUniformQuantizedTypeForBias` requires to match the input's.
   return quant::UniformQuantizedPerAxisType::getChecked(
       op->getLoc(), quant::QuantizationFlags::Signed, builder.getI8Type(),
-      builder.getF32Type(), channel_scales, zero_points,
+      filter_type.getElementType(), channel_scales, zero_points,
       /*quantizedDimension=*/0, /*storageTypeMin=*/-128,
       /*storageTypeMax=*/127);
 }
@@ -237,8 +190,11 @@ std::optional<quant::QuantizedType> GetBiasQuantizedType(
     // This could for example happen in weight-only.
     return std::nullopt;
   }
-  return mlir::TFL::GetUniformQuantizedTypeForBias(op_types,
-                                                   *adjusted_quant_dim_opt);
+  quant::QuantizedType bias_qtype = mlir::TFL::GetUniformQuantizedTypeForBias(
+      op_types, *adjusted_quant_dim_opt);
+  // Null if the operand types disagree (e.g. on their expressed type).
+  if (!bias_qtype) return std::nullopt;
+  return bias_qtype;
 }
 
 //===----------------------------------------------------------------------===//

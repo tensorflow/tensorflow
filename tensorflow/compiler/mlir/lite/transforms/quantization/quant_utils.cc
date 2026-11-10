@@ -16,11 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <optional>
 #include <tuple>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -31,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -296,9 +304,16 @@ bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc) {
   return mlir::isa<NoneType>(bias.getType()) || is_f32(bias);
 }
 
-bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq) {
+bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq,
+                                   bool allow_16_bit_float) {
   auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
-  if (!output_type || !output_type.getElementType().isF32()) return false;
+  if (!output_type) return false;
+  Type expressed_type = output_type.getElementType();
+  if (!expressed_type.isF32() &&
+      !(allow_16_bit_float &&
+        (expressed_type.isF16() || expressed_type.isBF16()))) {
+    return false;
+  }
   ElementsAttr values = GetConstantElements(bw_deq.getInput());
   if (!values || !mlir::isa<IntegerType>(values.getElementType())) return false;
   if (!GetConstantElements(bw_deq.getScales())) return false;
@@ -310,9 +325,12 @@ bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq) {
 }
 
 bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
-                                          mlir::Value operand) {
+                                          mlir::Value operand,
+                                          bool allow_16_bit_float) {
   auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
-  if (!bw_deq || !IsFoldableBlockwiseDequantize(bw_deq)) return false;
+  if (!bw_deq || !IsFoldableBlockwiseDequantize(bw_deq, allow_16_bit_float)) {
+    return false;
+  }
   // The FULLY_CONNECTED kernel only takes rank 2 filters.
   if (llvm::isa<TFL::FullyConnectedOp>(op) &&
       mlir::cast<RankedTensorType>(bw_deq.getType()).getRank() != 2) {
@@ -323,8 +341,64 @@ bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
 
 bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
                                    mlir::Value operand) {
+  // The int8 SRQ kernels don't read the expressed type, so float16 and
+  // bfloat16 graphs (e.g. float16 activations) fold like float32 ones.
   return operand_index == 1 && IsInt8SrqBlockwiseWeightConsumer(op) &&
-         IsConstantBlockwiseDequantizedFilter(op, operand);
+         IsConstantBlockwiseDequantizedFilter(op, operand,
+                                              /*allow_16_bit_float=*/true);
+}
+
+std::optional<SmallVector<double>> ReadFloatElementsAsDoubles(
+    ElementsAttr attr) {
+  auto float_type = mlir::dyn_cast<FloatType>(attr.getElementType());
+  if (!float_type) return std::nullopt;
+  SmallVector<double> values;
+  values.reserve(attr.getNumElements());
+  auto append = [&](llvm::APFloat value) {
+    bool loses_info;
+    value.convert(llvm::APFloat::IEEEdouble(),
+                  llvm::APFloat::rmNearestTiesToEven, &loses_info);
+    values.push_back(value.convertToDouble());
+  };
+  if (auto dense = mlir::dyn_cast<DenseFPElementsAttr>(attr)) {
+    for (llvm::APFloat value : dense.getValues<llvm::APFloat>()) append(value);
+    return values;
+  }
+  auto resource = mlir::dyn_cast<DenseResourceElementsAttr>(attr);
+  if (!resource) return std::nullopt;
+  AsmResourceBlob* blob = resource.getRawHandle().getBlob();
+  if (blob == nullptr && resource.getRawHandle().getResource() != nullptr) {
+    blob = resource.getRawHandle().getResource()->getBlob();
+  }
+  if (blob == nullptr) return std::nullopt;
+  ArrayRef<char> data = blob->getData();
+  const unsigned bit_width = float_type.getWidth();
+  if (bit_width != 16 && bit_width != 32 && bit_width != 64) {
+    return std::nullopt;
+  }
+  const size_t bytes_per_element = bit_width / 8;
+  if (data.size() != attr.getNumElements() * bytes_per_element) {
+    return std::nullopt;
+  }
+  for (size_t offset = 0; offset < data.size(); offset += bytes_per_element) {
+    // Read with the element's own width so the value lands in the low bits on
+    // hosts of either byte order.
+    uint64_t bits = 0;
+    if (bit_width == 16) {
+      uint16_t value;
+      std::memcpy(&value, data.data() + offset, sizeof(value));
+      bits = value;
+    } else if (bit_width == 32) {
+      uint32_t value;
+      std::memcpy(&value, data.data() + offset, sizeof(value));
+      bits = value;
+    } else {
+      std::memcpy(&bits, data.data() + offset, sizeof(bits));
+    }
+    append(llvm::APFloat(float_type.getFloatSemantics(),
+                         llvm::APInt(bit_width, bits)));
+  }
+  return values;
 }
 
 }  // namespace mlir::TFL
