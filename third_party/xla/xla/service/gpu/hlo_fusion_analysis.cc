@@ -191,12 +191,9 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kTensorIr;
   }
 
-  if (fusion_backend_config.kind() == kThreadBlockSpecializedFusionKind) {
+  if (fusion_backend_config.kind() == kThreadBlockSpecializedFusionKind ||
+      fusion_backend_config.kind() == kPhasedBlockClusterFusionKind) {
     return HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized;
-  }
-
-  if (fusion_backend_config.kind() == kPhasedBlockClusterFusionKind) {
-    return HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster;
   }
 
   std::optional<HloInstructionAdaptor> first_reduce_hero;

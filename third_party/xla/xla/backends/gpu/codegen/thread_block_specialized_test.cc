@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -57,6 +59,18 @@ class ThreadBlockSpecializedFusionTest
     const auto* cuda_cc =
         device_description().gpu_compute_capability().cuda_compute_capability();
     return cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
+  }
+
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitMlirModule(
+      absl::string_view hlo) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo));
+    const auto* fusion = Cast<HloFusionInstruction>(
+        module->entry_computation()->root_instruction());
+    return ThreadBlockSpecializedFusion(
+               HloFusionAnalysis::Create(*fusion, device_info_))
+        .CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                  /*buffer_assignment=*/nullptr);
   }
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
@@ -552,33 +566,28 @@ ENTRY main {
     // CHECK-SAME:    %[[OUT2:[^:]+]]: !llvm.ptr,
     // CHECK-SAME:    %[[OUT3:[^:]+]]: !llvm.ptr {llvm.noalias})
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
     // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
-    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[OUT1]], %[[BID]])
+    // CHECK:         llvm.icmp "ult" %[[BID]], %[[C4]] : i32
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[BID]])
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.icmp "ult" %[[BID]], %[[C4]] : i32
+    // CHECK:         llvm.call @fusion_nested_1(%[[OUT0]], %[[OUT1]], %[[BID]])
     // CHECK:       ^[[ELSE0]]:
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
     // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
-    // CHECK:         llvm.call @fusion_nested_1(%[[ARG1]], %[[OUT2]], %[[OUT3]], %[[REL_BID]])
-    // CHECK-LABEL: llvm.func internal @fusion_nested_0(
-    // CHECK:         llvm.mlir.constant(4 : i32) : i32
-    // CHECK:         %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
-    // CHECK-NEXT:    llvm.icmp "ult" %{{.*}}, %[[C4]] : i32
-    // CHECK:         llvm.call @fusion_nested_0_fusion_nested_0_nested_0(
-    // CHECK:         nvvm.cluster.arrive aligned
-    // CHECK:         nvvm.cluster.wait aligned
-    // CHECK:         llvm.icmp "ult" %{{.*}}, %[[C4]] : i32
-    // CHECK:         llvm.call @fusion_nested_0_fusion_nested_0_nested_1(
-    // CHECK-LABEL: llvm.func internal @fusion_nested_1(
-    // CHECK:         llvm.call @fusion_nested_1_fusion_nested_1_nested_0(
-    // CHECK:         nvvm.cluster.arrive aligned
-    // CHECK:         nvvm.cluster.wait aligned
-    // CHECK:         llvm.call @fusion_nested_1_fusion_nested_1_nested_1(
+    // CHECK-NEXT:    llvm.call @fusion_nested_2(%[[ARG1]], %[[OUT2]], %[[REL_BID]])
+    // CHECK-NEXT:    nvvm.cluster.arrive aligned
+    // CHECK-NEXT:    nvvm.cluster.wait aligned
+    // CHECK-NEXT:    llvm.call @fusion_nested_3(%[[OUT2]], %[[OUT3]], %[[REL_BID]])
   )"));
   EXPECT_TRUE(mlir_check);
 
@@ -667,27 +676,25 @@ ENTRY main {
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
     // CHECK-DAG:     %[[C11:.*]] = llvm.mlir.constant(11 : i32) : i32
+    // CHECK-DAG:     %[[C128:.*]] = llvm.mlir.constant(128 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK-DAG:     %[[TID:.*]] = nvvm.read.ptx.sreg.tid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
+    // CHECK:         llvm.icmp "ult" %[[TID]], %[[C128]] : i32
     // CHECK:         llvm.call @fusion_nested_0(
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.icmp "ult" %[[TID]], %[[C128]] : i32
+    // CHECK:         llvm.call @fusion_nested_1(
     // CHECK:       ^[[ELSE0]]:
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C11]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
     // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
     // CHECK-NOT:     llvm.icmp "ult" %[[REL_BID]]
-    // CHECK:         llvm.call @fusion_nested_1({{.*}}, %[[REL_BID]])
-    // CHECK-LABEL: llvm.func internal @fusion_nested_0(
-    // CHECK:         llvm.mlir.constant(128 : i32) : i32
-    // CHECK:         %[[C128:.*]] = llvm.mlir.constant(128 : i32) : i32
-    // CHECK-NEXT:    llvm.icmp "ult" %{{.*}}, %[[C128]] : i32
-    // CHECK:         llvm.call @fusion_nested_0_fusion_nested_0_nested_0(
-    // CHECK:         nvvm.cluster.arrive aligned
-    // CHECK:         nvvm.cluster.wait aligned
-    // CHECK:         llvm.icmp "ult" %{{.*}}, %[[C128]] : i32
-    // CHECK:         llvm.call @fusion_nested_0_fusion_nested_0_nested_1(
+    // CHECK:         llvm.call @fusion_nested_2({{.*}}, %[[REL_BID]])
   )"));
   EXPECT_TRUE(mlir_check);
 
@@ -805,6 +812,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
     // CHECK-LABEL: llvm.func @fusion(
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
     // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
     // CHECK-DAG:     %[[C19:.*]] = llvm.mlir.constant(19 : i32) : i32
@@ -814,30 +822,381 @@ ENTRY main {
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
     // CHECK:         llvm.call @fusion_nested_0(
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.call @fusion_nested_1(
     // CHECK:       ^[[ELSE0]]:
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
     // CHECK:         %[[REL_BID1:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
-    // CHECK-NEXT:    llvm.call @fusion_nested_1({{.*}}, %[[REL_BID1]])
+    // CHECK-NEXT:    llvm.icmp "ult" %[[REL_BID1]], %[[C4]] : i32
+    // CHECK:         llvm.call @fusion_nested_2({{.*}}, %[[REL_BID1]])
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.icmp "ult" %[[REL_BID1]], %[[C4]] : i32
+    // CHECK:         llvm.call @fusion_nested_3({{.*}}, %[[REL_BID1]])
     // CHECK:       ^[[ELSE1]]:
     // CHECK:         %[[IN_2:.*]] = llvm.icmp "ult" %[[BID]], %[[C19]] : i32
     // CHECK:         llvm.cond_br %[[IN_2]], ^[[THEN2:bb[0-9]+]], ^[[ELSE2:bb[0-9]+]]
     // CHECK:       ^[[THEN2]]:
     // CHECK:         %[[REL_BID2:.*]] = llvm.sub %[[BID]], %[[C16]] : i32
-    // CHECK-NEXT:    llvm.call @fusion_nested_2({{.*}}, %[[REL_BID2]])
+    // CHECK-NEXT:    llvm.call @fusion_nested_4({{.*}}, %[[REL_BID2]])
     // CHECK:       ^[[ELSE2]]:
     // CHECK:         %[[IN_3:.*]] = llvm.icmp "ult" %[[BID]], %[[C23]] : i32
     // CHECK:         llvm.cond_br %[[IN_3]], ^[[THEN3:bb[0-9]+]], ^[[ELSE3:bb[0-9]+]]
     // CHECK:       ^[[THEN3]]:
     // CHECK:         %[[REL_BID3:.*]] = llvm.sub %[[BID]], %[[C19]] : i32
-    // CHECK-NEXT:    llvm.call @fusion_nested_3({{.*}}, %[[REL_BID3]])
+    // CHECK-NEXT:    llvm.call @fusion_nested_5({{.*}}, %[[REL_BID3]])
   )"));
   EXPECT_TRUE(mlir_check);
 
   if (HasHopperClusterSupport()) {
     EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
   }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TwoPhaseProducerConsumerWithCrossCtaRead) {
+  // `phase_0` uses 4 CTAs (`f32[512]` exponential) while `phase_1` uses all 8
+  // CTAs (`f32[1024]`) and `reverse`s `phase_0`'s output across CTAs,
+  // exercising both CTA range guarding and global-memory visibility across the
+  // barrier.
+  constexpr absl::string_view kHlo = R"hlo(
+phase_0 { ROOT exp = f32[512] exponential(f32[512] parameter(0)) }
+phase_1 {
+  bc = f32[2,512] broadcast(f32[512] parameter(0)), dimensions={1}
+  rev = f32[1024] reverse(f32[1024] reshape(bc)), dimensions={0}
+  ROOT add = f32[1024] add(rev, f32[1024] parameter(1))
+}
+phased_comp {
+  f0 = f32[512] fusion(f32[512] parameter(0)), kind=kLoop, calls=phase_0
+  f1 = f32[1024] fusion(f0, f32[1024] parameter(1)), kind=kLoop, calls=phase_1
+  ROOT t = (f32[512], f32[1024]) tuple(f0, f1)
+}
+ENTRY main {
+  ROOT fusion = (f32[512], f32[1024]) fusion(f32[512] parameter(0), f32[1024] parameter(1)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized);
+
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 8);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_THAT(fusion_emitter.cluster_dim(), Optional(se::ClusterDim(8, 1, 1)));
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                              /*buffer_assignment=*/nullptr));
+  std::string mlir_str;
+  llvm::raw_string_ostream(mlir_str) << *mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    %[[ARG0:[^:]+]]: !llvm.ptr {llvm.noalias}, %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr, %[[ARG3:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK:         %[[IN:.*]] = llvm.icmp "ult" %[[BID]], %[[C4]] : i32
+    // CHECK:         llvm.cond_br %[[IN]], ^[[PHASE0_CALL:bb[0-9]+]], ^[[BARRIER:bb[0-9]+]]
+    // CHECK:       ^[[PHASE0_CALL]]:
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:         llvm.br ^[[BARRIER]]
+    // CHECK:       ^[[BARRIER]]:
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.call @fusion_nested_1(%[[ARG2]], %[[ARG1]], %[[ARG3]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:         llvm.return
+    // CHECK:       llvm.func internal @fusion_nested_0(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {xla.backend_kind = #xla.backend_kind<gpu>, passthrough = ["alwaysinline"]}
+    // CHECK:       llvm.func internal @fusion_nested_1(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {xla.backend_kind = #xla.backend_kind<gpu>, passthrough = ["alwaysinline"]}
+  )"));
+  EXPECT_TRUE(mlir_check);
+
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       HorizontalNestedInsidePhasedBlockCluster) {
+  // Phase 0 is a `__thread_block_specialized` horizontal fusion running two
+  // leaf sub-kernels (`branch_a` on CTA 0 with 64 threads, `branch_b` on CTAs
+  // 1..2 with 128 threads, while CTA 3 skips to the barrier). After the cluster
+  // barrier, Phase 1 (`merge_phase`) runs across all 4 CTAs and reads both
+  // Phase 0 outputs across CTAs.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+branch_a {
+  p0 = f32[64]{0} parameter(0)
+  ROOT exp = f32[64]{0} exponential(p0)
+}
+
+branch_b {
+  p0 = f32[256]{0} parameter(0)
+  rev = f32[256]{0} reverse(p0), dimensions={0}
+  ROOT neg = f32[256]{0} negate(rev)
+}
+
+horiz_phase_0 {
+  p0 = f32[64]{0} parameter(0)
+  p1 = f32[256]{0} parameter(1)
+  f0 = f32[64]{0} fusion(p0), kind=kLoop, calls=branch_a
+  f1 = f32[256]{0} fusion(p1), kind=kLoop, calls=branch_b
+  ROOT t = (f32[64]{0}, f32[256]{0}) tuple(f0, f1)
+}
+
+merge_phase {
+  a = f32[64]{0} parameter(0)
+  b = f32[256]{0} parameter(1)
+  a_bc = f32[8,64]{1,0} broadcast(a), dimensions={1}
+  b_bc = f32[2,256]{1,0} broadcast(b), dimensions={1}
+  b_rev = f32[512]{0} reverse(f32[512]{0} reshape(b_bc)), dimensions={0}
+  ROOT add = f32[512]{0} add(f32[512]{0} reshape(a_bc), b_rev)
+}
+
+phased_comp {
+  p0 = f32[64]{0} parameter(0)
+  p1 = f32[256]{0} parameter(1)
+  h0 = (f32[64]{0}, f32[256]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horiz_phase_0,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+  h0_0 = f32[64]{0} get-tuple-element(h0), index=0
+  h0_1 = f32[256]{0} get-tuple-element(h0), index=1
+  m1 = f32[512]{0} fusion(h0_0, h0_1), kind=kLoop, calls=merge_phase
+  ROOT t = (f32[64]{0}, f32[256]{0}, f32[512]{0}) tuple(h0_0, h0_1, m1)
+}
+
+ENTRY main {
+  p0 = f32[64]{0} parameter(0)
+  p1 = f32[256]{0} parameter(1)
+  ROOT fusion = (f32[64]{0}, f32[256]{0}, f32[512]{0}) fusion(p0, p1),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 4);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_THAT(fusion_emitter.cluster_dim(), Optional(se::ClusterDim(4, 1, 1)));
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                              /*buffer_assignment=*/nullptr));
+  std::string mlir_str;
+  llvm::raw_string_ostream(mlir_str) << *mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    %[[ARG0:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[OUT0:[^:]+]]: !llvm.ptr,
+    // CHECK-SAME:    %[[OUT1:[^:]+]]: !llvm.ptr,
+    // CHECK-SAME:    %[[OUT2:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-SAME:    nvvm.cluster_dim = array<i32: 4, 1, 1>
+    // CHECK-DAG:     %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
+    // CHECK-DAG:     %[[C3:.*]] = llvm.mlir.constant(3 : i32) : i32
+    // CHECK-DAG:     %[[C64:.*]] = llvm.mlir.constant(64 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK-DAG:     %[[TID:.*]] = nvvm.read.ptx.sreg.tid.x : i32
+    // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C1]] : i32
+    // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
+    // CHECK:       ^[[THEN0]]:
+    // CHECK:         %[[TID_OK:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[BID]])
+    // CHECK:       ^[[ELSE0]]:
+    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C3]] : i32
+    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
+    // CHECK:       ^[[THEN1]]:
+    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C1]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[OUT1]], %[[REL_BID]])
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.call @fusion_nested_2(%[[OUT0]], %[[OUT1]], %[[OUT2]], %[[BID]])
+  )"));
+  EXPECT_TRUE(mlir_check);
+
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       ReductionPhaseFollowedByLoopPhaseInCluster) {
+  constexpr absl::string_view kHlo = R"hlo(
+add_scalar { ROOT add = f32[] add(f32[] parameter(0), f32[] parameter(1)) }
+reduce_phase {
+  ROOT red = f32[32] reduce(f32[32,128] parameter(0), f32[] constant(0.0)),
+    dimensions={1}, to_apply=add_scalar
+}
+loop_phase {
+  rev = f32[32] reverse(f32[32] parameter(0)), dimensions={0}
+  ROOT exp = f32[32] exponential(rev)
+}
+phased_comp {
+  f0 = f32[32] fusion(f32[32,128] parameter(0)), kind=kInput, calls=reduce_phase
+  f1 = f32[32] fusion(f0), kind=kLoop, calls=loop_phase
+  ROOT t = (f32[32], f32[32]) tuple(f0, f1)
+}
+ENTRY main {
+  ROOT fusion = (f32[32], f32[32]) fusion(f32[32,128] parameter(0)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       DoesNotOverwriteSharedOuterOperandAcrossPhases) {
+  if (!HasHopperClusterSupport()) {
+    GTEST_SKIP() << "Requires Hopper (SM90+) thread-block clusters.";
+  }
+  constexpr absl::string_view kHlo = R"hlo(
+phase_0 { ROOT neg = f32[256] negate(f32[256] parameter(0)) }
+phase_1 { ROOT add = f32[256] add(f32[256] parameter(0), f32[256] parameter(1)) }
+phased_comp {
+  p0 = f32[256] parameter(0)
+  f0 = f32[256] fusion(p0), kind=kLoop, calls=phase_0
+  f1 = f32[256] fusion(f0, p0), kind=kLoop, calls=phase_1
+  ROOT t = (f32[256], f32[256]) tuple(f0, f1)
+}
+ENTRY main {
+  fused = (f32[256], f32[256]) fusion(f32[256] negate(f32[256] parameter(0))),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  out0 = f32[256] get-tuple-element(fused), index=0
+  out1 = f32[256] get-tuple-element(fused), index=1
+  ROOT sum = f32[256] add(out0, out1)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       PhasedBlockClusterWithReversedRootTupleOrder) {
+  constexpr absl::string_view kHlo = R"hlo(
+phase_0 { ROOT exp = f32[512] exponential(f32[512] parameter(0)) }
+phase_1 {
+  bc = f32[2,512] broadcast(f32[512] parameter(0)), dimensions={1}
+  rev = f32[1024] reverse(f32[1024] reshape(bc)), dimensions={0}
+  ROOT add = f32[1024] add(rev, f32[1024] parameter(1))
+}
+phased_comp {
+  f0 = f32[512] fusion(f32[512] parameter(0)), kind=kLoop, calls=phase_0
+  f1 = f32[1024] fusion(f0, f32[1024] parameter(1)), kind=kLoop, calls=phase_1
+  ROOT t = (f32[1024], f32[512]) tuple(f1, f0)
+}
+ENTRY main {
+  ROOT fusion = (f32[1024], f32[512]) fusion(f32[512] parameter(0), f32[1024] parameter(1)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  std::string mlir_str;
+  llvm::raw_string_ostream(mlir_str) << *mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    %[[ARG0:[^:]+]]: !llvm.ptr {llvm.noalias}, %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias}, %[[ARG3:[^:]+]]: !llvm.ptr)
+    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK:         %[[IN:.*]] = llvm.icmp "ult" %[[BID]], %[[C4]] : i32
+    // CHECK:         llvm.cond_br %[[IN]], ^[[PHASE0_CALL:bb[0-9]+]], ^[[BARRIER:bb[0-9]+]]
+    // CHECK:       ^[[PHASE0_CALL]]:
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG3]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:         llvm.br ^[[BARRIER]]
+    // CHECK:       ^[[BARRIER]]:
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK:         llvm.call @fusion_nested_1(%[[ARG3]], %[[ARG1]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:         llvm.return
+  )"));
+  EXPECT_TRUE(mlir_check);
+
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       DoesNotReuseKernelAcrossHorizontalAndPhasedSchedules) {
+  if (!HasHopperClusterSupport()) {
+    GTEST_SKIP() << "Requires Hopper (SM90+) thread-block clusters.";
+  }
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+h_leaf_0 { ROOT neg = f32[512]{0} negate(f32[512]{0} parameter(0)) }
+h_leaf_1 { ROOT exp = f32[512]{0} exponential(f32[512]{0} parameter(0)) }
+horiz_comp {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=h_leaf_0
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=h_leaf_1
+  ROOT t = (f32[512]{0}, f32[512]{0}) tuple(f0, f1)
+}
+
+p_leaf_0 { ROOT neg = f32[512]{0} negate(f32[512]{0} parameter(0)) }
+p_leaf_1 { ROOT exp = f32[512]{0} exponential(f32[512]{0} parameter(0)) }
+phased_comp {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=p_leaf_0
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=p_leaf_1
+  ROOT t = (f32[512]{0}, f32[512]{0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  horiz_fusion = (f32[512]{0}, f32[512]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horiz_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+  h0 = f32[512]{0} get-tuple-element(horiz_fusion), index=0
+  h1 = f32[512]{0} get-tuple-element(horiz_fusion), index=1
+  phased_fusion = (f32[512]{0}, f32[512]{0}) fusion(p0, p1), kind=kCustom,
+    calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c0 = f32[512]{0} get-tuple-element(phased_fusion), index=0
+  c1 = f32[512]{0} get-tuple-element(phased_fusion), index=1
+  ROOT out = (f32[512]{0}, f32[512]{0}, f32[512]{0}, f32[512]{0})
+    tuple(h0, h1, c0, c1)
+}
+)hlo";
+
+  EXPECT_OK(CompileAndVerifyIr(kHlo,
+                               R"(
+        ; CHECK-DAG: define ptx_kernel void @horiz_fusion(
+        ; CHECK-DAG: define ptx_kernel void @phased_fusion(
+      )",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

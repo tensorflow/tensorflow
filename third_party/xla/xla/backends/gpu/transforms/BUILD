@@ -2713,7 +2713,7 @@ cc_library(
     deps = [
         ":fusion_wrapper",
         "//xla/backends/gpu/codegen:fusions",
-        "//xla/backends/gpu/codegen:phased_block_cluster",
+        "//xla/backends/gpu/codegen:thread_block_specialized",
         "//xla/backends/gpu/codegen/emitters:loop",
         "//xla/codegen:ir_emission_utils",
         "//xla/hlo/analysis:hlo_reachability",

@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/fusions.h"
-#include "xla/backends/gpu/codegen/phased_block_cluster.h"
+#include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -101,7 +101,7 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
   const se::BlockDim& blocks = dims.block_counts();
   const se::ThreadDim& threads = dims.thread_counts_per_block();
   return blocks.x > 0 &&
-         blocks.x <= PhasedBlockClusterFusion::kMaxBlocksPerCluster &&
+         blocks.x <= ThreadBlockSpecializedFusion::kMaxBlocksPerCluster &&
          blocks.y == 1 && blocks.z == 1 && threads.y == 1 && threads.z == 1;
 }
 

@@ -100,6 +100,9 @@ std::optional<bool> FusionCanShareBufferHint(
   // Special case for ThreadBlockSpecialized fusions.
   if (analysis.emitter_fusion_kind() ==
       HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized) {
+    if (IsGpuFusionKind(*user, kPhasedBlockClusterFusionKind)) {
+      return false;
+    }
     const auto* nested_fusion = DynCast<HloFusionInstruction>(output);
     if (nested_fusion == nullptr || user->OperandIndices(operand).size() != 1) {
       return false;
