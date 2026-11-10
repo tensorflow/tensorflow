@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
 #include "xla/backends/gpu/transforms/config_aware_cse.h"
 #include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/mlir_context_pool.h"
-#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
