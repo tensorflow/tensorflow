@@ -41,39 +41,47 @@ namespace functor {
 
 namespace {
 struct StridedDataReader {
-  StridedDataReader(const int64_t* begin, int stride)
-      : begin_(begin), stride_(stride) {}
+  StridedDataReader(const int64_t* begin, int stride, int64_t rows,
+                    int64_t cols)
+      : begin_(begin), stride_(stride), rows_(rows), cols_(cols) {}
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int operator()(int idx) const {
-    const int64_t value = ldg(begin_ + idx * stride_);
-    return value < 0 || value > std::numeric_limits<int>::max()
-               ? -1
-               : static_cast<int>(value);
+    const int64_t* index = begin_ + static_cast<int64_t>(idx) * stride_;
+    const int64_t batch = stride_ == 3 ? ldg(index) : 0;
+    const int64_t row = ldg(index + stride_ - 2);
+    const int64_t col = ldg(index + stride_ - 1);
+    if (batch < 0 || batch > std::numeric_limits<int>::max() || row < 0 ||
+        row >= rows_ || col < 0 || col >= cols_) {
+      return -1;
+    }
+    return static_cast<int>(batch);
   }
 
   const int64_t* begin_;
   const int stride_;
+  const int64_t rows_;
+  const int64_t cols_;
 };
 }  // namespace
 
 template <>
 absl::Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
-    TTypes<int32_t>::Vec nnz_per_batch) {
+    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices, int64_t rows,
+    int64_t cols, TTypes<int32_t>::Vec nnz_per_batch) {
   const auto& cu_stream = GetGpuStream(c);
 
   const int total_nnz = indices.dimension(0);
   const int size = nnz_per_batch.size();
 
   DCHECK_EQ(indices.rank(), 2);
-  DCHECK_EQ(indices.dimension(1), 3);  // batch, row, col
 
   const int rank = indices.dimension(1);
+  DCHECK(rank == 2 || rank == 3);
   gpuprim::CountingInputIterator<int> row_counter(0);
   gpuprim::TransformInputIterator<int, StridedDataReader,
                                   gpuprim::CountingInputIterator<int>>
       indices_first_column(row_counter,
-                           StridedDataReader(indices.data(), rank));
+                           StridedDataReader(indices.data(), rank, rows, cols));
 
   std::size_t temp_storage_bytes = 0;
 
@@ -139,23 +147,15 @@ absl::Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
   return gpu_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
 }
 
-namespace {
-__device__ inline int ClampIndex(int64_t index, int64_t limit) {
-  if (limit <= 0) return 0;
-  return static_cast<int>(index < 0 ? 0 : (index < limit ? index : limit - 1));
-}
-}  // namespace
-
 template <int stride>
 __global__ void SparseTensorToCOOMatrixKernel(const int64_t* indices,
                                               int* coo_rows_out,
-                                              int* coo_cols_out, int64_t size,
-                                              int64_t rows, int64_t cols) {
+                                              int* coo_cols_out, int64_t size) {
   const int offset = (stride == 3) ? 1 : 0;
   for (int64_t i : GpuGridRangeX<int64_t>(size)) {
     const int64_t* index = indices + i * stride + offset;
-    coo_rows_out[i] = ClampIndex(ldg(index), rows);
-    coo_cols_out[i] = ClampIndex(ldg(index + 1), cols);
+    coo_rows_out[i] = static_cast<int>(ldg(index));
+    coo_cols_out[i] = static_cast<int>(ldg(index + 1));
   }
 }
 
@@ -168,19 +168,16 @@ absl::Status SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
   DCHECK(stride == 2 || stride == 3);
   DCHECK_EQ(stride, indices.dimension(1));
   const int64_t size = coo_row_ind.dimension(0);
-  const int64_t rows = host_dense_shape(stride - 2);
-  const int64_t cols = host_dense_shape(stride - 1);
   TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config, GetGpuLaunchConfig64(size, d));
   if (stride == 2) {
     return GpuLaunchKernel(SparseTensorToCOOMatrixKernel<2>, config.block_count,
                            config.thread_per_block, 0, d.stream(),
                            indices.data(), coo_row_ind.data(),
-                           coo_col_ind.data(), size, rows, cols);
+                           coo_col_ind.data(), size);
   }
   return GpuLaunchKernel(SparseTensorToCOOMatrixKernel<3>, config.block_count,
                          config.thread_per_block, 0, d.stream(), indices.data(),
-                         coo_row_ind.data(), coo_col_ind.data(), size, rows,
-                         cols);
+                         coo_row_ind.data(), coo_col_ind.data(), size);
 }
 
 __global__ void COOMatrixToSparseTensorKernel2D(const int* coo_rows,

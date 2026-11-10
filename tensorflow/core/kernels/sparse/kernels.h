@@ -41,8 +41,8 @@ namespace functor {
 template <typename Device>
 struct CalculateNNZPerBatchMatrixFromIndices {
   absl::Status operator()(OpKernelContext* c,
-                          TTypes<int64_t>::ConstMatrix indices,
-                          TTypes<int32_t>::Vec nnz_per_batch);
+                          TTypes<int64_t>::ConstMatrix indices, int64_t rows,
+                          int64_t cols, TTypes<int32_t>::Vec nnz_per_batch);
 };
 
 // Split a subset of a SparseTensors' indices into two vectors:

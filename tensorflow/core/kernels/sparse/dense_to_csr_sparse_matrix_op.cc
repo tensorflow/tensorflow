@@ -251,33 +251,29 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     ScratchSpace<int32_t> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 
     Tensor nnz_per_batch_device_t;
-    if (rank == 2) {
-      // Simple case.
-      nnz_per_batch_host.mutable_data()[0] = indices_t.dim_size(0);
-    } else {
-      OP_REQUIRES_OK_ASYNC(c,
-                           c->allocate_temp(DT_INT32, TensorShape({batch_size}),
-                                            &nnz_per_batch_device_t),
-                           done);
-      auto nnz_per_batch_device = nnz_per_batch_device_t.vec<int32_t>();
+    OP_REQUIRES_OK_ASYNC(c,
+                         c->allocate_temp(DT_INT32, TensorShape({batch_size}),
+                                          &nnz_per_batch_device_t),
+                         done);
+    auto nnz_per_batch_device = nnz_per_batch_device_t.vec<int32_t>();
 
-      functor::CalculateNNZPerBatchMatrixFromIndices<Device>
-          calculate_nnz_from_indices;
-      auto indices = indices_t.matrix<int64_t>();
-      OP_REQUIRES_OK_ASYNC(
-          c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
-          done);
+    functor::CalculateNNZPerBatchMatrixFromIndices<Device>
+        calculate_nnz_from_indices;
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        calculate_nnz_from_indices(c, indices_t.matrix<int64_t>(), rows, cols,
+                                   nnz_per_batch_device),
+        done);
 
-      stream_executor::DeviceAddressBase nnz_per_batch_device_ptr(
-          static_cast<void*>(nnz_per_batch_device.data()));
+    stream_executor::DeviceAddressBase nnz_per_batch_device_ptr(
+        static_cast<void*>(nnz_per_batch_device.data()));
 
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          stream->Memcpy(nnz_per_batch_host.mutable_data() /*host_dst*/,
-                         nnz_per_batch_device_ptr /*gpu_src*/,
-                         batch_size * sizeof(int32_t) /*size*/),
-          done);
-    }
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        stream->Memcpy(nnz_per_batch_host.mutable_data() /*host_dst*/,
+                       nnz_per_batch_device_ptr /*gpu_src*/,
+                       batch_size * sizeof(int32_t) /*size*/),
+        done);
 
     // TODO(ebrevdo): write a custom pair of kernels: one that
     // calculates the batched csr_row_ptr vector, another that fills in
@@ -335,8 +331,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             c, total_nnz == values_t.NumElements(),
             absl::InvalidArgumentError(absl::StrCat(
                 values_t.NumElements() - total_nnz, " of ",
-                values_t.NumElements(), " batch indices are outside of ",
-                "valid range [0, ", batch_size, ")")),
+                values_t.NumElements(), " indices are outside of valid range ",
+                rank == 3 ? absl::StrCat("[0, ", batch_size, ") x ") : "",
+                "[0, ", rows, ") x [0, ", cols, ")")),
             done);
 
         Tensor coo_col_ind_t;
@@ -420,13 +417,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       done();
     };
 
-    if (rank == 2) {
-      convert_to_csr();
-    } else {
-      // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
-      c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
-          stream, convert_to_csr);
-    }
+    // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
+    c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
+        stream, convert_to_csr);
   }
 };
 
@@ -445,8 +438,8 @@ namespace functor {
 
 template <>
 absl::Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
-    TTypes<int32_t>::Vec nnz_per_batch);
+    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices, int64_t rows,
+    int64_t cols, TTypes<int32_t>::Vec nnz_per_batch);
 extern template struct CalculateNNZPerBatchMatrixFromIndices<GPUDevice>;
 
 template <>
