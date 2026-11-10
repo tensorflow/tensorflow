@@ -137,16 +137,32 @@ def LegalizeChloToTflPass
   ];
 }
 
+def SimplifyHloPass
+    : Pass<"simplify-hlo", "mlir::func::FuncOp"> {
+  let summary = "Folds and simplifies StableHLO before prepare-hlo.";
+  let constructor = "mlir::odml::CreateSimplifyHloPass()";
+  let description = [{
+    Runs StableHLO's aggressive folder (without float rewrites that may change
+    numerics, and without the constant transpose folder) and canonicalization
+    patterns. MHLO's folders and canonicalizations used to bring the graph into
+    the canonical form the StableHLO->tfl legalization expects.
+  }];
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "func::FuncDialect",
+  ];
+}
+
 def PrepareHloPass
     : Pass<"prepare-hlo", "mlir::func::FuncOp"> {
-  let summary = "Prepare mhlo for mhlo->tfl legalization.";
+  let summary = "Prepare StableHLO for StableHLO->tfl legalization.";
   let constructor = "mlir::odml::CreatePrepareHloPass()";
   let description = [{
-    Apply generic mhlo->mhlo rewrites to make the graph more amenable for
+    Apply generic StableHLO->StableHLO rewrites to make the graph more amenable for
     legalizing to tfl.
   }];
   let dependentDialects = [
-    "mlir::mhlo::MhloDialect",
+    "mlir::stablehlo::StablehloDialect",
     "func::FuncDialect",
     "TFL::TensorFlowLiteDialect"
   ];

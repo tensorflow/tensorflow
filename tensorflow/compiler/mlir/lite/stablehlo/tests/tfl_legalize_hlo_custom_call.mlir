@@ -16,7 +16,7 @@
 
 // CHECK-LABEL: mhlo_custom_call_test__legalize_string_backend_config
 func.func @mhlo_custom_call_test__legalize_string_backend_config(%arg0: tensor<1x4xf32>) -> tensor<1x8xf32> {
-  %0 = mhlo.custom_call @custom_call.my_custom_op(%arg0) {
+  %0 = stablehlo.custom_call @custom_call.my_custom_op(%arg0) {
     api_version = 1 : i32,
     backend_config = "this_is_a_test_string"
   } : (tensor<1x4xf32>) -> (tensor<1x8xf32>)
@@ -30,13 +30,13 @@ func.func @mhlo_custom_call_test__legalize_string_backend_config(%arg0: tensor<1
 
 // CHECK-LABEL: mhlo_custom_call_test__dont_legalize_dict_backend_config
 func.func @mhlo_custom_call_test__dont_legalize_dict_backend_config(%arg0: tensor<1x4xf32>) -> tensor<1x8xf32> {
-  %0 = mhlo.custom_call @custom_call.my_custom_op(%arg0) {
+  %0 = stablehlo.custom_call @custom_call.my_custom_op(%arg0) {
     api_version = 4 : i32,
     backend_config = {foo = "bar"}
   } : (tensor<1x4xf32>) -> (tensor<1x8xf32>)
   func.return %0 : tensor<1x8xf32>
 
-  //       CHECK: %0 = mhlo.custom_call @custom_call.my_custom_op(%arg0) {
+  //       CHECK: %0 = stablehlo.custom_call @custom_call.my_custom_op(%arg0) {
   //  CHECK-SAME:   api_version = 4 : i32,
   //  CHECK-SAME:   backend_config = {foo = "bar"}
   //  CHECK-SAME: } : (tensor<1x4xf32>) -> tensor<1x8xf32>
@@ -44,7 +44,7 @@ func.func @mhlo_custom_call_test__dont_legalize_dict_backend_config(%arg0: tenso
 
 // CHECK-LABEL: mhlo_custom_call_test__api_version_4
 func.func @mhlo_custom_call_test__api_version_4(%arg0: tensor<1x4xf32>) -> tensor<1x8xf32> {
-  %0 = mhlo.custom_call @custom_call.my_custom_op(%arg0) {
+  %0 = stablehlo.custom_call @custom_call.my_custom_op(%arg0) {
     api_version = 4 : i32
   } : (tensor<1x4xf32>) -> (tensor<1x8xf32>)
   func.return %0 : tensor<1x8xf32>
@@ -57,12 +57,39 @@ func.func @mhlo_custom_call_test__api_version_4(%arg0: tensor<1x4xf32>) -> tenso
 
 // CHECK-LABEL: mhlo_custom_call_does_not_legalize_tf_function
 func.func @mhlo_custom_call_does_not_legalize_tf_function(%arg0: tensor<1x4xf32>) -> tensor<1x8xf32> {
-  %0 = mhlo.custom_call @tf.ResizeBilinear(%arg0) {
+  %0 = stablehlo.custom_call @tf.ResizeBilinear(%arg0) {
     backend_config = "this_is_a_test_string"
   } : (tensor<1x4xf32>) -> (tensor<1x8xf32>)
   func.return %0 : tensor<1x8xf32>
 
-  //       CHECK: %0 = mhlo.custom_call @tf.ResizeBilinear(%arg0) {
+  //       CHECK: %0 = stablehlo.custom_call @tf.ResizeBilinear(%arg0) {
   //  CHECK-SAME:   backend_config = "this_is_a_test_string"
   //  CHECK-SAME: } : (tensor<1x4xf32>) -> tensor<1x8xf32>
+}
+
+// A `tfl.*` carrier is lowered directly to the named TFL op, with the op
+// attributes taken from the serialized backend_config.
+// CHECK-LABEL: tfl_carrier_string_backend_config
+func.func @tfl_carrier_string_backend_config(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = stablehlo.custom_call @tfl.add(%arg0, %arg1) {
+    api_version = 1 : i32,
+    backend_config = "{fused_activation_function = \"NONE\"}"
+  } : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+
+  //      CHECK: %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
+  // CHECK-NEXT: return %0
+}
+
+// Same, with a backend_config that is already a dictionary.
+// CHECK-LABEL: tfl_carrier_dict_backend_config
+func.func @tfl_carrier_dict_backend_config(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = stablehlo.custom_call @tfl.add(%arg0, %arg1) {
+    api_version = 4 : i32,
+    backend_config = {fused_activation_function = "NONE"}
+  } : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+
+  //      CHECK: %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
+  // CHECK-NEXT: return %0
 }

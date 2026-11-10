@@ -35,21 +35,22 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tfl_carrier.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
 namespace {
 
-class ConvertCustomCallOp : public OpConversionPattern<mhlo::CustomCallOp> {
+class ConvertCustomCallOp
+    : public OpConversionPattern<stablehlo::CustomCallOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::CustomCallOp mhlo_custom_call, OpAdaptor adaptor,
+      stablehlo::CustomCallOp custom_call, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
@@ -190,7 +191,7 @@ bool MatchesScalesAndZeroPoints(quant::QuantizedType qtype,
 }
 
 // Rewrites a `tfl.quantize` custom call on `input` into `tfl.quantize`.
-LogicalResult RewriteQuantizeCustomCall(mhlo::CustomCallOp op, Value input,
+LogicalResult RewriteQuantizeCustomCall(stablehlo::CustomCallOp op, Value input,
                                         PatternRewriter& rewriter) {
   DictionaryAttr attributes =
       ParseSerializedTFLOpAttributes(op.getBackendConfig(), op.getContext());
@@ -219,7 +220,8 @@ LogicalResult RewriteQuantizeCustomCall(mhlo::CustomCallOp op, Value input,
 //   type described by the backend_config.
 // Any other input (e.g. a runtime integer tensor) can't be given a quantized
 // type and is rejected.
-LogicalResult RewriteDequantizeCustomCall(mhlo::CustomCallOp op, Value input,
+LogicalResult RewriteDequantizeCustomCall(stablehlo::CustomCallOp op,
+                                          Value input,
                                           PatternRewriter& rewriter) {
   DictionaryAttr attributes =
       ParseSerializedTFLOpAttributes(op.getBackendConfig(), op.getContext());
@@ -227,7 +229,7 @@ LogicalResult RewriteDequantizeCustomCall(mhlo::CustomCallOp op, Value input,
     return failure();
   }
 
-  if (auto call_op = input.getDefiningOp<mhlo::CustomCallOp>()) {
+  if (auto call_op = input.getDefiningOp<stablehlo::CustomCallOp>()) {
     if (call_op.getCallTargetName() == "tfl.quantize") {
       return failure();
     }
@@ -251,7 +253,7 @@ LogicalResult RewriteDequantizeCustomCall(mhlo::CustomCallOp op, Value input,
     if (auto const_op = input.getDefiningOp<arith::ConstantOp>()) {
       const_value = mlir::dyn_cast<ElementsAttr>(const_op.getValue());
       const_loc = const_op.getLoc();
-    } else if (auto const_op = input.getDefiningOp<mhlo::ConstantOp>()) {
+    } else if (auto const_op = input.getDefiningOp<stablehlo::ConstantOp>()) {
       const_value = mlir::dyn_cast<ElementsAttr>(const_op.getValue());
       const_loc = const_op.getLoc();
     }
@@ -278,29 +280,28 @@ LogicalResult RewriteDequantizeCustomCall(mhlo::CustomCallOp op, Value input,
 }
 
 LogicalResult ConvertCustomCallOp::matchAndRewrite(
-    mhlo::CustomCallOp mhlo_custom_call, OpAdaptor adaptor,
+    stablehlo::CustomCallOp custom_call, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  auto call_target_name = mhlo_custom_call.getCallTargetName();
+  auto call_target_name = custom_call.getCallTargetName();
 
   if (call_target_name == "tfl.quantize") {
-    return RewriteQuantizeCustomCall(mhlo_custom_call,
-                                     adaptor.getOperands().front(), rewriter);
+    return RewriteQuantizeCustomCall(custom_call, adaptor.getOperands().front(),
+                                     rewriter);
   }
   if (call_target_name == "tfl.dequantize") {
-    return RewriteDequantizeCustomCall(mhlo_custom_call,
+    return RewriteDequantizeCustomCall(custom_call,
                                        adaptor.getOperands().front(), rewriter);
   }
 
   if (call_target_name.starts_with("tfl.")) {
-    auto bc = mhlo_custom_call.getBackendConfig();
+    auto bc = custom_call.getBackendConfig();
     if (mlir::DictionaryAttr attributes =
             ParseSerializedTFLOpAttributes(bc, getContext())) {
       // Short-cut: TFL direct lowering on StableHLO CustomCall carrier.
-      mlir::OperationState new_op(mhlo_custom_call.getLoc(), call_target_name,
-                                  mhlo_custom_call.getOperands(),
-                                  mhlo_custom_call.getResultTypes(),
-                                  attributes.getValue());
-      rewriter.replaceOp(mhlo_custom_call, rewriter.create(new_op));
+      mlir::OperationState new_op(
+          custom_call.getLoc(), call_target_name, custom_call.getOperands(),
+          custom_call.getResultTypes(), attributes.getValue());
+      rewriter.replaceOp(custom_call, rewriter.create(new_op));
       return success();
     }
   }
@@ -308,12 +309,12 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
   if (!call_target_name.starts_with("custom_call.")) {
     return failure();
   }
-  auto tfl_custom = TFL::CustomOp::create(rewriter, mhlo_custom_call.getLoc(),
-                                          mhlo_custom_call.getResultTypes(),
-                                          mhlo_custom_call.getInputs());
+  auto tfl_custom = TFL::CustomOp::create(rewriter, custom_call.getLoc(),
+                                          custom_call.getResultTypes(),
+                                          custom_call.getInputs());
   tfl_custom.setCustomCodeAttr(rewriter.getStringAttr(call_target_name));
 
-  if (auto bc = mhlo_custom_call.getBackendConfig()) {
+  if (auto bc = custom_call.getBackendConfig()) {
     if (auto stringattr = mlir::dyn_cast_or_null<mlir::StringAttr>(*bc)) {
       tfl_custom.setCustomOptionAttr(
           TFL::ConstBytesAttr::get(rewriter.getContext(), stringattr));
@@ -323,16 +324,16 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
         TFL::ConstBytesAttr::get(rewriter.getContext(), ""));
   }
 
-  rewriter.replaceOp(mhlo_custom_call, tfl_custom);
+  rewriter.replaceOp(custom_call, tfl_custom);
   return success();
 }
 
 class RewriteQuantizeCustomCallOp
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
  public:
-  using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
+  using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (op.getCallTargetName() != "tfl.quantize") {
       return failure();
@@ -342,11 +343,11 @@ class RewriteQuantizeCustomCallOp
 };
 
 class RewriteDequantizeCustomCallOp
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
  public:
-  using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
+  using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (op.getCallTargetName() != "tfl.dequantize") {
       return failure();
@@ -355,30 +356,30 @@ class RewriteDequantizeCustomCallOp
   }
 };
 
-// Removes the `mhlo.custom_call @shape_assertion` custom call which represents
-// an assertion that the first operand (`assert_what`) evaluates to `true`.
-// This is a temporary workaround for unblocking dynamic model conversion
-// because starting from version 7, in presence of shape polymorphism JAX will
-// emit stablehlo.custom_call @shape_assertion to verify at compile time that
-// the code is used with compatible actual shapes.
-// TFLite runtime kernels support shape checking and shape inference to some
-// extent, it is okay to remove the shape assertion in most scenarios. However
-// this is not always the case, JAX may trace the program differently based on
-// the shape polymorphism specification, for example, if the program contains
-// a conditional on "x.shape[0] % 2 == 0" that conditional would evaluate to
-// True with x specified as (2*b, ...) and False otherwise. We can revisit
-// this when need arises. See b/295316438 for details.
+// Removes the `stablehlo.custom_call @shape_assertion` custom call which
+// represents an assertion that the first operand (`assert_what`) evaluates to
+// `true`. This is a temporary workaround for unblocking dynamic model
+// conversion because starting from version 7, in presence of shape polymorphism
+// JAX will emit stablehlo.custom_call @shape_assertion to verify at compile
+// time that the code is used with compatible actual shapes. TFLite runtime
+// kernels support shape checking and shape inference to some extent, it is okay
+// to remove the shape assertion in most scenarios. However this is not always
+// the case, JAX may trace the program differently based on the shape
+// polymorphism specification, for example, if the program contains a
+// conditional on "x.shape[0] % 2 == 0" that conditional would evaluate to True
+// with x specified as (2*b, ...) and False otherwise. We can revisit this when
+// need arises. See b/295316438 for details.
 class RemoveCustomCallWithShapeAssertion
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const final;
 };
 
 LogicalResult RemoveCustomCallWithShapeAssertion::matchAndRewrite(
-    mhlo::CustomCallOp op, PatternRewriter& rewriter) const {
+    stablehlo::CustomCallOp op, PatternRewriter& rewriter) const {
   if (op.getCallTargetName() != "shape_assertion") {
     return mlir::failure();
   }
@@ -401,11 +402,11 @@ constexpr llvm::StringLiteral kScalePreservingTflOps[] = {
 // compute new values (FC, BMM, add, ...) need their own output scale and are
 // deliberately not handled here.
 class PropagateQuantizedTypeToCustomCallOp
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
  public:
-  using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
+  using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
     if (!llvm::is_contained(kScalePreservingTflOps, op.getCallTargetName())) {
       return failure();
@@ -441,7 +442,7 @@ class PropagateQuantizedTypeToCustomCallOp
   }
 };
 
-std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
+std::optional<bool> IsCustomCallLegal(stablehlo::CustomCallOp op) {
   auto call_target_name = op.getCallTargetName();
   if (call_target_name.starts_with("custom_call.")) {
     auto bc = op.getBackendConfig();
@@ -463,7 +464,7 @@ std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
 void PopulateCustomCallPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                                 ConversionTarget& target) {
   patterns.add<ConvertCustomCallOp>(ctx);
-  target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
+  target.addDynamicallyLegalOp<stablehlo::CustomCallOp>(IsCustomCallLegal);
 }
 
 void PopulateCustomCallPreparePatterns(MLIRContext* ctx,

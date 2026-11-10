@@ -1661,7 +1661,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
-        "@xla//xla/mlir_hlo",
     ],
 )
 

@@ -29,6 +29,8 @@ namespace TFL {
 DictionaryAttr ParseSerializedTFLOpAttributes(
     std::optional<Attribute> backend_config, MLIRContext* ctx) {
   if (!backend_config) return nullptr;
+  if (auto dict = dyn_cast_or_null<DictionaryAttr>(*backend_config))
+    return dict;
   auto serialized = dyn_cast_or_null<StringAttr>(*backend_config);
   if (!serialized) return nullptr;
   return dyn_cast_or_null<DictionaryAttr>(

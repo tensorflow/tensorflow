@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -137,7 +137,7 @@ LogicalResult MatchBinaryReduceFunction(mlir::Region& function) {
   Block& body = function.front();
   if (body.getNumArguments() != 2) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op) return failure();
   if (return_op.getNumOperands() != 1) return failure();
 
@@ -162,6 +162,28 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter);
 
 // Replaces `region`'s terminator to TFL::Yield.
 void ReplaceTerminatorWithYield(Region& region, PatternRewriter& rewriter);
+
+// Returns `operand` if `permutation` is the identity, and a stablehlo.transpose
+// of it otherwise. Unlike `mhlo.transpose`, `stablehlo.transpose` has no folder
+// that removes identity transposes.
+Value TransposeUnlessIdentity(OpBuilder& builder, Location loc,
+                              Type result_type, Value operand,
+                              ArrayRef<int64_t> permutation);
+
+// Returns `operand` if it already has type `result_type`, and a
+// stablehlo.reshape of it otherwise. A no-op reshape of a dynamically shaped
+// tensor would otherwise be legalized to a tfl.reshape with an invalid shape.
+// `result_type` must be statically shaped unless it equals the operand type;
+// callers are expected to reject dynamic shapes that would need a reshape.
+Value ReshapeUnlessIdentity(OpBuilder& builder, Location loc, Type result_type,
+                            Value operand);
+
+// Folds `stablehlo.broadcast_in_dim` of a splat constant into a splat constant,
+// like `mhlo.broadcast_in_dim`'s folder did. StableHLO's folder only folds
+// float broadcasts with `optimizeFloat`. The folded constant keeps the
+// broadcast's location (and thus its name in the exported model).
+LogicalResult FoldSplatBroadcastInDim(stablehlo::BroadcastInDimOp op,
+                                      PatternRewriter& rewriter);
 }  // namespace odml
 }  // namespace mlir
 
