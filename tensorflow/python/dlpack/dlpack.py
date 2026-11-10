@@ -25,10 +25,35 @@ from typing import Any, TYPE_CHECKING
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.util.tf_export import tf_export
 
 if TYPE_CHECKING:
   from tensorflow.python.framework import ops
+
+
+def check_dtype_exportable(tf_tensor: "ops.Tensor") -> None:
+  """Raises if the dtype of `tf_tensor` has no DLPack representation.
+
+  The C++ converter reads the tensor's data pointer before it validates the
+  dtype, and for string, resource and variant tensors (which do not store
+  plain bytes) that read aborts the process instead of returning an error.
+
+  Args:
+    tf_tensor: The tensor that is about to be exported.
+
+  Raises:
+    InvalidArgumentError: If the dtype is not boolean, integer, floating point
+      or complex.
+  """
+  dtype = getattr(tf_tensor, "dtype", None)
+  if dtype is not None and not (
+      dtype.is_bool or dtype.is_integer or dtype.is_floating
+      or dtype.is_complex
+  ):
+    raise errors.InvalidArgumentError(
+        None, None, f"{dtype.name} is not supported by dlpack"
+    )
 
 
 @tf_export("experimental.dlpack.to_dlpack", v1=[])
@@ -52,7 +77,13 @@ def to_dlpack(tf_tensor: "ops.Tensor") -> Any:
     A ``PyCapsule`` named ``"dltensor"`` that shares the tensor's underlying
     memory with another framework. The capsule can only be consumed once;
     pass it straight to that framework's ``from_dlpack``-equivalent call.
+
+  Raises:
+    InvalidArgumentError: If the dtype of the tensor (for example ``string``,
+      ``resource``, ``variant`` or a quantized type) cannot be represented in
+      DLPack.
   """
+  check_dtype_exportable(tf_tensor)
   return pywrap_tfe.TFE_ToDlpackCapsule(tf_tensor)
 
 
