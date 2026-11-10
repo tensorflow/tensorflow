@@ -538,11 +538,12 @@ absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
         std::unique_ptr<PjRtBuffer> copied_buffer,
         pjrt_buffers_[index]->CopyToMemorySpace(pjrt_memory_space));
     if (semantics == ArrayCopySemantics::kDonateInput) {
-      if (!memory_kind_equal) {
-        return Unimplemented(
-            "Donation across different memory kinds is not implemented.");
+      if (memory_kind_equal) {
+        // TODO(hyeontaek): Instead of draining `pjrt_buffers_[index]`, we
+        // should mark the original buffer as deleted so that we do not have to
+        // handle `pjrt_buffers_[index] == nullptr` in other places.
+        pjrt_buffers_[index] = nullptr;
       }
-      pjrt_buffers_[index] = nullptr;
     }
     return copied_buffer;
   }
