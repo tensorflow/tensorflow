@@ -265,11 +265,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   const HloModuleConfig& module_config,
                                   absl::string_view name, llvm::Module* module);
 
-// Adds a delta value to the global state variable and return the old value of
-// the variable.
-llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilderBase* b);
-
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
     int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b);

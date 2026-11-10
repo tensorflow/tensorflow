@@ -46,7 +46,6 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/InstrTypes.h"
@@ -632,58 +631,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   }
 
   return function;
-}
-
-namespace {
-
-unsigned GetGlobalMemoryAddressSpace() { return 1; }
-
-llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
-                                                     llvm::IRBuilderBase* b) {
-  static const char* kRngStateVariableName = "rng_state";
-  llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kRngStateVariableName);
-  if (!state_ptr) {
-    // Limit the state type to 64-bit for SPIR-V, because SPIR-V supports wider
-    // integer types only through the FPGA-specific arbitrary precision integer
-    // extension, which GPU drivers do not support.
-    // TODO(intel-tf): Remove this restriction once the LLVM SPIR-V backend adds
-    // support for arbitrary precision integers on GPU targets.
-    auto bitwidth =
-        llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 64 : 128;
-    llvm::Type* state_type = b->getIntNTy(bitwidth);
-    // Use a non-zero initial value as zero state can cause the result of the
-    // first random number generation not passing the chi-square test. The
-    // values used here are arbitrarily chosen, any non-zero values should be
-    // fine.
-    state_ptr = new llvm::GlobalVariable(
-        /*M=*/*module,
-        /*Ty=*/state_type,
-        /*isConstant=*/false,
-        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/llvm::ConstantInt::get(state_type, 0x7012395ull),
-        /*Name=*/kRngStateVariableName,
-        /*InsertBefore=*/nullptr,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/GetGlobalMemoryAddressSpace(),
-        /*isExternallyInitialized=*/false);
-  }
-  return state_ptr;
-}
-
-}  // namespace
-
-llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilderBase* builder) {
-  llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old =
-      builder->CreateLoad(state_ptr->getValueType(), state_ptr, "load_state");
-  llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old,
-      llvm::ConstantInt::get(state_value_old->getType(), delta));
-  builder->CreateStore(state_value_new, state_ptr);
-  return state_value_old;
 }
 
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(

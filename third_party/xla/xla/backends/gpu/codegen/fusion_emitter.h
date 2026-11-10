@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -61,15 +60,8 @@ class KernelFusionInterface : public FusionInterface {
   virtual LaunchDimensions launch_dimensions() const = 0;
 };
 
-void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
 void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
                           llvm::Function& dst);
-
-absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
-    const std::string& impl_fn_name, const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 // Removes unused arguments from a Triton kernel to match the XLA ABI.
 //
