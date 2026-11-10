@@ -16,23 +16,32 @@ limitations under the License.
 #ifndef XLA_PJRT_INFER_DISPATCH_INFO_H_
 #define XLA_PJRT_INFER_DISPATCH_INFO_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class HloModule;
 
 struct PjRtLoadedExecutableDispatchInfo {
   std::vector<Shape> parameter_device_shapes;
@@ -71,6 +80,19 @@ struct PjRtLoadedExecutableDispatchInfo {
 
 // Helper for extracting parameter shapes from GetParameterShapes.
 std::vector<Shape> GetParameterShapes(const ComputationLayout& layout);
+
+// Clears `dynamic_shape_metadata_prefix_bytes` on the canonicalized TPU entry
+// `parameter_shapes` (from
+// `GetParameterShapes(hlo_module.entry_computation_layout())`) for dynamic
+// entry parameter arrays feeding `PadRealToStatic` custom calls. Traces values
+// via `HloDataflowAnalysis` through bitcasts, tuple packing / unpacking, and
+// subcomputation calls (`kCall` and `kAsyncStart` / `kAsyncUpdate` /
+// `kAsyncDone` chains). Returns InvalidArgument if a dynamic `PadRealToStatic`
+// operand is not backed solely by entry parameters, has any other reader
+// (including dynamic array `kCopy`), escapes as a computation root, or is
+// aliased to an output.
+absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
+    const HloModule& hlo_module, absl::Span<Shape> parameter_shapes);
 
 // Constructs PjRtLoadedExecutableDispatchInfo from both device lists
 // and metadata extracted from the final HloModule.
