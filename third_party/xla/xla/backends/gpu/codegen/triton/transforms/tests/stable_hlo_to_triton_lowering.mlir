@@ -311,10 +311,14 @@ xtile.entry_func @all_reduce_with_incorrect_num_args_doesnt_lower(%input: memref
   xtile.return
 }
 
-// CHECK-LABEL: xtile.entry_func @all_reduce_one_shot
+// CHECK-LABEL: xtile.entry_func @all_reduce_one_shot(
 xtile.entry_func @all_reduce_one_shot(%input: memref<65536xf32>, %output: memref<65536xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
   %tile = xtile.extract %input[%tile_id][65536][1] : memref<65536xf32> -> tensor<65536xf32>
+  // CHECK: xtile.extract
+  // CHECK: xtile.insert {{.*}} : tensor<65536xf32> -> memref<65536xf32>
   // CHECK: triton_xla.block_barrier
+  // CHECK: xtile.extract {{.*}} : memref<65536xf32> -> tensor<65536xf32>
+  // CHECK: xtile.extract {{.*}} : memref<65536xf32> -> tensor<65536xf32>
   // CHECK-NOT: triton_xla.block_barrier
   %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
     ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
@@ -325,10 +329,43 @@ xtile.entry_func @all_reduce_one_shot(%input: memref<65536xf32>, %output: memref
   xtile.return
 }
 
-// CHECK-LABEL: xtile.entry_func @all_reduce_two_shot
+// CHECK-LABEL: xtile.entry_func @all_reduce_one_shot_scalar_i1(
+xtile.entry_func @all_reduce_one_shot_scalar_i1(%input: memref<i8>, %output: memref<i8>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %raw = xtile.extract %input[] [] [] : memref<i8> -> tensor<i8>
+  %c0 = arith.constant dense<0> : tensor<i8>
+  %tile = arith.cmpi ne, %raw, %c0 : tensor<i8>
+  // CHECK: %[[IN_RAW:.*]] = xtile.extract %{{.*}}[] [] [] : memref<i8> -> tensor<i8>
+  // CHECK: %[[IN_TILE:.*]] = arith.cmpi ne, %[[IN_RAW]]
+  // CHECK: %[[REMOTE_COPY:.*]] = triton_xla.ptr_to_memref %{{.*}} from <i8> to memref<i8>
+  // CHECK: %[[IN_EXT:.*]] = arith.extui %[[IN_TILE]] : tensor<i1> to tensor<i8>
+  // CHECK: xtile.insert %[[IN_EXT]] into %[[REMOTE_COPY]][] [] [] : tensor<i8> -> memref<i8>
+  // CHECK: triton_xla.block_barrier
+  // CHECK: %[[R0_I8:.*]] = xtile.extract %{{.*}}[] [] [] : memref<i8> -> tensor<i8>
+  // CHECK: %[[R0:.*]] = arith.trunci %[[R0_I8]] : tensor<i8> to tensor<i1>
+  // CHECK: %[[R1_I8:.*]] = xtile.extract %{{.*}}[] [] [] : memref<i8> -> tensor<i8>
+  // CHECK: %[[R1:.*]] = arith.trunci %[[R1_I8]] : tensor<i8> to tensor<i1>
+  // CHECK: %[[OR:.*]] = arith.ori %[[R0]], %[[R1]] : tensor<i1>
+  // CHECK: %[[OUT_EXT:.*]] = arith.extui %[[OR]] : tensor<i1> to tensor<i8>
+  // CHECK: xtile.insert %[[OUT_EXT]] into %{{.*}}[] [] [] : tensor<i8> -> memref<i8>
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<i1>, %arg8: tensor<i1>):
+      %4 = arith.ori %arg7, %arg8 : tensor<i1>
+      stablehlo.return %4 : tensor<i1>
+    }) {xtile.collective_strategy = #xtile.collective_strategy<one_shot>} : (tensor<i1>) -> tensor<i1>
+  %out_i8 = arith.extui %all_reduce : tensor<i1> to tensor<i8>
+  xtile.insert %out_i8 into %output[] [] [] : tensor<i8> -> memref<i8>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_reduce_two_shot(
 xtile.entry_func @all_reduce_two_shot(%input: memref<524288xf32>, %output: memref<524288xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
   %tile = xtile.extract %input[%tile_id][131072][1] : memref<524288xf32> -> tensor<131072xf32>
+  // CHECK: xtile.extract
+  // CHECK: xtile.insert {{.*}} : tensor<131072xf32> -> memref<524288xf32>
   // CHECK: triton_xla.block_barrier
+  // CHECK: xtile.extract {{.*}} : memref<524288xf32> -> tensor<65536xf32>
+  // CHECK: xtile.extract {{.*}} : memref<524288xf32> -> tensor<65536xf32>
+  // CHECK: xtile.insert {{.*}} : tensor<65536xf32> -> memref<524288xf32>
   // CHECK: triton_xla.block_barrier
   // CHECK-NOT: triton_xla.block_barrier
   %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
@@ -476,7 +513,11 @@ xtile.entry_func @all_gather_without_remote_buffers_arg_doesnt_lower(%input: mem
 xtile.entry_func @reduce_scatter_one_shot(%input: memref<4x1024xf32>, %output: memref<2x1024xf32>, %device_rank: i32, %signal_buffer: !tt.ptr<i64>, %remote_input_buffer: !tt.ptr<i64>, %tile_id: index) attributes {num_opaque_args = 3 : i32} {
   %c0 = arith.constant 0 : index
   %tile = xtile.extract %input[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
+  // CHECK: xtile.extract
+  // CHECK: xtile.insert {{.*}} : tensor<2x64xf32> -> memref<4x1024xf32>
   // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
+  // CHECK: xtile.extract {{.*}} : memref<4x1024xf32> -> tensor<1x64xf32>
+  // CHECK: xtile.extract {{.*}} : memref<4x1024xf32> -> tensor<1x64xf32>
   // CHECK-NOT: xtile.reduce_scatter
   %reduce_scatter = xtile.reduce_scatter(%tile) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>) -> (tensor<1x64xf32>) {
   ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):

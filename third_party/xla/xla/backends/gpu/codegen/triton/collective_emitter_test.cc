@@ -194,6 +194,19 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
       )",
                              shape.ToString(), replica_groups);
     }
+    if (opcode == HloOpcode::kAllGather) {
+      Shape output_shape = shape;
+      output_shape.set_dimensions(0, shape.dimensions(0) * 2);
+      return absl::StrFormat(R"(
+        HloModule test
+        ENTRY test_computation {
+          param_0 = %1$s parameter(0)
+          ROOT all-gather = %2$s all-gather(param_0), replica_groups={%3$s}, dimensions={0}
+        }
+      )",
+                             shape.ToString(), output_shape.ToString(),
+                             replica_groups);
+    }
     if (opcode == HloOpcode::kReduceScatter) {
       Shape output_shape = shape;
       output_shape.set_dimensions(0, shape.dimensions(0) / 2);
@@ -428,7 +441,9 @@ INSTANTIATE_TEST_SUITE_P(
     CollectiveEmitterParameterizedTestInstantiation,
     CollectiveEmitterParameterizedTest,
     ::testing::ValuesIn<CollectiveSanityTestCase>(
-        {{ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
+        {{ShapeUtil::MakeShape(F32, {}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce},
@@ -440,7 +455,10 @@ INSTANTIATE_TEST_SUITE_P(
          {ShapeUtil::MakeShape(BF16, {256, 100}), HloOpcode::kAllToAll},
          {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllToAll},
          {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllToAll},
-         {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll}}),
+         {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllGather},
+         {ShapeUtil::MakeShape(BF16, {1024, 1024}), HloOpcode::kAllGather},
+         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllGather}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       std::string op_prefix = "ar_";
@@ -448,11 +466,17 @@ INSTANTIATE_TEST_SUITE_P(
         op_prefix = "rs_";
       } else if (info.param.opcode == HloOpcode::kAllToAll) {
         op_prefix = "a2a_";
+      } else if (info.param.opcode == HloOpcode::kAllGather) {
+        op_prefix = "ag_";
       }
+      std::string dims_str =
+          info.param.shape.dimensions().empty()
+              ? "scalar"
+              : absl::StrJoin(info.param.shape.dimensions(), "_");
       return op_prefix +
              primitive_util::LowercasePrimitiveTypeName(
                  info.param.shape.element_type()) +
-             "__" + absl::StrJoin(info.param.shape.dimensions(), "_");
+             "__" + dims_str;
     });
 
 struct GreedyPowerOfTwoTilesTestCase {

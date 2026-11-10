@@ -112,12 +112,12 @@ absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
     const GpuTopology& gpu_topology, const HloInstruction& instr,
     const DeviceAssignment* device_assignment = nullptr);
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
-// `scratch_memory_type` is used for all scratch buffers.
+// `symmetric_memory_type` is used for collective symmetric buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     const GpuTopology& gpu_topology, const HloInstruction* instr,
     const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type,
-    const DeviceAssignment* device_assignment = nullptr);
+    SymmetricMemoryType symmetric_memory_type,
+    const DeviceAssignment* device_assignment);
 
 // Returns true if `rs` needs to be reshaped by `FlattenReduceScatterFusion`
 // before tiling: either an output is not divisible by the replica group size

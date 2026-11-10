@@ -112,18 +112,19 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
                                 /*has_dynamic_root=*/false));
 
   const GpuTopology& gpu_topology = ir_emitter_context.gpu_topology();
-  ABSL_ASSIGN_OR_RETURN(const SymmetricMemoryType scratch_memory_type,
+  ABSL_ASSIGN_OR_RETURN(const SymmetricMemoryType symmetric_memory_type,
                    GetSymmetricMemoryType(gpu_topology, *fusion_instr));
   int devices_in_process = gpu_topology.num_devices_per_process();
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
-       fusion_instr, scratch_memory_type, devices_in_process,
+       fusion_instr, symmetric_memory_type, devices_in_process,
        &gpu_topology](const KernelReuseCache::Kernel& result) mutable
       -> absl::StatusOr<ThunkSequence> {
     ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
                      CreateCollectiveKernelSpec(gpu_topology, fusion_instr,
                                                 result.spec.launch_dimensions(),
-                                                scratch_memory_type));
+                                                symmetric_memory_type,
+                                                /*device_assignment=*/nullptr));
     // `CollectiveKernelThunk` owns its cubin, so we have to copy it out of the
     // shared buffer here.
     std::optional<std::vector<uint8_t>> cubin;
