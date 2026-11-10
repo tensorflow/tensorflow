@@ -26,7 +26,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: tf.VarHandleOp
 // CHECK: tf.ReadVariableOp
 // CHECK: tfrt_fallback_async.set_resource
-// CHECK-SAME: {device = "/device:CPU:0", index = 0 : i64}
+// CHECK-SAME: <device = "/device:CPU:0", index = 0>
 
 
 // CHECK-LABEL: func @init
@@ -50,7 +50,7 @@ func.func @func_basic(
   %1 = "tf.ReadVariableOp"(%arg1) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
 
   // CHECK-NEXT: [[ready_ch:%.*]] = tfrt.new.chain
-  // CHECK-NEXT: [[ch:%.*]], [[result:%.*]] = tfrt_fallback_async.get_resource [[ready_ch]] {device = "/device:CPU:0", indices = [0]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
+  // CHECK-NEXT: [[ch:%.*]], [[result:%.*]] = tfrt_fallback_async.get_resource [[ready_ch]] <device = "/device:CPU:0", indices = [0]> : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   // CHECK-NEXT: [[ch1:%.*]], [[var:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) {{.*}} "tf.ReadVariableOp"([[arg1]])
   // CHECK-NEXT: [[r0:%.*]] = tfrt_fallback_async.executeop {{.*}} "tf.MatMul"([[arg0]], [[var]])
   %2 = "tf.MatMul"(%arg0, %1) {T = f32, _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>

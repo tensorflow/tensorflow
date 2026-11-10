@@ -57,7 +57,7 @@ func.func @test_tf_random_uniform_on_cpu1() -> !tfrt.chain {
       { dtype = i64, value = dense<[2,2]> : tensor<2xi64> } : 1
   %random_uniform = tfrt_fallback_async.executeop key(1) cost(100) device("CPU:1") "tf.RandomUniform"(%shape_th) {dtype = f32, T = i64} : 1
 
-  %res_th = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %random_uniform {_tfrt_cost = 1 : i64, device = "CPU:1"} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
+  %res_th = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %random_uniform <device = "CPU:1"> {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
 
   // CHECK: float shape: [2,2] values:
   %ch3 = "corert.print_tensorhandle"(%res_th, %ch) : (!corert.tensorhandle, !tfrt.chain) -> !tfrt.chain
@@ -91,7 +91,7 @@ func.func @test_parse_single_example() -> !tfrt.chain {
   //
   // Note that in MLIR, non-printable bytes are printed as escaped hex numbers.
   %serialized_th = corert.const_string_tensor {shape = [], value = ["\0A!\0A\0E\0A\05key_0\12\05\1A\03\0A\01d\0A\0F\0A\05key_1\12\06\1A\04\0A\02\C8\01"]}
-  %serialized = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
+  %serialized = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(2) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<1xi64>} num_args(0)
   %ch2 = tfrt_fallback_async.createop(%ch1) key(3) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<1> : tensor<1xi64>} num_args(0)
@@ -143,7 +143,7 @@ func.func @test_const_dense_tensor() -> !tfrt.chain {
 func.func @test_const_string_tensor() -> !tfrt.chain {
   %ch0 = tfrt.new.chain
 
-  %a = tfrt_fallback_async.const_string_tensor {shape = [2], value = ["const", "string"], _tfrt_cost = 1 : i64}
+  %a = tfrt_fallback_async.const_string_tensor <shape = [2], value = ["const", "string"]> {_tfrt_cost = 1 : i64}
 
   // CHECK: Tensor<type: string shape: [2] values: const string>
   %ch1 = "tfrt_fallback_async.print_tensor"(%a, %ch0)
@@ -156,7 +156,7 @@ func.func @test_const_string_tensor() -> !tfrt.chain {
 func.func @test_const_string_tensor_same_value() -> !tfrt.chain {
   %ch0 = tfrt.new.chain
 
-  %a = tfrt_fallback_async.const_string_tensor {shape = [2], value = ["string"], _tfrt_cost = 1 : i64}
+  %a = tfrt_fallback_async.const_string_tensor <shape = [2], value = ["string"]> {_tfrt_cost = 1 : i64}
 
   // CHECK: Tensor<type: string shape: [2] values: string string>
   %ch1 = "tfrt_fallback_async.print_tensor"(%a, %ch0)
@@ -180,12 +180,12 @@ func.func @test_predicate() -> !tfrt.chain {
   // CHECK: true
   %ch2 = "tfrt_test.print_bool"(%ch1, %rb) : (!tfrt.chain, i1) -> !tfrt.chain
 
-  %c = tfrt_fallback_async.const_string_tensor {shape = [], value = [""], _tfrt_cost = 1 : i64}
+  %c = tfrt_fallback_async.const_string_tensor <shape = [], value = [""]> {_tfrt_cost = 1 : i64}
   %rc = tfrt_fallback_async.predicate %c {_tfrt_cost = 1 : i64}
   // CHECK: false
   %ch3 = "tfrt_test.print_bool"(%ch2, %rc) : (!tfrt.chain, i1) -> !tfrt.chain
 
-  %d = tfrt_fallback_async.const_string_tensor {shape = [], value = ["string"], _tfrt_cost = 1 : i64}
+  %d = tfrt_fallback_async.const_string_tensor <shape = [], value = ["string"]> {_tfrt_cost = 1 : i64}
   %rd = tfrt_fallback_async.predicate %d {_tfrt_cost = 1 : i64}
   // CHECK: true
   %ch4 = "tfrt_test.print_bool"(%ch3, %rd) : (!tfrt.chain, i1) -> !tfrt.chain
@@ -209,11 +209,11 @@ func.func @test_fallback_resource() -> !tfrt.chain {
 
   %a_th = corert.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   %b_th = corert.const_dense_tensor dense<[false, true]> : tensor<2xi1>
-  %ra, %rb = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a_th, %b_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %ra, %rb = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a_th, %b_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
-  %ch1 = tfrt_fallback_async.set_resource %ch0, %ra {device = "cpu", index = 0 : i64}
-  %ch2 = tfrt_fallback_async.set_resource %ch1, %rb {device = "cpu", index = 1 : i64}
-  %ch3, %b, %a = tfrt_fallback_async.get_resource %ch2 {_tfrt_cost = 1 : i64, device = "cpu", indices = [1 : i64, 0 : i64]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %ch1 = tfrt_fallback_async.set_resource %ch0, %ra <device = "cpu", index = 0>
+  %ch2 = tfrt_fallback_async.set_resource %ch1, %rb <device = "cpu", index = 1>
+  %ch3, %b, %a = tfrt_fallback_async.get_resource %ch2 <device = "cpu", indices = [1, 0]> {_tfrt_cost = 1 : i64} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   // CHECK: Tensor<type: bool shape: [2] values: 1 0>
   %ch4 = "tfrt_fallback_async.print_tensor"(%a, %ch3)
@@ -231,7 +231,7 @@ func.func @test_i1_dtype() -> !tfrt.chain {
 
   %a_th = corert.const_dense_tensor dense<[true, false]> : tensor<2xi1>
   %b_th = corert.const_dense_tensor dense<[false, true]> : tensor<2xi1>
-  %a, %b = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a_th, %b_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %a, %b = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a_th, %b_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(5) device("CPU:0") "tf.LogicalAnd"() num_args(2)
   %ch2, %c = tfrt_fallback_async.executeop.seq(%ch1) key(5) cost(100) device("CPU:0") "tf.LogicalAnd"(%a, %b) : 1
@@ -250,7 +250,7 @@ func.func @test_step_container() -> !tfrt.chain {
   %index_th = corert.const_dense_tensor dense<1> : tensor<i32>
   %value_th = corert.const_dense_tensor dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
 
-  %size, %index, %value  = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %size_th, %index_th, %value_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %size, %index, %value  = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %size_th, %index_th, %value_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(6) device("CPU:0") "tf.TensorArrayV3"() {dtype = f32, element_shape = #corert.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} num_args(1)
   %ch2 = tfrt_fallback_async.createop(%ch1) key(7) device("CPU:0") "tf.TensorArrayWriteV3"() {T = f32} num_args(4)
@@ -274,7 +274,7 @@ func.func @test_select() -> !tfrt.chain {
   %ch0 = tfrt.new.chain
   %arg_th = corert.const_dense_tensor dense<[1, 2, 3, 4]> : tensor<4xi64>
   %cond_th = corert.const_dense_tensor dense<[true, false, true, false]> : tensor<4xi1>
-  %arg, %cond = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %arg_th, %cond_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %arg, %cond = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %arg_th, %cond_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(10) device("CPU:0") "tf.ZerosLike"() {T = i64} num_args(1)
   %ch2 = tfrt_fallback_async.createop(%ch1) key(11) device("CPU:0") "tf.Select"() {T = i64} num_args(3)
@@ -292,7 +292,7 @@ func.func @test_select() -> !tfrt.chain {
 func.func @while_cond_false(%in: !tfrt.chain, %x: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle) {
   %ch0 = tfrt_fallback_async.createop(%in) key(12) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<i64>} num_args(0)
   %ch1, %zero = tfrt_fallback_async.executeop.seq(%ch0) key(12) cost(100) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<i64>} : 1
-  %zero_th = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %zero {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
+  %zero_th = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %zero <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
 
   tfrt.return %ch1, %zero_th : !tfrt.chain, !corert.tensorhandle
 }
@@ -341,7 +341,7 @@ func.func @test_copy_if_small() -> !tfrt.chain {
   %ch3 = "tfrt_fallback_async.print_tensor"(%large_copies#0, %ch2) : (!tfrt_fallback.tf_tensor, !tfrt.chain) -> !tfrt.chain
   %ch4 = "tfrt_fallback_async.print_tensor"(%large_copies#1, %ch3) : (!tfrt_fallback.tf_tensor, !tfrt.chain) -> !tfrt.chain
 
-  %string = tfrt_fallback_async.const_string_tensor {shape = [1], value = ["string"], _tfrt_cost = 1 : i64}
+  %string = tfrt_fallback_async.const_string_tensor <shape = [1], value = ["string"]> {_tfrt_cost = 1 : i64}
   %string_copies:2 = tfrt_fallback_async.copy_if_small %string {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   // CHECK: Tensor<type: string shape: [1] values: string>
@@ -375,12 +375,12 @@ func.func @test_case_fallback_index() -> !tfrt.chain {
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(13) device("CPU:0") "tf.Const"() {dtype = i32, value = dense<0> : tensor<i32>} num_args(0)
   %ch2, %fallback_idx0 = tfrt_fallback_async.executeop.seq(%ch1) key(13) cost(100) device("CPU:0") "tf.Const"() {dtype = i32, value = dense<0> : tensor<i32>} : 1
-  %fallback_idx_th0 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %fallback_idx0 {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
+  %fallback_idx_th0 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %fallback_idx0 <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
   %idx0 = corert.tensorhandle_to_int32 %fallback_idx_th0
 
   %ch5 = tfrt_fallback_async.createop(%ch0) key(14) device("CPU:0") "tf.Const"() {dtype = i32, value = dense<1> : tensor<i32>} num_args(0)
   %ch6, %fallback_idx1 = tfrt_fallback_async.executeop.seq(%ch5) key(14) cost(100) device("CPU:0") "tf.Const"() {dtype = i32, value = dense<1> : tensor<i32>} : 1
-  %fallback_idx_th1 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %fallback_idx1 {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
+  %fallback_idx_th1 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %fallback_idx1 <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
   %idx1 = corert.tensorhandle_to_int32 %fallback_idx_th1
 
   %arg0 = corert.executeop(%cpu)

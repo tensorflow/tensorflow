@@ -32,7 +32,7 @@ def CreateOp: TensorflowMlrt_Op<"createop", []> {
     I32Attr:$op_key
   );
 
-  let assemblyFormat = "attr-dict";
+  let assemblyFormat = "prop-dict attr-dict";
 }
 
 def ConstOp: TensorflowMlrt_Op<"constop", []> {
@@ -50,7 +50,7 @@ def ConstOp: TensorflowMlrt_Op<"constop", []> {
     TFTensorType:$result
   );
 
-  let assemblyFormat = "attr-dict";
+  let assemblyFormat = "prop-dict attr-dict";
 }
 
 def ExecuteOp : TensorflowMlrt_Op<"executeop", []> {
@@ -69,7 +69,7 @@ def ExecuteOp : TensorflowMlrt_Op<"executeop", []> {
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 def ExecuteOpWithDevice: TensorflowMlrt_Op<"executeop.device", []> {
@@ -89,7 +89,7 @@ def ExecuteOpWithDevice: TensorflowMlrt_Op<"executeop.device", []> {
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "`(` $device`)` `(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $device`)` `(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 def AsyncExecuteOp : TensorflowMlrt_Op<"async_executeop", []> {
@@ -108,7 +108,7 @@ def AsyncExecuteOp : TensorflowMlrt_Op<"async_executeop", []> {
     Variadic<MlrtFutureType>:$results
   );
 
-  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 def AsyncExecuteOpWithDevice : TensorflowMlrt_Op<"async_executeop.device", []> {
@@ -128,7 +128,7 @@ def AsyncExecuteOpWithDevice : TensorflowMlrt_Op<"async_executeop.device", []> {
     Variadic<MlrtFutureType>:$results
   );
 
-  let assemblyFormat = "`(` $device`)` `(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $device`)` `(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 def SetResourceOp : TensorflowMlrt_Op<"set_resource", []> {
@@ -148,7 +148,7 @@ def SetResourceOp : TensorflowMlrt_Op<"set_resource", []> {
 
   let results = (outs);
 
-  let assemblyFormat = "operands attr-dict";
+  let assemblyFormat = "operands prop-dict attr-dict";
 }
 
 def GetResourceOp : TensorflowMlrt_Op<"get_resource", []> {
@@ -169,7 +169,7 @@ def GetResourceOp : TensorflowMlrt_Op<"get_resource", []> {
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "attr-dict `:` type($results)";
+  let assemblyFormat = "prop-dict attr-dict `:` type($results)";
 }
 
 def AwaitOp: TensorflowMlrt_Op<"await", [Pure]> {
@@ -363,11 +363,11 @@ def BatchFunctionOp : TensorflowMlrt_Op<"batch_function", [Pure]> {
     the `f` attribute as a bytecode function.
 
     Example:
-      %res = tf_mlrt.batch_function(%input, %captured_input)  {
+      %res = tf_mlrt.batch_function(%input, %captured_input) <
           device = "/device:CPU:0",
           f = @batch_function,
           node_def = "..."
-        } : (!tf_mlrt.tensor,!tf_mlrt.tensor) -> (!tf_mlrt.tensor)
+        > : (!tf_mlrt.tensor,!tf_mlrt.tensor) -> (!mlrt.future)
 
     Note that the trailing number indicates the number of results.
   }];
@@ -383,7 +383,7 @@ def BatchFunctionOp : TensorflowMlrt_Op<"batch_function", [Pure]> {
     Variadic<MlrtFutureType>:$results
   );
 
-  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 def BatchFunctionWithDeviceOp : TensorflowMlrt_Op<"batch_function.device", [Pure]> {
@@ -394,11 +394,11 @@ def BatchFunctionWithDeviceOp : TensorflowMlrt_Op<"batch_function.device", [Pure
     the `f` attribute as a bytecode function with a custom device.
 
     Example:
-      %res = tf_mlrt.batch_function.device(%custom_device, %input, %captured_input)  {
+      %res = tf_mlrt.batch_function.device(%custom_device)(%input, %captured_input) <
           device = "/device:CPU:0",
           f = @batch_function,
           node_def = "..."
-        } : (!tf_mlrt.tensor,!tf_mlrt.tensor) -> (!tf_mlrt.tensor)
+        > : (!tf_mlrt.tensor,!tf_mlrt.tensor) -> (!mlrt.future)
 
     Note that the trailing number indicates the number of results.
     Also note that the custom device argument is not the same as the device attribute. 
@@ -417,7 +417,7 @@ def BatchFunctionWithDeviceOp : TensorflowMlrt_Op<"batch_function.device", [Pure
     Variadic<MlrtFutureType>:$results
   );
 
-  let assemblyFormat = " `(` $custom_device`)` `(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = " `(` $custom_device`)` `(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 
@@ -456,7 +456,7 @@ def MapFnOp : TensorflowMlrt_Op<"map_fn", [AttrSizedOperandSegments, Pure]> {
      Variadic<TFTensorType>:$result
   );
 
-  let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` prop-dict attr-dict `:` functional-type(operands, results)";
 }
 
 def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
@@ -476,7 +476,7 @@ def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
   let results = (outs Variadic<MlrtFutureType>);
 
   let assemblyFormat = [{
-    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+    $body_fn `(` $cond `,` $arguments `)` prop-dict attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
   }];
 }
 
@@ -571,7 +571,7 @@ def AsyncIfrtCallOp : TensorflowMlrt_Op<"async_ifrt_call", []> {
     Variadic<MlrtFutureType>:$results
   );
 
-  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
+  let assemblyFormat = "`(` $args `)` prop-dict attr-dict `:` functional-type($args, $results)";
 }
 
 #endif

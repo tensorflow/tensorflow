@@ -38,7 +38,7 @@ func.func @main(%f0: !mlrt.future, %f1: !mlrt.future, %f2: !mlrt.future) -> (!tf
   // CHECK-NEXT: return [[t2]], [[t3]]
   %t0 = tf_mlrt.await %f0
   %t1 = tf_mlrt.await %f1
-  %t2 = tf_mlrt.executeop(%t0, %t1) {node_def = "AddV2", op_key = 0 : i32} : (!tf_mlrt.tensor, !tf_mlrt.tensor) -> (!tf_mlrt.tensor)
+  %t2 = tf_mlrt.executeop(%t0, %t1) <node_def = "AddV2", op_key = 0> : (!tf_mlrt.tensor, !tf_mlrt.tensor) -> (!tf_mlrt.tensor)
   %t3 = tf_mlrt.await %f2
   func.return %t2, %t3 : !tf_mlrt.tensor, !tf_mlrt.tensor
 }
@@ -61,13 +61,13 @@ func.func @main(%f0: !mlrt.async_handle, %f1: !mlrt.async_handle, %f2: !mlrt.asy
 
 // CHECK-LABEL: @main
 func.func @main() -> (!tf_mlrt.tensor, !tf_mlrt.tensor) {
-  // CHECK-NEXT: [[r:%.*]]:3 = tf_mlrt.get_resource {indices = [2, 0, 1]}
+  // CHECK-NEXT: [[r:%.*]]:3 = tf_mlrt.get_resource <indices = [2, 0, 1]>
   // CHECK-NEXT: [[v:%.*]] = tf_mlrt.executeop([[r]]#0, [[r]]#1)
   // CHECK-NEXT: return [[v]], [[r]]#2
-  %0 = tf_mlrt.get_resource {indices = [2]} : !tf_mlrt.tensor
-  %1 = tf_mlrt.get_resource {indices = [0]} : !tf_mlrt.tensor
-  %r = tf_mlrt.executeop(%0, %1) {node_def = "AddV2", op_key = 0 : i32} : (!tf_mlrt.tensor, !tf_mlrt.tensor) -> (!tf_mlrt.tensor)
-  %2 = tf_mlrt.get_resource {indices = [1]} : !tf_mlrt.tensor
+  %0 = tf_mlrt.get_resource <indices = [2]> : !tf_mlrt.tensor
+  %1 = tf_mlrt.get_resource <indices = [0]> : !tf_mlrt.tensor
+  %r = tf_mlrt.executeop(%0, %1) <node_def = "AddV2", op_key = 0> : (!tf_mlrt.tensor, !tf_mlrt.tensor) -> (!tf_mlrt.tensor)
+  %2 = tf_mlrt.get_resource <indices = [1]> : !tf_mlrt.tensor
   func.return %r, %2 : !tf_mlrt.tensor, !tf_mlrt.tensor
 }
 

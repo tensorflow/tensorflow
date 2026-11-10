@@ -64,7 +64,7 @@ func.func @serving_default(%arg0: tensor<?xf32> {tf.device = "/job:localhost/rep
   // CHECK: [[tensor_list:%.*]] = "tf.TensorListReserve"([[shape:%.*]], [[reserve_size:%.*]]) {
   %0 = "tf.TensorListReserve"(%cst_1, %cst_2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   // CHECK: [[map_fn_result:%.*]] = tf_mlrt.tf_map_fn([[reserve_size]], [[tensor_list]], %arg0)
-  // CHECK-SAME: {body_fn = @"map/while_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+  // CHECK-SAME: <body_fn = @"map/while_body/MapFnBody", num_tensor_list_or_flow_in = 1>
   // CHECK-NOT: tf.While
   %1:4 = "tf.While"(%cst, %cst, %0, %arg0) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], _xla_propagate_compile_time_consts = true, body = @"map/while_body", cond = @"map/while_cond", device = "/job:localhost/replica:0/task:0/device:CPU:0", is_stateless = true, parallel_iterations = 4 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<?xf32>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<?xf32>)
   // CHECK-NEXT: "tf.TensorListStack"([[map_fn_result]], %cst_0) <{
@@ -134,7 +134,7 @@ func.func @main_while(%arg0: tensor<?x3xf32>, %arg1: tensor<?x4xf32>) -> tensor<
   %outputs_16  =  "tf.TensorListReserve"(%outputs_0, %outputs_14) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
   // CHECK: tf_mlrt.tf_map_fn
   // CHECK-SAME: ([[max_iter]], [[tensor_list]], [[max_iter]], [[elems]], %arg0, %arg1)
-  // CHECK-SAME: {body_fn = @"map/while_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+  // CHECK-SAME: <body_fn = @"map/while_body/MapFnBody", num_tensor_list_or_flow_in = 1>
   // CHECK-NOT: tf.while
   %outputs_18:7  =  "tf.While"(%outputs_6, %outputs_6, %outputs_16, %outputs_14, %outputs_10, %arg0, %arg1) {_lower_using_switch_merge = true, _num_original_outputs = 8 : i64, _read_only_resource_inputs = [6], _xla_propagate_compile_time_consts = true, body = @"map/while_body", cond = @"map/while_cond", device = "/job:localhost/replica:0/task:0/device:CPU:0", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<?x3xf32>, tensor<?x4xf32>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<?x3xf32>, tensor<?x4xf32>)
   %outputs_20  =  "tf.TensorListStack"(%outputs_18#2, %outputs) {device = "/job:localhost/replica:0/task:0/device:CPU:0", num_elements = -1 : i64} : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<2xi32>) -> tensor<?x?x4xf32>
@@ -231,7 +231,7 @@ func.func private @__inference_while_from_map_fn_810(%arg0: tensor<?xf32> {tf._u
   %outputs_28 =  "tf.TensorListFromTensor"(%outputs_26, %outputs_0) {device = ""} : (tensor<*xi32>, tensor<0xi32>) -> tensor<*x!tf_type.variant>
 // CHECK: [[map_fn_out:%.*]] = tf_mlrt.tf_map_fn
   // CHECK-SAME: ([[reserve_size]], [[tensor_list]], [[max_iterations]], [[read_only_tensor_list]], [[scale]])
-  // CHECK-SAME: {body_fn = @"map_while_body_180/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+  // CHECK-SAME: <body_fn = @"map_while_body_180/MapFnBody", num_tensor_list_or_flow_in = 1>
   // CHECK-NOT: tf.While
   %outputs_30:6 =  "tf.While"(%outputs_16, %outputs_18, %outputs, %outputs_14, %outputs_28, %arg0) {T = [i32, i32, i32, !tf_type.variant, !tf_type.variant, f32], _lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], body = @map_while_body_180, cond = @map_while_cond_170, device = "", is_stateless = true, output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], parallel_iterations = 4 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<*x!tf_type.variant>, tensor<?xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.variant>, tensor<!tf_type.variant>, tensor<?xf32>)
   // CHECK-NEXT: "tf.TensorListStack"
@@ -315,7 +315,7 @@ func.func @map_while_test(%arg0: tensor<?x!tf_type.string>) -> tensor<?x224x224x
   %outputs_22:2 = "tf.TensorArrayV3"(%outputs_12) {clear_after_read = true, device = "", dtype = ui8, dynamic_size = false, element_shape = #tf_type.shape<*>, identical_element_shapes = true, tensor_array_name = ""} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<*xui8>>>, tensor<f32>)
   // CHECK-NEXT: tf_mlrt.tf_map_fn
   // CHECK-SAME: ([[max_iter]], [[flow_in]], [[max_iter]], [[handle_1]], [[handle_2]], [[tensor_array]])
-  // CHECK-SAME: {body_fn = @"map/while/LoopCond_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32} 
+  // CHECK-SAME: <body_fn = @"map/while/LoopCond_body/MapFnBody", num_tensor_list_or_flow_in = 1>
   // CHECK-NOT: tf.While
   %outputs_24:7 = "tf.While"(%outputs, %outputs, %outputs_22#1, %outputs_12, %outputs_16#0, %outputs_18, %outputs_22#0) {_xla_propagate_compile_time_consts = true, body = @"map/while/LoopCond_body", cond = @"map/while/LoopCond_cond", device = "", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<1xi32>, tensor<1xi32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.string>>>, tensor<f32>, tensor<2x!tf_type.resource<tensor<*xui8>>>) -> (tensor<1xi32>, tensor<1xi32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.string>>>, tensor<f32>, tensor<2x!tf_type.resource<tensor<*xui8>>>)
   // CHECK-NEXT: tf.TensorArrayGatherV3
@@ -466,7 +466,7 @@ func.func private @tf.WhileRegion2_body(%arg0: tensor<*xi32>) -> (tensor<?x!tf_t
   // CHECK: "tf.TensorArrayV3"
   %handle_14, %flow_15 = "tf.TensorArrayV3"(%max_iter) {device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = !tf_type.variant, dynamic_size = false, element_shape = #tf_type.shape<*>, identical_element_shapes = true, tensor_array_name = ""} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<f32>)
   // CHECK: tf_mlrt.tf_map_fn
-  // CHECK-SAME: {body_fn = @"tf.WhileRegion1_body/MapFnBody", num_tensor_list_or_flow_in = 2 : i32}
+  // CHECK-SAME: <body_fn = @"tf.WhileRegion1_body/MapFnBody", num_tensor_list_or_flow_in = 2>
   %4:8 = "tf.While"(%cst_0, %cst_0, %flow_13, %flow_15, %max_iter, %handle_12, %handle_14, %arg0) {body = @tf.WhileRegion1_body, cond = @tf.WhileRegion1_cond, device = "/job:localhost/replica:0/task:0/device:CPU:0", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<f32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<*xi32>)
   // CHECK: TensorArrayGatherV3
   %5 = "tf.TensorArrayGatherV3"(%handle_12, %1, %4#2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<i32>, tensor<f32>) -> tensor<?x!tf_type.variant>
@@ -552,7 +552,7 @@ func.func private @map2_while_test(%arg0: tensor<?x!tf_type.string>) -> tensor<?
   %outputs_22:2 = "tf.TensorArrayV3"(%cst_0) {clear_after_read = true, device = "", dtype = ui8, dynamic_size = false, element_shape = #tf_type.shape<*>, identical_element_shapes = true, tensor_array_name = ""} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<*xui8>>>, tensor<f32>)
   // CHECK-NEXT: tf_mlrt.tf_map_fn
   // CHECK-SAME: ([[max_iter]], [[flow_in]], %cst_1
-  // CHECK-SAME: {body_fn = @"map2/while/LoopCond_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+  // CHECK-SAME: <body_fn = @"map2/while/LoopCond_body/MapFnBody", num_tensor_list_or_flow_in = 1>
   // CHECK-NOT: tf.While
   %outputs_24:7 = "tf.While"(%outputs, %outputs, %outputs_22#1, %cst_1, %outputs_16#0, %outputs_18, %outputs_22#0) {_xla_propagate_compile_time_consts = true, body = @"map2/while/LoopCond_body", cond = @"map2/while/LoopCond_cond", device = "", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<1xi32>, tensor<1xi32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.string>>>, tensor<f32>, tensor<2x!tf_type.resource<tensor<*xui8>>>) -> (tensor<1xi32>, tensor<1xi32>, tensor<f32>, tensor<i32>, tensor<2x!tf_type.resource<tensor<*x!tf_type.string>>>, tensor<f32>, tensor<2x!tf_type.resource<tensor<*xui8>>>)
   // CHECK-NEXT: tf.TensorArrayGatherV3
@@ -743,7 +743,7 @@ func.func private @while_map_while_cond_884020(%arg0: tensor<i32>, %arg1: tensor
 // CHECK-NEXT:  tf.Transpose
 // CHECK-NEXT:  tf.TensorListFromTensor
 // CHECK-NEXT:  tf_mlrt.tf_map_fn
-// CHECK-SAME:   {body_fn = @"while_map_while_body_884030/MapFnBody", num_tensor_list_or_flow_in = 1 : i32} : (tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<i32>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
+// CHECK-SAME:   <body_fn = @"while_map_while_body_884030/MapFnBody", num_tensor_list_or_flow_in = 1> : (tensor<i32>, tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<i32>, tensor<!tf_type.variant<tensor<?x?x1xui8>>>) -> tensor<!tf_type.variant<tensor<*x!tf_type.string>>>
 // CHECK-NEXT:  tf.StopGradient
 // CHECK-NEXT:  tf.TensorListStack
 func.func @main(%arg0: tensor<1x?x?x11xf32>) -> tensor<11x!tf_type.string> {
@@ -795,7 +795,7 @@ func.func private @hoisted_constants_map_while_body(%arg0: tensor<*xi32>, %arg1:
 // CHECK-LABEL: @hoisted_constants_main
 // CHECK:       tf.TensorListReserve
 // CHECK-NEXT:  tf_mlrt.tf_map_fn
-// CHECK-SAME:   {body_fn = @"hoisted_constants_map_while_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
+// CHECK-SAME:   <body_fn = @"hoisted_constants_map_while_body/MapFnBody", num_tensor_list_or_flow_in = 1>
 // CHECK-NEXT:  tf.Const
 // CHECK-NEXT:  tf.TensorListStack
 // CHECK-NOT:   tf.While

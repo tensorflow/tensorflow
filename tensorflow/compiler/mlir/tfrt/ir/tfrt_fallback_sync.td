@@ -32,7 +32,6 @@ def FallbackSync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_sync";
-  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
@@ -58,7 +57,7 @@ def SetResourceOp : FallbackSync_Op<"set_resource", [CoreRT_TypedAttributeTrait]
 
   let results = (outs);
 
-  let assemblyFormat = "operands attr-dict";
+  let assemblyFormat = "operands prop-dict attr-dict";
 }
 
 def SetResourceDhtOp : FallbackSync_Op<"set_resource_dht", [CoreRT_TypedAttributeTrait]> {
@@ -78,7 +77,7 @@ def SetResourceDhtOp : FallbackSync_Op<"set_resource_dht", [CoreRT_TypedAttribut
 
   let results = (outs);
 
-  let assemblyFormat = "operands attr-dict";
+  let assemblyFormat = "operands prop-dict attr-dict";
 }
 
 def GetResourceOp : FallbackSync_Op<"get_resource",
@@ -100,7 +99,7 @@ def GetResourceOp : FallbackSync_Op<"get_resource",
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "attr-dict `:` type($results)";
+  let assemblyFormat = "prop-dict attr-dict `:` type($results)";
 }
 
 def GetResourceDhtOp : FallbackSync_Op<"get_resource_dht",
@@ -122,7 +121,7 @@ def GetResourceDhtOp : FallbackSync_Op<"get_resource_dht",
     Variadic<TensorType>:$results
   );
 
-  let assemblyFormat = "attr-dict `:` type($results)";
+  let assemblyFormat = "prop-dict attr-dict `:` type($results)";
 }
 
 def CreateOp: FallbackSync_Op<"createop", []> {
@@ -149,7 +148,7 @@ def CreateOp: FallbackSync_Op<"createop", []> {
 
   let results = (outs);
 
-  let assemblyFormat = "attr-dict";
+  let assemblyFormat = "prop-dict attr-dict";
 }
 
 def SyncExecuteOp : FallbackSync_Op<"executeop", [Pure]> {
@@ -171,7 +170,7 @@ def SyncExecuteOp : FallbackSync_Op<"executeop", [Pure]> {
 
   let results = (outs Variadic<TFTensorType>);
 
-  let assemblyFormat = "`(`operands`)` attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = "`(`operands`)` prop-dict attr-dict `:` functional-type(operands, results)";
 }
 
 
@@ -259,7 +258,7 @@ def SetSparseMatrixResourceOp : FallbackSync_Op<"set_sparse_matrix_resource", [C
 
   let results = (outs);
 
-  let assemblyFormat = "operands attr-dict";
+  let assemblyFormat = "operands prop-dict attr-dict";
 }
 
 def GetSparseMatrixResourceOp : FallbackSync_Op<"get_sparse_matrix_resource",
@@ -281,7 +280,7 @@ def GetSparseMatrixResourceOp : FallbackSync_Op<"get_sparse_matrix_resource",
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "attr-dict `:` type($results)";
+  let assemblyFormat = "prop-dict attr-dict `:` type($results)";
 }
 
 #endif
