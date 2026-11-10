@@ -15,6 +15,7 @@
 ### Major Features and Improvements
 
 * `tf.lite`
+    * `tfl.conv_2d` now supports dense constant FLOAT16 filters alongside FLOAT32 inputs, explicit FLOAT32 bias, and FLOAT32 outputs with FLOAT32 accumulation (CONV_2D op version 9).
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
     * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).

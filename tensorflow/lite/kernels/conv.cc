@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -179,6 +180,10 @@ void TransposeFloatTensor(const TfLiteTensor* input, TfLiteTensor* output) {
 bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
                       const TfLiteTensor* filter, OpData* data, bool is_hybrid,
                       KernelType kernel_type) {
+  // Direct FP16 filters always execute through the reference kernel without
+  // im2col.
+  if (filter->type == kTfLiteFloat16) return false;
+
   // If HWCN weights are required, Im2Col not required
   if (data->need_hwcn_weights) return false;
 
@@ -243,8 +248,9 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(
   // buffer to store the results.
   // This path is only used for float processing, so only create the buffer if
   // we're running with that data type.
-  data->need_hwcn_weights =
-      input->type == kTfLiteFloat32 && data->supports_multithreaded_kernel;
+  data->need_hwcn_weights = input->type == kTfLiteFloat32 &&
+                            filter->type == kTfLiteFloat32 &&
+                            data->supports_multithreaded_kernel;
 
   // We don't always need to allocate im2col. It is only used in some versions
   // of the optimized Conv. This test just mimics something that happens inside
@@ -341,6 +347,16 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
+  // Reset OpData execution flags so repeated Prepare() calls (e.g. after
+  // ResizeInputTensor) do not retain stale state from a prior configuration.
+  data->need_hwcn_weights = false;
+  data->have_weights_been_transposed = false;
+  data->need_im2col = false;
+  data->im2col_oversized = false;
+  data->supports_multithreaded_kernel = false;
+  data->is_hybrid_per_channel = false;
+  data->compute_hybrid_row_sums = true;
+
   bool has_bias = node->inputs->size == 3;
   // Check number of inputs/outputs
   TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
@@ -377,6 +393,20 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
+  if (input_type == kTfLiteFloat32) {
+    TF_LITE_ENSURE(context, filter->type == kTfLiteFloat32 ||
+                                filter->type == kTfLiteFloat16 ||
+                                filter->type == kTfLiteUInt8 ||
+                                filter->type == kTfLiteInt8 ||
+                                filter->type == kTfLiteInt4);
+  }
+  if (filter->type == kTfLiteFloat16) {
+    TF_LITE_ENSURE_TYPES_EQ(context, input_type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE(context, has_bias);
+    TF_LITE_ENSURE(context, IsConstantOrPersistentTensor(filter));
+    TF_LITE_ENSURE_EQ(context, filter->sparsity, nullptr);
+  }
 
   // Filter must have zero zero-points in per-channel quantization.
   if (input_type == kTfLiteInt16 || input_type == kTfLiteInt8) {
@@ -490,16 +520,20 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     data->is_hybrid_per_channel = true;
   }
 
-  // The multi-threaded kernel supports neither dilation nor hybrid kernels, and
-  // is incompatible with mutable input filters that might change between evals.
+  const bool is_float16_filter =
+      input->type == kTfLiteFloat32 && filter->type == kTfLiteFloat16;
+  // The multi-threaded kernel supports neither dilation nor hybrid/FP16-filter
+  // kernels, and is incompatible with mutable input filters that might change
+  // between evals.
   data->supports_multithreaded_kernel =
       (kernel_type == kMultithreadOptimized) &&
       (context->recommended_num_threads != 1) && !is_hybrid &&
-      (params->dilation_width_factor == 1) &&
+      !is_float16_filter && (params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1) &&
       (filter->allocation_type != kTfLiteArenaRw) && !IsDynamicTensor(filter);
-  data->need_hwcn_weights =
-      input->type == kTfLiteFloat32 && data->supports_multithreaded_kernel;
+  data->need_hwcn_weights = input->type == kTfLiteFloat32 &&
+                            filter->type == kTfLiteFloat32 &&
+                            data->supports_multithreaded_kernel;
 
   int channels_in = filter->dims->data[3];
   int channels_out = filter->dims->data[0];
@@ -1146,6 +1180,15 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
+  if (filter->type == kTfLiteFloat16) {
+    reference_ops::Conv(op_params, GetTensorShape(input),
+                        GetTensorData<float>(input), GetTensorShape(filter),
+                        GetTensorData<tflite::half>(filter),
+                        GetTensorShape(bias), GetTensorData<float>(bias),
+                        GetTensorShape(output), GetTensorData<float>(output),
+                        GetTensorShape(im2col), GetTensorData<float>(im2col));
+    return kTfLiteOk;
+  }
   switch (effective_kernel_type) {
     case kReference: {
       reference_ops::Conv(op_params, GetTensorShape(input),

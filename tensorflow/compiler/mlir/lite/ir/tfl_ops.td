@@ -1015,9 +1015,23 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
        DeclareOpInterfaceMethods<RequiresQuantizedBiasInterface>,
        DynamicRangeQuantizedOpInterface,
        RequiresQuantizedBiasInterface]> {
+  let description = [{
+    Performs 2D convolution operation on inputs.
+
+    Inputs:
+      `inputs[0]`: required: the input activation tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: optional: the bias tensor
+
+    When `inputs[0]` and `output` are `f32` and `inputs[1]` is `f16`, the filter
+    must be a dense constant tensor, `inputs[2]` must be an explicit `f32` bias
+    tensor, and each `f16` filter element is widened to `f32` with all products
+    and accumulations computed in `f32`.
+  }];
+
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
+    TFL_TensorOf<[F32, F16, QI4, QI8, QUI8]>:$filter,
     TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,

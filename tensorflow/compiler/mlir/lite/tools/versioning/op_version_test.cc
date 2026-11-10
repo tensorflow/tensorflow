@@ -951,6 +951,41 @@ TEST(OpVersionTest, VersioningConv2DTest) {
   };
   conv_params.quantized_bias_type = kTfLiteInt32;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat16}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
+
+  fake_op_sig.ext_options.conv_2d.is_grouped_convolution = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteFloat32, kTfLiteFloat16, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 9);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteFloat32, kTfLiteFloat16, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_2D,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteFloat16, kTfLiteFloat16, kTfLiteFloat16}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
