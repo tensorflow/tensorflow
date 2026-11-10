@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
@@ -216,6 +217,12 @@ absl::StatusOr<PjRtDeviceEventRef>
 PjRtCApiRawBuffer::MakeAllocationReadyEvent() {
   return static_cast<PjRtRawBufferInterface*>(c_buffer_)
       ->MakeAllocationReadyEvent();
+}
+
+tsl::AsyncValueRef<PjRtRawBufferInterface::ExternalDmaAccess>
+PjRtCApiRawBuffer::AcquireExternalDmaAccess() {
+  return static_cast<PjRtRawBufferInterface*>(c_buffer_)
+      ->AcquireExternalDmaAccess();
 }
 
 void PjRtCApiRawBuffer::CopyTo(
