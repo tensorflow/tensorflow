@@ -275,9 +275,9 @@ absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
                                                     compiler_variant);
 }
 
-static absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
     const PjRtTopologyDescription& topology,
-    std::optional<PjRtCompilerVariant> variant = std::nullopt) {
+    std::optional<PjRtCompilerVariant> variant) {
   if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
     return *topology_compiler;
   }
