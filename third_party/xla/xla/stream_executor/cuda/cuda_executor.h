@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
@@ -302,9 +301,8 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
-  // Loads the PTX text `ptx` as a CUDA module.
-  absl::StatusOr<ModuleHandle> LoadModuleFromPtx(
-      absl::string_view ptx, const cuda::CompilationProviderOptions& options)
+  // Loads the PTX text `ptx` as a CUDA module. `ptx` must be null terminated.
+  absl::StatusOr<ModuleHandle> LoadModuleFromPtx(const char* ptx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(ModuleHandle gpu_binary)
@@ -320,9 +318,6 @@ class CudaExecutor : public GpuExecutor {
   // handle-type flags may differ from device-reported caps (e.g. in MIG or
   // containers).
   CudaDeviceAllocator::Options device_allocator_options_;
-
-  // Compilation provider options initialized during Init().
-  cuda::CompilationProviderOptions compilation_provider_options_;
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;

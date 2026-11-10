@@ -52,8 +52,7 @@ CompilationProviderOptions CompilationProviderOptions::FromDebugOptions(
       debug_options.xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found();
   options.cuda_data_dir_ = debug_options.xla_gpu_cuda_data_dir();
 
-  options.stream_exec_ =
-      options.enable_driver_compilation_ ? stream_exec : nullptr;
+  options.stream_exec_ = stream_exec;
   return options;
 }
 }  //    namespace stream_executor::cuda

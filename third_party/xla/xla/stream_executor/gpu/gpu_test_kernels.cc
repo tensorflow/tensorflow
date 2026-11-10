@@ -140,7 +140,7 @@ KernelLoaderSpec GetTmaPtxKernelSpec() {
 .address_size 64
 
     // .globl    tma_dot_kernel
-.shared .align 16 .b8 global_smem[24600];
+.extern .shared .align 16 .b8 global_smem[24600];
 
 .visible .entry tma_dot_kernel(
     .param .align 64 .b8 tma_dot_kernel_param_0[128],

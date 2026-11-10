@@ -219,6 +219,31 @@ TfLiteStatus VerifyQuantizationZeroPoint(const TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
+// Fails unless the zero points of a blockwise quantized filter are absent or
+// all 0. `EvalBlockwise4Bit` doesn't apply them.
+TfLiteStatus CheckBlockwiseZeroPointsAreZero(TfLiteContext* context,
+                                             const TfLiteTensor* filter) {
+  const auto* params = reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+      filter->quantization.params);
+  TF_LITE_ENSURE(context, params != nullptr);
+  if (params->zero_point == kTfLiteOptionalTensor) {
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, params->zero_point >= 0 &&
+                              static_cast<size_t>(params->zero_point) <
+                                  context->tensors_size);
+  const TfLiteTensor& zero_points = context->tensors[params->zero_point];
+  const char* zero_point_bytes = zero_points.data.raw_const;
+  TF_LITE_ENSURE_MSG(
+      context,
+      IsConstantTensor(&zero_points) && zero_point_bytes != nullptr &&
+          std::all_of(zero_point_bytes, zero_point_bytes + zero_points.bytes,
+                      [](char byte) { return byte == 0; }),
+      "FullyConnected does not support non-zero zero points for blockwise "
+      "quantized filters.");
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 TfLiteStatus ValidateInt16FilterInt16Indexing(
@@ -1483,6 +1508,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         kTfLiteOk == VerifyQuantizationZeroPoint(filter, /*expected_value=*/0),
         "Unsupported filter quantization zero-point value.");
   }
+  if (filter->quantization.type == kTfLiteBlockwiseQuantization) {
+    TF_LITE_ENSURE_OK(context,
+                      CheckBlockwiseZeroPointsAreZero(context, filter));
+  }
   return PrepareImpl(context, node, kernel_type);
 }
 
@@ -1944,6 +1973,8 @@ TfLiteStatus EvalBlockwise4Bit(
       }
     }
   }
+  tensor_utils::ApplyActivationToVector(output_ptr, NumElements(output),
+                                        params->activation, output_ptr);
   return kTfLiteOk;
 }
 

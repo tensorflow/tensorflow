@@ -140,7 +140,6 @@ cc_library(
     deps = [
         ":llvm_type_conversion_util",
         ":llvm_util",
-        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",

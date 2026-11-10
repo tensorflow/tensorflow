@@ -43,7 +43,7 @@ class CompilationProviderOptions {
         enable_libnvptxcompiler_(enable_libnvptxcompiler),
         enable_driver_compilation_(enable_driver_compilation),
         cuda_data_dir_(cuda_data_dir),
-        stream_exec_(enable_driver_compilation ? stream_exec : nullptr) {}
+        stream_exec_(stream_exec) {}
 
   // FIXME(b/465360188) Jax can't be updated in one CL. Remove the constuctor in
   // followup CL.
@@ -56,7 +56,7 @@ class CompilationProviderOptions {
         enable_libnvptxcompiler_(enable_libnvptxcompiler),
         enable_driver_compilation_(enable_driver_compilation),
         cuda_data_dir_(cuda_data_dir),
-        stream_exec_(enable_driver_compilation ? stream_exec : nullptr) {}
+        stream_exec_(stream_exec) {}
 
   static CompilationProviderOptions FromDebugOptions(
       const xla::DebugOptions& debug_options,
@@ -76,8 +76,7 @@ class CompilationProviderOptions {
     return lhs.nvjitlink_mode_ == rhs.nvjitlink_mode_ &&
            lhs.enable_libnvptxcompiler_ == rhs.enable_libnvptxcompiler_ &&
            lhs.enable_driver_compilation_ == rhs.enable_driver_compilation_ &&
-           lhs.cuda_data_dir_ == rhs.cuda_data_dir_ &&
-           lhs.stream_exec_ == rhs.stream_exec_;
+           lhs.cuda_data_dir_ == rhs.cuda_data_dir_;
   }
 
   friend bool operator!=(const CompilationProviderOptions& lhs,
