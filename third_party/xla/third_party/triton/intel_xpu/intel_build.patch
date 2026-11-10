@@ -23,16 +23,16 @@ diff --git b/BUILD b/BUILD
  # copybara:uncomment load("//tools/build_defs/license:license.bzl", "license")
  
  # See go/triton-sla.
-@@ -566,7 +567,7 @@ cc_library(
+@@ -577,7 +578,7 @@ cc_library(
          "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",  # Avoid circular dependency.
          "lib/Dialect/TritonNvidiaGPU/Transforms/MBarrierUtilities.cpp",  # Avoid circular dependency.
          "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",  # Avoid circular dependency.
 -    ],
 +    ] + if_sycl_is_configured(["//third_party/intel:TritonIntelGPU_srcs"]),
-     hdrs = glob([
-         "include/triton/Dialect/Gluon/IR/*.h",
-         "include/triton/Dialect/Triton/IR/*.h",
-@@ -587,7 +588,7 @@ cc_library(
+     hdrs = glob(
+         [
+             "include/triton/Dialect/Gluon/IR/*.h",
+@@ -601,7 +602,7 @@ cc_library(
          # it would be better if upstream moved it there.
          "include/triton/Conversion/MLIRTypes.h",
          "include/triton/Dialect/TritonInstrument/Transforms/ConSanTargetHooks.h",
@@ -41,7 +41,7 @@ diff --git b/BUILD b/BUILD
      copts = select({
          ":compiler_is_msvc": [],
          "//conditions:default": [
-@@ -598,7 +599,10 @@ cc_library(
+@@ -612,7 +613,10 @@ cc_library(
              "-Wno-implicit-fallthrough",
          ],
      }),
@@ -53,7 +53,7 @@ diff --git b/BUILD b/BUILD
      deps = [
          ":Dump",
          ":GetEnv",  # for Utility
-@@ -659,7 +663,16 @@ cc_library(
+@@ -674,7 +678,16 @@ cc_library(
          "@llvm-project//mlir:UBDialect",
          "@triton//third_party/f2reduce",  # for Utility
          "@triton//third_party/nvidia:NVGPUDialect",
