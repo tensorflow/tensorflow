@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_FUSION_WRAPPER_H_
-#define XLA_SERVICE_CPU_FUSION_WRAPPER_H_
+#ifndef XLA_BACKENDS_CPU_TRANSFORMS_FUSION_WRAPPER_H_
+#define XLA_BACKENDS_CPU_TRANSFORMS_FUSION_WRAPPER_H_
 
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -45,4 +45,4 @@ class FusionWrapper : public emitters::FusionWrapperBase {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_CPU_FUSION_WRAPPER_H_
+#endif  // XLA_BACKENDS_CPU_TRANSFORMS_FUSION_WRAPPER_H_

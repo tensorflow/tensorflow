@@ -31,7 +31,7 @@ cc_library(
     visibility = [
         "//xla/backends/cpu/codegen:__pkg__",
         "//xla/backends/cpu/codegen/tiled/tools:__pkg__",
-        "//xla/service/cpu:__pkg__",
+        "//xla/backends/cpu/transforms:__pkg__",
     ],
     deps = [
         "//xla:shape_util",
