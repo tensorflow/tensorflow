@@ -50,6 +50,8 @@ void ExpectStepsEqual(const std::vector<ShapeTracker::Step>& actual,
         << "Step mismatch at index " << i;
     EXPECT_EQ(actual[i].dimensions, expected[i].dimensions)
         << "Step mismatch at index " << i;
+    EXPECT_EQ(actual[i].broadcast_dimensions, expected[i].broadcast_dimensions)
+        << "Step broadcast_dimensions mismatch at index " << i;
   }
 }
 
@@ -1969,6 +1971,645 @@ TEST(ShapeTrackerMapsToOneStrideTest, AllowSwapsSwappedIsContiguous) {
   ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1}).ok());
   EXPECT_FALSE(tracker.MapsToOneStride({1, 2}, /*allow_swaps=*/false));
   EXPECT_TRUE(tracker.MapsToOneStride({1, 2}, /*allow_swaps=*/true));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendBroadcastSimple) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({4, 2, 5, 3}, {1, 3}));
+
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{4, 2, 5, 3}));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> B[4,2,5,3]");
+  EXPECT_EQ(tracker.DebugString(false), "[2,3] -> B[4,2,5,3]");
+
+  std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kBroadcast);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{4, 2, 5, 3}));
+  EXPECT_EQ(steps[0].broadcast_dimensions, (std::vector<int64_t>{1, 3}));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendBroadcastScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({2, 3}, {}));
+
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(tracker.DebugString(true), "[] -> B[6] -> R[2,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendBroadcastValidationErrors) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  // Non-positive dimension.
+  EXPECT_THAT(tracker.AppendBroadcast({0, 2, 3}, {1, 2}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  // broadcast_dimensions size mismatch.
+  EXPECT_THAT(tracker.AppendBroadcast({4, 2, 3}, {1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  // Out of bounds index.
+  EXPECT_THAT(tracker.AppendBroadcast({4, 2, 3}, {1, 3}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.AppendBroadcast({4, 2, 3}, {-1, 2}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  // Duplicate broadcast_dimensions.
+  EXPECT_THAT(tracker.AppendBroadcast({2, 2, 3}, {0, 0}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  // Extent mismatch.
+  EXPECT_THAT(tracker.AppendBroadcast({4, 5, 3}, {1, 2}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, PrependBroadcastSimpleAndUnsorted) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 2, 5, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.PrependBroadcast({1, 3}));
+
+  EXPECT_EQ(tracker.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{4, 2, 5, 3}));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> B[4,2,5,3]");
+
+  // Unsorted broadcast_dimensions: operand dim 0 -> output dim 3 (size 3),
+  // operand dim 1 -> output dim 1 (size 2).
+  ShapeTracker tracker_unsorted(shape);
+  ASSERT_OK(tracker_unsorted.PrependBroadcast({3, 1}));
+  EXPECT_EQ(tracker_unsorted.input_shape().dimensions(),
+            (std::vector<int64_t>{3, 2}));
+  EXPECT_EQ(tracker_unsorted.output_shape().dimensions(),
+            (std::vector<int64_t>{4, 2, 5, 3}));
+  EXPECT_EQ(tracker_unsorted.DebugString(true),
+            "[3,2] -> T[2,3] -> B[4,2,5,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, PrependBroadcastValidationErrors) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 2, 3});
+  ShapeTracker tracker(shape);
+
+  EXPECT_THAT(tracker.PrependBroadcast({-1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.PrependBroadcast({3}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.PrependBroadcast({1, 1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendAndPrependInstructionBroadcast) {
+  Shape src_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape dst_shape = ShapeUtil::MakeShape(F32, {4, 2, 3});
+  auto param = HloInstruction::CreateParameter(0, src_shape, "param");
+  auto bcast = HloInstruction::CreateBroadcast(dst_shape, param.get(), {1, 2});
+
+  ShapeTracker tracker_append(src_shape);
+  ASSERT_OK(tracker_append.AppendInstruction(bcast.get()));
+  EXPECT_EQ(tracker_append.output_shape().dimensions(),
+            (std::vector<int64_t>{4, 2, 3}));
+  EXPECT_EQ(tracker_append.DebugString(true), "[2,3] -> B[4,2,3]");
+
+  ShapeTracker tracker_prepend(dst_shape);
+  ASSERT_OK(tracker_prepend.PrependInstruction(bcast.get()));
+  EXPECT_EQ(tracker_prepend.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(tracker_prepend.DebugString(true), "[2,3] -> B[4,2,3]");
+
+  EXPECT_EQ(tracker_append, tracker_prepend);
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendReduceSimple) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendReduce({1}));
+
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3,4] -> Red[2,4]");
+
+  std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReduce);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1}));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendReduceToScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendReduce({0, 1}));
+
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> Red[]");
+  EXPECT_EQ(tracker.DebugString(false), "[2,3] -> R[6] -> Red[]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendReduceAdjacentMerging) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker1(shape);
+  ASSERT_OK(tracker1.AppendReduce({1}));  // [2, 4, 5]
+  ASSERT_OK(tracker1.AppendReduce({1}));  // [2, 5]
+
+  ShapeTracker tracker2(shape);
+  ASSERT_OK(tracker2.AppendReduce({1, 2}));  // [2, 5]
+
+  EXPECT_EQ(tracker1, tracker2);
+  EXPECT_EQ(tracker1.DebugString(true), "[2,3,4,5] -> Red[2,5]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, AppendReduceValidationErrors) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  EXPECT_THAT(tracker.AppendReduce({-1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.AppendReduce({3}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.AppendReduce({1, 1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, PrependReduceSimpleAndValidation) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.PrependReduce({2, 3, 4}, {1}));
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3,4] -> Red[2,4]");
+
+  // Validation errors:
+  EXPECT_THAT(tracker.PrependReduce({0, 2, 3, 4}, {0}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.PrependReduce({5, 2, 3, 4}, {4}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.PrependReduce({5, 2, 3, 4}, {0, 0}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(tracker.PrependReduce({2, 3, 5}, {1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, BroadcastThenReduceCancelsToIdentity) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({4, 2, 5, 3}, {1, 3}));
+  ASSERT_OK(tracker.AppendReduce({0, 2}));
+
+  EXPECT_EQ(tracker, ShapeTracker(shape));
+  EXPECT_TRUE(tracker.GetSteps().empty());
+  EXPECT_EQ(tracker.DebugString(), "[2,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, BroadcastReshapePartialReduce) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({2, 6}, {0}));
+  ASSERT_OK(tracker.AppendReshape({2, 2, 3}));
+  ASSERT_OK(tracker.AppendReduce({1}));
+
+  ShapeTracker expected(shape);
+  ASSERT_OK(expected.AppendBroadcast({2, 3}, {0}));
+
+  EXPECT_EQ(tracker, expected);
+  EXPECT_EQ(tracker.DebugString(true), "[2] -> B[2,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, BroadcastThenTransposeSimplifies) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({4, 2, 3}, {1, 2}));
+  ASSERT_OK(tracker.AppendTranspose({1, 0, 2}));
+
+  ShapeTracker expected(shape);
+  ASSERT_OK(expected.AppendBroadcast({2, 4, 3}, {0, 2}));
+
+  EXPECT_EQ(tracker, expected);
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> B[2,4,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, BroadcastThenTransposeKeptDims) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendBroadcast({4, 2, 3}, {1, 2}));
+  ASSERT_OK(tracker.AppendTranspose({2, 0, 1}));
+
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> T[3,2] -> B[3,4,2]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, ReduceThenBroadcastDoesNotCancel) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_OK(tracker.AppendReduce({1}));
+  ASSERT_OK(tracker.AppendBroadcast({2, 3}, {0}));
+
+  EXPECT_NE(tracker, ShapeTracker(shape));
+  EXPECT_EQ(tracker.DebugString(true), "[2,3] -> Red[2] -> B[2,3]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, DoubleInversionIdentity) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Reduce dim 1 (size 3) -> [2, 4, 5]
+  ASSERT_OK(tracker.AppendReduce({1}));
+  // Transpose {2, 0, 1} -> [5, 2, 4]
+  ASSERT_OK(tracker.AppendTranspose({2, 0, 1}));
+  // Broadcast to [7, 5, 2, 11, 4] with {1, 2, 4}
+  ASSERT_OK(tracker.AppendBroadcast({7, 5, 2, 11, 4}, {1, 2, 4}));
+  // Reshape to [35, 22, 4]
+  ASSERT_OK(tracker.AppendReshape({35, 22, 4}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+  ASSERT_OK_AND_ASSIGN(ShapeTracker double_inverted, inverted.GetInverted());
+
+  EXPECT_EQ(double_inverted, tracker);
+  EXPECT_EQ(double_inverted.DebugString(), tracker.DebugString());
+  ExpectStepsEqual(double_inverted.GetSteps(), tracker.GetSteps());
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     DoubleInversionBoundaryReducedDimensions) {
+  // Test reducing major-most (dim 0) and minor-most (dim 2) dimensions.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendReduce({0, 2}));  // [3]
+  ASSERT_OK(tracker.AppendBroadcast({5, 3, 7}, {1}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+  ASSERT_OK_AND_ASSIGN(ShapeTracker double_inverted, inverted.GetInverted());
+
+  EXPECT_EQ(double_inverted, tracker);
+  ExpectStepsEqual(double_inverted.GetSteps(), tracker.GetSteps());
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, ConcatenateBroadcastWithInvertedCancels) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({2, 0, 1}));  // [4, 2, 3]
+  ASSERT_OK(tracker.AppendBroadcast({5, 4, 7, 2, 3}, {1, 3, 4}));
+  ASSERT_OK(tracker.AppendReshape({20, 14, 3}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+  ASSERT_OK(tracker.ConcatenateFrom(inverted));
+
+  EXPECT_EQ(tracker, ShapeTracker(shape));
+  EXPECT_TRUE(tracker.GetSteps().empty());
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, ToInstructionChainBroadcastAndReduce) {
+  auto module = std::make_unique<HloModule>("module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  module->AddEntryComputation(builder.Build());
+
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendBroadcast({2, 3, 5, 4}, {0, 1, 3}));
+
+  // With avoid_combining_reshapes = true, should emit a single kBroadcast!
+  {
+    ASSERT_OK_AND_ASSIGN(HloInstruction * root,
+                         tracker.ToInstructionChain(param, true));
+    EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+    EXPECT_EQ(root->shape().dimensions(), (std::vector<int64_t>{2, 3, 5, 4}));
+    EXPECT_EQ(root->dimensions(), (std::vector<int64_t>{0, 1, 3}));
+    EXPECT_EQ(root->operand(0), param);
+  }
+
+  // With avoid_combining_reshapes = false, emits Reshape -> Broadcast ->
+  // Reshape.
+  {
+    ASSERT_OK_AND_ASSIGN(HloInstruction * root,
+                         tracker.ToInstructionChain(param, false));
+    EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+    EXPECT_EQ(root->shape().dimensions(), (std::vector<int64_t>{2, 3, 5, 4}));
+    const HloInstruction* bcast = root->operand(0);
+    EXPECT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+    EXPECT_EQ(bcast->shape().dimensions(), (std::vector<int64_t>{6, 5, 4}));
+    EXPECT_EQ(bcast->dimensions(), (std::vector<int64_t>{0, 2}));
+    const HloInstruction* reshape_in = bcast->operand(0);
+    EXPECT_EQ(reshape_in->opcode(), HloOpcode::kReshape);
+    EXPECT_EQ(reshape_in->operand(0), param);
+  }
+
+  // If an uncancelled reduction remains, ToInstructionChain returns
+  // InvalidArgumentError.
+  ShapeTracker reduce_tracker(shape);
+  ASSERT_OK(reduce_tracker.AppendReduce({1}));
+  EXPECT_THAT(reduce_tracker.ToInstructionChain(param),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, FromSiblingsWithBroadcast) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  auto lca = HloInstruction::CreateParameter(0, shape, "lca");
+
+  auto b1 = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {4, 2, 3}), lca.get(), {1, 2});
+  auto t2 = HloInstruction::CreateTranspose(ShapeUtil::MakeShape(F32, {3, 2}),
+                                            lca.get(), {1, 0});
+
+  // From lca to b1: pure broadcast.
+  {
+    ASSERT_OK_AND_ASSIGN(ShapeTracker tracker,
+                         ShapeTracker::FromSiblings(lca.get(), b1.get()));
+    EXPECT_EQ(tracker.DebugString(true), "[2,3] -> B[4,2,3]");
+  }
+
+  // From b1 to t2: reduces broadcasted dim 0, then transposes [2, 3] -> [3, 2].
+  {
+    ASSERT_OK_AND_ASSIGN(ShapeTracker tracker,
+                         ShapeTracker::FromSiblings(b1.get(), t2.get()));
+    EXPECT_EQ(tracker.DebugString(true), "[4,2,3] -> Red[2,3] -> T[3,2]");
+    EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+              std::vector<int64_t>{1});
+    EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({2}),
+              std::vector<int64_t>{0});
+    EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+              std::vector<int64_t>{});
+  }
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, NarrowAndMapDimensionsWithBroadcast) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendBroadcast({4, 2, 5, 3}, {1, 3}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{1});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{3});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            (std::vector<int64_t>{1, 3}));
+  // Dims 1 and 3 in output are separated by non-degenerate broadcast dim 2
+  // (size 5), so {0, 1} does not map to a single stride in output.
+  EXPECT_FALSE(tracker.MapsToOneStride({0, 1}));
+  EXPECT_TRUE(tracker.MapsToOneStride({0}));
+  EXPECT_TRUE(tracker.MapsToOneStride({1}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed, tracker.Narrow({0}));
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2}));
+
+  // If broadcast dim 0 (size 4) is glued with kept dim 1 (size 2) into size
+  // 8, then input dim 0 only partially covers output dim 0, so mapping fails.
+  ASSERT_OK(tracker.AppendReshape({8, 5, 3}));
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{2});
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, NarrowAndMapDimensionsWithReduce) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendReduce({1}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{0});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({2}),
+            std::vector<int64_t>{1});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 2}),
+            (std::vector<int64_t>{0, 1}));
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{});
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0, 1}),
+            std::vector<int64_t>{0});
+
+  // Since dim 1 was reduced, dims {0, 2} are now adjacent in the output!
+  EXPECT_TRUE(tracker.MapsToOneStride({0, 2}));
+  EXPECT_TRUE(tracker.MapsToOneStride({1}));
+  EXPECT_TRUE(tracker.MapsToOneStride({0, 1}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed_02, tracker.Narrow({0, 2}));
+  EXPECT_EQ(narrowed_02.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed_02.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed_02.DebugString(true), "[2,4]");
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed_01, tracker.Narrow({0, 1}));
+  EXPECT_EQ(narrowed_01.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(narrowed_01.output_shape().dimensions(), (std::vector<int64_t>{2}));
+  EXPECT_EQ(narrowed_01.DebugString(true), "[2,3] -> Red[2]");
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed_1, tracker.Narrow({1}));
+  EXPECT_EQ(narrowed_1.input_shape().dimensions(), (std::vector<int64_t>{3}));
+  EXPECT_EQ(narrowed_1.output_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(narrowed_1.DebugString(true), "[3] -> Red[]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     SubchannelDequantizationInvertedTrackerMapping) {
+  // s: [2, 8, 64] -> T[2, 64, 8] -> B[2, 64, 8, 256] -> R[2, 64, 2048]
+  // inverted: [2, 64, 2048] -> R[2, 64, 8, 256] -> Red[2, 64, 8] -> T[2, 8, 64]
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 8, 64});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 1}));
+  ASSERT_OK(tracker.AppendBroadcast({2, 64, 8, 256}, {0, 1, 2}));
+  ASSERT_OK(tracker.AppendReshape({2, 64, 2048}));
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+
+  EXPECT_EQ(inverted.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{0});
+  EXPECT_EQ(inverted.MapInputDimensionsToOutputUnordered({1}),
+            std::vector<int64_t>{2});
+  EXPECT_EQ(inverted.MapInputDimensionsToOutputUnordered({2}),
+            std::vector<int64_t>{1});
+  EXPECT_TRUE(inverted.MapsToOneStride({0}));
+  EXPECT_TRUE(inverted.MapsToOneStride({1}));
+  EXPECT_TRUE(inverted.MapsToOneStride({2}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed_2, inverted.Narrow({2}));
+  EXPECT_EQ(narrowed_2.DebugString(true), "[2048] -> R[8,256] -> Red[8]");
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     SplitContractingDimensionAcrossBroadcast) {
+  // s: [2, 2, 64, 4] -> T[2, 64, 4, 2] -> B[2, 64, 4, 2, 256] -> R[2, 64, 2048]
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2, 64, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 3, 1}));
+  ASSERT_OK(tracker.AppendBroadcast({2, 64, 4, 2, 256}, {0, 1, 2, 3}));
+  ASSERT_OK(tracker.AppendReshape({2, 64, 2048}));
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+
+  EXPECT_EQ(inverted.MapInputDimensionsToOutputUnordered({2}),
+            (std::vector<int64_t>{1, 3}));
+  EXPECT_FALSE(inverted.MapsToOneStride({2}));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, SwappedSubDimensionsAcrossBroadcast) {
+  // s: [2, 64, 2, 4] -> T[2, 64, 4, 2] -> B[2, 64, 4, 2, 256] -> R[2, 64, 2048]
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 64, 2, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({0, 1, 3, 2}));
+  ASSERT_OK(tracker.AppendBroadcast({2, 64, 4, 2, 256}, {0, 1, 2, 3}));
+  ASSERT_OK(tracker.AppendReshape({2, 64, 2048}));
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inverted, tracker.GetInverted());
+
+  EXPECT_EQ(inverted.MapInputDimensionsToOutputUnordered({2}),
+            (std::vector<int64_t>{2, 3}));
+  EXPECT_FALSE(inverted.MapsToOneStride({2}, /*allow_swaps=*/false));
+  EXPECT_TRUE(inverted.MapsToOneStride({2}, /*allow_swaps=*/true));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, IncompatibleReshapeAcrossReduction) {
+  Shape shape = ShapeUtil::MakeShape(F32, {6, 4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendReshape({4, 6}));
+  ASSERT_OK(tracker.AppendReduce({0}));
+
+  // Input dim 0 ([4, 24)) straddles the kept ([1, 6)) and reduced ([6, 24))
+  // regions incompatibly.
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_THAT(tracker.Narrow({0}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  // Input dim 1 ([1, 4)) only partially covers the output dimension ([1, 6)).
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+}
+
+TEST(ShapeTrackerBroadcastReduceTest, ZipWithBroadcastAndReduce) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2});
+  ShapeTracker t1(shape1);
+  ASSERT_OK(t1.AppendBroadcast({2, 3}, {0}));
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4, 5});
+  ShapeTracker t2(shape2);
+  ASSERT_OK(t2.AppendReduce({0}));
+
+  ASSERT_OK_AND_ASSIGN(ShapeTracker zipped, ShapeTracker::Zip({t1, t2}));
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{2, 4, 5}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 5}));
+  EXPECT_EQ(zipped.DebugString(true), "[2,4,5] -> Red[2,5] -> B[2,3,5]");
+
+  // Verify Zip and Invert commute!
+  ASSERT_OK_AND_ASSIGN(ShapeTracker zipped_inv, zipped.GetInverted());
+  ASSERT_OK_AND_ASSIGN(ShapeTracker t1_inv, t1.GetInverted());
+  ASSERT_OK_AND_ASSIGN(ShapeTracker t2_inv, t2.GetInverted());
+  ASSERT_OK_AND_ASSIGN(ShapeTracker inv_zipped,
+                       ShapeTracker::Zip({t1_inv, t2_inv}));
+
+  EXPECT_EQ(zipped_inv, inv_zipped);
+  EXPECT_EQ(zipped_inv.DebugString(), inv_zipped.DebugString());
+  ExpectStepsEqual(zipped_inv.GetSteps(), inv_zipped.GetSteps());
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     MultiProjectionBroadcastPreservesUnrelatedOuterDim) {
+  // Input dim 0 (size 2) is kept across a two-projection chain where
+  // projections_[0] broadcasts a middle dimension of size 4 and projections_[1]
+  // reshapes/transposes the inner dimensions [4, 3].
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendBroadcast({2, 4, 3}, {0, 2}));
+  ASSERT_OK(tracker.AppendReshape({2, 3, 4}));
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 1}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{0});
+  EXPECT_TRUE(tracker.MapsToOneStride({0}));
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed, tracker.Narrow({0}));
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2}));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     MultiProjectionBroadcastDoesNotMisMapToSameSizeBroadcastDim) {
+  // Broadcast dim (output dim 1, size 2) has the same extent as kept input
+  // dim 0 (output dim 0, size 2); input dim 0 must map to output dim 0, not 1.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 5, 7});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 1}));
+  ASSERT_OK(tracker.AppendBroadcast({2, 2, 7, 5}, {0, 2, 3}));
+  ASSERT_OK(tracker.AppendReshape({2, 2, 5, 7}));
+  ASSERT_OK(tracker.AppendTranspose({0, 1, 3, 2}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}),
+            std::vector<int64_t>{0});
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     MultiProjectionBroadcastMixedWithReshapeCannotMap) {
+  // Reshape mixes kept input dim with broadcasted dim across two
+  // projections: input dim 0 no longer maps to a clean subset of output dims.
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendBroadcast({4, 3}, {0}));
+  ASSERT_OK(tracker.AppendReshape({3, 4}));
+  ASSERT_OK(tracker.AppendTranspose({1, 0}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_FALSE(tracker.MapsToOneStride({0}));
+  EXPECT_THAT(tracker.Narrow({0}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     MultiProjectionTransposeMixedWithReshapeCannotMap) {
+  // Two-projection transpose-reshape-transpose chain without broadcast where
+  // the middle reshape mixes the transposed dimensions.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({1, 0}));
+  ASSERT_OK(tracker.AppendReshape({2, 3}));
+  ASSERT_OK(tracker.AppendTranspose({1, 0}));
+
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({0}), std::nullopt);
+  EXPECT_EQ(tracker.MapInputDimensionsToOutputUnordered({1}), std::nullopt);
+  EXPECT_FALSE(tracker.MapsToOneStride({0}));
+  EXPECT_FALSE(tracker.MapsToOneStride({1}));
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     ToInstructionChainReduceDoesNotMutateComputationOnError) {
+  auto module = std::make_unique<HloModule>("module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  ShapeTracker reduce_tracker(shape);
+  ASSERT_OK(reduce_tracker.AppendReshape({2, 3}));
+  ASSERT_OK(reduce_tracker.AppendReduce({0}));
+
+  const int64_t initial_count = computation->instruction_count();
+  EXPECT_THAT(reduce_tracker.ToInstructionChain(param),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(computation->instruction_count(), initial_count);
+}
+
+TEST(ShapeTrackerBroadcastReduceTest,
+     NarrowMultiProjectionMergesAndFoldsWhenDroppedDimSeparatedSegments) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 5, 7});
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.AppendTranspose({1, 0, 2, 3}));  // [3, 2, 5, 7]
+  ASSERT_OK(tracker.AppendReshape({2, 3, 5, 7}));    // [2, 3, 5, 7]
+  ASSERT_OK(tracker.AppendTranspose({0, 2, 1, 3}));  // [2, 5, 3, 7]
+
+  // Dropping input dim 2 (size 5) makes the second transpose an identity on the
+  // remaining dimensions [2, 3, 7], so the narrowed tracker should fold to a
+  // single projection matching `[2, 3, 7] -> T[3, 2, 7] -> R[2, 3, 7]`.
+  ASSERT_OK_AND_ASSIGN(ShapeTracker narrowed, tracker.Narrow({0, 1, 3}));
+
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {2, 3, 7});
+  ShapeTracker expected(expected_shape);
+  ASSERT_OK(expected.AppendTranspose({1, 0, 2}));
+  ASSERT_OK(expected.AppendReshape({2, 3, 7}));
+
+  EXPECT_EQ(narrowed, expected);
 }
 
 }  // namespace
