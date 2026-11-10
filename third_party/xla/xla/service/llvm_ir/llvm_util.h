@@ -18,38 +18,28 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/FPEnv.h"
-#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -125,15 +115,6 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name = "");
 
-// Convenience methods for emitting a GEP instruction that indexes into a buffer
-// (1-dimensional array), equivalent to array[index]. The element type of the
-// array must be explicitly passed in.  The int64_t index overload
-// wraps the index in a i64 llvm::Value.
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilderBase* b);
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilderBase* b);
-
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::LLVMContext& context);
@@ -155,16 +136,6 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context);
 absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
     const llvm::Module& module, llvm::LLVMContext& context,
     absl::string_view module_id);
-
-// Returns a value that represents a pointer to a global string constant that
-// encodes the shape as a serialized protobuf.
-absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b);
-
-// Converts a given literal to an IR Constant. Literals have known constant
-// values at IR emission time.
-llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::Module* module);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -225,13 +196,6 @@ struct LlvmIfData {
 LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                           llvm::IRBuilderBase* b, bool emit_else = true);
 
-// Emits a compare operation between "lhs" and "rhs" with the given predicate,
-// and then converts the result to i8 so that it is addressable.
-llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
-                            llvm::Value* lhs, llvm::Value* rhs,
-                            llvm::IRBuilderBase* b,
-                            absl::string_view name = "");
-
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment);
@@ -250,9 +214,6 @@ llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 
 void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
-
-// Returns the number of bytes within the shape.
-int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
@@ -289,14 +250,6 @@ void SetAllowContractOnFpArithmetic(llvm::Module& module);
 // fma's; see b/560320144.
 void SinkContractableFMulToFAddFSub(llvm::Module& module);
 
-// Computes a conservative union of the metadata in "a" and "b".  For
-// aliasing-related metadata, this means the result can be applied to
-// instructions whose aliasing relationship can be described either by "a" *or*
-// by "b".
-std::map<int, llvm::MDNode*> MergeMetadata(
-    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
-    const std::map<int, llvm::MDNode*>& b);
-
 // Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
 // enabled for the given HLO module and the "llvm" emitter.
 //
@@ -316,11 +269,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
 // the variable.
 llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilderBase* b);
-
-// Emits `if (condition) return`. Assumes that the current function returns
-// void.
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
-                     llvm::BasicBlock* return_block);
 
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,

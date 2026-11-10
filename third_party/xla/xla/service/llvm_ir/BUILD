@@ -54,7 +54,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":llvm_type_conversion_util",
-        "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -62,7 +61,6 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_options",
-        "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -76,7 +74,6 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
@@ -175,28 +172,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@tsl//tsl/platform",
-    ],
-)
-
-cc_library(
-    name = "loop_emitter",
-    srcs = ["loop_emitter.cc"],
-    hdrs = ["loop_emitter.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_loop",
-        "//xla:shape_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
     ],
 )
 

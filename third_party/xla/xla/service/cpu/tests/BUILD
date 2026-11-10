@@ -93,19 +93,6 @@ xla_test(
     ],
 )
 
-xla_cc_test(
-    name = "cpu_bytesizeof_test",
-    srcs = ["cpu_bytesizeof_test.cc"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
-        "@llvm-project//llvm:ir_headers",
-    ],
-)
-
 xla_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],

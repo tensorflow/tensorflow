@@ -18,13 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -36,10 +33,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FloatingPointMode.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -48,7 +44,6 @@ limitations under the License.
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -63,26 +58,21 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
-#include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/layout_util.h"
-#include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/byte_order.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -178,27 +168,6 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, b);
-}
-
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilderBase* b) {
-  llvm::Type* array_type = array->getType();
-  CHECK(array_type->isPointerTy());
-  VLOG(2) << "EmitBufferIndexingGEP with type="
-          << llvm_ir::DumpToString(array_type)
-          << " array=" << llvm_ir::DumpToString(array)
-          << " index=" << llvm_ir::DumpToString(index);
-
-  return b->CreateInBoundsGEP(
-      element_type, array,
-      llvm::isa<llvm::GlobalVariable>(array)
-          ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
-          : index);
-}
-
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilderBase* b) {
-  return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -361,36 +330,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
   return std::move(*clone);
 }
 
-absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
-  const std::string encoded_shape = shape.ToProto().SerializeAsString();
-  if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return Internal("Encoded shape size exceeded int32_t size limit.");
-  }
-  *shape_size = static_cast<int32_t>(encoded_shape.size());
-  return b->CreateGlobalString(encoded_shape);
-}
-
-llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::Module* module) {
-  const char* data = static_cast<const char*>(literal.untyped_data());
-  int64_t size_bytes = literal.size_bytes();
-  CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  std::vector<char> packed_data;
-  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
-    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
-    int elements_per_byte = 8 / bit_width;
-    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
-    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
-             absl::MakeSpan(packed_data));
-    data = packed_data.data();
-    size_bytes = packed_data.size();
-  }
-  return llvm::ConstantDataArray::getString(module->getContext(),
-                                            llvm::StringRef(data, size_bytes),
-                                            /*AddNull=*/false);
-}
-
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilderBase* b,
@@ -470,23 +409,6 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                     if_data.after_block->getFirstInsertionPt());
 
   return if_data;
-}
-
-llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
-                            llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilderBase* b, absl::string_view name) {
-  llvm::Value* comparison_result;
-  if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result =
-        b->CreateICmp(predicate, lhs_value, rhs_value, AsStringRef(name));
-  } else {
-    comparison_result =
-        b->CreateFCmp(predicate, lhs_value, rhs_value, AsStringRef(name));
-  }
-  // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
-  // arrays. So we extend it to i8 so that it's addressable.
-  return b->CreateZExt(comparison_result,
-                       llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -607,11 +529,6 @@ void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   }
 }
 
-int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
-  unsigned pointer_size = data_layout.getPointerSize();
-  return ShapeUtil::ByteSizeOf(shape, pointer_size);
-}
-
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
   const auto& options = module_config.debug_options();
@@ -664,54 +581,6 @@ void SinkContractableFMulToFAddFSub(llvm::Module& module) {
       }
     }
   }
-}
-
-std::map<int, llvm::MDNode*> MergeMetadata(
-    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
-    const std::map<int, llvm::MDNode*>& b) {
-  // We should extend this as needed to deal with other kinds of metadata like
-  // !dereferenceable and !range.
-
-  std::map<int, llvm::MDNode*> result;
-  for (auto kind_md_pair : a) {
-    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
-      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
-      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
-      for (const auto& scope_a : kind_md_pair.second->operands()) {
-        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
-        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
-      }
-      auto it = b.find(kind_md_pair.first);
-      if (it != b.end()) {
-        for (const auto& scope_b : it->second->operands()) {
-          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
-            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
-          }
-        }
-      }
-      result[llvm::LLVMContext::MD_alias_scope] =
-          llvm::MDNode::get(*context, union_of_scopes);
-    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
-      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
-      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
-      for (const auto& scope_a : kind_md_pair.second->operands()) {
-        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
-      }
-      auto it = b.find(kind_md_pair.first);
-      if (it != b.end()) {
-        for (const auto& scope_b : it->second->operands()) {
-          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
-            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
-          }
-        }
-      }
-      if (!intersection_of_scopes.empty()) {
-        result[llvm::LLVMContext::MD_noalias] =
-            llvm::MDNode::get(*context, intersection_of_scopes);
-      }
-    }
-  }
-  return result;
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,
@@ -815,31 +684,6 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
       llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
   return state_value_old;
-}
-
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
-                     llvm::BasicBlock* return_block) {
-  llvm::BasicBlock* continued;
-
-  // Implicitly check whtether we are already at the end of unterminated block.
-  if (!b->GetInsertBlock()->hasTerminator()) {
-    // If we are generating code into an incomplete basic block we can just
-    // create a new basic block to jump to after our conditional branch.
-    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
-                                          /*name=*/"", b);
-  } else {
-    // If we are generating code into a basic block that already has code, we
-    // need to split that block so as to not disturb the existing code.
-    auto original = b->GetInsertBlock();
-    continued = original->splitBasicBlock(b->GetInsertPoint());
-    // Remove the auto-generated unconditional branch to replace with our
-    // conditional branch.
-    original->getTerminator()->eraseFromParent();
-    b->SetInsertPoint(original);
-  }
-
-  b->CreateCondBr(condition, continued, return_block);
-  b->SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
