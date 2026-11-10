@@ -789,6 +789,25 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
       EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 17);
     }
   }
+
+  fully_connected_params = {};
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteFloat32, kTfLiteFloat16, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 18);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat16}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 18);
 }
 
 TEST(OpVersionTest, VersioningEmbeddingLookupTest) {
