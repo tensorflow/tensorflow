@@ -2754,6 +2754,24 @@ func.func @fully_connected_no_bias(%arg0: tensor<2x2x10xf32>, %arg1: tensor<40x4
 
 // -----
 
+// CHECK-LABEL: fully_connected_f16_filter
+func.func @fully_connected_f16_filter(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf16>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
+  // CHECK: "tfl.fully_connected"(%arg0, %arg1, %arg2)
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf16>, tensor<40xf32>) -> tensor<1x40xf32>
+  func.return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+// CHECK-LABEL: fully_connected_f16_filter_no_bias
+func.func @fully_connected_f16_filter_no_bias(%arg0: tensor<2x2x10xf32>, %arg1: tensor<40x40xf16>, %arg2: none) -> tensor<1x40xf32> {
+  // CHECK: "tfl.fully_connected"(%arg0, %arg1, %arg2)
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x10xf32>, tensor<40x40xf16>, none) -> tensor<1x40xf32>
+  func.return %0 : tensor<1x40xf32>
+}
+
+// -----
+
 func.func @testFullyConnectedWith3DFilter(%arg0: tensor<1x37xf32>, %arg1: tensor<40x2x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
   // expected-error @+1 {{expect 2d filter, got 'tensor<40x2x37xf32>'}}
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x2x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>

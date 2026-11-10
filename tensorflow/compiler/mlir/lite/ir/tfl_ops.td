@@ -1139,7 +1139,9 @@ def TFL_DepthwiseConv2DOp :
 }
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
-// TODO(b/529944824): Add proper support for F16.
+// TODO(b/529944824): Add CPU kernel support for F16 activations/outputs (dense
+// constant F16 filter execution with F32 input, optional F32 bias, and F32
+// output is supported).
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     Pure, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
@@ -1150,6 +1152,37 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     DynamicRangeQuantizedOpInterface,
     RequiresQuantizedBiasInterface]> {
   let summary = "Fully connected op";
+
+  let description = [{
+    Computes a fully connected layer (matrix multiplication of reshaped `input`
+    with transposed 2-D `filter` weights `[units, input_size]`, plus an optional
+    1-D `bias` `[units]`, followed by `fused_activation_function`).
+
+    Operands:
+      `input`: Input activation tensor. Flattened into `[batches, input_size]`
+        unless `keep_num_dims` is true, in which case the input rank is
+        preserved and the last dimension must equal `input_size`.
+      `filter`: 2-D weight tensor of shape `[units, input_size]`.
+      `bias`: Optional 1-D bias tensor of shape `[units]` or `none`.
+
+    Attributes:
+      `fused_activation_function`: Optional fused activation (`NONE`, `RELU`,
+        `RELU_N1_TO_1`, `RELU6`, etc.).
+      `weights_format`: Layout of the filter weights (`DEFAULT` or
+        `SHUFFLED4x16INT8`).
+      `keep_num_dims`: If true, preserves the rank of `input` in `output` with
+        the last dimension set to `units`; otherwise produces a 2-D output
+        `[batches, units]`.
+      `asymmetric_quantize_inputs`: If true, asymmetrically quantizes floating-
+        point input activations on the fly in dynamic-range quantized modes.
+
+    On CPU, in addition to pure `F32` and integer/hybrid quantized combinations,
+    `fully_connected` supports `F32` `input`, a dense constant `F16` `filter`
+    with `DEFAULT` weights format, an optional `F32` `bias` (or `none`), and
+    `F32` `output`, widening each `F16` filter element to `F32` and performing
+    all intermediate products, accumulation, bias addition, and activation
+    clamping in `F32`.
+  }];
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$input,

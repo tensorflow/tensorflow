@@ -2179,6 +2179,63 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(ArrayImplTest, CopyCrossMemoryKindWithDonateInput) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+  if (src_device->Memories().size() <= 1) {
+    GTEST_SKIP() << "This test is relevant only for clients with devices that "
+                    "have more than one memory kind";
+  }
+
+  const DType dtype(DType::kF32);
+  const Shape shape({2, 3});
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+
+  Memory* const src_memory = src_device->Memories()[0];
+  Memory* const dst_memory = src_device->Memories()[1];
+  ASSERT_NE(src_memory->Kind(), dst_memory->Kind());
+
+  for (const bool cross_device : {false, true}) {
+    if (cross_device && client->addressable_devices().size() < 2) {
+      continue;
+    }
+    ShardingRef sharding =
+        SingleDeviceSharding::Create(src_device, src_memory->Kind());
+    ASSERT_OK_AND_ASSIGN(
+        ArrayRef src_array,
+        client->MakeArrayFromHostBuffer(
+            data.data(), dtype, shape, /*byte_strides=*/std::nullopt, sharding,
+            /*layout=*/nullptr,
+            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/{}));
+
+    std::optional<DeviceListRef> dst_devices;
+    if (cross_device) {
+      ASSERT_OK_AND_ASSIGN(
+          dst_devices,
+          client->MakeDeviceList({client->addressable_devices()[1]}));
+    }
+
+    std::vector<ArrayRef> inputs = {src_array};
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ArrayRef> copied,
+        client->CopyArrays(absl::MakeSpan(inputs), std::move(dst_devices),
+                           dst_memory->Kind(),
+                           ArrayCopySemantics::kDonateInput));
+    ASSERT_EQ(copied.size(), 1);
+    EXPECT_EQ(copied.front()->sharding().memory_kind(), dst_memory->Kind());
+
+    std::vector<float> out_data(6);
+    ASSERT_OK(copied.front()
+                  ->CopyToHostBuffer(out_data.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await());
+    EXPECT_THAT(out_data, ElementsAreArray(data));
+  }
+}
+
 TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 

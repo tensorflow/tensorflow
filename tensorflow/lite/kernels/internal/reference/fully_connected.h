@@ -24,14 +24,16 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace reference_ops {
 
+template <typename WeightT = float>
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& weights_shape,
-    const float* weights_data, const RuntimeShape& bias_shape,
+    const WeightT* weights_data, const RuntimeShape& bias_shape,
     const float* bias_data, const RuntimeShape& output_shape,
     float* output_data) {
   const float output_activation_min = params.float_activation_min;
@@ -52,7 +54,7 @@ inline void FullyConnected(
       float total = 0.f;
       for (int d = 0; d < accum_depth; ++d) {
         total += input_data[b * accum_depth + d] *
-                 weights_data[out_c * accum_depth + d];
+                 static_cast<float>(weights_data[out_c * accum_depth + d]);
       }
       float bias_value = 0.0f;
       if (bias_data) {

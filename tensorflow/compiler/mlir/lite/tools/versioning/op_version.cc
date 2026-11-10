@@ -200,6 +200,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 16;
       }
 
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteFloat16 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
+        return 18;
+      }
+
       // A non-empty `quant_spec` describes numerics that a runtime without
       // explicit support for that spec cannot reproduce. It must be checked
       // before the cases below, because an op carrying a `quant_spec` also
