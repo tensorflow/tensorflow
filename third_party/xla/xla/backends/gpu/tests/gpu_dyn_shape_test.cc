@@ -43,14 +43,21 @@ TEST_F(GpuDynamicShapeTest, DynamicShapeR2) {
 
   EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
                                R"(
-; CHECK-DAG: is_thread_0-true
-; CHECK-DAG: x.padded{{.*}}.in_dyn_bounds-true
-; CHECK-DAG: x.padded{{.*}}.in_bounds-true
-; CHECK: %[[dyn_dim_size:.*]] = load i32, ptr
-; CHECK: %[[dyn_element_total:.*]] = mul i32 1, %[[dyn_dim_size:.*]]
-; CHECK: %[[linear_index:.*]] = add nuw nsw i32
-; CHECK: %[[linear_index_in_range:.*]] = icmp ult i32 %[[linear_index:.*]],
-; CHECK: store i32 %[[dyn_dim_size:.*]], ptr
+; CHECK-LABEL: define {{.*}}_kernel void @x_padded(
+; CHECK: %[[SRC_INT:.*]] = ptrtoint ptr %{{.*}} to i64
+; CHECK: %[[META0:.*]] = add i64 %[[SRC_INT]], 32
+; CHECK: %[[PTR0:.*]] = inttoptr i64 %[[META0]] to ptr
+; CHECK: %[[DIM0:.*]] = load i32, ptr %[[PTR0]], align 4
+; CHECK: %[[META1:.*]] = add i64 %[[SRC_INT]], 36
+; CHECK: %[[PTR1:.*]] = inttoptr i64 %[[META1]] to ptr
+; CHECK: %[[DIM1:.*]] = load i32, ptr %[[PTR1]], align 4
+; CHECK: store i32 %[[DIM0]], ptr
+; CHECK: store i32 %[[DIM1]], ptr
+; CHECK: %[[TOTAL:.*]] = mul i32 %[[DIM0]], %[[DIM1]]
+; CHECK: %[[LIN:.*]] = add i32
+; CHECK: icmp ult i32 %[[LIN]], %[[TOTAL]]
+; CHECK: load float, ptr
+; CHECK: store float
       )",
                                /*match_optimized_ir=*/false));
 }
