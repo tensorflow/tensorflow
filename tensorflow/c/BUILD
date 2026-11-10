@@ -316,12 +316,12 @@ tf_cuda_library(
     deps = [
         ":c_api_internal",
         ":tf_attrtype",
-        ":tf_buffer",
         ":tf_buffer_internal",
         ":tf_datatype",
-        ":tf_status_helper",
         ":tf_status_internal",
         "//tensorflow/core/public:release_version",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -737,9 +737,13 @@ tf_cuda_library(
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -946,6 +950,8 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_absl//absl/strings",
     ],
 )
 
