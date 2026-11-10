@@ -234,3 +234,21 @@ func.func @linear_extract(%src: tensor<4x3xf32>, %idx: index) -> f32 {
 }
 // CHECK-LABEL: @linear_extract
 // CHECK: xla.linear_extract %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @linear_insert(%val: f32, %dst: tensor<4x3xf32>, %idx: index) -> tensor<4x3xf32> {
+  %out = xla.linear_insert %val into %dst[%idx] : tensor<4x3xf32>
+  func.return %out : tensor<4x3xf32>
+}
+// CHECK-LABEL: @linear_insert
+// CHECK: xla.linear_insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @set_dynamic_dim_size(%in: tensor<16x8x4xf32>, %size: i32) -> tensor<16x8x4xf32> {
+  %out = xla.set_dynamic_dim_size %size into %in[1] : tensor<16x8x4xf32>
+  func.return %out : tensor<16x8x4xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: xla.set_dynamic_dim_size %{{.*}} into %{{.*}}[1] : tensor<16x8x4xf32>

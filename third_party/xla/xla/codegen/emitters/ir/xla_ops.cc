@@ -1249,6 +1249,27 @@ LogicalResult LinearExtractOp::verify() {
   return success();
 }
 
+LogicalResult LinearInsertOp::verify() {
+  if (getTensor().getType().getRank() < 1) {
+    return emitOpError("tensor must have rank at least 1");
+  }
+  return success();
+}
+
+LogicalResult GetDynamicDimSizeOp::verify() {
+  if (static_cast<int64_t>(getDim()) < 0) {
+    return emitOpError("dim must be non-negative");
+  }
+  return success();
+}
+
+LogicalResult SetDynamicDimSizeOp::verify() {
+  if (static_cast<int64_t>(getDim()) < 0) {
+    return emitOpError("dim must be non-negative");
+  }
+  return success();
+}
+
 }  // namespace xla
 
 #define GET_OP_CLASSES

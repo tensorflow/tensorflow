@@ -117,6 +117,10 @@ Value GetDestinationBuffer(Value dest) {
       dest = insert.getDest();
     } else if (auto copy_slice = dest.getDefiningOp<CopySliceOp>()) {
       dest = copy_slice.getDest();
+    } else if (auto set_dim = dest.getDefiningOp<SetDynamicDimSizeOp>()) {
+      dest = set_dim.getTensor();
+    } else if (auto atomic_rmw = dest.getDefiningOp<AtomicRMWOp>()) {
+      dest = atomic_rmw.getInput();
     } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
       // Pick one of the branches, they're required to yield the same buffers.
       dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
@@ -125,8 +129,14 @@ Value GetDestinationBuffer(Value dest) {
       dest = scf_for.getInitArgs()[result_number];
     } else if (auto sync_threads = dest.getDefiningOp<gpu::SyncThreadsOp>()) {
       dest = sync_threads.getOperand(result_number);
-    } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
-               dest.getDefiningOp<gpu::AllocateSharedOp>()) {
+    } else if (auto cast = dest.getDefiningOp<UnrealizedConversionCastOp>()) {
+      if (cast.getNumOperands() == 1 &&
+          mlir::isa<mlir::RankedTensorType>(cast.getOperand(0).getType())) {
+        dest = cast.getOperand(0);
+      } else {
+        break;
+      }
+    } else if (dest.getDefiningOp<gpu::AllocateSharedOp>()) {
       break;
     } else if (auto transfer_write =
                    dest.getDefiningOp<vector::TransferWriteOp>()) {
@@ -1564,54 +1574,72 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   const DeviceSpec& device_spec_;
 };
 
+std::pair<Value, int64_t> GetDynamicDimMetadataAddressAndAlignment(
+    mlir::ImplicitLocOpBuilder& b, mlir::Operation* op, Value tensor,
+    int64_t dim) {
+  auto tensor_type = mlir::cast<mlir::RankedTensorType>(tensor.getType());
+
+  Type element_type = tensor_type.getElementType();
+  int64_t num_elements = tensor_type.getNumElements();
+  std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+  if (sub_byte_width) {
+    element_type = b.getI8Type();
+    // Elements are packed.
+    num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
+  }
+
+  // The offset of the dim size from the start of the buffer. The dynamic dim
+  // sizes are stored after the tensor data as a tail-allocated metadata of
+  // s32 type.
+  mlir::LLVMTypeConverter converter(op->getContext());
+  Type llvm_element_type = converter.convertType(element_type);
+  int64_t element_size_bytes =
+      static_cast<int64_t>(mlir::DataLayout::closest(op)
+                               .getTypeSize(llvm_element_type)
+                               .getFixedValue());
+  int64_t dynamic_size_offset_in_bytes =
+      num_elements * element_size_bytes + dim * sizeof(int32_t);
+
+  auto ptr_type = ml::LLVMPointerType::get(b.getContext());
+  Value base_tensor = GetDestinationBuffer(tensor);
+  Value tensor_ptr =
+      UnrealizedConversionCastOp::create(b, ptr_type, base_tensor).getResult(0);
+
+  Value addr_offset =
+      ml::ConstantOp::create(b, b.getI64Type(), dynamic_size_offset_in_bytes);
+
+  Value addr_int = ml::PtrToIntOp::create(b, b.getI64Type(), tensor_ptr);
+  Value metadata_addr_int = ml::AddOp::create(b, addr_int, addr_offset);
+  Value metadata_addr = ml::IntToPtrOp::create(b, ptr_type, metadata_addr_int);
+
+  int64_t alignment = dynamic_size_offset_in_bytes % 4 == 0 ? 4 : 1;
+  return {metadata_addr, alignment};
+}
+
 class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
       GetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto tensor = op.getTensor();
-    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
-
-    Type element_type = tensor_type.getElementType();
-    int64_t num_elements = tensor_type.getNumElements();
-    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
-    if (sub_byte_width) {
-      element_type = b.getI8Type();
-      // Elements are packed.
-      num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
-    }
-
-    // The offset of the dim size from the start of the buffer. The dynamic dim
-    // sizes are stored after the tensor data as a tail-allocated metadata of
-    // s32 type.
-    mlir::LLVMTypeConverter converter(getContext());
-    Type llvm_element_type = converter.convertType(element_type);
-    int64_t element_size_bytes =
-        static_cast<int64_t>(mlir::DataLayout::closest(op)
-                                 .getTypeSize(llvm_element_type)
-                                 .getFixedValue());
-    int64_t dynamic_size_offset_in_bytes =
-        num_elements * element_size_bytes +
-        static_cast<int64_t>(op.getDim()) * sizeof(int32_t);
-
-    auto ptr_type = ml::LLVMPointerType::get(b.getContext());
-    Value tensor_ptr =
-        UnrealizedConversionCastOp::create(b, ptr_type, tensor).getResult(0);
-
-    Value addr_offset =
-        ml::ConstantOp::create(b, b.getI64Type(), dynamic_size_offset_in_bytes);
-
-    Value addr_int = ml::PtrToIntOp::create(b, b.getI64Type(), tensor_ptr);
-    Value metadata_addr_int = ml::AddOp::create(b, addr_int, addr_offset);
-    Value metadata_addr =
-        ml::IntToPtrOp::create(b, ptr_type, metadata_addr_int);
-
-    int64_t alignment = dynamic_size_offset_in_bytes % 4 == 0 ? 4 : 1;
+    auto [metadata_addr, alignment] = GetDynamicDimMetadataAddressAndAlignment(
+        b, op, op.getTensor(), static_cast<int64_t>(op.getDim()));
     rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr,
                                             alignment);
+    return success();
+  }
+};
 
+class RewriteSetDynamicDimSize : public OpRewritePattern<SetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      SetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto [metadata_addr, alignment] = GetDynamicDimMetadataAddressAndAlignment(
+        b, op, op.getTensor(), static_cast<int64_t>(op.getDim()));
+    ml::StoreOp::create(b, op.getSize(), metadata_addr, alignment);
+    rewriter.replaceOp(op, op.getTensor());
     return success();
   }
 };
@@ -1647,9 +1675,9 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
                                                                device_spec_);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteCopySlice, RewriteGetDynamicDimSize,
-             RewriteNonScalarConstants, RewriteSyncThreads,
-             RewriteTensorExtract, RewriteTransferRead, RewriteTransferWrite>(
-            mlir_context);
+             RewriteNonScalarConstants, RewriteSetDynamicDimSize,
+             RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
+             RewriteTransferWrite>(mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(tensor_patterns)))) {
       signalPassFailure();

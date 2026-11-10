@@ -1609,3 +1609,86 @@ func.func @get_dynamic_dim_size_unaligned_odd(%arg0: tensor<3xi8>) -> i32 {
 // CHECK: llvm.mlir.constant(3 : i64) : i64
 // CHECK: llvm.load %{{.*}} <alignment = 1> : !llvm.ptr -> i32
 
+// -----
+
+func.func @set_dynamic_dim_size(%arg0: tensor<512xf32>, %size: i32) -> tensor<512xf32> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[1] : tensor<512xf32>
+  func.return %0 : tensor<512xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: llvm.mlir.constant(2052 : i64) : i64
+// CHECK: llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte(%arg0: tensor<5xi4>, %size: i32) -> tensor<5xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK: llvm.mlir.constant(3 : i64) : i64
+// CHECK: llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_before_sub_byte_insert(
+    %arg0: tensor<5xi4>, %size: i32, %val: i4, %idx: index, %cond0: i1,
+    %cond1: i1) -> tensor<5xi4> {
+  %with_dim = scf.if %cond0 -> (tensor<5xi4>) {
+    %updated = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+    scf.yield %updated : tensor<5xi4>
+  } else {
+    scf.yield %arg0 : tensor<5xi4>
+  }
+  %res = scf.if %cond1 -> (tensor<5xi4>) {
+    %ins = tensor.insert %val into %with_dim[%idx] : tensor<5xi4>
+    scf.yield %ins : tensor<5xi4>
+  } else {
+    scf.yield %with_dim : tensor<5xi4>
+  }
+  func.return %res : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_before_sub_byte_insert
+// CHECK: scf.if %{{.*}} {
+// CHECK:   llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-NEXT: }
+// CHECK-NEXT: scf.if %{{.*}} {
+// CHECK-GPU: llvm.cmpxchg
+// CHECK-CPU: llvm.store
+// CHECK: return
+
+// -----
+
+func.func @get_destination_buffer_through_cast(
+    %arg0: tensor<2x4xf32>, %val: f32, %idx: index) -> tensor<2x4xf32> {
+  %flat = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xf32> to tensor<8xf32>
+  %ins = tensor.insert %val into %flat[%idx] : tensor<8xf32>
+  %res = builtin.unrealized_conversion_cast %ins : tensor<8xf32> to tensor<2x4xf32>
+  func.return %res : tensor<2x4xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_cast(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+
+// -----
+
+func.func @get_destination_buffer_through_atomic_rmw(
+    %arg0: tensor<8xf32>, %val: f32, %idx: index) -> tensor<8xf32> {
+  %rmw = xla.atomic_rmw %arg0[%idx] : tensor<8xf32> {
+    ^bb0(%cur: f32):
+      %add = arith.addf %cur, %val : f32
+      xla.yield %add : f32
+  }
+  %ins = tensor.insert %val into %rmw[%idx] : tensor<8xf32>
+  func.return %ins : tensor<8xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_atomic_rmw(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK-GPU:     llvm.atomicrmw ignore_denormal_mode fadd
+// CHECK-CPU:     llvm.cmpxchg
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+
