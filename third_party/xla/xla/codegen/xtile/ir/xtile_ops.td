@@ -176,15 +176,21 @@ def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
 
     This is useful when the input to a kernel is a collection of disjoint
     buffers and we want to select one of them based on the replica_id.
+
+    If `offset` is given, shifts the start of the selected buffer forward by
+    `offset` elements (for example, `offset = 128` on an `f32` buffer starts
+    at element 128).
   }];
   let arguments = (ins
     AnyMemRef:$source,
-    Index:$replica_id
+    Index:$replica_id,
+    Optional<Index>:$offset
   );
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
-    $source `[` $replica_id `]` `:` type($source) `->` type($result) attr-dict
+    $source `[` $replica_id `]` (`offset` $offset^)? `:` type($source) `->` type($result) attr-dict
   }];
+  let hasVerifier = 1;
 }
 
 def MemRefBitcastOp : XTile_Op<"memref_bitcast",

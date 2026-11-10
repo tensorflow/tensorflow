@@ -386,3 +386,51 @@ func.func @memref_bitcast_width_mismatch(%arg0: memref<16xbf16>) -> memref<16xi3
   %0 = xtile.memref_bitcast %arg0 : memref<16xbf16> -> memref<16xi32>
   return %0 : memref<16xi32>
 }
+
+// -----
+
+func.func @select_buffer_roundtrip(%src: memref<4xi64>, %r: index, %off: index) -> (memref<128xf32>, memref<128xf32>) {
+  %0 = xtile.select_buffer %src[%r] : memref<4xi64> -> memref<128xf32>
+  %1 = xtile.select_buffer %src[%r] offset %off : memref<4xi64> -> memref<128xf32>
+  return %0, %1 : memref<128xf32>, memref<128xf32>
+}
+
+// -----
+
+func.func @select_buffer_2d_source(%src: memref<2x2xi64>, %r: index) -> memref<128xf32> {
+  // expected-error@+1 {{expected source to be a static contiguous 1D i64 memref}}
+  %0 = xtile.select_buffer %src[%r] : memref<2x2xi64> -> memref<128xf32>
+  return %0 : memref<128xf32>
+}
+
+// -----
+
+func.func @select_buffer_non_i64_source(%src: memref<4xf32>, %r: index) -> memref<128xf32> {
+  // expected-error@+1 {{expected source to be a static contiguous 1D i64 memref}}
+  %0 = xtile.select_buffer %src[%r] : memref<4xf32> -> memref<128xf32>
+  return %0 : memref<128xf32>
+}
+
+// -----
+
+func.func @select_buffer_strided_source(%src: memref<4xi64, strided<[2], offset: 1>>, %r: index) -> memref<128xf32> {
+  // expected-error@+1 {{expected source to be a static contiguous 1D i64 memref}}
+  %0 = xtile.select_buffer %src[%r] : memref<4xi64, strided<[2], offset: 1>> -> memref<128xf32>
+  return %0 : memref<128xf32>
+}
+
+// -----
+
+func.func @select_buffer_zero_sized_source(%src: memref<0xi64>, %r: index) -> memref<128xf32> {
+  // expected-error@+1 {{expected source to be a static contiguous 1D i64 memref}}
+  %0 = xtile.select_buffer %src[%r] : memref<0xi64> -> memref<128xf32>
+  return %0 : memref<128xf32>
+}
+
+// -----
+
+func.func @select_buffer_nonzero_result_offset(%src: memref<4xi64>, %r: index) -> memref<128xf32, strided<[1], offset: 4>> {
+  // expected-error@+1 {{expected result memref to have zero offset}}
+  %0 = xtile.select_buffer %src[%r] : memref<4xi64> -> memref<128xf32, strided<[1], offset: 4>>
+  return %0 : memref<128xf32, strided<[1], offset: 4>>
+}

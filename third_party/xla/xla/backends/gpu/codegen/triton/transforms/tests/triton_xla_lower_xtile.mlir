@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: xla-opt %s -split-input-file -triton-xla-lower-xtile | FileCheck %s
+// RUN: xla-opt %s -split-input-file -verify-diagnostics -triton-xla-lower-xtile | FileCheck %s
 
 xtile.entry_func @extract_insert_no_layout(%input: memref<1024xf32, #nvvm.memory_space<global>>,
                          %output: memref<32xf32, #nvvm.memory_space<global>>,
@@ -146,3 +146,29 @@ xtile.entry_func @tile_id_range_preserved(
 // CHECK-LABEL: func.func @tile_id_range_preserved
 // CHECK:         %[[PID:.*]] = tt.get_program_id x : i32
 // CHECK-NEXT:    %[[PID_IDX:.*]] = arith.index_cast %[[PID]] {xla.range = [0 : index, 7 : index]} : i32 to index
+
+// -----
+
+// CHECK-LABEL: @select_buffer_with_offset_test
+func.func @select_buffer_with_offset_test(%src: memref<2xi64>, %replica_id: index, %offset: index) -> memref<128xf32> {
+  // CHECK-SAME: (%[[SRC:.*]]: memref<2xi64>, %[[REPLICA_ID:.*]]: index, %[[OFFSET:.*]]: index) -> memref<128xf32> {
+  // CHECK: %[[PTR:.*]] = triton_xla.memref_to_ptr %[[SRC]] from memref<2xi64> to <i64>
+  // CHECK: %[[REPLICA_I64:.*]] = arith.index_cast %[[REPLICA_ID]] : index to i64
+  // CHECK: %[[ADDR:.*]] = tt.addptr %[[PTR]], %[[REPLICA_I64]] : !tt.ptr<i64>, i64
+  // CHECK: %[[LOADED_ADDR:.*]] = tt.load %[[ADDR]] : !tt.ptr<i64>
+  // CHECK: %[[BASE_PTR:.*]] = tt.int_to_ptr %[[LOADED_ADDR]] {tt.divisibility = 16 : i32} : i64 -> !tt.ptr<f32>
+  // CHECK: %[[OFFSET_I64:.*]] = arith.index_cast %[[OFFSET]] : index to i64
+  // CHECK: %[[FINAL_PTR:.*]] = tt.addptr %[[BASE_PTR]], %[[OFFSET_I64]] : !tt.ptr<f32>, i64
+  // CHECK: %[[RES_MEMREF:.*]] = triton_xla.ptr_to_memref %[[FINAL_PTR]] from <f32> to memref<128xf32>
+  %0 = xtile.select_buffer %src[%replica_id] offset %offset : memref<2xi64> -> memref<128xf32>
+  // CHECK: return %[[RES_MEMREF]] : memref<128xf32>
+  return %0 : memref<128xf32>
+}
+
+// -----
+
+func.func @unlowered_xtile_op_fails(%arg0: memref<16xf32>) -> memref<16xi32> {
+  // expected-error@+1 {{'xtile.memref_bitcast' op unlowered xtile op}}
+  %0 = xtile.memref_bitcast %arg0 : memref<16xf32> -> memref<16xi32>
+  return %0 : memref<16xi32>
+}
