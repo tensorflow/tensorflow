@@ -1241,6 +1241,44 @@ cc_library(
 )
 
 cc_library(
+    name = "async_tracker",
+    srcs = ["async_tracker.cc"],
+    hdrs = ["async_tracker.h"],
+    deps = [
+        ":latency_estimator",
+        ":scheduler_config",
+        ":scheduler_core",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "scheduler_config",
+    hdrs = ["scheduler_config.h"],
+)
+
+cc_library(
+    name = "scheduler_core",
+    hdrs = ["scheduler_core.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "latency_estimator",
     srcs = ["latency_estimator.cc"],
     hdrs = ["latency_estimator.h"],
@@ -1255,6 +1293,7 @@ cc_library(
     srcs = ["latency_hiding_scheduler.cc"],
     hdrs = ["latency_hiding_scheduler.h"],
     deps = [
+        ":async_tracker",
         ":buffer_value",
         ":collective_ops_utils",
         ":dump",
@@ -1262,6 +1301,8 @@ cc_library(
         ":hlo_cost_analysis",
         ":hlo_value",
         ":latency_estimator",
+        ":scheduler_config",
+        ":scheduler_core",
         ":scheduling_annotations_util",
         "//xla:shape_util",
         "//xla:side_effect_util",

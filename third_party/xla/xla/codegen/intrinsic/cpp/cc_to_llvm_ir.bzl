@@ -112,7 +112,7 @@ _extract_object_files = rule(
     },
 )
 
-def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
+def cc_ir_header(name, src, deps = [], copts = [], x86_64_copts = [], **kwargs):
     """A macro that generates an IR header and wraps it in a cc_library.
 
     Args:
@@ -120,6 +120,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
       src: The C++ source file to compile.
       deps: The C++ dependencies of the source file.
       copts: Additional compiler flags.
+      x86_64_copts: Additional compiler flags passed only on x86_64 targets.
       **kwargs: Additional arguments to pass to the generated cc_library.
     """
 
@@ -174,11 +175,17 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         # /GS- and /EHs- /EHc- (which override the toolchain's /EHsc) keep MSVC
         # runtime hooks (stack-protector cookie, __CxxFrameHandler3 personality)
         # out of the IR, matching the ELF output.
+        "//xla/tsl:windows_x86_64": [
+            "/GS-",
+            "/EHs-",
+            "/EHc-",
+        ] + _to_clang_cl_flags(clang_flags + list_copts + x86_64_copts),
         "//xla/tsl:windows": [
             "/GS-",
             "/EHs-",
             "/EHc-",
         ] + _to_clang_cl_flags(clang_flags + list_copts),
+        "//xla/codegen/intrinsic/cpp:x86_64": clang_flags + list_copts + x86_64_copts,
         "//conditions:default": clang_flags + list_copts,
     }) + select_copts
 
