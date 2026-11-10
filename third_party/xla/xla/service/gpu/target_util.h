@@ -18,33 +18,13 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/types/span.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
-
-// Enumeration to get target specific intrinsics.
-enum class TargetIntrinsicID {
-  kThreadIdx = 0,
-  kThreadIdy,
-  kThreadIdz,
-  kBlockIdx,
-  kBlockIdy,
-  kBlockIdz,
-  kBarrierId,
-  kBlockDimx,
-  kBlockDimy,
-  kBlockDimz,
-  kGroupBarrierId,
-};
 
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
@@ -76,14 +56,6 @@ enum class TargetDeviceFunctionID {
   kAtanh,
   kRint,
 };
-
-// Emits a call to the specified target intrinsic with the given operands.
-// Overloaded intrinsics (for example, "minnum") must include a type
-// in overloaded_types  for each overloaded type. Typically, overloaded
-// intrinsics have only a single overloaded type.
-llvm::CallInst* EmitCallToTargetIntrinsic(
-    TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b);
 
 // Annotate the kernel as GPU kernel according to the GPU target.
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,

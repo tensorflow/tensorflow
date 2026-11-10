@@ -291,7 +291,7 @@ common:rocm_base --@rules_ml_toolchain//common:stdlib=libstdc++
 common:rocm_base --@rules_ml_toolchain//common:static_libcxx=False
 common:rocm_base --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
 common:rocm_base --@rules_ml_toolchain//common:enable_hermetic_libraries=True
-common:rocm_base --repo_env=SYSROOT_DIST=linux_glibc_2_31
+common:rocm_base --repo_env=SYSROOT_DIST=linux_glibc_2_35
 common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
@@ -422,8 +422,8 @@ common:linux --cxxopt=-std=c++20
 common:linux --host_cxxopt=-std=c++20
 common:macos --cxxopt=-std=c++17
 common:macos --host_cxxopt=-std=c++17
-common:windows --cxxopt=/std:c++17
-common:windows --host_cxxopt=/std:c++17
+common:windows --cxxopt=/std:c++20
+common:windows --host_cxxopt=/std:c++20
 
 # On windows, we still link everything into a single DLL.
 common:windows --config=monolithic

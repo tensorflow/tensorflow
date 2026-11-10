@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -78,18 +77,6 @@ TEST(CompilationProviderOptionsTest, FromDebugOptions) {
       CompilationProviderOptions::FromDebugOptions(debug_options),
       CompilationProviderOptions(
           CompilationProviderOptions::NvJitLinkMode::kAuto, false, false, ""));
-
-  auto* fake_exec = reinterpret_cast<stream_executor::StreamExecutor*>(0x1);
-  EXPECT_EQ(
-      CompilationProviderOptions::FromDebugOptions(debug_options, fake_exec)
-          .stream_executor(),
-      nullptr);
-
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  EXPECT_EQ(
-      CompilationProviderOptions::FromDebugOptions(debug_options, fake_exec)
-          .stream_executor(),
-      fake_exec);
 }
 
 TEST(CompilationProviderOptionsTest, ToString) {
@@ -109,25 +96,14 @@ TEST(CompilationProviderOptionsTest, AbslStringify) {
 }
 
 TEST(CompilationProviderOptionsTest, AbslHashValue) {
-  auto* exec1 = reinterpret_cast<stream_executor::StreamExecutor*>(0x1);
-  auto* exec2 = reinterpret_cast<stream_executor::StreamExecutor*>(0x2);
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {CompilationProviderOptions{},
        CompilationProviderOptions{
            CompilationProviderOptions::NvJitLinkMode::kDisabled, false, true,
            ""},
        CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kDisabled, false, true,
-           "", exec1},
-       CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kDisabled, false, true,
-           "", exec2},
-       CompilationProviderOptions{
            CompilationProviderOptions::NvJitLinkMode::kEnabled, false, false,
            "/usr/local/cuda"},
-       CompilationProviderOptions{
-           CompilationProviderOptions::NvJitLinkMode::kEnabled, false, false,
-           "/usr/local/cuda", exec1},
        CompilationProviderOptions{
            CompilationProviderOptions::NvJitLinkMode::kAuto, false, false, ""},
        CompilationProviderOptions{

@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_UTILS_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_UTILS_H_
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 
 namespace xla::hlo_computation_utils {
 
@@ -29,6 +32,22 @@ namespace xla::hlo_computation_utils {
 // Precondition: `computation` and `computation->parent()` must be non-null.
 HloComputation* CloneComputation(HloComputation* computation,
                                  absl::string_view suffix = "");
+
+// Specializes computations on the entry computation's execution thread that are
+// reachable from the entry computation via both pure ordinary call paths and
+// paths containing at least one special call, ensuring each reachable
+// computation has at most two versions:
+// - Ordinary version (original): all call paths from the entry computation
+//   consist solely of calls where `is_special_call` is false.
+// - Special version (cloned with `suffix`): every call
+//   path from the entry computation contains at least one call where
+//   `is_special_call` is true.
+// Returns true if any computation was cloned.
+// Precondition: `module` must be non-null.
+bool SpecializeComputations(
+    HloModule* module,
+    absl::FunctionRef<bool(const HloInstruction*)> is_special_call,
+    absl::string_view suffix = "");
 
 }  // namespace xla::hlo_computation_utils
 

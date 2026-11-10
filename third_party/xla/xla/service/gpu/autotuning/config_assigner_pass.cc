@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotune_cache_store.h"
 #include "xla/backends/autotuner/autotuner.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -58,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -223,7 +227,8 @@ AutotuneDecision ShouldAssignConfigToGenericFusion(
 
 AutotuneDecision ShouldAssignConfigToInstruction(
     bool do_not_autotune_cublas, bool do_not_autotune_cudnn,
-    bool enable_fusion_autotuner, bool block_level_emitter_enabled,
+    bool enable_fusion_autotuner,
+    const absl::flat_hash_set<autotuner::Backend>& enabled_backends,
     int top_k_configs, const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
@@ -248,7 +253,9 @@ AutotuneDecision ShouldAssignConfigToInstruction(
     // the BlockLevelEmitterBackend.
     if (backend_config.kind() == kTritonFusionKind) {
       return ShouldAssignConfigToTritonFusion(
-          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs);
+          enable_fusion_autotuner,
+          enabled_backends.contains(autotuner::Backend::BLOCK_LEVEL_EMITTER),
+          top_k_configs);
     }
     // 4. Generic fusions.
     return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
@@ -406,12 +413,11 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
 
 InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
-    const se::GpuComputeCapability& gpu_version) {
+    absl::Span<const autotuner::Backend> enabled_backends) {
   bool do_not_autotune_cublas =
       debug_options.xla_gpu_experimental_disable_binary_libraries();
   bool do_not_autotune_cudnn =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      (do_not_autotune_cublas && !gpu_version.IsRocm());
+      debug_options.xla_gpu_experimental_disable_binary_libraries();
 
   bool enable_fusion_autotuner =
       debug_options.xla_gpu_autotune_level() != 0 &&
@@ -419,22 +425,15 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       !debug_options.xla_gpu_deterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
   int top_k_configs = debug_options.xla_gpu_fusion_autotune_top_k_configs();
-  // An empty list of autotune backends enables all of them.
-  const auto& autotune_backends =
-      debug_options.xla_gpu_experimental_autotune_backends();
-  bool block_level_emitter_enabled =
-      autotune_backends.empty() ||
-      absl::c_any_of(autotune_backends, [](int backend) {
-        return static_cast<autotuner::Backend>(backend) ==
-               autotuner::Backend::BLOCK_LEVEL_EMITTER;
-      });
 
   return [do_not_autotune_cublas, do_not_autotune_cudnn,
-          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs,
-          gpu_version](const HloInstruction& instruction) -> bool {
+          enable_fusion_autotuner,
+          enabled_backends = absl::flat_hash_set<autotuner::Backend>(
+              enabled_backends.begin(), enabled_backends.end()),
+          top_k_configs](const HloInstruction& instruction) -> bool {
     AutotuneDecision decision = ShouldAssignConfigToInstruction(
         do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        block_level_emitter_enabled, top_k_configs, instruction);
+        enabled_backends, top_k_configs, instruction);
     if (!decision) {
       VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
               << decision.Explain();
@@ -443,15 +442,9 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
   };
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-ConfigAssignerPass::GetEnabledBackends(
-    se::StreamExecutor* stream_exec,
-    se::DeviceAddressAllocator* device_allocator,
-    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn, Compiler* compiler,
-    se::PlatformId platform_id, tsl::thread::ThreadPool* thread_pool,
-    MlirContextPool* mlir_context_pool) {
+std::vector<autotuner::Backend> GetEnabledBackendTypes(
+    const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
   std::vector<autotuner::Backend> autotune_backends;
   for (const auto& backend :
        debug_options.xla_gpu_experimental_autotune_backends()) {
@@ -501,6 +494,11 @@ ConfigAssignerPass::GetEnabledBackends(
     disabled_autotune_backends.push_back(autotuner::Backend::TENSOR_IR);
   }
 
+  if (!EnsureTritonSupportsComputeCapability(gpu_version).ok()) {
+    disabled_autotune_backends.push_back(
+        autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
+
   autotune_backends.erase(
       std::remove_if(autotune_backends.begin(), autotune_backends.end(),
                      [&](autotuner::Backend backend) {
@@ -508,13 +506,25 @@ ConfigAssignerPass::GetEnabledBackends(
                                                     backend);
                      }),
       autotune_backends.end());
+  return autotune_backends;
+}
 
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+ConfigAssignerPass::CreateBackends(
+    absl::Span<const autotuner::Backend> backend_types,
+    se::StreamExecutor* stream_exec,
+    se::DeviceAddressAllocator* device_allocator,
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn, Compiler* compiler,
+    se::PlatformId platform_id, tsl::thread::ThreadPool* thread_pool,
+    MlirContextPool* absl_nonnull mlir_context_pool) {
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
   ABSL_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                    registry.FindObject<GetCodegenBackends>(platform_id));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, compiler, target_config,
-      alias_info, mlir_context, shape_size_fn, autotune_backends, thread_pool,
+      alias_info, mlir_context, shape_size_fn, backend_types, thread_pool,
       mlir_context_pool);
 
   return backends;
@@ -522,9 +532,8 @@ ConfigAssignerPass::GetEnabledBackends(
 
 absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
     ConfigAssignerPass::GetBackendsFn get_backends_fn,
-    const DebugOptions& debug_options,
-    const se::GpuComputeCapability& gpu_version,
-    se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
+    const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
+    tsl::thread::ThreadPool* thread_pool,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
@@ -533,8 +542,13 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
   ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                    get_backends_fn());
 
+  std::vector<autotuner::Backend> enabled_backends;
+  enabled_backends.reserve(backends.size());
+  for (const std::unique_ptr<CodegenBackend>& backend : backends) {
+    enabled_backends.push_back(backend->backend());
+  }
   InstructionFilterFn should_assign_config_to =
-      GetShouldAssignConfigToInstructionFn(debug_options, gpu_version);
+      GetShouldAssignConfigToInstructionFn(debug_options, enabled_backends);
 
   bool is_deviceless = stream_executor == nullptr;
   ConfigAssigner::Options assigner_options =

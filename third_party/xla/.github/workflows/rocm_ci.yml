@@ -151,7 +151,9 @@ jobs:
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
-            --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
+            --cxxopt=-std=c++20 \
+            --host_cxxopt=-std=c++20 \
+            --repo_env=SYSROOT_DIST=linux_glibc_2_35 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
