@@ -342,6 +342,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:factory",
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/backends/gpu/autotuner:legacy_cache",
+        "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -371,6 +372,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
     ],
 )
