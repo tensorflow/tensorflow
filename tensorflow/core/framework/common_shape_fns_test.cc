@@ -1512,14 +1512,6 @@ TEST(CommonShapeFnsTest, Pool3DShapeTest) {
   // Test partially known dimensions
   set_op({1, 1, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
   INFER_OK(op, "[1,?,24,24,1]", "[d0_0,?,8,6,d0_4]");
-
-  // Reject channel pooling and batch pooling.
-  set_op({1, 1, 1, 1, 1}, {1, 1, 1, 1, 2}, "VALID");
-  INFER_ERROR("Pooling across the channel dimension is not supported", op,
-              "[1,24,24,24,1]");
-  set_op({1, 1, 1, 1, 1}, {2, 1, 1, 1, 1}, "VALID");
-  INFER_ERROR("Pooling is not supported on the batch dimension", op,
-              "[1,24,24,24,1]");
 }
 
 TEST(CommonShapeFnsTest, AvgPool3DShapeTest) {
@@ -1563,17 +1555,6 @@ TEST(CommonShapeFnsTest, AvgPool3DShapeTest) {
   // Windows that fit are unaffected.
   set_op({1, 2, 2, 2, 1}, {1, 2, 2, 2, 1}, "VALID", "NDHWC");
   INFER_OK(op, "[1,4,4,4,1]", "[d0_0,2,2,2,d0_4]");
-
-  // Reject channel pooling (ksize/strides channel != 1) and batch pooling.
-  set_op({1, 1, 1, 1, 1}, {1, 1, 1, 1, 2}, "VALID", "NDHWC");
-  INFER_ERROR("Pooling across the channel dimension is not supported", op,
-              "[1,3,3,3,2]");
-  set_op({1, 1, 1, 1, 1}, {1, 2, 1, 1, 1}, "VALID", "NCDHW");
-  INFER_ERROR("Pooling across the channel dimension is not supported", op,
-              "[1,2,3,3,3]");
-  set_op({1, 1, 1, 1, 1}, {2, 1, 1, 1, 1}, "VALID", "NDHWC");
-  INFER_ERROR("Pooling is not supported on the batch dimension", op,
-              "[1,3,3,3,2]");
 
   // MaxPool3D keeps rejecting oversized windows (Pool3DShape is unchanged).
   ShapeInferenceTestOp max_op("MaxPool3D");

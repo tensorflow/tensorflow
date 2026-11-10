@@ -132,13 +132,6 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 absl::InvalidArgumentError("Invalid data format"));
-    if (context->device_type() == DEVICE_CPU) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          absl::InvalidArgumentError(absl::StrCat(
-              "Default Pooling3DOp only supports NDHWC ", "on device type ",
-              DeviceTypeString(context->device_type()))));
-    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 absl::InvalidArgumentError("Sliding window ksize field must "
@@ -157,14 +150,21 @@ class Pooling3DOp : public UnaryOp<T> {
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the batch dimension."));
+                    "Pooling is not supported on the batch dimension."));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
                     "Pooling3D only supports pooling across spatial dimensions "
-                    "(depth, height, width). Pooling across the channel dimension "
-                    "is not supported."));
+                    "(depth, height, width). Pooling across the channel "
+                    "dimension is not supported."));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Default Pooling3DOp only supports NDHWC on device type ",
+              DeviceTypeString(context->device_type()))));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -333,14 +333,14 @@ class MaxPooling3dGradOp : public OpKernel {
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the batch dimension."));
+                    "Pooling is not supported on the batch dimension."));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
                     "Pooling3D only supports pooling across spatial dimensions "
-                    "(depth, height, width). Pooling across the channel dimension "
-                    "is not supported."));
+                    "(depth, height, width). Pooling across the channel "
+                    "dimension is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -521,14 +521,14 @@ class AvgPooling3dGradOp : public OpKernel {
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the batch dimension."));
+                    "Pooling is not supported on the batch dimension."));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
                     "Pooling3D only supports pooling across spatial dimensions "
-                    "(depth, height, width). Pooling across the channel dimension "
-                    "is not supported."));
+                    "(depth, height, width). Pooling across the channel "
+                    "dimension is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -727,16 +727,19 @@ class MaxPooling3dGradGradOp : public OpKernel {
                 absl::InvalidArgumentError("Sliding window strides field must "
                                            "specify 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the batch dimension."));
+                    "Pooling is not supported on the batch dimension."));
     const int32_t ksize_c = GetTensorDim(ksize_, data_format_, 'C');
     const int32_t stride_c = GetTensorDim(stride_, data_format_, 'C');
-    OP_REQUIRES(context, ksize_c == 1 && stride_c == 1,
-                absl::UnimplementedError(
-                    "MaxPooling3dGradGrad only supports pooling across spatial dimensions "
-                    "(depth, height, width). Pooling across the channel dimension "
-                    "is not supported."));
+    OP_REQUIRES(
+        context, ksize_c == 1 && stride_c == 1,
+        absl::UnimplementedError(
+            "MaxPooling3dGradGrad only supports pooling across spatial "
+            "dimensions (depth, height, width). Pooling across the channel "
+            "dimension is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -2121,9 +2121,6 @@ absl::Status Pool3DShapeImpl(shape_inference::InferenceContext* c,
 
   int32_t stride_planes, stride_rows, stride_cols;
   int32_t kernel_planes, kernel_rows, kernel_cols;
-  int32_t stride_batch = strides[0];
-  int32_t kernel_batch = kernel_sizes[0];
-  int32_t stride_channel, kernel_channel;
 
   if (s.ok() && data_format == "NCDHW") {
     // Convert input_shape to NDHWC.
@@ -2132,11 +2129,9 @@ absl::Status Pool3DShapeImpl(shape_inference::InferenceContext* c,
     };
     input_shape =
         c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('2'), dim('C')}});
-    stride_channel = strides[1];
     stride_planes = strides[2];
     stride_rows = strides[3];
     stride_cols = strides[4];
-    kernel_channel = kernel_sizes[1];
     kernel_planes = kernel_sizes[2];
     kernel_rows = kernel_sizes[3];
     kernel_cols = kernel_sizes[4];
@@ -2144,21 +2139,9 @@ absl::Status Pool3DShapeImpl(shape_inference::InferenceContext* c,
     stride_planes = strides[1];
     stride_rows = strides[2];
     stride_cols = strides[3];
-    stride_channel = strides[4];
     kernel_planes = kernel_sizes[1];
     kernel_rows = kernel_sizes[2];
     kernel_cols = kernel_sizes[3];
-    kernel_channel = kernel_sizes[4];
-  }
-
-  if (stride_batch != 1 || kernel_batch != 1) {
-    return absl::InvalidArgumentError(
-        "Pooling is not supported on the batch dimension.");
-  }
-  if (stride_channel != 1 || kernel_channel != 1) {
-    return absl::InvalidArgumentError(
-        "Pool3D only supports pooling across spatial dimensions (depth, height, "
-        "width). Pooling across the channel dimension is not supported.");
   }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
