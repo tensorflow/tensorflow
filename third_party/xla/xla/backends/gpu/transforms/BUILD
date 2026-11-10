@@ -1214,6 +1214,33 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "compiled_cudnn_graph_cache",
+    srcs = ["compiled_cudnn_graph_cache.cc"],
+    hdrs = ["compiled_cudnn_graph_cache.h"],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "compiled_cudnn_graph_cache_test",
+    srcs = ["compiled_cudnn_graph_cache_test.cc"],
+    deps = [
+        ":compiled_cudnn_graph_cache",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # Tested via //third_party/tensorflow/compiler/xla/backends/gpu/codegen:cudnn_test
 cc_library(
     name = "cudnn_fusion_compiler",
@@ -1225,6 +1252,7 @@ cc_library(
     ],
     deps = [
         ":block_scaling_rewriter",
+        ":compiled_cudnn_graph_cache",
         ":cudnn_fusion_utils",
         "//xla:comparison_util",
         "//xla:shape_util",
@@ -1282,6 +1310,7 @@ xla_test(
         "no_mac",
     ],
     deps = [
+        ":compiled_cudnn_graph_cache",
         ":cudnn_fusion_compiler",
         "//xla:comparison_util",
         "//xla:xla_data_proto_cc",

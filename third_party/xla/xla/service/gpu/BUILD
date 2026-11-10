@@ -2576,6 +2576,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:algebraic_simplifier",
         "//xla/backends/gpu/transforms:block_scaling_rewriter",
+        "//xla/backends/gpu/transforms:compiled_cudnn_graph_cache",
         "//xla/backends/gpu/transforms:conv_fp8_fallback",
         "//xla/backends/gpu/transforms:conv_kind_assignment",
         "//xla/backends/gpu/transforms:conv_padding_legalization",

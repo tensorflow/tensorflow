@@ -41,6 +41,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_version.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/comparison_util.h"
@@ -1584,12 +1585,7 @@ bool IsNonGemmFusion(const HloFusionInstruction& hlo) {
                                                    HloOpcode::kConvolution);
 }
 
-// Creates a cuDNN graph, queries cuDNN whether it is supported.
-absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
-    se::dnn::DnnSupport* dnn_support,
-    const se::DeviceDescription& gpu_device_info,
-    const HloFusionInstruction& hlo) {
-  ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
+se::EngineOptions GetEngineOptions(const HloFusionInstruction& hlo) {
   PrecisionConfig precision_config = GetPrecisionConfig(hlo);
 
   bool allow_tf32 =
@@ -1601,12 +1597,19 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
   // CUDNN_GENERIC_MEMBOUND_FUSION_TENSOR_IR_ENGINE. GEMM fusions keep the full
   // set of engines (incl. the CUTLASS tensor-core fallbacks).
   const bool restrict_fallback = IsNonGemmFusion(hlo);
-  ABSL_RETURN_IF_ERROR(graph.Prepare(
-      dnn_support, gpu_device_info,
-      se::EngineOptions{RequireDeterminism(hlo.GetModule()->config()),
-                        allow_tf32,
-                        /*require_command_buffer=*/false,
-                        /*force_tensor_ir=*/restrict_fallback}));
+  return se::EngineOptions{RequireDeterminism(hlo.GetModule()->config()),
+                           allow_tf32,
+                           /*require_command_buffer=*/false,
+                           /*force_tensor_ir=*/restrict_fallback};
+}
+
+absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
+    se::dnn::DnnSupport* dnn_support,
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction& hlo) {
+  ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph, HloFusionToCuDnnGraph(hlo));
+  ABSL_RETURN_IF_ERROR(
+      graph.Prepare(dnn_support, gpu_device_info, GetEngineOptions(hlo)));
   return graph;
 }
 
@@ -1654,10 +1657,13 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
   explicit CuDnnFusionVisitor(se::StreamExecutor* stream_exec,
                               const se::DeviceDescription& gpu_device_info,
-                              BinaryMap& compilation_results)
+                              BinaryMap& compilation_results,
+                              CompiledCudnnGraphCache* absl_nullable cache)
       : stream_exec_(stream_exec),
         gpu_device_info_(gpu_device_info),
-        compilation_results_(compilation_results) {}
+        compilation_results_(compilation_results),
+        cache_(cache),
+        device_fingerprint_(gpu_device_info) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
     ABSL_ASSIGN_OR_RETURN(auto gpu_config, hlo->backend_config<GpuBackendConfig>());
@@ -1736,6 +1742,59 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
                          serialized_graph.size());
     };
 
+    auto get_compiled_graph = [&](absl::string_view fingerprint)
+        -> absl::StatusOr<CompiledCudnnGraph> {
+      HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(hlo);
+      const DebugOptions::CudnnDevicelessCompilationMode deviceless_mode =
+          hlo->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_cudnn_deviceless_compilation_mode();
+      const bool deviceless =
+          deviceless_mode ==
+              DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS ||
+          (deviceless_mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO &&
+           stream_exec_ == nullptr);
+      const se::EngineOptions options = GetEngineOptions(*fusion);
+      const CuDnnFusionConfig& cudnn_config =
+          fusion_backend_config.cudnn_fusion_config();
+      CompiledCudnnGraphCacheKey key{
+          device_fingerprint_,
+          deviceless,
+          options.require_determinism,
+          options.allow_tf32,
+          options.force_tensor_ir,
+          cudnn_config.has_plan_id() ? std::optional(cudnn_config.plan_id())
+                                     : std::nullopt,
+          ComputationFingerprint{std::string(fingerprint)}};
+      std::optional<CompiledCudnnGraph> cached;
+      if (cache_ != nullptr) {
+        cached = cache_->Lookup(key);
+      }
+      if (cached.has_value()) {
+        if (!cudnn_config.has_plan_id()) {
+          gpu_config.mutable_fusion_backend_config()
+              ->mutable_cudnn_fusion_config()
+              ->set_plan_id(cached->plan_id);
+          ABSL_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
+        }
+        if (!hlo->GetModule()->config().debug_options().xla_dump_to().empty()) {
+          // Converting the fusion dumps its cuDNN graph.
+          ABSL_RETURN_IF_ERROR(HloFusionToCuDnnGraph(*fusion).status());
+        }
+        return *std::move(cached);
+      }
+      ABSL_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+      ABSL_ASSIGN_OR_RETURN(std::string serialized, serialize_graph(graph));
+      CompiledCudnnGraph compiled{
+          fusion_backend_config.cudnn_fusion_config().plan_id(),
+          graph.Graph().get_workspace_size(), std::move(serialized)};
+      if (cache_ != nullptr) {
+        cache_->Insert(std::move(key), compiled);
+      }
+      return compiled;
+    };
+
     if (IsWorkspaceAllocationRoot(*hlo->fused_expression_root())) {
       // The graph already has a workspace.
       const std::string fingerprint = emitters::GetComputationFingerprint(
@@ -1764,14 +1823,14 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
-      ABSL_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
-      const int64_t workspace_size = graph.Graph().get_workspace_size();
-      workspace_sizes_.insert(workspace_size_it,
-                              {fingerprint_without_workspace, workspace_size});
-      ABSL_RETURN_IF_ERROR(add_workspace(workspace_size));
-      ABSL_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
+      ABSL_ASSIGN_OR_RETURN(CompiledCudnnGraph compiled,
+                       get_compiled_graph(fingerprint_without_workspace));
+      workspace_sizes_.insert(workspace_size_it, {fingerprint_without_workspace,
+                                                  compiled.workspace_size});
+      ABSL_RETURN_IF_ERROR(add_workspace(compiled.workspace_size));
       compilation_results_[emitters::GetComputationFingerprint(
-          hlo->fused_instructions_computation(), {})] = serialized;
+          hlo->fused_instructions_computation(), {})] =
+          std::move(compiled.serialized_graph);
     } else {
       VLOG(4) << "Cache hit.";
       ABSL_RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
@@ -1786,6 +1845,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
   const se::DeviceDescription& gpu_device_info_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
   BinaryMap& compilation_results_;
+  CompiledCudnnGraphCache* absl_nullable cache_;
+  DeviceFingerprint device_fingerprint_;
   absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
 };
 
@@ -1796,7 +1857,7 @@ absl::StatusOr<bool> CuDnnFusionCompiler::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");
   return CuDnnFusionVisitor(stream_exec_, gpu_device_info_,
-                            compilation_results_)
+                            compilation_results_, cache_)
       .RunOnModule(module, execution_threads);
 }
 
