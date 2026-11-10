@@ -38,8 +38,11 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+// Bit 1 (TraceMeFilter::kTraceHostEnqueueCallback) is excluded from the default
+// mask so that setting host_traceme_filter_mask = (1ULL << 1) records
+// exclusively host enqueue and completion callback TraceMe events.
 constexpr uint64_t kTraceMeDefaultFilterMask =
-    std::numeric_limits<uint64_t>::max();
+    std::numeric_limits<uint64_t>::max() & ~(1ULL << 1);
 
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
