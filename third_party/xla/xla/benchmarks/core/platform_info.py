@@ -594,7 +594,7 @@ _PLATFORM_INFOS = (
             jnp.float32: 235,
         }),
         default_p_state=1,
-        default_vmem_limit_kib=32 * 1024,
+        default_vmem_limit_kib=64 * 1024,
         num_alus=3,
         num_xlus=3,
         xlu_cadence_cycles_by_op=immutabledict({
