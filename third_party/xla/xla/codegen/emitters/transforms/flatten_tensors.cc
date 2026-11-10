@@ -322,7 +322,7 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
 
   LogicalResult matchAndRewrite(mv::TransferReadOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getVector();
+    auto vector = op.getResult();
     auto vector_type = vector.getType();
     if (vector_type.getRank() != 1) {
       return rewriter.notifyMatchFailure(op, "the vector should be 1D");
@@ -470,7 +470,7 @@ struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
 
   LogicalResult matchAndRewrite(mv::FromElementsOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getDest();
+    auto vector = op.getResult();
     auto vector_type = vector.getType();
     if (vector_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op, "the vector is already flat");
