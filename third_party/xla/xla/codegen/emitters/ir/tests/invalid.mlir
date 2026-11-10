@@ -185,3 +185,11 @@ func.func @copy_slice_negative_count(
       : tensor<4xf32> into tensor<8xf32>
   func.return %out : tensor<8xf32>
 }
+
+// -----
+
+func.func @linear_extract_rank0(%src: tensor<f32>, %idx: index) -> f32 {
+  // expected-error @+1 {{tensor must have rank at least 1}}
+  %out = xla.linear_extract %src[%idx] : tensor<f32>
+  func.return %out : f32
+}

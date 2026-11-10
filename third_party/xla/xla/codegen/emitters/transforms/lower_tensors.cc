@@ -1586,15 +1586,15 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
     // The offset of the dim size from the start of the buffer. The dynamic dim
     // sizes are stored after the tensor data as a tail-allocated metadata of
     // s32 type.
+    mlir::LLVMTypeConverter converter(getContext());
+    Type llvm_element_type = converter.convertType(element_type);
+    int64_t element_size_bytes =
+        static_cast<int64_t>(mlir::DataLayout::closest(op)
+                                 .getTypeSize(llvm_element_type)
+                                 .getFixedValue());
     int64_t dynamic_size_offset_in_bytes =
-        num_elements * element_type.getIntOrFloatBitWidth() / 8 +
-        op.getDim() * b.getI32Type().getWidth() / 8;
-
-    int64_t alignment = dynamic_size_offset_in_bytes % 4;
-    // TODO(b/463569416): Support unaligned loads.
-    if (alignment != 0) {
-      return op->emitOpError("dynamic size offset is not 4-byte aligned");
-    }
+        num_elements * element_size_bytes +
+        static_cast<int64_t>(op.getDim()) * sizeof(int32_t);
 
     auto ptr_type = ml::LLVMPointerType::get(b.getContext());
     Value tensor_ptr =
@@ -1608,7 +1608,9 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
     Value metadata_addr =
         ml::IntToPtrOp::create(b, ptr_type, metadata_addr_int);
 
-    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr);
+    int64_t alignment = dynamic_size_offset_in_bytes % 4 == 0 ? 4 : 1;
+    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr,
+                                            alignment);
 
     return success();
   }

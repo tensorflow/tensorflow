@@ -225,3 +225,12 @@ func.func @copy_slice(%src: tensor<4x3xf32>, %dst: tensor<4x5xf32>,
 }
 // CHECK-LABEL: @copy_slice
 // CHECK: xla.copy_slice %{{.*}}[%{{.*}}, %{{.*}}] into %{{.*}}[%{{.*}}, %{{.*}}] count(3) : tensor<4x3xf32> into tensor<4x5xf32>
+
+// -----
+
+func.func @linear_extract(%src: tensor<4x3xf32>, %idx: index) -> f32 {
+  %out = xla.linear_extract %src[%idx] : tensor<4x3xf32>
+  func.return %out : f32
+}
+// CHECK-LABEL: @linear_extract
+// CHECK: xla.linear_extract %{{.*}}[%{{.*}}] : tensor<4x3xf32>

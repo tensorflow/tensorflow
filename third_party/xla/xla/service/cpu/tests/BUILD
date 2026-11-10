@@ -312,6 +312,24 @@ xla_test(
 )
 
 xla_test(
+    name = "cpu_dyn_shape_test",
+    srcs = ["cpu_dyn_shape_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        ":cpu_pjrt_codegen_test",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "cpu_sort_test",
     srcs = ["cpu_sort_test.cc"],
     backends = ["cpu"],

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/pad_to_static_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
@@ -1183,11 +1184,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     const HloInstruction* instruction) {
   auto custom_call = Cast<HloCustomCallInstruction>(instruction);
 
-  // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
   if (custom_call_target == "PadToStatic") {
-    return Unimplemented("Custom call target %s is not implemented.",
-                         custom_call_target);
+    return EmitPadToStaticThunk(instruction);
   }
   if (custom_call_target == "TopK") {
     return EmitTopKThunk(custom_call);
@@ -1242,6 +1241,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return ThunkSequence::Empty();
   }
   return custom_call_thunk.status();
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStaticThunk(
+    const HloInstruction* instruction) {
+  PadToStaticKernelEmitter emitter(
+      *mlir_context_, instruction, &buffer_assignment_,
+      hlo_module_config_.debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points());
+  ABSL_ASSIGN_OR_RETURN(KernelDefinition<MlirKernelSource> mlir_kernel,
+                   emitter.EmitKernelDefinition());
+  KernelSpec kernel_spec = mlir_kernel.spec();
+  ABSL_ASSIGN_OR_RETURN(
+      LlvmKernelSource llvm_source,
+      fusion_compiler_.Compile(std::move(mlir_kernel).TakeSource()));
+  AddKernel(kernel_spec.name(), std::move(llvm_source).thread_safe_module());
+  return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(

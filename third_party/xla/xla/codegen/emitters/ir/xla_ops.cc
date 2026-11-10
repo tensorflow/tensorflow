@@ -1242,6 +1242,13 @@ LogicalResult CopySliceOp::verify() {
   return success();
 }
 
+LogicalResult LinearExtractOp::verify() {
+  if (getTensor().getType().getRank() < 1) {
+    return emitOpError("tensor must have rank at least 1");
+  }
+  return success();
+}
+
 }  // namespace xla
 
 #define GET_OP_CLASSES

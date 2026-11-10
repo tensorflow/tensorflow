@@ -191,6 +191,23 @@ def XLA_CopySliceOp : XLA_Op<"copy_slice",
   let hasVerifier = 1;
 }
 
+def XLA_LinearExtractOp : XLA_Op<"linear_extract",
+    [Pure, TypesMatchWith<"result type matches tensor element type",
+                          "tensor", "result",
+                          "mlir::cast<mlir::ShapedType>($_self).getElementType()">]> {
+  let summary = "Extracts an element at a 1D physical element index.";
+  let description = [{
+    Extracts the element at 1D physical memory offset `$index` from `$tensor`
+    without applying its static layout strides.
+  }];
+  let arguments = (ins AnyRankedTensor:$tensor, Index:$index);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = [{
+    $tensor `[` $index `]` attr-dict `:` type($tensor)
+  }];
+  let hasVerifier = 1;
+}
+
 def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{

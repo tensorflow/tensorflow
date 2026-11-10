@@ -465,3 +465,18 @@ func.func @copy_slice(
 // CHECK-DAG:     %[[DST_IDX:.*]] = xla.apply_indexing #[[$DST_MAP]](%[[I1]])
 // CHECK:         %[[RES:.*]] = xla.copy_slice %[[SRC]][%[[SRC_IDX]]] into %[[DST]][%[[DST_IDX]]] count(6) : tensor<24xf32> into tensor<40xf32>
 // CHECK:         return %[[RES]] : tensor<40xf32>
+
+// -----
+
+func.func @linear_extract(
+    %src: tensor<2x4x3xf32, dense<[0, 2, 1]> : tensor<3xi64>>,
+    %idx: index) -> f32 {
+  %out = xla.linear_extract %src[%idx]
+      : tensor<2x4x3xf32, dense<[0, 2, 1]> : tensor<3xi64>>
+  func.return %out : f32
+}
+// CHECK-LABEL: func.func @linear_extract(
+// CHECK-SAME:      %[[SRC:.*]]: tensor<24xf32>, %[[IDX:.*]]: index) -> f32 {
+// CHECK-NOT:     builtin.unrealized_conversion_cast
+// CHECK:         %[[RES:.*]] = tensor.extract %[[SRC]][%[[IDX]]] : tensor<24xf32>
+// CHECK:         return %[[RES]] : f32

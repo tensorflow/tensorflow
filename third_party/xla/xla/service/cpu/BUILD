@@ -589,6 +589,7 @@ cc_library(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen:thunk_sequence_kernel_emitter",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
+        "//xla/backends/cpu/codegen/emitters:pad_to_static_kernel_emitter",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
         "//xla/backends/cpu/runtime:all_to_all_thunk",

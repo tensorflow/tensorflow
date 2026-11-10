@@ -813,6 +813,17 @@ struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
   }
 };
 
+struct RewriteLinearExtractOp : OpRewritePattern<LinearExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LinearExtractOp op,
+                                PatternRewriter& rewriter) const override {
+    Value flat_tensor = Flatten(op.getTensor(), rewriter);
+    rewriter.replaceOpWithNewOp<ExtractOp>(op, flat_tensor, op.getIndex());
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -832,6 +843,7 @@ class FlattenTensorsPass
         RewriteGetDynamicDimSizeOp,
         RewriteIf,
         RewriteIndexSwitch,
+        RewriteLinearExtractOp,
         RewritePureCall,
         RewriteSyncThreads,
         RewriteTensorExtract,
