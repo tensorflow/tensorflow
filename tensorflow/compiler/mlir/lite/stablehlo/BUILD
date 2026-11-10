@@ -366,6 +366,31 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_einsum_to_dot_general",
+    srcs = [
+        "transforms/legalize_einsum_to_dot_general.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "unfold_splat_constant_pass",
     srcs = [
         "transforms/unfold_splat_constant_pass.cc",
@@ -998,6 +1023,7 @@ tf_cc_binary(
     deps = [
         ":compose_uniform_quantized_type_pass",
         ":drop_shape_assertions",
+        ":legalize_einsum_to_dot_general",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",

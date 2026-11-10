@@ -203,6 +203,22 @@ def StablehloFuseConvolutionPass : Pass<"stablehlo-fuse-convolution", "mlir::fun
   let summary = "Fuses stablehlo.convolution and binary element-wise ops.";
 }
 
+def LegalizeStablehloEinsumToDotGeneralPass
+    : Pass<"stablehlo-legalize-einsum-to-dot-general", "mlir::func::FuncOp"> {
+  let summary = "Legalizes stablehlo.einsum ops to stablehlo.dot_general ops.";
+  let constructor = "mlir::odml::CreateLegalizeStablehloEinsumToDotGeneralPass()";
+  let description = [{
+    StableHLO port of MHLO's `-mhlo-legalize-einsum-to-dot-general` pass.
+    Rewrites binary `stablehlo.einsum` ops into a `stablehlo.dot_general`
+    (followed by a `stablehlo.transpose` if the einsum result order differs
+    from the natural dot_general result order). Rank-reducing einsums (e.g.
+    diagonals) and einsums using ellipsis are left untouched.
+    `stablehlo.unary_einsum` is not handled; run
+    `-stablehlo-legalize-deprecated-ops` first to upgrade it to a binary einsum.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
 def DropShapeAssertionsPass : Pass<"drop-shape-assertions", "ModuleOp"> {
   let summary = "Drops vhlo/stablehlo custom calls targeting 'shape_assertion'.";
   let constructor = "mlir::odml::CreateDropShapeAssertionsPass()";
