@@ -24,9 +24,11 @@ namespace tflite {
 
 namespace reference_ops {
 
+// Supports float and half (FP16) filter weights widened to float on load.
+template <typename WeightT = float>
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* input_data, const RuntimeShape& filter_shape,
-                 const float* filter_data, const RuntimeShape& bias_shape,
+                 const WeightT* filter_data, const RuntimeShape& bias_shape,
                  const float* bias_data, const RuntimeShape& output_shape,
                  float* output_data, const RuntimeShape& im2col_shape,
                  float* im2col_data) {
@@ -89,8 +91,9 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                 float input_value =
                     input_data[Offset(input_shape, batch, in_y, in_x,
                                       in_channel + group * filter_input_depth)];
-                float filter_value = filter_data[Offset(
-                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                float filter_value = static_cast<float>(
+                    filter_data[Offset(filter_shape, out_channel, filter_y,
+                                       filter_x, in_channel)]);
                 total += (input_value * filter_value);
               }
             }

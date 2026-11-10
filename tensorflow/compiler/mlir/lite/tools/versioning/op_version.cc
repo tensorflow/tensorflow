@@ -56,6 +56,11 @@ bool IsFloat8Type(TfLiteType type) {
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D: {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteFloat16 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
+        return 9;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
