@@ -250,9 +250,8 @@ class InitializableLookupTableBase(LookupInterface):
     The `default_value` is used for keys not present in the table.
 
     Args:
-      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
-        dense `Tensor`; Python and NumPy values are converted to a dense
-        `Tensor` of the table's key dtype.
+      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: A name for the operation (optional).
 
     Returns:
@@ -263,20 +262,19 @@ class InitializableLookupTableBase(LookupInterface):
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
-    keys = _convert_lookup_keys(keys, self._key_dtype)
-    key_tensor = keys
-    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
-    # dispatching.
-    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
-      key_tensor = keys.values
+    with ops.name_scope(name, "%s_Lookup" % self.name,
+                        (self.resource_handle, self._default_value)):
+      keys = _convert_lookup_keys(keys, self._key_dtype)
+      key_tensor = keys
+      # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+      # dispatching.
+      if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
+        key_tensor = keys.values
 
-    if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
-                      f"received: {keys.dtype}")
+      if keys.dtype.base_dtype != self._key_dtype:
+        raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                        f"received: {keys.dtype}")
 
-    with ops.name_scope(
-        name, "%s_Lookup" % self.name,
-        (self.resource_handle, key_tensor, self._default_value)):
       values = gen_lookup_ops.lookup_table_find_v2(self.resource_handle,
                                                    key_tensor,
                                                    self._default_value)
@@ -1145,9 +1143,8 @@ class IdTableWithHashBuckets(LookupInterface):
     It assigns out-of-vocabulary keys to buckets based in their hashes.
 
     Args:
-      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
-        dense `Tensor`; Python and NumPy values are converted to a dense
-        `Tensor` of the table's key dtype.
+      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: Optional name for the op.
 
     Returns:
@@ -1374,9 +1371,8 @@ class StaticVocabularyTable(LookupInterface):
     It assigns out-of-vocabulary keys to buckets based in their hashes.
 
     Args:
-      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
-        dense `Tensor`; Python and NumPy values are converted to a dense
-        `Tensor` of the table's key dtype.
+      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+        Python and NumPy values are converted to a dense `Tensor`.
       name: Optional name for the op.
 
     Returns:
@@ -1386,20 +1382,20 @@ class StaticVocabularyTable(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
-    keys = _convert_lookup_keys(keys, self._key_dtype)
-    if keys.dtype.base_dtype != self._key_dtype:
-      raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
-                      f"received: {keys.dtype}")
-    values = keys
-    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
-    # dispatching.
-    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
-      values = keys.values
-    if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.cast(values, dtypes.int64)
-
     # TODO(yleon): Consider moving this functionality to its own kernel.
     with ops.name_scope(name, "%s_Lookup" % self.name):
+      keys = _convert_lookup_keys(keys, self._key_dtype)
+      if keys.dtype.base_dtype != self._key_dtype:
+        raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
+                        f"received: {keys.dtype}")
+      values = keys
+      # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+      # dispatching.
+      if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
+        values = keys.values
+      if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
+        values = math_ops.cast(values, dtypes.int64)
+
       buckets = string_ops.string_to_hash_bucket_fast(
           _as_string(values),
           num_buckets=self._num_oov_buckets,
