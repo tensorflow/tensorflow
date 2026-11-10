@@ -313,13 +313,6 @@ class MaxPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 absl::InvalidArgumentError("Invalid data format"));
-    if (context->device_type() == DEVICE_CPU) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          absl::InvalidArgumentError(absl::StrCat(
-              "Default MaxPooling3dGradOp only supports NDHWC ",
-              "on device type ", DeviceTypeString(context->device_type()))));
-    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 absl::InvalidArgumentError("Sliding window ksize field must "
@@ -341,6 +334,13 @@ class MaxPooling3dGradOp : public OpKernel {
                     "Pooling3D only supports pooling across spatial dimensions "
                     "(depth, height, width). Pooling across the channel "
                     "dimension is not supported."));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Default MaxPooling3dGradOp only supports NDHWC ",
+              "on device type ", DeviceTypeString(context->device_type()))));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -496,13 +496,6 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 absl::InvalidArgumentError("Invalid data format"));
-    if (context->device_type() == DEVICE_CPU) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          absl::InvalidArgumentError(absl::StrCat(
-              "Default AvgPooling3dGradOp only supports NDHWC ",
-              "on device type ", DeviceTypeString(context->device_type()))));
-    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 absl::InvalidArgumentError("Sliding window ksize field must "
@@ -529,6 +522,13 @@ class AvgPooling3dGradOp : public OpKernel {
                     "Pooling3D only supports pooling across spatial dimensions "
                     "(depth, height, width). Pooling across the channel "
                     "dimension is not supported."));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Default AvgPooling3dGradOp only supports NDHWC ",
+              "on device type ", DeviceTypeString(context->device_type()))));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
