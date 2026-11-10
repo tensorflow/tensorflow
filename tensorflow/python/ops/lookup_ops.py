@@ -128,6 +128,24 @@ def check_table_dtypes(table, key_dtype, value_dtype):
                     f"{table.value_dtype} but got {value_dtype}.")
 
 
+def _convert_lookup_keys(keys, key_dtype):
+  """Converts Python and NumPy `keys` to a tensor of `key_dtype`.
+
+  Tensors, variables, `SparseTensor`s and `RaggedTensor`s are returned
+  unchanged so that their dtype is still checked against the table.
+
+  Args:
+    keys: The `keys` argument passed to `lookup`.
+    key_dtype: The key `DType` of the table.
+
+  Returns:
+    `keys`, or a dense `Tensor` made from it.
+  """
+  if isinstance(getattr(keys, "dtype", None), dtypes.DType):
+    return keys
+  return ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+
+
 class LookupInterface(resource.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
@@ -232,7 +250,9 @@ class InitializableLookupTableBase(LookupInterface):
     The `default_value` is used for keys not present in the table.
 
     Args:
-      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
+        dense `Tensor`; Python and NumPy values are converted to a dense
+        `Tensor` of the table's key dtype.
       name: A name for the operation (optional).
 
     Returns:
@@ -243,6 +263,7 @@ class InitializableLookupTableBase(LookupInterface):
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
+    keys = _convert_lookup_keys(keys, self._key_dtype)
     key_tensor = keys
     # TODO(b/296302236): Remove RaggedTensor check by adding ragged
     # dispatching.
@@ -1124,7 +1145,9 @@ class IdTableWithHashBuckets(LookupInterface):
     It assigns out-of-vocabulary keys to buckets based in their hashes.
 
     Args:
-      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
+        dense `Tensor`; Python and NumPy values are converted to a dense
+        `Tensor` of the table's key dtype.
       name: Optional name for the op.
 
     Returns:
@@ -1134,6 +1157,7 @@ class IdTableWithHashBuckets(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
+    keys = _convert_lookup_keys(keys, self._key_dtype)
     if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
@@ -1350,7 +1374,9 @@ class StaticVocabularyTable(LookupInterface):
     It assigns out-of-vocabulary keys to buckets based in their hashes.
 
     Args:
-      keys: Keys to look up. May be either a `SparseTensor` or dense `Tensor`.
+      keys: Keys to look up. May be a `SparseTensor`, a `RaggedTensor` or a
+        dense `Tensor`; Python and NumPy values are converted to a dense
+        `Tensor` of the table's key dtype.
       name: Optional name for the op.
 
     Returns:
@@ -1360,6 +1386,7 @@ class StaticVocabularyTable(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
+    keys = _convert_lookup_keys(keys, self._key_dtype)
     if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
