@@ -1119,11 +1119,18 @@ def squeeze(a, axis=None):
   if axis is not None:
     maybe_rank = a.shape.rank
     if maybe_rank is not None:
-      axes = (axis,) if isinstance(axis, (int, np.integer)) else axis
+      axes = (
+          (axis,)
+          if isinstance(axis, (int, np.integer))
+          or (isinstance(axis, np.ndarray) and axis.ndim == 0)
+          else axis
+      )
       if isinstance(axes, (tuple, list, range, np.ndarray)):
         seen_axes = set()
         for ax in axes:
-          if not isinstance(ax, (int, np.integer)):
+          if isinstance(ax, np.ndarray) and ax.ndim == 0:
+            ax = int(ax)
+          elif not isinstance(ax, (int, np.integer)):
             continue
           ax = int(ax)
           if not (-maybe_rank <= ax < maybe_rank):

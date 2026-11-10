@@ -1480,6 +1480,16 @@ class ArrayMethodsTest(test.TestCase):
         ValueError, r'axis 0 is out of bounds for array of dimension 0'
     ):
       np_array_ops.squeeze(np.array(5), axis=0)
+    # 0-D array as axis
+    self.match(
+        np_array_ops.squeeze(a, axis=np.array(1)),
+        np.squeeze(a, axis=np.array(1)),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r'cannot select an axis to squeeze out which has size not equal to one',
+    ):
+      np_array_ops.squeeze(a, axis=np.array(0))
 
   def testTranspose(self):
 
