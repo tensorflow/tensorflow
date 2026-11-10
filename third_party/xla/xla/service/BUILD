@@ -3018,10 +3018,12 @@ xla_cc_test(
     srcs = ["async_compute_on_rewriter_test.cc"],
     deps = [
         ":async_compute_on_rewriter",
+        ":call_inliner",
         ":hlo_verifier",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",

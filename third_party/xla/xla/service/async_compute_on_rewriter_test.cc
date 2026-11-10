@@ -32,12 +32,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/hlo_verifier.h"
 
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 
 class AsyncComputeOnRewriterTest : public HloHardwareIndependentTestBase {};
@@ -487,6 +490,90 @@ TEST_F(AsyncComputeOnRewriterTest,
     EXPECT_TRUE(root->frontend_attributes().map().empty());
     EXPECT_EQ(root->metadata().ByteSizeLong(), 0);
   }
+}
+
+TEST_F(AsyncComputeOnRewriterTest, IntermediaryWrappedInCall) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule IntermediaryWrappedInCall
+    %offload_comp (param: f32[8]) -> f32[8] {
+      %param = f32[8] parameter(0)
+      ROOT %ag = f32[8] all-gather(%param), replica_groups={{0}}, dimensions={0}
+    }
+    %wrapper_comp (p: f32[8]) -> f32[8] {
+      %p = f32[8] parameter(0)
+      ROOT %barrier = f32[8] opt-barrier(%p)
+    }
+    // CHECK: %async_computation (param_0: f32[8]) -> f32[8] {
+    // CHECK-NEXT: %param_0 = f32[8]{0} parameter(0)
+    // CHECK-NEXT: ROOT %call.1 = f32[8]{0} call(%param_0), to_apply=%offload_comp
+    // CHECK-NEXT: }
+    // CHECK-LABEL: ENTRY %main (x: f32[8]) -> f32[8] {
+    // CHECK-NEXT: %x = f32[8]{0} parameter(0)
+    // CHECK-NEXT: %call-start = ((f32[8]{0}), f32[8]{0}) async-start(%x), calls=%async_computation
+    // CHECK-NEXT: %barrier.1 = ((f32[8]{0}), f32[8]{0}) opt-barrier(%call-start)
+    // CHECK-NEXT: ROOT %call-done = f32[8]{0} async-done(%barrier.1)
+    ENTRY %main (x: f32[8]) -> f32[8] {
+      %x = f32[8] parameter(0)
+      %start = f32[8] custom-call(%x), custom_call_target="compute-on-start", called_computations={%offload_comp}
+      %wrapped = f32[8] call(%start), to_apply=%wrapper_comp
+      ROOT %done = f32[8] custom-call(%wrapped), custom_call_target="compute-on-done"
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(false));
+
+  EXPECT_THAT(CallInliner().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AsyncComputeOnRewriterTest,
+       IntermediaryWrappedInCallReturningTwoValues) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule IntermediaryWrappedInCallReturningTwoValues
+    %offload_comp (param: f32[8]) -> f32[8] {
+      %param = f32[8] parameter(0)
+      ROOT %ag = f32[8] all-gather(%param), replica_groups={{0}}, dimensions={0}
+    }
+    %wrapper_comp (p: f32[8]) -> (f32[8], f32[8]) {
+      %p = f32[8] parameter(0)
+      %barrier = f32[8] opt-barrier(%p)
+      %neg = f32[8] negate(%p)
+      ROOT %tup = (f32[8], f32[8]) tuple(%barrier, %neg)
+    }
+    // CHECK: %async_computation (param_0: f32[8]) -> f32[8] {
+    // CHECK-NEXT: %param_0 = f32[8]{0} parameter(0)
+    // CHECK-NEXT: ROOT %call.1 = f32[8]{0} call(%param_0), to_apply=%offload_comp
+    // CHECK-NEXT: }
+    // CHECK-LABEL: ENTRY %main (x: f32[8]) -> (f32[8], f32[8]) {
+    // CHECK-NEXT: %x = f32[8]{0} parameter(0)
+    // CHECK-NEXT: %call-start = ((f32[8]{0}), f32[8]{0}) async-start(%x), calls=%async_computation
+    // CHECK-NEXT: %barrier.1 = ((f32[8]{0}), f32[8]{0}) opt-barrier(%call-start)
+    // CHECK-NEXT: %start = f32[8]{0} custom-call(%x), custom_call_target="compute-on-start", called_computations={%offload_comp}
+    // CHECK-NEXT: %neg.1 = f32[8]{0} negate(%start)
+    // CHECK-NEXT: %tup.1 = (((f32[8]{0}), f32[8]{0}), f32[8]{0}) tuple(%barrier.1, %neg.1)
+    // CHECK-NEXT: %call-done = f32[8]{0} async-done(%tup.1#0)
+    // CHECK-NEXT: %abs = f32[8]{0} abs(%tup.1#1)
+    // CHECK-NEXT: ROOT %res = (f32[8]{0}, f32[8]{0}) tuple(%call-done, %abs)
+    ENTRY %main (x: f32[8]) -> (f32[8], f32[8]) {
+      %x = f32[8] parameter(0)
+      %start = f32[8] custom-call(%x), custom_call_target="compute-on-start", called_computations={%offload_comp}
+      %wrapped = (f32[8], f32[8]) call(%start), to_apply=%wrapper_comp
+      %done = f32[8] custom-call(%wrapped#0), custom_call_target="compute-on-done"
+      %abs = f32[8] abs(%wrapped#1)
+      ROOT %res = (f32[8], f32[8]) tuple(%done, %abs)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(false));
+
+  EXPECT_THAT(CallInliner().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace
