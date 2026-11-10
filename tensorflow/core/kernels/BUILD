@@ -4373,6 +4373,8 @@ tf_cuda_cc_test(
 # conv_ops_gpu.h has be separated into its own library.
 tf_kernel_library(
     name = "conv_ops",
+    # Eigen's CPU convolution allocator can throw std::bad_alloc.
+    allow_exceptions = True,
     srcs = [
         "conv_grad_filter_ops.cc",
         "conv_grad_filter_ops_3d.cc",

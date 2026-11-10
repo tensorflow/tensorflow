@@ -613,7 +613,9 @@ struct LaunchConv2DOp<CPUDevice, T> {
       return;
     }
 
+#if defined(__cpp_exceptions)
     try {
+#endif
       if (in_depth != patch_depth) {
         LaunchGrouped<T>()(ctx, input, filter, row_stride, col_stride,
                            row_dilation, col_dilation, padding,
@@ -623,9 +625,11 @@ struct LaunchConv2DOp<CPUDevice, T> {
             ctx, input, filter, row_stride, col_stride, row_dilation,
             col_dilation, padding, explicit_paddings, output, data_format);
       }
+#if defined(__cpp_exceptions)
     } catch (const std::bad_alloc&) {
       ctx->SetStatus(absl::ResourceExhaustedError(
           "Conv2D failed to allocate temporary memory on CPU"));
+#endif
     }
   }
 };
