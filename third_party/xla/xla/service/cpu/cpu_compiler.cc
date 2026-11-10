@@ -212,7 +212,7 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -503,8 +503,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<ShardingPropagation>(
           /*is_spmd=*/true, /*propagate_metadata=*/false);
     }
-    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, module->config().replica_count());
+    spmd::SpmdPartitionerOptions spmd_options;
+    spmd_options.threshold_for_windowed_einsum_mib = 100000;
+    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
+        num_partitions, module->config().replica_count(), spmd_options);
     spmd_pipeline.AddPass<ControlDepRewriter>();
     spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {

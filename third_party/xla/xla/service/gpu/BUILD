@@ -3115,7 +3115,7 @@ cc_library(
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",
         "//xla/service/spmd:collective_permute_motion",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:device_description",

@@ -49,12 +49,14 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
 #include "xla/shape.h"
@@ -21930,6 +21932,66 @@ ENTRY entry {
               AllOf(op::Copy(op::AllGather(op::Copy(
                         AllOf(op::Parameter(0), op::Shape("f32[4,2]"))))),
                     op::Shape("f32[4,4]")));
+}
+
+TEST_P(SpmdPartitioningTest, RngExpandedReplicatedConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[50,100] parameter(0), sharding={replicated}
+  %mu = f32[] constant(0)
+  %sigma = f32[] constant(1)
+  %rng = f32[50,100] rng(f32[] %mu, f32[] %sigma), distribution=rng_uniform
+  ROOT %add = f32[50,100] add(%rng, %p0), sharding={replicated}
+})";
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
+  config.set_use_spmd_partitioning(true);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  HloPassPipeline pass("partitioning");
+  pass.AddPass<RngExpander>();
+  pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+  pass.AddPass<SpmdPartitioner>(/*num_partitions=*/2, /*num_replicas=*/1,
+                                SpmdPartitionerOptions{});
+  pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false);
+  ASSERT_OK(pass.Run(module.get()).status());
+  for (const HloComputation* computation : module->computations()) {
+    EXPECT_EQ(NumOfInstructions(computation, HloOpcode::kAllReduce), 0);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, RngExpandedPartitionedConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[50,100] parameter(0), sharding={replicated}
+  %mu = f32[] constant(0)
+  %sigma = f32[] constant(1)
+  %rng = f32[50,100] rng(f32[] %mu, f32[] %sigma), distribution=rng_uniform
+  ROOT %add = f32[50,100] add(%rng, %p0), sharding={devices=[2,1]0,1}
+})";
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
+  config.set_use_spmd_partitioning(true);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  HloPassPipeline pass("partitioning");
+  pass.AddPass<RngExpander>();
+  pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+  pass.AddPass<SpmdPartitioner>(/*num_partitions=*/2, /*num_replicas=*/1,
+                                SpmdPartitionerOptions{});
+  pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false);
+  ASSERT_OK(pass.Run(module.get()).status());
+  for (const HloComputation* computation : module->computations()) {
+    EXPECT_EQ(NumOfInstructions(computation, HloOpcode::kAllReduce), 0);
+  }
 }
 
 TEST_P(SpmdPartitioningTest, RngGetAndUpdateState) {

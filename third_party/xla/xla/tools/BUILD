@@ -295,7 +295,7 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_propagation",
         "//xla/service:triangular_solve_expander",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/tsl/util:command_line_flags",
     ],
 )
