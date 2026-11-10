@@ -213,11 +213,15 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     # the input tensor needs for this convolution.
     script = textwrap.dedent("""\
         import resource
-        import tensorflow as tf
+        from tensorflow.python.framework import config
+        from tensorflow.python.framework import dtypes
+        from tensorflow.python.framework import errors_impl
+        from tensorflow.python.ops import array_ops
+        from tensorflow.python.ops import nn_ops
 
-        tf.config.threading.set_intra_op_parallelism_threads(24)
-        x = tf.ones([150, 128, 128, 1], dtype=tf.float64)
-        w = tf.ones([15, 15, 1, 1], dtype=tf.float64)
+        config.set_intra_op_parallelism_threads(24)
+        x = array_ops.ones([150, 128, 128, 1], dtype=dtypes.float64)
+        w = array_ops.ones([15, 15, 1, 1], dtype=dtypes.float64)
         virtual_bytes = None
         with open('/proc/self/status', encoding='utf-8') as status:
           for line in status:
@@ -229,8 +233,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         limit = virtual_bytes + (1 << 30)
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
         try:
-          tf.nn.conv2d(x, w, strides=[1, 1], padding='SAME')
-        except tf.errors.ResourceExhaustedError as error:
+          nn_ops.conv2d(x, w, strides=[1, 1], padding='SAME')
+        except errors_impl.ResourceExhaustedError as error:
           assert 'temporary memory' in str(error), error
         else:
           raise AssertionError('Expected ResourceExhaustedError')
