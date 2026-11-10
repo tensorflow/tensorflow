@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -728,6 +730,43 @@ ENTRY entry {
   EXPECT_EQ(fusion0->metadata().deduplicated_name(), "fusion.0");
   EXPECT_EQ(fusion1->metadata().deduplicated_name(), "fusion.0");
   EXPECT_EQ(fusion2->metadata().deduplicated_name(), "fusion.0");
+}
+
+TEST_F(HloComputationDeduplicatorTest,
+       DontRemoveRegionConstantExceedingInt32Max) {
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(U8);
+  const Shape large_const_shape = ShapeUtil::MakeShape(U8, {int64_t{1} << 31});
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  std::vector<HloComputation*> regions;
+  for (int i = 0; i < 2; ++i) {
+    HloComputation::Builder builder("region_" + std::to_string(i));
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    ASSERT_OK_AND_ASSIGN(
+        Literal large_literal,
+        Literal::Make(large_const_shape, /*allocate_arrays=*/false));
+    builder.AddInstruction(
+        HloInstruction::CreateConstant(std::move(large_literal)));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p0));
+    regions.push_back(module->AddEmbeddedComputation(builder.Build()));
+  }
+
+  HloComputation::Builder entry("main");
+  HloInstruction* arg = entry.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg"));
+  HloInstruction* call0 = entry.AddInstruction(
+      HloInstruction::CreateCall(scalar_shape, {arg}, regions[0]));
+  HloInstruction* call1 = entry.AddInstruction(
+      HloInstruction::CreateCall(scalar_shape, {arg}, regions[1]));
+  entry.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, call0, call1));
+  module->AddEntryComputation(entry.Build());
+
+  HloComputationDeduplicator dedup;
+  ASSERT_OK_AND_ASSIGN(bool changed, dedup.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(module->computation_count(), 3);
 }
 
 }  // namespace

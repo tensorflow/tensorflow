@@ -320,6 +320,7 @@ xla_cc_test(
     srcs = ["hlo_computation_deduplicator_test.cc"],
     deps = [
         ":hlo_computation_deduplicator",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
