@@ -3672,8 +3672,11 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
       overlap_count + (inherent_low_padding > 0 ? inherent_low_padding : 0) +
       (inherent_high_padding > 0 ? inherent_high_padding : 0);
 
-  // Insert original activations.
-  for (int64_t i = 0; i < overlap_count; ++i) {
+  // Insert original activations. Without low padding, keep at least one, as the
+  // high padding slices below are shifted from the last chunk.
+  const int64_t original_chunk_count =
+      std::max<int64_t>(overlap_count, inherent_low_padding > 0 ? 0 : 1);
+  for (int64_t i = 0; i < original_chunk_count; ++i) {
     HloInstruction* activations_to_use = nullptr;
     HloInstruction* activations_slice = nullptr;
     if (i == 0) {
@@ -3706,7 +3709,7 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   if (inherent_high_padding > 0) {
     high_padding_to_materialize =
         std::max(total_overlap_count -
-                     (std::max(overlap_count, static_cast<int64_t>(0)) +
+                     (original_chunk_count +
                       std::max(inherent_low_padding, static_cast<int64_t>(0))),
                  static_cast<int64_t>(0));
   }
