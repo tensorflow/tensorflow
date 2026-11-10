@@ -15,6 +15,9 @@
 """Functional tests for convolutional operations."""
 
 import os
+import subprocess
+import sys
+import textwrap
 import time
 
 from absl.testing import parameterized
@@ -200,6 +203,46 @@ DILATED_PARAMS = [
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class Conv2DTest(parameterized.TestCase, test.TestCase):
+
+  def testCpuAllocationFailureDoesNotTerminateProcess(self):
+    if not sys.platform.startswith("linux"):
+      self.skipTest("This test uses Linux virtual-address-space limits")
+
+    # Run the allocation failure in a child so its limit cannot affect other
+    # tests. Eigen's parallel packing requests much more virtual memory than
+    # the input tensor needs for this convolution.
+    script = textwrap.dedent("""\
+        import resource
+        import tensorflow as tf
+
+        tf.config.threading.set_intra_op_parallelism_threads(24)
+        x = tf.ones([150, 128, 128, 1], dtype=tf.float64)
+        w = tf.ones([15, 15, 1, 1], dtype=tf.float64)
+        with open('/proc/self/status', encoding='utf-8') as status:
+          for line in status:
+            if line.startswith('VmSize:'):
+              virtual_bytes = int(line.split()[1]) * 1024
+              break
+        limit = virtual_bytes + (1 << 30)
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        try:
+          tf.nn.conv2d(x, w, strides=[1, 1], padding='SAME')
+        except tf.errors.ResourceExhaustedError as error:
+          assert 'temporary memory' in str(error), error
+        else:
+          raise AssertionError('Expected ResourceExhaustedError')
+    """)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={**os.environ, "CUDA_VISIBLE_DEVICES": ""},
+    )
+    self.assertEqual(
+        result.returncode, 0, msg=result.stdout + result.stderr
+    )
 
   def _DtypesToTest(self, use_gpu):
     if test_util.IsMklEnabled():

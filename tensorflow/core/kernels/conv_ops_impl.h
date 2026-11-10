@@ -38,6 +38,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <map>
+#include <new>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -612,14 +613,19 @@ struct LaunchConv2DOp<CPUDevice, T> {
       return;
     }
 
-    if (in_depth != patch_depth) {
-      LaunchGrouped<T>()(ctx, input, filter, row_stride, col_stride,
-                         row_dilation, col_dilation, padding, explicit_paddings,
-                         output, data_format);
-    } else {
-      LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                    row_dilation, col_dilation, padding,
-                                    explicit_paddings, output, data_format);
+    try {
+      if (in_depth != patch_depth) {
+        LaunchGrouped<T>()(ctx, input, filter, row_stride, col_stride,
+                           row_dilation, col_dilation, padding,
+                           explicit_paddings, output, data_format);
+      } else {
+        LaunchGeneric<CPUDevice, T>()(
+            ctx, input, filter, row_stride, col_stride, row_dilation,
+            col_dilation, padding, explicit_paddings, output, data_format);
+      }
+    } catch (const std::bad_alloc&) {
+      ctx->SetStatus(absl::ResourceExhaustedError(
+          "Conv2D failed to allocate temporary memory on CPU"));
     }
   }
 };
