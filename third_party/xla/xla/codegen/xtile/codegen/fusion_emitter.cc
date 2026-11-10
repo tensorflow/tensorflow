@@ -2459,6 +2459,10 @@ absl::StatusOr<TensorValue> EmitCombinerStep(
                                ? mlir::cast<TensorValue>(acc_value)
                                : input_tile;
   }
+  // A combiner that only selects one of its parameters, e.g. the `(a, b) -> b`
+  // combiner of a "take last" reduction, has no instruction to emit. Such
+  // combiners have no neutral value and are rejected before codegen, so
+  // EmitScope reports an error for the empty instruction list.
   return EmitScope(b, to_emit, region_values);
 }
 

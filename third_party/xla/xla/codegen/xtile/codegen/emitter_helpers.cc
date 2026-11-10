@@ -978,6 +978,7 @@ absl::StatusOr<TensorValue> EmitScope(
     mlir::ImplicitLocOpBuilder& b,
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
+  TF_RET_CHECK(!instructions.empty());
   for (const HloInstruction* hlo : instructions) {
     TensorValue result;
     if (hlo->opcode() == HloOpcode::kConcatenate ||

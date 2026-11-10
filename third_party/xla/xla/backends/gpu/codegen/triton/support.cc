@@ -442,6 +442,19 @@ CodegenDecision CanTritonHandleReduce(
         "F8E4M3FN and F8E5M2 are not supported for reductions.");
   }
 
+  // A reduction computation that just returns one of its parameters, e.g. the
+  // `(a, b) -> b` combiner of a "take last" reduction, has no neutral value.
+  // Emitting it requires masking the lanes past the end of a tile, and those
+  // lanes are masked with the init value, which such a combiner returns as-is:
+  // any padding would silently become the result. Whether a tile is padded is
+  // not known here, so always fall back to the native emitter.
+  if (reduce.to_apply()->root_instruction()->opcode() ==
+      HloOpcode::kParameter) {
+    return CodegenDecision::Forbid(
+        "Reduction computation that just returns a parameter is not "
+        "supported.");
+  }
+
   bool is_triton_supported_reduction_computation = absl::c_all_of(
       reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
         return IsTritonSupportedInstructionImpl(*instr, gpu_version)

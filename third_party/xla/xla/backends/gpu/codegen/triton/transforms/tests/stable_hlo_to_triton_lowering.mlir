@@ -139,8 +139,10 @@ func.func @reduce_with_multiple_inputs(%arg0: tensor<16x8xf32>, %arg1: tensor<16
   // CHECK: %[[REDUCE_RESULT:.*]] = "tt.reduce"(%[[ARG0]], %[[ARG1]]) <{axis = 0 : i32}> ({
   %1, %2 = "stablehlo.reduce"(%arg0, %arg1, %0, %0) ({
   ^bb0(%arg0_reducer: tensor<f32>, %arg1_reducer: tensor<f32>, %arg2_reducer: tensor<f32>, %arg3_reducer: tensor<f32>):
-    %add0 = arith.addf %arg0_reducer, %arg1_reducer : tensor<f32>
-    %add1 = arith.addf %arg2_reducer, %arg3_reducer : tensor<f32>
+    // Reducer arguments are (accumulator_0, accumulator_1, element_0,
+    // element_1), so pair each accumulator with its own element.
+    %add0 = arith.addf %arg0_reducer, %arg2_reducer : tensor<f32>
+    %add1 = arith.addf %arg1_reducer, %arg3_reducer : tensor<f32>
     stablehlo.return %add0, %add1 : tensor<f32>, tensor<f32>
   }) {dimensions = array<i64: 0>} : (tensor<16x8xf32>, tensor<16x8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %1 : tensor<8xf32>
@@ -796,4 +798,20 @@ func.func @reduce_multi_input_with_non_neutral_init(%arg0: tensor<16x8xf32>, %ar
     stablehlo.return %max0, %max1 : tensor<f32>, tensor<f32>
   }) {dimensions = array<i64: 0>} : (tensor<16x8xf32>, tensor<16x8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0#0, %0#1 : tensor<8xf32>, tensor<8xf32>
+}
+
+// CHECK-LABEL: func @reduce_with_parameter_only_reducer_and_non_neutral_init
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<16x8xf32>) -> tensor<8xf32>
+func.func @reduce_with_parameter_only_reducer_and_non_neutral_init(%arg0: tensor<16x8xf32>) -> tensor<8xf32> {
+  %cst = stablehlo.constant dense<5.000000e+00> : tensor<f32>
+  // A `take_last` reducer ignores the init value, so the reduction must not be
+  // combined with it: swapping the accumulator and element arguments would make
+  // the whole reduction collapse to the init value.
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[ARG0]]) <{axis = 0 : i32}>
+  // CHECK: return %[[REDUCE]] : tensor<8xf32>
+  %1 = "stablehlo.reduce"(%arg0, %cst) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    stablehlo.return %arg2 : tensor<f32>
+  }) {dimensions = array<i64: 0>} : (tensor<16x8xf32>, tensor<f32>) -> tensor<8xf32>
+  return %1 : tensor<8xf32>
 }
