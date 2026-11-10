@@ -208,7 +208,7 @@ StatusOr<std::vector<T>> GetTaskRunnerOutput(TaskRunner& runner,
     if (result.components.size() != 1) {
       return absl::InternalError("GetElementResult Tensor size should be 1.");
     }
-    output.push_back(result.components[0].unaligned_flat<T>().data()[0]);
+    output.push_back(result.components[0].unaligned_flat<T>()(0));
   }
   return output;
 }
@@ -224,7 +224,7 @@ StatusOr<T> GetNextFromTaskRunner(TaskRunner& runner,
   if (result.components.size() != 1) {
     return absl::InternalError("GetElementResult Tensor size should be 1.");
   }
-  return result.components[0].unaligned_flat<T>().data()[0];
+  return result.components[0].unaligned_flat<T>()(0);
 }
 
 // Like `GetNextFromTaskRunner`, but retries for up to 10 seconds while the task
@@ -246,7 +246,7 @@ StatusOr<T> GetNextFromTaskRunnerWithRetries(TaskRunner& runner,
     if (result.components.size() != 1) {
       return absl::InternalError("GetElementResult Tensor size should be 1.");
     }
-    return result.components[0].unaligned_flat<T>().data()[0];
+    return result.components[0].unaligned_flat<T>()(0);
   }
   return absl::DeadlineExceededError("TaskRunner kept skipping.");
 }

@@ -66,7 +66,7 @@ absl::Status GetTestDevice(Session* session, std::string* test_device) {
 void FillZeros(Tensor* tensor) {
   auto flat = tensor->flat<float>();
   for (int i = 0; i < flat.size(); i++) {
-    flat.data()[i] = 0.0f;
+    flat(i) = 0.0f;
   }
 }
 
@@ -126,7 +126,7 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   Tensor input_data(DT_FLOAT, TensorShape({10, 10, 10, 10}));
   auto flat_input = input_data.flat<float>();
   for (int i = 0; i < flat_input.size(); i++) {
-    flat_input.data()[i] = (i - 5) / 1000.0f;
+    flat_input(i) = (i - 5) / 1000.0f;
   }
 
   std::vector<Tensor> results;
