@@ -486,27 +486,63 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
   // `task` may be deferred until `dependencies` are ready, so record the
   // allocation events now.
   client_->MaterializeAllocationEvent(*this);
-  client_->MaterializeAllocationEvent(*dst_raw_buffer);
+  const auto* dst_cpp_buffer =
+      dst_raw_buffer->down_cast<const PjRtStreamExecutorRawBuffer>();
+  const bool host_wait = local_device_->host_wait_cross_device_copies();
+  // Never make this device's stream wait on an event from another device: that
+  // event can be stuck behind a collective there that waits for this device.
+  // If a context-synchronizing CUDA call then runs here, it waits for our
+  // stream while holding the context lock, so this device can't launch its
+  // side of the collective. Instead, if
+  // XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES is set, wait for such events on
+  // the host. This covers the destination's allocation event; other inputs are
+  // handled below.
+  const bool wait_for_dst_allocation_on_host =
+      host_wait && dst_cpp_buffer != nullptr &&
+      dst_cpp_buffer->local_device() != local_device_ &&
+      dst_cpp_buffer->device_buffer().IsConcrete();
+  absl::StatusOr<BufferSequencingEventRef> dst_allocation_event;
+  tsl::RCReference<tsl::AsyncValue> dst_allocation_av;
+  if (wait_for_dst_allocation_on_host) {
+    dst_allocation_event = dst_cpp_buffer->device_buffer()->GetDefinitionEvent(
+        client_->async_work_runner(), /*nullptr_if_past=*/true);
+    if (dst_allocation_event.ok() && *dst_allocation_event) {
+      dst_allocation_av = dst_allocation_event->CopyRCRef();
+    }
+  } else {
+    client_->MaterializeAllocationEvent(*dst_raw_buffer);
+  }
 
   auto task = [client = client_, local_device = local_device_,
                src_buffer = device_buffer_,
                dst_raw_buffer = std::move(dst_raw_buffer),
                src_raw_buffer = tsl::FormRef(this), usage_event,
-               dependencies = std::move(dependencies),
-               allocation_event = std::move(allocation_event)]() mutable {
+               allocation_event = std::move(allocation_event),
+               wait_for_dst_allocation_on_host,
+               dst_allocation_event = std::move(dst_allocation_event)](
+                  PjRtDeviceEventRefVector dependencies,
+                  PjRtDeviceEventRefVector remote_dependencies) mutable {
     se::Stream* stream = local_device->GetDeviceToDeviceStream();
     bool allocation_set = false;
     auto status = [&]() -> absl::Status {
-      // Handle errors in pre-scheduling async values.
-      for (size_t i = 0; i < dependencies.size(); ++i) {
-        const auto& dep = dependencies[i];
+      constexpr auto get_event_status = [](const PjRtDeviceEventPtr& dep) {
         if (auto event_ref = dep.down_cast<BufferSequencingEvent>()) {
           if (auto* error = event_ref->event().GetErrorIfPresent()) {
             return *error;
           }
-        } else if (auto error = dep.GetErrorIfPresent()) {
+        }
+        if (auto error = dep.GetErrorIfPresent()) {
           return *error;
         }
+        return absl::OkStatus();
+      };
+      // Handle errors in remote async values.
+      for (size_t i = 0; i < remote_dependencies.size(); ++i) {
+        ABSL_RETURN_IF_ERROR(get_event_status(remote_dependencies[i]));
+      }
+      // Handle errors in pre-scheduling async values.
+      for (size_t i = 0; i < dependencies.size(); ++i) {
+        ABSL_RETURN_IF_ERROR(get_event_status(dependencies[i]));
       }
 
       // Wait for BufferSequencingEvent based dependencies on the stream.
@@ -537,7 +573,17 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
       auto dst_buffer = dst_cpp_buffer->device_buffer();
       auto dst_buffer_mem = dst_buffer->mem();
       ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
-      ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
+      if (wait_for_dst_allocation_on_host) {
+        ABSL_RETURN_IF_ERROR(dst_allocation_event.status());
+        if (*dst_allocation_event) {
+          if (const absl::Status* error =
+                  dst_allocation_event->GetErrorIfPresent()) {
+            return *error;
+          }
+        }
+      } else {
+        ABSL_RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
+      }
       if (dst_buffer_mem.size() > 0) {
         ABSL_RETURN_IF_ERROR(stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
                                           dst_buffer_mem.size()));
@@ -556,8 +602,38 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     }
   };
 
+  // An input's device is only known once it has been recorded on a stream,
+  // which may not have happened yet. So first wait until all inputs are
+  // recorded (below), then wait on the host for those from another device to
+  // finish. `task` only waits on the GPU for inputs from this device.
+  auto launch_task = [runner = client_->async_work_runner(),
+                      executor = local_device_->executor(), host_wait,
+                      dependencies = std::move(dependencies),
+                      task = std::move(task)]() mutable {
+    PjRtDeviceEventRefVector local;
+    PjRtDeviceEventRefVector remote;
+    ConsumeEvents(std::move(dependencies), [&](PjRtDeviceEventRef dep) {
+      auto event_ref = dep.down_cast<BufferSequencingEvent>();
+      bool is_remote = host_wait && event_ref &&
+                       event_ref->event().IsConcrete() &&
+                       event_ref->definition_stream() != nullptr &&
+                       event_ref->definition_stream()->parent() != executor;
+      (is_remote ? remote : local).push_back(std::move(dep));
+    });
+    PjRtDeviceEventSpan remote_span(remote);
+    ScopedLauncher launcher(
+        [task = std::move(task), local = std::move(local),
+         remote = std::move(remote)]() mutable {
+          task(std::move(local), std::move(remote));
+        },
+        runner);
+    launcher.AddDependency(remote_span);
+  };
+
   {
-    ScopedLauncher launcher(std::move(task), client_->async_work_runner());
+    // `launch_task` is cheap, so run it inline; `task` still runs on the
+    // runner.
+    ScopedLauncher launcher(std::move(launch_task), /*executor=*/nullptr);
     for (size_t i = 0; i < deps_span.size(); ++i) {
       const auto& dep = deps_span[i];
       if (auto event_ref = dep.down_cast<BufferSequencingEvent>()) {
@@ -565,6 +641,9 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
       } else {
         launcher.AddDependency(dep);
       }
+    }
+    if (dst_allocation_av != nullptr) {
+      launcher.AddDependency(dst_allocation_av.get());
     }
   }
 
