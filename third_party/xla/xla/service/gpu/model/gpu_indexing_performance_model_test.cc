@@ -762,7 +762,7 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
               absl::ToDoubleNanoseconds(expected_hbm.read_time), 1.0);
   EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
-              absl::ToDoubleNanoseconds(expected_hbm.write_time), 15.0);
+              absl::ToDoubleNanoseconds(expected_hbm.write_time), 1.0);
   // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
   EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
   // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state
@@ -885,6 +885,112 @@ ENTRY main {
             dot_model::CalculateL2Time(/*k_loop_iterations=*/32, device_info_,
                                        stage4_result.l2_bytes_read,
                                        /*is_tma_allowed=*/false));
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_DotHbmCapIsMinOfCoalescingAndTransferSize) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/1}));
+  constexpr int64_t kNetBytesRead = 2 * (512 * 2048 + 2048 * 512);
+  constexpr int64_t kBytesWritten = 2 * 512 * 512;
+  float expected_hbm_bw = dot_model::GetEffectiveHbmBandwidth(
+      kNetBytesRead + kBytesWritten, device_info_);
+  // `p1` and output tiles read 32 contiguous bytes (coalescing 0.5), but for
+  // 4.5 MiB of traffic the transfer-size fraction is lower, so `std::min` picks
+  // it for every access.
+  ASSERT_LT(expected_hbm_bw, 0.5 * device_info_.memory_bandwidth());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kNetBytesRead / expected_hbm_bw)),
+              1.0);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kBytesWritten / expected_hbm_bw)),
+              1.0);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_BatchedDotWideningPrologueL2Traffic) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  cvt = bf16[2, 2048, 4096] convert(p0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT dot = bf16[2, 2048, 2048] dot(cvt, p1), lhs_batch_dims={0},
+    rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT fusion = bf16[2, 2048, 2048] fusion(p0, p1), kind=kCustom,
+    calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/3}));
+  // 2 * 64 * 128 = 16384 blocks, each with batch tile 1. Per block the K loop
+  // reads 32 * 4096 (p0) + 4096 * 16 (p1) elements: 2 GiB (p0: s8) + 2 GiB
+  // (p1: bf16) in total. At the dot's operand types `cvt` is bf16, so the floor
+  // is 4 + 2 = 6 GiB.
+  // TODO(b/581269931): Expect 4 GiB L2 traffic plus in-register convert compute
+  // once prologue convert cost is modeled directly.
+  EXPECT_EQ(result.l2_bytes_read, int64_t{4} << 30);
+  EXPECT_EQ(result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/64, device_info_,
+                                       /*l2_bytes=*/int64_t{6} << 30,
+                                       /*is_tma_allowed=*/false));
+
+  // p0 and the output are 16 MiB, p1 is 32 MiB. `p0` tiles read 64 contiguous
+  // bytes (fully coalesced), so the transfer-size fraction caps them. `p1` and
+  // output tiles read 32 contiguous bytes (coalescing 0.5), below that
+  // fraction.
+  constexpr int64_t kMiB = int64_t{1} << 20;
+  double peak_bw = device_info_.memory_bandwidth();
+  double transfer_fraction =
+      dot_model::GetEffectiveHbmBandwidth(64 * kMiB, device_info_) / peak_bw;
+  ASSERT_GT(transfer_fraction, 0.5);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(16 * kMiB / (transfer_fraction * peak_bw) +
+                                32 * kMiB / (0.5 * peak_bw))),
+              1.0);
+  EXPECT_NEAR(
+      absl::ToDoubleNanoseconds(result.write_time),
+      absl::ToDoubleNanoseconds(absl::Seconds(16 * kMiB / (0.5 * peak_bw))),
+      1.0);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
