@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/bundle.h"
@@ -102,6 +103,16 @@ class PjRtExecutable final
       xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
       const xla::PjRtTopologyDescription& topology,
       xla::PjRtClient* compile_client,
+      std::optional<std::vector<int>> outputs_bundle_slice_sizes);
+
+  // Creates PjRtExecutable by linking an entrypoint PjRtRelocatable and its
+  // dependent relocatables via `phase_compiler->LinkRelocatables`.
+  static absl::StatusOr<ExecutableRef> Create(
+      xla::PjRtPhaseCompiler* phase_compiler,
+      std::shared_ptr<const xla::PjRtRelocatable> entrypoint,
+      std::vector<std::shared_ptr<const xla::PjRtRelocatable>> dependencies,
+      xla::CompileOptions compile_options,
+      const xla::PjRtTopologyDescription& topology,
       std::optional<std::vector<int>> outputs_bundle_slice_sizes);
 
   // PjRtCompatibleExecutable implementation.
