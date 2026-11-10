@@ -790,6 +790,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     HloCostAnalysis::ShapeSizeFunction shape_size,
     absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
   OperandReadMap n_bytes_total_map;
+  OperandReadMap dot_region_operand_read_map;
+  OperandReadMap epilogue_operand_read_map;
 
   // Compute time for dot flops is counted separately.
   int64_t dot_flops = 0;
@@ -892,6 +894,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         RecordOperandRead(hlo, tile_bytes_read,
                           effective_bandwidth_utilization_rate,
                           n_bytes_total_map);
+        RecordOperandRead(hlo, tile_bytes_read,
+                          effective_bandwidth_utilization_rate,
+                          in_dot_region ? dot_region_operand_read_map
+                                        : epilogue_operand_read_map);
       });
 
   auto roots = tiled_hlo_computation.roots();
@@ -926,9 +932,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         device_info.memory_bandwidth();
     // Exclude K-loop cache re-reads because `CalculateL2Time` models L2
     // traffic separately.
-    read_time = ComputeReadTime(
-        n_bytes_total_map, device_info, num_blocks, shape_size,
+    absl::Duration dot_dram_read_time = ComputeReadTime(
+        dot_region_operand_read_map, device_info, num_blocks, shape_size,
         /*include_cache_rereads=*/false, hbm_bandwidth_utilization);
+    absl::Duration epilogue_read_time = ComputeReadTime(
+        epilogue_operand_read_map, device_info, num_blocks, shape_size,
+        /*include_cache_rereads=*/true, hbm_bandwidth_utilization);
+    read_time = dot_dram_read_time + epilogue_read_time;
     write_time = ComputeOutputWriteTime(roots, device_info, shape_size,
                                         hbm_bandwidth_utilization);
 
@@ -941,10 +951,15 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         dot_estimates.shared_memory_per_block_bytes,
         /*registers_per_thread=*/dot_estimates.registers_per_thread,
     };
-    absl::Duration pipelined_loop_time =
+    absl::Duration post_mainloop_time = epilogue_read_time + write_time;
+    absl::Duration mainloop_time =
         dot_model::CalculatePipelinedLoopTimeWithLaunchWaves(
             launch_config, dot_estimates.compute_time,
-            dot_model::HbmEstimates{read_time, write_time}, device_info);
+            dot_model::HbmEstimates{dot_dram_read_time, absl::ZeroDuration()},
+            device_info);
+    // The epilogue (operand reads and output writes) runs after the K loop and
+    // doesn't overlap with it.
+    absl::Duration pipelined_loop_time = mainloop_time + post_mainloop_time;
     // Widening prologues (e.g. s8 -> bf16) also pay for an in-register convert
     // in the K loop, which we don't model yet. As a proxy, floor L2 traffic at
     // the dot's operand types, even though Triton loads the narrow type. The
