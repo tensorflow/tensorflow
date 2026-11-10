@@ -769,13 +769,6 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
   return backend_config->device_type() == DEVICE_TYPE_HOST;
 }
 
-// Mirrors the backend filtering in ConfigAssignerPass::GetEnabledBackends.
-bool IsAutotuneBackendAllowed(const DebugOptions& debug_options,
-                              autotuner::Backend backend) {
-  const auto& backends = debug_options.xla_gpu_experimental_autotune_backends();
-  return backends.empty() || absl::c_linear_search(backends, backend);
-}
-
 Decision IsTritonScaledDotSupported(
     const HloScaledDotInstruction& scaled_dot,
     const DebugOptions& debug_options,
@@ -789,13 +782,9 @@ Decision IsTritonScaledDotSupported(
   if (gpu_version.IsRocm()) {
     return IsTritonSupportedInstruction(scaled_dot, gpu_version);
   }
-  if (!IsAutotuneBackendAllowed(debug_options, autotuner::Backend::TRITON)) {
-    return Decision::Forbid("TRITON backend is excluded by autotune_backends.");
-  }
-  if (RequireDeterminism(scaled_dot.GetModule()->config()) &&
-      debug_options.xla_gpu_experimental_deterministic_ops_triton() ==
-          DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF) {
-    return Decision::Forbid("Triton is disabled in deterministic mode.");
+  if (!absl::c_linear_search(GetEnabledBackendTypes(debug_options, gpu_version),
+                             autotuner::Backend::TRITON)) {
+    return Decision::Forbid("TRITON backend is disabled for autotuning.");
   }
   return IsTritonSupportedInstruction(scaled_dot, gpu_version);
 }
@@ -804,13 +793,13 @@ Decision IsCudnnScaledDotSupported(const HloScaledDotInstruction& scaled_dot,
                                    const DebugOptions& debug_options,
                                    const GpuTargetConfig& gpu_target_config,
                                    bool is_deviceless) {
-  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    return Decision::Forbid("Binary libraries are disabled.");
-  }
-  if (!IsAutotuneBackendAllowed(debug_options,
-                                autotuner::Backend::CUDNN_FISSION)) {
+  if (!absl::c_linear_search(
+          GetEnabledBackendTypes(
+              debug_options,
+              gpu_target_config.device_description.gpu_compute_capability()),
+          autotuner::Backend::CUDNN_FISSION)) {
     return Decision::Forbid(
-        "CUDNN_FISSION backend is excluded by autotune_backends.");
+        "CUDNN_FISSION backend is disabled for autotuning.");
   }
   if (is_deviceless) {
     Decision deviceless(
@@ -3455,18 +3444,18 @@ absl::Status GpuCompiler::AddConfigAssignerPass(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   auto get_backends_fn =
       [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
-    return ConfigAssignerPass::GetEnabledBackends(
-        stream_exec, options.device_allocator, target_config, alias_info,
-        debug_options, mlir_context, shape_size_fn, this, PlatformId(),
-        thread_pool, &mlir_context_pool_);
+    return ConfigAssignerPass::CreateBackends(
+        GetEnabledBackendTypes(debug_options, gpu_version), stream_exec,
+        options.device_allocator, target_config, alias_info, debug_options,
+        mlir_context, shape_size_fn, this, PlatformId(), thread_pool,
+        &mlir_context_pool_);
   };
 
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<ConfigAssignerPass> config_assigner_pass,
-      ConfigAssignerPass::Create(get_backends_fn, debug_options, gpu_version,
-                                 stream_exec, thread_pool, target_config,
-                                 alias_info, mlir_context, shape_size_fn,
-                                 options.device_allocator, key_value_store));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConfigAssignerPass> config_assigner_pass,
+                   ConfigAssignerPass::Create(
+                       get_backends_fn, debug_options, stream_exec, thread_pool,
+                       target_config, alias_info, mlir_context, shape_size_fn,
+                       options.device_allocator, key_value_store));
   pipeline->AddPass(std::move(config_assigner_pass));
   // Post autotuning transformations needed after autotuning happens.
   pipeline->AddPass<ConvertTritonGemmConfig>(target_config->device_description,
