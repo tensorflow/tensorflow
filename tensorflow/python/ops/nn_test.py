@@ -1033,6 +1033,79 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-1)
 
+  def testFloat32SampledValuesWithOtherFloatDtypes(self):
+    # Candidate samplers return float32 expected counts, so the logits must
+    # handle them when the weights and inputs use another float dtype.
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    labels = [0, 1, 2]
+    # The sampled classes include the labels, so there are accidental hits.
+    (weights, biases, hidden_acts, sampled_vals, exp_logits,
+     exp_labels) = self._GenerateTestData(
+         num_classes=num_classes,
+         dim=10,
+         batch_size=batch_size,
+         num_true=1,
+         labels=labels,
+         sampled=[1, 0, 2, 3],
+         subtract_log_q=True)
+
+    def _losses(dtype, sampled_values):
+      return [
+          loss_fn(
+              weights=constant_op.constant(weights, dtype=dtype),
+              biases=constant_op.constant(biases, dtype=dtype),
+              labels=constant_op.constant(labels, shape=(batch_size, 1)),
+              inputs=constant_op.constant(hidden_acts, dtype=dtype),
+              num_sampled=4,
+              num_classes=num_classes,
+              sampled_values=sampled_values,
+              remove_accidental_hits=True)
+          for loss_fn in (nn_impl.sampled_softmax_loss_v2, nn_impl.nce_loss_v2)
+      ]
+
+    exp_losses = self.evaluate(_losses(dtypes.float32, sampled_vals))
+    for dtype, tol in [(dtypes.float16, 1e-2), (dtypes.bfloat16, 1e-1),
+                       (dtypes.float64, 1e-5)]:
+      with self.subTest(dtype=dtype):
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=constant_op.constant(weights, dtype=dtype),
+            biases=constant_op.constant(biases, dtype=dtype),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, 1)),
+            inputs=constant_op.constant(hidden_acts, dtype=dtype),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=1,
+            sampled_values=sampled_vals,
+            subtract_log_q=True,
+            remove_accidental_hits=False)
+        self.assertEqual(logits_tensor.dtype, dtype)
+        self.assertEqual(labels_tensor.dtype, dtype)
+        got_logits, got_labels = self.evaluate(
+            [math_ops.cast(logits_tensor, dtypes.float64),
+             math_ops.cast(labels_tensor, dtypes.float64)])
+        self.assertAllClose(exp_logits, got_logits, rtol=tol, atol=tol)
+        self.assertAllClose(exp_labels, got_labels, rtol=tol, atol=tol)
+
+        # With accidental hits removed, the losses stay finite and match
+        # float32.
+        losses = _losses(dtype, sampled_vals)
+        for loss, exp_loss in zip(losses, exp_losses):
+          self.assertEqual(loss.dtype, dtype)
+          self.assertAllClose(
+              exp_loss,
+              self.evaluate(math_ops.cast(loss, dtypes.float64)),
+              rtol=tol,
+              atol=tol)
+
+        # The default sampler also returns float32 expected counts.
+        for loss in _losses(dtype, None):
+          self.assertEqual(loss.dtype, dtype)
+          self.assertAllEqual(
+              [batch_size], self.evaluate(array_ops.shape(loss)))
+
 
 class CReluTest(test_lib.TestCase):
 
