@@ -1774,19 +1774,11 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
-TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusion) {
+TEST_F(PassOrderTest, ConfigAssignerRunsAfterGemmFusion) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
   }
-  VerifyPassRunsAtLeastOnceBefore("triton-gemm-rewriter",
-                                  "hoist-fused-bitcasts");
-}
-
-TEST_F(PassOrderTest, ConfigAssignerRunsAfterHoistFusedBitcasts) {
-  if (!get_cuda_cc().IsAtLeastAmpere()) {
-    GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
-  }
-  VerifyPassRunsAtLeastOnceBefore("hoist-fused-bitcasts", "config-assigner");
+  VerifyPassRunsAtLeastOnceBefore("triton-gemm-rewriter", "config-assigner");
 }
 
 TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterConfigAssigner) {
