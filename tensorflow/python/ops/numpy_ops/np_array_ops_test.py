@@ -942,8 +942,67 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    # A zero-size dimension that isn't reduced just gives an empty result.
+    # (Not `.tolist()`: a zero-size leading dimension collapses to `[]` and
+    # loses the trailing shape.)
+    run_test(np.zeros((3, 0)), axis=0)
+    run_test(np.zeros((0, 3)), axis=1)
     self.assertRaises(ValueError, np_array_ops.amax, np.ones([2, 2]), out=[])
     self.assertRaises(ValueError, np_array_ops.amin, np.ones([2, 2]), out=[])
+
+  def testAMaxAMinEmptyReduction(self):
+    # `max` and `min` have no identity element, so (like NumPy) reducing over a
+    # zero-size axis raises instead of returning +/-inf.
+    for fn in (np_array_ops.amax, np_array_ops.amin, np_array_ops.max,
+               np_array_ops.min):
+      for dtype in (np.float32, np.int32, np.bool_):
+        for shape, axis in [
+            ((3, 0), 1),
+            ((3, 0), None),
+            ((3, 0), (0, 1)),
+            ((0, 3), 0),
+            ((0,), None),
+            ((2, 0, 3), -2),
+            ((2, 0, 3), (1, 2)),
+        ]:
+          arr = np.zeros(shape, dtype=dtype)
+          for axis_transform in self.array_transforms:
+            axis_arg = axis_transform(axis) if axis is not None else None
+            with self.assertRaisesRegex(
+                ValueError, 'zero-size array to reduction operation'):
+              fn(arr, axis=axis_arg)
+
+  def testAMaxAMinEmptyReductionInvalidAxis(self):
+    # Invalid axes are reported as such rather than masked by the empty check.
+    for fn in (np_array_ops.amax, np_array_ops.amin):
+      with self.assertRaisesRegex(ValueError, 'out of bounds'):
+        fn(np.zeros((0,)), axis=(0, 5))
+      with self.assertRaisesRegex(ValueError, 'out of bounds'):
+        fn(np.zeros((0,)), axis=-2)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, 'Invalid reduction dimension'):
+        fn(np.zeros((0,)), axis=ops.convert_to_tensor((0, 5)))
+      with self.assertRaisesRegex(TypeError, '(?i)int|convert|invalid|type'):
+        fn(np.zeros((0, 3)), axis=0.5)
+
+  def testAMaxAMinEmptyReductionInFunction(self):
+    # Statically known shapes are checked while tracing.
+    @def_function.function
+    def static_shape():
+      return np_array_ops.amax(array_ops.zeros((3, 0)), axis=1)
+
+    with self.assertRaisesRegex(
+        ValueError, 'zero-size array to reduction operation'):
+      static_shape()
+
+    # Unknown dimensions can't be checked statically and are left to TF.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None, 3], dtypes.float32)])
+    def dynamic_shape(x):
+      return np_array_ops.amax(x, axis=0)
+
+    self.assertAllEqual(
+        dynamic_shape(np.array([[1, 5, 3], [4, 2, 6]], np.float32)), [4, 5, 6])
 
   def testMean(self):
 
