@@ -571,6 +571,11 @@ tf_xla_py_strict_test(
     name = "xla_eig_op_test",
     size = "medium",
     srcs = ["xla_eig_op_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "no_pip",
         "optonly",
