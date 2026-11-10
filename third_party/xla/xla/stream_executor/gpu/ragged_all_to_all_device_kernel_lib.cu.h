@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/stream_executor/gpu/ragged_all_to_all_device_kernel.h"
+
 #if NCCL_VERSION_CODE >= 22900
 #include "third_party/nccl/nccl_device.h"
 #endif  // NCCL_VERSION_CODE >= 22900
@@ -381,7 +383,8 @@ __device__ void RaggedAllToAllCopy(
     int64_t num_updates_per_replica, int64_t num_row_elements,
     int64_t input_buffer_offset_bytes, int64_t output_buffer_offset_bytes,
     int start_lsa, int lsa_size, int num_ranks, ncclGin* gin, ncclTeam world,
-    unsigned int signal_index, [[maybe_unused]] bool cft_granted,
+    unsigned int signal_index, int32_t local_write_cost,
+    int32_t remote_write_cost, [[maybe_unused]] bool cft_granted,
     [[maybe_unused]] RaggedAllToAllTmaSharedStorage* tma_storage) {
   (void)dev_comm;
   using T = DeviceVec<kVectorSize>;
@@ -413,36 +416,36 @@ __device__ void RaggedAllToAllCopy(
   }
 
   if (lsa_size > 0) {
-    // Work-proportional CTA assignment: CTA k copies the global element range
-    // [total*k/grid, total*(k+1)/grid), walking update boundaries as needed.
-    // This keeps CTA work balanced regardless of how transferred bytes are
-    // distributed across updates. Every CTA scans the update-size array,
-    // then walks updates in peer-major order to locate its range.
+    // Cost-weighted range partition. Both weights are per-element costs
+    // computed on the host (see RaggedAllToAllCostWeights in the thunk).
+    // Equal weights give an unweighted byte-balanced walk.
+    const int64_t local_cost = local_write_cost;
+    const int64_t peer_cost = remote_write_cost;
     const int64_t grid = static_cast<int64_t>(gridDim.x);
     const int64_t num_lsa_updates =
         static_cast<int64_t>(lsa_size) * num_updates_per_replica;
     const int64_t meta_base =
         static_cast<int64_t>(start_lsa) * num_updates_per_replica;
+    const int my_lsa_rank = world.rank - start_lsa;
 
-    // Compute the CTA range once and publish it to all threads in the block.
     __shared__ int64_t shared_cta_begin;
     __shared__ int64_t shared_cta_end;
     if (threadIdx.x == 0) {
-      int64_t total_elements = 0;
+      int64_t total_cost = 0;
       for (int64_t update = 0; update < num_lsa_updates; ++update) {
-        total_elements += send_sizes_ptr[meta_base + update] * num_row_elements;
+        const int lsa_peer = update / num_updates_per_replica;
+        const int64_t cost = lsa_peer == my_lsa_rank ? local_cost : peer_cost;
+        total_cost +=
+            send_sizes_ptr[meta_base + update] * num_row_elements * cost;
       }
-      shared_cta_begin =
-          total_elements * static_cast<int64_t>(blockIdx.x) / grid;
+      shared_cta_begin = total_cost * static_cast<int64_t>(blockIdx.x) / grid;
       shared_cta_end =
-          total_elements * (static_cast<int64_t>(blockIdx.x) + 1) / grid;
+          total_cost * (static_cast<int64_t>(blockIdx.x) + 1) / grid;
     }
     __syncthreads();
     const int64_t cta_begin = shared_cta_begin;
     const int64_t cta_end = shared_cta_end;
 
-    // Element offset of the current update within the concatenated element
-    // space that cta_begin/cta_end index into.
     int64_t update_begin = 0;
     for (int64_t update = 0; update < num_lsa_updates && update_begin < cta_end;
          ++update) {
@@ -453,13 +456,16 @@ __device__ void RaggedAllToAllCopy(
               input_offsets_ptr, send_sizes_ptr, output_offsets_ptr, &meta)) {
         continue;
       }
-      const int64_t update_end = update_begin + meta.byte_count / kVectorSize;
+      const int lsa_peer = static_cast<int>(update / num_updates_per_replica);
+      const int64_t cost = lsa_peer == my_lsa_rank ? local_cost : peer_cost;
+      const int64_t update_end =
+          update_begin + meta.byte_count / kVectorSize * cost;
       if (update_end > cta_begin) {
         const int64_t lo =
-            cta_begin > update_begin ? cta_begin - update_begin : 0;
+            (cta_begin > update_begin ? cta_begin - update_begin : 0) / cost;
         const int64_t hi =
-            (cta_end < update_end ? cta_end : update_end) - update_begin;
-        const int lsa_peer = static_cast<int>(update / num_updates_per_replica);
+            ((cta_end < update_end ? cta_end : update_end) - update_begin) /
+            cost;
         const T* src = static_cast<const T*>(
             ncclGetLocalPointer(send_win, meta.src_byte_offset));
         T* dst = static_cast<T*>(
@@ -519,7 +525,7 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
     const int64_t* __restrict__ output_offsets_ptr,
     int64_t num_updates_per_replica, int64_t num_row_elements,
     int64_t input_buffer_offset_bytes, int64_t output_buffer_offset_bytes,
-    bool cft_granted) {
+    int32_t local_write_cost, int32_t remote_write_cost, bool cft_granted) {
   // NCCL device barrier/GIN APIs emit scope-qualified atomics that require
   // sm_60+. Lower architectures compile to an empty stub; the kernel is only
   // launched when the device supports NCCL device comms.
@@ -554,8 +560,8 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
         dev_comm, send_win, recv_win, input_offsets_ptr, send_sizes_ptr,
         output_offsets_ptr, num_updates_per_replica, num_row_elements,
         input_buffer_offset_bytes, output_buffer_offset_bytes, start_lsa,
-        lsa_size, num_ranks, &gin, world, signal_index, cft_granted,
-        tma_storage_ptr);
+        lsa_size, num_ranks, &gin, world, signal_index, local_write_cost,
+        remote_write_cost, cft_granted, tma_storage_ptr);
 
     gin.flush(ncclCoopCta());
     bar.sync(ncclCoopCta(), ::cuda::memory_order_release,
@@ -570,7 +576,7 @@ __global__ void __launch_bounds__(512) RaggedAllToAllDeviceKernelImpl(
         output_offsets_ptr, num_updates_per_replica, num_row_elements,
         input_buffer_offset_bytes, output_buffer_offset_bytes, start_lsa,
         lsa_size, num_ranks, /*gin=*/nullptr, world, /*signal_index=*/0,
-        cft_granted, tma_storage_ptr);
+        local_write_cost, remote_write_cost, cft_granted, tma_storage_ptr);
 
     bar.sync(ncclCoopCta(), ::cuda::memory_order_release);
   }
@@ -585,7 +591,8 @@ __global__ void RaggedAllToAllDeviceKernelImpl(
     const int64_t* input_offsets_ptr, const int64_t* send_sizes_ptr,
     const int64_t* output_offsets_ptr, int64_t num_updates_per_replica,
     int64_t num_row_elements, int64_t input_buffer_offset_bytes,
-    int64_t output_buffer_offset_bytes, bool cft_granted) {}
+    int64_t output_buffer_offset_bytes, int32_t local_write_cost,
+    int32_t remote_write_cost, bool cft_granted) {}
 
 #endif  // NCCL_VERSION_CODE >= 22900
 

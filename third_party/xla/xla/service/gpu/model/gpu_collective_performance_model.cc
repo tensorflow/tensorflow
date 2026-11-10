@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/ici_bandwidth.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -79,22 +80,7 @@ struct CudaBandwidthSettings {
 
   // Returns NVLink bw in GB/s
   float GetNvlinkBw() const {
-    switch (compute_capability.major) {
-      case se::CudaComputeCapability::kBlackwell:
-        return kSm100NvlinkBandwidth;
-      case se::CudaComputeCapability::kHopper:
-        return kSm90NvlinkBandwidth;
-      case se::CudaComputeCapability::kAmpere:
-        return kSm80NvlinkBandwidth;
-      case se::CudaComputeCapability::kVolta:
-        return kSm70NvlinkBandwidth;
-      case se::CudaComputeCapability::kPascal:
-        return kSm60NvlinkBandwidth;
-      default:
-        LOG(WARNING) << "NVLink bandwidth for " << compute_capability.ToString()
-                     << "unknown. Assumes Blackwell.";
-        return kSm100NvlinkBandwidth;
-    }
+    return GetIciBandwidthPerLaneGbps(compute_capability);
   }
 
   // Max bandwidth in GB/s for ring low latency 128 algorithm per channel on a
@@ -103,14 +89,6 @@ struct CudaBandwidthSettings {
       20.0 /* Volta */,     20.0 /* Ampere */,   36.7 /* Hopper */,
       36.7 /* Blackwell */, 36.7 /* next-gen */,
   };
-
-  // Nvlink unidirectional bandwidth for different compute cap. Note this is per
-  // lane bandwidth.
-  static constexpr double kSm60NvlinkBandwidth = 18.0;
-  static constexpr double kSm70NvlinkBandwidth = 20.0;
-  static constexpr double kSm80NvlinkBandwidth = 20.0;
-  static constexpr double kSm90NvlinkBandwidth = 20.0;
-  static constexpr double kSm100NvlinkBandwidth = 40.0;
 
   // Discount factor for ring algorithm
   static constexpr double kRingAlgorithmDiscountFactor = 0.92;
@@ -188,22 +166,8 @@ struct RocmBandwidthSettings {
   }
 
   float GetNvlinkBw() const {
-    if (compute_capability.gfx9_mi100()) {
-      return kMi100InfinityFabricBandwidth;
-    }
-    if (compute_capability.gfx9_mi200()) {
-      return kMi200InfinityFabricBandwidth;
-    }
-    if (compute_capability.gfx9_mi300_series()) {
-      return kMi300InfinityFabricBandwidth;
-    }
-    return kMi300InfinityFabricBandwidth;
+    return GetIciBandwidthPerLaneGbps(compute_capability);
   }
-
-  // Infinity Fabric unidirectional bandwidth per link in GB/s
-  static constexpr double kMi100InfinityFabricBandwidth = 37.5;
-  static constexpr double kMi200InfinityFabricBandwidth = 75.0;
-  static constexpr double kMi300InfinityFabricBandwidth = 112.0;
 
   // Discount factor for ring algorithm (based on ROCm NCCL implementation)
   static constexpr double kRingAlgorithmDiscountFactor = 0.90;
@@ -422,17 +386,7 @@ GpuPerformanceWithCollectiveModel::ComputeCollectiveTime(
 /*static*/ absl::StatusOr<double>
 GpuPerformanceWithCollectiveModel::GetIciBandwidthPerLaneGbps(
     const se::DeviceDescription& gpu_device_info) {
-  if (const auto* cuda_cc =
-          gpu_device_info.gpu_compute_capability().cuda_compute_capability()) {
-    return CreateSettings(*cuda_cc).GetNvlinkBw();
-  }
-  if (const auto* rocm_cc =
-          gpu_device_info.gpu_compute_capability().rocm_compute_capability()) {
-    return CreateSettings(*rocm_cc).GetNvlinkBw();
-  }
-  return absl::InvalidArgumentError(
-      "GetIciBandwidthPerLaneGbps: unsupported compute capability "
-      "(neither CUDA nor ROCm)");
+  return xla::gpu::GetIciBandwidthPerLaneGbps(gpu_device_info);
 }
 
 }  // namespace gpu

@@ -543,12 +543,26 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "ici_bandwidth",
+    hdrs = ["ici_bandwidth.h"],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_collective_performance_model",
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
+        ":ici_bandwidth",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",

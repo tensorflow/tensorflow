@@ -2464,6 +2464,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:rendezvous",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/model:ici_bandwidth",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
@@ -2475,6 +2476,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
+        "//xla/stream_executor/gpu:ragged_all_to_all_device_kernel",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -2489,7 +2491,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
         "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )

@@ -584,6 +584,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_ragged_all_to_all_mode(
       DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_device_kernel(false);
+  opts.set_xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight(0.22f);
   opts.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(false);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
   opts.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(false);
@@ -3844,6 +3845,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback),
       debug_options->xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(),
       "If true, allow fallback to NCCL Send/Recv path for ragged-all-to-all."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight",
+      float_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight),
+      debug_options
+          ->xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight(),
+      "Weight applied to the (hbm_bw / fabric_bw) ratio when scoring remote "
+      "writes for per-CTA scheduling in the ragged-all-to-all device kernel "
+      "(0.0-1.0). Higher value => higher remote-write cost => more CTAs on "
+      "remote work. Out-of-range values use the default (0.22, fitted on "
+      "GB200)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_async_copy_min_bytes",
       int64_setter_for(&DebugOptions::set_xla_gpu_async_copy_min_bytes),
