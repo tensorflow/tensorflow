@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/export/export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/python/conversion_failure_reporter.h"
@@ -203,6 +203,10 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // High-level StableHLO optimizations
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createStablehloUnfuseBatchNormPass());
+  // Unfusing training batch norms emits TF ops (mean and variance), which the
+  // flatbuffer exporter doesn't support.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/false));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createStablehloFuseConvolutionPass());
 
@@ -474,16 +478,10 @@ absl::Status ConvertStableHloToTFLite(
     return failure_coordinator.ReportFailure(module, pass_status);
   }
 
-  tflite::FlatbufferExportOptions options;
-  options.converter_flags.set_allow_custom_ops(true);
-  options.converter_flags.set_use_buffer_offset(true);
-  options.serialize_stablehlo_ops = true;
-
   std::string diag_errors;
   SerializationDiagHandler diag_handler(module.getContext(), &diag_errors);
 
-  auto status =
-      tflite::MlirToFlatBufferTranslateFunction(module, options, export_stream);
+  auto status = mlir::TFL::ExportFlatbuffer(module, export_stream);
 
   if (!status.ok()) {
     return failure_coordinator.ReportSerializationFailure(module, status,

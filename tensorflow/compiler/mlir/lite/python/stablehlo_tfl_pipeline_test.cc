@@ -364,6 +364,30 @@ TEST_F(StableHloTflPipelineTest,
               UnorderedElementsAre("kv_cache_k_0", "kv_cache_v_0", "logits"));
 }
 
+TEST_F(StableHloTflPipelineTest, LegalizesUnfusedTrainingBatchNorm) {
+  constexpr absl::string_view kMlir = R"mlir(
+    module {
+      func.func @main(%x: tensor<2x3xf32>, %scale: tensor<3xf32>,
+                      %offset: tensor<3xf32>) -> tensor<2x3xf32> {
+        %0:3 = "stablehlo.batch_norm_training"(%x, %scale, %offset)
+            {epsilon = 1.0e-3 : f32, feature_index = 1 : i64}
+            : (tensor<2x3xf32>, tensor<3xf32>, tensor<3xf32>)
+            -> (tensor<2x3xf32>, tensor<3xf32>, tensor<3xf32>)
+        return %0#0 : tensor<2x3xf32>
+      }
+    }
+  )mlir";
+
+  std::string buffer = ConvertToFlatbuffer(kMlir);
+  ASSERT_FALSE(buffer.empty());
+  const tflite::Model* model = tflite::GetModel(buffer.data());
+  bool has_mean = false;
+  for (const tflite::OperatorCode* opcode : *model->operator_codes()) {
+    has_mean |= opcode->builtin_code() == tflite::BuiltinOperator_MEAN;
+  }
+  EXPECT_TRUE(has_mean);
+}
+
 TEST_F(StableHloTflPipelineTest, PreservesIrLocationsWithoutMutation) {
   constexpr absl::string_view kMlir = R"mlir(
     module {
