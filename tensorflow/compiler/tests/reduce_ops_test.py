@@ -129,6 +129,8 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           self.REAL_DATA, index_dtype)
 
   def testReduceMinNaN(self, index_dtype):
+    if self.device in ('CPU', 'XLA_CPU'):
+      self.skipTest('XLA:CPU fast min/max drops NaN (#118077).')
     float_types = set(self.float_types).intersection([
         np.float16,
         np.float32,
@@ -182,6 +184,8 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           self.REAL_DATA, index_dtype)
 
   def testReduceMaxNaN(self, index_dtype):
+    if self.device in ('CPU', 'XLA_CPU'):
+      self.skipTest('XLA:CPU fast min/max drops NaN (#118077).')
     float_types = set(self.float_types).intersection([
         np.float16,
         np.float32,
