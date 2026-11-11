@@ -150,6 +150,17 @@ class StreamExecutor {
     return absl::UnimplementedError("Physical allocation is not supported");
   }
 
+  // Creates a MemoryAllocator whose physical memory is placed on locality
+  // domain `locality_domain_id` of this device. Backends without
+  // locality-domain memory placement return Unimplemented without falling back
+  // to ordinary device memory.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateLocalityDomainMemoryAllocator(int /*locality_domain_id*/) {
+    return absl::UnimplementedError(
+        "Locality-domain memory allocators are not implemented by this "
+        "executor");
+  }
+
   // Obtains metadata about the underlying device.
   // The value is cached on first use.
   virtual const DeviceDescription& GetDeviceDescription() const = 0;

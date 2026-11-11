@@ -1149,8 +1149,7 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
   }
 
   if (type == MemorySpace::kCollective) {
-    return std::make_unique<CudaDeviceAllocator>(this,
-                                                 device_allocator_options_);
+    return CudaDeviceAllocator::Create(this, device_allocator_options_);
   }
 
   if (type == MemorySpace::kHost) {
@@ -1177,6 +1176,25 @@ CudaExecutor::CreatePhysicalMemoryAllocation(uint64_t size) {
     return absl::UnimplementedError("CUDA VMM is disabled");
   }
   return CudaRawMemoryAllocation::Create(this, size, device_allocator_options_);
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+CudaExecutor::CreateLocalityDomainMemoryAllocator(int locality_domain_id) {
+  ABSL_ASSIGN_OR_RETURN(int domain_count, GetLocalityDomainCount(device_));
+  if (domain_count <= 1) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Locality-domain memory placement requires a device with more than "
+        "one locality domain; device %d has %d",
+        device_ordinal(), domain_count));
+  }
+  if (locality_domain_id < 0 || locality_domain_id >= domain_count) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Invalid locality domain id %d; device %d has %d locality domains",
+        locality_domain_id, device_ordinal(), domain_count));
+  }
+  CudaDeviceAllocator::Options options = device_allocator_options_;
+  options.locality_domain_id = locality_domain_id;
+  return CudaDeviceAllocator::Create(this, options);
 }
 
 absl::Status CudaExecutor::Init() {
@@ -1236,8 +1254,8 @@ absl::Status CudaExecutor::Init() {
     }
   }
 
-  device_allocator_ =
-      std::make_unique<CudaDeviceAllocator>(this, device_allocator_options_);
+  ABSL_ASSIGN_OR_RETURN(device_allocator_, CudaDeviceAllocator::Create(
+                                          this, device_allocator_options_));
   host_allocator_ = std::make_unique<CudaHostAllocator>(this, numa_node_);
 
   return absl::OkStatus();
