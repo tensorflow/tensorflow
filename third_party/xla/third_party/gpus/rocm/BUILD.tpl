@@ -95,6 +95,18 @@ cc_library(
     }),
 )
 
+# libhipcxx ships under include/hipccl as {amd,cuda,hip,nv}, but hipCUB and
+# rocThrust include it unprefixed (<cuda/std/...>, <hip/std/...>), so it needs
+# an include root of its own with hipccl/ stripped.
+cc_library(
+    name = "rocm_libhipcxx_includes",
+    hdrs = glob(
+        [rocm_path("include/hipccl/**")],
+        allow_empty = True,
+    ),
+    strip_include_prefix = rocm_path("include/hipccl"),
+)
+
 # This target is required to
 # add includes that are used by rocm headers themself
 # through the virtual includes
@@ -107,6 +119,7 @@ cc_library(
     ]),
     strip_include_prefix = rocm_path("include"),
     deps = [
+        ":rocm_libhipcxx_includes",
         "@xla//third_party/libdrm:drm_headers",
     ],
 )
