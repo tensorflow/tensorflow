@@ -732,7 +732,8 @@ class TextFileInitializer(TableInitializerBase):
       data types do not match the expected data types.
     """
     if not isinstance(filename, tensor_lib.Tensor) and not filename:
-      raise ValueError("`filename` argument required for tf.lookup.TextFileInitializer")
+      raise ValueError(
+          "`filename` argument required for tf.lookup.TextFileInitializer")
 
     self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
