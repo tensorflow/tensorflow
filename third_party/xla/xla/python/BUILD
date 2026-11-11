@@ -395,6 +395,7 @@ nanobind_pywrap_extension(
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
@@ -578,6 +579,7 @@ nanobind_pywrap_extension(
     deps = [
         "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@com_google_absl//absl/strings:string_view",
         "@nanobind",
     ],
 )
