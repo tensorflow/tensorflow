@@ -2757,7 +2757,7 @@ def sparse_softmax(sp_input, name=None):
             [0.5, 0.5]]], dtype=float32)>
 
   Args:
-    sp_input: N-D `SparseTensor`, where `N >= 2`.
+    sp_input: N-D `SparseTensor` or `SparseTensorValue`, where `N >= 2`.
     name: optional name of the operation.
   Returns:
     output: N-D `SparseTensor` representing the results.
