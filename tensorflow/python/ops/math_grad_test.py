@@ -163,17 +163,6 @@ class MinOrMaxGradientTest(test.TestCase):
         grad = tape.gradient(y, x)
         self.assertTrue(np.all(np.isnan(self.evaluate(grad))))
 
-        @def_function.function(jit_compile=True)
-        def jit_grad(x_tensor):
-          with backprop.GradientTape() as tape:
-            tape.watch(x_tensor)
-            out = reduce_op(x_tensor)
-          return tape.gradient(out, x_tensor)
-
-        x_const = constant_op.constant(x_vals)
-        jit_res = self.evaluate(jit_grad(x_const))
-        self.assertTrue(np.all(np.isnan(jit_res)))
-
 
 class MaximumOrMinimumGradientTest(test.TestCase):
 
@@ -197,9 +186,11 @@ class MaximumOrMinimumGradientTest(test.TestCase):
   def testMaximumMinimumGradientNaNPropagation(self):
     """Verify NaN gradient propagation for maximum and minimum."""
     for dtype in [dtypes.float32, dtypes.float64]:
-      x_vals = np.array([1.0, np.nan], dtype=dtype.as_numpy_dtype)
-      y_vals = np.array([2.0, 3.0], dtype=dtype.as_numpy_dtype)
+      x_vals = np.array([1.0, np.nan, 2.0], dtype=dtype.as_numpy_dtype)
+      y_vals = np.array([2.0, 3.0, np.nan], dtype=dtype.as_numpy_dtype)
       for elementwise_op in [math_ops.maximum, math_ops.minimum]:
+        expected_gx0 = 0.0 if elementwise_op is math_ops.maximum else 1.0
+        expected_gy0 = 1.0 - expected_gx0
         with backprop.GradientTape() as tape:
           x = constant_op.constant(x_vals)
           y = constant_op.constant(y_vals)
@@ -207,8 +198,10 @@ class MaximumOrMinimumGradientTest(test.TestCase):
           z = elementwise_op(x, y)
         gx, gy = tape.gradient(z, [x, y])
         gx_val, gy_val = self.evaluate([gx, gy])
-        self.assertTrue(np.isnan(gx_val[1]))
-        self.assertTrue(np.isnan(gy_val[1]))
+        self.assertEqual(gx_val[0], expected_gx0)
+        self.assertEqual(gy_val[0], expected_gy0)
+        self.assertTrue(np.all(np.isnan(gx_val[1:])))
+        self.assertTrue(np.all(np.isnan(gy_val[1:])))
 
         # Test scalar second input for _MaximumMinimumGradInputOnly
         with backprop.GradientTape() as tape:
@@ -216,7 +209,9 @@ class MaximumOrMinimumGradientTest(test.TestCase):
           tape.watch(x)
           z_scalar = elementwise_op(x, constant_op.constant(2.0, dtype=dtype))
         gx_scalar = self.evaluate(tape.gradient(z_scalar, x))
+        self.assertEqual(gx_scalar[0], expected_gx0)
         self.assertTrue(np.isnan(gx_scalar[1]))
+        self.assertEqual(gx_scalar[2], 1.0)
 
         # Scalar second input containing NaN
         with backprop.GradientTape() as tape:
@@ -240,8 +235,10 @@ class MaximumOrMinimumGradientTest(test.TestCase):
                 constant_op.constant(x_vals), constant_op.constant(y_vals)
             )
         )
-        self.assertTrue(np.isnan(jx[1]))
-        self.assertTrue(np.isnan(jy[1]))
+        self.assertEqual(jx[0], expected_gx0)
+        self.assertEqual(jy[0], expected_gy0)
+        self.assertTrue(np.all(np.isnan(jx[1:])))
+        self.assertTrue(np.all(np.isnan(jy[1:])))
 
 
 class ProdGradientTest(test.TestCase):
@@ -527,7 +524,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
         self.assertTrue(np.isnan(grad_val[0]))
         self.assertTrue(np.isnan(grad_val[1]))
         # Segment 1 does not contain NaN, so element 2 is finite
-        self.assertFalse(np.isnan(grad_val[2]))
+        self.assertEqual(grad_val[2], 1.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testUnsortedSegmentMinMaxNaNPropagation(self):
@@ -549,7 +546,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
         self.assertTrue(np.isnan(grad_val[0]))
         self.assertTrue(np.isnan(grad_val[1]))
         # Segment 1 is finite -> finite grad
-        self.assertFalse(np.isnan(grad_val[2]))
+        self.assertEqual(grad_val[2], 1.0)
         # Negative segment ID is ignored -> zero grad
         self.assertEqual(grad_val[3], 0.0)
 

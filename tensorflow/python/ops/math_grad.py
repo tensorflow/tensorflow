@@ -598,9 +598,8 @@ def _UnsortedSegmentMinOrMaxGrad(op: ops.Operation, grad):
   zeros = array_ops.zeros_like(gathered_grads)
   res = array_ops.where_v2(is_selected, gathered_grads, zeros)
   if grad.dtype.is_floating:
-    is_nan = math_ops.logical_and(math_ops.is_nan(gathered_outputs), is_positive)
     nan_val = math_ops.cast(float("nan"), grad.dtype)
-    res = array_ops.where_v2(is_nan, nan_val, res)
+    res = array_ops.where_v2(math_ops.is_nan(gathered_outputs), nan_val, res)
   return res, None, None
 
 
@@ -1668,7 +1667,7 @@ def _MaximumMinimumGradInputOnly(op: ops.Operation, grad, selector_op):
   xmask = selector_op(x, y)
   xgrad = array_ops.where_v2(xmask, grad, zeros)
   if grad.dtype.is_floating:
-    is_nan = math_ops.is_nan(op.outputs[0])
+    is_nan = math_ops.logical_or(math_ops.is_nan(x), math_ops.is_nan(y))
     nan_val = math_ops.cast(float("nan"), grad.dtype)
     xgrad = array_ops.where_v2(is_nan, nan_val, xgrad)
   ygrad = None  # Return None for ygrad since the config allows that.
@@ -1699,7 +1698,7 @@ def _MaximumMinimumGrad(op: ops.Operation, grad, selector_op):
   else:
     gy = array_ops.where_v2(xmask, zeros, grad)
   if grad.dtype.is_floating:
-    is_nan = math_ops.is_nan(op.outputs[0])
+    is_nan = math_ops.logical_or(math_ops.is_nan(x), math_ops.is_nan(y))
     nan_val = math_ops.cast(float("nan"), grad.dtype)
     if gx is not None:
       gx = array_ops.where_v2(is_nan, nan_val, gx)
