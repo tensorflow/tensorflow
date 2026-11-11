@@ -1835,6 +1835,171 @@ ENTRY main {
   EXPECT_EQ(config, 4);
 }
 
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopReduceWithSmallerOutput) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[8,256,512]{2,1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[256,512]{1,0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*root, device_info_h100);
+  EXPECT_EQ(ComputeLoopFusionConfig(analysis, root->shape()), 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::B200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  EXPECT_EQ(ComputeLoopFusionConfig(analysis, root->shape()), 4);
+}
+
+TEST_F(GpuFusibleTest,
+       ComputeLoopFusionConfigSkipsUnrollForSmallOutputOrSmallReduceInput) {
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  // Output elements (8,192) < min_threads (16,896 on H100), even though reduce
+  // input elements (524,288) >= n_threads_max (270,336).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> small_output_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[64,8192]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[8192]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* small_output_root =
+      small_output_module->entry_computation()->root_instruction();
+  HloFusionAnalysis small_output_analysis =
+      HloFusionAnalysis::Create(*small_output_root, device_info_h100);
+  EXPECT_EQ(ComputeLoopFusionConfig(small_output_analysis,
+                                    small_output_root->shape()),
+            1);
+
+  // Reduce input elements (131,072) < n_threads_max (270,336 on H100).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> small_input_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,65536]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[65536]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* small_input_root =
+      small_input_module->entry_computation()->root_instruction();
+  HloFusionAnalysis small_input_analysis =
+      HloFusionAnalysis::Create(*small_input_root, device_info_h100);
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(small_input_analysis, small_input_root->shape()),
+      1);
+}
+
+TEST_F(GpuFusibleTest, GetMaxReduceInputElements) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_reduce_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_add {
+  p0 = f32[128]{0} parameter(0)
+  p1 = f32[128]{0} parameter(1)
+  ROOT sum = f32[128]{0} add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[128]{0} parameter(0)
+  p1 = f32[128]{0} parameter(1)
+  ROOT fusion = f32[128]{0} fusion(p0, p1), kind=kLoop, calls=fused_add
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> no_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          no_reduce_module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetMaxReduceInputElements(*no_reduce_fusion), std::nullopt);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> multi_reduce_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_reduces {
+  p0 = f32[4,256]{1,0} parameter(0)
+  p1 = f32[16,256]{1,0} parameter(1)
+  zero = f32[] constant(0)
+  r0 = f32[256]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+  r1 = f32[256]{0} reduce(p1, zero), dimensions={0}, to_apply=add
+  ROOT sum = f32[256]{0} add(r0, r1)
+}
+
+ENTRY main {
+  p0 = f32[4,256]{1,0} parameter(0)
+  p1 = f32[16,256]{1,0} parameter(1)
+  ROOT fusion = f32[256]{0} fusion(p0, p1), kind=kLoop, calls=fused_reduces
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> multi_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          multi_reduce_module->entry_computation()->root_instruction());
+  EXPECT_THAT(GetMaxReduceInputElements(*multi_reduce_fusion), Optional(4096));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unbounded_reduce_module,
+                       ParseAndReturnUnverifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_unbounded_reduce {
+  p0 = f32[?,256]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT r0 = f32[256]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[?,256]{1,0} parameter(0)
+  ROOT fusion = f32[256]{0} fusion(p0), kind=kLoop, calls=fused_unbounded_reduce
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> unbounded_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          unbounded_reduce_module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetMaxReduceInputElements(*unbounded_reduce_fusion), std::nullopt);
+}
+
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopPadFusion) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

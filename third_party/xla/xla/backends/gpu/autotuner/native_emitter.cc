@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -49,11 +51,17 @@ llvm::SmallSet<int64_t, 4> ComputeUnrollFactors(
   llvm::SmallSet<int64_t, 4> unroll_factors;
   unroll_factors.insert(default_unroll_factor);
 
-  auto analysis = HloFusionAnalysis::Create(instr, device_description);
-  int64_t num_elements = ShapeUtil::ElementsIn(analysis.first_result_shape());
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(instr, device_description);
+  // Explore unrolled candidates whenever either the output or a reduction input
+  // can saturate the GPU; `default_unroll_factor` remains in `unroll_factors`
+  // so hardware profiling can reject candidates that lose wave occupancy.
+  int64_t max_elements =
+      std::max(ShapeUtil::ElementsIn(analysis.first_result_shape()),
+               GetMaxReduceInputElements(analysis.fusion()).value_or(0));
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
-  if (num_elements >= n_threads_max &&
+  if (max_elements >= n_threads_max &&
       !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
     int64_t max_unroll_factor = MaxUnrollFactor(&analysis);
     unroll_factors.insert(max_unroll_factor);

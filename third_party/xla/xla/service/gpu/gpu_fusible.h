@@ -333,6 +333,11 @@ std::optional<int64_t> GetMinReduceInputElements(
     const HloInstruction& instr,
     FusionInfoCache* absl_nullable cache = nullptr);
 
+// Returns the maximum input element count among all `kReduce` instructions in
+// `fusion`, or `std::nullopt` if `fusion` contains no `kReduce` instructions.
+std::optional<int64_t> GetMaxReduceInputElements(
+    const HloFusionAdaptor& fusion);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -1422,6 +1422,120 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 
 // -----
 
+#align_map = #xla.indexing_map<"(d0) -> (d0 * 4 + 8), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_multi_result_map = #xla.indexing_map<"(d0) -> (d0 + 1, d0 * 4 + 8), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing_multi_result(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index, %other: tensor<32xf32>) -> (f32, vector<4xf32>) {
+  %cst = arith.constant 0.0 : f32
+  %0:2 = xla.apply_indexing #align_multi_result_map(%idx)
+  %1 = tensor.extract %other[%0#0] : tensor<32xf32>
+  %2 = vector.transfer_read %arg0[%0#1], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1, %2 : f32, vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_multi_result(
+// CHECK-SAME:  %[[ARG0:[^:]*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]]:2 = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]]#1 : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_max_map = #xla.indexing_map<"(d0) -> (max(d0 * 4, 8)), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing_max(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_max_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_max(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_mod_min_map = #xla.indexing_map<"(d0) -> (min((d0 * 8) mod 24, 12)), domain: d0 in [0, 7]">
+func.func @transfer_read_alignment_apply_indexing_mod_min(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_mod_min_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_mod_min(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_div_map = #xla.indexing_map<"(d0) -> (d0 floordiv 3), domain: d0 in [0, 11]">
+func.func @transfer_read_alignment_apply_indexing_floordiv(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_div_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_floordiv(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+func.func @transfer_read_alignment_block_arg_index(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = vector.transfer_read %arg0[%idx], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %0 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_block_arg_index(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %{{.*}} : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#write_align_map = #xla.indexing_map<"(d0) -> (d0 * 4 + 4), domain: d0 in [0, 3]">
+func.func @transfer_write_alignment_chained_apply_indexing(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> tensor<32xf32> {
+  %c0 = arith.constant 0 : index
+  %v = arith.constant dense<0.0> : vector<4xf32>
+  %0 = vector.transfer_write %v, %arg0[%c0] {in_bounds = [true]} : vector<4xf32>, tensor<32xf32>
+  %1 = xla.apply_indexing #write_align_map(%idx)
+  %2 = vector.transfer_write %v, %0[%1] {in_bounds = [true]} : vector<4xf32>, tensor<32xf32>
+  return %2 : tensor<32xf32>
+}
+// CHECK-LABEL: @transfer_write_alignment_chained_apply_indexing(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[V:.*]] = arith.constant dense<0.000000e+00> : vector<4xf32>
+// CHECK:           llvm.store %[[V]], %{{.*}} <alignment = 16> : vector<4xf32>, !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.store %[[V]], %[[GEP]] <alignment = 16> : vector<4xf32>, !llvm.ptr
+
+// -----
+
 func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> tensor<8xi64> {
   %c0 = arith.constant 0 : index
   %c0_i64 = arith.constant dense<0> : vector<8xi64>

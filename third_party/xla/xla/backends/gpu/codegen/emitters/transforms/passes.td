@@ -102,7 +102,9 @@ def OptimizeLoopsPass :
 
   let options = [
     Option<"max_unroll_factor_", "max_unroll_factor", "int", /*default=*/"0",
-           "Maximum unroll factor.">
+           "Maximum unroll factor.">,
+    Option<"only_inner_loops_", "only_inner_loops", "bool", /*default=*/"false",
+           "Only unroll loops nested inside another scf.for loop.">
   ];
 }
 

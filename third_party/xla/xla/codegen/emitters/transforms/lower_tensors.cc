@@ -15,6 +15,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -71,6 +73,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -149,17 +152,35 @@ Value GetDestinationBuffer(Value dest) {
   return dest;
 }
 
+// Returns the greatest guaranteed divisor (capped at `max_align`) of all
+// values produced by `expr`, or 1 when no larger divisor can be proven.
+int64_t GetSymbolicExprAlignment(SymbolicExpr expr, int64_t max_align) {
+  if (expr.IsBinaryOp()) {
+    int64_t lhs_align = GetSymbolicExprAlignment(expr.GetLHS(), max_align);
+    int64_t rhs_align = GetSymbolicExprAlignment(expr.GetRHS(), max_align);
+    switch (expr.GetType()) {
+      case SymbolicExprType::kAdd:
+      case SymbolicExprType::kMod:
+      case SymbolicExprType::kMax:
+      case SymbolicExprType::kMin:
+        return std::gcd(lhs_align, rhs_align);
+      case SymbolicExprType::kMul:
+        return std::gcd(lhs_align * rhs_align, max_align);
+      case SymbolicExprType::kFloorDiv:
+      case SymbolicExprType::kCeilDiv:
+        return 1;
+      default:
+        llvm_unreachable("expr is none of the binary expressions");
+    }
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return std::gcd(expr.GetValue(), max_align);
+  }
+  return 1;
+}
+
 std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
   CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
-
-  // If the offset isn't empty or {0}, we don't return any alignment because
-  // computing it isn't trivial and it's unclear that we need to deal with that
-  // case in practice.
-  auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
-    if (offsets.empty()) return true;
-    return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
-  };
-  if (!effective_offset_is_zero(indices)) return std::nullopt;
 
   // Try to get the alignment from the function signature.
   auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
@@ -170,7 +191,33 @@ std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
   auto align_attr =
       func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
   if (!align_attr) return std::nullopt;
-  return mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
+  int64_t base_align =
+      mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
+  if (base_align <= 0) {
+    return std::nullopt;
+  }
+
+  if (indices.empty() || mlir::matchPattern(indices[0], mlir::m_Zero())) {
+    return base_align;
+  }
+
+  if (auto apply_indexing = indices[0].getDefiningOp<ApplyIndexingOp>()) {
+    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(addr.getType());
+    if (tensor_type && tensor_type.getElementType().isIntOrFloat()) {
+      int64_t bit_width = tensor_type.getElementType().getIntOrFloatBitWidth();
+      if (bit_width % 8 == 0) {
+        int64_t element_bytes = bit_width / 8;
+        unsigned result_index =
+            mlir::cast<mlir::OpResult>(indices[0]).getResultNumber();
+        int64_t index_align = GetSymbolicExprAlignment(
+            apply_indexing.getSymbolicMap().GetResult(result_index),
+            base_align);
+        return std::gcd(base_align, index_align * element_bytes);
+      }
+    }
+  }
+
+  return std::nullopt;
 }
 
 template <typename Op>
@@ -660,7 +707,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
         UnrealizedConversionCastOp::create(b, llvm_type, vector_value)
             .getResult(0);
     auto store = ml::StoreOp::create(b, vector_value, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
+    if (auto alignment = GetAlignmentFromArg(dest, op.getIndices())) {
       store.setAlignment(*alignment);
     } else {
       auto data_layout = mlir::DataLayout::closest(op);

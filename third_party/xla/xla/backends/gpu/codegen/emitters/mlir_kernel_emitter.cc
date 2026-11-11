@@ -683,6 +683,18 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
+  // Unroll inner loops (such as small reduction loops in kLoop fusions) first
+  // so that any outer unroll loop becomes the innermost loop, exposing
+  // unit-stride accesses for a second vectorization pass before unrolling
+  // remaining outer loops.
+  OptimizeLoopsPassOptions inner_optimize_loops_options;
+  inner_optimize_loops_options.max_unroll_factor_ = max_unroll_factor;
+  inner_optimize_loops_options.only_inner_loops_ = true;
+  pm.addNestedPass<FuncOp>(
+      createOptimizeLoopsPass(inner_optimize_loops_options));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
   OptimizeLoopsPassOptions optimize_loops_options;
   optimize_loops_options.max_unroll_factor_ = max_unroll_factor;
   pm.addNestedPass<FuncOp>(createOptimizeLoopsPass(optimize_loops_options));
