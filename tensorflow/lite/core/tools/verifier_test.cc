@@ -480,6 +480,20 @@ TEST(VerifyModel, StringTensorIsLargerThanRequired) {
                   "String tensor input buffer last offset must be 19"));
 }
 
+TEST(VerifyModel, StringTensorNonMonotonicOffsets) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({3}, TensorType_STRING,
+                    {3, 0, 0, 0,  20, 0, 0, 0,   25,  0,   0,   0,  20,
+                     0, 0, 0, 25, 0,  0, 0, 'A', 'B', 'C', 'D', 'E'},
+                    "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "String tensor input buffer is invalid: index 2"));
+}
+
 TEST(VerifyModel, AllOpsAreSupported) {
   TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"CustomOp"});
   builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
@@ -883,6 +897,140 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
   ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
                      &mock_reporter));
+}
+
+TEST(VerifyModel, InvalidSparseTensorNegativeOrOverflowingDenseSize) {
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
+  ASSERT_TRUE(model);
+
+  // Case 1: Negative dense_size (-1) matching negative tensor shape (-1).
+  {
+    std::unique_ptr<ModelT> scoped_model(model->GetModel()->UnPack());
+    auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+    tensor->shape = {-1, -1};
+    tensor->sparsity->traversal_order = {0, 1};
+    tensor->sparsity->block_map = {};
+    tensor->sparsity->dim_metadata.resize(2);
+    tensor->sparsity->dim_metadata[0]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[0]->dense_size = -1;
+    tensor->sparsity->dim_metadata[1]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[1]->dense_size = -1;
+    scoped_model->buffers[1]->data = {0, 1, 2, 3};
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto packed_model = Model::Pack(builder, scoped_model.get());
+    ::tflite::FinishModelBuffer(builder, packed_model);
+
+    MockErrorReporter mock_reporter;
+    MutableOpResolver resolver;
+    TfLiteRegistration fake_op{};
+    resolver.AddCustom("FakeOp", &fake_op);
+    ASSERT_FALSE(
+        Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
+    ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                        &mock_reporter));
+    EXPECT_THAT(mock_reporter.GetAsString(),
+                ::testing::ContainsRegex("invalid sparsity parameters"));
+  }
+
+  // Case 2: Dense dimensions whose product overflows UINT_MAX (4294967295).
+  {
+    std::unique_ptr<ModelT> scoped_model(model->GetModel()->UnPack());
+    auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+    tensor->shape = {65536, 1};
+    tensor->sparsity->traversal_order = {0, 1, 2, 3};
+    tensor->sparsity->block_map = {3, 1};
+    tensor->sparsity->dim_metadata[0]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[0]->dense_size = 65536;
+    tensor->sparsity->dim_metadata[1]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[1]->dense_size = 1;
+    tensor->sparsity->dim_metadata[2]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[2]->dense_size = 65536;
+    tensor->sparsity->dim_metadata[3]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[3]->dense_size = 1;
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto packed_model = Model::Pack(builder, scoped_model.get());
+    ::tflite::FinishModelBuffer(builder, packed_model);
+
+    MockErrorReporter mock_reporter;
+    MutableOpResolver resolver;
+    TfLiteRegistration fake_op{};
+    resolver.AddCustom("FakeOp", &fake_op);
+    ASSERT_FALSE(
+        Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
+    ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                        &mock_reporter));
+    EXPECT_THAT(mock_reporter.GetAsString(),
+                ::testing::ContainsRegex("invalid sparsity parameters"));
+  }
+}
+
+TEST(VerifyModel, InvalidSparseTensorEmptySegments) {
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
+  ASSERT_TRUE(model);
+
+  // Case 1: Empty array_segments on a sparse dimension.
+  {
+    std::unique_ptr<ModelT> scoped_model(model->GetModel()->UnPack());
+    auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+    tensor->sparsity->dim_metadata[1]
+        ->array_segments.AsUint8Vector()
+        ->values.clear();
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto packed_model = Model::Pack(builder, scoped_model.get());
+    ::tflite::FinishModelBuffer(builder, packed_model);
+
+    MockErrorReporter mock_reporter;
+    MutableOpResolver resolver;
+    TfLiteRegistration fake_op{};
+    resolver.AddCustom("FakeOp", &fake_op);
+    ASSERT_FALSE(
+        Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
+    ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                        &mock_reporter));
+    EXPECT_THAT(mock_reporter.GetAsString(),
+                ::testing::ContainsRegex("invalid sparsity parameters"));
+  }
+
+  // Case 2: Dense product equals 4294967295 (UINT_MAX, which casts to -1 as
+  // int32_t) followed by a sparse dimension with empty array_segments
+  // (array_segments_size - 1 == -1).
+  {
+    std::unique_ptr<ModelT> scoped_model(model->GetModel()->UnPack());
+    auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
+    tensor->shape = {65535, 1};
+    tensor->sparsity->traversal_order = {0, 1, 2, 3};
+    tensor->sparsity->block_map = {3, 1};
+    tensor->sparsity->dim_metadata[0]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[0]->dense_size = 65535;
+    tensor->sparsity->dim_metadata[1]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[1]->dense_size = 1;
+    tensor->sparsity->dim_metadata[2]->format = DimensionType_DENSE;
+    tensor->sparsity->dim_metadata[2]->dense_size = 65537;
+    tensor->sparsity->dim_metadata[3]->format = DimensionType_SPARSE_CSR;
+    tensor->sparsity->dim_metadata[3]->dense_size = 1;
+    tensor->sparsity->dim_metadata[3]->array_segments.Set(Uint8VectorT{});
+    tensor->sparsity->dim_metadata[3]->array_indices.Set(Uint8VectorT{});
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto packed_model = Model::Pack(builder, scoped_model.get());
+    ::tflite::FinishModelBuffer(builder, packed_model);
+
+    MockErrorReporter mock_reporter;
+    MutableOpResolver resolver;
+    TfLiteRegistration fake_op{};
+    resolver.AddCustom("FakeOp", &fake_op);
+    ASSERT_FALSE(
+        Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
+    ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(), resolver,
+                        &mock_reporter));
+    EXPECT_THAT(mock_reporter.GetAsString(),
+                ::testing::ContainsRegex("invalid sparsity parameters"));
+  }
 }
 
 // TODO(b/145614687): Add more tricky test cases for sparse tensor verification.
