@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace thread {
 
-using ThreadPoolInterface = tsl::thread::ThreadPoolInterface;
+using ThreadPoolInterface = tsl::ThreadPoolInterface;
 
 }  // namespace thread
 }  // namespace tensorflow
