@@ -104,16 +104,20 @@ class RGBToHSVTest(xla_test.XLATestCase):
     # Regression test for GitHub issue #119607:
     # NaN values in input RGB channels must propagate to all channels in HSV,
     # and HSV with NaN must propagate to all channels in RGB under XLA.
-    rgb_np = np.array([[[1.0, np.nan, 0.5]]], dtype=np.float32)
-    with self.session():
-      placeholder = array_ops.placeholder(np.float32, shape=rgb_np.shape)
-      with self.test_scope():
-        hsv_op = image_ops.rgb_to_hsv(placeholder)
-        rgb_op = image_ops.hsv_to_rgb(placeholder)
-      hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
-      rgb_tf = rgb_op.eval(feed_dict={placeholder: rgb_np})
+    for nptype in self.float_types:
+      rgb_np = np.array([[[1.0, np.nan, 0.5]]], dtype=nptype)
+      hsv_nan_hue = np.array([[[np.nan, 0.5, 0.5]]], dtype=nptype)
+      with self.session():
+        placeholder = array_ops.placeholder(nptype, shape=rgb_np.shape)
+        with self.test_scope():
+          hsv_op = image_ops.rgb_to_hsv(placeholder)
+          rgb_op = image_ops.hsv_to_rgb(placeholder)
+        hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
+        rgb_tf = rgb_op.eval(feed_dict={placeholder: rgb_np})
+        rgb_hue_tf = rgb_op.eval(feed_dict={placeholder: hsv_nan_hue})
       self.assertTrue(np.isnan(hsv_tf[0, 0]).all())
       self.assertTrue(np.isnan(rgb_tf[0, 0]).all())
+      self.assertTrue(np.isnan(rgb_hue_tf[0, 0]).all())
 
 
 class AdjustContrastTest(xla_test.XLATestCase):
