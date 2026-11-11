@@ -422,5 +422,279 @@ TEST_F(GpuAlgebraicSimplifierTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
 
+TEST_F(GpuAlgebraicSimplifierTest, SinkReduceThroughSlice) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[8,256,1536]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[256,1536]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      ROOT s = f32[256,1024]{1,0} slice(r), slice={[0:256], [0:1024]}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                             .WithShape(m::Shape().WithDims({256, 1024}))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       SinkReduceAndConvertThroughPartitioningSlices) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[8,256,1536]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[256,1536]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      cvt = bf16[256,1536]{1,0} convert(r)
+      slice0 = bf16[256,1024]{1,0} slice(cvt), slice={[0:256], [0:1024]}
+      slice1 = bf16[256,512]{1,0} slice(cvt), slice={[0:256], [1024:1536]}
+      ROOT t = (bf16[256,1024]{1,0}, bf16[256,512]{1,0}) tuple(slice0, slice1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Convert(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                         .WithShape(m::Shape().WithDims({256, 1024}))),
+          m::Convert(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                         .WithShape(m::Shape().WithDims({256, 512}))))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       DoNotSinkReduceThroughOverlappingSlicesExceedingSize) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[8,256,1536]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[256,1536]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      cvt = bf16[256,1536]{1,0} convert(r)
+      slice0 = bf16[256,1024]{1,0} slice(cvt), slice={[0:256], [0:1024]}
+      slice1 = bf16[256,1024]{1,0} slice(cvt), slice={[0:256], [512:1536]}
+      ROOT t = (bf16[256,1024]{1,0}, bf16[256,1024]{1,0}) tuple(slice0, slice1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       SinkReduceThroughConvertAndBitcastPartitioningSlices) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[3,16,48]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[16,48]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      cvt = bf16[16,48]{1,0} convert(r)
+      bc = bf16[4,4,12,4]{3,2,1,0} bitcast(cvt)
+      slice_q = bf16[4,4,8,4]{3,2,1,0} slice(bc),
+          slice={[0:4], [0:4], [0:8], [0:4]}
+      slice_k = bf16[4,4,2,4]{3,2,1,0} slice(bc),
+          slice={[0:4], [0:4], [8:10], [0:4]}
+      slice_v = bf16[4,4,2,4]{3,2,1,0} slice(bc),
+          slice={[0:4], [0:4], [10:12], [0:4]}
+      ROOT t = (bf16[4,4,8,4]{3,2,1,0}, bf16[4,4,2,4]{3,2,1,0},
+                bf16[4,4,2,4]{3,2,1,0}) tuple(slice_q, slice_k, slice_v)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m_before, ParseAndReturnVerifiedModule(kModuleStr));
+  Literal input =
+      LiteralUtil::CreateFullWithDescendingLayout<float>({3, 16, 48}, 0.0f);
+  for (int64_t i = 0; i < input.element_count(); ++i) {
+    input.data<float>()[i] = static_cast<float>((i % 13) - 6) * 0.25f;
+  }
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       HloEvaluator().Evaluate(*m_before, {&input}));
+
+  ASSERT_OK_AND_ASSIGN(auto m_after, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      GpuAlgebraicSimplifier(options, Ampere()).Run(m_after.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(
+      m_after->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Bitcast(
+              m::Convert(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                             .WithShape(m::Shape().WithDims({16, 32})))),
+          m::Bitcast(
+              m::Convert(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                             .WithShape(m::Shape().WithDims({16, 8})))),
+          m::Bitcast(
+              m::Convert(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                             .WithShape(m::Shape().WithDims({16, 8})))))));
+
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*m_after, {&input}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       DoNotSinkReduceThroughNonContiguousBitcastSlice) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[3,16,48]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[16,48]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      bc = f32[4,4,12,4]{3,2,1,0} bitcast(r)
+      ROOT s = f32[4,4,8,2]{3,2,1,0} slice(bc),
+          slice={[0:4], [0:4], [0:8], [0:2]}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(GpuAlgebraicSimplifierTest, SinkReduceThroughReshapeLayoutInsensitive) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[4,16,48] parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[16,48] reduce(p0, c0), dimensions={0}, to_apply=add
+      rs = f32[4,4,12,4] reshape(r)
+      slice0 = f32[4,4,8,4] slice(rs), slice={[0:4], [0:4], [0:8], [0:4]}
+      slice1 = f32[4,4,4,4] slice(rs), slice={[0:4], [0:4], [8:12], [0:4]}
+      ROOT t = (f32[4,4,8,4], f32[4,4,4,4]) tuple(slice0, slice1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                                 .WithShape(m::Shape().WithDims({16, 32}))),
+                  m::Reshape(m::Reduce(m::Slice(m::Parameter(0)), m::Constant())
+                                 .WithShape(m::Shape().WithDims({16, 16}))))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest, DoNotSinkReduceWithDeadPassthroughUser) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[8,256,1536]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[256,1536]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
+      dead_cvt = bf16[256,1536]{1,0} convert(r)
+      ROOT s = f32[256,1024]{1,0} slice(r), slice={[0:256], [0:1024]}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(GpuAlgebraicSimplifierTest, DoNotSinkReduceExceedingMaxLeafSlices) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = f32[8,17]{1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r = f32[17]{0} reduce(p0, c0), dimensions={0}, to_apply=add
+      slice0 = f32[1]{0} slice(r), slice={[0:1]}
+      slice1 = f32[1]{0} slice(r), slice={[1:2]}
+      slice2 = f32[1]{0} slice(r), slice={[2:3]}
+      slice3 = f32[1]{0} slice(r), slice={[3:4]}
+      slice4 = f32[1]{0} slice(r), slice={[4:5]}
+      slice5 = f32[1]{0} slice(r), slice={[5:6]}
+      slice6 = f32[1]{0} slice(r), slice={[6:7]}
+      slice7 = f32[1]{0} slice(r), slice={[7:8]}
+      slice8 = f32[1]{0} slice(r), slice={[8:9]}
+      slice9 = f32[1]{0} slice(r), slice={[9:10]}
+      slice10 = f32[1]{0} slice(r), slice={[10:11]}
+      slice11 = f32[1]{0} slice(r), slice={[11:12]}
+      slice12 = f32[1]{0} slice(r), slice={[12:13]}
+      slice13 = f32[1]{0} slice(r), slice={[13:14]}
+      slice14 = f32[1]{0} slice(r), slice={[14:15]}
+      slice15 = f32[1]{0} slice(r), slice={[15:16]}
+      slice16 = f32[1]{0} slice(r), slice={[16:17]}
+      ROOT t = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+                f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+                f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
+                f32[1]{0}, f32[1]{0})
+          tuple(slice0, slice1, slice2, slice3, slice4, slice5, slice6, slice7,
+                slice8, slice9, slice10, slice11, slice12, slice13, slice14,
+                slice15, slice16)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -42,6 +42,7 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
 
   absl::Status HandleAdd(HloInstruction* add) override;
   absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
 
  private:
   bool ConvIsLowerable(HloInstruction* conv) const override;
@@ -71,6 +72,21 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   // select(in_bounds, gather(on_true, ...), broadcast(0)).
   absl::StatusOr<bool> TryToSimplifyOneHotReduceToGather(
       HloInstruction* reduce);
+
+  // Sinks an unstrided slice (optionally preceded by unary elementwise,
+  // bitcast, or reshape operations) through a reduce into its input operand
+  // when all consumers of the reduce map to unstrided slices whose total
+  // element count does not exceed the reduce output size. This allows each
+  // consumer branch to fuse its own reduction over only the sliced subset of
+  // elements.
+  absl::StatusOr<bool> TryToSinkReduceThroughSlice(HloInstruction* slice);
+
+  // Returns true if `slice` is a live, static, non-trivial unstrided slice of
+  // `operand` that can be sunk through a reduce, i.e. it has no control
+  // dependencies, no non-replicated sharding and (if layout sensitive) the
+  // same layout as `operand`.
+  bool IsFusibleUnstridedSlice(const HloInstruction* slice,
+                               const HloInstruction* operand) const;
 
   se::GpuComputeCapability compute_capability_;
 };
