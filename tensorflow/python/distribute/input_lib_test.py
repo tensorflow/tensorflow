@@ -1883,8 +1883,12 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
         # per-replica results.
         if result.numpy() != 0:
           results.append(result.numpy())
-    self.assertNotEmpty(results)
-    gathered = distribution.gather(constant_op.constant(results), axis=0)
+    # With a shared tf.data service job, one worker may get no elements.
+    # Pin int64 so an empty list is not inferred as float32, which would
+    # mismatch the other workers' int64 tensors in the collective gather.
+    gathered = distribution.gather(
+        constant_op.constant(results, dtype=dtypes.int64), axis=0
+    )
     self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
 
     histogram_proto = (
@@ -1947,8 +1951,12 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
         # per-replica results.
         if result.numpy() != 0:
           results.append(result.numpy())
-    self.assertNotEmpty(results)
-    gathered = distribution.gather(constant_op.constant(results), axis=0)
+    # With a shared tf.data service job, one worker may get no elements.
+    # Pin int64 so an empty list is not inferred as float32, which would
+    # mismatch the other workers' int64 tensors in the collective gather.
+    gathered = distribution.gather(
+        constant_op.constant(results, dtype=dtypes.int64), axis=0
+    )
     self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
     histogram_proto = (
         input_lib
