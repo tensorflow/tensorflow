@@ -31,6 +31,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -238,6 +239,9 @@ class SharedBatchScheduler
     // REQUIRED:
     // 1) All `output_tasks` should be non-empty tasks.
     // 2) Sizes of `output_tasks` add up to size of `input_task`.
+    // 3) On error, `*input_task` and `*output_tasks` must be left unchanged;
+    //    the caller retains ownership of `*input_task` and is responsible for
+    //    finishing it.
     //
     // NOTE:
     // Instantiations of `TaskType` may vary, so it's up to caller to define
@@ -568,10 +572,13 @@ class PriorityTaskQueue {
                                    max_execution_batch_size_, &output_tasks);
 
         if (!status.ok()) {
-          LOG(ERROR) << "Failed to split task: " << status;
-          highest_priority_entry.task = std::move(highest_priority_task_ptr);
-          AddEntryInternal(std::move(highest_priority_entry));
-          break;
+          LOG_EVERY_N_SEC(ERROR, 60) << "Failed to split task: " << status;
+          if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+            if (highest_priority_task_ptr != nullptr) {
+              highest_priority_task_ptr->FinishTask(status);
+            }
+          }
+          continue;
         }
 
         // First task fits.
@@ -1091,9 +1098,9 @@ class Queue {
 
   // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for
   // the case in which the queue is not empty when CloseAndWaitUntilEmpty()
-  // starts. When ProcessBatch() dequeues the last batch and makes the queue
-  // empty, if 'empty_notification_' is non-null it calls
-  // 'empty_notification_->Notify()'.
+  // starts. When ProcessBatch() or ScheduleBatch() drains the last task/batch
+  // and makes the queue empty, if 'empty_notification_' is non-null it clears
+  // 'empty_notification_' and calls 'empty_notification_->Notify()'.
   absl::Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
 
   Queue(const Queue&) = delete;
@@ -1645,7 +1652,13 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
     } else {
       absl::Status status = SplitInputBatchIntoSubtasks(&task, &output_tasks);
       if (!status.ok()) {
-        LOG(ERROR) << "Failed to split low priority task: " << status;
+        LOG_EVERY_N_SEC(ERROR, 60)
+            << "Failed to split low priority task: " << status;
+        if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+          if (task != nullptr) {
+            task->FinishTask(status);
+          }
+        }
         continue;
       }
     }
@@ -1966,6 +1979,11 @@ Queue<TaskType>::ScheduleBatch() {
       // There is no batch that can be scheduled,
       // mark the condition false and return the nullptr.
       schedulable_batch_ = false;
+      if (empty_notification_ != nullptr && IsEmptyInternal()) {
+        absl::Notification* notification = empty_notification_;
+        empty_notification_ = nullptr;
+        notification->Notify();
+      }
       return batch_to_schedule;
     }
 
@@ -2040,7 +2058,9 @@ void Queue<TaskType>::ProcessBatch(
     mutex_lock l(mu_);
     --num_batches_being_processed_;
     if (empty_notification_ != nullptr && IsEmptyInternal()) {
-      empty_notification_->Notify();
+      absl::Notification* notification = empty_notification_;
+      empty_notification_ = nullptr;
+      notification->Notify();
     }
   }
 }
@@ -2060,7 +2080,8 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
     if (IsEmptyInternal()) {
       empty.Notify();
     } else {
-      // Arrange for ProcessBatch() to notify when the queue becomes empty.
+      // Arrange for ProcessBatch() or ScheduleBatch() to notify when the queue
+      // becomes empty.
       empty_notification_ = &empty;
     }
   }
