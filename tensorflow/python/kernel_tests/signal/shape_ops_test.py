@@ -302,6 +302,40 @@ class FrameTest(test.TestCase):
     result = shape_ops.frame(signal, frame_length, frame_step)
     self.assertEqual(result.dtype, signal.dtype)
 
+  def test_mixed_integer_dtypes(self):
+    # `frame_length` and `frame_step` may have different integer dtypes, e.g.
+    # a NumPy int64 length with a Python int step.
+    signal = np.arange(10, dtype=np.float32)
+    for pad_end in (False, True):
+      expected = shape_ops.frame(signal, 4, 2, pad_end=pad_end)
+      for frame_length, frame_step in (
+          (np.int64(4), 2),
+          (4, np.int64(2)),
+          (np.int64(4), np.int64(2)),
+          (np.int32(4), np.int64(2)),
+          (constant_op.constant(4, dtypes.int64), 2),
+          (constant_op.constant(4), constant_op.constant(2, dtypes.int64)),
+      ):
+        result = shape_ops.frame(
+            signal, frame_length, frame_step, pad_end=pad_end)
+        self.assertAllEqual(expected, result)
+
+  def test_mixed_integer_dtypes_dynamic_length(self):
+    # The signal length is not static, so it is an int32 tensor.
+    signal = array_ops.placeholder_with_default(
+        np.arange(10, dtype=np.float32), shape=[None])
+    for pad_end in (False, True):
+      expected = self.evaluate(shape_ops.frame(signal, 4, 2, pad_end=pad_end))
+      for frame_length, frame_step in (
+          (np.int64(4), 2),
+          (4, np.int64(2)),
+          (np.int64(4), np.int64(2)),
+          (constant_op.constant(4, dtypes.int64), 2),
+      ):
+        result = shape_ops.frame(
+            signal, frame_length, frame_step, pad_end=pad_end)
+        self.assertAllEqual(expected, self.evaluate(result))
+
   def test_dynamic_tensor(self):
     if context.executing_eagerly():
       return
