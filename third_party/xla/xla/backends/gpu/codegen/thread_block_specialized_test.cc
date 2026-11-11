@@ -1503,5 +1503,135 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
 }
 
+TEST_F(ThreadBlockSpecializedFusionTest,
+       HopperAndBlackwellVectorizeSmallLoopPhases) {
+  // Without small-input vectorization (`A100SXMDeviceInfo`), `s8[1024]` uses 8
+  // blocks x 128 threads (`unroll_factor = 1`). On Hopper
+  // (`H100SXMDeviceInfo`), 4x unrolling shrinks it to a 2-block cluster with
+  // `vector<4xi8>` accesses; on Blackwell (`B200SXMDeviceInfo`), 16x unrolling
+  // shrinks it to a single 64-thread block (`cluster_dim() == nullopt`) with
+  // `vector<16xi8>` accesses synchronized by a block barrier.
+  constexpr absl::string_view kPhasedHlo = R"hlo(
+phase_0 { ROOT neg = s8[1024] negate(s8[1024] parameter(0)) }
+phase_1 {
+  halves = s8[2,512] reshape(s8[1024] parameter(0))
+  swapped = s8[2,512] reverse(halves), dimensions={0}
+  ROOT sum = s8[1024] add(s8[1024] reshape(swapped), s8[1024] parameter(1))
+}
+phased_comp {
+  f0 = s8[1024] fusion(s8[1024] parameter(0)), kind=kLoop, calls=phase_0
+  f1 = s8[1024] fusion(f0, s8[1024] parameter(1)), kind=kLoop, calls=phase_1
+  ROOT t = (s8[1024], s8[1024]) tuple(f0, f1)
+}
+ENTRY main {
+  ROOT fusion = (s8[1024], s8[1024]) fusion(s8[1024] parameter(0), s8[1024] parameter(1)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kPhasedHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+
+  se::DeviceDescription a100 = TestGpuDeviceInfo::A100SXMDeviceInfo();
+  ThreadBlockSpecializedFusion a100_emitter(
+      HloFusionAnalysis::Create(*fusion, a100));
+  EXPECT_EQ(a100_emitter.launch_dimensions().num_blocks(), 8);
+  EXPECT_EQ(a100_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_THAT(a100_emitter.cluster_dim(), Optional(se::ClusterDim(8, 1, 1)));
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> a100_mlir_module,
+      a100_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                            /*buffer_assignment=*/nullptr));
+  std::string a100_mlir_str;
+  llvm::raw_string_ostream(a100_mlir_str) << *a100_mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool a100_check, RunFileCheck(a100_mlir_str, R"(
+    // CHECK-LABEL: llvm.func internal @fusion_nested_0(
+    // CHECK-NOT:     vector<
+  )"));
+  EXPECT_TRUE(a100_check) << a100_mlir_str;
+
+  se::DeviceDescription h100 = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  ThreadBlockSpecializedFusion h100_emitter(
+      HloFusionAnalysis::Create(*fusion, h100));
+  EXPECT_EQ(h100_emitter.launch_dimensions().num_blocks(), 2);
+  EXPECT_EQ(h100_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_THAT(h100_emitter.cluster_dim(), Optional(se::ClusterDim(2, 1, 1)));
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> h100_mlir_module,
+      h100_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                            /*buffer_assignment=*/nullptr));
+  std::string h100_mlir_str;
+  llvm::raw_string_ostream(h100_mlir_str) << *h100_mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool h100_check, RunFileCheck(h100_mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    nvvm.cluster_dim = array<i32: 2, 1, 1>
+    // CHECK:         nvvm.cluster.arrive aligned
+    // CHECK:         nvvm.cluster.wait aligned
+    // CHECK-LABEL: llvm.func internal @fusion_nested_0(
+    // CHECK:         vector<4xi8>
+    // CHECK-LABEL: llvm.func internal @fusion_nested_1(
+    // CHECK:         vector<4xi8>
+  )"));
+  EXPECT_TRUE(h100_check) << h100_mlir_str;
+
+  se::DeviceDescription b200 = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  ThreadBlockSpecializedFusion b200_emitter(
+      HloFusionAnalysis::Create(*fusion, b200));
+  EXPECT_EQ(b200_emitter.launch_dimensions().num_blocks(), 1);
+  EXPECT_EQ(b200_emitter.launch_dimensions().num_threads_per_block(), 64);
+  EXPECT_EQ(b200_emitter.cluster_dim(), std::nullopt);
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> b200_mlir_module,
+      b200_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                            /*buffer_assignment=*/nullptr));
+  std::string b200_mlir_str;
+  llvm::raw_string_ostream(b200_mlir_str) << *b200_mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool b200_check, RunFileCheck(b200_mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-NOT:     nvvm.cluster_dim
+    // CHECK-SAME:  {
+    // CHECK-NOT:     nvvm.cluster
+    // CHECK:         llvm.call @fusion_nested_0(
+    // CHECK:         nvvm.barrier
+    // CHECK:         llvm.call @fusion_nested_1(
+    // CHECK-LABEL: llvm.func internal @fusion_nested_0(
+    // CHECK:         vector<16xi8>
+    // CHECK-LABEL: llvm.func internal @fusion_nested_1(
+    // CHECK:         vector<16xi8>
+  )"));
+  EXPECT_TRUE(b200_check) << b200_mlir_str;
+
+  // Pure horizontal `__thread_block_specialized` fusions keep default
+  // small-input unrolling disabled (`8 + 8 = 16` blocks on Blackwell).
+  constexpr absl::string_view kHorizontalHlo = R"hlo(
+leaf_0 { ROOT neg = s8[1024] negate(s8[1024] parameter(0)) }
+leaf_1 { ROOT abs = s8[1024] abs(s8[1024] parameter(0)) }
+horiz_comp {
+  f0 = s8[1024] fusion(s8[1024] parameter(0)), kind=kLoop, calls=leaf_0
+  f1 = s8[1024] fusion(s8[1024] parameter(1)), kind=kLoop, calls=leaf_1
+  ROOT t = (s8[1024], s8[1024]) tuple(f0, f1)
+}
+ENTRY main {
+  ROOT fusion = (s8[1024], s8[1024]) fusion(s8[1024] parameter(0), s8[1024] parameter(1)),
+    kind=kCustom, calls=horiz_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> horiz_module,
+                       ParseAndReturnVerifiedModule(kHorizontalHlo));
+  const auto* horiz_fusion = Cast<HloFusionInstruction>(
+      horiz_module->entry_computation()->root_instruction());
+  ThreadBlockSpecializedFusion horiz_b200_emitter(
+      HloFusionAnalysis::Create(*horiz_fusion, b200));
+  EXPECT_EQ(horiz_b200_emitter.launch_dimensions().num_blocks(), 16);
+
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kPhasedHlo, ErrorSpec{0, 0}));
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu

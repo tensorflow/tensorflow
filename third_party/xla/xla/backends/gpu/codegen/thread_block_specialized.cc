@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
@@ -296,17 +297,20 @@ void EmitNode(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
   }
 }
 
-NestedKernelSpec BuildNestedKernelSpec(
-    const HloFusionAnalysis& analysis, std::vector<int64_t> input_arg_indices,
-    std::vector<int64_t> output_arg_indices) {
+NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
+                                       std::vector<int64_t> input_arg_indices,
+                                       std::vector<int64_t> output_arg_indices,
+                                       bool unroll_small_fusions) {
   NestedKernelSpec spec;
   spec.input_arg_indices = std::move(input_arg_indices);
   spec.output_arg_indices = std::move(output_arg_indices);
 
   if (std::unique_ptr<MlirKernelEmitter> emitter =
-          ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(analysis)) {
+          ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+              analysis, /*unroll_small_fusions=*/unroll_small_fusions)) {
     spec.kind = NestedKernelSpec::Kind::kLeaf;
     spec.launch_dims = emitter->launch_dimensions();
+    spec.unroll_small_fusions = unroll_small_fusions;
     return spec;
   }
 
@@ -397,9 +401,16 @@ NestedKernelSpec BuildNestedKernelSpec(
     }
     HloFusionAnalysis child_analysis =
         HloFusionAnalysis::Create(*child_fusion, analysis.device_info());
+    // TODO(b/480040242): Consider unrolling small, grid-bound fusions inside
+    // kHorizontal fusions as well.
+    bool child_unroll_small_fusions =
+        unroll_small_fusions ||
+        (spec.kind == NestedKernelSpec::Kind::kPhased &&
+         analysis.device_info().cuda_compute_capability().IsAtLeastHopper());
     NestedKernelSpec child = BuildNestedKernelSpec(
         child_analysis, std::move(child_input_arg_indices),
-        std::move(child_output_arg_indices));
+        std::move(child_output_arg_indices),
+        /*unroll_small_fusions=*/child_unroll_small_fusions);
     child.fusion = child_fusion;
     spec.children.push_back(std::move(child));
   }
@@ -500,10 +511,11 @@ std::string GetSpecCacheDiscriminator(const NestedKernelSpec& root) {
 /*static*/
 std::unique_ptr<MlirKernelEmitter>
 ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
-    const HloFusionAnalysis& nested_analysis) {
+    const HloFusionAnalysis& nested_analysis, bool unroll_small_fusions) {
   switch (nested_analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
-      return std::make_unique<LoopFusion>(nested_analysis);
+      return std::make_unique<LoopFusion>(nested_analysis,
+                                          unroll_small_fusions);
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
       return CreateReductionFusion(nested_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
@@ -526,7 +538,8 @@ ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
   absl::c_iota(output_arg_indices, num_inputs);
 
   root_spec_ = BuildNestedKernelSpec(analysis, std::move(input_arg_indices),
-                                     std::move(output_arg_indices));
+                                     std::move(output_arg_indices),
+                                     /*unroll_small_fusions=*/false);
 }
 
 absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
@@ -618,7 +631,9 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     HloFusionAnalysis nested_analysis =
         HloFusionAnalysis::Create(*leaf_spec.fusion, device_info_);
     std::unique_ptr<MlirKernelEmitter> nested_emitter =
-        CreateNativeNestedEmitter(nested_analysis);
+        CreateNativeNestedEmitter(
+            nested_analysis,
+            /*unroll_small_fusions=*/leaf_spec.unroll_small_fusions);
     TF_RET_CHECK(nested_emitter != nullptr);
     ABSL_ASSIGN_OR_RETURN(
         MlirKernelSource nested_source,

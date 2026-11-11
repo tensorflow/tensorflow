@@ -311,10 +311,12 @@ bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion);
 // Returns the max loop unroll factor.
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis = nullptr);
 
-int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            bool unroll_small_inputs = false);
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
-                            const Shape& shape);
+                            const Shape& shape,
+                            bool unroll_small_inputs = false);
 
 // Returns whether the instruction is a scan or, in the case of a fusion,
 // contains a scan operation.
