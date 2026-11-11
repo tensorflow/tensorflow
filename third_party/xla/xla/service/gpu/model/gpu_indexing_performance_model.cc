@@ -1162,6 +1162,11 @@ bool ShouldTileReductionDimensions(const HloFusionAdaptor& fusion_adaptor) {
              .xla_gpu_experimental_enable_reduction_dimension_tiling();
 }
 
+std::string GetFusionRootName(const HloFusionAdaptor& fusion_adaptor) {
+  return fusion_adaptor.GetRoots().front().instruction().ToString(
+      HloPrintOptions::ShortParsable());
+}
+
 absl::Status DumpAndLogTopKCandidates(
     const HloFusionAdaptor& fusion_adaptor,
     absl::Span<const TiledRunTimeData> candidates) {
@@ -1173,36 +1178,27 @@ absl::Status DumpAndLogTopKCandidates(
                     .xla_gpu_dump_cost_model_top_k_candidates_to();
   }
 
-  if (!VLOG_IS_ON(2) && dump_path.empty()) {
+  if (dump_path.empty()) {
     return absl::OkStatus();
   }
 
-  const std::string fusion_name =
-      root.ToString(HloPrintOptions::ShortParsable());
+  const std::string fusion_name = GetFusionRootName(fusion_adaptor);
 
   std::string dump_content;
-  if (!dump_path.empty()) {
-    absl::StrAppend(&dump_content, "=== Cost model top-", candidates.size(),
-                    " candidates for: ", fusion_name, " ===\n");
-  }
+  absl::StrAppend(&dump_content, "=== Cost model top-", candidates.size(),
+                  " candidates for: ", fusion_name, " ===\n");
   for (int i = 0; i < candidates.size(); ++i) {
-    std::string cand_str = absl::StrCat("Candidate #", i, ": ", candidates[i]);
-    VLOG(2) << "[" << fusion_name << "] " << cand_str;
-    if (!dump_path.empty()) {
-      absl::StrAppend(&dump_content, cand_str, "\n");
-    }
+    absl::StrAppend(&dump_content, "Candidate #", i, ": ", candidates[i], "\n");
   }
 
-  if (!dump_path.empty()) {
-    absl::StrAppend(&dump_content, "\n");
-    std::string resolved_path;
-    if (!tsl::io::ResolveTestPrefixes(dump_path, resolved_path)) {
-      return FailedPrecondition("Failed to resolve cost model dump path: %s",
-                                dump_path);
-    }
-    tsl::Env* env = tsl::Env::Default();
-    ABSL_RETURN_IF_ERROR(tsl::AppendStringToFile(env, resolved_path, dump_content));
+  absl::StrAppend(&dump_content, "\n");
+  std::string resolved_path;
+  if (!tsl::io::ResolveTestPrefixes(dump_path, resolved_path)) {
+    return FailedPrecondition("Failed to resolve cost model dump path: %s",
+                              dump_path);
   }
+  tsl::Env* env = tsl::Env::Default();
+  ABSL_RETURN_IF_ERROR(tsl::AppendStringToFile(env, resolved_path, dump_content));
 
   return absl::OkStatus();
 }
@@ -1232,6 +1228,18 @@ FilterAndSortCandidates(
         return Product(a.block_level_parameters.sequential_tile_sizes) >
                Product(b.block_level_parameters.sequential_tile_sizes);
       });
+  if (VLOG_IS_ON(2)) {
+    const std::string fusion_name = GetFusionRootName(fusion_adaptor);
+    for (int i = 0; i < candidates.size(); ++i) {
+      if (i < top_k) {
+        VLOG(2) << "[" << fusion_name << "] Candidate #" << i << ": "
+                << candidates[i];
+      } else {
+        VLOG(3) << "[" << fusion_name << "] Candidate #" << i << ": "
+                << candidates[i];
+      }
+    }
+  }
   if (candidates.size() > top_k) {
     candidates.resize(top_k);
   }
@@ -1275,14 +1283,17 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EvaluateCandidate(
   if (!tiled_computation.ok()) {
     // TODO: b/511080616 - GetValidTilings() must return only tilings that can
     // be tiled and we should treat all errors here as a failure.
-    VLOG(3) << "Tiling failed for " << absl::StrJoin(padded_tile_sizes, ",")
+    VLOG(3) << "[" << GetFusionRootName(fusion_adaptor)
+            << "] Tiling failed for " << absl::StrJoin(padded_tile_sizes, ",")
             << " with error: " << tiled_computation.status().message();
     return std::nullopt;
   }
   if (const Decision valid =
           VerifyTritonConstraints(*tiled_computation, device_info);
       !valid) {
-    VLOG(3) << "Triton constraints violated for tiling " << valid.Explain();
+    VLOG(3) << "[" << GetFusionRootName(fusion_adaptor)
+            << "] Triton constraints violated for tiling "
+            << absl::StrJoin(padded_tile_sizes, ",") << ": " << valid.Explain();
     return std::nullopt;
   }
 
@@ -1301,6 +1312,10 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EvaluateCandidate(
                                  .sequential_tile_sizes,
                              ",")
             << "], exec_time " << tiled_run_time_data->runtime_data.exec_time;
+  } else {
+    VLOG(3) << "[" << GetFusionRootName(fusion_adaptor)
+            << "] Rejected tile sizes " << absl::StrJoin(padded_tile_sizes, ",")
+            << ": exceeds post-tiling register limit";
   }
   return tiled_run_time_data;
 }
@@ -1360,6 +1375,8 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
   VLOG(1) << absl::StrCat(
       "TryFindTopKBestTilingsForFusionAsync tiling_space evaluating ",
       tilings.size(), " tilings.");
+  VLOG(2) << "TilingSpace for " << GetFusionRootName(fusion_adaptor) << ":\n"
+          << *base->tiling_space;
 
   // Tile the fusion symbolically once, to reject candidates whose tiles do not
   // fit in registers before tiling them. If symbolic tiling fails, there are no
@@ -1378,7 +1395,8 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
     if (Decision decision = VerifySubsetOfTritonConstraints(
             padded_tile_sizes, *base->tiling_space, device_info);
         !decision) {
-      VLOG(3) << "Pre-filtering candidate violating Triton constraints: "
+      VLOG(3) << "[" << GetFusionRootName(fusion_adaptor)
+              << "] Pre-filtering candidate violating Triton constraints: "
               << absl::StrJoin(padded_tile_sizes, ",") << ": "
               << decision.Explain();
       continue;
@@ -1388,7 +1406,8 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
         !internal::DoesTilingFitInRegisters(fusion_adaptor,
                                             *symbolic_tiled_computation,
                                             padded_tile_sizes, device_info)) {
-      VLOG(3) << "Pre-filtering candidate exceeding register limit: "
+      VLOG(3) << "[" << GetFusionRootName(fusion_adaptor)
+              << "] Pre-filtering candidate exceeding register limit: "
               << absl::StrJoin(padded_tile_sizes, ",");
       continue;
     }
@@ -1413,6 +1432,7 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
   }
 
   if (candidate_futures.empty()) {
+    VLOG(1) << "Found 0 valid tiling candidates.";
     return TopKTiledRunTimeDataOrError(
         absl::InlinedVector<TiledRunTimeData, 4>{});
   }
