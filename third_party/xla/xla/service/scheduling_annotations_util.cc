@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,7 +31,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
@@ -212,6 +215,30 @@ absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
     }
   }
   return next_scheduling_id + 1;
+}
+
+bool HasDeepPipelineSchedulingMode(const HloInstruction* instr) {
+  std::optional<std::string> mode =
+      instr->get_frontend_attribute(kXlaSchedulingGroupDeepPipelineAttr);
+  return mode.has_value() && *mode == "true";
+}
+
+absl::StatusOr<absl::flat_hash_set<AnnotationGroupId>>
+GetDeepPipelineSchedulingGroupIds(const HloModule& module) {
+  absl::flat_hash_set<AnnotationGroupId> group_ids;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      if (!HasDeepPipelineSchedulingMode(hlo)) {
+        continue;
+      }
+      ABSL_ASSIGN_OR_RETURN(std::optional<AnnotationGroupId> group_id,
+                       GetSchedulingAnnotationGroupId(hlo));
+      if (group_id.has_value()) {
+        group_ids.insert(*group_id);
+      }
+    }
+  }
+  return group_ids;
 }
 
 bool IsIterationIdConstentWithPipeliningDirection(
