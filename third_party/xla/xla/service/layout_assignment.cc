@@ -77,11 +77,9 @@ bool IsLayoutConstrainedCollective(const HloInstruction* instruction) {
 }
 
 // Computations for which this is true are required by the HLO verifier to
-// contain only parameter instructions and a single root.
-bool IsSingleInstructionAsyncComputation(const HloComputation* computation) {
-  return computation->IsAsyncComputation() &&
-         computation->execution_thread() ==
-             HloInstruction::kMainExecutionThread &&
+// contain only parameter instructions and a single root, and currently do.
+bool IsProtectedAsyncComputation(const HloComputation* computation) {
+  return computation->IsRestrictedAsyncComputation() &&
          computation->CanExpandIntoSingleInstruction();
 }
 }  // namespace
@@ -1924,7 +1922,7 @@ absl::Status LayoutAssignment::PropagateUseConstraintToDefs(
     const HloInstruction* user) {
   const HloComputation* computation = instruction->parent();
   const bool from_async_root = user == computation->root_instruction() &&
-                               IsSingleInstructionAsyncComputation(computation);
+                               IsProtectedAsyncComputation(computation);
 
   // Try to set all logical buffers which may be sources of the given operand to
   // match the given layout.
@@ -2322,7 +2320,7 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToUses(
   // any constraints from the parameter to the root to avoid promoting any root
   // constraints.
   if (buffer.instruction()->opcode() == HloOpcode::kParameter &&
-      IsSingleInstructionAsyncComputation(buffer.instruction()->parent())) {
+      IsProtectedAsyncComputation(buffer.instruction()->parent())) {
     return absl::OkStatus();
   }
 
@@ -2519,7 +2517,7 @@ absl::Status LayoutAssignment::PropagateAcrossEdge(
   // constraints on them are never propagated back to the parameter buffers.
   bool redirect_to_root = dst_instruction->opcode() == HloOpcode::kParameter &&
                           !IsAtMostRank1(dst_instruction->shape()) &&
-                          IsSingleInstructionAsyncComputation(computation) &&
+                          IsProtectedAsyncComputation(computation) &&
                           root->IsUserOf(dst_instruction);
 
   if (!redirect_to_root) {
@@ -2907,7 +2905,7 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
 absl::Status LayoutAssignment::CalculateComputationLayout(
     LayoutConstraints* constraints) {
   const bool is_single_instruction_async =
-      IsSingleInstructionAsyncComputation(constraints->computation());
+      IsProtectedAsyncComputation(constraints->computation());
 
   // Process instructions that contain nested computations and may require
   // additional layouts to be assigned on the instructions nested inside.

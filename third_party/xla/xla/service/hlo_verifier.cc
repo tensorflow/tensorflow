@@ -4096,17 +4096,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
-bool IsCollectivesGroupComputation(HloComputation* computation) {
-  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
-  if (!maybe_caller.has_value()) {
-    return false;
-  }
-  return (*maybe_caller)
-      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
-      .has_value();
-}
-
-bool IsAsyncBarrierComputation(HloComputation* computation) {
+bool IsAsyncBarrierComputation(const HloComputation* computation) {
   return absl::c_all_of(
       computation->instructions(),
       [root = computation->root_instruction()](const HloInstruction* instr) {
@@ -5090,10 +5080,7 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
       ABSL_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
       // Verify that async computations contain a single instruction unless
       // they are explicitly marked as a collectives group or async barrier.
-      if (computation->IsAsyncComputation() &&
-          computation->execution_thread() ==
-              HloInstruction::kMainExecutionThread &&
-          !IsCollectivesGroupComputation(computation) &&
+      if (computation->IsRestrictedAsyncComputation() &&
           !IsAsyncBarrierComputation(computation)) {
         ABSL_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
