@@ -47,7 +47,7 @@ namespace {
 using ::testing::Optional;
 
 class ThreadBlockSpecializedFusionTest
-    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
+    : public HloInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  protected:
   ThreadBlockSpecializedFusionTest() : mlir_context_(CreateMlirContext()) {
     mlir_context_->appendDialectRegistry(
