@@ -16,9 +16,13 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include <utility>
 
+#include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
@@ -41,6 +45,86 @@ Attributes:
 )pbdoc")
       .def_readonly("min", &odml::Range::min)
       .def_readonly("max", &odml::Range::max);
+
+  py::class_<odml::CalibrationOptions>(m, "CalibrationOptions", R"pbdoc(
+Options for profiler-based calibration.
+Attributes:
+    valid_min: Exclusive minimum valid float value.
+    valid_max: Exclusive maximum valid float value.
+    collect_histogram: Whether to collect dynamic histograms across invocations.
+    num_bins: Maximum number of bins per tensor histogram.
+    histogram_tensor_names: Optional set of tensor names to collect histograms for.
+)pbdoc")
+      .def(py::init([](float valid_min, float valid_max, bool collect_histogram,
+                       int num_bins,
+                       std::optional<std::unordered_set<std::string>>
+                           histogram_tensor_names) {
+             return odml::CalibrationOptions{
+                 .valid_min = valid_min,
+                 .valid_max = valid_max,
+                 .collect_histogram = collect_histogram,
+                 .num_bins = num_bins,
+                 .histogram_tensor_names = std::move(histogram_tensor_names),
+             };
+           }),
+           py::arg("valid_min") = -3e38f, py::arg("valid_max") = 3e38f,
+           py::arg("collect_histogram") = false, py::arg("num_bins") = 2048,
+           py::arg("histogram_tensor_names") = std::nullopt)
+      .def_readwrite("valid_min", &odml::CalibrationOptions::valid_min)
+      .def_readwrite("valid_max", &odml::CalibrationOptions::valid_max)
+      .def_readwrite("collect_histogram",
+                     &odml::CalibrationOptions::collect_histogram)
+      .def_readwrite("num_bins", &odml::CalibrationOptions::num_bins)
+      .def_readwrite("histogram_tensor_names",
+                     &odml::CalibrationOptions::histogram_tensor_names);
+
+  py::class_<odml::TensorHistogram>(m, "TensorHistogram", R"pbdoc(
+Accumulated dynamic histogram for a single tensor.
+Attributes:
+    counts: 1D int64 numpy array of bin counts.
+    lower_bound: Lower bound of the first bin.
+    bin_width: Width of each bin.
+    min: Global minimum value observed for this tensor.
+    max: Global maximum value observed for this tensor.
+)pbdoc")
+      .def_property_readonly("counts",
+                             [](const odml::TensorHistogram& self) {
+                               return py::array_t<int64_t>(
+                                   static_cast<py::ssize_t>(self.counts.size()),
+                                   self.counts.data());
+                             })
+      .def_readonly("lower_bound", &odml::TensorHistogram::lower_bound)
+      .def_readonly("bin_width", &odml::TensorHistogram::bin_width)
+      .def_readonly("min", &odml::TensorHistogram::min)
+      .def_readonly("max", &odml::TensorHistogram::max);
+
+  py::class_<odml::CalibrationSession>(m, "CalibrationSession", R"pbdoc(
+Stateful calibration session that tracks per-invocation min/max and optionally
+accumulates dynamic histograms across invocations.
+)pbdoc")
+      .def(py::init<odml::CalibrationOptions>(),
+           py::arg("options") = odml::CalibrationOptions{})
+      .def(
+          "invoke",
+          [](odml::CalibrationSession& self, py::object interpreter_handle,
+             int subgraph_index) {
+            auto* interpreter = reinterpret_cast<tflite::Interpreter*>(
+                interpreter_handle.cast<intptr_t>());
+            py::gil_scoped_release release;
+            auto status_or_map =
+                self.Invoke(interpreter, subgraph_index,
+                            static_cast<tflite::StatefulErrorReporter*>(
+                                interpreter->error_reporter()));
+            if (!status_or_map.ok()) {
+              throw std::runtime_error(
+                  std::string(status_or_map.status().message()));
+            }
+            return status_or_map.value();
+          },
+          py::arg("interpreter_handle"), py::arg("subgraph_index"))
+      .def("get_histograms", &odml::CalibrationSession::GetHistograms)
+      .def("reset", &odml::CalibrationSession::Reset);
+
   py::class_<MemoryUsage>(m, "MemoryUsage", R"pbdoc(
 Memory usage statistics.
 Attributes:
