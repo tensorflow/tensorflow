@@ -111,6 +111,23 @@ class ExtractImagePatches(xla_test.XLATestCase):
         padding="SAME",
         patches=patches)
 
+  def testKsize3x3Stride2x2Rate1x1Same(self):
+    """Test for 3x3 kernel with SAME padding on both sides."""
+    # [1, 3, 3, 1]
+    image = np.arange(1, 10).reshape(1, 3, 3, 1).astype(np.float32)
+    # [1, 2, 2, 9]
+    patches = [[[[0, 0, 0, 0, 1, 2, 0, 4, 5],
+                 [0, 0, 0, 2, 3, 0, 5, 6, 0]],
+                [[0, 4, 5, 0, 7, 8, 0, 0, 0],
+                 [5, 6, 0, 8, 9, 0, 0, 0, 0]]]]
+    self._VerifyValues(
+        image,
+        ksizes=[3, 3],
+        strides=[2, 2],
+        rates=[1, 1],
+        padding="SAME",
+        patches=patches)
+
   def testKsize2x2Stride1x1Rate2x2Valid(self):
     """Test for 2x2 kernel with 2x2 dilation."""
     # [1, 2, 2, 1]
