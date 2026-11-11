@@ -83,6 +83,7 @@ def _validate_arguments(num_mel_bins, sample_rate,
       raise ValueError('upper_edge_hertz must not be larger than the Nyquist '
                        'frequency (sample_rate / 2). Got %s for sample_rate: %s'
                        % (upper_edge_hertz, sample_rate))
+  dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Got: %s' % dtype)
 

@@ -159,6 +159,19 @@ class LinearToMelTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(dtype,
                      mel_ops.linear_to_mel_weight_matrix(dtype=dtype).dtype)
 
+  @parameterized.parameters(np.float32, np.dtype('float64'), 'float32')
+  def test_numpy_dtype_spec(self, dtype):
+    expected_dtype = dtypes.as_dtype(dtype)
+    expected = mel_ops.linear_to_mel_weight_matrix(dtype=expected_dtype)
+    actual = mel_ops.linear_to_mel_weight_matrix(dtype=dtype)
+    self.assertEqual(expected_dtype, actual.dtype)
+    self.assertAllEqual(self.evaluate(expected), self.evaluate(actual))
+
+  @parameterized.parameters(np.int32, 'int32')
+  def test_numpy_dtype_spec_not_floating(self, dtype):
+    with self.assertRaisesRegex(ValueError, 'floating point'):
+      mel_ops.linear_to_mel_weight_matrix(dtype=dtype)
+
   def test_error(self):
     # TODO(rjryan): Error types are different under eager.
     if context.executing_eagerly():
