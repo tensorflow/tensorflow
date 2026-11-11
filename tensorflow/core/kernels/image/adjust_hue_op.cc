@@ -11,6 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cmath>
 #include <cstdint>
 
 #include "absl/status/status.h"
@@ -219,7 +220,10 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
     const int64_t channel_count = options.channel_count;
     static const int kChannelSize = 3;
     auto input_data = input->shaped<float, 2>({channel_count, kChannelSize});
-    const float delta_h = delta->scalar<float>()();
+    float delta_h = delta->scalar<float>()();
+    if (Eigen::numext::isfinite(delta_h) && std::abs(delta_h) > 1.0f) {
+      delta_h = std::fmod(delta_h, 1.0f);
+    }
     auto output_data = output->shaped<float, 2>({channel_count, kChannelSize});
     const int kCostPerChannel = 10;
     const DeviceBase::CpuWorkerThreads& worker_threads =

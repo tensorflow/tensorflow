@@ -611,10 +611,9 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
               self.assertTrue(np.isnan(y_val[0, p, 0]))
               self.assertTrue(np.isnan(y_val[0, p, 1]))
               self.assertTrue(np.isnan(y_val[0, p, 2]))
-            # Fourth pixel has valid values -> output channels must be finite.
-            self.assertFalse(np.isnan(y_val[0, 3, 0]))
-            self.assertFalse(np.isnan(y_val[0, 3, 1]))
-            self.assertFalse(np.isnan(y_val[0, 3, 2]))
+            # Fourth pixel has valid values -> grayscale [0.5, 0.5, 0.5]
+            # is preserved.
+            self.assertAllClose(y_val[0, 3], [0.5, 0.5, 0.5], atol=1e-3)
 
             # Test that NaN delta propagates NaNs across all pixels.
             x_valid = [[[0.2, 0.4, 0.6], [0.1, 0.3, 0.5]]]
@@ -633,6 +632,14 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
               )
               y_inf_val = self.evaluate(y_inf)
               self.assertTrue(np.all(np.isnan(y_inf_val)))
+
+            for big_delta in [1e30, -1e30, 1e38]:
+              y_big = gen_image_ops.adjust_hue(
+                  images=constant_op.constant(x_valid, dtype=dtype),
+                  delta=constant_op.constant(big_delta, dtype=dtypes.float32),
+              )
+              y_big_val = self.evaluate(y_big)
+              self.assertTrue(np.all(np.isfinite(y_big_val)))
 
 
 class FlipImageBenchmark(test.Benchmark):
@@ -1136,10 +1143,9 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
               self.assertTrue(np.isnan(y_val[0, p, 0]))
               self.assertTrue(np.isnan(y_val[0, p, 1]))
               self.assertTrue(np.isnan(y_val[0, p, 2]))
-            # Fourth pixel has valid values -> output channels must be finite.
-            self.assertFalse(np.isnan(y_val[0, 3, 0]))
-            self.assertFalse(np.isnan(y_val[0, 3, 1]))
-            self.assertFalse(np.isnan(y_val[0, 3, 2]))
+            # Fourth pixel has valid values -> grayscale [0.5, 0.5, 0.5]
+            # is preserved.
+            self.assertAllClose(y_val[0, 3], [0.5, 0.5, 0.5], atol=1e-3)
 
             # Test that NaN scale propagates NaNs across all pixels.
             x_valid = [[[0.2, 0.4, 0.6], [0.1, 0.3, 0.5]]]
