@@ -81,7 +81,7 @@ absl::StatusOr<std::optional<StreamCallbackId>> CreateStreamCallbackId(
 }
 
 absl::Status StreamCallbackRegistry::CallbackState::Invoke(
-    tsl::thread::ThreadPoolInterface* thread_pool, StreamedResult result) {
+    tsl::ThreadPoolInterface* thread_pool, StreamedResult result) {
   {
     absl::MutexLock lock(mu_);
     if (closed_) {
@@ -149,7 +149,7 @@ absl::StatusOr<ScopedStreamCallback> StreamCallbackRegistry::Register(
 }
 
 absl::Status StreamCallbackRegistry::Invoke(
-    tsl::thread::ThreadPoolInterface* thread_pool, StreamCallbackId callback_id,
+    tsl::ThreadPoolInterface* thread_pool, StreamCallbackId callback_id,
     StepId step_id, StreamedResult result) {
   absl::MutexLock lock(mu_);
   auto iter = stream_callbacks_.find({callback_id, step_id});

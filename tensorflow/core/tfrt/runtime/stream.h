@@ -179,7 +179,7 @@ class StreamCallbackRegistry {
           void(absl::flat_hash_map<std::string, tensorflow::Tensor>)>
           callback);
 
-  absl::Status Invoke(tsl::thread::ThreadPoolInterface* thread_pool,
+  absl::Status Invoke(tsl::ThreadPoolInterface* thread_pool,
                       StreamCallbackId callback_id, StepId step_id,
                       StreamedResult result);
 
@@ -205,7 +205,7 @@ class StreamCallbackRegistry {
     }
 
     // Invokes the callback in `thread_pool` with `result`.
-    absl::Status Invoke(tsl::thread::ThreadPoolInterface* thread_pool,
+    absl::Status Invoke(tsl::ThreadPoolInterface* thread_pool,
                         StreamedResult result);
 
     // Closes the callback so that it can no longer be invoked. This method also
