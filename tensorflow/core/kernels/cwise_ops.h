@@ -980,12 +980,13 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
-// TensorFlow runs CPU kernels with ScopedFlushDenormal (DAZ and FTZ) active.
-// Under DAZ, std::atan2 can divide 0.0 / 0.0 = NaN after inspecting raw
-// subnormal integer bits, and Eigen's patan2 flushes subnormal lanes to 0.
-// Normalizing subnormal significands via bitwise OR with 1.0 before scaling
-// by a power of 2 preserves the exact ratio y / x, signs, and quadrant
-// without triggering DAZ or FTZ flushing.
+// TensorFlow runs CPU kernels with ScopedFlushDenormal (DAZ and FTZ) active,
+// and shares functor::atan2 with GPU bfloat16 kernels. Under DAZ, std::atan2
+// can divide 0.0 / 0.0 = NaN after inspecting raw subnormal integer bits, and
+// Eigen's patan2 flushes subnormal lanes to 0. Normalizing subnormal
+// significands via bitwise OR with 1.0 before scaling by a power of 2
+// preserves the exact ratio y / x, signs, and quadrant without triggering DAZ
+// or FTZ flushing.
 template <typename T>
 struct tf_scalar_atan2_op {
   template <typename U>
@@ -1051,7 +1052,7 @@ struct tf_scalar_atan2_op {
       const Packet zero = pzero(y);
       const Packet one = pset1<Packet>(T(1));
       const Packet normal_min =
-          pset1<Packet>(std::numeric_limits<T>::min());
+          pset1<Packet>((std::numeric_limits<T>::min)());
       const Packet abs_y = pabs(y);
       const Packet abs_x = pabs(x);
       const Packet y_lt_min = pcmp_lt(abs_y, normal_min);
@@ -1068,7 +1069,8 @@ struct tf_scalar_atan2_op {
           std::is_same_v<T, float> ? T(0x1p+64f) : T(0x1p+512);
       constexpr T kSubnormalScale =
           std::is_same_v<T, float> ? T(0x1p-62f) : T(0x1p-510);
-      const Packet sign_mask = psignmask<Packet>();
+      const Packet y_sign = pandnot(y, abs_y);
+      const Packet x_sign = pandnot(x, abs_x);
       const Packet scale = pset1<Packet>(kScale);
       const Packet sub_scale = pset1<Packet>(kSubnormalScale);
       const Packet can_scale =
@@ -1076,13 +1078,15 @@ struct tf_scalar_atan2_op {
       const Packet do_scale = pand(any_sub, can_scale);
 
       const Packet y_scaled_sub =
-          por(pand(y, sign_mask), pmul(norm_abs_y, sub_scale));
+          por(y_sign, pmul(norm_abs_y, sub_scale));
       const Packet x_scaled_sub =
-          por(pand(x, sign_mask), pmul(norm_abs_x, sub_scale));
-      const Packet y_scaled = pselect(y_lt_min, y_scaled_sub, pmul(y, scale));
-      const Packet x_scaled = pselect(x_lt_min, x_scaled_sub, pmul(x, scale));
-      const Packet y_flushed = pselect(y_sub, pand(y, sign_mask), y);
-      const Packet x_flushed = pselect(x_sub, pand(x, sign_mask), x);
+          por(x_sign, pmul(norm_abs_x, sub_scale));
+      const Packet y_scaled =
+          pselect(y_lt_min, y_scaled_sub, pmul(y, scale));
+      const Packet x_scaled =
+          pselect(x_lt_min, x_scaled_sub, pmul(x, scale));
+      const Packet y_flushed = pselect(y_sub, y_sign, y);
+      const Packet x_flushed = pselect(x_sub, x_sign, x);
 
       return internal::patan2(pselect(do_scale, y_scaled, y_flushed),
                               pselect(do_scale, x_scaled, x_flushed));

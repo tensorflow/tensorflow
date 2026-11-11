@@ -962,6 +962,8 @@ class BinaryOpTest(test.TestCase):
       s = finfo.smallest_subnormal
       s2 = dtype(2) * s
       n = finfo.tiny
+      big = finfo.max
+      inf = dtype(np.inf)
       pairs = [
           (s, s),
           (s, -s),
@@ -975,7 +977,12 @@ class BinaryOpTest(test.TestCase):
           (n, s),
           (s, -n),
           (-s, -n),
-      ] * 3  # 36 elements to exercise 8/16-lane SIMD packets and scalar tail
+          (n, -n),
+          (s, big),
+          (big, s),
+          (s, -inf),
+          (-s, -big),
+      ] * 3  # 51 elements: 2/4/8/16-lane packets + 3-element scalar tail
       y = np.array([p[0] for p in pairs], dtype=dtype)
       x = np.array([p[1] for p in pairs], dtype=dtype)
       expected = np.arctan2(
