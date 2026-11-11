@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/reduce_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -966,6 +967,148 @@ TEST(DynamicFloatSumOpTest, Scale) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
+}
+
+TEST(ConstFloat16SumOpTest, NotKeepDims) {
+  std::vector<half> data = {half(1.0f),  half(2.0f),  half(3.0f),  half(4.0f),
+                            half(5.0f),  half(6.0f),  half(7.0f),  half(8.0f),
+                            half(9.0f),  half(10.0f), half(11.0f), half(12.0f),
+                            half(13.0f), half(14.0f), half(15.0f), half(16.0f),
+                            half(17.0f), half(18.0f), half(19.0f), half(20.0f),
+                            half(21.0f), half(22.0f), half(23.0f), half(24.0f)};
+  SumOpConstModel m({TensorType_FLOAT16, {4, 3, 2}}, {TensorType_FLOAT16, {2}},
+                    {4}, {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({144.0f, 156.0f})));
+}
+
+TEST(ConstFloat16SumOpTest, KeepDims) {
+  std::vector<half> data = {half(1.0f),  half(2.0f),  half(3.0f),  half(4.0f),
+                            half(5.0f),  half(6.0f),  half(7.0f),  half(8.0f),
+                            half(9.0f),  half(10.0f), half(11.0f), half(12.0f),
+                            half(13.0f), half(14.0f), half(15.0f), half(16.0f),
+                            half(17.0f), half(18.0f), half(19.0f), half(20.0f),
+                            half(21.0f), half(22.0f), half(23.0f), half(24.0f)};
+  SumOpConstModel m({TensorType_FLOAT16, {4, 3, 2}}, {TensorType_FLOAT16, {3}},
+                    {2}, {0, 2}, true);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({84.0f, 100.0f, 116.0f})));
+}
+
+TEST(ConstFloat16SumOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SumOpConstModel m({TensorType_FLOAT16, {4, 0, 2}}, {TensorType_FLOAT16, {3}},
+                    {1}, {1}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f})));
+}
+
+TEST(DynamicFloat16SumOpTest, NotKeepDims) {
+  std::vector<half> data = {half(1.0f),  half(2.0f),  half(3.0f),  half(4.0f),
+                            half(5.0f),  half(6.0f),  half(7.0f),  half(8.0f),
+                            half(9.0f),  half(10.0f), half(11.0f), half(12.0f),
+                            half(13.0f), half(14.0f), half(15.0f), half(16.0f),
+                            half(17.0f), half(18.0f), half(19.0f), half(20.0f),
+                            half(21.0f), half(22.0f), half(23.0f), half(24.0f)};
+  SumOpDynamicModel m({TensorType_FLOAT16, {4, 3, 2}},
+                      {TensorType_FLOAT16, {2}}, {TensorType_INT32, {4}},
+                      false);
+  m.SetAxis({1, 0, -3, -3});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({144.0f, 156.0f})));
+}
+
+TEST(DynamicFloat16SumOpTest, KeepDims) {
+  std::vector<half> data = {half(1.0f),  half(2.0f),  half(3.0f),  half(4.0f),
+                            half(5.0f),  half(6.0f),  half(7.0f),  half(8.0f),
+                            half(9.0f),  half(10.0f), half(11.0f), half(12.0f),
+                            half(13.0f), half(14.0f), half(15.0f), half(16.0f),
+                            half(17.0f), half(18.0f), half(19.0f), half(20.0f),
+                            half(21.0f), half(22.0f), half(23.0f), half(24.0f)};
+  SumOpDynamicModel m({TensorType_FLOAT16, {4, 3, 2}},
+                      {TensorType_FLOAT16, {3}}, {TensorType_INT32, {2}}, true);
+  m.SetAxis({0, 2});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({84.0f, 100.0f, 116.0f})));
+}
+
+TEST(DynamicFloat16SumOpTest, ReduceAllDims) {
+  std::vector<half> data = {half(1.0f), half(2.0f), half(3.0f), half(4.0f)};
+  SumOpDynamicModel m({TensorType_FLOAT16, {2, 2}}, {TensorType_FLOAT16, {}},
+                      {TensorType_INT32, {2}}, false);
+  m.SetAxis({0, 1});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<half>(), ElementsAreArray(ArrayFloatNear({10.0f})));
+}
+
+TEST(ReferenceDynamicFloat16SumOpTest, NotKeepDims) {
+  std::vector<half> data = {half(1.0f), half(2.0f), half(3.0f),
+                            half(4.0f), half(5.0f), half(6.0f)};
+  ReferenceDynamicSumOpModel m({TensorType_FLOAT16, {3, 2}},
+                               {TensorType_FLOAT16, {2}},
+                               {TensorType_INT32, {1}}, false);
+  m.SetAxis({0});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({9.0f, 12.0f})));
+}
+
+TEST(ReferenceDynamicFloat16SumOpTest, KeepDims) {
+  std::vector<half> data = {half(1.0f), half(2.0f), half(3.0f),
+                            half(4.0f), half(5.0f), half(6.0f)};
+  ReferenceDynamicSumOpModel m({TensorType_FLOAT16, {3, 2}},
+                               {TensorType_FLOAT16, {3, 1}},
+                               {TensorType_INT32, {1}}, true);
+  m.SetAxis({1});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({3.0f, 7.0f, 11.0f})));
+}
+
+TEST(ReferenceDynamicFloat16SumOpTest, ReduceAllDims) {
+  std::vector<half> data = {half(1.0f), half(2.0f), half(3.0f), half(4.0f)};
+  ReferenceDynamicSumOpModel m({TensorType_FLOAT16, {2, 2}},
+                               {TensorType_FLOAT16, {}},
+                               {TensorType_INT32, {2}}, false);
+  m.SetAxis({0, 1});
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<half>(), ElementsAreArray(ArrayFloatNear({10.0f})));
+}
+
+TEST(ReferenceDynamicFloat16SumOpTest, ZeroInputDim) {
+  ReferenceDynamicSumOpModel m({TensorType_FLOAT16, {2, 0}},
+                               {TensorType_FLOAT16, {2}},
+                               {TensorType_INT32, {1}}, false);
+  m.SetAxis({1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(ArrayFloatNear({0.0f, 0.0f})));
 }
 
 TEST(ConstUint8SumOpTest, NotKeepDims) {
