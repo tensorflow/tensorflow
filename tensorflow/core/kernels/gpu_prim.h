@@ -38,6 +38,7 @@ limitations under the License.
 #include "cub/iterator/transform_input_iterator.cuh"
 #else
 #include "cuda/ptx"
+#include "thrust/iterator/constant_iterator.h"
 #include "thrust/iterator/counting_iterator.h"
 #include "thrust/iterator/transform_iterator.h"
 #endif
