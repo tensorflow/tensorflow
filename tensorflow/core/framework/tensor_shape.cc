@@ -43,6 +43,14 @@ static void AppendTo(const TensorShapeBase<Shape>& s,
   }
 }
 
+template <bool kIsPartial, typename T>
+static int64_t DecodeDim(T dim, T unknown) {
+  if constexpr (kIsPartial) {
+    if (dim == unknown) return -1;
+  }
+  return dim;
+}
+
 void TensorShape::CheckDimsEqual(int NDIMS) const {
   CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS << " dimensions"
                           << " from a tensor of " << dims() << " dimensions";
@@ -586,9 +594,19 @@ absl::Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
 
 template <class Shape>
 absl::InlinedVector<int64_t, 4UL> TensorShapeBase<Shape>::dim_sizes() const {
+  if (unknown_rank()) return {};
+  if (tag() == REP_OUT_OF_LINE) return *as64()->dims_;
+  const int n = ndims_byte();
   absl::InlinedVector<int64_t, 4UL> result;
-  for (auto dim : *this) {
-    result.push_back(dim.size);
+  result.reserve(n);
+  if (tag() == REP16) {
+    for (int i = 0; i < n; ++i) {
+      result.push_back(DecodeDim<kIsPartial>(as16()->dims_[i], kUnknownRep16));
+    }
+  } else {
+    for (int i = 0; i < n; ++i) {
+      result.push_back(DecodeDim<kIsPartial>(as32()->dims_[i], kUnknownRep32));
+    }
   }
   return result;
 }
@@ -743,9 +761,25 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
   proto->Clear();
   if (unknown_rank()) {
     proto->set_unknown_rank(true);
+    return;
+  }
+  const int n = ndims_byte();
+  if (n > 1) {
+    proto->mutable_dim()->Reserve(n);
+  }
+  if (tag() == REP16) {
+    for (int i = 0; i < n; ++i) {
+      proto->add_dim()->set_size(
+          DecodeDim<kIsPartial>(as16()->dims_[i], kUnknownRep16));
+    }
+  } else if (tag() == REP32) {
+    for (int i = 0; i < n; ++i) {
+      proto->add_dim()->set_size(
+          DecodeDim<kIsPartial>(as32()->dims_[i], kUnknownRep32));
+    }
   } else {
-    for (int i = 0; i < dims(); i++) {
-      proto->add_dim()->set_size(dim_size(i));
+    for (int64_t size : *as64()->dims_) {
+      proto->add_dim()->set_size(size);
     }
   }
 }
