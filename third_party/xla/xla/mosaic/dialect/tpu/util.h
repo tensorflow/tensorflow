@@ -117,7 +117,7 @@ namespace mlir::tpu {
   TPU_ASSERT_CMP_LOC_IMPL(mlir::emitError(loc), lhs, rhs, <=)
 
 template <bool adjust_bool = false>
-int8_t getTypeBitwidth(Type ty) {
+unsigned getTypeBitwidth(Type ty) {
   if (auto integer_ty = dyn_cast<IntegerType>(ty)) {
     const unsigned width = integer_ty.getWidth();
     if constexpr (adjust_bool) {
@@ -135,14 +135,14 @@ int8_t getTypeBitwidth(Type ty) {
 
 // Returns the bitwidth of the element type. The function works for both
 // scalar and vector types.
-inline int8_t getElementTypeBitwidth(Type ty) {
+inline unsigned getElementTypeBitwidth(Type ty) {
   if (auto vty = dyn_cast<VectorType>(ty)) {
     return getTypeBitwidth(vty.getElementType());
   }
   return getTypeBitwidth(ty);
 }
 
-inline int8_t getElementTypeBitwidth(MemRefType ty) {
+inline unsigned getElementTypeBitwidth(MemRefType ty) {
   return getElementTypeBitwidth(ty.getElementType());
 }
 
