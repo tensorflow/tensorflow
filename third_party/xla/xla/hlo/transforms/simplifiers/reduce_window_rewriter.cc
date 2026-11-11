@@ -831,7 +831,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
     return false;
   }
 
-  for (const auto& computation : module->computations(execution_threads)) {
+  for (const HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (auto* reduce_window =
