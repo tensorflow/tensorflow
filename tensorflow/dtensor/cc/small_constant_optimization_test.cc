@@ -14,6 +14,8 @@
 
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 
+#include <optional>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
