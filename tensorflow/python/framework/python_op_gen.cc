@@ -728,7 +728,7 @@ std::string AttrListToPython(const AttrValue& value,
   } else if (value.list().f_size() > 0) {
     for (int i = 0; i < value.list().f_size(); ++i) {
       if (i > 0) absl::StrAppend(&ret, ", ");
-      absl::StrAppend(&ret, strings::LegacyPrecision(value.list().f(i)));
+      absl::StrAppend(&ret, absl::HighPrecision(value.list().f(i)));
     }
   } else if (value.list().b_size() > 0) {
     for (int i = 0; i < value.list().b_size(); ++i) {
@@ -783,7 +783,7 @@ std::string AttrValueToPython(const std::string& type, const AttrValue& value,
       if (s.good()) {
         return s.str();
       }
-      return absl::StrCat(strings::LegacyPrecision(value.f()));
+      return absl::StrCat(absl::HighPrecision(value.f()));
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
