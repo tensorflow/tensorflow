@@ -384,6 +384,12 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
     profile_options.redzone_padding_bytes = 0;
   }
   profile_options.should_init_buffers = check_buffers;
+  // The cache flush buffer is only needed if candidates are profiled.
+  profile_options.flush_caches =
+      debug_options.xla_gpu_autotune_level() > 0 &&
+      debug_options.xla_gpu_autotune_flush_l2_cache();
+  profile_options.num_timed_runs =
+      debug_options.xla_gpu_autotune_num_timed_runs();
   return profile_options;
 }
 

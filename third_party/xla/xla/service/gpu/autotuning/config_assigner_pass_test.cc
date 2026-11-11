@@ -635,6 +635,27 @@ INSTANTIATE_TEST_SUITE_P(
       return std::to_string(info.param.autotune_level);
     });
 
+TEST_F(AutotunerPassTest, ProfileOptionsFlushCachesAndAverageTimedRuns) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_autotune_level(4);
+  ProfileOptions default_options = GetProfileOptions(debug_options);
+  EXPECT_TRUE(default_options.flush_caches);
+  EXPECT_EQ(default_options.num_timed_runs, 3);
+
+  debug_options.set_xla_gpu_autotune_flush_l2_cache(false);
+  debug_options.set_xla_gpu_autotune_num_timed_runs(1);
+  ProfileOptions options = GetProfileOptions(debug_options);
+  EXPECT_FALSE(options.flush_caches);
+  EXPECT_EQ(options.num_timed_runs, 1);
+}
+
+TEST_F(AutotunerPassTest, ProfileOptionsDoNotFlushCachesWithoutAutotuning) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_autotune_level(0);
+  debug_options.set_xla_gpu_autotune_flush_l2_cache(true);
+  EXPECT_FALSE(GetProfileOptions(debug_options).flush_caches);
+}
+
 struct RegSpillsParams {
   bool filter_kernels_flag;
   bool fail_on_spill_flag;

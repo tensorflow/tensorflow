@@ -508,6 +508,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
+  opts.set_xla_gpu_autotune_flush_l2_cache(true);
+  opts.set_xla_gpu_autotune_num_timed_runs(3);
 
   // TODO(b/355487968): Remove this flag once all data will be presented in
   // xprof with command buffers.
@@ -1840,6 +1842,19 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       float_setter_for(&DebugOptions::set_xla_gpu_autotune_gemm_rtol),
       debug_options->xla_gpu_autotune_gemm_rtol(),
       "Relative precision for comparing GEMM solutions vs the reference one"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_autotune_flush_l2_cache",
+      bool_setter_for(&DebugOptions::set_xla_gpu_autotune_flush_l2_cache),
+      debug_options->xla_gpu_autotune_flush_l2_cache(),
+      "If true, the GPU autotuner flushes the L2 cache before every timed run "
+      "of a candidate, so that candidates are profiled with operands read "
+      "from device memory."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_autotune_num_timed_runs",
+      int32_setter_for(&DebugOptions::set_xla_gpu_autotune_num_timed_runs),
+      debug_options->xla_gpu_autotune_num_timed_runs(),
+      "Number of timed runs of each candidate during GPU autotuning. The mean "
+      "run time is used to rank the candidates."));
   flag_list->push_back(tsl::Flag(
       "xla_force_host_platform_device_count",
       int32_setter_for(&DebugOptions::set_xla_force_host_platform_device_count),
