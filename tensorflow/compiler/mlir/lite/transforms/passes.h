@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimization_region_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -310,6 +311,21 @@ inline std::unique_ptr<mlir::Pass> CreatePushTransposeThroughEwisePass() {
   return Create<PushTransposeThroughEwisePass>();
 }
 
+// `odml.optimization_region` passes (optimization_region_passes.h), in
+// pipeline order: Mark before HLO -> TFL legalization, Materialize after the
+// last rewriting pass, Inline at the end.
+inline std::unique_ptr<mlir::Pass> CreateMarkOptimizationRegionsPass() {
+  return Create<MarkOptimizationRegionsPass>();
+}
+
+inline std::unique_ptr<mlir::Pass> CreateMaterializeOptimizationRegionsPass() {
+  return Create<MaterializeOptimizationRegionsPass>();
+}
+
+inline std::unique_ptr<mlir::Pass> CreateInlineOptimizationRegionsPass() {
+  return Create<InlineOptimizationRegionsPass>();
+}
+
 // Create a pass that canonicalize the boundary values.
 inline std::unique_ptr<mlir::Pass> CreateCanonicalizeBoundaryValuePass() {
   return Create<CanonicalizeBoundaryValuePass>();
@@ -386,6 +402,10 @@ inline void registerTensorFlowLitePasses() {
   Register<OptimizeBroadcastLikePass, OptimizeBroadcastLikePassOptions>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
+  Register<MarkOptimizationRegionsPass>();
+  Register<MaterializeOptimizationRegionsPass>();
+  Register<SkipOptimizationRegionsPass>();
+  Register<InlineOptimizationRegionsPass>();
 
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
