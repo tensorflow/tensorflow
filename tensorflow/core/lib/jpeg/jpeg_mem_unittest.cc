@@ -706,7 +706,9 @@ TEST(JpegMemTest, PartialReadBlackFillAvoidsStrideOverflow) {
          static_cast<uint8_t>(two_mcu_jpeg[cut2 - 1]) == 0xff) {
     ++cut2;
   }
-  std::string suspended_row8(two_mcu_jpeg.data(), cut2);
+  std::string suspended_row8(
+      absl::string_view(two_mcu_jpeg.data(), two_mcu_jpeg.size())
+          .substr(0, cut2));
   suspended_row8.push_back(static_cast<char>(0xff));
 
   UncompressFlags flags8;
