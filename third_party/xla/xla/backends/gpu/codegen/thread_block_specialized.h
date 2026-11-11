@@ -49,8 +49,9 @@ namespace xla::gpu {
 // `kConcatenate`) is lowered by its native emitter, virtualized once via
 // `VirtualizeSubKernelPass`, and spliced as an `alwaysinline` internal function
 // into a unified `@launcher` kernel. Horizontal nodes partition `block_id`
-// across children, while phased nodes sequence children with aligned
-// `nvvm.cluster.arrive` / `nvvm.cluster.wait` barriers.
+// across children, while phased nodes sequence children with block barriers
+// between consecutive single-block phases and cluster barriers across
+// multi-block boundaries.
 class ThreadBlockSpecializedFusion : public KernelFusionInterface {
  public:
   static constexpr uint64_t kMaxBlocksPerCluster = 8;

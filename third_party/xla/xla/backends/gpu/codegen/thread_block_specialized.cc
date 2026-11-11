@@ -216,16 +216,60 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
                 mlir::Value rel_bid, mlir::Value tid, int64_t active_blocks,
                 int64_t active_threads, absl::Span<const mlir::Value> arg_ptrs,
                 const LeafDecls& leaf_decls) {
+  mlir::OpBuilder::InsertPoint caller_ip = b.saveInsertionPoint();
+  auto is_single_block = [](const NestedKernelSpec& child) {
+    return child.launch_dims.num_blocks() == 1 &&
+           !child.cluster_dim.has_value();
+  };
+  // Contiguous single-block phases execute exclusively on relative block 0
+  // (`rel_bid < 1`) and share a single block-range guard so block barriers
+  // synchronize them without flushing L1 via a cluster barrier.
+  mlir::Value c0 = mlir::arith::ConstantIntOp::create(b, 0, 32);
+  std::optional<mlir::scf::IfOp> single_block_if;
   for (size_t idx = 0; idx < spec.children.size(); ++idx) {
-    EmitNode(b, spec.children[idx], rel_bid, tid, active_blocks, active_threads,
-             arg_ptrs, leaf_decls);
+    const NestedKernelSpec& child = spec.children[idx];
+    const bool child_single_block = is_single_block(child);
+    if (child_single_block) {
+      if (active_blocks > 1) {
+        // While block 0 executes single-block phases, all other blocks in the
+        // cluster skip ahead avoiding any synchronization between phases.
+        if (!single_block_if.has_value()) {
+          b.restoreInsertionPoint(caller_ip);
+          mlir::Value c1 = mlir::arith::ConstantIntOp::create(b, 1, 32);
+          mlir::Value in_block0 = mlir::arith::CmpIOp::create(
+              b, mlir::arith::CmpIPredicate::ult, rel_bid, c1);
+          single_block_if =
+              mlir::scf::IfOp::create(b, in_block0, /*withElseRegion=*/false);
+        }
+        b.setInsertionPoint(single_block_if->thenYield());
+      } else {
+        b.restoreInsertionPoint(caller_ip);
+      }
+      EmitNode(b, child, c0, tid, /*active_blocks=*/1, active_threads, arg_ptrs,
+               leaf_decls);
+    } else {
+      single_block_if.reset();
+      b.restoreInsertionPoint(caller_ip);
+      EmitNode(b, child, rel_bid, tid, active_blocks, active_threads, arg_ptrs,
+               leaf_decls);
+    }
+
     if (idx + 1 < spec.children.size()) {
-      // Emit `.aligned` cluster barriers at `caller_block` level outside
-      // any child CTA/thread `if` guards so every thread of every CTA in
-      // the cluster participates and phase `idx` writes become visible
-      // across the cluster.
-      mlir::NVVM::ClusterArriveOp::create(b, b.getUnitAttr());
-      mlir::NVVM::ClusterWaitOp::create(b, b.getUnitAttr());
+      if (child_single_block && is_single_block(spec.children[idx + 1])) {
+        // Both phases run exclusively on relative block 0. Emit a block barrier
+        // outside any child `tid` guard so every active thread of block 0
+        // participates.
+        mlir::gpu::BarrierOp::create(b);
+      } else {
+        // Emit a cluster barrier at `caller_ip` level outside all child block
+        // and thread `if` guards so every thread of every block in the cluster
+        // participates and phase `idx` writes become visible across the
+        // cluster.
+        single_block_if.reset();
+        b.restoreInsertionPoint(caller_ip);
+        mlir::NVVM::ClusterArriveOp::create(b, b.getUnitAttr());
+        mlir::NVVM::ClusterWaitOp::create(b, b.getUnitAttr());
+      }
     }
   }
 }
@@ -363,19 +407,24 @@ NestedKernelSpec BuildNestedKernelSpec(
   if (spec.kind == NestedKernelSpec::Kind::kPhased) {
     uint64_t max_blocks = 0;
     uint64_t max_threads = 0;
+    bool child_uses_cluster = false;
     for (const NestedKernelSpec& child : spec.children) {
       CHECK_LE(child.launch_dims.num_blocks(),
                ThreadBlockSpecializedFusion::kMaxBlocksPerCluster);
       max_blocks = std::max(max_blocks, child.launch_dims.num_blocks());
       max_threads =
           std::max(max_threads, child.launch_dims.num_threads_per_block());
+      child_uses_cluster |= child.cluster_dim.has_value();
     }
-    // CUDA `barrier.cluster` only synchronizes CTAs within one cluster, so
-    // allocate a portable cluster of power-of-2 size in {1, 2, 4, 8}.
+    // Cluster barriers only synchronize blocks within one cluster, so allocate
+    // a portable cluster of power-of-2 size in {2, 4, 8} when multiple blocks
+    // are needed, or a single block without a cluster when `max_blocks <= 1`.
     uint64_t cluster_blocks = absl::bit_ceil(std::min<uint64_t>(
         max_blocks, ThreadBlockSpecializedFusion::kMaxBlocksPerCluster));
     spec.launch_dims = LaunchDimensions(cluster_blocks, max_threads);
-    spec.cluster_dim = se::ClusterDim(cluster_blocks, 1, 1);
+    if (cluster_blocks > 1 || child_uses_cluster) {
+      spec.cluster_dim = se::ClusterDim(cluster_blocks, 1, 1);
+    }
     return spec;
   }
 
@@ -627,9 +676,9 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
                    emitters::EmitKernelApi(
                        *launcher_module, fusion, buffer_assignment,
                        GetDefaultBufferAlignment(), entry_function_name));
-  // Intermediate output buffers written before `barrier.cluster` and read in a
-  // later phase appear in both `output_arg_indices` (from the root) and a
-  // leaf's `input_arg_indices`. Mark them `xla.aliased` so
+  // Intermediate output buffers written before a block or cluster barrier and
+  // read in a later phase appear in both `output_arg_indices` (from the root)
+  // and a leaf's `input_arg_indices`. Mark them `xla.aliased` so
   // `MergePointersToSameSlicePass` omits `llvm.noalias` on those parameters
   // (and any aliased parameters sharing the same `xla.slice_index`), preventing
   // LLVM `BasicAA` from reordering cross-phase accesses across the barrier
