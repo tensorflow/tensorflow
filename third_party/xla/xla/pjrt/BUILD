@@ -160,9 +160,10 @@ xla_cc_test(
     deps = [
         ":semaphore",
         "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:env",
     ],
 )
 
