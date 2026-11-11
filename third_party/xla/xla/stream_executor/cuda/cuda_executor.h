@@ -213,6 +213,12 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>>
   CreatePhysicalMemoryAllocation(uint64_t size) override;
 
+  // Returns a CudaDeviceAllocator that places physical memory on locality
+  // domain `locality_domain_id`. Returns Unimplemented on CUDA older than 13.4
+  // and FailedPrecondition on devices with a single locality domain.
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateLocalityDomainMemoryAllocator(int locality_domain_id) override;
+
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast
   // object, the offset of the slices should be aligned with this granularity.

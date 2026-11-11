@@ -73,9 +73,10 @@ TEST(CudaDeviceAllocatorTest, HopperNoWarningCheck) {
       .Times(0);
   log.StartCapturingLogs();
 
-  CudaDeviceAllocator allocator(executor, options);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaDeviceAllocator> allocator,
+                       CudaDeviceAllocator::Create(executor, options));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                       allocator.Allocate(1024));
+                       allocator->Allocate(1024));
   EXPECT_NE(allocation, nullptr);
 
   log.StopCapturingLogs();
