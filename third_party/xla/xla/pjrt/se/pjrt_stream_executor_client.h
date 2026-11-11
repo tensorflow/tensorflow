@@ -107,6 +107,9 @@ class StreamExecutorExecutable;
 
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
  public:
+  static constexpr absl::string_view kDefaultKind = "device";
+  static const int kDefaultKindId;
+
   PjRtStreamExecutorMemorySpace(int id, PjRtDevice* device,
                                 absl::string_view kind, int kind_id);
 
@@ -135,7 +138,7 @@ class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
   int kind_id_;
   std::string debug_string_;
   std::string to_string_;
-  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
 class PjRtStreamExecutorRawClient : public PjRtRawClient {
@@ -255,19 +258,19 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // and reported by `WaitForAllocation` instead.
   void MaterializeAllocationEvent(const PjRtRawBufferInterface& raw_buffer);
 
-  static bool IsOnCpu(PjRtMemorySpace* memory_space);
+  static bool IsOnCpu(const PJRT_Memory* memory_space);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
   absl::StatusOr<std::pair<PjRtRawBufferRef,
                            CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+  CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -316,7 +319,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
                       absl::AnyInvocable<void()> execute_fn) const override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
-      PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+      PJRT_Memory* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback,
       bool is_mutable) override;
 

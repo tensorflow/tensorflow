@@ -112,10 +112,21 @@ void PjRtMemorySpaceCApiDelegator::SetUserDataImpl(PJRT_Memory* memory,
     }();
 
 PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
-    PjRtMemorySpace* owner)
+    PjRtMemorySpace* owner, int32_t local_device_id, int32_t memory_kind_id)
     : owner_(owner) {
   c_memory_.vtable = &kDelegatorVtable;
+  c_memory_.local_device_id = local_device_id;
+  c_memory_.memory_kind_id = memory_kind_id;
 }
+
+PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
+    PjRtMemorySpace* owner, const PjRtDevice* device, int32_t memory_kind_id)
+    : PjRtMemorySpaceCApiDelegator(
+          owner,
+          (device != nullptr && device->IsAddressable())
+              ? device->local_device_id().value()
+              : -1,
+          memory_kind_id) {}
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 

@@ -144,7 +144,7 @@ class FakeExternalDmaRawBuffer : public PjRtRawBuffer {
   int releases() const { return releases_; }
   tsl::AsyncValue* pending() const { return pending_.GetAsyncValue(); }
 
-  PjRtMemorySpace* memory_space() const override { return nullptr; }
+  PJRT_Memory* c_memory_space() const override { return nullptr; }
   size_t GetOnDeviceSizeInBytes() const override { return 0; }
   Future<> CopyRawHostToDevice(const void* src, int64_t offset,
                                int64_t transfer_size) override {

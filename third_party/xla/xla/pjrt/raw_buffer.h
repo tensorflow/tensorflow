@@ -55,6 +55,7 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   void DropRef();
 
   PjRtMemorySpace* memory_space() const;
+  PJRT_Memory* c_memory_space() const { return vtable->get_memory_space(this); }
   void* GetHostPointer() const;
   size_t GetOnDeviceSizeInBytes() const;
 
@@ -170,7 +171,7 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
       PjRtBuffer* buffer);
 
   // Memory space that the raw buffer lives on.
-  virtual PjRtMemorySpace* memory_space() const = 0;
+  virtual PJRT_Memory* c_memory_space() const = 0;
 
   // If visible to the host, returns the base pointer for direct access.
   virtual void* GetHostPointer() const { return nullptr; }

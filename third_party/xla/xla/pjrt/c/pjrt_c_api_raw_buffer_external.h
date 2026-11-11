@@ -69,7 +69,7 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
         c_extension_(c_extension) {}
   ~PjRtCApiRawBuffer() override;
 
-  PjRtMemorySpace* memory_space() const override;
+  PJRT_Memory* c_memory_space() const override;
   void* GetHostPointer() const override;
   size_t GetOnDeviceSizeInBytes() const override;
   Future<> CopyRawHostToDevice(const void* src, int64_t offset,

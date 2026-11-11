@@ -1782,7 +1782,7 @@ Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,
         VLOG(1) << callee_type << "::" << callee_method;
         if (event_tracker()) {
           event_tracker()->RegisterClientThreadWait(
-              memory_space, std::move(ready_event),
+              memory_space->ToCApiPtr(), std::move(ready_event),
               absl::StrCat(callee_type, "::", callee_method));
         }
         FutureHelpers::ProfilingKeys keys;
@@ -3088,8 +3088,8 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
           });
       ABSL_ASSIGN_OR_RETURN((absl::InlinedVector<PjRtRawBufferRef, 4> raw_buffers),
                        raw_client()->AllocateRawBuffersForExecute(
-                           pending.memory_space, pending.sizes_bytes,
-                           /*retry_on_oom=*/false));
+                           pending.memory_space->ToCApiPtr(),
+                           pending.sizes_bytes, /*retry_on_oom=*/false));
       if (raw_buffers.size() != pending.output_indices.size()) {
         return absl::InternalError(absl::StrFormat(
             "AllocateRawBuffersForExecute returned %d buffers for %d requests",

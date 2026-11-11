@@ -154,9 +154,9 @@ PjRtCApiRawBuffer::~PjRtCApiRawBuffer() {
   pjrt::PjRtCApiRawBuffer_Destroy(c_api_, c_extension_, c_buffer_);
 }
 
-PjRtMemorySpace* PjRtCApiRawBuffer::memory_space() const {
-  return client_->GetCppMemory(
-      pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_, c_buffer_));
+PJRT_Memory* PjRtCApiRawBuffer::c_memory_space() const {
+  return pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_,
+                                                c_buffer_);
 }
 
 void* PjRtCApiRawBuffer::GetHostPointer() const {

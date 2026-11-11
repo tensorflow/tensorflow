@@ -125,7 +125,11 @@ class PjRtMemorySpace {
 // Helper for building a PJRT_Memory from a PjRtMemorySpace.
 class PjRtMemorySpaceCApiDelegator {
  public:
-  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner);
+  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner,
+                                        int32_t local_device_id = -1,
+                                        int32_t memory_kind_id = 0);
+  PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner, const PjRtDevice* device,
+                               int32_t memory_kind_id);
   ~PjRtMemorySpaceCApiDelegator();
 
   PJRT_Memory* ToCApiPtr() { return &c_memory_; }

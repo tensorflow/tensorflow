@@ -981,18 +981,19 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         "configured");
   }
 
-  auto* const memory_space = buffers[0]->memory_space();
-  if (memory_space->kind_id() != StreamExecutorGpuHbmMemorySpace::kKindId) {
+  PJRT_Memory* const memory_space = buffers[0]->c_memory_space();
+  if (memory_space->memory_kind_id !=
+      StreamExecutorGpuHbmMemorySpace::kKindId) {
     return xla::InvalidArgument(
         "Cross-host transfers are only supported for HBM buffers, but got "
-        "buffers on memory space '%s'",
-        memory_space->kind());
+        "buffers on memory space kind_id %d",
+        memory_space->memory_kind_id);
   }
 
   std::vector<PjRtRawBufferRef> raw_buffers;
   raw_buffers.reserve(buffers.size());
   for (const PjRtRawBufferRef& raw_buffer : buffers) {
-    if (raw_buffer->memory_space() != memory_space) {
+    if (raw_buffer->c_memory_space() != memory_space) {
       return xla::InvalidArgument(
           "Cross-host transfers require all buffers in a batch to be on the "
           "same device");

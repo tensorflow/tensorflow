@@ -1058,39 +1058,39 @@ PjRtCpuRawClient::CreateLinkedEventPromise(LocalDeviceId local_device_id,
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::ImportForeignMemory(
-    PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+    PJRT_Memory* memory_space, void* device_ptr, size_t size,
     absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
-  return CpuRawBuffer::ImportForeignMemory(device_ptr,
-                                           std::move(on_delete_callback), size,
-                                           memory_space, is_mutable);
+  return CpuRawBuffer::ImportForeignMemory(
+      device_ptr, std::move(on_delete_callback), size, memory_space, is_mutable,
+      async_work_runner());
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::AllocateRawBuffer(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-    bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
+    PJRT_Memory* memory_space, size_t on_device_bytes_count, bool retry_on_oom,
+    tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtCpuRawClient.";
   return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
-                                     *allocator_);
+                                     async_work_runner(), *allocator_);
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::AllocateRawBufferForExecute(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+    PJRT_Memory* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
   return tsl::MakeRef<CpuRawBuffer>(memory_space,
                                     CpuDeviceMemory::CreateDelayedMemory(),
                                     on_device_bytes_count,
-                                    /*owns_buffer=*/true);
+                                    /*is_mutable=*/true, async_work_runner());
 }
 
 absl::StatusOr<std::pair<PjRtRawBufferRef,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-PjRtCpuRawClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+PjRtCpuRawClient::CreateRawBufferChannel(PJRT_Memory* memory_space,
                                          size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(
       memory_space, tsl::AsyncValueRef<CpuDeviceMemory>(buffer_promise),
-      on_device_bytes_count, /*is_mutable=*/true);
+      on_device_bytes_count, /*is_mutable=*/true, async_work_runner());
 
   auto buffer_promise_cb =
       [buffer_promise = std::move(buffer_promise), memory_space](
@@ -1099,11 +1099,10 @@ PjRtCpuRawClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
       buffer_promise->SetError(raw_buffer.status());
       return raw_buffer.status();
     }
-    if (memory_space != (*raw_buffer)->memory_space()) {
+    if (memory_space != (*raw_buffer)->c_memory_space()) {
       auto status = absl::InvalidArgumentError(absl::StrFormat(
-          "Memory space mismatch when forwarding raw buffers: %s vs %s",
-          memory_space->DebugString(),
-          (*raw_buffer)->memory_space()->DebugString()));
+          "Memory space mismatch when forwarding raw buffers: %p vs %p",
+          memory_space, (*raw_buffer)->c_memory_space()));
       buffer_promise->SetError(status);
       return status;
     }

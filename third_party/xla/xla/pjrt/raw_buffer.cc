@@ -305,9 +305,7 @@ const PJRT_RawBuffer_FunctionTable PjRtRawBuffer::kRawBufferVtable = {
     },
     /*get_memory_space=*/
     +[](const PJRT_RawBuffer* raw_buffer) -> PJRT_Memory* {
-      return static_cast<const PjRtRawBuffer*>(raw_buffer)
-          ->memory_space()
-          ->ToCApiPtr();
+      return static_cast<const PjRtRawBuffer*>(raw_buffer)->c_memory_space();
     },
     /*get_host_pointer=*/
     +[](const PJRT_RawBuffer* raw_buffer) -> void* {
