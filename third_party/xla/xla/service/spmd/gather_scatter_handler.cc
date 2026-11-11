@@ -2225,9 +2225,13 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
     indices = indices.CloneWithNewHlo(adjusted_indices);
   }
 
+  // Shardy treats every batch dimension outside `scatter_indices_batching_dims`
+  // as an implicit batching reduction dimension, including iota indices.
   const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
-      hlo_sharding_util::GetGatherScatterIndexPassThroughDims(*scatter,
-                                                              call_graph());
+      hlo_sharding_util::GetGatherConnectedDimsAcrossIndicesAndOutput(
+          indices.num_dimensions(), dnums.index_vector_dim(),
+          updates[0].num_dimensions(), dnums.update_window_dims(),
+          dnums.scatter_indices_batching_dims());
 
   HloInstruction* select_operand = nullptr;
   if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1 ||
