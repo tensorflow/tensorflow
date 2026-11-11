@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
+#include "xla/codegen/emitters/kernel_arguments.pb.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::emitters {
@@ -51,6 +54,8 @@ using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
+using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 using KernelArgumentsTest = HloHardwareIndependentTestBase;
 
@@ -779,6 +784,44 @@ TEST_F(KernelArgumentsTest, PartiallyOverlappingSlicesMarkBothAliased) {
   EXPECT_TRUE(args.args()[0].aliased());
   EXPECT_TRUE(args.args()[1].written());
   EXPECT_TRUE(args.args()[1].aliased());
+}
+
+TEST_F(KernelArgumentsTest, ProtoRoundTrip) {
+  KernelArgumentsProto proto = ParseTextProtoOrDie<KernelArgumentsProto>(
+      R"pb(
+        args {
+          shape { dimensions: 1 element_type: F32 is_dynamic_dimension: false }
+          slice { offset: 0 size: 4 buffer_allocation_index: 0 }
+          aliased: true
+          alignment: 16
+          written: true
+          invariant: false
+          slice_index: 1
+        }
+        args {
+          shape { dimensions: 4 element_type: S32 is_dynamic_dimension: false }
+          aliased: false
+          alignment: 8
+          written: false
+          invariant: true
+        }
+        positions {
+          operands: 0
+          results {
+            shape_index { indexes: 0 }
+            position: 1
+          }
+        }
+      )pb");
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  ASSERT_OK_AND_ASSIGN(KernelArguments kernel_arguments,
+                       KernelArguments::FromProto(proto, buffer_allocations));
+
+  ASSERT_OK_AND_ASSIGN(KernelArgumentsProto round_trip_proto,
+                       kernel_arguments.ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace
