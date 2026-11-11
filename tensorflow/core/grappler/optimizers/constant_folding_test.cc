@@ -5269,6 +5269,97 @@ TEST_F(ConstantFoldingTest, TensorArraySizeDynamicOrMalformedDynamicSize) {
   }
 }
 
+// Runs constant folding on a ConcatV2 over three Const and two Placeholder
+// inputs. If `missing_index` is not negative, the data input at that position
+// is renamed to a node that does not exist in the graph. Returns the Concat
+// inputs before and after the optimization and the optimized graph.
+void RunConcatWithMissingInput(int missing_index,
+                               std::vector<std::string>* inputs_before,
+                               std::vector<std::string>* inputs_after,
+                               GraphDef* output) {
+  Scope s = Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output axis = ops::Const(s.WithOpName("axis"), 0, {});
+  Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2, 2});
+  Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {2, 2});
+  Output concat = ops::Concat(s.WithOpName("concat"), {c1, c2, c3, x, y}, axis);
+
+  GrapplerItem item;
+  item.fetch = {"concat"};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  for (NodeDef& node : *item.graph.mutable_node()) {
+    if (node.name() != "concat") continue;
+    if (missing_index >= 0) {
+      node.set_input(missing_index, "missing");
+    }
+    inputs_before->assign(node.input().begin(), node.input().end());
+  }
+  ASSERT_EQ(6, inputs_before->size());
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, output));
+  bool found = false;
+  for (const NodeDef& node : output->node()) {
+    if (node.name() != "concat") continue;
+    found = true;
+    inputs_after->assign(node.input().begin(), node.input().end());
+  }
+  ASSERT_TRUE(found);
+}
+
+bool HasPartialSplitNode(const GraphDef& graph) {
+  for (const NodeDef& node : graph.node()) {
+    if (node.name().find("_partial_split_") != std::string::npos) return true;
+  }
+  return false;
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_ConcatAllInputsPresent) {
+  std::vector<std::string> before, after;
+  GraphDef output;
+  RunConcatWithMissingInput(/*missing_index=*/-1, &before, &after, &output);
+  EXPECT_TRUE(HasPartialSplitNode(output));
+  EXPECT_EQ(std::vector<std::string>(
+                {"ConstantFolding/concat_partial_split_0", "x", "y", "axis"}),
+            after);
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_ConcatMissingFirstInput) {
+  std::vector<std::string> before, after;
+  GraphDef output;
+  RunConcatWithMissingInput(/*missing_index=*/0, &before, &after, &output);
+  EXPECT_FALSE(HasPartialSplitNode(output));
+  EXPECT_EQ(before, after);
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_ConcatMissingInputInConstantRun) {
+  std::vector<std::string> before, after;
+  GraphDef output;
+  RunConcatWithMissingInput(/*missing_index=*/1, &before, &after, &output);
+  EXPECT_FALSE(HasPartialSplitNode(output));
+  EXPECT_EQ(before, after);
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_ConcatMissingInputAfterConstantRun) {
+  std::vector<std::string> before, after;
+  GraphDef output;
+  RunConcatWithMissingInput(/*missing_index=*/3, &before, &after, &output);
+  EXPECT_FALSE(HasPartialSplitNode(output));
+  EXPECT_EQ(before, after);
+}
+
+TEST_F(ConstantFoldingTest, PartialFolding_ConcatMissingLastInput) {
+  std::vector<std::string> before, after;
+  GraphDef output;
+  RunConcatWithMissingInput(/*missing_index=*/4, &before, &after, &output);
+  EXPECT_FALSE(HasPartialSplitNode(output));
+  EXPECT_EQ(before, after);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

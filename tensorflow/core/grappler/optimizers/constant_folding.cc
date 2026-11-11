@@ -3804,6 +3804,12 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     return false;
   }
 
+  // An input that names no node in the graph cannot be classified, so leave
+  // the node alone, as the other partial folding rewrites do.
+  for (int i = begin; i < end; ++i) {
+    if (node_map_->GetNode(NodeName(node->input(i))) == nullptr) return false;
+  }
+
   // We search for consecutive runs of constant inputs in the range
   // [begin:end[ and push then down into child nodes.
   std::vector<std::pair<int, int>> constant_input_runs;
