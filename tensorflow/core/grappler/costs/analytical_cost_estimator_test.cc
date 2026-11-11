@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
+#include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
+
+#include <memory>
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
+#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -43,7 +45,7 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
     (*gpu_device.mutable_environment())["architecture"] = "6";
     devices["/job:localhost/replica:0/task:0/device:GPU:0"] = gpu_device;
 
-    cluster_.reset(new VirtualCluster(devices));
+    cluster_ = std::make_unique<VirtualCluster>(devices);
   }
 
   GrapplerItem CreateMiniGraph() {
