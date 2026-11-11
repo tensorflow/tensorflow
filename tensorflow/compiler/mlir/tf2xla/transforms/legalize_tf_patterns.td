@@ -149,26 +149,35 @@ def LowerRightShiftUnsigned :
 //
 //  T q = floor(div(x, y));
 //  T r = floormod(x, y);
-//  T err = (q * y + r) - x;
-//  T step = round(div(err, y));
-//  return is_finite(q) ? q - step : q;
+//  T err = (q * y - x) + r;
+//  T step = round_nearest_even(div(err, y));
+//  T q_refined = q - step;
+//  return (step != 0 && is_finite(q_refined)) ? q_refined : q;
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
       (StableHLO_SelectOp
-       (StableHLO_IsFiniteOp
-        (StableHLO_FloorOp:$q
-         (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)))),
-       (CHLO_BroadcastSubOp
-        $q,
-        (StableHLO_RoundNearestEvenOp
-         (CHLO_BroadcastDivOp
-          (CHLO_BroadcastSubOp
+       (CHLO_BroadcastAndOp
+        (CHLO_BroadcastCompareOp
+         (StableHLO_RoundNearestEvenOp:$step
+          (CHLO_BroadcastDivOp
            (CHLO_BroadcastAddOp
-            (CHLO_BroadcastMulOp $q, $r, (BinBroadcastDimensions $q, $r)),
+            (CHLO_BroadcastSubOp
+             (CHLO_BroadcastMulOp
+              (StableHLO_FloorOp:$q
+               (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
+              $r, (BinBroadcastDimensions $q, $r)),
+             $l, (BinBroadcastDimensions $q, $l)),
             (TF_FloorModOp $l, $r),
-            (BinBroadcastDimensions $q, $l)),
-           $l, (BinBroadcastDimensions $q, $l)),
-          $r, (BinBroadcastDimensions $q, $r))),
-        (BinBroadcastDimensions $q, $r)),
+            (NullDenseI64ArrayAttr)),
+           $r, (BinBroadcastDimensions $q, $r))),
+         (StableHLO_ConstantOp (GetScalarOfType<0> $l)),
+         (NullDenseI64ArrayAttr),
+         CHLO_ComparisonDirectionValue<"NE">,
+         (CHLO_DEFAULT_COMPARISON_TYPE)),
+        (StableHLO_IsFiniteOp
+         (CHLO_BroadcastSubOp:$q_refined
+          $q, $step, (NullDenseI64ArrayAttr))),
+        (NullDenseI64ArrayAttr)),
+       $q_refined,
        $q),
       [(IEEEFloatTensor $l)]>;
 
