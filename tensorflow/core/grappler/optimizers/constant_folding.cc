@@ -77,6 +77,11 @@ bool AllValuesAre(const TensorProto& proto, const T& value) {
   if (!tensor.FromProto(proto)) {
     return false;
   }
+  // FromProto keeps the dtype stored in the proto, which a Const node does not
+  // have to agree with its own `dtype` attribute. flat<T>() checks the dtype.
+  if (tensor.dtype() != DataTypeToEnum<T>::v()) {
+    return false;
+  }
   auto values = tensor.flat<T>();
   for (int i = 0; i < tensor.NumElements(); ++i) {
     if (values(i) != value) {
