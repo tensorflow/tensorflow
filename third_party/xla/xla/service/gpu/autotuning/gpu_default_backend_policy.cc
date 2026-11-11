@@ -144,13 +144,6 @@ bool ShouldDefaultToBlockLevelEmitter(const HloFusionInstruction& fusion) {
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
     return true;
   }
-  if (fusion.IsMultiOutputFusion() &&
-      !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return false;
-  }
-  if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
-    return true;
-  }
   // TODO(b/370690811): IsSlowLoopTransposeFusion may no longer be necessary
   // once MLIR emitters transposes are faster.
   return IsSlowLoopTransposeFusion(fusion) || IsS32ReductionFusion(fusion) ||

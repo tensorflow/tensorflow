@@ -206,9 +206,9 @@ class GpuCompilerTest
     return device_description().rocm_compute_capability();
   }
 
-  // Must match the fusion-dispatch pipeline check in
-  // GpuCompiler::RunPostSchedulingPipelines.
-  bool RunsFusionDispatchPipeline() const {
+  // Must match `EnsureTritonSupportsComputeCapability` in
+  // backends/gpu/codegen/triton/support.h.
+  bool IsBlockLevelDispatchEnabled() const {
     return get_cuda_cc().IsAtLeastAmpere() ||
            device_description().gpu_compute_capability().IsRocm();
   }
@@ -1271,7 +1271,7 @@ ENTRY main {
       GetOptimizedModuleForExecutable(transpose_fusion_module, config));
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
-  if (RunsFusionDispatchPipeline()) {
+  if (IsBlockLevelDispatchEnabled()) {
     EXPECT_TRUE(HasBlockLevelFusionConfig(
         optimized_module->entry_computation()->root_instruction()));
   } else {
@@ -1282,10 +1282,9 @@ ENTRY main {
 
 TEST_F(
     GpuCompilerTest,
-    FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
-  if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or ROCm to "
-                    "run.";
+    KLoopTransposeWithBitcastDefaultsToBlockLevelIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
+  if (!IsBlockLevelDispatchEnabled()) {
+    GTEST_SKIP() << "Block-level dispatch requires Ampere+ or ROCm.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1685,22 +1684,6 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
   // host memory offloading segments.
   VerifyPassRunsAtLeastOnceBefore(/*first_pass_regex=*/"host-offload-legalize",
                                   /*other_pass_regex=*/"layout_normalization");
-}
-
-TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
-  if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or ROCm to run.";
-  }
-
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
-      true);
-  SetDebugOptions(debug_options);
-
-  VerifyPassOrder(
-      /*first_pass_regex=*/".*(fusion|stream-attribute-annotator).*",
-      /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
-      /*include_pipeline_name=*/true);
 }
 
 TEST_F(PassOrderTest,

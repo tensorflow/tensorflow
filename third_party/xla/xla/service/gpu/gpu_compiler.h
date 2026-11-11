@@ -103,11 +103,10 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) override;
 
-  absl::Status RunPostSchedulingPipelines(
-      HloModule* module, int64_t scheduler_mem_limit,
-      const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context,
-      tsl::thread::ThreadPool* thread_pool = nullptr);
+  absl::Status RunPostSchedulingPipelines(HloModule* module,
+                                          int64_t scheduler_mem_limit,
+                                          const GpuTopology& gpu_topology,
+                                          const GpuAliasInfo* alias_info);
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }

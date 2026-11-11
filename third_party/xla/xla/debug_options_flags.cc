@@ -3040,8 +3040,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::
               set_xla_gpu_experimental_enable_fusion_block_level_rewriter),
       debug_options->xla_gpu_experimental_enable_fusion_block_level_rewriter(),
-      "Enabling this flag will attempt to redirect every fusion possible to "
-      "the Triton emitter"));
+      "Enabling this flag makes every fusion that Triton supports default to "
+      "the Triton block-level emitter when fusions are not autotuned."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_libnvptxcompiler",
       [debug_options](bool enabled) {

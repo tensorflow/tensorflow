@@ -1760,22 +1760,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "fusion_dispatch_pipeline",
-    srcs = ["fusion_dispatch_pipeline.cc"],
-    hdrs = ["fusion_dispatch_pipeline.h"],
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/transforms:fusion_block_level_rewriter",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/service:hlo_cost_analysis",
-        "//xla/service/gpu/model:gpu_indexing_performance_model",
-        "//xla/stream_executor:device_description",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "fusion_pipeline",
     srcs = ["fusion_pipeline.cc"],
     hdrs = ["fusion_pipeline.h"],
@@ -1904,7 +1888,6 @@ cc_library(
         ":early_exit_compilation_result",
         ":export_hlo",
         ":flag_utils",
-        ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
         ":gpu_aot_compilation_result",
         ":gpu_executable",

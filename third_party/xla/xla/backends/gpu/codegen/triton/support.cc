@@ -410,7 +410,7 @@ CodegenDecision CanTritonHandleScan(
   }
 
   // Mirrors EmitScan. Support is re-checked after FloatNormalization (e.g. by
-  // FusionBlockLevelRewriter), which may wrap the bf16 add in converts.
+  // BlockLevelEmitterBackend), which may wrap the bf16 add in converts.
   if (!xtile::IsAdditiveScanCombiner(*scan.to_apply())) {
     return CodegenDecision::Forbid(
         "Only additive scans are supported in Triton.");
