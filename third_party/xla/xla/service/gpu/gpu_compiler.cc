@@ -2820,7 +2820,7 @@ GpuCompiler::CompileToBackendResult(
         std::move(llvm_compiler),
         gpu_topology.gpu_target_config().device_description,
         module->config().debug_options(), gpu_topology,
-        thread_pool.get_mutable());
+        llvm::Triple(target_triple_), data_layout_, thread_pool.get_mutable());
     kernel_compiler.SetPreOptimizationHook([&](const llvm::Module& module) {
       CallUserPreOptimizationHook(module);
     });

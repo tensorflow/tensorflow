@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/IR/ArithAttributes.h"
@@ -68,7 +67,6 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
-#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -1043,43 +1041,25 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
                                    : standard_num_iterations_in_sort_dim,
             tile_size, kBitonicSortUnrollFactor, emit_iota));
 
-    MlirKernelSource mlir_source(nullptr, std::move(mlir_module));
-
-    // CompileMlirToLlvm inserts a PDL wait at the kernel entry when PDL is
-    // enabled for this module and device, so launch with PDL in that case.
-    Future<LlvmKernelSource> llvm_source_future =
-        ir_emitter_context->kernel_compiler()->CompileMlirToLlvm(
-            ir_emitter_context->gpu_device_info(), *sort->GetModule(),
-            sanitized_kernel_name, /*unroll_factor=*/0, std::move(mlir_source),
-            std::move(borrowed_context));
-
+    // KernelCompiler::CompileToTargetBinary inserts a PDL wait at the kernel
+    // entry when PDL is enabled for this module and device, so launch with PDL
+    // in that case.
+    GpuKernelSpec spec(std::move(sanitized_kernel_name), launch_dimensions,
+                       kernel_arguments, std::nullopt, use_pdl);
+    MlirKernelDefinition kernel_def(
+        spec, MlirKernelSource(nullptr, std::move(mlir_module)));
     Future<CompiledSortKernel> compiled_future =
-        std::move(llvm_source_future)
-            .Map([ir_emitter_context, sanitized_kernel_name, kernel_arguments,
-                  launch_dimensions, use_pdl](LlvmKernelSource source) mutable
-                     -> Future<CompiledSortKernel> {
-              llvm::orc::ThreadSafeModule safe_module =
-                  std::move(source).thread_safe_module();
-              ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
-                  ir_emitter_context->gpu_device_info(), launch_dimensions,
-                  sanitized_kernel_name, ir_emitter_context->data_layout(),
-                  ir_emitter_context->target_triple(),
-                  safe_module.getModuleUnlocked()));
-
-              GpuKernelSpec spec{sanitized_kernel_name, launch_dimensions,
-                                 kernel_arguments, std::nullopt, use_pdl};
-              return ir_emitter_context->kernel_compiler()
-                  ->CompileToTargetBinary(
-                      LlvmKernelSource(std::move(safe_module)), spec)
-                  .Map([spec =
-                            std::move(spec)](std::vector<uint8_t> cubin) mutable
-                           -> CompiledSortKernel {
-                    return CompiledSortKernel{
-                        std::move(spec),
-                        std::make_shared<const std::vector<uint8_t>>(
-                            std::move(cubin)),
-                    };
-                  });
+        ir_emitter_context->kernel_compiler()
+            ->CompileToTargetBinary(std::move(kernel_def),
+                                    std::move(borrowed_context),
+                                    *sort->GetModule())
+            .Map([spec = std::move(spec)](
+                     std::vector<uint8_t> cubin) mutable -> CompiledSortKernel {
+              return CompiledSortKernel{
+                  std::move(spec),
+                  std::make_shared<const std::vector<uint8_t>>(
+                      std::move(cubin)),
+              };
             });
     compiled_kernels.emplace(std::move(cache_key), compiled_future);
     return compiled_future;

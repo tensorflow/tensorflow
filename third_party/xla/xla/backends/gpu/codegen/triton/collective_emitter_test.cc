@@ -420,8 +420,9 @@ TEST_P(CollectiveEmitterParameterizedTest,
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
-  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options, *gpu_topology_);
+  CubinCustomKernelCompiler kernel_compiler(
+      llvm_compiler, device_info_, debug_options, *gpu_topology_,
+      result->target_triple, result->data_layout);
 
   MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
@@ -1174,8 +1175,9 @@ TEST_F(CollectiveEmitterTest,
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
-  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options, topology_16);
+  CubinCustomKernelCompiler kernel_compiler(
+      llvm_compiler, device_info_, debug_options, topology_16, llvm::Triple(""),
+      /*data_layout=*/"");
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,

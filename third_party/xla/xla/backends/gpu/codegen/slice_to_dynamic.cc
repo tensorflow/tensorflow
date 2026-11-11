@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -47,14 +46,10 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
-#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
-#include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
-#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -312,52 +307,18 @@ AsyncThunkSequence EmitSliceToDynamic(const HloCustomCallInstruction* instr,
                                      &ir_emitter_context->buffer_assignment(),
                                      sanitized_kernel_name, launch_dimensions));
 
-  MlirKernelSource mlir_source(nullptr, std::move(mlir_module));
-
   bool use_pdl = IsPdlEnabled(
       instr->GetModule()->config().debug_options(),
       ir_emitter_context->gpu_device_info().gpu_compute_capability());
-  Future<LlvmKernelSource> llvm_source_future =
-      ir_emitter_context->kernel_compiler()->CompileMlirToLlvm(
-          ir_emitter_context->gpu_device_info(), *instr->GetModule(),
-          sanitized_kernel_name, /*unroll_factor=*/0, std::move(mlir_source),
-          std::move(borrowed_context));
-
-  return std::move(llvm_source_future)
-      .Map([ir_emitter_context, sanitized_kernel_name,
-            kernel_arguments = std::move(kernel_arguments), launch_dimensions,
-            thunk_info = std::move(thunk_info),
-            use_pdl](LlvmKernelSource source) mutable -> Future<ThunkSequence> {
-        llvm::orc::ThreadSafeModule safe_module =
-            std::move(source).thread_safe_module();
-        ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
-            ir_emitter_context->gpu_device_info(), launch_dimensions,
-            sanitized_kernel_name, ir_emitter_context->data_layout(),
-            ir_emitter_context->target_triple(),
-            safe_module.getModuleUnlocked()));
-
-        int devices_in_process =
-            ir_emitter_context->gpu_topology().num_devices_per_process();
-        GpuKernelSpec spec{sanitized_kernel_name, launch_dimensions,
-                           std::move(kernel_arguments), std::nullopt, use_pdl};
-        return ir_emitter_context->kernel_compiler()
-            ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
-                                    spec)
-            .Map([spec = std::move(spec), thunk_info = std::move(thunk_info),
-                  devices_in_process](std::vector<uint8_t> cubin) mutable
-                     -> absl::StatusOr<ThunkSequence> {
-              ABSL_ASSIGN_OR_RETURN(
-                  CustomKernel custom_kernel,
-                  kernel::CreateOwnedCubinCustomKernel(
-                      std::string{spec.name()}, std::move(cubin),
-                      spec.kernel_arguments().args().size(),
-                      spec.launch_dimensions().block_counts(),
-                      spec.launch_dimensions().thread_counts_per_block(),
-                      /*shared_memory_bytes=*/0));
-              return ThunkSequence::Of<CustomKernelThunk>(
-                  std::move(thunk_info), std::move(custom_kernel),
-                  spec.kernel_arguments(), devices_in_process, spec.use_pdl());
-            });
+  GpuKernelSpec spec(std::move(sanitized_kernel_name), launch_dimensions,
+                     std::move(kernel_arguments), std::nullopt, use_pdl);
+  MlirKernelDefinition kernel_def(
+      std::move(spec), MlirKernelSource(nullptr, std::move(mlir_module)));
+  return ir_emitter_context->kernel_compiler()
+      ->Compile(std::move(thunk_info), std::move(kernel_def),
+                std::move(borrowed_context), *instr->GetModule())
+      .Map([](std::unique_ptr<Thunk> thunk) {
+        return ThunkSequence::Of(std::move(thunk));
       });
 }
 

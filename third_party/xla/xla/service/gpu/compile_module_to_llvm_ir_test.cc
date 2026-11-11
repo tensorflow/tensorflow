@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
@@ -101,7 +102,8 @@ TEST_F(CompileModuleToLlvmIrTest,
   CubinCustomKernelCompiler kernel_compiler(
       std::move(llvm_compiler),
       gpu_topology.gpu_target_config().device_description,
-      module->config().debug_options(), gpu_topology, &thread_pool);
+      module->config().debug_options(), gpu_topology,
+      llvm::Triple(nvptx::TargetTriple()), nvptx::DataLayout(), &thread_pool);
 
   llvm::LLVMContext llvm_context;
   GpuAliasInfo alias_info(gpu_topology.gpu_target_config().device_description);
@@ -152,7 +154,8 @@ TEST_F(CompileModuleToLlvmIrTest,
   CubinCustomKernelCompiler kernel_compiler(
       std::move(llvm_compiler),
       gpu_topology.gpu_target_config().device_description,
-      module->config().debug_options(), gpu_topology, &thread_pool);
+      module->config().debug_options(), gpu_topology,
+      llvm::Triple(nvptx::TargetTriple()), nvptx::DataLayout(), &thread_pool);
 
   llvm::LLVMContext llvm_context;
   GpuAliasInfo alias_info(gpu_topology.gpu_target_config().device_description);

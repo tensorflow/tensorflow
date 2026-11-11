@@ -43,10 +43,9 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
-#include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
-#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,16 +53,34 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/mlir_context_pool.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
+
+class MlirKernelFusionTestPeer {
+ public:
+  static absl::StatusOr<LlvmKernelSource> CreateLLVMModule(
+      const MlirKernelFusion& emitter, const se::DeviceDescription& device,
+      const HloFusionInstruction& fusion,
+      const std::string& entry_function_name,
+      const BufferAssignment* buffer_assignment,
+      mlir::MLIRContext& mlir_context) {
+    ABSL_ASSIGN_OR_RETURN(
+        MlirKernelSource source,
+        emitter.EmitMlirSource(device, fusion, entry_function_name,
+                               buffer_assignment, mlir_context));
+    return CompileMlirToLlvm(device, *fusion.GetModule(), entry_function_name,
+                             emitter.emitter_->unroll_factor(), mlir_context,
+                             std::move(source));
+  }
+};
+
 namespace {
 
 class DummyCopyEmitter : public MlirKernelEmitter {
@@ -100,13 +117,13 @@ class DummyCopyEmitter : public MlirKernelEmitter {
 
 class MlirKernelFusionTest : public HloHardwareIndependentTestBase {
  protected:
-  MlirKernelFusionTest() {
-    mlir_context_.appendDialectRegistry(
+  MlirKernelFusionTest() : mlir_context_(CreateMlirContext()) {
+    mlir_context_->appendDialectRegistry(
         MlirKernelEmitter::GetDialectRegistry());
-    mlir_context_.loadAllAvailableDialects();
+    mlir_context_->loadAllAvailableDialects();
   }
 
-  mlir::MLIRContext mlir_context_;
+  std::unique_ptr<mlir::MLIRContext> mlir_context_;
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
@@ -126,7 +143,7 @@ TEST_F(MlirKernelFusionTest, CreateMlirModule) {
   DummyCopyEmitter emitter;
   ASSERT_OK_AND_ASSIGN(auto mlir_module,
                        emitter.CreateMLIRModule(
-                           mlir_context_,
+                           *mlir_context_,
                            *Cast<HloFusionInstruction>(
                                module->entry_computation()->root_instruction()),
                            "fusion",
@@ -152,29 +169,14 @@ TEST_F(MlirKernelFusionTest, CreateMlirModule) {
 TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kModule));
-  GpuTopology gpu_topology(
-      /*platform_version=*/"", /*num_partitions=*/1,
-      /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
-  CubinCustomKernelCompiler kernel_compiler(
-      [](llvm::Module& llvm_module, const se::DeviceDescription& descr,
-         const DebugOptions& opts) { return std::vector<uint8_t>{}; },
-      device_info_, module->config().debug_options(), gpu_topology);
-
-  MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   MlirKernelFusion emitter(std::make_unique<DummyCopyEmitter>());
-  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
-                       mlir_context_pool.GetOrCreate());
-  ASSERT_OK_AND_ASSIGN(
-      LlvmKernelSource source,
-      emitter
-          .CreateLLVMModule(
-              device_info_,
-              *Cast<HloFusionInstruction>(
-                  module->entry_computation()->root_instruction()),
-              "fusion",
-              /*buffer_assignment=*/nullptr, &kernel_compiler,
-              std::move(borrowed_context))
-          .Await());
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource source,
+                       MlirKernelFusionTestPeer::CreateLLVMModule(
+                           emitter, device_info_,
+                           *Cast<HloFusionInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           "fusion",
+                           /*buffer_assignment=*/nullptr, *mlir_context_));
   auto llvm_module = std::move(source).thread_safe_module();
 
   std::string out;
@@ -222,26 +224,12 @@ TEST_F(MlirKernelFusionTest, CreateLLVMModuleRejectsUnsupportedFmaTypes) {
         {{"DTYPE", dtype}});
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                          ParseAndReturnVerifiedModule(hlo));
-    GpuTopology gpu_topology(
-        /*platform_version=*/"", /*num_partitions=*/1,
-        /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
-    CubinCustomKernelCompiler kernel_compiler(
-        [](llvm::Module&, const se::DeviceDescription&, const DebugOptions&) {
-          return std::vector<uint8_t>{};
-        },
-        dev_info, module->config().debug_options(), gpu_topology);
-    MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
     MlirKernelFusion emitter(std::make_unique<DummyCopyEmitter>());
-    ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
-                         mlir_context_pool.GetOrCreate());
-    EXPECT_THAT(emitter
-                    .CreateLLVMModule(
-                        dev_info,
-                        *Cast<HloFusionInstruction>(
-                            module->entry_computation()->root_instruction()),
-                        "fusion", /*buffer_assignment=*/nullptr,
-                        &kernel_compiler, std::move(borrowed_context))
-                    .Await(),
+    EXPECT_THAT(MlirKernelFusionTestPeer::CreateLLVMModule(
+                    emitter, dev_info,
+                    *Cast<HloFusionInstruction>(
+                        module->entry_computation()->root_instruction()),
+                    "fusion", /*buffer_assignment=*/nullptr, *mlir_context_),
                 absl_testing::StatusIs(absl::StatusCode::kUnimplemented))
         << "dtype=" << dtype;
   };
@@ -303,27 +291,15 @@ constexpr absl::string_view kModuleWithMetadata = R"(
 
 absl::StatusOr<std::string> EmitLlvmIr(
     const HloModule& module, const se::DeviceDescription& device_info) {
-  GpuTopology gpu_topology(
-      /*platform_version=*/"", /*num_partitions=*/1,
-      /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
-  CubinCustomKernelCompiler kernel_compiler(
-      [](llvm::Module&, const se::DeviceDescription&, const DebugOptions&) {
-        return std::vector<uint8_t>{};
-      },
-      device_info, module.config().debug_options(), gpu_topology);
-  MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
+  std::unique_ptr<mlir::MLIRContext> mlir_context = CreateMlirContext();
   MlirKernelFusion emitter(std::make_unique<DummyElementwiseEmitter>());
-  ABSL_ASSIGN_OR_RETURN(BorrowedMlirContext borrowed_context,
-                   mlir_context_pool.GetOrCreate());
   ABSL_ASSIGN_OR_RETURN(
       LlvmKernelSource source,
-      emitter
-          .CreateLLVMModule(device_info,
-                            *Cast<HloFusionInstruction>(
-                                module.entry_computation()->root_instruction()),
-                            "fusion", /*buffer_assignment=*/nullptr,
-                            &kernel_compiler, std::move(borrowed_context))
-          .Await());
+      MlirKernelFusionTestPeer::CreateLLVMModule(
+          emitter, device_info,
+          *Cast<HloFusionInstruction>(
+              module.entry_computation()->root_instruction()),
+          "fusion", /*buffer_assignment=*/nullptr, *mlir_context));
   auto llvm_module = std::move(source).thread_safe_module();
   std::string out;
   llvm::raw_string_ostream stream(out);

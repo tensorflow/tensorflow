@@ -37,13 +37,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
-#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/future.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -193,25 +190,19 @@ class MlirKernelFusion final : public KernelFusionInterface {
   AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
                           const HloFusionInstruction& fusion) const final;
 
-  // Visible for testing. `buffer_assignment` is optional for testing (assigns
-  // a different buffer to each tensor).
-  xla::Future<LlvmKernelSource> CreateLLVMModule(
-      const se::DeviceDescription& device, const HloFusionInstruction& fusion,
-      const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment,
-      KernelCompiler* kernel_compiler,
-      BorrowedMlirContext borrowed_context) const;
-
   MlirKernelEmitter* mlir_kernel_emitter() { return emitter_.get(); }
 
   static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
 
  private:
-  xla::Future<KernelDefinition<LlvmKernelSource, GpuKernelSpec>> EmitLlvmModule(
-      const HloFusionInstruction& fusion, const std::string& kernel_name,
-      const emitters::KernelArguments& args,
-      IrEmitterContext& parent_context) const;
+  friend class MlirKernelFusionTestPeer;
+
+  absl::StatusOr<MlirKernelSource> EmitMlirSource(
+      const se::DeviceDescription& device, const HloFusionInstruction& fusion,
+      const std::string& entry_function_name,
+      const BufferAssignment* buffer_assignment,
+      mlir::MLIRContext& mlir_context) const;
   std::unique_ptr<MlirKernelEmitter> emitter_;
 };
 
