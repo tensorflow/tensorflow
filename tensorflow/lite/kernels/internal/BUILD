@@ -252,6 +252,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",

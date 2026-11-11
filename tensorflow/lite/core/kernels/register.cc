@@ -232,7 +232,7 @@ void BuiltinOpResolver::RegisterBuiltinOps() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SUM, Register_SUM(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD(),
              /* min_version = */ 1,
              /* max_version = */ 2);

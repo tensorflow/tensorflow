@@ -16,6 +16,7 @@
 
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+    * `tfl.sum` now supports FLOAT16 inputs and outputs (SUM op version 3).
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
     * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).
     * `tfl.batch_matmul` now supports RHS inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) alongside INT8 affine LHS and output tensors (BATCH_MATMUL op version 5).

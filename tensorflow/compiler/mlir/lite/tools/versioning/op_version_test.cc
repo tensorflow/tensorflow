@@ -480,6 +480,12 @@ TEST(OpVersionTest, VersioningMeanTest) {
 
 TEST(OpVersionTest, VersioningSumTest) {
   SimpleVersioningTest(BuiltinOperator_SUM);
+
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SUM,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningReduceMinTest) {

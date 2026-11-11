@@ -2577,7 +2577,6 @@ equivalent to setting:
   let hasFolder = 1;
 }
 
-// TODO(b/529944824): Add proper support for F16.
 def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
