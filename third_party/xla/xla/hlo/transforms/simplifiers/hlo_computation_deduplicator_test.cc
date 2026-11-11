@@ -769,5 +769,64 @@ TEST_F(HloComputationDeduplicatorTest,
   EXPECT_EQ(module->computation_count(), 3);
 }
 
+TEST_F(HloComputationDeduplicatorTest, DontDeduplicateCallTargetWithWhileBody) {
+  const absl::string_view text = R"(
+  HloModule m
+
+  callee {
+    p = f32[] parameter(0)
+    ROOT n = f32[] negate(p)
+  }
+
+  body {
+    p = f32[] parameter(0)
+    ROOT n = f32[] negate(p)
+  }
+
+  cond {
+    p = f32[] parameter(0)
+    z = f32[] constant(0)
+    ROOT c = pred[] compare(p, z), direction=GT
+  }
+
+  ENTRY e {
+    p0 = f32[] parameter(0)
+    call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="false"}
+    ROOT w = f32[] while(call), condition=cond, body=body
+  }
+  )";
+
+  // Merging would give one computation with a call and a while caller,
+  // which HloDataflowAnalysis rejects.
+  auto computation_names = RunDeduplicatePass(text, /*expect_true=*/false);
+  EXPECT_EQ(computation_names.size(), 4);
+  EXPECT_THAT(computation_names, ::testing::IsSupersetOf({"callee", "body"}));
+}
+
+TEST_F(HloComputationDeduplicatorTest, DeduplicateIdenticalCallTargets) {
+  const absl::string_view text = R"(
+  HloModule m
+
+  callee_a {
+    p = f32[] parameter(0)
+    ROOT n = f32[] negate(p)
+  }
+
+  callee_b {
+    p = f32[] parameter(0)
+    ROOT n = f32[] negate(p)
+  }
+
+  ENTRY e {
+    p0 = f32[] parameter(0)
+    call_a = f32[] call(p0), to_apply=callee_a, frontend_attributes={inlineable="false"}
+    ROOT call_b = f32[] call(call_a), to_apply=callee_b, frontend_attributes={inlineable="false"}
+  }
+  )";
+
+  auto computation_names = RunDeduplicatePass(text, /*expect_true=*/true);
+  EXPECT_EQ(computation_names.size(), 2);
+}
+
 }  // namespace
 }  //  namespace xla

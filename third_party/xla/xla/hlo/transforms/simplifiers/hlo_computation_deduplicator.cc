@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
@@ -126,6 +127,16 @@ absl::StatusOr<bool> HloComputationDeduplicator::RunImpl(
     }
 
     std::string comp_str = comp->ToString(options);
+
+    // HloDataflowAnalysis::IsRegularCallComputation requires that a computation
+    // called by a kCall has only kCall callers; keep call targets apart.
+    if (absl::c_any_of(comp->caller_instructions(),
+                       [](const HloInstruction* instr) {
+                         return instr->opcode() == HloOpcode::kCall;
+                       })) {
+      comp_str += " (call target)";
+    }
+
     auto poss_dup = unique_comps.find(comp_str);
     if (poss_dup != unique_comps.end() &&
         poss_dup->second->Equal(*comp, /* is_layout_sensitive = */ true,
