@@ -23,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -93,15 +94,16 @@ class MatMulAddFusionTest(test_lib.TestCase):
     # Case 2: [2, 0] * [0, 3] + [3] (k == 0 reduction dimension with Relu)
     x_k0 = constant_op.constant(np.zeros([2, 0], dtype=np.float32))
     w_k0 = constant_op.constant(np.zeros([0, 3], dtype=np.float32))
-    b_k0 = constant_op.constant(np.array([-1.0, 2.0, -3.0], dtype=np.float32))
+    b_k0_np = np.array([-1.0, 2.0, -3.0], dtype=np.float32)
+    b_k0 = constant_op.constant(b_k0_np)
     res_k0 = f(x_k0, w_k0, b_k0)
     self.assertEqual(tuple(res_k0.shape), (2, 3))
-    self.assertAllClose(res_k0, np.broadcast_to(b_k0.numpy(), [2, 3]))
+    self.assertAllClose(res_k0, np.broadcast_to(b_k0_np, [2, 3]))
 
     res_relu = f_relu(x_k0, w_k0, b_k0)
     self.assertEqual(tuple(res_relu.shape), (2, 3))
     self.assertAllClose(
-        res_relu, np.broadcast_to(np.maximum(0.0, b_k0.numpy()), [2, 3])
+        res_relu, np.broadcast_to(np.maximum(0.0, b_k0_np), [2, 3])
     )
 
     # Case 3: Dynamic shape input_signature exercising runtime fused kernel

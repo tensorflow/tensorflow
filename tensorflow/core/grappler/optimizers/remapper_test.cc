@@ -1876,11 +1876,11 @@ TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
 TEST_F(RemapperFuseMatMulWithBiasTest, DoNotFuseZeroDim) {
   using ::tensorflow::ops::Placeholder;
 
-  auto check_no_fusion = [](const std::vector<int64_t>& lhs_dims,
-                            const std::vector<int64_t>& rhs_dims,
-                            const std::vector<int64_t>& bias_dims,
-                            bool with_relu = false,
-                            bool is_conv2d = false) {
+  auto check_no_fusion = [&](const std::vector<int64_t>& lhs_dims,
+                             const std::vector<int64_t>& rhs_dims,
+                             const std::vector<int64_t>& bias_dims,
+                             bool with_relu = false,
+                             bool is_conv2d = false) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     Output lhs, rhs, bias, contract;
@@ -1942,10 +1942,14 @@ TEST_F(RemapperFuseMatMulWithBiasTest, DoNotFuseZeroDim) {
   check_no_fusion({0, 32}, {32, 64}, {64});
   // Case 3: zero contraction reduction dimension (k == 0) with non-empty bias
   check_no_fusion({8, 0}, {0, 64}, {64});
-  // Case 4: zero dimension with fused activation (Relu)
-  check_no_fusion({8, 32}, {32, 0}, {0}, /*with_relu=*/true);
-  // Case 5: Conv2D with zero filter channel
+  // Case 4: zero dimension with fused activation (Relu) and non-empty bias
+  check_no_fusion({0, 32}, {32, 64}, {64}, /*with_relu=*/true);
+  // Case 5: Conv2D with zero filter channel and zero bias
   check_no_fusion({2, 5, 5, 3}, {1, 1, 3, 0}, {0}, /*with_relu=*/false,
+                  /*is_conv2d=*/true);
+  // Case 6: Conv2D with zero batch and non-empty bias (reaches
+  // IsCpuCompatibleConv2D)
+  check_no_fusion({0, 5, 5, 3}, {1, 1, 3, 4}, {4}, /*with_relu=*/false,
                   /*is_conv2d=*/true);
 }
 
