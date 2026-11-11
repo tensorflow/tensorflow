@@ -245,9 +245,8 @@ def _CustomReciprocal(x):
   return math_ops.div_no_nan(math_ops.cast(1.0, x.dtype), x)
 
 
-@ops.RegisterGradient("RGBToHSV")
-def _RGBToHSVGrad(op: ops.Operation, grad):
-  """The gradients for `rgb_to_hsv` operation.
+def _rgb_to_hsv_grad_math(rgb, grad, hsv=None):
+  """The gradients for the `rgb_to_hsv` operation, as a plain function.
 
   This function is a piecewise continuous function as defined here:
   https://en.wikipedia.org/wiki/HSL_and_HSV#From_RGB
@@ -256,21 +255,22 @@ def _RGBToHSVGrad(op: ops.Operation, grad):
   partial derivative calculation.
 
   Args:
-    op: The `rgb_to_hsv` `Operation` that we are differentiating.
+    rgb: The RGB input of the `rgb_to_hsv` operation, with the channels in the
+      last dimension.
     grad: Gradient with respect to the output of the `rgb_to_hsv` op.
+    hsv: The output of the `rgb_to_hsv` operation, or `None`. When `None`, the
+      saturation and value are recomputed from `rgb` with the same tie-breaking
+      masks used for the derivatives.
 
   Returns:
     Gradients with respect to the input of `rgb_to_hsv`.
   """
   # Input Channels
-  reds = op.inputs[0][..., 0]
-  greens = op.inputs[0][..., 1]
-  blues = op.inputs[0][..., 2]
-  # Output Channels
-  saturation = op.outputs[0][..., 1]
-  value = op.outputs[0][..., 2]
+  reds = rgb[..., 0]
+  greens = rgb[..., 1]
+  blues = rgb[..., 2]
 
-  dtype = op.inputs[0].dtype
+  dtype = rgb.dtype
 
   # Mask/Indicator for max and min values of each pixel.
   # Arbitrary assignment in case of tie breakers with R>G>B.
@@ -288,6 +288,17 @@ def _RGBToHSVGrad(op: ops.Operation, grad):
                     (greens < blues), dtype)
   blue_smallest = math_ops.cast((blues <= reds) & \
                    (blues <= greens), dtype)
+
+  # Output Channels
+  if hsv is None:
+    value = (red_biggest * reds + green_biggest * greens +
+             blue_biggest * blues)
+    minimum = (red_smallest * reds + green_smallest * greens +
+               blue_smallest * blues)
+    saturation = math_ops.div_no_nan(value - minimum, value)
+  else:
+    saturation = hsv[..., 1]
+    value = hsv[..., 2]
 
   # Derivatives of R, G, B wrt Value slice
   dv_dr = red_biggest
@@ -459,9 +470,25 @@ def _RGBToHSVGrad(op: ops.Operation, grad):
   return gradient_input
 
 
-@ops.RegisterGradient("HSVToRGB")
-def _HSVToRGBGrad(op: ops.Operation, grad):
-  """The gradients for the `hsv_to_rgb` operation.
+@ops.RegisterGradient("RGBToHSV")
+def _RGBToHSVGrad(op: ops.Operation, grad):
+  """The gradients for `rgb_to_hsv` operation.
+
+  The formulas are in `_rgb_to_hsv_grad_math`; the saturation and value slices
+  are taken from the forward op's output.
+
+  Args:
+    op: The `rgb_to_hsv` `Operation` that we are differentiating.
+    grad: Gradient with respect to the output of the `rgb_to_hsv` op.
+
+  Returns:
+    Gradients with respect to the input of `rgb_to_hsv`.
+  """
+  return _rgb_to_hsv_grad_math(op.inputs[0], grad, hsv=op.outputs[0])
+
+
+def _hsv_to_rgb_grad_math(hsv, grad):
+  """The gradients for the `hsv_to_rgb` operation, as a plain function.
 
   The kernel computes, with `dh = 6 * h`,
 
@@ -475,13 +502,13 @@ def _HSVToRGBGrad(op: ops.Operation, grad):
   function is not differentiable and the zero subgradient is used.
 
   Args:
-    op: The `hsv_to_rgb` `Operation` that we are differentiating.
+    hsv: The HSV input of the `hsv_to_rgb` operation, with the channels in the
+      last dimension.
     grad: Gradient with respect to the output of the `hsv_to_rgb` op.
 
   Returns:
     Gradients with respect to the input of `hsv_to_rgb`.
   """
-  hsv = op.inputs[0]
   dtype = hsv.dtype
   hue = hsv[..., 0]
   saturation = hsv[..., 1]
@@ -512,3 +539,131 @@ def _HSVToRGBGrad(op: ops.Operation, grad):
             (1 - saturation * (1 - db)) * grad_b)
 
   return array_ops_stack.stack([grad_h, grad_s, grad_v], axis=-1)
+
+
+@ops.RegisterGradient("HSVToRGB")
+def _HSVToRGBGrad(op: ops.Operation, grad):
+  """The gradients for the `hsv_to_rgb` operation.
+
+  The formulas are in `_hsv_to_rgb_grad_math`.
+
+  Args:
+    op: The `hsv_to_rgb` `Operation` that we are differentiating.
+    grad: Gradient with respect to the output of the `hsv_to_rgb` op.
+
+  Returns:
+    Gradients with respect to the input of `hsv_to_rgb`.
+  """
+  return _hsv_to_rgb_grad_math(op.inputs[0], grad)
+
+
+def _image_adjust_hsv_forward(rgb):
+  """Recomputes the per-pixel HSV values used by the adjust op kernels.
+
+  Matches the helpers in `adjust_hue_op.cc` and `adjust_saturation_op.cc`:
+  `value` is the largest channel, the saturation is the channel range divided
+  by `value` (zero when `value` is zero) and the hue lives in `[0, 1)`. Ties
+  between equal channels are broken the same way the kernels compare them, and
+  the hue is zero where the range is zero because it has no influence there.
+
+  Args:
+    rgb: RGB tensor with the channels in the last dimension.
+
+  Returns:
+    Tuple of `hue`, `saturation` and `value` tensors with the shape of each
+    pixel (all dimensions except the last one of `rgb`).
+  """
+  reds = rgb[..., 0]
+  greens = rgb[..., 1]
+  blues = rgb[..., 2]
+  value = math_ops.reduce_max(rgb, axis=-1)
+  minimum = math_ops.reduce_min(rgb, axis=-1)
+  channel_range = value - minimum
+  saturation = math_ops.div_no_nan(channel_range, value)
+  hue_step = math_ops.div_no_nan(1.0 / 6.0, channel_range)
+  hue_red = (greens - blues) * hue_step
+  hue_green = (blues - reds) * hue_step + 1.0 / 3.0
+  hue_blue = (reds - greens) * hue_step + 2.0 / 3.0
+  hue = array_ops.where_v2(
+      reds >= math_ops.maximum(greens, blues), hue_red,
+      array_ops.where_v2(greens >= blues, hue_green, hue_blue))
+  # The kernels wrap the hue back into [0, 1); the second wrap only guards
+  # against rounding at the seam.
+  hue = array_ops.where_v2(hue < 0.0, hue + 1.0, hue)
+  hue = array_ops.where_v2(hue >= 1.0, hue - 1.0, hue)
+  return hue, saturation, value
+
+
+@ops.RegisterGradient("AdjustHue")
+def _AdjustHueGrad(op: ops.Operation, grad):
+  """The derivatives for `tf.image.adjust_hue`.
+
+  The kernel converts each pixel to (hue in `[0, 6]`, `v_min`, `v_max`), adds
+  `6 * delta` to the hue, wraps it back into `[0, 6)` and reconstructs the RGB
+  channels sector-wise linearly from the shifted hue and the unchanged
+  `v_min`/`v_max`. That reconstruction is the `hsv_to_rgb` formula with the
+  same saturation and value, so the output gradient is chained through the
+  `hsv_to_rgb` gradient evaluated at the shifted hue and through the
+  `rgb_to_hsv` gradient back to the input channels. `delta` only shifts the
+  hue with slope 1, and the output is continuous across the wrap points, so
+  the hue gradient doubles as the delta gradient.
+
+  Args:
+    op: The `AdjustHue` `Operation` that we are differentiating.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the images and the delta.
+  """
+  images = op.inputs[0]
+  delta = op.inputs[1]
+  grad = math_ops.cast(grad, dtypes.float32)
+  rgb = math_ops.cast(images, dtypes.float32)
+  hue, saturation, value = _image_adjust_hsv_forward(rgb)
+  hue_out = math_ops.mod(hue + delta, 1.0)
+  grad_hue_sat_val = _hsv_to_rgb_grad_math(
+      array_ops_stack.stack([hue_out, saturation, value], axis=-1), grad)
+  grad_delta = math_ops.reduce_sum(grad_hue_sat_val[..., 0])
+  grad_images = _rgb_to_hsv_grad_math(rgb, grad_hue_sat_val)
+  return [math_ops.cast(grad_images, images.dtype), grad_delta]
+
+
+@ops.RegisterGradient("AdjustSaturation")
+def _AdjustSaturationGrad(op: ops.Operation, grad):
+  """The derivatives for `tf.image.adjust_saturation`.
+
+  The kernel converts each pixel RGB -> HSV, multiplies the saturation by
+  `scale`, clamps it into `[0, 1]` and converts back. The conversion back is
+  the `hsv_to_rgb` formula with the clamped saturation, so the output gradient
+  is chained through the `hsv_to_rgb` gradient evaluated at the clamped
+  saturation and through the `rgb_to_hsv` gradient back to the input channels.
+  Inside the clamp the saturation is `s * scale`, so it differentiates to
+  `scale` with respect to the input saturation and to `s` with respect to
+  `scale`; the clamp ends use the zero subgradient, so `scale` only receives
+  gradient while `0 < s * scale < 1`.
+
+  Args:
+    op: The `AdjustSaturation` `Operation` that we are differentiating.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the images and the scale.
+  """
+  images = op.inputs[0]
+  scale = op.inputs[1]
+  grad = math_ops.cast(grad, dtypes.float32)
+  rgb = math_ops.cast(images, dtypes.float32)
+  hue, saturation, value = _image_adjust_hsv_forward(rgb)
+  scaled = saturation * scale
+  saturation_out = math_ops.minimum(math_ops.maximum(scaled, 0.0), 1.0)
+  inside = math_ops.cast((scaled > 0.0) & (scaled < 1.0), dtypes.float32)
+  grad_hue_sat_val = _hsv_to_rgb_grad_math(
+      array_ops_stack.stack([hue, saturation_out, value], axis=-1), grad)
+  grad_saturation = grad_hue_sat_val[..., 1] * scale * inside
+  grad_scale = math_ops.reduce_sum(
+      grad_hue_sat_val[..., 1] * saturation * inside)
+  grad_hue_sat_val = array_ops_stack.stack(
+      [grad_hue_sat_val[..., 0], grad_saturation, grad_hue_sat_val[..., 2]],
+      axis=-1)
+  grad_images = _rgb_to_hsv_grad_math(rgb, grad_hue_sat_val)
+  return [math_ops.cast(grad_images, images.dtype), grad_scale]
