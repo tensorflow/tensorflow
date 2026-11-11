@@ -63,6 +63,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -981,6 +982,43 @@ TEST_P(IfrtBackendHandlerTest, BitcastArrays) {
               absl_testing::IsOk());
   EXPECT_THAT(response->bitcast_arrays_response().array_handles(),
               SizeIs(result_arrays.size()));
+}
+
+TEST_P(IfrtBackendHandlerTest, RemapArraysFailsWithInconsistentArraySpecs) {
+  TF_ASSERT_OK_AND_ASSIGN(Device * device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
+
+  // The output dtype differs from the input dtype.
+  std::vector<ArraySpec> input_specs{
+      {DType(DType::kS32), Shape({2}), sharding, /*layout=*/nullptr}};
+  std::vector<ArraySpec> output_specs{
+      {DType(DType::kF32), Shape({2}), sharding, /*layout=*/nullptr}};
+  absl::flat_hash_map<int, std::vector<RemapPlan::InputDeviceRange>>
+      input_devices_for_output_map;
+  input_devices_for_output_map[0].push_back(
+      {/*in_array=*/0, sharding->devices()});
+  RemapPlan plan(std::move(input_specs), std::move(output_specs),
+                 std::move(input_devices_for_output_map));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
+                          MakeTestArray(tsl::MakeRef<xla::ifrt::MockArray>()));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  RemapArraysRequest* remap_arrays_request =
+      ifrt_request->mutable_remap_arrays_request();
+  remap_arrays_request->add_array_handles(array_handle);
+  TF_ASSERT_OK(plan.ToProto(*remap_arrays_request->mutable_plan(),
+                            ifrt_serdes_version()));
+  remap_arrays_request->set_copy_semantics(
+      proto::ARRAY_COPY_SEMANTICS_DONATE_INPUT);
+
+  // The invalid plan must not reach the IFRT client.
+  EXPECT_CALL(*mock_client_, RemapArrays(_, _, _)).Times(0);
+
+  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must have the same dtype")));
 }
 
 TEST_P(IfrtBackendHandlerTest, ReshardArrays) {

@@ -1108,6 +1108,12 @@ IfrtBackend::HandleRemapArraysRequest(ArrayStore::Reservation& asr,
                    array_store_.Find(remap_request.array_handles()));
   ABSL_ASSIGN_OR_RETURN(RemapPlan plan,
                    RemapPlan::FromProto(client_.get(), remap_request.plan()));
+  // The plan comes from the proxy client, so reject inconsistent array specs
+  // here rather than relying on every `Client::RemapArrays()` implementation.
+  // The result is cached in `plan`, so implementations that validate again do
+  // not pay for it twice. The slower shard-level checks of `Validate()` are
+  // left to the implementation.
+  ABSL_RETURN_IF_ERROR(plan.ValidateArraySpecs());
   ABSL_ASSIGN_OR_RETURN(auto semantics,
                    FromArrayCopySemanticsProto(remap_request.copy_semantics()));
 
