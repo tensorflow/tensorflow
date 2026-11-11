@@ -39,6 +39,10 @@ cuda_library(
         "cpp/include",
         "cpp/internal",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = glob([
         "cpp/include/**/*.cuh",
         "cpp/include/**/*.hpp",
@@ -58,6 +62,10 @@ cuda_library(
     srcs = ["select_k_runner.cu.cc"],
     hdrs = ["select_k_runner.hpp"],
     copts = BASE_COPTS,
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":raft_matrix",

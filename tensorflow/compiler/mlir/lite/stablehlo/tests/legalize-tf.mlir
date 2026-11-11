@@ -2563,3 +2563,44 @@ func.func @xla_scatter(%arg0: tensor<2x10xi1>, %arg1: tensor<1xi32>, %arg2: tens
 func.func private @scatter_update(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   return %arg1 : tensor<i1>
 }
+
+// -----
+
+// CHECK-LABEL: func @real_div_f32
+func.func @real_div_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: stablehlo.divide %arg0, %arg0 : tensor<2xf32>
+  %0 = "tf.RealDiv"(%arg0, %arg0)
+      : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @real_div_i32
+func.func @real_div_i32(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: "tf.RealDiv"
+  // CHECK-NOT: stablehlo.divide
+  %0 = "tf.RealDiv"(%arg0, %arg0)
+      : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_sub_scalar_updates
+func.func @tensor_scatter_sub_scalar_updates(%tensor: tensor<4x3xf32>, %indices: tensor<2x1xi32>, %updates: tensor<f32>) -> tensor<4x3xf32> {
+  // CHECK: %[[BCAST:.*]] = stablehlo.broadcast_in_dim %arg2, dims = [] : (tensor<f32>) -> tensor<2x3xf32>
+  // CHECK: "stablehlo.scatter"(%arg0, %arg1, %[[BCAST]])
+  // CHECK: stablehlo.subtract
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<4x3xf32>, tensor<2x1xi32>, tensor<f32>) -> tensor<4x3xf32>
+  func.return %0 : tensor<4x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_min_scalar_updates_invalid_index_depth
+func.func @tensor_scatter_min_scalar_updates_invalid_index_depth(%tensor: tensor<4xf32>, %indices: tensor<2x2xi32>, %updates: tensor<f32>) -> tensor<4xf32> {
+  // CHECK: tf.TensorScatterMin
+  %0 = "tf.TensorScatterMin"(%tensor, %indices, %updates) : (tensor<4xf32>, tensor<2x2xi32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}

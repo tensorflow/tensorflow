@@ -69,10 +69,11 @@ struct BandwidthEntry {
 
 constexpr int kHbmBandwidthTableEntries = 21;
 
-// TODO(b/547746872): Add tooling to measure and generate bandwidth derate
-// tables in a reproducible manner.
+// TODO(b/553466640): Consider replacing empirical per-GPU lookup tables with
+// an analytical Hockney curve.
 // Empirical HBM bandwidth scaling tables mapping transfer size in bytes to
-// fraction of peak bandwidth [0.0, 1.0].
+// fraction of peak bandwidth [0.0, 1.0]. New tables can be calibrated with
+// xla/tools/cost_model:gpu_bandwidth_benchmark_main.
 constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
     kAmpereScaledHbmBandwidthTable = {
         {{8192, 0.00043418f},       {16384, 0.00092645f},
@@ -687,10 +688,12 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
       rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
       dim_numbers.rhs_batch_dimensions());
 
-  if (lhs_non_contracting_dims.size() > 1 ||
-      rhs_non_contracting_dims.size() > 1) {
+  // `DotProblemInfo` reads `m` and `n` from the first non-contracting
+  // dimension of each operand, so both operands need exactly one.
+  if (lhs_non_contracting_dims.size() != 1 ||
+      rhs_non_contracting_dims.size() != 1) {
     return absl::UnimplementedError(absl::StrCat(
-        "Multiple non-contracting dimensions are not supported, got LHS: [",
+        "Exactly one non-contracting dimension is supported, got LHS: [",
         absl::StrJoin(lhs_non_contracting_dims, ","), "], RHS: [",
         absl::StrJoin(rhs_non_contracting_dims, ","), "]"));
   }

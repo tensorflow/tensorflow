@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -46,11 +45,10 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
 #include "xla/python/ifrt/ir/serialization_utils.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
@@ -206,7 +204,6 @@ absl::StatusOr<std::string> IfrtIrLoadedExecutable::GetIfrtIrProgramXprofUrl()
 
 std::optional<std::vector<xla::OpSharding>>
 IfrtIrLoadedExecutable::GetParameterShardings() const {
-  DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterShardings"; });
   std::vector<xla::OpSharding> parameter_shardings;
@@ -225,7 +222,6 @@ IfrtIrLoadedExecutable::GetParameterShardings() const {
 
 std::optional<std::vector<xla::OpSharding>>
 IfrtIrLoadedExecutable::GetOutputShardings() const {
-  DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetOutputShardings"; });
   std::vector<xla::OpSharding> output_shardings;
@@ -244,7 +240,6 @@ IfrtIrLoadedExecutable::GetOutputShardings() const {
 
 absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetParameterLayouts() const {
-  DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterLayouts"; });
   ABSL_RETURN_IF_ERROR(program_->layout_status);
@@ -258,7 +253,6 @@ IfrtIrLoadedExecutable::GetParameterLayouts() const {
 
 absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetOutputLayouts() const {
-  DCHECK(this);
   TraceMe traceme([]() { return "IfrtIrLoadedExecutable::GetOutputLayouts"; });
   ABSL_RETURN_IF_ERROR(program_->layout_status);
   std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
@@ -303,7 +297,6 @@ IfrtIrLoadedExecutable::GetMpmdHloModules() const {
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 IfrtIrLoadedExecutable::GetOutputMemoryKinds() const {
-  DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetOutputMemoryKinds"; });
   std::vector<absl::string_view> output_memory_kinds;

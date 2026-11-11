@@ -299,7 +299,8 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresBufferAssignmentFields) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
-TEST(TestLibTest, CompareGPUExecutables_IgnoresOnlyCollectiveKernelCubin) {
+TEST(TestLibTest,
+     CompareGPUExecutables_IgnoresCollectiveKernelCubinAndShmemBytes) {
   auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
     gpu_executable {
       thunks {
@@ -311,35 +312,36 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresOnlyCollectiveKernelCubin) {
       }
     }
   )pb");
-  auto fresh_cubin = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+  auto fresh_codegen = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
     gpu_executable {
       thunks {
         collective_kernel_thunk {
           kernel_name: "collective_kernel"
-          shmem_bytes: 64
+          shmem_bytes: 128
           cubin: "fresh_cubin_that_should_be_ignored"
         }
       }
     }
   )pb");
   EXPECT_OK(
-      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_cubin, golden));
+      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_codegen, golden));
 
-  // Fields next to the cubin that the runtime acts on are still compared.
-  auto fresh_shmem = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+  // Non-codegen fields next to the cubin that the runtime acts on are still
+  // compared.
+  auto fresh_kernel_name = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
     gpu_executable {
       thunks {
         collective_kernel_thunk {
-          kernel_name: "collective_kernel"
-          shmem_bytes: 128
+          kernel_name: "other_collective_kernel"
+          shmem_bytes: 64
           cubin: "golden_cubin"
         }
       }
     }
   )pb");
-  EXPECT_THAT(
-      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_shmem, golden),
-      StatusIs(absl::StatusCode::kInternal, HasSubstr("shmem_bytes")));
+  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
+                  fresh_kernel_name, golden),
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("kernel_name")));
 }
 
 TEST(TestLibTest, CompareGPUExecutables_IgnoresHloModule) {

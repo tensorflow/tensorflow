@@ -29,8 +29,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
-#include "xla/codegen/intrinsic/cpp/expm1_32_ll.h"
-#include "xla/codegen/intrinsic/cpp/expm1_64_ll.h"
+#include "xla/codegen/intrinsic/cpp/expm1_ll.h"
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 #include "xla/types.h"
 
@@ -42,30 +41,26 @@ using ::testing::ContainsRegex;
 using ::testing::Not;
 
 TEST(Expm1Test, BitcodeIsVectorizedAndPortable) {
-  for (const std::string& bitcode :
-       {llvm_ir::kExpm132LlIr, llvm_ir::kExpm164LlIr}) {
-    llvm::LLVMContext context;
-    std::unique_ptr<llvm::Module> module =
-        ParseEmbeddedBitcode(context, bitcode);
-    std::string ir;
-    llvm::raw_string_ostream stream(ir);
-    module->print(stream, nullptr);
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kExpm1LlIr);
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
 
-    EXPECT_THAT(
-        ir,
-        AllOf(ContainsRegex("define .*@xla.expm1.f32\\(float"),
-              ContainsRegex("define .*@xla.expm1.v4f32\\(<4 x float>"),
-              ContainsRegex("define .*@xla.expm1.v8f32\\(.*<8 x float>"),
-              ContainsRegex("define .*@xla.expm1.v16f32\\(.*<16 x float>"),
-              ContainsRegex("define .*@xla.expm1.f64\\(double"),
-              ContainsRegex("define .*@xla.expm1.v4f64\\(.*<4 x double>"),
-              ContainsRegex("define .*@xla.expm1.v8f64\\(.*<8 x double>"),
-              ContainsRegex("fmul <4 x float>"),
-              ContainsRegex("fmul <4 x double>"), ContainsRegex("llvm.fmuladd"),
-              Not(ContainsRegex("llvm\\.fma")),
-              Not(ContainsRegex("llvm\\.x86")),
-              Not(ContainsRegex("llvm\\.aarch64"))));
-  }
+  EXPECT_THAT(
+      ir,
+      AllOf(ContainsRegex("define .*@xla.expm1.f32\\(float"),
+            ContainsRegex("define .*@xla.expm1.v4f32\\(<4 x float>"),
+            ContainsRegex("define .*@xla.expm1.v8f32\\(.*<8 x float>"),
+            ContainsRegex("define .*@xla.expm1.v16f32\\(.*<16 x float>"),
+            ContainsRegex("define .*@xla.expm1.f64\\(double"),
+            ContainsRegex("define .*@xla.expm1.v4f64\\(.*<4 x double>"),
+            ContainsRegex("define .*@xla.expm1.v8f64\\(.*<8 x double>"),
+            ContainsRegex("fmul <4 x float>"),
+            ContainsRegex("fmul <4 x double>"), ContainsRegex("llvm.fmuladd"),
+            Not(ContainsRegex("llvm\\.fma")), Not(ContainsRegex("llvm\\.x86")),
+            Not(ContainsRegex("llvm\\.aarch64"))));
 }
 
 float ComputeUlpErrorF32(float actual, double expected) {

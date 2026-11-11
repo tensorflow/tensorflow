@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
@@ -67,7 +66,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_lexer.h"
@@ -1227,6 +1225,24 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.block_scaling_config());
       break;
     }
+    case HloOpcode::kDotGeneral: {
+      TF_RET_CHECK(proto.operand_ids_size() >= 2)
+          << "DotGeneral instruction should have at least 2 operands but sees "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_dot_dimension_numbers())
+          << "DotGeneral instruction should have dot_dimension_numbers.";
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
+      PrecisionConfig precision_config = proto.precision_config();
+      // Only the lhs and rhs have precisions.
+      precision_config.mutable_operand_precision()->Resize(
+          2, PrecisionConfig::DEFAULT);
+      instruction = std::make_unique<HloDotGeneralInstruction>(
+          shape, all_operands(), proto.dot_dimension_numbers(),
+          precision_config, proto.sparsity_config(),
+          proto.block_scaling_config());
+      break;
+    }
     case HloOpcode::kRaggedDot: {
       int expected_operands = HloRaggedDotInstruction::kOperands;
       TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
@@ -1263,25 +1279,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = std::make_unique<HloScaledDotInstruction>(
           shape, operands(0), operands(1), operands(2), operands(3),
           proto.dot_dimension_numbers(), precision_config);
-      break;
-    }
-    case HloOpcode::kDomain: {
-      std::shared_ptr<const HloSharding> entry_hlo_sharding;
-      std::shared_ptr<const HloSharding> exit_hlo_sharding;
-      if (proto.has_domain_entry_sharding()) {
-        ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
-                         HloSharding::FromProto(proto.domain_entry_sharding()));
-        entry_hlo_sharding = std::make_shared<const HloSharding>(sharding);
-      }
-      if (proto.has_domain_exit_sharding()) {
-        ABSL_ASSIGN_OR_RETURN(HloSharding sharding,
-                         HloSharding::FromProto(proto.domain_exit_sharding()));
-        exit_hlo_sharding = std::make_shared<const HloSharding>(sharding);
-      }
-      instruction = std::make_unique<HloDomainInstruction>(
-          shape, operands(0),
-          std::make_unique<ShardingMetadata>(entry_hlo_sharding),
-          std::make_unique<ShardingMetadata>(exit_hlo_sharding));
       break;
     }
     case HloOpcode::kGetDimensionSize:
@@ -1801,6 +1798,17 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
   return std::make_unique<HloDotInstruction>(shape, operands, dimension_numbers,
                                              precision_config, sparsity_config,
                                              block_scaling_config);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDotGeneral(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config) {
+  return std::make_unique<HloDotGeneralInstruction>(
+      shape, operands, dimension_numbers, precision_config, sparsity_config,
+      block_scaling_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
@@ -2773,15 +2781,6 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
       unique_indices);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
-    const Shape& shape, HloInstruction* operand,
-    std::unique_ptr<DomainMetadata> operand_side_metadata,
-    std::unique_ptr<DomainMetadata> user_side_metadata) {
-  return std::make_unique<HloDomainInstruction>(
-      shape, operand, std::move(operand_side_metadata),
-      std::move(user_side_metadata));
-}
-
 /* static */ bool HloInstruction::IsThreadIncluded(
     absl::string_view execution_thread,
     const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
@@ -2900,9 +2899,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kScatter:
     case HloOpcode::kIota:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
@@ -2988,6 +2987,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Other supported ops.
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
+      clone->set_is_composite(is_composite());
       break;
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
@@ -3583,9 +3583,9 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kSetDimensionSize:
@@ -3700,6 +3700,7 @@ absl::Status HloInstruction::Defuse() {
   // A map from fused instruction to its defused clone.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       defused_instructions;
+  defused_instructions.reserve(fused_computation->instruction_count());
   // Initialize map to contain the fusion instruction parameters mapping
   // to the operands of the fusion instruction.
   for (int64_t i = 0; i < operand_count(); ++i) {
@@ -3712,13 +3713,13 @@ absl::Status HloInstruction::Defuse() {
   // TODO(b/68227302): Moving instruction to new computation rather than
   // cloning and deleting.
   HloInstruction* first_defused = nullptr;
+  InstructionVector new_operands;
   for (HloInstruction* fused_instruction :
        fused_computation->MakeInstructionPostOrder()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
       continue;
     }
-    std::vector<HloInstruction*> new_operands;
-    new_operands.reserve(fused_instruction->operand_count());
+    new_operands.clear();
     for (HloInstruction* operand : fused_instruction->operands()) {
       new_operands.push_back(defused_instructions.at(operand));
     }
@@ -3820,8 +3821,12 @@ absl::Status HloInstruction::ReplaceUsesWith(
 
 absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
-  // Make a copy since users span might get mutated during the loop
-  std::vector<HloInstruction*> users_vector(users.begin(), users.end());
+  // Make a copy since users span might get mutated during the loop. An inline
+  // capacity of 4 fits in a single 64-byte cache line (40 bytes on 64-bit
+  // platforms) and covers typical HLO instruction fanout (1-4 users) without
+  // heap allocation.
+  absl::InlinedVector<HloInstruction*, 4> users_vector(users.begin(),
+                                                       users.end());
   for (HloInstruction* user : users_vector) {
     ABSL_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
@@ -3850,9 +3855,7 @@ absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
 absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     HloInstruction* new_producer) {
   bool new_producer_is_user = false;
-  // Make a copy since users span might get mutated during the loop
-  std::vector<HloInstruction*> users_vector(users().begin(), users().end());
-  for (HloInstruction* user : users_vector) {
+  for (HloInstruction* user : users()) {
     if (user == new_producer) {
       // It's possible that new_producer is a user of this instruction as might
       // be the case when replacing an instruction with a kCopy of itself. In
@@ -4766,6 +4769,8 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   proto->set_name(name_);
   *proto->mutable_opcode() = std::string(HloOpcodeString(opcode_));
   shape().ToProto(*proto->mutable_shape());
+  proto->mutable_operand_ids()->Reserve(proto->operand_ids_size() +
+                                        operands_.size());
   for (const HloInstruction* operand : operands_) {
     proto->add_operand_ids(operand->unique_id());
   }
@@ -4917,7 +4922,6 @@ bool HloInstruction::IsCustomFusion() const {
 bool HloInstruction::IsFusible() const {
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
-    case HloOpcode::kDomain:
     case HloOpcode::kParameter:
     case HloOpcode::kWhile:
     case HloOpcode::kConditional:
@@ -5034,6 +5038,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleMulhi(this);
       case HloOpcode::kDot:
         return visitor->HandleDot(this);
+      case HloOpcode::kDotGeneral:
+        return visitor->HandleDotGeneral(this);
       case HloOpcode::kRaggedDot:
         return visitor->HandleRaggedDot(this);
       case HloOpcode::kScaledDot:
@@ -5214,8 +5220,6 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleGather(this);
       case HloOpcode::kScatter:
         return visitor->HandleScatter(this);
-      case HloOpcode::kDomain:
-        return visitor->HandleDomain(this);
       case HloOpcode::kAfterAll:
         return visitor->HandleAfterAll(this);
       case HloOpcode::kAddDependency:
@@ -5828,6 +5832,10 @@ std::string BlockScalingConfigToString(
       StrAppend(&lhs_str,
                 " steps=", StrJoin(block_scaling_config.lhs().steps(), "x"));
     }
+    if (!block_scaling_config.lhs().block_sizes().empty()) {
+      StrAppend(&lhs_str, " block_sizes=",
+                StrJoin(block_scaling_config.lhs().block_sizes(), "x"));
+    }
     StrAppend(&lhs_str, "}");
     result.push_back(lhs_str);
   }
@@ -5844,6 +5852,10 @@ std::string BlockScalingConfigToString(
     if (!block_scaling_config.rhs().steps().empty()) {
       StrAppend(&rhs_str,
                 " steps=", StrJoin(block_scaling_config.rhs().steps(), "x"));
+    }
+    if (!block_scaling_config.rhs().block_sizes().empty()) {
+      StrAppend(&rhs_str, " block_sizes=",
+                StrJoin(block_scaling_config.rhs().block_sizes(), "x"));
     }
     StrAppend(&rhs_str, "}");
     result.push_back(rhs_str);
@@ -6016,6 +6028,7 @@ bool HloInstruction::SupportsPrecisionConfig() const {
   switch (opcode_) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     // In practice, the precision config value makes no sense for `scaled_dot`
     // because it cannot produce anything better than default.
     case HloOpcode::kScaledDot:
@@ -6034,6 +6047,8 @@ const PrecisionConfig& HloInstruction::precision_config() const {
       return Cast<HloConvolutionInstruction>(this)->precision_config();
     case HloOpcode::kDot:
       return Cast<HloDotInstruction>(this)->precision_config();
+    case HloOpcode::kDotGeneral:
+      return Cast<HloDotGeneralInstruction>(this)->precision_config();
     case HloOpcode::kScaledDot:
       return Cast<HloScaledDotInstruction>(this)->precision_config();
     case HloOpcode::kRaggedDot:
@@ -6052,6 +6067,8 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
       return Cast<HloConvolutionInstruction>(this)->mutable_precision_config();
     case HloOpcode::kDot:
       return Cast<HloDotInstruction>(this)->mutable_precision_config();
+    case HloOpcode::kDotGeneral:
+      return Cast<HloDotGeneralInstruction>(this)->mutable_precision_config();
     case HloOpcode::kScaledDot:
       return Cast<HloScaledDotInstruction>(this)->mutable_precision_config();
     case HloOpcode::kRaggedDot:
@@ -6589,6 +6606,9 @@ const DotDimensionNumbers& HloInstruction::dot_dimension_numbers() const {
   if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(this)) {
     return scaled_dot->dot_dimension_numbers();
   }
+  if (auto* dot_general = DynCast<HloDotGeneralInstruction>(this)) {
+    return dot_general->dot_dimension_numbers();
+  }
   return Cast<HloDotInstruction>(this)->dot_dimension_numbers();
 }
 
@@ -6601,6 +6621,9 @@ const SparsityConfig& HloInstruction::sparsity_config() const {
   if (auto* d = DynCast<HloDotInstruction>(this)) {
     return d->sparsity_config();
   }
+  if (auto* d = DynCast<HloDotGeneralInstruction>(this)) {
+    return d->sparsity_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->sparsity_config();
 }
 
@@ -6609,11 +6632,17 @@ void HloInstruction::set_sparsity_config(
   if (auto* d = DynCast<HloDotInstruction>(this)) {
     return d->set_sparsity_config(sparsity_config);
   }
+  if (auto* d = DynCast<HloDotGeneralInstruction>(this)) {
+    return d->set_sparsity_config(sparsity_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
 const BlockScalingConfig& HloInstruction::block_scaling_config() const {
   if (auto* d = DynCast<HloDotInstruction>(this)) {
+    return d->block_scaling_config();
+  }
+  if (auto* d = DynCast<HloDotGeneralInstruction>(this)) {
     return d->block_scaling_config();
   }
   return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
@@ -6624,16 +6653,11 @@ void HloInstruction::set_block_scaling_config(
   if (auto* d = DynCast<HloDotInstruction>(this)) {
     return d->set_block_scaling_config(block_scaling_config);
   }
+  if (auto* d = DynCast<HloDotGeneralInstruction>(this)) {
+    return d->set_block_scaling_config(block_scaling_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
       block_scaling_config);
-}
-
-const DomainMetadata& HloInstruction::operand_side_metadata() const {
-  return Cast<HloDomainInstruction>(this)->operand_side_metadata();
-}
-
-const DomainMetadata& HloInstruction::user_side_metadata() const {
-  return Cast<HloDomainInstruction>(this)->user_side_metadata();
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {

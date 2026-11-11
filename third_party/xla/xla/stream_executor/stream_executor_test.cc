@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -82,6 +83,14 @@ TEST(StreamExecutorTest, GetDeviceDescriptionConcurrent) {
   for (int i = 1; i < kNumThreads; ++i) {
     EXPECT_EQ(descriptions[i], descriptions[0]);
   }
+}
+
+TEST(StreamExecutorTest, LocalityDomainStreamsUnsupportedByDefault) {
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  absl::StatusOr<std::unique_ptr<Stream>> stream =
+      executor->CreateStreamInLocalityDomain(/*locality_domain_id=*/0);
+  ASSERT_FALSE(stream.ok());
+  EXPECT_EQ(stream.status().code(), absl::StatusCode::kUnimplemented);
 }
 
 }  // namespace

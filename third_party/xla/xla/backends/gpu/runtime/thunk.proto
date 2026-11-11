@@ -34,6 +34,7 @@ import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
+import "xla/stream_executor/gpu/blas_lt_matmul_algorithm.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
 import "xla/stream_executor/launch_dim.proto";
@@ -70,6 +71,7 @@ message AsyncStartThunkProto {
     uint64 communication_stream_id = 5;
     // 0 = D2H (device_to_host_stream), 1 = H2D (host_to_device_stream).
     uint64 memcpy_stream_id = 6;
+    uint64 locality_domain_stream_id = 7;
   }
 
   reserved 2;
@@ -136,6 +138,14 @@ message CudnnThunkProto {
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
   bool should_memzero = 5;
+  CudnnTargetDeviceProto target_device = 6;
+}
+
+// The device a serialized cuDNN graph was compiled for.
+message CudnnTargetDeviceProto {
+  int32 core_count = 1;
+  // Serialized cuDNN DeviceProperties
+  string serialized_device_properties = 2;
 }
 
 message HostSendThunkProto {
@@ -309,6 +319,8 @@ message CublasLtMatmulThunkProto {
   optional ShapedSliceProto d_amax = 15;
   optional ShapedSliceProto workspace = 16;
   int64 autotune_workspace_size = 17;
+  optional stream_executor.gpu.BlasLtMatmulAlgorithmProto algorithm_proto = 20;
+  bool require_exact_algorithm = 21;
 }
 
 message NormThunkProto {
@@ -429,6 +441,7 @@ message RaggedAllToAllThunkProto {
   bool use_device_kernel = 13;
   bool allow_fallback_to_nccl = 14;
   bool enable_gxl = 15;
+  float fabric_cost_weight = 16;
 }
 
 message CollectivePermuteThunkProto {

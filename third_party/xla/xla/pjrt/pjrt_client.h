@@ -125,7 +125,11 @@ class PjRtMemorySpace {
 // Helper for building a PJRT_Memory from a PjRtMemorySpace.
 class PjRtMemorySpaceCApiDelegator {
  public:
-  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner);
+  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner,
+                                        int32_t local_device_id = -1,
+                                        int32_t memory_kind_id = 0);
+  PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner, const PjRtDevice* device,
+                               int32_t memory_kind_id);
   ~PjRtMemorySpaceCApiDelegator();
 
   PJRT_Memory* ToCApiPtr() { return &c_memory_; }
@@ -1618,6 +1622,13 @@ class PjRtLoadedExecutable {
 
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() const = 0;
+
+  // Releases mutable runtime state (e.g., loaded device/host program handles
+  // and program stacks) without deleting the executable. Blocks until devices
+  // with loaded programs are idle; callers must ensure no other work is
+  // continuously dispatched to those devices. Subsequent Execute() calls lazily
+  // reload the executable on demand.
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
 
   // These are all forwarding methods for convenience, wrapping the
   // corresponding methods on the wrapped PjRtExecutable.

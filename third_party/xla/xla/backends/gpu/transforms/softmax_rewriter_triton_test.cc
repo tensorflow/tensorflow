@@ -188,6 +188,32 @@ ENTRY main {
   EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseDiamondWithParameterOnlyReducer) {
+  // Regression test for #50830: the `(a, b) -> b` combiner of a "take last"
+  // reduction has no neutral value, so padded lanes would be returned instead
+  // of the last element. The diamond must not be fused.
+  const std::string hlo_string = R"(
+HloModule take_last_reducer
+pick {
+  arg_0 = f32[] parameter(0)
+  ROOT arg_1 = f32[] parameter(1)
+}
+ENTRY main {
+  param_0 = f32[128,256]{1,0} parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce = f32[128]{0} reduce(param_0, constant_0), dimensions={1}, to_apply=pick
+  broadcast = f32[128,256]{1,0} broadcast(reduce), dimensions={0}
+  ROOT multiply = f32[128,256]{1,0} multiply(param_0, broadcast)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *reduce, device_info_.gpu_compute_capability()));
+  EXPECT_THAT(fusion_rewriter_.Run(module.get()), IsOkAndHolds(false));
+}
+
 TEST_F(SoftmaxRewriterTritonTest,
        DoesNotFuseInstructionsUnsupportedByTritonIntoDiamonds) {
   const std::string hlo_string = R"(

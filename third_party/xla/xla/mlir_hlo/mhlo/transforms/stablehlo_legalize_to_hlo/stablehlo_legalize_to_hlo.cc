@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
+#include <memory>
 #include <type_traits>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -282,7 +284,7 @@ LogicalResult convertFuncToStablehloRegion(Operation* op, func::FuncOp funcOp,
 LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
                                         ConversionPatternRewriter& rewriter,
                                         const TypeConverter* typeConverter,
-                                        SmallVector<Type>& hloTypes,
+                                        TypeRange hloTypes,
                                         ValueRange hloOperands) {
   // Only call_target_name, backend_config, called_computations, mhlo.version,
   // and mhlo.attributes are compatible with the extensibility protocol.
@@ -372,51 +374,83 @@ LogicalResult fixupMhloBackendConfig(stablehlo::CustomCallOp stablehloOp,
   return success();
 }
 
-template <typename StablehloOpTy>
-class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
- public:
-  using OpConversionPattern<StablehloOpTy>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      StablehloOpTy stablehloOp, typename StablehloOpTy::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    // Convert StableHLO types to HLO equivalents.
-    // If a type is not defined in StableHLO, then it is unchanged,
-    // with the exception of RankedTensorType and TupleType which are
-    // converted recursively.
-    // See `StablehloToHloTypeConverter` for more information on when this
-    // conversion will succeed or fail.
-    SmallVector<Type> hloTypes;
-    auto typeConverter = this->getTypeConverter();
-    if (failed(typeConverter->convertTypes(stablehloOp->getResultTypes(),
-                                           hloTypes)))
-      return failure();
+// Convert StableHLO types and attributes to MHLO equivalents.
+// If a type or attribute is not defined in StableHLO, then it is unchanged,
+// with the exception of RankedTensorType, TupleType, and ArrayAttr which are
+// converted recursively.
+// See `StablehloToHloTypeConverter` for more information on when this
+// conversion will succeed or fail.
+LogicalResult convertTypesAndAttributes(const TypeConverter* typeConverter,
+                                        Operation* stablehloOp,
+                                        SmallVector<Type>& hloTypes,
+                                        SmallVector<NamedAttribute>& hloAttrs,
+                                        bool skipMhloBackendConfig = false) {
+  if (failed(
+          typeConverter->convertTypes(stablehloOp->getResultTypes(), hloTypes)))
+    return failure();
 
+  ArrayRef<NamedAttribute> stablehloAttrs = stablehloOp->getAttrs();
+  hloAttrs.reserve(stablehloAttrs.size());
+  for (NamedAttribute stablehloAttr : stablehloAttrs) {
+    if (skipMhloBackendConfig &&
+        stablehloAttr.getName() == "mhlo.backend_config")
+      continue;
+    Attribute hloAttr = convertAttr(stablehloAttr.getValue());
+    if (!hloAttr) return failure();
+    stablehloAttr.setValue(hloAttr);
+    hloAttrs.push_back(stablehloAttr);
+  }
+  return success();
+}
+
+LogicalResult convertRegions(ConversionPatternRewriter& rewriter,
+                             const TypeConverter* typeConverter,
+                             Operation* stablehloOp, Operation* hloOp) {
+  for (auto [stablehloRegion, hloRegion] :
+       llvm::zip_equal(stablehloOp->getRegions(), hloOp->getRegions())) {
+    rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
+    if (failed(rewriter.convertRegionTypes(&hloRegion, *typeConverter,
+                                           /*entryConversion=*/nullptr)))
+      return failure();
+  }
+  return success();
+}
+
+template <typename StablehloOpTy>
+class StablehloToHloOpConverter : public ConversionPattern {
+ public:
+  StablehloToHloOpConverter(TypeConverter& converter, MLIRContext* context)
+      : ConversionPattern(converter, StablehloOpTy::getOperationName(),
+                          /*benefit=*/1, context) {}
+
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    const TypeConverter* typeConverter = this->getTypeConverter();
     // These operands have already been converted to MHLO by
     // the dialect conversion infrastructure.
-    ValueRange hloOperands = adaptor.getOperands();
+    ValueRange hloOperands = operands;
+    SmallVector<Type> hloTypes;
 
     // Extensibility protocol for public MHLO features that are not yet
     // supported in StableHLO. See hlo_legalize_to_stablehlo.cc for details.
-    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+    constexpr bool isCustomCall =
+        std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value;
+    if constexpr (isCustomCall) {
+      auto stablehloOp = llvm::cast<stablehlo::CustomCallOp>(op);
       if (stablehloOp.getCallTargetName().starts_with("mhlo.")) {
+        if (failed(typeConverter->convertTypes(op->getResultTypes(), hloTypes)))
+          return failure();
         return rewriteCustomCallAsMhloOp(stablehloOp, rewriter, typeConverter,
                                          hloTypes, hloOperands);
       }
     }
 
-    // Convert StableHLO attributes to MHLO equivalents.
-    // If an attribute is not defined in StableHLO, then it is unchanged,
-    // with the exception of ArrayAttr which is converted recursively.
     SmallVector<NamedAttribute> hloAttrs;
-    for (NamedAttribute stablehloAttr : stablehloOp->getAttrs()) {
-      if constexpr (std::is_same<StablehloOpTy,
-                                 stablehlo::CustomCallOp>::value) {
-        if (stablehloAttr.getName() == "mhlo.backend_config") continue;
-      }
-      auto hloAttr = convertAttr(stablehloAttr.getValue());
-      if (!hloAttr) return failure();
-      hloAttrs.push_back({stablehloAttr.getName(), hloAttr});
-    }
+    if (failed(
+            convertTypesAndAttributes(typeConverter, op, hloTypes, hloAttrs,
+                                      /*skipMhloBackendConfig=*/isCustomCall)))
+      return failure();
 
     // Convert the StableHLO operation to a MHLO equivalent. This can almost be
     // done in a generic fashion, except for ops with a variadic number of
@@ -425,29 +459,28 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     if constexpr (StablehloOpTy::template hasTrait<
                       OpTrait::VariadicRegions>()) {
       hloOp = StablehloToHloOp<StablehloOpTy>::create(
-          rewriter, stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs,
-          stablehloOp.getNumRegions());
+          rewriter, op->getLoc(), hloTypes, hloOperands, hloAttrs,
+          op->getNumRegions());
     } else {
       hloOp = StablehloToHloOp<StablehloOpTy>::create(
-          rewriter, stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
+          rewriter, op->getLoc(), hloTypes, hloOperands, hloAttrs);
     }
 
     // For backward compatibility, fix custom call with mhlo.backend_config
-    if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
-      if (failed(fixupMhloBackendConfig(stablehloOp, hloOp))) return failure();
+    if constexpr (isCustomCall) {
+      if (failed(fixupMhloBackendConfig(llvm::cast<stablehlo::CustomCallOp>(op),
+                                        hloOp)))
+        return failure();
     }
 
     // Finally, populate the regions while converting argument types
     // and nested operations.
-    for (auto [stablehloRegion, hloRegion] :
-         llvm::zip_equal(stablehloOp->getRegions(), hloOp->getRegions())) {
-      rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
-      if (failed(rewriter.convertRegionTypes(&hloRegion, *typeConverter,
-                                             /*entryConversion=*/nullptr)))
+    if constexpr (!StablehloOpTy::template hasTrait<OpTrait::ZeroRegions>()) {
+      if (failed(convertRegions(rewriter, typeConverter, op, hloOp)))
         return failure();
     }
 
-    rewriter.replaceOp(stablehloOp, hloOp);
+    rewriter.replaceOp(op, hloOp);
     return success();
   }
 };
@@ -497,23 +530,32 @@ struct UpdateOperandsPattern : public ConversionPattern {
 // Deprecated ops.
 template <>
 class StablehloToHloOpConverter<stablehlo::UnaryEinsumOp>
-    : public OpConversionPattern<UnaryEinsumOp> {
+    : public ConversionPattern {
  public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(stablehlo::UnaryEinsumOp stablehloOp,
-                                typename stablehlo::UnaryEinsumOp::Adaptor,
+  StablehloToHloOpConverter(TypeConverter& converter, MLIRContext* context)
+      : ConversionPattern(converter,
+                          stablehlo::UnaryEinsumOp::getOperationName(),
+                          /*benefit=*/1, context) {}
+  LogicalResult matchAndRewrite(Operation* op, ArrayRef<Value>,
                                 ConversionPatternRewriter&) const final {
-    return stablehloOp.emitError(
+    return op->emitError(
         "UnaryEinsumOp is deprecated and not supported in MHLO");
   }
 };
+
+void addPattern(RewritePatternSet* patterns,
+                std::unique_ptr<RewritePattern> pattern) {
+  patterns->add(std::move(pattern));
+}
 
 template <typename... StablehloOpTypes>
 void populateStablehloToHloPatterns(RewritePatternSet* patterns,
                                     TypeConverter* converter,
                                     MLIRContext* context) {
-  patterns->add<StablehloToHloOpConverter<StablehloOpTypes>...>(*converter,
-                                                                context);
+  (addPattern(patterns,
+              std::make_unique<StablehloToHloOpConverter<StablehloOpTypes>>(
+                  *converter, context)),
+   ...);
 }
 
 }  // namespace

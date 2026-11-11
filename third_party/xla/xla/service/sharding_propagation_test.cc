@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/sharding_propagation.h"
 
+#include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -35,9 +37,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
@@ -104,7 +108,19 @@ class ParameterizedMetadataTest
 
 class ParameterizedMetadataTestWithOutput
     : public HloHardwareIndependentTestBase,
-      public WithParamInterface<MetadataTestParameterWithOutput> {};
+      public WithParamInterface<MetadataTestParameterWithOutput> {
+ protected:
+  // Hides the base overloads so that every test module allows propagation to
+  // the root iff the test parameter says so.
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text) const {
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.set_allow_spmd_sharding_propagation_to_output(
+        {GetParam().allow_root_sharding_propagation});
+    return HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
+        hlo_text, config);
+  }
+};
 
 std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {
   std::vector<std::string> metadata_strings;
@@ -403,8 +419,7 @@ ENTRY %broadcast {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -440,8 +455,7 @@ ENTRY %broadcast {
   }
   ASSERT_OK_AND_ASSIGN(
       std::ignore,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   auto* instruction = FindInstruction(module.get(), "broadcast");
@@ -543,8 +557,7 @@ ENTRY %broadcast {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -642,8 +655,7 @@ ENTRY %broadcast {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -983,8 +995,7 @@ ENTRY %main {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -1045,8 +1056,7 @@ ENTRY %main {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -1100,8 +1110,7 @@ ENTRY %gte {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -1153,8 +1162,7 @@ ENTRY %gte {
   }
   ASSERT_OK_AND_ASSIGN(
       std::ignore,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   auto* gte = FindInstruction(module.get(), "gte");
@@ -2699,6 +2707,36 @@ ENTRY %entry {
   }
 }
 
+constexpr absl::string_view kShardedParameterReplicatedRootHlo = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = f32[8,4] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT %copy = f32[8,4] copy(%p0), sharding={replicated}
+})";
+
+TEST_F(ShardingPropagationTest, ReadsConfigOfEachModuleOnEveryRun) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allowing_module,
+      ParseAndReturnVerifiedModule(kShardedParameterReplicatedRootHlo));
+  allowing_module->mutable_config()
+      .set_allow_spmd_sharding_propagation_to_output({true});
+  ASSERT_OK_AND_ASSIGN(
+      auto disallowing_module,
+      ParseAndReturnVerifiedModule(kShardedParameterReplicatedRootHlo));
+  disallowing_module->mutable_config()
+      .set_allow_spmd_sharding_propagation_to_output({false});
+  ShardingPropagation pass(/*is_spmd=*/true);
+
+  ASSERT_OK(pass.Run(allowing_module.get()));
+  ASSERT_OK(pass.Run(disallowing_module.get()));
+
+  EXPECT_THAT(allowing_module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,1]0,1}"));
+  EXPECT_THAT(disallowing_module->entry_computation()->root_instruction(),
+              op::Sharding("{replicated}"));
+}
+
 TEST_F(ShardingPropagationTest, PropagateShardingInWhileCondition) {
   const char* const hlo_string = R"(
 HloModule module
@@ -2729,10 +2767,11 @@ ENTRY %entry {
 })";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, /*propagate_metadata=*/false,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/false, /*propagate_metadata=*/false)
           .Run(module.get()));
   EXPECT_TRUE(changed);
   HloSharding single_sharding =
@@ -4365,8 +4404,7 @@ ENTRY entry {
   }
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
-                          {GetParam().allow_root_sharding_propagation})
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6356,10 +6394,11 @@ ENTRY entry {
     index_vector_dim=3, slice_sizes={1,1,1,4}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6381,10 +6420,11 @@ ENTRY entry {
     index_vector_dim=3, slice_sizes={1,1,1,4}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6407,13 +6447,14 @@ ENTRY entry {
     sharding={devices=[2,2,2,2]<=[16]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
 
@@ -6438,13 +6479,14 @@ ENTRY %module {
     sharding={devices=[2,2]<=[4]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
 
@@ -6474,10 +6516,11 @@ ENTRY entry {
     scatter_indices_batching_dims={1,0}, index_vector_dim=3
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6505,10 +6548,11 @@ ENTRY entry {
     scatter_indices_batching_dims={1,0}, index_vector_dim=3
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6538,10 +6582,11 @@ ENTRY entry {
     scatter_indices_batching_dims={1,0}, index_vector_dim=3
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -6570,13 +6615,14 @@ ENTRY entry {
     scatter_indices_batching_dims={1,0}, index_vector_dim=3, sharding={devices=[2,2,2,2]<=[16]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
 
@@ -10237,10 +10283,11 @@ ENTRY %entry {
   ROOT custom-call.5 = f32[16,3]{1,0} custom-call(custom-call.4), custom_call_target="SPMDShardToFullShape", sharding={replicated}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   // Sharding op is changed to a copy.
   EXPECT_TRUE(changed);
@@ -10515,65 +10562,6 @@ ENTRY %entry {
       FindInstruction(module.get(), "p2.copy");
 
   EXPECT_THAT(convert_instr, op::Sharding("{devices=[4,1]0,1,2,3}"));
-}
-
-TEST_F(ShardingPropagationTest, CSEPreventionOnly) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  %param0 = f32[] parameter(0), sharding={replicated}
-  %br = f32[4] broadcast(%param0), dimensions={}
-  %add = f32[4] add(%br, %br)
-  %annotate = f32[4] custom-call(%add), custom_call_target="Sharding",
-    backend_config="unspecified_dims=[0]", sharding={replicated}
-  ROOT %copy = f32[4] copy(%annotate), sharding={devices=[4]0,1,2,3}
-})";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false},
-          /*cse_prevention_only=*/true)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  auto* br = FindInstruction(module.get(), "br");
-  EXPECT_THAT(br, op::Sharding("{devices=[4]0,1,2,3}"));
-  EXPECT_THAT(br->sharding(), ShardingMetadata({CreateMetadata(
-                                  "_sharding_propagation_cse_prevention")}));
-  EXPECT_THAT(FindInstruction(module.get(), "annotate"),
-              AllOf(op::Sharding("{replicated}"), op::CustomCall()));
-  EXPECT_FALSE(FindInstruction(module.get(), "add")->has_sharding());
-}
-
-TEST_F(ShardingPropagationTest, RemoveCSEPrevention) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  %param0 = f32[] parameter(0), sharding={replicated}
-  %br = f32[4] broadcast(%param0), dimensions={},
-    sharding={devices=[4]0,1,2,3 metadata={op_name="_sharding_propagation_cse_prevention"}}
-  %add = f32[4] add(%br, %br)
-  %annotate = f32[4] custom-call(%add), custom_call_target="Sharding",
-    backend_config="unspecified_dims=[0]", sharding={replicated}
-  ROOT %copy = f32[4] copy(%annotate), sharding={devices=[4]3,2,1,0}
-})";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
-          .Run(module.get()));
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-  // Test that the CSE prevention sharding is replaced with the new sharding.
-  EXPECT_THAT(FindInstruction(module.get(), "br"),
-              op::Sharding("{devices=[4]3,2,1,0}"));
-  EXPECT_THAT(FindInstruction(module.get(), "add"),
-              op::Sharding("{devices=[4]3,2,1,0}"));
 }
 
 TEST_F(ShardingPropagationTest, ReshapeTrivialDimPartialReplicate) {
@@ -11095,10 +11083,11 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%annotate, %annotate), sharding={replicated}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -11124,12 +11113,12 @@ ENTRY %entry {
   ROOT t = (f32[4], f32[4]) tuple(add, add1), sharding={{replicated},{replicated}}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -11154,10 +11143,11 @@ ENTRY %entry {
   ROOT t = (f32[4], f32[4]) tuple(add, add1), sharding={{replicated},{replicated}}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
   ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -11174,13 +11164,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param0), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_FALSE(
       module->entry_computation()->parameter_instruction(0)->has_sharding());
@@ -11212,13 +11201,10 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_FALSE(
       module->entry_computation()->parameter_instruction(0)->has_sharding());
@@ -11236,13 +11222,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{replicated}"));
@@ -11260,13 +11245,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11285,13 +11269,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_FALSE(
@@ -11310,13 +11293,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11335,13 +11317,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_FALSE(
@@ -11360,13 +11341,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11385,13 +11365,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11411,13 +11390,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%gte0, %gte1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11435,13 +11413,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%gte0, %gte1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11459,13 +11436,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%gte0, %gte1), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11488,13 +11464,14 @@ ENTRY %entry {
   ROOT tuple.15 = (f32[1]{0}, token[]) tuple(p1, outfeed.2)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -11513,13 +11490,14 @@ ENTRY %entry {
 
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloDCE dce;
@@ -11549,13 +11527,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %pad), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11579,13 +11556,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%param0, %pad), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
@@ -11609,13 +11585,12 @@ ENTRY %entry {
   ROOT %add = f32[4] add(%gte0, %pad), sharding={devices=[4]0,1,2,3}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   // Replicate the second element of parameter since the propagated sharding
@@ -11636,13 +11611,14 @@ ENTRY %entry {
   ROOT %slice = f32[3] slice(%add), slice={[0:3:1]}, sharding={replicated}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   // Replicate the output since the propagated sharding does not evenly
@@ -11663,13 +11639,14 @@ ENTRY %entry {
   ROOT %slice = f32[3] slice(%add), slice={[0:3:1]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   // Replicate the output since the propagated sharding does not evenly
@@ -11691,13 +11668,14 @@ ENTRY %entry {
   ROOT %tuple = (f32[4], f32[3]) tuple(%add, %slice), sharding={{replicated}, {replicated}}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false, true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {false, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   // Replicate the output tuple element since the propagated sharding does not
@@ -11719,13 +11697,14 @@ ENTRY %entry {
   ROOT %tuple = (f32[4], f32[3]) tuple(%add, %slice)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   // Replicate the output tuple element since the propagated sharding does not
@@ -11748,13 +11727,14 @@ ENTRY %entry {
   ROOT mul = s32[16,16] multiply(add.1, add.2)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -11792,13 +11772,14 @@ ENTRY %entry {
   ROOT mul = s32[] multiply(reduce.1, reduce.2)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -11826,13 +11807,14 @@ ENTRY %entry {
   ROOT mul = s32[16,16] multiply(add.1, add.2)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -11868,13 +11850,12 @@ ENTRY %entry {
   ROOT mul = s32[] multiply(reduce.1, reduce.2)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true, true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -11908,13 +11889,12 @@ ENTRY %entry {
   ROOT mul = s32[16,16] multiply(broadcast.1, broadcast.1), sharding={unknown shard_as 0}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -11943,13 +11923,14 @@ ENTRY main.6 {
 )";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -11971,13 +11952,14 @@ ENTRY main.9 {
   ROOT tuple.8 = (f32[8]{0}, f32[8]{0}) tuple(custom-call.6, custom-call.7)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true, true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -11999,13 +11981,14 @@ ENTRY %entry {
   ROOT dynamic-update-slice.113 = bf16[16,1024,16,128]{3,2,1,0} dynamic-update-slice(p2, reshape.1, p3, constant.1, constant.1, /*index=5*/constant.1), sharding={devices=[1,4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -12040,13 +12023,14 @@ ENTRY entry_computation {
   {
     // Test with execution_threads = {"thread_0"}
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get(), {"thread_0"}));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get(), {"thread_0"}));
     EXPECT_TRUE(changed);
 
     XLA_VLOG_LINES(1, module->ToString());
@@ -12064,13 +12048,14 @@ ENTRY entry_computation {
   {
     // Test with execution_threads = {"thread_0", "thread_1"}
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get(), {"thread_0", "thread_1"}));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get(), {"thread_0", "thread_1"}));
     EXPECT_FALSE(changed);
   }
 
@@ -12078,13 +12063,14 @@ ENTRY entry_computation {
     // Test with execution_threads = {}. Empty execution_threads means all
     // execution_threads are included.
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get()));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get()));
     EXPECT_FALSE(changed);
   }
 }
@@ -12113,13 +12099,14 @@ ENTRY entry_computation {
   {
     // Test with execution_threads = {"thread_0"}
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get(), {"thread_0"}));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get(), {"thread_0"}));
     EXPECT_TRUE(changed);
 
     XLA_VLOG_LINES(1, module->ToString());
@@ -12138,13 +12125,14 @@ ENTRY entry_computation {
   {
     // Test with execution_threads = {"thread_0", "thread_1"}
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get(), {"thread_0", "thread_1"}));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get(), {"thread_0", "thread_1"}));
     EXPECT_FALSE(changed);
   }
 
@@ -12152,13 +12140,14 @@ ENTRY entry_computation {
     // Test with execution_threads = {}. Empty execution_threads means all
     // execution_threads are included.
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    ASSERT_OK_AND_ASSIGN(
-        bool changed,
-        ShardingPropagation(
-            /*is_spmd=*/true, /*propagate_metadata=*/true,
-            /*allow_spmd_sharding_propagation_to_output=*/{true},
-            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-            .Run(module.get()));
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+        {true});
+    module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+        {true});
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         ShardingPropagation(
+                             /*is_spmd=*/true, /*propagate_metadata=*/true)
+                             .Run(module.get()));
     EXPECT_FALSE(changed);
   }
 }
@@ -12182,13 +12171,14 @@ ENTRY main.11 {
   ROOT tuple.13 = (bf16[384,1408]{1,0}, bf16[8,384,1408]{2,1,0}) tuple(get-tuple-element.10, custom-call.5)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -12218,13 +12208,14 @@ ENTRY %elementwise {
   ROOT %tuple = (f32[5,7,11,13]{3,2,1,0}, f32[5,7,11,13]{3,2,1,0}) tuple(%custom-call.0, %custom-call.3)
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {false, false});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
@@ -12251,13 +12242,10 @@ ENTRY main {
   ROOT %call = (bf16[20,2,68096,8512]) call(add), to_apply=%called_computation, sharding={{devices=[1,1,16,64]<=[64,16]T(1,0)}}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   auto* add = FindInstruction(module.get(), "add");
@@ -12287,13 +12275,10 @@ ENTRY main {
   ROOT %call = (bf16[4096,4096]) call(custom-call.4), to_apply=%called_computation, sharding={devices=[2,2]<=[4]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
-          .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
   auto* custom_call_4 = FindInstruction(module.get(), "custom-call.4");
@@ -12322,13 +12307,14 @@ ENTRY main {
   ROOT s = u32[2048,4096]{1,0} custom-call(rbg), custom_call_target="Sharding", sharding={devices=[2,2]<=[4]}
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(
-          /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
-          .Run(module.get()));
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_output(
+      {true});
+  module->mutable_config().set_allow_spmd_sharding_propagation_to_parameters(
+      {true});
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ShardingPropagation(
+                           /*is_spmd=*/true, /*propagate_metadata=*/true)
+                           .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());

@@ -77,54 +77,18 @@ void PopulateDevices(llvm::ArrayRef<int> permutation,
   }
 }
 
-void PrintInternalV1(llvm::raw_ostream& os, const ShardingParam& sharding) {
+void PrintInternalV2(llvm::raw_ostream& os, const ShardingParam& sharding) {
   PrintDims(os, sharding.dim_shards());
   os << " to [";
   llvm::interleaveComma(
       llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
   os << "] on ";
   PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
-}
-
-void PrintInternalV2(llvm::raw_ostream& os, const ShardingParam& sharding) {
-  PrintInternalV1(os, sharding);
   if (!sharding.unreduced_axes().empty()) {
     os << " unreduced [";
     llvm::interleaveComma(llvm::ArrayRef<int>(sharding.unreduced_axes()), os);
     os << "]";
   }
-}
-
-mlir::ParseResult ParseDimShardsAndMajorToMinor(
-    mlir::AsmParser& ods_parser, ShardingParam::MinorToMajor& minor_to_major,
-    std::vector<int64_t>& dim_shards) {
-  auto parseIntoPermutation = [&]() -> mlir::ParseResult {
-    int item;
-    if (auto result = ods_parser.parseInteger(item)) {
-      return result;
-    }
-    minor_to_major.permutation.push_back(item);
-    return mlir::ParseResult::success();
-  };
-
-  llvm::SmallVector<int64_t, 4> axis_sizes_64;
-  llvm::SmallVector<int64_t> dim_shards_vec;
-  if (ods_parser.parseDimensionList(dim_shards_vec, false, false) ||
-      ods_parser.parseKeyword("to") ||
-      ods_parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
-                                         parseIntoPermutation) ||
-      ods_parser.parseKeyword("on") ||
-      ods_parser.parseDimensionList(axis_sizes_64, false, false)) {
-    return mlir::failure();
-  }
-
-  // The copy here is necessary because parseDimensionList expects a
-  // llvm::SmallVector<int64_t>, whereas ShardingParam expects a
-  // std::vector<int64_t>. ShardingParam has Python bindings, so we do not want
-  // its constructor to expose a SmallVector.
-  minor_to_major.axis_sizes.assign(axis_sizes_64.begin(), axis_sizes_64.end());
-  dim_shards.assign(dim_shards_vec.begin(), dim_shards_vec.end());
-  return mlir::success();
 }
 
 }  // namespace
@@ -189,28 +153,34 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
   return ParseV2(ods_parser);
 }
 
-mlir::FailureOr<ShardingParam> ShardingParam::ParseV1(
-    mlir::AsmParser& ods_parser) {
-  MinorToMajor minor_to_major;
-  std::vector<int64_t> dim_shards;
-  if (ParseDimShardsAndMajorToMinor(ods_parser, minor_to_major, dim_shards)) {
-    return mlir::failure();
-  }
-  return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
-}
-
 mlir::FailureOr<ShardingParam> ShardingParam::ParseV2(
     mlir::AsmParser& ods_parser) {
   MinorToMajor minor_to_major;
-  std::vector<int64_t> dim_shards;
-  if (ParseDimShardsAndMajorToMinor(ods_parser, minor_to_major, dim_shards)) {
+  auto parseIntoPermutation = [&]() -> mlir::ParseResult {
+    int item;
+    if (mlir::ParseResult result = ods_parser.parseInteger(item)) {
+      return result;
+    }
+    minor_to_major.permutation.push_back(item);
+    return mlir::ParseResult::success();
+  };
+
+  llvm::SmallVector<int64_t, 4> axis_sizes_64;
+  llvm::SmallVector<int64_t> dim_shards;
+  if (ods_parser.parseDimensionList(dim_shards, false, false) ||
+      ods_parser.parseKeyword("to") ||
+      ods_parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
+                                         parseIntoPermutation) ||
+      ods_parser.parseKeyword("on") ||
+      ods_parser.parseDimensionList(axis_sizes_64, false, false)) {
     return mlir::failure();
   }
+
   std::vector<int> unreduced_axes;
   if (llvm::succeeded(ods_parser.parseOptionalKeyword("unreduced"))) {
     auto parseUnreducedAxes = [&]() -> mlir::ParseResult {
       int item;
-      if (auto result = ods_parser.parseInteger(item)) {
+      if (mlir::ParseResult result = ods_parser.parseInteger(item)) {
         return result;
       }
       unreduced_axes.push_back(item);
@@ -222,13 +192,14 @@ mlir::FailureOr<ShardingParam> ShardingParam::ParseV2(
     }
   }
 
-  return ShardingParam(std::move(dim_shards), std::move(minor_to_major),
-                       std::move(unreduced_axes));
-}
-
-void ShardingParam::PrintV1(mlir::AsmPrinter& ods_printer,
-                            const ShardingParam& sharding) {
-  PrintInternalV1(ods_printer.getStream(), sharding);
+  minor_to_major.axis_sizes.assign(axis_sizes_64.begin(), axis_sizes_64.end());
+  // The copy here is necessary because parseDimensionList expects a
+  // llvm::SmallVector<int64_t>, whereas ShardingParam expects a
+  // std::vector<int64_t>. ShardingParam has Python bindings, so we do not want
+  // its constructor to expose a SmallVector.
+  return ShardingParam(
+      std::vector<int64_t>(dim_shards.begin(), dim_shards.end()),
+      std::move(minor_to_major), std::move(unreduced_axes));
 }
 
 void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,

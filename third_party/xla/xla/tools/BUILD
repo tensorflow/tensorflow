@@ -54,6 +54,14 @@ package(
 
 exports_files(["data/hlo_isolation_cli_test.hlo"])
 
+exports_files(
+    [
+        "benchmarks/hlo/hlo_gemma4_2b_bf16.hlo",
+        "benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo",
+    ],
+    visibility = ["//xla/pjrt/gpu:__pkg__"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -287,7 +295,7 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_propagation",
         "//xla/service:triangular_solve_expander",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/tsl/util:command_line_flags",
     ],
 )

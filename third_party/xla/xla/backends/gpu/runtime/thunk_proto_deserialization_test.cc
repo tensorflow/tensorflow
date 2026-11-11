@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -78,14 +79,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver = std::nullopt) {
+        symbol_resolver = std::nullopt,
+    const DebugOptions& runtime_debug_options = DebugOptions()) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence sequence,
       DeserializeThunkSequenceProto(
           thunk_sequence_proto, buffer_allocations, hlo_module, platform_name,
-          gpu_compute_capability, SingleDeviceGpuTopology(), symbol_resolver));
+          gpu_compute_capability, SingleDeviceGpuTopology(),
+          runtime_debug_options, symbol_resolver));
   return std::move(sequence.front());
 }
 
@@ -697,6 +700,7 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
             slice { buffer_allocation_index: 1 }
             shape { element_type: U8 }
           }
+          target_device { core_count: 96 serialized_device_properties: "{}" }
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {
@@ -796,6 +800,22 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
               is_dynamic_dimension: false
             }
           }
+          algorithm_proto {
+            library_version: 120800
+            cublaslt {
+              algo_id: 21
+              tile_id: 15
+              stages_id: 23
+              split_k: 1
+              reduction_scheme: 0
+              cta_swizzling: 0
+              custom_option: 0
+              inner_shape_id: 0
+              cluster_shape_id: 0
+              numerical_impl_flags: 1
+            }
+          }
+          require_exact_algorithm: true
         }
       )pb");
 
@@ -815,6 +835,37 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+
+  ThunkProto proto_without_require_exact = proto;
+  proto_without_require_exact.mutable_cublas_lt_matmul_thunk()
+      ->set_require_exact_algorithm(false);
+
+  // Override false -> true via runtime DebugOptions.
+  DebugOptions enable_exact_options;
+  enable_exact_options.set_xla_gpu_require_exact_blas_lt_algorithm(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk_with_enable_override,
+      DeserializeThunkProto(
+          proto_without_require_exact, allocations,
+          /*hlo_module=*/nullptr, kTestPlatformName, se::GpuComputeCapability(),
+          /*symbol_resolver=*/std::nullopt, enable_exact_options));
+  ASSERT_OK_AND_ASSIGN(ThunkProto enable_override_round_trip_proto,
+                       thunk_with_enable_override->ToProto());
+  EXPECT_THAT(enable_override_round_trip_proto, EqualsProto(proto));
+
+  // Override true -> false via runtime DebugOptions.
+  DebugOptions disable_exact_options;
+  disable_exact_options.set_xla_gpu_require_exact_blas_lt_algorithm(false);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk_with_disable_override,
+      DeserializeThunkProto(
+          proto, allocations,
+          /*hlo_module=*/nullptr, kTestPlatformName, se::GpuComputeCapability(),
+          /*symbol_resolver=*/std::nullopt, disable_exact_options));
+  ASSERT_OK_AND_ASSIGN(ThunkProto disable_override_round_trip_proto,
+                       thunk_with_disable_override->ToProto());
+  EXPECT_THAT(disable_override_round_trip_proto,
+              EqualsProto(proto_without_require_exact));
 }
 
 XLA_FFI_DEFINE_HANDLER(kSimpleCustomCall, []() { return absl::OkStatus(); },
@@ -1326,7 +1377,7 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
       DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
                                     /*hlo_module=*/nullptr, kTestPlatformName,
                                     se::GpuComputeCapability(),
-                                    SingleDeviceGpuTopology()));
+                                    SingleDeviceGpuTopology(), DebugOptions()));
 
   ASSERT_EQ(sequence.size(), 2);
   EXPECT_EQ(sequence[0]->kind(), Kind::kAsyncStart);
@@ -1374,12 +1425,12 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
     ThunkSequenceProto thunk_protos;
     *thunk_protos.add_thunks() = start_proto;
     *thunk_protos.add_thunks() = done_proto;
-    ASSERT_OK_AND_ASSIGN(
-        ThunkSequence sequence,
-        DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
-                                      /*hlo_module=*/nullptr, kTestPlatformName,
-                                      se::GpuComputeCapability(),
-                                      SingleDeviceGpuTopology()));
+    ASSERT_OK_AND_ASSIGN(ThunkSequence sequence,
+                         DeserializeThunkSequenceProto(
+                             thunk_protos, /*buffer_allocations=*/{},
+                             /*hlo_module=*/nullptr, kTestPlatformName,
+                             se::GpuComputeCapability(),
+                             SingleDeviceGpuTopology(), DebugOptions()));
 
     ASSERT_EQ(sequence.size(), 2);
     auto* deserialized_start =
@@ -1392,6 +1443,49 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
                          deserialized_start->ToProto());
     EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
   }
+}
+
+TEST(ThunkProtoDeserializationTest,
+     AsyncStartThunkLocalityDomainStreamRoundTrip) {
+  // Verify that AsyncStartThunk with a LocalityDomainStreamId round-trips
+  // correctly through proto serialization.
+  constexpr LocalityDomainStreamId kStreamId(7);
+  Thunk::ThunkInfo start_info;
+  start_info.profile_annotation = "locality_domain_async_start";
+
+  AsyncStartThunk start_thunk(start_info, kStreamId, ThunkSequence{},
+                              /*devices_per_host=*/1);
+  AsyncDoneThunk done_thunk(Thunk::ThunkInfo(), start_thunk.async_execution());
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk.ToProto());
+
+  // The proto must have used the locality_domain_stream_id field.
+  EXPECT_EQ(start_proto.async_start_thunk().execution_stream_id_case(),
+            AsyncStartThunkProto::kLocalityDomainStreamId);
+  EXPECT_EQ(start_proto.async_start_thunk().locality_domain_stream_id(),
+            kStreamId.value());
+
+  ThunkSequenceProto thunk_protos;
+  *thunk_protos.add_thunks() = start_proto;
+  *thunk_protos.add_thunks() = done_proto;
+  ASSERT_OK_AND_ASSIGN(
+      ThunkSequence sequence,
+      DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
+                                    /*hlo_module=*/nullptr, kTestPlatformName,
+                                    se::GpuComputeCapability(),
+                                    SingleDeviceGpuTopology()));
+
+  ASSERT_EQ(sequence.size(), 2);
+  auto* deserialized_start = dynamic_cast<AsyncStartThunk*>(sequence[0].get());
+  ASSERT_NE(deserialized_start, nullptr);
+  EXPECT_TRUE(deserialized_start->execution_stream_id().is_locality_domain());
+  EXPECT_EQ(deserialized_start->execution_stream_id().locality_domain_id(),
+            kStreamId);
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
+                       deserialized_start->ToProto());
+  EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
 }
 
 TEST(ThunkProtoDeserializationTest, SendThunk) {

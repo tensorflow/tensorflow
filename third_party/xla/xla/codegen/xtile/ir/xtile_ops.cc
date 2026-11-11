@@ -90,6 +90,16 @@ static mlir::LogicalResult VerifyBufferOp(TiledBufferInterface op) {
   return mlir::success();
 }
 
+// Returns true if `type` is a flat 1D array of 64-bit buffer addresses
+// (for example, `memref<8xi64>` holding one pointer per GPU).
+static bool IsPeerTableMemRef(mlir::Type type) {
+  auto memref_type = mlir::dyn_cast<mlir::MemRefType>(type);
+  return memref_type && memref_type.getRank() == 1 &&
+         memref_type.getDimSize(0) > 0 &&
+         memref_type.getElementType().isInteger(64) &&
+         memref_type.getLayout().isIdentity();
+}
+
 // This is lifted from the func::FuncOp builder, modified to make the tile
 // index implicit.
 void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
@@ -174,6 +184,27 @@ mlir::LogicalResult EntryFuncOp::verify() {
     return emitOpError() << argument_error;
   }
 
+  return mlir::success();
+}
+
+mlir::LogicalResult SelectBufferOp::verify() {
+  mlir::MemRefType source_type = getSource().getType();
+  if (!IsPeerTableMemRef(source_type)) {
+    return emitOpError(
+               "expected source to be a static contiguous 1D i64 memref, got ")
+           << source_type;
+  }
+  // Any starting shift must be passed via `offset`, not baked into the result
+  // memref's layout.
+  int64_t result_offset = 0;
+  llvm::SmallVector<int64_t> result_strides;
+  mlir::MemRefType result_type = getResult().getType();
+  if (mlir::failed(
+          result_type.getStridesAndOffset(result_strides, result_offset)) ||
+      result_offset != 0) {
+    return emitOpError("expected result memref to have zero offset, got ")
+           << result_type;
+  }
   return mlir::success();
 }
 

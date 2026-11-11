@@ -35,6 +35,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer_telemetry.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer_telemetry_test_util.h"
 #include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/stream_executor/device_address.h"
@@ -60,7 +61,6 @@ using Command = CommandBuffer::Command;
 using KeySpace = CudaGraphAnnotationRegistry::KeySpace;
 using Scope = ScopedCommandBufferAnnotation;
 using TelemetryStrategy = CudaGraphAnnotationRegistry::TelemetryStrategy;
-using TrackMode = CudaGraphAnnotationRegistry::TrackMode;
 
 uint64_t ExecNodeId(uint32_t exec_id, uint32_t flat_local_id) {
   return (uint64_t{exec_id} << 32) | flat_local_id;
@@ -101,12 +101,45 @@ TEST_F(CudaCommandBufferTelemetryTest, FinalizeProjectsExecGraphOnPre134) {
 }
 
 TEST_F(CudaCommandBufferTelemetryTest,
+       GraphAndGraphExecIdsAreStrictlyIncreasingAcrossDestruction) {
+  std::optional<uint32_t> prev_graph_id;
+  std::optional<uint32_t> prev_exec_id;
+  for (int i = 0; i < 16; ++i) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
+    ASSERT_OK(Launch(*primary).status());
+    ASSERT_OK(primary->Finalize());
+
+    auto* cuda_cmd = absl::down_cast<CudaCommandBuffer*>(primary.get());
+    const std::optional<uint32_t> graph_id =
+        command_buffer_telemetry::GetGraphId(
+            CudaCommandBufferTestPeer::graph(cuda_cmd));
+    const std::optional<uint32_t> exec_id =
+        command_buffer_telemetry::GetGraphExecId(
+            CudaCommandBufferTestPeer::graph_exec(cuda_cmd));
+    ASSERT_TRUE(graph_id.has_value());
+    ASSERT_TRUE(exec_id.has_value());
+    if (prev_graph_id.has_value()) {
+      EXPECT_GT(*graph_id, *prev_graph_id);
+      EXPECT_GT(*exec_id, *prev_exec_id);
+    }
+    prev_graph_id = graph_id;
+    prev_exec_id = exec_id;
+  }
+}
+
+TEST_F(CudaCommandBufferTelemetryTest,
        RegisterPre134ExecGraphNodesProjectsHierarchyAndCleansUpOnDestroy) {
   DeviceAddress<bool> pred = executor_->AllocateArray<bool>(1);
   ASSERT_FALSE(pred.is_null());
   absl::Cleanup free_pred = [&] { executor_->Deallocate(&pred); };
 
+  const DeviceDescription& desc = executor_->GetDeviceDescription();
+  const TelemetryStrategy strategy =
+      CudaGraphAnnotationRegistry::SelectTelemetryStrategy(
+          desc.compile_time_toolkit_version(), desc.driver_version(),
+          desc.runtime_version());
   uint32_t exec_id = 0;
+  std::optional<command_buffer_telemetry::TrackedGraph> test_owned_exec_entry;
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> inner_clone,
@@ -183,23 +216,26 @@ TEST_F(CudaCommandBufferTelemetryTest,
     // KeySpace::kTemplateGraph to verify RegisterPre134ExecGraphNodes does not
     // clobber template entries when `cuGraphExecGetId` collides with
     // `cuGraphGetId`. Skipped if one of this test's own graphs already has that
-    // ID: `kNewGraph` would retire its live entry.
+    // ID, so that the test doesn't add a node to that graph's entry.
     const bool force_collision =
         !registry().IsGraphTracked(exec_id, KeySpace::kTemplateGraph);
     if (force_collision) {
-      const CudaGraphAnnotationRegistry::TrackResult colliding_tmpl =
-          registry().TrackGraph(exec_id, TrackMode::kNewGraph,
-                                KeySpace::kTemplateGraph);
-      ASSERT_TRUE(registry().RegisterNodeAnnotation(
-          exec_id, colliding_tmpl.token, /*node_id=*/42,
-          "colliding_template_op", KeySpace::kTemplateGraph));
+      ASSERT_TRUE(registry().TrackGraph(exec_id, KeySpace::kTemplateGraph));
+      ASSERT_TRUE(registry().RegisterNodeAnnotation(exec_id, /*node_id=*/42,
+                                                    "colliding_template_op",
+                                                    KeySpace::kTemplateGraph));
     }
 
     // Invoke the pre-13.4 projection directly so it is exercised even when
-    // the test runs on a CUDA 13.4+ driver.
-    command_buffer_telemetry::RegisterPre134ExecGraphNodes(
-        CudaCommandBufferTestPeer::graph(cuda_cmd),
-        CudaCommandBufferTestPeer::graph_exec(cuda_cmd));
+    // the test runs on a CUDA 13.4+ driver. On CUDA 13.2-13.3, `Finalize`
+    // already projected the executable graph, and the command buffer owns the
+    // entry. Otherwise this call creates it, and the test owns it.
+    test_owned_exec_entry =
+        command_buffer_telemetry::RegisterPre134ExecGraphNodes(
+            CudaCommandBufferTestPeer::graph(cuda_cmd),
+            CudaCommandBufferTestPeer::graph_exec(cuda_cmd));
+    EXPECT_EQ(test_owned_exec_entry.has_value(),
+              strategy != TelemetryStrategy::kPre134ExecGraph);
 
     // The colliding template entry must remain live and untouched.
     if (force_collision) {
@@ -247,11 +283,14 @@ TEST_F(CudaCommandBufferTelemetryTest,
         Optional(Eq("XlaModule:#module=test#::while_op:#tf_op=while#")));
   }
 
-  // `~CudaCommandBuffer()` destroys `CUgraphExec` before `CUgraph`, releasing
-  // the last reference to the user object attached to `root_graph` and removing
+  // The entry's owner unregisters it once the executable graph is destroyed:
+  // `~CudaCommandBuffer()` on CUDA 13.2-13.3, the test otherwise. That removes
   // the `exec_id` entry from `KeySpace::kPre134ExecGraph` while leaving the
   // colliding `KeySpace::kTemplateGraph` entry intact.
-  EXPECT_TRUE(PollUntil([&] { return !LookupExec(exec_id, 0).has_value(); }));
+  if (test_owned_exec_entry.has_value()) {
+    command_buffer_telemetry::UnregisterTrackedGraphs({*test_owned_exec_entry});
+  }
+  EXPECT_EQ(LookupExec(exec_id, 0), std::nullopt);
   EXPECT_THAT(Lookup(NodeKey{exec_id, 42}, KeySpace::kTemplateGraph),
               Optional(Eq("colliding_template_op")));
 }

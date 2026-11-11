@@ -124,6 +124,67 @@ class ArgMaxTest(test.TestCase, parameterized.TestCase):
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNumpyIntegerAxis(self):
+    """NumPy integers and 0-D NumPy arrays are valid `axis` values.
+
+    Both expose a `dtype` attribute, so `tf.math.argmax` treated them as
+    tensors and rejected them with a message claiming that even
+    `int32`/`int64` are unsupported, while `tf.math.argmin` accepted them. See
+    GitHub issue #129821.
+    """
+    x = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    for op in (math_ops.argmax, math_ops.argmin):
+      expected_axis_1 = op(x, axis=1)
+      expected_axis_last = op(x, axis=-1)
+      for axis in (
+          np.int8(1),
+          np.uint8(1),
+          np.int16(1),
+          np.int32(1),
+          np.int64(1),
+          np.array(1, dtype=np.int8),
+          np.array(1, dtype=np.int32),
+          np.array(1, dtype=np.int64),
+      ):
+        self.assertAllEqual(op(x, axis=axis), expected_axis_1)
+      for axis in (np.int64(-1), np.array(-1), np.array(-1, dtype=np.int32)):
+        self.assertAllEqual(op(x, axis=axis), expected_axis_last)
+    # Tensor `axis` values take the `tf.DType` branch, not the NumPy one.
+    expected_argmax_1 = math_ops.argmax(x, axis=1)
+    for dt in (
+        dtypes.int8,
+        dtypes.uint8,
+        dtypes.int16,
+        dtypes.uint16,
+        dtypes.int32,
+    ):
+      axis_t = array_ops.ones((), dtype=dt)
+      self.assertAllEqual(math_ops.argmax(x, axis=axis_t), expected_argmax_1)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNonIntegerAxisIsStillRejected(self):
+    x = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+    # `bool` is an `int` subclass, so `np.array(True).item()` would silently
+    # become axis 1; 1-D arrays are not scalar axes either.
+    for axis in (
+        1.0,
+        np.float32(1.0),
+        np.array(1.0),
+        np.bool_(True),
+        np.array(True),
+        np.array([1], dtype=np.int32),
+    ):
+      with self.assertRaisesRegex(
+          TypeError, "axis must be int or Tensor with integer datatype"
+      ):
+        math_ops.argmax(x, axis=axis)
+    for dt in (dtypes.float32, dtypes.bool):
+      with self.assertRaisesRegex(
+          TypeError, "axis tensor dtypes .* is not supported"
+      ):
+        math_ops.argmax(x, axis=array_ops.ones((), dtype=dt))
+
   @test_util.run_deprecated_v1
   def testDefaultAxis(self):
     with self.cached_session():

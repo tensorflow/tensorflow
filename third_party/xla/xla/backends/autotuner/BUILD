@@ -234,6 +234,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service/gpu/autotuning:autotuner_status_key",
         "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:env",

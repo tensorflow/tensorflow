@@ -66,7 +66,8 @@ std::vector<std::unique_ptr<GpuCommunicator>> DowncastComms(
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
                     std::vector<GlobalDeviceId> device_ids, bool blocking,
-                    size_t num_ids, GpuCollectives* custom_backend) {
+                    size_t num_ids, GpuCollectives* custom_backend,
+                    bool use_minimal_resource) {
   CHECK_EQ(executors.size(), device_ids.size());
 
   GpuCollectives* collectives = custom_backend;
@@ -97,6 +98,7 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
   GpuCollectives::Config config;
   config.blocking_communicators = blocking;
   config.async_execution = !blocking;
+  config.use_minimal_resource = use_minimal_resource;
 
   ABSL_ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicatorsWithCancel(
                                    clique_key, clique_ids, device_ranks, config,

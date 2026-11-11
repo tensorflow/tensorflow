@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -731,11 +732,12 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
                            std::move(commands),
                            CommandExecutor::SynchronizationMode::kSerialize));
 
-  CommandBufferThunk command_buffer_thunk(
-      std::move(command_executor), Thunk::ThunkInfo(),
-      /*devices_in_process=*/1,
-      /*thunks=*/nullptr,
-      /*enable_command_buffers_during_profiling=*/true);
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling = true;
+  CommandBufferThunk command_buffer_thunk(std::move(command_executor),
+                                          Thunk::ThunkInfo(),
+                                          /*devices_in_process=*/1,
+                                          /*thunks=*/nullptr, options);
 
   se::DeviceAddress<int32_t> src = executor->AllocateArray<int32_t>(4, 0);
   std::vector<int32_t> src_data{10, 20, 30, 40};
@@ -748,14 +750,21 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
   BufferAllocations allocations({src, dst}, executor->device_ordinal(),
                                 &allocator);
 
-  Thunk::PrepareParams prepare_params;
-  prepare_params.executor = executor;
-  prepare_params.buffer_allocations = &allocations;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(command_buffer_thunk.Prepare(prepare_params));
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   ASSERT_OK(command_buffer_thunk.Initialize(
-      {executor, source, &allocations, stream.get(), stream.get()}));
+      {/*executor=*/executor,
+       /*src=*/source,
+       /*buffer_allocations=*/&allocations,
+       /*stream=*/stream.get(),
+       /*command_buffer_trace_stream=*/stream.get(),
+       /*command_buffer_requests=*/&command_buffer_requests}));
 
   auto params = MakeExecuteParams(allocations, stream.get());
 
@@ -986,11 +995,15 @@ TEST(DynamicSliceFusionV2ThunkTest,
       ThunkSequence::Of<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), src_slice,
                                                  dst_slice, 1024));
 
-  Thunk::PrepareParams prepare_params;
-  prepare_params.buffer_allocations = &parent_buffer_allocations;
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, CreateExecutor());
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*executor=*/executor,
+      /*buffer_allocations=*/&parent_buffer_allocations,
+      /*command_buffer_requests=*/&command_buffer_requests};
   EXPECT_OK(thunk.Prepare(prepare_params));
 
-  Thunk::InitializeParams init_params;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.buffer_allocations = &parent_buffer_allocations;
   EXPECT_OK(thunk.Initialize(init_params));
 }

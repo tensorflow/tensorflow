@@ -57,8 +57,10 @@ xla_test(
         "//xla/backends/autotuner:config_assigner",
         "//xla/backends/autotuner:in_memory_store",
         "//xla/backends/autotuner:profiler",
+        "//xla/backends/gpu/autotuner:block_level_emitter",
         "//xla/backends/gpu/autotuner:cublaslt",
         "//xla/backends/gpu/autotuner:cudnn",
+        "//xla/backends/gpu/autotuner:native_emitter",
         "//xla/backends/gpu/autotuner:triton",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/hlo/analysis:symbolic_map",
@@ -68,6 +70,7 @@ xla_test(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:mlir_context_pool",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_address_allocator",
@@ -88,6 +91,7 @@ xla_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:path",
@@ -280,6 +284,44 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_default_backend_policy",
+    srcs = ["gpu_default_backend_policy.cc"],
+    hdrs = ["gpu_default_backend_policy.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/codegen/tiling:tiling_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:gpu_fusible",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_default_backend_policy_test",
+    srcs = ["gpu_default_backend_policy_test.cc"],
+    deps = [
+        ":gpu_default_backend_policy",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "config_assigner_pass",
     srcs = [
         "config_assigner_pass.cc",
@@ -287,6 +329,7 @@ cc_library(
     hdrs = ["config_assigner_pass.h"],
     tags = ["gpu"],
     deps = [
+        ":gpu_default_backend_policy",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
@@ -304,6 +347,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:factory",
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/backends/gpu/autotuner:legacy_cache",
+        "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -333,6 +377,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
     ],
 )

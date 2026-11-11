@@ -220,7 +220,7 @@ absl::StatusOr<PjRtMemorySpace* absl_nonnull> GetMemorySpaceFromLayout(
   }
   TF_RET_CHECK(memory_space != nullptr)
       << "Memory space " << layout.memory_space()
-      << " does not exist on device " << device->id();
+      << " does not exist on device " << device->global_device_id();
   return memory_space;
 }
 

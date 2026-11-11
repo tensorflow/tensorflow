@@ -16,7 +16,6 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -83,7 +82,6 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
-using ::testing::HasSubstr;
 using ::xla::xtile::BlockLevelFusionConfig;
 using ::xla::xtile::BlockLevelParameters;
 
@@ -460,34 +458,20 @@ ENTRY e {
          {"$output_shape", absl::StrCat(m, ",", n)},
          {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
          {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
-    ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
-    if (scale_type == F8E8M0FNU && block_size == 16 &&
-        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
+    if (block_size == 16 && GetCudaComputeCapability().IsAtLeastBlackwell()) {
       EXPECT_EQ(scaled_dot_computation, nullptr);
-      return;
+    } else {
+      ASSERT_NE(scaled_dot_computation, nullptr);
+      EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                                   "CHECK: tt.dot_scaled"),
+                  IsOk());
     }
-    ASSERT_NE(scaled_dot_computation, nullptr);
-    EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
-                                                 "CHECK: tt.dot_scaled"),
-                IsOk());
     ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
                          MakeScaledDotArguments(optimized_module.get()));
-    if (block_size == 16 && GetCudaComputeCapability().IsAtLeastBlackwell()) {
-      EXPECT_EXIT(
-          {
-            EXPECT_THAT(RunAndCompareNoHloPasses(
-                            std::move(optimized_module),
-                            LiteralUtil::MakePointers(arguments),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3})
-                            .message(),
-                        HasSubstr("CUDA_ERROR_INVALID_INSTRUCTION"));
-            std::_Exit(1);
-          },
-          ::testing::ExitedWithCode(1), "");
-      return;
-    }
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(optimized_module), LiteralUtil::MakePointers(arguments),
         ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -805,15 +789,13 @@ TEST_F(TritonScaledDotTest, Fp4Succeeds) {
   ASSERT_EQ(output_tile_sizes.size(), 3);
   const int64_t output_m = output_tile_sizes.Get(1);
   const int64_t output_n = output_tile_sizes.Get(2);
-  ASSERT_EQ(output_n % 2, 0);
-  const std::string expected_triton_ir =
-      absl::Substitute(R"(
+  const std::string expected_triton_ir = absl::Substitute(R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<$0x64xi8>, tensor<$0x4xi8>
-      CHECK: tensor<128x$1xi8>, tensor<$2x4xi8>
-      CHECK: -> tensor<$0x$2xf32>
+      CHECK: tensor<64x$1xi8>, tensor<$1x4xi8>
+      CHECK: -> tensor<$0x$1xf32>
   )",
-                       output_m, output_n / 2, output_n);
+                                                          output_m, output_n);
 
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                expected_triton_ir),
@@ -1346,6 +1328,221 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::ValuesIn(GetCoverageTestCases()),
                        ::testing::Bool(), ::testing::Bool()),
     ScaledDotCoverageTestParamToString);
+
+// Poisons the K tail of both scales with NaN to make sure masking is applied to
+// both scales correctly.
+TEST_F(TritonScaledDotTest,
+       ScaledDotMasksNonDivisibleContractingDimensionOfScales) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+triton_dot {
+  // K = 96 is not divisible by the K tile size of 128. The broadcasts fill all
+  // 128 lanes of the K tile, so lanes 96..127 are non-zero unless masked.
+  lhs_scalar = f8e4m3fn[] parameter(0)
+  lhs = f8e4m3fn[128,96]{1,0} broadcast(lhs_scalar), dimensions={}
+  rhs_scalar = f8e4m3fn[] parameter(1)
+  rhs = f8e4m3fn[96,128]{1,0} broadcast(rhs_scalar), dimensions={}
+  // The scales are sliced from 4 to 3 blocks along K, so the 4th scale block
+  // (lanes 96..127) is out of bounds but still loaded from the parameter.
+  lhs_scale_in = f8e8m0fnu[128,4]{1,0} parameter(2)
+  lhs_scale = f8e8m0fnu[128,3]{1,0} slice(lhs_scale_in), slice={[0:128], [0:3]}
+  rhs_scale_in = f8e8m0fnu[4,128]{1,0} parameter(3)
+  rhs_scale = f8e8m0fnu[3,128]{1,0} slice(rhs_scale_in), slice={[0:3], [0:128]}
+  ROOT dot = bf16[128,128]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
+}
+
+ENTRY e {
+  p0 = f8e4m3fn[] parameter(0)
+  p1 = f8e4m3fn[] parameter(1)
+  p2 = f8e8m0fnu[128,4]{1,0} parameter(2)
+  p3 = f8e8m0fnu[4,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(p0, p1, p2, p3),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_nested_gemm_fusion",
+        "block_level_fusion_config": {
+          "output_tiles": [{"sizes": ["128", "128"]}],
+          "num_warps": "4",
+          "num_stages": "1",
+          "num_ctas": "1"
+        }
+      }
+    }
+}
+)hlo";
+
+  EXPECT_OK(
+      CreateTritonIrFromHloTextAndFileCheckForDot(kHloText, "triton_dot", R"(
+    CHECK: arith.cmpi slt
+    CHECK: arith.select
+    CHECK: tt.dot_scaled
+  )"));
+
+  // All in-bounds values are 1.0, so every output element should be exactly
+  // 96.0 (one per in-bounds K lane).
+  Literal lhs = LiteralUtil::CreateR0<float8_e4m3fn>(float8_e4m3fn(1.0f));
+  Literal rhs = LiteralUtil::CreateR0<float8_e4m3fn>(float8_e4m3fn(1.0f));
+  Literal lhs_scale = LiteralUtil::CreateFromDimensions(F8E8M0FNU, {128, 4});
+  ASSERT_OK(
+      lhs_scale.Populate<float8_e8m0fnu>([](absl::Span<const int64_t> indices) {
+        // Blocks 0..2 are in bounds and use scale 1.0. Block 3 is out of
+        // bounds and holds 0xFF, which is NaN in E8M0. If the scale is not
+        // masked to 1, the output is NaN/inf instead of 96.0.
+        return indices[1] < 3 ? float8_e8m0fnu(1.0f)
+                              : float8_e8m0fnu::FromRep(0xFF);
+      }));
+  Literal rhs_scale = LiteralUtil::CreateFromDimensions(F8E8M0FNU, {4, 128});
+  ASSERT_OK(
+      rhs_scale.Populate<float8_e8m0fnu>([](absl::Span<const int64_t> indices) {
+        // Same as lhs_scale, but K is dimension 0: block 3 is NaN.
+        return indices[0] < 3 ? float8_e8m0fnu(1.0f)
+                              : float8_e8m0fnu::FromRep(0xFF);
+      }));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), {&lhs, &rhs, &lhs_scale, &rhs_scale},
+      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+// Poisons the K tail of both lhs and rhs with NaN. Each tail lane contributes
+// lhs * rhs, so zeroing only one side is not enough: NaN * 0 is still NaN.
+// This checks that lhs and rhs are each masked independently.
+TEST_F(TritonScaledDotTest, ScaledDotMasksNonDivisibleContractingDimensions) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+triton_dot {
+  // K = 96 is sliced from 128, so K-tile lanes 96..127 are loaded from the
+  // parameters but are out of bounds for the dot.
+  lhs_in = f8e4m3fn[128,128]{1,0} parameter(0)
+  lhs = f8e4m3fn[128,96]{1,0} slice(lhs_in), slice={[0:128], [0:96]}
+  rhs_in = f8e4m3fn[128,128]{1,0} parameter(1)
+  rhs = f8e4m3fn[96,128]{1,0} slice(rhs_in), slice={[0:96], [0:128]}
+  lhs_scale = f8e8m0fnu[128,3]{1,0} parameter(2)
+  rhs_scale = f8e8m0fnu[3,128]{1,0} parameter(3)
+  ROOT dot = bf16[128,128]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
+}
+
+ENTRY e {
+  p0 = f8e4m3fn[128,128]{1,0} parameter(0)
+  p1 = f8e4m3fn[128,128]{1,0} parameter(1)
+  p2 = f8e8m0fnu[128,3]{1,0} parameter(2)
+  p3 = f8e8m0fnu[3,128]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(p0, p1, p2, p3),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_nested_gemm_fusion",
+        "block_level_fusion_config": {
+          "output_tiles": [{"sizes": ["128", "128"]}],
+          "num_warps": "4",
+          "num_stages": "1",
+          "num_ctas": "1"
+        }
+      }
+    }
+}
+)hlo";
+
+  // In-bounds values and all scales are 1.0, so every output element should be
+  // exactly 96.0 (one per in-bounds K lane).
+  Literal lhs = LiteralUtil::CreateFromDimensions(F8E4M3FN, {128, 128});
+  ASSERT_OK(lhs.Populate<float8_e4m3fn>([](absl::Span<const int64_t> indices) {
+    // K lanes 96..127 are out of bounds and hold 0x7F, which is NaN in
+    // E4M3FN. If lhs is not masked to 0, the output is NaN.
+    return indices[1] < 96 ? float8_e4m3fn(1.0f) : float8_e4m3fn::FromRep(0x7F);
+  }));
+  Literal rhs = LiteralUtil::CreateFromDimensions(F8E4M3FN, {128, 128});
+  ASSERT_OK(rhs.Populate<float8_e4m3fn>([](absl::Span<const int64_t> indices) {
+    // Same as lhs, but K is dimension 0: K lanes 96..127 are NaN. If rhs
+    // is not masked to 0, the output is NaN.
+    return indices[0] < 96 ? float8_e4m3fn(1.0f) : float8_e4m3fn::FromRep(0x7F);
+  }));
+  Literal lhs_scale = LiteralUtil::CreateFromDimensions(F8E8M0FNU, {128, 3});
+  ASSERT_OK(lhs_scale.Populate<float8_e8m0fnu>(
+      [](absl::Span<const int64_t>) { return float8_e8m0fnu(1.0f); }));
+  Literal rhs_scale = LiteralUtil::CreateFromDimensions(F8E8M0FNU, {3, 128});
+  ASSERT_OK(rhs_scale.Populate<float8_e8m0fnu>(
+      [](absl::Span<const int64_t>) { return float8_e8m0fnu(1.0f); }));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), {&lhs, &rhs, &lhs_scale, &rhs_scale},
+      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonScaledDotTest, Fp4ScaledDotMasksNonDivisibleContractingDimension) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Scaled dot isn't supported by Triton for pre-Hopper GPUs.";
+  }
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+triton_dot {
+  // K = 96 with a K tile of 128, and K is the packed dimension of both
+  // operands. Both need to be packed along K: fp4 has no NaN, so if either
+  // side were masked, its zeros would hide the other side's tail.
+  lhs_in = f4e2m1fn[128,128]{1,0:E(4)} parameter(0)
+  lhs = f4e2m1fn[128,96]{1,0:E(4)} slice(lhs_in), slice={[0:128], [0:96]}
+  rhs_in = f4e2m1fn[128,128]{1,0:E(4)} parameter(1)
+  rhs = f4e2m1fn[128,96]{1,0:E(4)} slice(rhs_in), slice={[0:128], [0:96]}
+  lhs_scale_in = f8e8m0fnu[128,4]{1,0} parameter(2)
+  lhs_scale = f8e8m0fnu[128,3]{1,0} slice(lhs_scale_in), slice={[0:128], [0:3]}
+  rhs_scale_in = f8e8m0fnu[128,4]{1,0} parameter(3)
+  rhs_scale = f8e8m0fnu[128,3]{1,0} slice(rhs_scale_in), slice={[0:128], [0:3]}
+  ROOT dot = bf16[128,128]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={1},
+    backend_config={sizes:[128]}
+}
+
+ENTRY e {
+  p0 = f4e2m1fn[128,128]{1,0:E(4)} parameter(0)
+  p1 = f4e2m1fn[128,128]{1,0:E(4)} parameter(1)
+  p2 = f8e8m0fnu[128,4]{1,0} parameter(2)
+  p3 = f8e8m0fnu[128,4]{1,0} parameter(3)
+  ROOT fusion = bf16[128,128]{1,0} fusion(p0, p1, p2, p3),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_nested_gemm_fusion",
+        "block_level_fusion_config": {
+          "output_tiles": [{"sizes": ["128", "128"]}],
+          "num_warps": "4",
+          "num_stages": "1",
+          "num_ctas": "1"
+        }
+      }
+    }
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                       MakeScaledDotArguments(module.get()));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(arguments),
+      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
 
 }  // namespace
 }  // namespace gpu

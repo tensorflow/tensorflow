@@ -22,7 +22,7 @@
 
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -2408,7 +2408,13 @@ def test_atomic_cas_pointee_type(dtype_str, mode, compare, device):
+@@ -2434,7 +2434,13 @@ def test_atomic_cas_pointee_type(dtype_str, mode, compare, device):
  
  @pytest.mark.skipif(not is_cuda() or torch.cuda.get_device_capability()[0] < 9,
                      reason="num_ctas > 1 requires NVIDIA SM90+ (Hopper)")
@@ -37,7 +37,7 @@
  def test_scalar_atomic_cas_multicta_result(device):
  
      @triton.jit
-@@ -2424,8 +2430,8 @@ def test_scalar_atomic_cas_multicta_result(device):
+@@ -2450,8 +2456,8 @@ def test_scalar_atomic_cas_multicta_result(device):
      torch.testing.assert_close(output, torch.full_like(output, 7))
  
  
@@ -48,7 +48,7 @@
  @pytest.mark.parametrize("size", [1, 4, 16, 128, 512])
  def test_tensor_atomic_cas_multicta_result(size, device):
  
-@@ -2476,8 +2482,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
+@@ -2502,8 +2508,8 @@ def test_tensor_atomic_cas(sem, size, dtype_str, num_ctas, device):
  
  
  @pytest.mark.interpreter

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -155,6 +156,17 @@ absl::Status SetSchedulingAnnotationGroupId(HloInstruction* instr,
 // available group id is the maximum scheduling group id in the module plus one.
 absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
     const HloModule& module);
+
+// Returns true if the instruction puts its scheduling group in deep pipelining
+// mode (see `kXlaSchedulingGroupDeepPipelineAttr`).
+bool HasDeepPipelineSchedulingMode(const HloInstruction* instr);
+
+// Returns the ids of the scheduling groups of `module` that are in deep
+// pipelining mode, i.e. that have at least one member with
+// `kXlaSchedulingGroupDeepPipelineAttr`. Members of these groups may depend on
+// each other.
+absl::StatusOr<absl::flat_hash_set<AnnotationGroupId>>
+GetDeepPipelineSchedulingGroupIds(const HloModule& module);
 
 bool IsIterationIdConstentWithPipeliningDirection(
     const AnnotationIterationId& iteration_id,

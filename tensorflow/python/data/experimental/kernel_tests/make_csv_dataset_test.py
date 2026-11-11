@@ -194,6 +194,71 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
   @combinations.generate(test_base.default_test_combinations())
+  def testWithUtf8ByteOrderMark(self):
+    """Tests that a UTF-8 byte order mark is not read into a column name."""
+    inputs = [["col0,col1", "1,a"], ["col0,col1", "2,b"]]
+    filenames = self._setup_files(inputs, encoding="utf-8-sig")
+    dataset = self._make_csv_dataset(
+        filenames,
+        batch_size=1,
+        label_name="col0",
+        select_columns=["col0", "col1"],
+        shuffle=False,
+    )
+    self._verify_output(
+        dataset,
+        batch_size=1,
+        num_epochs=1,
+        label_name="col0",
+        expected_output=[[1, b"a"], [2, b"b"]],
+        expected_keys=["col0", "col1"],
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithUtf8ByteOrderMarkAndCompression(self):
+    """Tests that the byte order mark is skipped in a GZIP-compressed file."""
+    inputs = [["col0,col1", "1,a", "2,b"]]
+    filenames = self._setup_files(
+        inputs, compression_type="GZIP", encoding="utf-8-sig"
+    )
+    dataset = self._make_csv_dataset(
+        filenames,
+        batch_size=1,
+        label_name="col0",
+        compression_type="GZIP",
+        shuffle=False,
+    )
+    self._verify_output(
+        dataset,
+        batch_size=1,
+        num_epochs=1,
+        label_name="col0",
+        expected_output=[[1, b"a"], [2, b"b"]],
+        expected_keys=["col0", "col1"],
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithUtf8ByteOrderMarkAndNoHeader(self):
+    """Tests that without a header the byte order mark stays in the data."""
+    inputs = [["1,a", "2,b"]]
+    filenames = self._setup_files(inputs, encoding="utf-8-sig")
+    dataset = self._make_csv_dataset(
+        filenames,
+        batch_size=1,
+        column_names=["col0", "col1"],
+        header=False,
+        shuffle=False,
+    )
+    self._verify_output(
+        dataset,
+        batch_size=1,
+        num_epochs=1,
+        label_name=None,
+        expected_output=[[b"\xef\xbb\xbf1", b"a"], [b"2", b"b"]],
+        expected_keys=["col0", "col1"],
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
   def testWithBatchSizeAndEpochs(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [

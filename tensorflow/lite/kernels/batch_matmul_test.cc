@@ -63,14 +63,17 @@ template <typename T>
 class BatchMatMulOpModel : public SingleOpModel {
  public:
   BatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
-                     bool adj_x = false, bool adj_y = false) {
+                     bool adj_x = false, bool adj_y = false,
+                     bool allocate_and_delegate = true) {
     lhs_id_ = AddInput(lhs);
     rhs_id_ = AddInput(rhs);
     output_id_ = AddOutput(GetTFLiteType<T>());
     SetBuiltinOp(BuiltinOperator_BATCH_MATMUL,
                  BuiltinOptions_BatchMatMulOptions,
                  CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union());
-    BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
+    BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   int lhs() const { return lhs_id_; }
@@ -999,6 +1002,34 @@ TEST(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastInputs) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3}));
 }
 
+TEST(HybridBatchMatMulOpTest, RejectsBlockwiseQuantizedRhs) {
+  // The kernel only implements affine quantization. A blockwise right-hand
+  // side has no per-tensor scale, so the hybrid kernel would silently compute
+  // zeros.
+  TensorData rhs(TensorType_INT8, {2, 32});
+  rhs.per_channel_quantization_scales = {0.5f, 0.25f};
+  rhs.per_block_quantization = 32;
+  BatchMatMulOpModel<float> m(/*lhs=*/{TensorType_FLOAT32, {1, 2}}, rhs,
+                              /*adj_x=*/false,
+                              /*adj_y=*/false,
+                              /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(HybridBatchMatMulOpTest, FailsForRhsWithoutQuantizationParameters) {
+  // The hybrid kernel needs the right-hand side's scale. Without quantization
+  // parameters it used to carry on with a scale of 0 and return zeros.
+  BatchMatMulOpModel<float> m(/*lhs=*/{TensorType_FLOAT32, {1, 2}},
+                              /*rhs=*/{TensorType_INT8, {2, 3}},
+                              /*adj_x=*/false,
+                              /*adj_y=*/false,
+                              /*allocate_and_delegate=*/false);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.lhs(), {1, 2});
+  m.PopulateTensor<int8_t>(m.rhs(), {1, 2, 3, 4, 5, 6});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 class QuantizedBatchMatMulOpModel : public SingleOpModel {
  public:
   QuantizedBatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
@@ -1210,6 +1241,150 @@ TEST(BatchMatMulOpTest, RejectsRank6InputInPrepare) {
       /*rhs=*/{TensorType_INT8, {1, 1, 1, 1, 3, 4}, 0, 0, 1.0f, 0},
       /*output=*/{TensorType_FLOAT32});
   EXPECT_EQ(rank6_model.AllocateTensors(), kTfLiteError);
+}
+
+class MultiAxisBatchMatMulOpModel : public SingleOpModel {
+ public:
+  MultiAxisBatchMatMulOpModel(int batch, int m, int k, int n, int block_size,
+                              const std::vector<float>& scales,
+                              const std::vector<int8_t>& b_data)
+      : batch_(batch), m_(m), k_(k), n_(n), block_size_(block_size) {
+    lhs_id_ = AddInput({TensorType_FLOAT32, {batch, m, k}});
+
+    int num_blocks = block_size > 0 ? (k / block_size) : 1;
+    TensorData b_tensor_data;
+    b_tensor_data.type = TensorType_INT8;
+    b_tensor_data.shape = {batch, k, n};
+    b_tensor_data.per_channel_quantization_scales = scales;
+    b_tensor_data.per_block_quantization = block_size;
+    b_tensor_data.multi_axis_quantization = true;
+    b_tensor_data.quantized_dimensions = {2};
+    if (block_size > 0) {
+      b_tensor_data.scale_shape = {batch, n, num_blocks};
+    } else {
+      b_tensor_data.scale_shape = {n};
+    }
+
+    rhs_id_ = AddConstInput(b_tensor_data, b_data);
+    output_id_ = AddOutput({TensorType_FLOAT32, {batch, m, n}});
+
+    SetBuiltinOp(BuiltinOperator_BATCH_MATMUL,
+                 BuiltinOptions_BatchMatMulOptions,
+                 CreateBatchMatMulOptions(builder_, /*adj_x=*/false,
+                                          /*adj_y=*/false,
+                                          /*asymmetric_quantize_inputs=*/true)
+                     .Union());
+
+    BuildInterpreter({{batch, m, k}, {batch, k, n}}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(lhs_id_, data);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_id_); }
+
+ protected:
+  int batch_;
+  int m_;
+  int k_;
+  int n_;
+  int block_size_;
+  int lhs_id_;
+  int rhs_id_;
+  int output_id_;
+};
+
+TEST(MultiAxisBatchMatMulTest, MatchesHandComputedResultBlockwise) {
+  // batch=1, m=1, k=32, n=2, block_size=16.
+  // num_blocks = 2, num_scales = 1 * 2 * 2 = 4.
+  // scale shape is [batch, n, num_blocks] = [1, 2, 2].
+  const std::vector<float> scales = {0.1f, 0.2f, 0.3f, 0.4f};
+  // RHS data has shape [1, 32, 2]:
+  // For l in 0..15: row l has values {1, -1}
+  // For l in 16..31: row l has values {2, 3}
+  std::vector<int8_t> rhs(32 * 2);
+  for (int l = 0; l < 16; ++l) {
+    rhs[l * 2 + 0] = 1;
+    rhs[l * 2 + 1] = -1;
+  }
+  for (int l = 16; l < 32; ++l) {
+    rhs[l * 2 + 0] = 2;
+    rhs[l * 2 + 1] = 3;
+  }
+
+  MultiAxisBatchMatMulOpModel m(
+      /*batch=*/1, /*m=*/1, /*k=*/32, /*n=*/2, /*block_size=*/16, scales, rhs);
+
+  // Applying a delegate that doesn't support dynamic tensors prepares the graph
+  // with the CPU kernel first, which rejects multi-axis quantization. Report
+  // that as an incompatibility between the model and the delegate.
+  if (m.ApplyDelegate() != kTfLiteOk) {
+    m.SetDelegateApplicationStatus(kTfLiteApplicationError);
+    GTEST_SKIP() << "The delegate can't be applied to the multi-axis quantized "
+                    "graph.";
+  }
+  if (m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "No delegate runs the multi-axis quantized op, which the "
+                    "CPU kernel rejects.";
+  }
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> lhs(32, 1.0f);
+  m.SetInput(lhs);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Output channel 0 (j=0):
+  //   Block 0 (l in 0..15): 16 * 1.0 * 1 * 0.1 = 1.6
+  //   Block 1 (l in 16..31): 16 * 1.0 * 2 * 0.2 = 6.4
+  //   Total = 8.0
+  // Output channel 1 (j=1):
+  //   Block 0 (l in 0..15): 16 * 1.0 * -1 * 0.3 = -4.8
+  //   Block 1 (l in 16..31): 16 * 1.0 * 3 * 0.4 = 19.2
+  //   Total = 14.4
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({8.0f, 14.4f}, 1e-4f)));
+}
+
+TEST(MultiAxisBatchMatMulTest, MatchesHandComputedResultPerChannel) {
+  // batch=1, m=1, k=16, n=2, block_size=0.
+  // num_blocks = 1, num_scales = 1 * 2 * 1 = 2.
+  const std::vector<float> scales = {0.25f, 0.5f};
+  std::vector<int8_t> rhs(16 * 2);
+  for (int l = 0; l < 16; ++l) {
+    rhs[l * 2 + 0] = 1;
+    rhs[l * 2 + 1] = -2;
+  }
+
+  MultiAxisBatchMatMulOpModel m(
+      /*batch=*/1, /*m=*/1, /*k=*/16, /*n=*/2, /*block_size=*/0, scales, rhs);
+
+  // Applying a delegate that doesn't support dynamic tensors prepares the graph
+  // with the CPU kernel first, which rejects multi-axis quantization. Report
+  // that as an incompatibility between the model and the delegate.
+  if (m.ApplyDelegate() != kTfLiteOk) {
+    m.SetDelegateApplicationStatus(kTfLiteApplicationError);
+    GTEST_SKIP() << "The delegate can't be applied to the multi-axis quantized "
+                    "graph.";
+  }
+  if (m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "No delegate runs the multi-axis quantized op, which the "
+                    "CPU kernel rejects.";
+  }
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> lhs(16, 2.0f);
+  m.SetInput(lhs);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Output channel 0: 16 * 2.0 * 1 * 0.25 = 8.0
+  // Output channel 1: 16 * 2.0 * -2 * 0.5 = -32.0
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({8.0f, -32.0f}, 1e-4f)));
 }
 
 }  // namespace

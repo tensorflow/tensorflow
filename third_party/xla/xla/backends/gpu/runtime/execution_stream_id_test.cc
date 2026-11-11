@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 
 namespace xla::gpu {
@@ -31,6 +32,11 @@ TEST(CommunicationStreamIdTest, AbslStringify) {
   EXPECT_EQ(absl::StrCat(id), "communication_stream[7]");
 }
 
+TEST(LocalityDomainStreamIdTest, AbslStringify) {
+  LocalityDomainStreamId id(9);
+  EXPECT_EQ(absl::StrCat(id), "locality_domain_stream[9]");
+}
+
 TEST(ExecutionStreamIdTest, AbslStringifyComputation) {
   ExecutionStreamId id(ComputationStreamId(42));
   EXPECT_EQ(absl::StrCat(id), "computation_stream[42]");
@@ -41,16 +47,29 @@ TEST(ExecutionStreamIdTest, AbslStringifyCommunication) {
   EXPECT_EQ(absl::StrCat(id), "communication_stream[7]");
 }
 
+TEST(ExecutionStreamIdTest, AbslStringifyLocalityDomain) {
+  ExecutionStreamId id(LocalityDomainStreamId(9));
+  EXPECT_EQ(absl::StrCat(id), "locality_domain_stream[9]");
+}
+
 TEST(ExecutionStreamIdTest, Accessors) {
   ExecutionStreamId compute(ComputationStreamId(3));
   EXPECT_TRUE(compute.is_computation());
   EXPECT_FALSE(compute.is_communication());
+  EXPECT_FALSE(compute.is_locality_domain());
   EXPECT_EQ(compute.computation_id(), ComputationStreamId(3));
 
   ExecutionStreamId comm(CommunicationStreamId(5));
   EXPECT_TRUE(comm.is_communication());
   EXPECT_FALSE(comm.is_computation());
+  EXPECT_FALSE(comm.is_locality_domain());
   EXPECT_EQ(comm.communication_id(), CommunicationStreamId(5));
+
+  ExecutionStreamId locality(LocalityDomainStreamId(7));
+  EXPECT_TRUE(locality.is_locality_domain());
+  EXPECT_FALSE(locality.is_computation());
+  EXPECT_FALSE(locality.is_communication());
+  EXPECT_EQ(locality.locality_domain_id(), LocalityDomainStreamId(7));
 }
 
 TEST(ExecutionStreamIdTest, Equality) {
@@ -60,6 +79,18 @@ TEST(ExecutionStreamIdTest, Equality) {
             ExecutionStreamId(ComputationStreamId(2)));
   EXPECT_NE(ExecutionStreamId(ComputationStreamId(1)),
             ExecutionStreamId(CommunicationStreamId(1)));
+  EXPECT_NE(ExecutionStreamId(ComputationStreamId(1)),
+            ExecutionStreamId(LocalityDomainStreamId(1)));
+  EXPECT_EQ(ExecutionStreamId(LocalityDomainStreamId(1)),
+            ExecutionStreamId(LocalityDomainStreamId(1)));
+}
+
+TEST(ExecutionStreamIdTest, HashDistinguishesVariants) {
+  absl::flat_hash_set<ExecutionStreamId> ids = {
+      ExecutionStreamId(ComputationStreamId(1)),
+      ExecutionStreamId(CommunicationStreamId(1)),
+      ExecutionStreamId(LocalityDomainStreamId(1))};
+  EXPECT_EQ(ids.size(), 3);
 }
 
 // ---- MemcpyStreamId tests ------------------------------------------------

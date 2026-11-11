@@ -32,6 +32,16 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
 
 // -----
 
+#map0 = #xla.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 7], d1 in [0, 7]">
+func.func @apply_indexing_multi_result_xla_range(%d0: index, %d1: index)
+    -> (index, index) {
+  // expected-error @+1 {{'xla.range' is only supported on single-result ops, but the op has 2 results}}
+  %0:2 = xla.apply_indexing #map0 (%d0, %d1) {xla.range = [0 : index, 7 : index]}
+  func.return %0#0, %0#1 : index, index
+}
+
+// -----
+
 #map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1024], s1 in [0, 32]">
 func.func @loop_result_num_mismatch(%input: tensor<1024x32xf32>,
     %init: f32) -> (f32) {
@@ -144,4 +154,66 @@ func.func @atomic_rmw_mismatch_block_arg_vector_type(%in: tensor<16xf32>, %i: in
 // expected-error @+1 {{failed to parse XLA_BackendKindAttr parameter 'value' which is to be a `::xla::BackendKind`}}
 func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<foo> } {
   func.return
+}
+
+// -----
+
+func.func @copy_slice_element_type_mismatch(
+    %src: tensor<4xf32>, %dst: tensor<8xi32>, %idx: index) -> tensor<8xi32> {
+  // expected-error @+1 {{src and dest element types must match}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(2)
+      : tensor<4xf32> into tensor<8xi32>
+  func.return %out : tensor<8xi32>
+}
+
+// -----
+
+func.func @copy_slice_src_indices_rank_mismatch(
+    %src: tensor<4x2xf32>, %dst: tensor<8xf32>, %idx: index) -> tensor<8xf32> {
+  // expected-error @+1 {{src_indices count must match src rank}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(2)
+      : tensor<4x2xf32> into tensor<8xf32>
+  func.return %out : tensor<8xf32>
+}
+
+// -----
+
+func.func @copy_slice_negative_count(
+    %src: tensor<4xf32>, %dst: tensor<8xf32>, %idx: index) -> tensor<8xf32> {
+  // expected-error @+1 {{num_elements must be non-negative}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(-1)
+      : tensor<4xf32> into tensor<8xf32>
+  func.return %out : tensor<8xf32>
+}
+
+// -----
+
+func.func @linear_extract_rank0(%src: tensor<f32>, %idx: index) -> f32 {
+  // expected-error @+1 {{tensor must have rank at least 1}}
+  %out = xla.linear_extract %src[%idx] : tensor<f32>
+  func.return %out : f32
+}
+
+// -----
+
+func.func @linear_insert_rank0(%val: f32, %dst: tensor<f32>, %idx: index) -> tensor<f32> {
+  // expected-error @+1 {{tensor must have rank at least 1}}
+  %out = xla.linear_insert %val into %dst[%idx] : tensor<f32>
+  func.return %out : tensor<f32>
+}
+
+// -----
+
+func.func @get_dynamic_dim_size_negative_dim(%src: tensor<4xf32>) -> i32 {
+  // expected-error @+1 {{dim must be non-negative}}
+  %out = xla.get_dynamic_dim_size %src -1 : tensor<4xf32>
+  func.return %out : i32
+}
+
+// -----
+
+func.func @set_dynamic_dim_size_negative_dim(%dst: tensor<4xf32>, %size: i32) -> tensor<4xf32> {
+  // expected-error @+1 {{dim must be non-negative}}
+  %out = xla.set_dynamic_dim_size %size into %dst[-1] : tensor<4xf32>
+  func.return %out : tensor<4xf32>
 }

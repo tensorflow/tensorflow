@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load(
     "//xla/tsl/platform/default:build_config_root.bzl",
@@ -37,11 +36,6 @@ package_group(
     includes = [
         "//xla:friends",
     ],
-)
-
-config_setting(
-    name = "x86_64",
-    constraint_values = ["@platforms//cpu:x86_64"],
 )
 
 # This empty target provides the C++ compilation context for the C++ source file.
@@ -104,9 +98,6 @@ cc_library(
 cc_library(
     name = "vector_ops",
     hdrs = ["vector_ops.h"],
-    deps = [
-        "@eigen_archive//:eigen3",
-    ],
 )
 
 xla_cc_test(
@@ -144,68 +135,22 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "eigen_unary_lib",
-    srcs = ["eigen_unary.cc"],
-    hdrs = ["eigen_unary.h"],
+    name = "atan",
+    srcs = ["atan.cc"],
+    hdrs = ["atan.h"],
     copts = [
         "-Wno-psabi",
     ],
-    deps = [
-        ":vector_ops",
-        "@eigen_archive//:eigen3",
-    ],
+    deps = [":vector_ops"],
 )
 
 cc_ir_header(
-    name = "eigen_unary_16_ll",
-    src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=16",
-        "-mprefer-vector-width=128",
-        "-mllvm",
-        "-inline-threshold=500",
-    ],
+    name = "atan_ll",
+    src = "atan.cc",
     deps = [
+        ":atan",
         ":cpp_context_provider",
-        ":eigen_unary_lib",
         ":vector_ops",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_ir_header(
-    name = "eigen_unary_32_ll",
-    src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
-        "-mprefer-vector-width=256",
-    ],
-    deps = [
-        ":cpp_context_provider",
-        ":eigen_unary_lib",
-        ":vector_ops",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_ir_header(
-    name = "eigen_unary_64_ll",
-    src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
-        "-mprefer-vector-width=512",
-    ] + if_oss(
-        [],
-        select({
-            ":x86_64": ["-mavx512f"],
-            "//conditions:default": [],
-        }),
-    ),
-    deps = [
-        ":cpp_context_provider",
-        ":eigen_unary_lib",
-        ":vector_ops",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -214,7 +159,8 @@ xla_cc_test(
     srcs = ["cpp_gen_intrinsics_test.cc"],
     deps = [
         ":_cpp_gen_intrinsics",
-        ":eigen_unary_16_ll",
+        ":atan_ll",
+        "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/codegen/intrinsic:simple_jit_runner",
         "//xla/codegen/intrinsic:test_matchers",
         "@com_google_absl//absl/strings",
@@ -228,21 +174,19 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "eigen_unary_test",
-    srcs = ["eigen_unary_test.cc"],
+    name = "atan_test",
+    srcs = ["atan_test.cc"],
     copts = [
         "-Wno-psabi",
     ],
     deps = [
         ":_cpp_gen_intrinsics",
-        ":eigen_unary_16_ll",
-        ":eigen_unary_32_ll",
-        ":eigen_unary_64_ll",
-        ":eigen_unary_lib",
+        ":atan",
+        ":atan_ll",
         ":vector_ops",
-        "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:test_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -262,30 +206,8 @@ cc_library(
 )
 
 cc_ir_header(
-    name = "expm1_32_ll",
+    name = "expm1_ll",
     src = "expm1.cc",
-    copts = [
-        "-mprefer-vector-width=256",
-    ],
-    deps = [
-        ":cpp_context_provider",
-        ":expm1",
-        ":vector_ops",
-    ],
-)
-
-cc_ir_header(
-    name = "expm1_64_ll",
-    src = "expm1.cc",
-    copts = [
-        "-mprefer-vector-width=512",
-    ] + if_oss(
-        [],
-        select({
-            ":x86_64": ["-mavx512f"],
-            "//conditions:default": [],
-        }),
-    ),
     deps = [
         ":cpp_context_provider",
         ":expm1",
@@ -302,8 +224,7 @@ xla_cc_test(
     deps = [
         ":_cpp_gen_intrinsics",
         ":expm1",
-        ":expm1_32_ll",
-        ":expm1_64_ll",
+        ":expm1_ll",
         ":vector_ops",
         "//xla:types",
         "@com_google_absl//absl/base",
@@ -319,7 +240,7 @@ cc_binary(
     srcs = ["dump_llvm_ir.cc"],
     deps = [
         ":_cpp_gen_intrinsics",
-        "//xla/codegen/intrinsic",
+        ":atan_ll",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
@@ -413,12 +334,9 @@ cc_library(
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
+        ":atan_ll",
         ":custom_cpp_intrinsics_ll",
-        ":eigen_unary_16_ll",
-        ":eigen_unary_32_ll",
-        ":eigen_unary_64_ll",
-        ":expm1_32_ll",
-        ":expm1_64_ll",
+        ":expm1_ll",
         ":trig_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",

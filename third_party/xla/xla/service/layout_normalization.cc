@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -951,8 +952,16 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> LayoutNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(
-      module, execution_threads);
+  LayoutNormalizationVisitor visitor(this, custom_call_transformer_);
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    // Skip restricted async computations to avoid inserting bitcasts into them.
+    if (computation->IsRestrictedAsyncComputation()) {
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
+  }
+  return visitor.changed();
 }
 
 }  // end namespace xla

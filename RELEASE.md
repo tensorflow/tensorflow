@@ -17,6 +17,11 @@
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+    * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).
+    * `tfl.batch_matmul` now supports RHS inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) alongside INT8 affine LHS and output tensors (BATCH_MATMUL op version 5).
+    * `tfl.fully_connected` now supports INT2, INT4, UINT4, INT8, UINT8 and INT16 filters quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`), including fractional zero points, alongside INT8 per-tensor input and output tensors and an optional INT32 bias carrying its own scale (FULLY_CONNECTED op version 16).
+    * `tfl.fully_connected` now supports dynamic range (hybrid) quantization with N-D blockwise quantized filters: FLOAT32 or FLOAT16 input and output, with each input row quantized to INT8 at runtime (symmetrically by default, or asymmetrically with its own zero point when `asymmetric_quantize_inputs` is set), and an optional bias of the input type or FLOAT32 (FULLY_CONNECTED op version 17).
+    * `tfl.embedding_lookup` now supports INT2, INT4, UINT4, INT8, UINT8 and INT16 tables quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`), including fractional zero points such as a centered INT2 grid, with FLOAT32 or FLOAT16 outputs (EMBEDDING_LOOKUP op version 6). The converter folds constant blockwise dequantized tables into such lookups.
 * `tf.function` / `PolymorphicFunction`:
     * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 
@@ -27,6 +32,26 @@
     dimensions instead of raising an `InvalidArgumentError`. This matches the
     documented definition of the op and the behavior of the XLA lowering used by
     `tf.function(jit_compile=True)`.
+*   `tf.image.resize_with_pad`: the resized size and padding are now computed
+    exactly instead of in float32. For some sizes the image used to be scaled
+    one pixel short of the target and padded with a row or column of zeros
+    (e.g. 512x512 to 224x224), or placed one pixel off center.
+*   `tf.signal.hann_window` and `tf.signal.hamming_window`: `periodic=True`
+    (the default) now also produces a periodic window for odd
+    `window_length`. Previously odd lengths always got the symmetric window,
+    so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
+    and an odd `frame_length` now return different values. The new values
+    match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
+*   `tf.dtypes.saturate_cast`: `int64` inputs no longer get a wrong upper limit
+    on x86 when the output dtype can hold the `int64` maximum, which clamped
+    every value to the `int64` minimum. `uint32` and `uint64` inputs no longer
+    raise `NotFoundError`.
+*   `tf.data.experimental.CsvDataset` and `make_csv_dataset`: restoring an
+    iterator from a checkpoint with `header=True` no longer loses rows or fails
+    with a parse error.
+*   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
+    `tf.roll` with a negative axis no longer rolls along the wrong dimension,
+    which could mix values between batch elements or return a wrong Jacobian.
 
 ## Thanks to our Contributors
 

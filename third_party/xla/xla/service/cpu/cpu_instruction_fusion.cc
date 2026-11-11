@@ -304,7 +304,6 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
@@ -321,6 +320,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScan:
     case HloOpcode::kScatter:

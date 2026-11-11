@@ -194,6 +194,19 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
       )",
                              shape.ToString(), replica_groups);
     }
+    if (opcode == HloOpcode::kAllGather) {
+      Shape output_shape = shape;
+      output_shape.set_dimensions(0, shape.dimensions(0) * 2);
+      return absl::StrFormat(R"(
+        HloModule test
+        ENTRY test_computation {
+          param_0 = %1$s parameter(0)
+          ROOT all-gather = %2$s all-gather(param_0), replica_groups={%3$s}, dimensions={0}
+        }
+      )",
+                             shape.ToString(), output_shape.ToString(),
+                             replica_groups);
+    }
     if (opcode == HloOpcode::kReduceScatter) {
       Shape output_shape = shape;
       output_shape.set_dimensions(0, shape.dimensions(0) / 2);
@@ -407,8 +420,9 @@ TEST_P(CollectiveEmitterParameterizedTest,
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
-  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options, *gpu_topology_);
+  CubinCustomKernelCompiler kernel_compiler(
+      llvm_compiler, device_info_, debug_options, *gpu_topology_,
+      result->target_triple, result->data_layout);
 
   MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
@@ -428,7 +442,9 @@ INSTANTIATE_TEST_SUITE_P(
     CollectiveEmitterParameterizedTestInstantiation,
     CollectiveEmitterParameterizedTest,
     ::testing::ValuesIn<CollectiveSanityTestCase>(
-        {{ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
+        {{ShapeUtil::MakeShape(F32, {}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kAllReduce},
          {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce},
@@ -440,7 +456,10 @@ INSTANTIATE_TEST_SUITE_P(
          {ShapeUtil::MakeShape(BF16, {256, 100}), HloOpcode::kAllToAll},
          {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllToAll},
          {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllToAll},
-         {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll}}),
+         {ShapeUtil::MakeShape(F32, {1048576}), HloOpcode::kAllToAll},
+         {ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllGather},
+         {ShapeUtil::MakeShape(BF16, {1024, 1024}), HloOpcode::kAllGather},
+         {ShapeUtil::MakeShape(PRED, {256, 64}), HloOpcode::kAllGather}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       std::string op_prefix = "ar_";
@@ -448,11 +467,17 @@ INSTANTIATE_TEST_SUITE_P(
         op_prefix = "rs_";
       } else if (info.param.opcode == HloOpcode::kAllToAll) {
         op_prefix = "a2a_";
+      } else if (info.param.opcode == HloOpcode::kAllGather) {
+        op_prefix = "ag_";
       }
+      std::string dims_str =
+          info.param.shape.dimensions().empty()
+              ? "scalar"
+              : absl::StrJoin(info.param.shape.dimensions(), "_");
       return op_prefix +
              primitive_util::LowercasePrimitiveTypeName(
                  info.param.shape.element_type()) +
-             "__" + absl::StrJoin(info.param.shape.dimensions(), "_");
+             "__" + dims_str;
     });
 
 struct GreedyPowerOfTwoTilesTestCase {
@@ -1150,8 +1175,9 @@ TEST_F(CollectiveEmitterTest,
     return std::vector<uint8_t>{1};
   };
   DebugOptions debug_options;
-  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
-                                            debug_options, topology_16);
+  CubinCustomKernelCompiler kernel_compiler(
+      llvm_compiler, device_info_, debug_options, topology_16, llvm::Triple(""),
+      /*data_layout=*/"");
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
   ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
@@ -1202,11 +1228,11 @@ TEST_F(CollectiveBlockLevelConfigTest,
 }
 
 // Shape from `all-gather.170` on 16 ranks.
-// Total output is ~10.5 MB -> 64 blocks (4 blocks per peer).
+// Total output is ~10.5 MB -> 128 blocks (8 blocks per peer).
 // Each output is tiled independently:
-// - Output 0 (`f32[32,8,10240]`, per-peer `[2,8,10240]`): 4 tiles of
-//   `[1,4,16384]`.
-// - Output 3 (`pred[32]`, per-peer `[2]`): 2 tiles of `[1]` (padded to 4 by
+// - Output 0 (`f32[32,8,10240]`, per-peer `[2,8,10240]`): 8 tiles of
+//   `[1,2,16384]`.
+// - Output 3 (`pred[32]`, per-peer `[2]`): 2 tiles of `[1]` (padded to 8 by
 //   the schedule).
 TEST_F(CollectiveBlockLevelConfigTest,
        VariadicAllGatherBlockLevelConfigSmallOutputsDoNotLimitGrid) {
@@ -1235,23 +1261,23 @@ TEST_F(CollectiveBlockLevelConfigTest,
       BlockLevelFusionConfig block_level_config,
       GetCollectiveBlockLevelFusionConfig(topology_16, fusion));
   ASSERT_EQ(block_level_config.output_tiles_size(), 6);
-  // 4 tiles per peer: 128 elements per thread with 512 threads, the same as
+  // 8 tiles per peer: 64 elements per thread with 512 threads, the same as
   // the single-operand all-gather of f32[2,8,10240].
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
-              ElementsAre(1, 4, 16384));
-  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 64));
-  EXPECT_THAT(block_level_config.output_tiles(2).sizes(), ElementsAre(1, 128));
-  // 2 tiles per peer each; padded to 4 by the schedule.
+              ElementsAre(1, 2, 16384));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 32));
+  EXPECT_THAT(block_level_config.output_tiles(2).sizes(), ElementsAre(1, 64));
+  // 2 tiles per peer each; padded to 8 by the schedule.
   EXPECT_THAT(block_level_config.output_tiles(3).sizes(), ElementsAre(1));
   EXPECT_THAT(block_level_config.output_tiles(4).sizes(), ElementsAre(1));
-  // 4 tiles per peer.
-  EXPECT_THAT(block_level_config.output_tiles(5).sizes(), ElementsAre(2, 2));
+  // 8 tiles per peer.
+  EXPECT_THAT(block_level_config.output_tiles(5).sizes(), ElementsAre(1, 2));
 
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
   std::optional<TritonFusion::LaunchConfig> launch_config =
       TritonFusion::GetLaunchConfig(&analysis);
   ASSERT_TRUE(launch_config.has_value());
-  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 128);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 

@@ -29,6 +29,13 @@ class Context {
   // Sets this context to be the active GPU context.
   virtual void SetActive() = 0;
 
+  // Clears whichever GPU context is currently active on this thread, if any.
+  // Platforms without a meaningful "no context" state may leave this as a
+  // no-op. Declared non-static (despite not depending on `this`) so it can
+  // be dispatched through whatever Context instance is on hand, without
+  // requiring the caller to know which concrete platform is in use.
+  virtual void SetInactive() const {}
+
   // Returns true if this Context is the active GPU context.
   virtual bool IsActive() const = 0;
 

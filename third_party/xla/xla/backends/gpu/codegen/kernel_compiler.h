@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,35 +27,34 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
-struct TritonWrapperResult;
 using BorrowedMlirContext = MlirContextPool::BorrowedObject;
+using MlirKernelDefinition = KernelDefinition<MlirKernelSource, GpuKernelSpec>;
 
 // Abstract base class for asynchronous kernel compilation.
 //
-// Defines an interface for compiling KernelSource. Implementations of this
-// interface handle the specifics of transforming an LlvmKernelSource into an
-// executable Thunk.
+// Defines an interface for compiling kernel sources. Implementations of this
+// interface handle lowering MLIR or LLVM kernel sources into target binaries or
+// executable Thunks.
 //
 // The compilation process is asynchronous, returning a xla::Future that will
-// eventually hold the compiled std::unique_ptr<Thunk> object. This design
-// allows for non-blocking compilation and potential parallelism in compilation
-// workflows.
+// eventually hold the compiled std::unique_ptr<Thunk> or binary bytes. This
+// design allows for non blocking compilation and potential parallelism in
+// compilation workflows.
 class KernelCompiler {
  public:
   using ModuleHook = absl::AnyInvocable<void(const llvm::Module&)>;
@@ -68,17 +68,11 @@ class KernelCompiler {
 
   virtual ~KernelCompiler() = default;
 
-  // Compiles the given kernel source asynchronously.
+  // Compiles the given MLIR kernel definition asynchronously into a Thunk.
   virtual xla::Future<std::unique_ptr<Thunk>> Compile(
-      Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions) = 0;
-
-  virtual xla::Future<LlvmKernelSource> CompileMlirToLlvm(
-      const se::DeviceDescription& device, const HloModule& hlo_module,
-      const std::string& entry_function_name, int unroll_factor,
-      MlirKernelSource source, BorrowedMlirContext borrowed_context) = 0;
+      Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
+      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
+      int unroll_factor = 0) = 0;
 
   // Compiles the given Triton kernel source to LLVM IR asynchronously.
   virtual xla::Future<TritonWrapperResult> CompileTritonToLlvm(
@@ -90,15 +84,18 @@ class KernelCompiler {
       bool is_xla_fusion) = 0;
 
   virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      LlvmKernelSource kernel_source) = 0;
+      MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
+      const HloModule& hlo_module, int unroll_factor = 0) = 0;
+
+  virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
+      LlvmKernelSource kernel_source,
+      std::optional<GpuKernelSpec> kernel_spec) = 0;
 
   // Sets a callback to be called prior to llvm::Module compilation.
   void SetPreOptimizationHook(ModuleHook hook) {
     pre_optimization_hook_ = std::move(hook);
   }
-  ModuleHook& pre_optimization_hook() {
-    return pre_optimization_hook_;
-  }
+  ModuleHook& pre_optimization_hook() { return pre_optimization_hook_; }
 
  private:
   ModuleHook pre_optimization_hook_;

@@ -73,6 +73,7 @@ struct NcclCapabilities {
   bool supports_device_comm;
   bool supports_one_sided_comm;
   bool supports_gin;
+  bool supports_cft;
   std::optional<int> lsa_size;
 
   // Reason one-sided comm is not supported, cached at construction. Empty
@@ -140,7 +141,7 @@ class NcclCommunicator : public GpuCommunicator {
       se::DeviceAddressBase addr) final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
-      se::DeviceAddressBase addr, bool symmetric_window = false) final;
+      se::DeviceAddressBase addr, bool symmetric_window) final;
 
   Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) final;
 
@@ -219,34 +220,35 @@ class NcclCommunicator : public GpuCommunicator {
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
                                ReductionKind reduction_kind,
-                               const Executor& executor) final;
+                               const Executor& executor, bool is_rma) final;
 
   absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count, RankId root,
-                               const Executor& executor) final;
+                               const Executor& executor, bool is_rma) final;
 
   absl::Status LaunchReduce(se::DeviceAddressBase send_buffer,
                             se::DeviceAddressBase recv_buffer,
                             PrimitiveType dtype, size_t count,
                             ReductionKind reduction_kind, RankId root,
-                            const Executor& executor) final;
+                            const Executor& executor, bool is_rma) final;
 
   absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
                                    se::DeviceAddressBase recv_buffer,
                                    PrimitiveType dtype, size_t count,
                                    ReductionKind reduction_kind,
-                                   const Executor& executor) final;
+                                   const Executor& executor, bool is_rma) final;
 
   absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
                                se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
-                               const Executor& executor) final;
+                               const Executor& executor, bool is_rma) final;
 
   absl::Status LaunchAllToAll(
       absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
       absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) final;
+      PrimitiveType dtype, size_t count, const Executor& executor,
+      bool is_rma) final;
 
   absl::Status LaunchCollectivePermute(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
@@ -412,6 +414,8 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   // Returns the size of the load/store accessible communication.
   int64_t lsa_size() const final { return dev_comm_.lsaSize; };
 
+  int32_t granted_cft_caps() const final { return granted_cft_caps_; }
+
   std::string ToString() const final;
 
   se::PackedKernelArg PackKernelArg() const final;
@@ -420,12 +424,13 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   NcclDeviceCommunicator(std::shared_ptr<NcclCommState> parent_comm,
                          se::StreamExecutor* stream_executor,
                          std::shared_ptr<tsl::Executor> executor,
-                         ncclDevComm dev_comm);
+                         ncclDevComm dev_comm, int32_t granted_cft_caps);
 
   std::shared_ptr<NcclCommState> parent_comm_;
   se::StreamExecutor* stream_executor_;
   std::shared_ptr<tsl::Executor> executor_;
   ncclDevComm dev_comm_;
+  int32_t granted_cft_caps_ = 0;
 };
 
 }  // namespace xla::gpu

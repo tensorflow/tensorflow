@@ -1435,6 +1435,23 @@ cc_test(
 )
 
 cc_test(
+    name = "batch_matmul_blockwise_test",
+    size = "small",
+    srcs = ["batch_matmul_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":test_main",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
     name = "batch_matmul_test",
     size = "small",
     srcs = ["batch_matmul_test.cc"],
@@ -1474,6 +1491,7 @@ cc_test(
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1651,6 +1669,24 @@ cc_test(
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "dequantize_blockwise_test",
+    size = "small",
+    srcs = ["dequantize_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@flatbuffers",
     ],
 )
 
@@ -2239,6 +2275,26 @@ cc_test(
 )
 
 cc_test(
+    name = "embedding_lookup_blockwise_test",
+    size = "small",
+    srcs = ["embedding_lookup_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":reference_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
     name = "embedding_lookup_sparse_test",
     size = "small",
     srcs = ["embedding_lookup_sparse_test.cc"],
@@ -2270,6 +2326,24 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "fully_connected_blockwise_test",
+    size = "small",
+    srcs = ["fully_connected_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":reference_ops",
+        ":test_main",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
     ],
 )

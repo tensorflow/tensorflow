@@ -228,10 +228,11 @@ absl::Status RunCollectiveReduce(ReductionKind reduction_kind,
             metadata->reduce_roots->address().opaque());
         root = RankId(roots_ptr[i]);
       }
+      // Reduce does not support RMA kernels currently.
       ABSL_RETURN_IF_ERROR(gpu_comm->LaunchReduce(
           buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
           buffer.element_count, reduction_kind, root,
-          GpuCollectives::On(stream)));
+          GpuCollectives::On(stream), /*is_rma=*/false));
     }
     return absl::OkStatus();
   });

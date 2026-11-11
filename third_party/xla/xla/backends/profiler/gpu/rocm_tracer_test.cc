@@ -377,6 +377,11 @@ class MarkerCapturingCollector : public RocmTraceCollector {
   MarkerCapturingCollector() : RocmTraceCollector(MakeCollectorOptions()) {}
 
   void AddEvent(RocmTracerEvent&& event, bool) override {
+    // Only EmitMarkerEvent produces Generic events, and it runs synchronously
+    // in MarkerCallback. Buffered HIP API/kernel/memcpy records from earlier
+    // tests can still be delivered into this session (AIPROFSDK-1162);
+    // ignore them.
+    if (event.type != RocmTracerEventType::Generic) return;
     absl::MutexLock lock(&mu_);
     events_.push_back(std::move(event));
   }

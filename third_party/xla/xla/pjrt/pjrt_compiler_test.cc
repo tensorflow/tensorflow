@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/flags/marshalling.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -72,14 +74,25 @@ bool test_variant_picker_registered = RegisterTestVariantPicker();
 }  // namespace
 
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::Eq;
 using ::testing::HasSubstr;
 
 class PjRtTestTopology : public PjRtTopologyDescription {
  public:
+  PjRtTestTopology() = default;
+  explicit PjRtTestTopology(absl::string_view platform_name,
+                            std::unique_ptr<PjRtCompiler> compiler = nullptr)
+      : platform_name_(platform_name), compiler_(std::move(compiler)) {}
+
   PjRtPlatformId platform_id() const override { return 0; }
-  absl::string_view platform_name() const override { return "not_registered"; }
+  absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "test"; }
+  std::optional<PjRtCompiler*> compiler() const override {
+    return compiler_ != nullptr ? std::make_optional(compiler_.get())
+                                : std::nullopt;
+  }
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override {
     LOG(FATAL) << "Unused";
@@ -95,6 +108,10 @@ class PjRtTestTopology : public PjRtTopologyDescription {
     return absl::UnimplementedError(
         "TestTopology does not support GetDefaultLayout");
   }
+
+ private:
+  std::string platform_name_ = "not_registered";
+  std::unique_ptr<PjRtCompiler> compiler_;
 };
 
 // Registers a compiler to compile programs for 'platform_name' with
@@ -276,6 +293,98 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   // Lookup using the single-parameter overload.
   status = GetDefaultPjRtCompiler(platform);
   EXPECT_TRUE(absl::IsNotFound(status.status()));
+}
+
+TEST(PjRtCompilerTest, GetPjRtCompilerTopologyOverride) {
+  constexpr absl::string_view kPlatform = "topology_override_platform";
+  auto registered_compiler = std::make_unique<PjRtDeserializeCompiler>();
+  PjRtCompiler* registered_ptr = registered_compiler.get();
+  PjRtRegisterDefaultCompiler(kPlatform, std::move(registered_compiler));
+
+  // Topology compiler override takes precedence even on an unregistered
+  // platform or when a different compiler/variant is registered.
+  {
+    auto override_compiler = std::make_unique<PjRtDeserializeCompiler>();
+    PjRtCompiler* override_ptr = override_compiler.get();
+    PjRtTestTopology unregistered_with_override(
+        "unregistered_override_platform", std::move(override_compiler));
+    EXPECT_THAT(GetPjRtCompiler(unregistered_with_override),
+                IsOkAndHolds(Eq(override_ptr)));
+  }
+
+  {
+    auto override_compiler = std::make_unique<PjRtDeserializeCompiler>();
+    PjRtCompiler* override_ptr = override_compiler.get();
+    PjRtTestTopology registered_with_override(kPlatform,
+                                              std::move(override_compiler));
+    EXPECT_THAT(GetPjRtCompiler(registered_with_override),
+                IsOkAndHolds(Eq(override_ptr)));
+    EXPECT_THAT(
+        GetPjRtCompiler(registered_with_override, LinkedCompilerVariantId()),
+        IsOkAndHolds(Eq(override_ptr)));
+  }
+
+  // Without an override, falls back to the global registry.
+  PjRtTestTopology without_override(kPlatform);
+  EXPECT_THAT(GetPjRtCompiler(without_override),
+              IsOkAndHolds(Eq(registered_ptr)));
+}
+
+TEST(PjRtCompilerTest, GetPjRtCompilerTopologyRegistryAndVariants) {
+  constexpr absl::string_view kPlatform = "topology_lookup_platform";
+  PjRtTestTopology topology(kPlatform);
+
+  EXPECT_THAT(GetPjRtCompiler(topology),
+              StatusIs(absl::StatusCode::kNotFound, HasSubstr(kPlatform)));
+
+  auto default_compiler = std::make_unique<PjRtDeserializeCompiler>();
+  PjRtCompiler* default_ptr = default_compiler.get();
+  PjRtRegisterDefaultCompiler(kPlatform, std::move(default_compiler));
+
+  auto variant_compiler = std::make_unique<PjRtDeserializeCompiler>();
+  PjRtCompiler* variant_ptr = variant_compiler.get();
+  PjRtRegisterCompiler(kPlatform, "factory_variant",
+                       std::move(variant_compiler));
+
+  EXPECT_THAT(GetPjRtCompiler(topology), IsOkAndHolds(Eq(default_ptr)));
+  // LinkedCompilerVariantId() maps to the default ("") compiler variant.
+  EXPECT_THAT(GetPjRtCompiler(topology, LinkedCompilerVariantId()),
+              IsOkAndHolds(Eq(default_ptr)));
+  EXPECT_THAT(GetPjRtCompiler(topology, tsl::Fingerprint64("factory_variant")),
+              IsOkAndHolds(Eq(variant_ptr)));
+  EXPECT_THAT(
+      GetPjRtCompiler(topology, tsl::Fingerprint64("unregistered_variant")),
+      StatusIs(absl::StatusCode::kNotFound, HasSubstr(kUnknownVariant)));
+}
+
+TEST(PjRtCompilerTest, GetPjRtCompilerTopologyVariantPicker) {
+  constexpr absl::string_view kPlatform = "topology_picker_platform";
+  PjRtTestTopology topology(kPlatform);
+
+  auto default_compiler = std::make_unique<PjRtDeserializeCompiler>();
+  PjRtCompiler* default_ptr = default_compiler.get();
+  PjRtRegisterDefaultCompiler(kPlatform, std::move(default_compiler));
+
+  auto picked_compiler = std::make_unique<PjRtDeserializeCompiler>();
+  PjRtCompiler* picked_ptr = picked_compiler.get();
+  PjRtRegisterCompiler(kPlatform, "picked_variant", std::move(picked_compiler));
+
+  auto picker_result =
+      std::make_shared<absl::StatusOr<std::string>>("picked_variant");
+  PjRtRegisterCompilerVariantPicker(
+      kPlatform, [picker_result]() { return *picker_result; });
+
+  // Omitting `variant` consults the registered variant picker.
+  EXPECT_THAT(GetPjRtCompiler(topology), IsOkAndHolds(Eq(picked_ptr)));
+  // Passing an explicit `variant` bypasses the variant picker.
+  EXPECT_THAT(GetPjRtCompiler(topology, LinkedCompilerVariantId()),
+              IsOkAndHolds(Eq(default_ptr)));
+
+  // Variant picker errors are propagated.
+  *picker_result = absl::UnavailableError("picker unavailable");
+  EXPECT_THAT(GetPjRtCompiler(topology),
+              StatusIs(absl::StatusCode::kUnavailable,
+                       HasSubstr("picker unavailable")));
 }
 
 TEST(PjRtCompilerTest, IsCompilerVariantRegistered) {
@@ -485,6 +594,33 @@ TEST(PjRtCompilerInitializationTest, RegistriesOutOfSync) {
   // Verify that the existing compiler was used and the factory was NOT called.
   // GetOrCreateCompiler should find the entry in CompilerRegistry() first.
   EXPECT_FALSE(*factory_called);
+}
+
+TEST(CompilerMetadataOnLoadTest, ParseAndUnparseRoundTrip) {
+  for (CompilerMetadataOnLoad on_load :
+       {CompilerMetadataOnLoad::kKeep, CompilerMetadataOnLoad::kStrip,
+        CompilerMetadataOnLoad::kStripAndCompress}) {
+    CompilerMetadataOnLoad parsed;
+    std::string error;
+    ASSERT_TRUE(absl::ParseFlag(absl::UnparseFlag(on_load), &parsed, &error))
+        << error;
+    EXPECT_EQ(parsed, on_load);
+  }
+}
+
+TEST(CompilerMetadataOnLoadTest, Spellings) {
+  EXPECT_EQ(absl::UnparseFlag(CompilerMetadataOnLoad::kKeep), "keep");
+  EXPECT_EQ(absl::UnparseFlag(CompilerMetadataOnLoad::kStrip), "strip");
+  EXPECT_EQ(absl::UnparseFlag(CompilerMetadataOnLoad::kStripAndCompress),
+            "strip_and_compress");
+}
+
+TEST(CompilerMetadataOnLoadTest, ParseRejectsUnknownValue) {
+  CompilerMetadataOnLoad parsed = CompilerMetadataOnLoad::kKeep;
+  std::string error;
+  EXPECT_FALSE(absl::ParseFlag("compress", &parsed, &error));
+  EXPECT_THAT(error, ::testing::HasSubstr("compress"));
+  EXPECT_EQ(parsed, CompilerMetadataOnLoad::kKeep);
 }
 
 }  // namespace

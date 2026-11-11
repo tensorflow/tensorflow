@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -90,7 +91,6 @@ PjRtCompiler::PjRtCompiler(PjRtClient* client) : client_(client) {}
 
 tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
-  DCHECK(this);
   if (client_ == nullptr) {
     return absl::InvalidArgumentError(
         "PjRtCompiler must be constructed with a Client to call "
@@ -103,6 +103,11 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
       cast<HloProgram>(std::move(program));
   ABSL_ASSIGN_OR_RETURN(auto xla_compile_options,
                    GetXlaCompileOptions(std::move(options)));
+  if (xla_compile_options->entrypoint_relocatable != nullptr ||
+      !xla_compile_options->dependent_relocatables.empty()) {
+    return absl::UnimplementedError(
+        "PjRtCompiler::CompileAndLoad does not support relocatables.");
+  }
   ABSL_RETURN_IF_ERROR(
       TranslateDeviceIds(client_, xla_compile_options->compile_options));
   return PjRtLoadedExecutable::Create(
@@ -116,12 +121,6 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
 tsl::Future<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
-  DCHECK(this);
-  if (!isa_and_nonnull<HloProgram>(program.get())) {
-    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
-  }
-  std::unique_ptr<HloProgram> xla_program =
-      cast<HloProgram>(std::move(program));
   ABSL_ASSIGN_OR_RETURN(auto xla_compile_options,
                    GetXlaCompileOptions(std::move(options)));
   if (!xla_compile_options->loaded_host_callbacks.empty()) {
@@ -143,6 +142,41 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
         TranslateDeviceIds(client_, xla_compile_options->compile_options));
   }
 
+  if (xla_compile_options->entrypoint_relocatable != nullptr) {
+    if (program != nullptr) {
+      return absl::InvalidArgumentError(
+          "PjRtCompiler::Compile does not accept a Program when an entrypoint "
+          "PjRtRelocatable is provided.");
+    }
+    ABSL_ASSIGN_OR_RETURN(xla::PjRtCompiler * compiler,
+                     xla::GetPjRtCompiler(*pjrt_topology->description()));
+    xla::PjRtPhaseCompiler* phase_compiler = compiler->AsPhaseCompiler();
+    if (phase_compiler == nullptr) {
+      return absl::UnimplementedError(
+          absl::StrCat("Compiler for platform ",
+                       pjrt_topology->description()->platform_name(),
+                       " does not implement PjRtPhaseCompiler."));
+    }
+    return PjRtExecutable::Create(
+        phase_compiler, std::move(xla_compile_options->entrypoint_relocatable),
+        std::move(xla_compile_options->dependent_relocatables),
+        std::move(xla_compile_options->compile_options),
+        *pjrt_topology->description(),
+        std::move(xla_compile_options->outputs_bundle_slice_sizes));
+  }
+
+  if (!xla_compile_options->dependent_relocatables.empty()) {
+    return absl::InvalidArgumentError(
+        "dependent_relocatables cannot be provided without an "
+        "entrypoint_relocatable.");
+  }
+
+  if (!isa_and_nonnull<HloProgram>(program.get())) {
+    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
+  }
+  std::unique_ptr<HloProgram> xla_program =
+      cast<HloProgram>(std::move(program));
+
   xla::PjRtClient* compile_client =
       client_ != nullptr ? client_->pjrt_client() : nullptr;
 
@@ -156,7 +190,6 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
 tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     const absl::Cord& serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
-  DCHECK(this);
   if (client_ == nullptr) {
     return absl::InvalidArgumentError(
         "PjRtCompiler must be constructed with a Client to call "

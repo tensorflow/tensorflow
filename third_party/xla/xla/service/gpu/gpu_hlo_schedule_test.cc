@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_profiling_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -133,11 +134,11 @@ class GpuHloScheduleTest : public HloTestBaseLegacy {
 
   static std::optional<std::string> ValidFingerprint(HloModule* module) {
     // Verify that the fingerprint of HLO prior to LHS is present.
-    const FrontendAttributes& attrs = module->frontend_attributes();
-    auto it = attrs.map().find(kFingerprintBeforeLHS);
+    std::optional<std::string> fingerprint = GetHloModuleFingerprint(
+        *module, HloModuleFingerprintStage::kBeforeScheduling);
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
-    if (it != attrs.map().end() && it->second.size() == 128 / 4) {
-      return it->second;
+    if (fingerprint.has_value() && fingerprint->size() == 128 / 4) {
+      return fingerprint;
     }
     return std::nullopt;
   }
@@ -754,6 +755,85 @@ TEST_P(GpuHloScheduleParameterizedTest, ProfileGuidedCostModel) {
       } else if (inst->opcode() == HloOpcode::kDot ||
                  inst->opcode() == HloOpcode::kAdd) {
         EXPECT_TRUE(between_target_collective_pair);
+      }
+    }
+  }
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelUsesCostsOfThisModuleOnly) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto unscheduled,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const std::string fingerprint = TagWithFingerprint(
+      unscheduled.get(), HloModuleFingerprintStage::kBeforeScheduling);
+  const std::string other_fingerprint = "0123456789abcdef0123456789abcdef";
+  ASSERT_NE(fingerprint, other_fingerprint);
+
+  // The profile gives the two all-reduces of this module and of another module
+  // with the same instruction names opposite costs. The compute should overlap
+  // the all-reduce that is long in this module, not the one that is long in the
+  // other module.
+  for (const auto& [long_ar_start, long_ar_done, short_ar_start] :
+       {std::tuple("ar-start", "ar-done", "ar-start1"),
+        std::tuple("ar-start1", "ar-done1", "ar-start")}) {
+    tensorflow::profiler::ProfiledInstructionsProto profile;
+    auto add_cost = [&](absl::string_view name, double cost_us) {
+      auto* cost = profile.add_costs();
+      cost->set_name(name);
+      cost->set_cost_us(cost_us);
+    };
+    add_cost("dot0", 100.0);
+    add_cost("dot1", 100.0);
+    add_cost("add0", 10.0);
+    add_cost(FingerprintedCostName(fingerprint, long_ar_start), 1000.0);
+    add_cost(FingerprintedCostName(fingerprint, short_ar_start), 10.0);
+    add_cost(FingerprintedCostName(other_fingerprint, long_ar_start), 10.0);
+    add_cost(FingerprintedCostName(other_fingerprint, short_ar_start), 1000.0);
+
+    TestConfig test_config;
+    test_config.enable_latency_hiding_scheduler = true;
+    test_config.fdo_profile = profile.SerializeAsString();
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+    SequentialHloOrdering order = BuildHloOrdering(module.get());
+    ASSERT_EQ(ValidFingerprint(module.get()), fingerprint);
+
+    bool between_long_collective_pair = false;
+    for (const HloInstruction* inst :
+         order.SequentialOrder(*module->entry_computation())->instructions()) {
+      if (inst->name() == long_ar_start) {
+        between_long_collective_pair = true;
+      } else if (inst->name() == long_ar_done) {
+        between_long_collective_pair = false;
+      } else if (inst->opcode() == HloOpcode::kAdd) {
+        EXPECT_TRUE(between_long_collective_pair)
+            << inst->name() << " is not inside " << long_ar_start;
       }
     }
   }
@@ -2225,6 +2305,52 @@ TEST_F(GpuHloScheduleTest,
   // SolLatencyEstimator may be supported on this device, but explicit
   // flag=false must disable LHS.
   EXPECT_FALSE(IsLHSEnabled(*module, "", gpu_device_info));
+}
+
+TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepMosaicGpuV2) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = bf16[2,2048,4,128] parameter(0)
+    p1 = bf16[2,16384,4,128] parameter(1)
+
+    ag-start = (bf16[2,2048,4,128], bf16[2,16384,4,128]) all-gather-start(p0),
+      dimensions={1},
+      frontend_attributes={_scheduling_group_id="0"}
+    ag-done = bf16[2,16384,4,128] all-gather-done(ag-start),
+      frontend_attributes={_scheduling_group_id="0"}
+
+    mosaic = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="mosaic_gpu_v2",
+      frontend_attributes={_scheduling_group_id="0"}
+    other = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="other_custom_call",
+      frontend_attributes={_scheduling_group_id="0"}
+
+    ROOT result = (bf16[2,16384,4,128], bf16[2,16384,4,128], bf16[2,16384,4,128])
+      tuple(ag-done, mosaic, other)
+  })";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* ag_start = entry->GetInstructionWithName("ag-start");
+  const HloInstruction* ag_done = entry->GetInstructionWithName("ag-done");
+  const HloInstruction* mosaic = entry->GetInstructionWithName("mosaic");
+  const HloInstruction* other = entry->GetInstructionWithName("other");
+
+  EXPECT_TRUE(
+      mosaic->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      other->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(order.ExecutesBefore(ag_start, mosaic));
+  EXPECT_TRUE(order.ExecutesBefore(mosaic, ag_done));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,

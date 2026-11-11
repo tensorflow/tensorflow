@@ -497,6 +497,9 @@ mlir::LogicalResult RemapArraysOp::verify() {
   if (num_in_arrays == 0) {
     return emitOpError() << "requires at least one input array";
   }
+  if (num_out_arrays == 0) {
+    return emitOpError() << "requires at least one output array";
+  }
 
   std::vector<std::vector<bool>> in_used_shards_list(num_in_arrays);
   for (const auto& [idx, input] : llvm::enumerate(getInputs())) {
@@ -664,6 +667,9 @@ mlir::LogicalResult RemapArraysOp::verify() {
 mlir::LogicalResult BitcastArraysOp::verify() {
   auto inputs = getInputs();
   auto outputs = getOutputs();
+  if (inputs.empty()) {
+    return emitOpError() << "requires at least one input array";
+  }
   if (inputs.size() != outputs.size()) {
     return emitOpError()
            << "requires the same number of input and output arrays. "

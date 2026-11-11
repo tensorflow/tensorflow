@@ -245,6 +245,100 @@ module @multiple_calls_of_same_module {
             PrintModule(deserialized_program->mlir_module));
 }
 
+TEST_P(IfrtIRProgramSerDesTest, RoundTripWithExternalContext) {
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @add_one {
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      %0 = mhlo.constant dense<1> : tensor<2xi32>
+      %1 = mhlo.add %arg0, %0 : tensor<2xi32>
+      return %1 : tensor<2xi32>
+    }
+  }
+}
+  )mlir";
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      support::ParseMlirModuleString(kMlirModuleStr, *context));
+  auto initial_program =
+      std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(*initial_program, /*options=*/nullptr));
+
+  mlir::MLIRContext external_context;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<IfrtIRProgram> deserialized_program,
+      Deserialize<IfrtIRProgram>(
+          serialized, std::make_unique<DeserializeIfrtIRProgramOptions>(
+                          &external_context)));
+
+  EXPECT_FALSE(deserialized_program->OwnsMlirContext());
+  EXPECT_EQ(deserialized_program->mlir_module.getContext(), &external_context);
+  EXPECT_EQ(PrintModule(initial_program->mlir_module),
+            PrintModule(deserialized_program->mlir_module));
+}
+
+TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTripWithExternalContext) {
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+module @multiple_calls_of_same_module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @add_one <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+      %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+      return %1 : tensor<2x2xi32>
+    }
+  }
+}
+  )mlir";
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      support::ParseMlirModuleString(kMlirModuleStr, *context));
+  auto initial_program =
+      std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+
+  auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
+      /*ifrt_version=*/Version::getCurrentVersion().toString(),
+      /*atom_program_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
+      /*version_in_place=*/false);
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(*initial_program, std::move(options)));
+
+  mlir::MLIRContext external_context;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<IfrtIRProgram> deserialized_program,
+      Deserialize<IfrtIRProgram>(
+          serialized, std::make_unique<DeserializeIfrtIRProgramOptions>(
+                          &external_context)));
+
+  EXPECT_FALSE(deserialized_program->OwnsMlirContext());
+  EXPECT_EQ(deserialized_program->mlir_module.getContext(), &external_context);
+  EXPECT_EQ(PrintModule(initial_program->mlir_module),
+            PrintModule(deserialized_program->mlir_module));
+}
+
 TEST_P(IfrtIRProgramSerDesTest, VersioningOfAtomProgramInMhloShouldFail) {
   static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>

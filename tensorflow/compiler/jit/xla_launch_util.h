@@ -18,24 +18,43 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/local_client.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
 
 namespace tensorflow {
 
@@ -85,7 +104,8 @@ absl::Status PreparePjRtExecutableArguments(
     const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     xla::PjRtClient* pjrt_client, xla::PjRtDevice* pjrt_device,
-    bool use_pjrt_tensor_buffer, std::vector<xla::PjRtBuffer*>* args,
+    bool use_pjrt_tensor_buffer,
+    std::vector<xla::PjRtBuffer*>* absl_nonnull args,
     std::vector<std::unique_ptr<xla::PjRtBuffer>>* owned_args,
     absl::flat_hash_set<int>* non_donatable_input_indices);
 
@@ -108,7 +128,8 @@ absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 // Returns the options used for executing a PjRtLoadedExecutable.
 xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
-    absl::flat_hash_set<int> non_donatable_input_indices);
+    absl::flat_hash_set<int> non_donatable_input_indices,
+    xla::ExecuteContext* execute_context = nullptr);
 
 // Returns the device ordinal from the parsed name of the device.
 int GetDeviceOrdinal(const DeviceBase* device);
@@ -152,7 +173,8 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     const DeviceType& device_type, bool use_pjrt_tensor_buffer,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtDevice* device, xla::PjRtClient* pjrt_client,
-    xla::PjRtLoadedExecutable* executable);
+    xla::PjRtLoadedExecutable* executable,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr);
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

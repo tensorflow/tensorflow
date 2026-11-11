@@ -151,26 +151,22 @@ common --config=short_logs
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --config=v2
 
-# Precompiling results in some action conflicts. Disable it for now until
-# the problematic targets are fixed.
-common --@rules_python//python/config_settings:precompile=force_disabled
-
-# TF now has `cc_shared_library` targets, so it needs the experimental flag
-# TODO(rostam): Remove when `cc_shared_library` is enabled by default
-common --experimental_cc_shared_library
-
 # cc_shared_library ensures no library is linked statically more than once.
 common --experimental_link_static_libraries_once=false
 
-# Prevent regressions on those two incompatible changes
-# TODO: remove those flags when they are flipped in the default Bazel version TF uses.
-common --incompatible_enforce_config_setting_visibility
-# TODO: also enable this flag after fixing the visibility violations
+# TODO: enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
 common --enable_workspace
+
+# Turn off empty glob check (flipped in Bazel 8).
+common --incompatible_disallow_empty_glob=false
+
+# Enable legacy external runfiles
+# This is false in Bazel 8, but broke some tests.
+common --legacy_external_runfiles=true
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
@@ -303,7 +299,7 @@ common:cuda12_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
 common:cuda12_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
 
-common:cuda13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
+common:cuda13_version --repo_env=HERMETIC_CUDA_VERSION="13.4.1"
 common:cuda13_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 common:cuda13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
 common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
@@ -350,6 +346,8 @@ common:cuda_clang_official --config=cuda_version
 
 # Build with nvcc for CUDA and clang for host
 common:cuda_nvcc --config=cuda
+# The minimum supported NVCC version for CUDA with libc++ is 13.4.1.
+common:cuda_nvcc --config=cuda13_version
 common:cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 common:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
@@ -386,6 +384,10 @@ common:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 common:rocm --define=xnn_enable_avxvnniint8=false
 common:rocm --define=xnn_enable_avx512fp16=false
 common:rocm --repo_env TF_NEED_ROCM=1
+common:rocm --@rules_ml_toolchain//common:stdlib=libstdc++
+common:rocm --@rules_ml_toolchain//common:static_libcxx=False
+common:rocm --cxxopt=-std=c++17
+common:rocm --host_cxxopt=-std=c++17
 
 common:rocm_clang_official --config=rocm
 common:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
@@ -404,6 +406,10 @@ common:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 common:sycl --define=using_sycl=true
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --repo_env TF_NEED_SYCL=1
+common:sycl --@rules_ml_toolchain//common:stdlib=libstdc++
+common:sycl --@rules_ml_toolchain//common:static_libcxx=False
+common:sycl --cxxopt=-std=c++17
+common:sycl --host_cxxopt=-std=c++17
 
 # Options to disable default on features
 common:nogcp --define=no_gcp_support=true
@@ -416,6 +422,7 @@ common:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 # Don't trigger --config=<host platform> when cross-compiling.
 common:android --noenable_platform_specific_config
 common:ios --noenable_platform_specific_config
+common:elinux --noenable_platform_specific_config
 
 # Suppress all C++ compiler warnings, otherwise build logs become 10s of MBs.
 common:android --copt=-w
@@ -440,6 +447,12 @@ common:linux --copt="-Werror=unused-result"
 # Add switch as an error on Linux.
 common:linux --copt="-Wswitch"
 common:linux --copt="-Werror=switch"
+
+# Add LLVM 22 and libc++ static linking flags.
+common:linux --repo_env=LLVM_VERSION=22
+common:linux --repo_env=SYSROOT_DIST=linux_glibc_2_27
+common:linux --@rules_ml_toolchain//common:stdlib=libc++
+common:linux --@rules_ml_toolchain//common:static_libcxx=true
 
 # Linux ARM64 specific options
 common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
@@ -482,6 +495,9 @@ startup --windows_enable_symlinks
 common:windows --enable_runfiles
 common:windows --nobuild_python_zip
 common:windows --dynamic_mode=off
+# Disable the Bazel 8 local repository contents cache on Windows so external
+# repositories keep stable paths without extra directory junctions.
+common:windows --repo_contents_cache=
 
 # Default paths for TF_SYSTEM_LIBS
 common:linux --define=PREFIX=/usr
@@ -495,8 +511,8 @@ common:android --cxxopt=-std=c++17
 common:android --host_cxxopt=-std=c++17
 common:ios --cxxopt=-std=c++17
 common:ios --host_cxxopt=-std=c++17
-common:linux --cxxopt=-std=c++17
-common:linux --host_cxxopt=-std=c++17
+common:linux --cxxopt=-std=c++20
+common:linux --host_cxxopt=-std=c++20
 common:macos --cxxopt=-std=c++17
 common:macos --host_cxxopt=-std=c++17
 common:windows --cxxopt=/std:c++17
@@ -1023,12 +1039,6 @@ test:windows_x86_ml_actions_pycpp_test --config=windows_x86_cpu_2022_pycpp_test
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
-common:cross_compile_base --config=clang_local
-common:cross_compile_base --host_cpu=k8
-common:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-common:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
-common:cross_compile_base --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain
-
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
@@ -1039,13 +1049,10 @@ test:rbe_cross_compile_base --strategy=TestRunner=local --build_tests_only
 test:rbe_cross_compile_base --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
 # START LINUX AARCH64 CROSS-COMPILE CONFIGS
-common:cross_compile_linux_arm64 --config=cross_compile_base
-
-# Set the target CPU to Aarch64
-common:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
-common:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-common:cross_compile_linux_arm64 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --platforms=@xla//tools/toolchains:linux_aarch64
+common:cross_compile_linux_arm64 --host_cpu=k8
+common:cross_compile_linux_arm64 --extra_execution_platforms=@xla//tools/toolchains:rbe_linux_x86_64
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
 common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
@@ -1055,38 +1062,6 @@ common:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
 test:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
 
 # END LINUX AARCH64 CROSS-COMPILE CONFIGS
-
-# START MACOS CROSS-COMPILE CONFIGS
-common:cross_compile_macos_x86 --config=cross_compile_base
-common:cross_compile_macos_x86 --config=nonccl
-# Target Catalina (10.15) as the minimum supported OS
-common:cross_compile_macos_x86 --action_env  MACOSX_DEPLOYMENT_TARGET=10.15
-
-# Set the target CPU to Darwin x86
-common:cross_compile_macos_x86 --platforms=//tensorflow/tools/toolchains/cross_compile/config:darwin_x86_64
-common:cross_compile_macos_x86 --cpu=darwin
-common:cross_compile_macos_x86 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-# When RBE cross-compiling for macOS, we need to explicitly register the
-# toolchain. Otherwise, oddly, RBE complains that a "docker container must be
-# specified".
-common:cross_compile_macos_x86 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
-# Map --platforms=darwin_x86_64 to --cpu=darwin and vice-versa to make selects()
-# and transistions that use these flags work.
-common:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cross_compile/config/platform_mappings
-
-# RBE cross-compile configs for Darwin x86
-common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86 --remote_download_minimal
-common:rbe_cross_compile_macos_x86 --bes_backend="" --bes_results_url="" --bes_timeout="0s"
-common:rbe_cross_compile_macos_x86 --experimental_remote_build_event_upload="minimal"
-common:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
-common:rbe_cross_compile_macos_x86 --bes_upload_mode=nowait_for_upload_complete
-test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
-# Increase the test timeout as tests often take longer on mac.
-test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
-# Limit jobs to 100 to avoid running into "out of memory" issues (b/316266643)
-common:rbe_cross_compile_macos_x86 --jobs=100
-test:rbe_cross_compile_macos_x86 --jobs=100
-# END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
 
 # Enable Java 21 language features

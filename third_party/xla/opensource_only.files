@@ -3,6 +3,7 @@ tensorflow/compiler/xla/backends/cpu/package_groups.bzl:
 tensorflow/compiler/xla/internal/package_groups.bzl:
 tensorflow/compiler/xla/megascale/package_groups.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
+tensorflow/compiler/xla/mosaic/dialect/tpu/tpu_matmul_ops.td:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/gpu/package_groups.bzl:
@@ -159,6 +160,5 @@ xla/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
 xla/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 xla/third_party/tensorrt/tensorrt_configure.bzl:
 xla/third_party/tensorrt/workspace.bzl:
-xla/third_party/xla_googletest_wrapper/include/gmock/gmock.h:
 xla/third_party/xz/config/config_generic.h:
 xla/third_party/zlib.BUILD:

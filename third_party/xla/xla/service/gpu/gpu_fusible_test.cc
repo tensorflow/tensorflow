@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/status/status_macros.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -42,6 +44,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Optional;
 using ::testing::UnorderedElementsAre;
 
 absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
@@ -1832,6 +1835,171 @@ ENTRY main {
   EXPECT_EQ(config, 4);
 }
 
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopReduceWithSmallerOutput) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[8,256,512]{2,1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[256,512]{1,0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*root, device_info_h100);
+  EXPECT_EQ(ComputeLoopFusionConfig(analysis, root->shape()), 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::B200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  EXPECT_EQ(ComputeLoopFusionConfig(analysis, root->shape()), 4);
+}
+
+TEST_F(GpuFusibleTest,
+       ComputeLoopFusionConfigSkipsUnrollForSmallOutputOrSmallReduceInput) {
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  // Output elements (8,192) < min_threads (16,896 on H100), even though reduce
+  // input elements (524,288) >= n_threads_max (270,336).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> small_output_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[64,8192]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[8192]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* small_output_root =
+      small_output_module->entry_computation()->root_instruction();
+  HloFusionAnalysis small_output_analysis =
+      HloFusionAnalysis::Create(*small_output_root, device_info_h100);
+  EXPECT_EQ(ComputeLoopFusionConfig(small_output_analysis,
+                                    small_output_root->shape()),
+            1);
+
+  // Reduce input elements (131,072) < n_threads_max (270,336 on H100).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> small_input_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[2,65536]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT res = f32[65536]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+)"));
+  const HloInstruction* small_input_root =
+      small_input_module->entry_computation()->root_instruction();
+  HloFusionAnalysis small_input_analysis =
+      HloFusionAnalysis::Create(*small_input_root, device_info_h100);
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(small_input_analysis, small_input_root->shape()),
+      1);
+}
+
+TEST_F(GpuFusibleTest, GetMaxReduceInputElements) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_reduce_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_add {
+  p0 = f32[128]{0} parameter(0)
+  p1 = f32[128]{0} parameter(1)
+  ROOT sum = f32[128]{0} add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[128]{0} parameter(0)
+  p1 = f32[128]{0} parameter(1)
+  ROOT fusion = f32[128]{0} fusion(p0, p1), kind=kLoop, calls=fused_add
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> no_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          no_reduce_module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetMaxReduceInputElements(*no_reduce_fusion), std::nullopt);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> multi_reduce_module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_reduces {
+  p0 = f32[4,256]{1,0} parameter(0)
+  p1 = f32[16,256]{1,0} parameter(1)
+  zero = f32[] constant(0)
+  r0 = f32[256]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+  r1 = f32[256]{0} reduce(p1, zero), dimensions={0}, to_apply=add
+  ROOT sum = f32[256]{0} add(r0, r1)
+}
+
+ENTRY main {
+  p0 = f32[4,256]{1,0} parameter(0)
+  p1 = f32[16,256]{1,0} parameter(1)
+  ROOT fusion = f32[256]{0} fusion(p0, p1), kind=kLoop, calls=fused_reduces
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> multi_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          multi_reduce_module->entry_computation()->root_instruction());
+  EXPECT_THAT(GetMaxReduceInputElements(*multi_reduce_fusion), Optional(4096));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unbounded_reduce_module,
+                       ParseAndReturnUnverifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_unbounded_reduce {
+  p0 = f32[?,256]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT r0 = f32[256]{0} reduce(p0, zero), dimensions={0}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[?,256]{1,0} parameter(0)
+  ROOT fusion = f32[256]{0} fusion(p0), kind=kLoop, calls=fused_unbounded_reduce
+}
+)"));
+  std::unique_ptr<HloFusionAdaptor> unbounded_reduce_fusion =
+      HloFusionAdaptor::ForInstruction(
+          unbounded_reduce_module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetMaxReduceInputElements(*unbounded_reduce_fusion), std::nullopt);
+}
+
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopPadFusion) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -2049,6 +2217,74 @@ ENTRY main {
   EXPECT_FALSE(ContainsSignificantReduce(*root, &cache));
   cache.Invalidate(root->operand(2));
   EXPECT_TRUE(ContainsSignificantReduce(*root->operand(2), &cache));
+}
+
+TEST_F(GpuFusibleTest, GetMinReduceInputElements) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+multi_reduce_computation {
+  p0.1 = f32[128] parameter(0)
+  p1.1 = f32[32] parameter(1)
+  c0.1 = f32[] constant(0)
+  r_large = f32[] reduce(p0.1, c0.1), dimensions={0}, to_apply=scalar_add
+  r_small = f32[] reduce(p1.1, c0.1), dimensions={0}, to_apply=scalar_add
+  ROOT sum = f32[] add(r_large, r_small)
+}
+
+single_reduce_computation {
+  p0.2 = f32[64] parameter(0)
+  c0.2 = f32[] constant(0)
+  ROOT r = f32[] reduce(p0.2, c0.2), dimensions={0}, to_apply=scalar_add
+}
+
+nested_reduce_computation {
+  p0.3 = f32[64] parameter(0)
+  ROOT nested = f32[] fusion(p0.3), kind=kLoop, calls=single_reduce_computation
+}
+
+loop_computation {
+  p0.4 = f32[16] parameter(0)
+  ROOT mul = f32[16] multiply(p0.4, p0.4)
+}
+
+ENTRY main {
+  p16 = f32[16] parameter(0)
+  p32 = f32[32] parameter(1)
+  p64 = f32[64] parameter(2)
+  p128 = f32[128] parameter(3)
+  p0_16 = f32[0,16] parameter(4)
+  c = f32[] constant(0)
+  direct_reduce = f32[] reduce(p16, c), dimensions={0}, to_apply=scalar_add
+  zero_extent_reduce = f32[0] reduce(p0_16, c), dimensions={1}, to_apply=scalar_add
+  multi_reduce_fusion = f32[] fusion(p128, p32), kind=kLoop, calls=multi_reduce_computation
+  nested_reduce_fusion = f32[] fusion(p64), kind=kLoop, calls=nested_reduce_computation
+  loop_fusion = f32[16] fusion(p16), kind=kLoop, calls=loop_computation
+  ROOT tuple = tuple(direct_reduce, zero_extent_reduce, multi_reduce_fusion, nested_reduce_fusion, loop_fusion)
+}
+)")));
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* root = entry->root_instruction();
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(0)), Optional(16));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(1)), std::nullopt);
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2)), Optional(32));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(3)), Optional(64));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(4)), std::nullopt);
+  EXPECT_EQ(GetMinReduceInputElements(*root), std::nullopt);
+
+  FusionInfoCache cache(device_description());
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(0), &cache),
+              Optional(16));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(1), &cache), std::nullopt);
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2), &cache),
+              Optional(32));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(3), &cache),
+              Optional(64));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(4), &cache), std::nullopt);
+  EXPECT_EQ(GetMinReduceInputElements(*root, &cache), std::nullopt);
+  cache.Invalidate(root->operand(2));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2), &cache),
+              Optional(32));
 }
 
 }  // namespace

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -285,26 +286,39 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests create_memory_requests(*slot.create_allocs);
+  CommandBufferRequests command_buffer_requests;
   Thunk::PrepareParams create_prepare_params{
-      &params, &clique_requests, &create_memory_requests, slot.executor,
-      slot.create_allocs.get()};
+      /*collective_params=*/&params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&create_memory_requests,
+      /*executor=*/slot.executor,
+      /*buffer_allocations=*/slot.create_allocs.get(),
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ABSL_RETURN_IF_ERROR(thunk.Prepare(create_prepare_params));
 
   CollectiveCliqueRequests unused_clique_requests;
   CollectiveMemoryRequests update_memory_requests(*slot.update_allocs);
   Thunk::PrepareParams update_prepare_params{
-      &params, &unused_clique_requests, &update_memory_requests, slot.executor,
-      slot.update_allocs.get()};
+      /*collective_params=*/&params,
+      /*collective_clique_requests=*/&unused_clique_requests,
+      /*collective_memory_requests=*/&update_memory_requests,
+      /*executor=*/slot.executor,
+      /*buffer_allocations=*/slot.update_allocs.get(),
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ABSL_RETURN_IF_ERROR(thunk.Prepare(update_prepare_params));
 
   ABSL_ASSIGN_OR_RETURN(slot.collective_cliques,
                    AcquireCollectiveCliques(params, clique_requests));
 
-  Thunk::InitializeParams init_params;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = slot.executor;
+  init_params.buffer_allocations = slot.create_allocs.get();
   init_params.stream = slot.stream.get();
   init_params.command_buffer_trace_stream = slot.stream.get();
-  init_params.buffer_allocations = slot.create_allocs.get();
   init_params.collective_params = &params;
   init_params.collective_cliques = &slot.collective_cliques;
   init_params.local_device_count = kNumDevices;
@@ -625,9 +639,16 @@ ENTRY entry {
         BufferAllocations buffer_allocs(allocated_buffers, d, &allocator);
         CollectiveCliqueRequests clique_requests;
         CollectiveMemoryRequests memory_requests(buffer_allocs);
-        Thunk::PrepareParams prepare_params{&collective_params,
-                                            &clique_requests, &memory_requests,
-                                            executor, &buffer_allocs};
+        CommandBufferRequests command_buffer_requests;
+        Thunk::PrepareParams prepare_params{
+            /*collective_params=*/&collective_params,
+            /*collective_clique_requests=*/&clique_requests,
+            /*collective_memory_requests=*/&memory_requests,
+            /*executor=*/executor,
+            /*buffer_allocations=*/&buffer_allocs,
+            /*execution_scoped_state=*/nullptr,
+            /*custom_options=*/nullptr,
+            /*command_buffer_requests=*/&command_buffer_requests};
 
         ABSL_RETURN_IF_ERROR(thunk.Prepare(prepare_params));
 

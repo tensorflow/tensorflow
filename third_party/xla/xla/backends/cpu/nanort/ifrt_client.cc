@@ -1609,6 +1609,20 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
   return absl::UnimplementedError("ReshardArrays is not implemented.");
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraySlices(
+    absl::Span<const xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::IndexDomain> index_domains) {
+  return absl::UnimplementedError("CopyArraySlices is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::UpdateArraySlices(absl::Span<xla::ifrt::ArrayRef> arrays,
+                                  absl::Span<const xla::ifrt::ArrayRef> slices,
+                                  absl::Span<const xla::ifrt::Index> origins) {
+  return absl::UnimplementedError("UpdateArraySlices is not implemented.");
+}
+
 tsl::Future<> NanoIfrtClient::GetReadyFuture(
     absl::Span<const ifrt::ValueRef> values) {
   return Ready();

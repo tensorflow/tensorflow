@@ -188,16 +188,9 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
       }
     }
     if (auto val = llvm::dyn_cast_if_present<Value>(offsets[m1])) {
-      if (auto apply_indexing = val.getDefiningOp<::xla::ApplyIndexingOp>()) {
-        OpResult op_result = mlir::cast<OpResult>(val);
-        unsigned result_idx = op_result.getResultNumber();
-        const ::xla::IndexingMap& indexing_map =
-            apply_indexing.getIndexingMap();
-        ::xla::Interval range =
-            indexing_map.GetRangeEvaluator().ComputeExpressionRange(
-                indexing_map.GetSymbolicMap().GetResult(result_idx));
-        if (range.lower < 0 ||
-            range.upper > std::numeric_limits<int32_t>::max() / shape[m0]) {
+      if (std::optional<::xla::Interval> range = ::xla::GetRange(val)) {
+        if (!range->IsFeasible() || range->lower < 0 ||
+            range->upper > std::numeric_limits<int32_t>::max() / shape[m0]) {
           break;
         }
       }
@@ -389,9 +382,8 @@ class CollapseExtractOp : public mlir::OpRewritePattern<ExtractOp> {
 
     Value result = new_extract.getResult();
     if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
-      result = triton::ReshapeOp::create(rewriter, op.getLoc(),
-                                         mapping->transposed_tile_shape, result,
-                                         /*allowReorder=*/false);
+      result = triton::ReshapeOp::create(
+          rewriter, op.getLoc(), mapping->transposed_tile_shape, result);
     }
     if (!absl::c_is_sorted(mapping->transposed_to_orig_order)) {
       result = triton::TransOp::create(rewriter, op.getLoc(), result,
@@ -432,8 +424,7 @@ class CollapseInsertOp : public mlir::OpRewritePattern<InsertOp> {
     }
     if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
       new_src = triton::ReshapeOp::create(
-          rewriter, op.getLoc(), mapping->collapsed_tile_shape, new_src,
-          /*allowReorder=*/false);
+          rewriter, op.getLoc(), mapping->collapsed_tile_shape, new_src);
     }
 
     InsertOp new_insert = InsertOp::create(

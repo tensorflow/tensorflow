@@ -543,12 +543,26 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "ici_bandwidth",
+    hdrs = ["ici_bandwidth.h"],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_collective_performance_model",
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
+        ":ici_bandwidth",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
@@ -719,6 +733,7 @@ cc_library(
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
+        "//xla/codegen/tiling:tile",
         "//xla/codegen/tiling:tiled_hlo",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
@@ -729,6 +744,8 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -784,7 +801,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":hlo_op_profile_proto_cc",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",

@@ -133,6 +133,5 @@ xla_cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
-        "@stablehlo//:linalg_passes",
     ],
 )

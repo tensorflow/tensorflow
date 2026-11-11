@@ -21,16 +21,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
@@ -40,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -172,6 +178,150 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(CpuFusionEmitterTest,
+       ScatterReorderedOperandsWritesToResultSliceAndHonorsNonInvariant) {
+  constexpr absl::string_view kHlo = R"(
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    scatter_computation {
+      indices = s32[2,1] parameter(0)
+      updates = s32[2,1] parameter(1)
+      operand = s32[4] parameter(2)
+      ROOT s = s32[4] scatter(operand, indices, updates),
+        update_window_dims={1},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add
+    }
+
+    ENTRY main {
+      p0 = s32[2,1] parameter(0)
+      p1 = s32[2,1] parameter(1)
+      p2 = s32[4] parameter(2)
+      ROOT wrapped_scatter = s32[4] fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation,
+        frontend_attributes={xla.no_invariant_operands="0"}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
+  ASSERT_OK_AND_ASSIGN(KernelDefinition<MlirKernelSource> kernel_definition,
+                       emitter.EmitKernelDefinition());
+  EXPECT_FALSE(kernel_definition.spec().invariant_arguments().contains(0));
+  EXPECT_TRUE(kernel_definition.spec().invariant_arguments().contains(1));
+  EXPECT_FALSE(kernel_definition.spec().invariant_arguments().contains(2));
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
+  const llvm::Function* wrapped =
+      llvm_source.module()->getFunction("wrapped_scatter_wrapped");
+  ASSERT_NE(wrapped, nullptr);
+  // Operand 0 is marked not invariant, operand 1 is read only, operand 2 and
+  // arg 3 share the writable result slice, and args 4..6 are the workgroup IDs.
+  ASSERT_EQ(wrapped->arg_size(), 7);
+  EXPECT_FALSE(wrapped->getArg(0)->onlyReadsMemory());
+  EXPECT_FALSE(wrapped->getArg(0)->hasNoAliasAttr());
+  EXPECT_TRUE(wrapped->getArg(1)->onlyReadsMemory());
+  EXPECT_TRUE(wrapped->getArg(1)->hasNoAliasAttr());
+  EXPECT_FALSE(wrapped->getArg(2)->onlyReadsMemory());
+  EXPECT_TRUE(wrapped->getArg(2)->hasNoAliasAttr());
+  EXPECT_FALSE(wrapped->getArg(2)->use_empty());
+  EXPECT_TRUE(wrapped->getArg(3)->use_empty());
+}
+
+TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {
+  constexpr absl::string_view kSortHlo = R"(
+    HloModule sort_module
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT
+    }
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ROOT sorted = f32[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )";
+  constexpr absl::string_view kExpectedMlir = R"(
+    CHECK:      func.func @compare(
+    CHECK-SAME:   %[[ARG0:.+]]: tensor<f32>, %[[ARG1:.+]]: tensor<f32>) -> i1
+    CHECK-SAME:   xla.cpu.is_comparator
+    CHECK-NOT:    xla.entry
+    CHECK:        %[[LHS:.+]] = tensor.extract %[[ARG0]][] : tensor<f32>
+    CHECK:        %[[RHS:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+    CHECK:        %[[CMP:.+]] = xla.pure_call @compare_lt(%[[LHS]], %[[RHS]]) : (f32, f32) -> i8
+    CHECK:        %[[RES:.+]] = arith.trunci %[[CMP]] : i8 to i1
+    CHECK:        return %[[RES]] : i1
+  )";
+  constexpr absl::string_view kExpectedLlvm = R"(
+    CHECK:      define zeroext i1 @compare(ptr noundef nonnull %{{.+}}) #[[ATTR:[0-9]+]]
+    CHECK:      attributes #[[ATTR]] = {{{.*}}uwtable{{[ }]}}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSortHlo));
+  const HloComputation* comparator =
+      hlo_module->entry_computation()->root_instruction()->to_apply();
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource mlir_source,
+      EmitSortComparator(*mlir_context, *comparator, "compare"));
+  EXPECT_THAT(RunFileCheck(mlir_source.ToString(), kExpectedMlir),
+              absl_testing::IsOkAndHolds(true));
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
+                       compiler.Compile(std::move(mlir_source)));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), kExpectedLlvm),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest, SortComparatorUnsupportedOp) {
+  constexpr absl::string_view kSortHlo = R"(
+    HloModule sort_module
+    cond {
+      state = s32[] parameter(0)
+      limit = s32[] constant(4)
+      ROOT lt = pred[] compare(state, limit), direction=LT
+    }
+    body {
+      state = s32[] parameter(0)
+      one = s32[] constant(1)
+      ROOT next = s32[] add(state, one)
+    }
+    compare {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      loop = s32[] while(lhs), condition=cond, body=body
+      ROOT lt = pred[] compare(loop, rhs), direction=LT
+    }
+    ENTRY main {
+      p0 = s32[8] parameter(0)
+      ROOT sorted = s32[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSortHlo));
+  const HloComputation* comparator =
+      hlo_module->entry_computation()->root_instruction()->to_apply();
+  auto mlir_context = FusionCompiler::CreateContext();
+  EXPECT_THAT(EmitSortComparator(*mlir_context, *comparator, "compare"),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_P(CpuFusionEmitterTest, WorkDimensionsTest) {
@@ -402,6 +552,245 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<GetWorkDimensionsTestCase>& info) {
       return info.param.test_name;
     });
+
+TEST_F(CpuFusionEmitterTest, ConcatenateMatchingLayoutEmitsMemcpy) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule concat_module
+    fused_computation {
+      p0 = f32[4,2,8]{2,1,0} parameter(0)
+      p1 = f32[4,3,8]{2,1,0} parameter(1)
+      ROOT concat = f32[4,5,8]{2,1,0} concatenate(p0, p1), dimensions={1}
+    }
+    ENTRY main {
+      p0 = f32[4,2,8]{2,1,0} parameter(0)
+      p1 = f32[4,3,8]{2,1,0} parameter(1)
+      ROOT wrapped_concat = f32[4,5,8]{2,1,0} fusion(p0, p1),
+        kind=kLoop, calls=fused_computation,
+        backend_config={"outer_dimension_partitions":["2"]}
+    }
+  )";
+  constexpr absl::string_view kExpectedMlir = R"(
+    CHECK:      func.func @wrapped_concat(
+    CHECK-SAME:   xla.entry
+    CHECK-NOT:    xla.loop
+    CHECK:        scf.for
+    CHECK:          xla.copy_slice {{.*}} count(16)
+    CHECK:          xla.copy_slice {{.*}} count(24)
+  )";
+  std::string expected_llvm = absl::Substitute(R"(
+    CHECK:      define ptr @wrapped_concat(
+    CHECK-NOT:    call void @llvm.memcpy
+    CHECK:        call void @llvm.assume(i1 true) [ "align"(ptr %{{.*}}, i64 $0) ]
+    CHECK:      define internal void @wrapped_concat_wrapped(
+    CHECK:        call void @llvm.memcpy.p0.p0.i64(ptr align 4 %{{.*}}, ptr align 4 %{{.*}}, i64 64, i1 false)
+    CHECK:        call void @llvm.memcpy.p0.p0.i64(ptr align 4 %{{.*}}, ptr align 4 %{{.*}}, i64 96, i1 false)
+  )",
+                                               MinAlign());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      KernelDefinition<MlirKernelSource> kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                       /*use_unique_c_name=*/false,
+                       /*enable_tiled_emitter=*/false));
+  EXPECT_EQ(kernel_definition.spec().work_dimensions().num_work_groups.x, 2);
+  EXPECT_THAT(
+      RunFileCheck(kernel_definition.source().ToString(), kExpectedMlir),
+      absl_testing::IsOkAndHolds(true));
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), expected_llvm),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest,
+       ConcatenateNoOuterDimsForcesSingleWorkGroupAndEmitsMemcpy) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule concat_module
+    fused_computation {
+      p0 = f32[8,16]{1,0} parameter(0)
+      p1 = f32[12,16]{1,0} parameter(1)
+      ROOT concat = f32[20,16]{1,0} concatenate(p0, p1), dimensions={0}
+    }
+    ENTRY main {
+      p0 = f32[8,16]{1,0} parameter(0)
+      p1 = f32[12,16]{1,0} parameter(1)
+      ROOT wrapped_concat = f32[20,16]{1,0} fusion(p0, p1),
+        kind=kLoop, calls=fused_computation,
+        backend_config={"outer_dimension_partitions":["4"]}
+    }
+  )";
+  std::string expected_llvm = absl::Substitute(R"(
+    CHECK: call void @llvm.memcpy.p0.p0.i64(ptr align $0 %{{.*}}, ptr align $0 %{{.*}}, i64 512, i1 false)
+    CHECK: call void @llvm.memcpy.p0.p0.i64(ptr align $0 %{{.*}}, ptr align $0 %{{.*}}, i64 768, i1 false)
+  )",
+                                               MinAlign());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      KernelDefinition<MlirKernelSource> kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                       /*use_unique_c_name=*/false,
+                       /*enable_tiled_emitter=*/false));
+  EXPECT_EQ(kernel_definition.spec().work_dimensions().num_work_groups.x, 1);
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), expected_llvm),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest, ConcatenateMismatchedLayoutFallsBackToLoop) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule concat_module
+    fused_computation {
+      p0 = f32[4,8]{0,1} parameter(0)
+      p1 = f32[6,8]{1,0} parameter(1)
+      ROOT concat = f32[10,8]{1,0} concatenate(p0, p1), dimensions={0}
+    }
+    ENTRY main {
+      p0 = f32[4,8]{0,1} parameter(0)
+      p1 = f32[6,8]{1,0} parameter(1)
+      ROOT wrapped_concat = f32[10,8]{1,0} fusion(p0, p1),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  constexpr absl::string_view kExpectedMlir = R"(
+    CHECK-NOT: xla.copy_slice
+    CHECK:     xla.loop
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      KernelDefinition<MlirKernelSource> kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                       /*use_unique_c_name=*/false,
+                       /*enable_tiled_emitter=*/false));
+  EXPECT_THAT(
+      RunFileCheck(kernel_definition.source().ToString(), kExpectedMlir),
+      absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest,
+       ConcatenateNonDefaultMatchingLayoutUsesPhysicalOrderMemcpy) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule concat_module
+    fused_computation {
+      p0 = f32[2,4,3]{0,2,1} parameter(0)
+      p1 = f32[2,4,5]{0,2,1} parameter(1)
+      ROOT concat = f32[2,4,8]{0,2,1} concatenate(p0, p1), dimensions={2}
+    }
+    ENTRY main {
+      p0 = f32[2,4,3]{0,2,1} parameter(0)
+      p1 = f32[2,4,5]{0,2,1} parameter(1)
+      ROOT wrapped_concat = f32[2,4,8]{0,2,1} fusion(p0, p1),
+        kind=kLoop, calls=fused_computation,
+        backend_config={"outer_dimension_partitions":["2"]}
+    }
+  )";
+  constexpr absl::string_view kExpectedMlir = R"(
+    CHECK:      func.func @wrapped_concat(
+    CHECK-NOT:    xla.loop
+    CHECK:        scf.for
+    CHECK:          xla.copy_slice {{.*}} count(6)
+    CHECK:          xla.copy_slice {{.*}} count(10)
+  )";
+  constexpr absl::string_view kExpectedLlvm = R"(
+    CHECK: call void @llvm.memcpy{{.*}}i64 24
+    CHECK: call void @llvm.memcpy{{.*}}i64 40
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      KernelDefinition<MlirKernelSource> kernel_definition,
+      EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                       /*use_unique_c_name=*/false,
+                       /*enable_tiled_emitter=*/false));
+  EXPECT_EQ(kernel_definition.spec().work_dimensions().num_work_groups.x, 2);
+  EXPECT_THAT(
+      RunFileCheck(kernel_definition.source().ToString(), kExpectedMlir),
+      absl_testing::IsOkAndHolds(true));
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), kExpectedLlvm),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest, ConcatenateComplexAndNarrowFloatCompileToMemcpy) {
+  for (absl::string_view elem_type : {"c64", "f6e3m2fn"}) {
+    std::string hlo = absl::Substitute(R"(
+      HloModule concat_module
+      fused_computation {
+        p0 = $0[4,3]{1,0} parameter(0)
+        p1 = $0[4,5]{1,0} parameter(1)
+        ROOT concat = $0[4,8]{1,0} concatenate(p0, p1), dimensions={1}
+      }
+      ENTRY main {
+        p0 = $0[4,3]{1,0} parameter(0)
+        p1 = $0[4,5]{1,0} parameter(1)
+        ROOT wrapped_concat = $0[4,8]{1,0} fusion(p0, p1),
+          kind=kLoop, calls=fused_computation
+      }
+    )",
+                                       elem_type);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                         ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                         RunBufferAssignment(*hlo_module));
+    const auto* fusion = Cast<HloFusionInstruction>(
+        hlo_module->entry_computation()->root_instruction());
+    auto mlir_context = FusionCompiler::CreateContext();
+    ASSERT_OK_AND_ASSIGN(
+        KernelDefinition<MlirKernelSource> kernel_definition,
+        EmitFusionKernel(*mlir_context, *fusion, buffer_assignment.get(),
+                         /*use_unique_c_name=*/false,
+                         /*enable_tiled_emitter=*/false));
+    FusionCompiler compiler(mlir_context.get(),
+                            FusionCompiler::Options{512, 1, true});
+    ASSERT_OK_AND_ASSIGN(
+        LlvmKernelSource llvm_source,
+        compiler.Compile(std::move(kernel_definition).TakeSource()));
+    EXPECT_THAT(
+        RunFileCheck(llvm_source.ToString(),
+                     elem_type == "c64"
+                         ? "CHECK: call void @llvm.memcpy{{.*}}i64 24\nCHECK: "
+                           "call void @llvm.memcpy{{.*}}i64 40"
+                         : "CHECK: call void @llvm.memcpy{{.*}}i64 3\nCHECK: "
+                           "call void @llvm.memcpy{{.*}}i64 5"),
+        absl_testing::IsOkAndHolds(true));
+  }
+}
 
 }  // namespace
 }  // namespace cpu

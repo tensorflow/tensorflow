@@ -27,6 +27,7 @@ extern "C" {
 #endif
 
 typedef struct PJRT_RawBuffer PJRT_RawBuffer;
+typedef struct PJRT_ExternalDmaAccess PJRT_ExternalDmaAccess;
 
 typedef struct PJRT_RawBuffer_FunctionTable {
   size_t struct_size;
@@ -93,14 +94,52 @@ typedef struct PJRT_RawBuffer_FunctionTable {
                            void (*allocation_event_callback)(PJRT_Error* status,
                                                              void* user_data),
                            void* allocation_event_user_data);
+  // Starts one access to `raw_buffer` by an external DMA engine, which reaches
+  // device memory through the dma-buf the plugin exports. The caller ends the
+  // access with `access->vtable->destroy`; see PJRT_ExternalDmaAccess.
+  // May be nullptr on older plugins (check struct_size).
+  PJRT_NO_DISCARD PJRT_Error* (*acquire_external_dma_access)(
+      PJRT_RawBuffer* raw_buffer, PJRT_ExternalDmaAccess* access);
 } PJRT_RawBuffer_FunctionTable;
 
 struct PJRT_RawBuffer {
   const PJRT_RawBuffer_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, schedule_copy_to);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable,
+                          acquire_external_dma_access);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
+
+typedef struct PJRT_ExternalDmaAccess_FunctionTable {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  // Ends the access. Call it exactly once, when the engine is finished with
+  // the buffer, including when the event carries an error.
+  void (*destroy)(PJRT_ExternalDmaAccess* access);
+  // Returns the event that becomes ready once the buffer is allocated and its
+  // location inside the dma-buf is final, or carries the error if the buffer
+  // cannot be reached by external DMA. The access owns the returned reference;
+  // it is valid until `destroy`.
+  PJRT_DeviceEvent (*get_event)(const PJRT_ExternalDmaAccess* access);
+  // Returns the dma-buf fd, byte offset and byte size of the buffer behind
+  // `access`. `offset` is measured from the start of the dma-buf, including
+  // for sliced raw buffers. The plugin owns `fd`. Only valid once the event is
+  // ready without error.
+  PJRT_NO_DISCARD PJRT_Error* (*get_info)(const PJRT_ExternalDmaAccess* access,
+                                          int* fd, uint64_t* offset,
+                                          uint64_t* size);
+} PJRT_ExternalDmaAccess_FunctionTable;
+
+// One external DMA access to a PJRT_RawBuffer. From the moment its event is
+// ready until `destroy` is called, the memory does not move.
+struct PJRT_ExternalDmaAccess {
+  const PJRT_ExternalDmaAccess_FunctionTable* vtable;
+  // Opaque; owned by the plugin.
+  void* access;
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExternalDmaAccess_FunctionTable, get_info);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExternalDmaAccess, access);
 
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {
   size_t struct_size;

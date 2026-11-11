@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::emitters {
 
@@ -100,7 +98,7 @@ void FillKernelArgumentAttributes(
     kernel_argument.set_written(
         buffers_written.contains(kernel_argument.slice()));
 
-    kernel_argument.set_aliased(kernel_argument.written() && [&] {
+    kernel_argument.set_aliased([&] {
       for (size_t j = 0; j < kernel_arguments.size(); ++j) {
         if (i == j ||
             kernel_arguments[j].kind() == KernelArgument::Kind::kUnmanaged) {
@@ -112,7 +110,9 @@ void FillKernelArgumentAttributes(
           continue;
         }
 
-        if (kernel_argument.slice().OverlapsWith(
+        if ((kernel_argument.written() ||
+             buffers_written.contains(other_kernel_argument.slice())) &&
+            kernel_argument.slice().OverlapsWith(
                 other_kernel_argument.slice())) {
           return true;
         }
@@ -200,7 +200,7 @@ absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
     absl::Span<const Shape> unmanaged_arguments,
     absl::Span<const int32_t> interleaved_output_indices) {
   absl::flat_hash_set<int> no_invariant_operands =
-      NonInvariantOperands(*hlo_instruction);
+      frontend::NonInvariantOperands(*hlo_instruction);
 
   std::vector<KernelArgument> operand_arguments;
   operand_arguments.reserve(hlo_instruction->operand_count());

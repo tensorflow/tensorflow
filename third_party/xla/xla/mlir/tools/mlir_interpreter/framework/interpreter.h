@@ -132,7 +132,8 @@ class InterpreterScope {
     auto ret = values_.find(v);
     if (ret == values_.end()) {
       if (!parent_scope_) {
-        v.dump();
+        v.print(llvm::errs());
+        llvm::errs() << "\n";
       }
 
       assert(parent_scope_ && "value not found");
@@ -153,7 +154,9 @@ class InterpreterScope {
         return it;
       }
     }
-    if (!parent_scope_ && optional) return nullptr;
+    if (!parent_scope_ && optional) {
+      return nullptr;
+    }
     assert(parent_scope_ && "side channel not found");
     return parent_scope_->GetSideChannel<T>(optional);
   }

@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/service/spmd/collective_permute_motion.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/stream_executor/device_description.h"
@@ -114,8 +114,7 @@ void AddSPMDPasses(
       (*auto_sharding_func)(spmd_pipeline);
     }
     spmd_pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
-        config.allow_spmd_sharding_propagation_to_output());
+        /*is_spmd=*/true, /*propagate_metadata=*/false);
   }
   std::optional<int64_t> oper_size_threshold = std::nullopt;
   if (hlo_module->config()
@@ -128,7 +127,7 @@ void AddSPMDPasses(
   }
   {
     const auto& debug_options = hlo_module->config().debug_options();
-    auto spmd_options = spmd::StatefulRngSpmdPartitioner::GetDefaultOptions();
+    spmd::SpmdPartitionerOptions spmd_options;
     spmd_options.threshold_for_windowed_einsum_mib =
         debug_options.xla_gpu_threshold_for_windowed_einsum_mib();
     spmd_options.unroll_windowed_einsum =
@@ -140,7 +139,7 @@ void AddSPMDPasses(
     spmd_options.max_windowed_einsum_iteration = max_windowed_einsum_iteration;
     spmd_options.enable_dynamic_slice_collective_broadcast =
         debug_options.xla_spmd_enable_dynamic_slice_collective_broadcast();
-    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
         num_partitions, hlo_module->config().replica_count(),
         std::move(spmd_options));
   }
@@ -155,7 +154,6 @@ void AddSPMDPasses(
   // we need to call the inliner again here.
   spmd_pipeline.AddPass<xla::CallInliner>(
       /*single_call_site=*/false,
-      /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
       /*override_policy=*/
       [](const xla::CallGraph& call_graph,

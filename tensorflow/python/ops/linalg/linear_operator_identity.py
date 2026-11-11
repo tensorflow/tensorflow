@@ -773,11 +773,12 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   def _linop_inverse(self) -> "LinearOperatorScaledIdentity":
     return LinearOperatorScaledIdentity(
         num_rows=self._num_rows,
-        multiplier=1. / self.multiplier,
+        multiplier=1.0 / self.multiplier,
         is_non_singular=self.is_non_singular,
-        is_self_adjoint=True,
+        is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
-        is_square=True)
+        is_square=True,
+    )
 
   def _linop_matmul(
       self,

@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -282,6 +283,12 @@ struct DeviceBufferPair {
   se::DeviceAddressBase destination_buffer;
   int64_t source_memory_space;
   int64_t destination_memory_space;
+
+  // Only buffers in the collective memory space are remotely accessible.
+  bool IsRMA() const {
+    return source_memory_space == Layout::kCollectiveMemorySpace &&
+           destination_memory_space == Layout::kCollectiveMemorySpace;
+  }
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(

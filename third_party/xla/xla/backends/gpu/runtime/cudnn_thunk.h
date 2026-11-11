@@ -50,7 +50,9 @@ class CuDnnThunk : public TracedCommand {
  public:
   CuDnnThunk(std::string fingerprint, ThunkInfo, std::vector<ShapedSlice> args,
              std::vector<bool> output_args, bool should_memzero = false,
-             std::optional<int64_t> sdpa_dropout_seed = std::nullopt);
+             std::optional<int64_t> sdpa_dropout_seed = std::nullopt,
+             std::optional<se::dnn::DnnGraphTargetDevice> target_device =
+                 std::nullopt);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
   ~CuDnnThunk() override = default;
@@ -102,6 +104,7 @@ class CuDnnThunk : public TracedCommand {
   bool should_memzero_;
   // Sdpa dropout seed
   std::optional<int64_t> sdpa_dropout_seed_;
+  std::optional<se::dnn::DnnGraphTargetDevice> target_device_;
 };
 
 }  // namespace gpu

@@ -16,26 +16,26 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_ARGUMENTS_H_
 #define XLA_BACKENDS_CPU_CODEGEN_COMPUTATION_KERNEL_ARGUMENTS_H_
 
-#include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
 
-// Deterministic argument table for a computation emitted as a single kernel.
+// Deterministic parameter regions for a computation emitted as a single kernel.
 //
-// Slices of parameters and of operands of all instructions become arguments
-// and slices of all non-parameter instructions become results, including
-// nested tuple elements and instructions of nested non-fusion computations.
-// Thread-local slices are skipped. Entries are deduplicated by (shape, slice)
-// in first-visit order.
+// Each parameter is a disjoint byte region of one allocation. It covers a
+// maximal group of overlapping non empty leaf array slices from the computation
+// and its nested non fusion computations. Thread local slices and tuple index
+// tables are skipped. Read only regions (`arguments`) come before writable
+// regions (`results`), each ordered by first visit. Parameter shapes are
+// `u8[size]`.
 //
 // The fingerprint does not use emitters::GetComputationFingerprint, which only
 // describes kernel operands and outputs, not the buffers of intermediate
@@ -47,36 +47,30 @@ class ComputationKernelArguments {
   static absl::StatusOr<ComputationKernelArguments> Create(
       const HloComputation& computation, const BufferAssignment& assignment);
 
+  // Merges overlapping slices of the same allocation into covering slices,
+  // sorted by allocation index and offset. Empty slices are ignored; adjacent
+  // non overlapping slices remain separate.
+  static std::vector<BufferAllocation::Slice> MergeOverlapping(
+      absl::Span<const BufferAllocation::Slice> slices);
+
   const KernelSpec::Buffers& arguments() const { return arguments_; }
   const KernelSpec::Buffers& results() const { return results_; }
 
-  // Index of each slice in the buffer table of arguments followed by results.
-  // A slice listed more than once maps to its last position.
-  const absl::flat_hash_map<BufferAllocation::Slice, int64_t>&
-  buffer_table_index() const {
-    return buffer_table_index_;
-  }
-
-  // Equal fingerprints mean a kernel emitted by ComputationKernelEmitter for
-  // one computation is valid for the other's arguments and results. Other
-  // emitters must check what they bake into the code. Unset if the kernel must
-  // not be reused.
-  const std::optional<std::string>& fingerprint() const { return fingerprint_; }
+  // Equal fingerprints mean a kernel emitted for one computation is valid for
+  // the other's arguments and results.
+  const std::string& fingerprint() const { return fingerprint_; }
 
  private:
-  ComputationKernelArguments(
-      KernelSpec::Buffers arguments, KernelSpec::Buffers results,
-      absl::flat_hash_map<BufferAllocation::Slice, int64_t> buffer_table_index,
-      std::optional<std::string> fingerprint)
+  ComputationKernelArguments(KernelSpec::Buffers arguments,
+                             KernelSpec::Buffers results,
+                             std::string fingerprint)
       : arguments_(std::move(arguments)),
         results_(std::move(results)),
-        buffer_table_index_(std::move(buffer_table_index)),
         fingerprint_(std::move(fingerprint)) {}
 
   KernelSpec::Buffers arguments_;
   KernelSpec::Buffers results_;
-  absl::flat_hash_map<BufferAllocation::Slice, int64_t> buffer_table_index_;
-  std::optional<std::string> fingerprint_;
+  std::string fingerprint_;
 };
 
 }  // namespace xla::cpu

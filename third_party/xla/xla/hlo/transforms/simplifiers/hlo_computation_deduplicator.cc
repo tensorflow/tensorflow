@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 
 bool HloComputationDeduplicator::ContainsLargeConstants(HloComputation* comp) {
-  int total_size = 0;
+  int64_t total_size = 0;
   for (HloInstruction* instruction : comp->instructions()) {
     if (instruction->IsConstant()) {
       total_size += ShapeUtil::ArrayDataSize(instruction->literal().shape());

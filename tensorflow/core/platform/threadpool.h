@@ -28,8 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace thread {
-using tsl::thread::EigenEnvironment;  // NOLINT
-using tsl::thread::ThreadPool;        // NOLINT
+using tsl::thread::ThreadPool;  // NOLINT
 
 }  // namespace thread
 }  // namespace tensorflow

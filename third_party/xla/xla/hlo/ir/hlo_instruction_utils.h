@@ -26,12 +26,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_instruction_utils {
@@ -48,6 +50,12 @@ bool KeepsBitwidth(const HloInstruction&);
 void AddOrUpdateVectorOfPairsAsAttribute(
     HloInstruction* instr, std::string attr_name,
     std::vector<std::pair<int64_t, int64_t>> intervals);
+
+// Removes the specified frontend attributes, then adds or overwrites `updates`.
+// Updates take precedence over removals. Other attributes are unchanged.
+void UpdateFrontendAttributes(
+    HloInstruction* instruction, FrontendAttributes updates,
+    absl::Span<const absl::string_view> attributes_to_remove = {});
 
 // Returns the nesting depth in computations from the top-level computation of
 // `hlo`. i.e. 0 = in the top-level computation, ...
@@ -140,7 +148,13 @@ HloInstructionT* TraceAsyncDataflowImpl(
         return nullptr;
       }
       if (index.empty()) {
-        for (int64_t idx = 0; idx < instr->operand_count(); ++idx) {
+        // An empty ShapeIndex at a kTuple rebuilds an async context tuple
+        // `((operands...), output, sync_state...)`. Visit producer defined
+        // elements 1..n-1 before element 0, which may forward an input operand
+        // shared with a sibling async op.
+        const int64_t n = instr->operand_count();
+        for (int64_t i = 1; i <= n; ++i) {
+          const int64_t idx = i % n;
           record_step(idx);
           HloInstructionT* res =
               TraceAsyncDataflowImpl(GetHloOperand(instr, idx), is_target,

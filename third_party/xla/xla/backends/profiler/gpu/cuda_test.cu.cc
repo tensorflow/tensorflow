@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <atomic>
+#include <functional>
+#include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -263,6 +266,201 @@ void CudaGraphCreateAndExecute() {
 }
 
 bool IsCudaNewEnoughForGraphTraceTest() { return true; }
+
+namespace {
+
+__global__ void SetCondKernel(cudaGraphConditionalHandle handle) {
+  cudaGraphSetConditional(handle, 1);
+}
+
+__global__ void ChildBodyKernel(int* out) {
+  for (int i = 0; i < 256; ++i) {
+    out[i] += 1;
+  }
+}
+
+}  // namespace
+
+cudaError_t ExecuteGraphBeforeDuringAndAfterProfiler(
+    const std::function<void()>& start_profiler,
+    const std::function<void()>& stop_profiler) {
+  cudaStream_t stream = nullptr;
+  cudaError_t err = cudaStreamCreate(&stream);
+  if (err != cudaSuccess) return err;
+
+  cudaGraph_t graph = nullptr;
+  err = cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
+  if (err != cudaSuccess) return err;
+  empty<<<1, 1, 0, stream>>>();
+  err = cudaStreamEndCapture(stream, &graph);
+  if (err != cudaSuccess) return err;
+
+  cudaGraphExec_t graph_exec = nullptr;
+  err = cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0);
+  if (err != cudaSuccess) return err;
+
+  // Launch before profiling starts.
+  err = cudaGraphLaunch(graph_exec, stream);
+  if (err == cudaSuccess) err = cudaStreamSynchronize(stream);
+  if (err != cudaSuccess) return err;
+
+  start_profiler();
+
+  // Launch while profiling is active (CUPTI instruments the graph exec).
+  err = cudaGraphLaunch(graph_exec, stream);
+  if (err == cudaSuccess) err = cudaStreamSynchronize(stream);
+  if (err != cudaSuccess) {
+    stop_profiler();
+    return err;
+  }
+
+  stop_profiler();
+
+  // Launch after profiling stops (if cuptiFinalize() was called, the
+  // CUPTI-instrumented graph_exec faults with cudaErrorIllegalAddress = 700).
+  cudaError_t post_err = cudaGraphLaunch(graph_exec, stream);
+  if (post_err == cudaSuccess) {
+    post_err = cudaStreamSynchronize(stream);
+  }
+  if (post_err == cudaSuccess) {
+    cudaGraphExecDestroy(graph_exec);
+    cudaGraphDestroy(graph);
+    cudaStreamDestroy(stream);
+  }
+  return post_err;
+}
+
+cudaError_t ExecuteConcurrentConditionalGraphUpdateDuringProfiler(
+    int max_profiler_sessions,
+    const std::function<bool()>& run_single_profiler_session) {
+  int* d_out = nullptr;
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&d_out), 256 * sizeof(int));
+  if (err != cudaSuccess) return err;
+  err = cudaMemset(d_out, 0, 256 * sizeof(int));
+  if (err != cudaSuccess) return err;
+
+  cudaGraph_t parent_graph = nullptr;
+  err = cudaGraphCreate(&parent_graph, 0);
+  if (err != cudaSuccess) return err;
+
+  cudaGraphConditionalHandle handle{};
+  err = cudaGraphConditionalHandleCreate(&handle, parent_graph, 1,
+                                         cudaGraphCondAssignDefault);
+  if (err != cudaSuccess) return err;
+
+  cudaGraphNodeParams setter_params{};
+  setter_params.type = cudaGraphNodeTypeKernel;
+  void* setter_args[] = {&handle};
+  setter_params.kernel.func = reinterpret_cast<void*>(SetCondKernel);
+  setter_params.kernel.gridDim = dim3(1, 1, 1);
+  setter_params.kernel.blockDim = dim3(1, 1, 1);
+  setter_params.kernel.kernelParams = setter_args;
+  cudaGraphNode_t setter_node = nullptr;
+  err = AddGraphNode(&setter_node, parent_graph, nullptr, 0, &setter_params);
+  if (err != cudaSuccess) return err;
+
+  cudaGraphNodeParams cond_params{};
+  cond_params.type = cudaGraphNodeTypeConditional;
+  cond_params.conditional.handle = handle;
+  cond_params.conditional.type = cudaGraphCondTypeIf;
+  cond_params.conditional.size = 1;
+  cudaGraphNode_t cond_node = nullptr;
+  err = AddGraphNode(&cond_node, parent_graph, &setter_node, 1, &cond_params);
+  if (err != cudaSuccess) return err;
+  cudaGraph_t body_graph = cond_params.conditional.phGraph_out[0];
+
+  cudaStream_t stream = nullptr;
+  err = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+  if (err != cudaSuccess) return err;
+
+  cudaGraph_t init_child = nullptr;
+  err = cudaGraphCreate(&init_child, 0);
+  if (err != cudaSuccess) return err;
+  err = cudaStreamBeginCaptureToGraph(stream, init_child, nullptr, nullptr, 0,
+                                      cudaStreamCaptureModeThreadLocal);
+  if (err != cudaSuccess) return err;
+  ChildBodyKernel<<<1, 32, 0, stream>>>(d_out);
+  err = cudaStreamEndCapture(stream, &init_child);
+  if (err != cudaSuccess) return err;
+
+  cudaGraphNode_t body_child_node = nullptr;
+  err = cudaGraphAddChildGraphNode(&body_child_node, body_graph, nullptr, 0,
+                                   init_child);
+  if (err != cudaSuccess) return err;
+  cudaGraphDestroy(init_child);
+
+  cudaGraphExec_t parent_exec = nullptr;
+  err = cudaGraphInstantiate(&parent_exec, parent_graph, nullptr, nullptr, 0);
+  if (err != cudaSuccess) return err;
+
+  std::atomic<bool> running{true};
+  std::atomic<cudaError_t> worker_err{cudaSuccess};
+
+  std::thread worker([&]() {
+    cudaSetDevice(0);
+    while (running.load(std::memory_order_relaxed)) {
+      cudaGraph_t updated_child = nullptr;
+      cudaError_t step_err = cudaGraphCreate(&updated_child, 0);
+      if (step_err != cudaSuccess) {
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+      step_err =
+          cudaStreamBeginCaptureToGraph(stream, updated_child, nullptr, nullptr,
+                                        0, cudaStreamCaptureModeThreadLocal);
+      if (step_err != cudaSuccess) {
+        cudaGraphDestroy(updated_child);
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+      ChildBodyKernel<<<1, 32, 0, stream>>>(d_out);
+      step_err = cudaStreamEndCapture(stream, &updated_child);
+      if (step_err != cudaSuccess) {
+        cudaGraphDestroy(updated_child);
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+      step_err = cudaGraphExecChildGraphNodeSetParams(
+          parent_exec, body_child_node, updated_child);
+      cudaGraphDestroy(updated_child);
+      if (step_err != cudaSuccess) {
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+      step_err = cudaGraphLaunch(parent_exec, stream);
+      if (step_err != cudaSuccess) {
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+      step_err = cudaStreamSynchronize(stream);
+      if (step_err != cudaSuccess) {
+        worker_err.store(step_err, std::memory_order_relaxed);
+        break;
+      }
+    }
+  });
+
+  for (int i = 0; i < max_profiler_sessions &&
+                  worker_err.load(std::memory_order_relaxed) == cudaSuccess;
+       ++i) {
+    if (!run_single_profiler_session()) {
+      break;
+    }
+  }
+
+  running.store(false, std::memory_order_relaxed);
+  worker.join();
+
+  cudaError_t final_err = worker_err.load(std::memory_order_relaxed);
+  if (final_err == cudaSuccess) {
+    cudaGraphExecDestroy(parent_exec);
+    cudaGraphDestroy(parent_graph);
+    cudaStreamDestroy(stream);
+    cudaFree(d_out);
+  }
+  return final_err;
+}
 
 }  // namespace test
 }  // namespace profiler

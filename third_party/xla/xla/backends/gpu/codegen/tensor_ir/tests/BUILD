@@ -48,18 +48,22 @@ xla_test(
         "//xla/backends/gpu/runtime:thunk_proto_cc",
         "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:launch_dim",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
     ],
 )
 

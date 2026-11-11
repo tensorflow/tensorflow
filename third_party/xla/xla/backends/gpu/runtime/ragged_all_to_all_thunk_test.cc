@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -295,18 +296,25 @@ TEST(RaggedAllToAllThunkTest, RecordCommandBufferCreateAndUpdate) {
                                  allocator.get());
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations1);
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor,
-                                      &allocations1};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&collective_params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations1,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(thunk.Prepare(prepare_params));
   ASSERT_OK_AND_ASSIGN(
       CollectiveCliques collective_cliques,
       AcquireCollectiveCliques(collective_params, clique_requests));
 
-  Thunk::InitializeParams init_params;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &allocations1;
+  init_params.stream = stream.get();
   init_params.collective_params = &collective_params;
   init_params.collective_cliques = &collective_cliques;
   init_params.local_device_count = 1;
@@ -541,6 +549,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           num_row_elements: 5
           one_shot_kernel_enabled: true
           enable_gxl: true
+          fabric_cost_weight: 0.35
         }
       )pb");
 

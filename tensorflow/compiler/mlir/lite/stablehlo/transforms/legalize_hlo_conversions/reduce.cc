@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -31,17 +32,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
 
 //===------------------------------------------------------------------------===
-// mhlo.reduce -> arg min/max
+// stablehlo.reduce -> arg min/max
 //===------------------------------------------------------------------------===
 
 // Pattern matches the following reduction function for ArgMax/ArgMin coming
@@ -53,23 +53,25 @@ namespace odml {
 // %4 = select(%0, %lhs_index, %rhs_index)
 // %5 = select(%2, %3, %4)
 // return %1, %5
-LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
+LogicalResult MatchReduceToArgMinMaxType2(stablehlo::ReduceOp reduce_op,
                                           bool is_argmax) {
   Block& body = reduce_op.getBody().front();
   if (body.getNumArguments() != 4) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op || return_op.getNumOperands() != 2) return failure();
 
-  mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(0).getDefiningOp());
+  stablehlo::SelectOp value_select =
+      llvm::dyn_cast_or_null<stablehlo::SelectOp>(
+          return_op.getOperand(0).getDefiningOp());
   if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
       value_select.getOnFalse() != body.getArgument(2))
     return failure();
 
-  auto compare_direction_included =
-      is_argmax ? mhlo::ComparisonDirection::GE : mhlo::ComparisonDirection::LE;
-  mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+  auto compare_direction_included = is_argmax
+                                        ? stablehlo::ComparisonDirection::GE
+                                        : stablehlo::ComparisonDirection::LE;
+  stablehlo::CompareOp value_gt = llvm::dyn_cast_or_null<stablehlo::CompareOp>(
       value_select.getOperand(0).getDefiningOp());
   if (!value_gt ||
       value_gt.getComparisonDirection() != compare_direction_included ||
@@ -77,28 +79,30 @@ LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
       value_gt.getRhs() != body.getArgument(2))
     return failure();
 
-  mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(1).getDefiningOp());
+  stablehlo::SelectOp index_select =
+      llvm::dyn_cast_or_null<stablehlo::SelectOp>(
+          return_op.getOperand(1).getDefiningOp());
   if (!index_select) return failure();
 
-  mhlo::MinOp index_select_min = llvm::dyn_cast_or_null<mhlo::MinOp>(
+  stablehlo::MinOp index_select_min = llvm::dyn_cast_or_null<stablehlo::MinOp>(
       index_select.getOnTrue().getDefiningOp());
   if (!index_select_min || index_select_min.getLhs() != body.getArgument(1) ||
       index_select_min.getRhs() != body.getArgument(3))
     return failure();
 
-  mhlo::SelectOp index_select_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      index_select.getOnFalse().getDefiningOp());
+  stablehlo::SelectOp index_select_select =
+      llvm::dyn_cast_or_null<stablehlo::SelectOp>(
+          index_select.getOnFalse().getDefiningOp());
   if (!index_select_select ||
       index_select_select.getOnTrue() != body.getArgument(1) ||
       index_select_select.getOnFalse() != body.getArgument(3) ||
       index_select_select.getOperand(0).getDefiningOp() != value_gt)
     return failure();
 
-  mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+  stablehlo::CompareOp value_eq = llvm::dyn_cast_or_null<stablehlo::CompareOp>(
       index_select.getOperand(0).getDefiningOp());
   if (!value_eq ||
-      value_eq.getComparisonDirection() != mhlo::ComparisonDirection::EQ ||
+      value_eq.getComparisonDirection() != stablehlo::ComparisonDirection::EQ ||
       value_eq.getLhs() != body.getArgument(0) ||
       value_eq.getRhs() != body.getArgument(2))
     return failure();
@@ -118,78 +122,84 @@ LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
 // %8 = select(%7, %lhs_index, %rhs_index)
 // return %3, %8
 // Also note that %1 may be folded if %lhs_value is of integer types.
-LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
+LogicalResult MatchReduceToArgMinMaxType1(stablehlo::ReduceOp reduce_op,
                                           bool is_float, bool is_argmax) {
   Block& body = reduce_op.getBody().front();
   if (body.getNumArguments() != 4) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op || return_op.getNumOperands() != 2) return failure();
 
-  mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(0).getDefiningOp());
+  stablehlo::SelectOp value_select =
+      llvm::dyn_cast_or_null<stablehlo::SelectOp>(
+          return_op.getOperand(0).getDefiningOp());
   if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
       value_select.getOnFalse() != body.getArgument(2))
     return failure();
 
-  auto compare_direction =
-      is_argmax ? mhlo::ComparisonDirection::GT : mhlo::ComparisonDirection::LT;
+  auto compare_direction = is_argmax ? stablehlo::ComparisonDirection::GT
+                                     : stablehlo::ComparisonDirection::LT;
   if (is_float) {
-    mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
+    stablehlo::OrOp value_or = llvm::dyn_cast_or_null<stablehlo::OrOp>(
         value_select.getOperand(0).getDefiningOp());
     if (!value_or) return failure();
 
-    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_or.getLhs().getDefiningOp());
+    stablehlo::CompareOp value_gt =
+        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
+            value_or.getLhs().getDefiningOp());
     if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
         value_gt.getLhs() != body.getArgument(0) ||
         value_gt.getRhs() != body.getArgument(2))
       return failure();
 
-    mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_or.getRhs().getDefiningOp());
+    stablehlo::CompareOp value_ne =
+        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
+            value_or.getRhs().getDefiningOp());
     if (!value_ne ||
-        value_ne.getComparisonDirection() != mhlo::ComparisonDirection::NE ||
+        value_ne.getComparisonDirection() !=
+            stablehlo::ComparisonDirection::NE ||
         value_ne.getLhs() != body.getArgument(0) ||
         value_ne.getRhs() != body.getArgument(0))
       return failure();
   } else {
-    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_select.getOperand(0).getDefiningOp());
+    stablehlo::CompareOp value_gt =
+        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
+            value_select.getOperand(0).getDefiningOp());
     if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
         value_gt.getLhs() != body.getArgument(0) ||
         value_gt.getRhs() != body.getArgument(2))
       return failure();
   }
 
-  mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(1).getDefiningOp());
+  stablehlo::SelectOp index_select =
+      llvm::dyn_cast_or_null<stablehlo::SelectOp>(
+          return_op.getOperand(1).getDefiningOp());
   if (!index_select || index_select.getOnTrue() != body.getArgument(1) ||
       index_select.getOnFalse() != body.getArgument(3))
     return failure();
 
-  mhlo::OrOp index_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
+  stablehlo::OrOp index_or = llvm::dyn_cast_or_null<stablehlo::OrOp>(
       index_select.getPred().getDefiningOp());
 
   if (!index_or || index_or.getLhs() != value_select.getPred())
     return failure();
 
-  mhlo::AndOp index_and =
-      llvm::dyn_cast_or_null<mhlo::AndOp>(index_or.getRhs().getDefiningOp());
+  stablehlo::AndOp index_and = llvm::dyn_cast_or_null<stablehlo::AndOp>(
+      index_or.getRhs().getDefiningOp());
   if (!index_and) return failure();
 
-  mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+  stablehlo::CompareOp value_eq = llvm::dyn_cast_or_null<stablehlo::CompareOp>(
       index_and.getLhs().getDefiningOp());
   if (!value_eq ||
-      value_eq.getComparisonDirection() != mhlo::ComparisonDirection::EQ ||
+      value_eq.getComparisonDirection() != stablehlo::ComparisonDirection::EQ ||
       value_eq.getLhs() != body.getArgument(0) ||
       value_eq.getRhs() != body.getArgument(2))
     return failure();
 
-  mhlo::CompareOp index_lt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+  stablehlo::CompareOp index_lt = llvm::dyn_cast_or_null<stablehlo::CompareOp>(
       index_and.getRhs().getDefiningOp());
   if (!index_lt ||
-      index_lt.getComparisonDirection() != mhlo::ComparisonDirection::LT ||
+      index_lt.getComparisonDirection() != stablehlo::ComparisonDirection::LT ||
       index_lt.getLhs() != body.getArgument(1) ||
       index_lt.getRhs() != body.getArgument(3))
     return failure();
@@ -197,14 +207,15 @@ LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
   return success();
 }
 
-// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+// Base class for converting stablehlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
 template <typename Reduce, typename ArgReduce, typename BooleanReduce,
           bool is_argmax>
-class ConvertReduceOpToArgMinMax : public OpConversionPattern<mhlo::ReduceOp> {
+class ConvertReduceOpToArgMinMax
+    : public OpConversionPattern<stablehlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      stablehlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 
   virtual bool IsValueInitValue(const DenseElementsAttr& attr) const = 0;
@@ -214,10 +225,12 @@ template <typename Reduce, typename ArgReduce, typename BooleanReduce,
           bool is_argmax>
 LogicalResult ConvertReduceOpToArgMinMax<
     Reduce, ArgReduce, BooleanReduce,
-    is_argmax>::matchAndRewrite(mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+    is_argmax>::matchAndRewrite(stablehlo::ReduceOp reduce_op,
+                                OpAdaptor adaptor,
                                 ConversionPatternRewriter& rewriter) const {
   if (reduce_op.getInputs().size() != 2) return failure();
-  if (reduce_op.getDimensions().getNumElements() != 1) return failure();
+  ArrayRef<int64_t> dims = reduce_op.getDimensions();
+  if (dims.size() != 1) return failure();
 
   // Check that the operand init is the expected value.
   DenseElementsAttr operand_init;
@@ -235,7 +248,7 @@ LogicalResult ConvertReduceOpToArgMinMax<
   // Verify that the second argument is an Iota op along the same dimension
   // as the reduction.
   Value iota = reduce_op.getInputs().back();
-  if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
+  if (!MatchIota(dims, iota)) return failure();
 
   // Match the reduction computation.
   const bool is_float = mlir::isa<FloatType>(operand_init.getElementType());
@@ -245,16 +258,16 @@ LogicalResult ConvertReduceOpToArgMinMax<
         reduce_op, "Unsupported Reduce -> ArgMax/ArgMin pattern");
 
   Value operand = reduce_op.getInputs().front();
-  int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
+  int64_t axis = dims[0];
 
   auto dim_type = RankedTensorType::get({1}, rewriter.getI32Type());
   auto reduction_indices = arith::ConstantOp::create(
       rewriter, reduce_op.getLoc(), dim_type,
       rewriter.getI32TensorAttr({static_cast<int32_t>(axis)}));
 
-  // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
-  // we have separate ops for them. If only one of them is used then the other
-  // one will be garbage collected later.
+  // Generate a Max and an ArgMax of as the StableHLO op returns both while in
+  // TF we have separate ops for them. If only one of them is used then the
+  // other one will be garbage collected later.
   if (!mlir::isa<ShapedType>(operand.getType())) return failure();
   auto operand_type = mlir::cast<ShapedType>(operand.getType());
   if (operand_type.getElementType().isInteger(1)) {
@@ -284,7 +297,7 @@ LogicalResult ConvertReduceOpToArgMinMax<
   return success();
 }
 
-// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+// Base class for converting stablehlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
 template <typename Reduce, typename ArgReduce, typename BooleanReduce>
 class ConvertReduceOpToArgMax
     : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
@@ -313,7 +326,7 @@ bool ConvertReduceOpToArgMax<Reduce, ArgReduce, BooleanReduce>::
   }
 }
 
-// Base class for converting mhlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
+// Base class for converting stablehlo::ReduceOp to TF/TFL ArgMax/ArgMin ops.
 template <typename Reduce, typename ArgReduce, typename BooleanReduce>
 class ConvertReduceOpToArgMin
     : public ConvertReduceOpToArgMinMax<Reduce, ArgReduce, BooleanReduce,
@@ -343,7 +356,7 @@ bool ConvertReduceOpToArgMin<Reduce, ArgReduce, BooleanReduce>::
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.reduce -> standard reductions
+// stablehlo.reduce -> standard reductions
 //===------------------------------------------------------------------------===
 
 // If `value` is a splat constant, returns a success and set `splat_value`
@@ -363,7 +376,8 @@ LogicalResult GetConstantSplatValue(Value value, SplatValueType& splat_value) {
 // Replace BinaryOp with a combination of BinaryOp and ReduceOp if the
 // init value doesn't match the expectation of ReduceOp.
 template <typename ReduceOp, typename BinaryOp, bool BuilderHasFAF = false>
-LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
+LogicalResult rewriteNonMatchInitValue(stablehlo::ReduceOp reduce_op,
+                                       Value input,
                                        arith::ConstantOp reduction_indices,
                                        ConversionPatternRewriter& rewriter) {
   Value reduce_result =
@@ -384,17 +398,19 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
   return success();
 }
 
-DenseIntElementsAttr GetDimsAsI32Elements(OpBuilder& b, mhlo::ReduceOp op) {
+DenseIntElementsAttr GetDimsAsI32Elements(OpBuilder& b,
+                                          stablehlo::ReduceOp op) {
   auto dims_attr = op.getDimensions();
-  const auto n_dims = dims_attr.getNumElements();
+  const auto n_dims = dims_attr.size();
 
   SmallVector<int32_t> reduce_dims;
   reduce_dims.reserve(n_dims);
-  for (auto dim : dims_attr.getValues<int64_t>()) {
+  for (auto dim : dims_attr) {
     reduce_dims.push_back(dim);
   }
 
-  auto dim_type = RankedTensorType::get({n_dims}, b.getI32Type());
+  auto dim_type =
+      RankedTensorType::get({static_cast<int64_t>(n_dims)}, b.getI32Type());
   return DenseIntElementsAttr::get(dim_type, reduce_dims);
 }
 
@@ -402,43 +418,44 @@ DenseIntElementsAttr GetDimsAsI32Elements(OpBuilder& b, mhlo::ReduceOp op) {
 // ReduceOp and there is no corresponding BinaryOp.
 template <>
 LogicalResult rewriteNonMatchInitValue<TFL::ReduceMaxOp, void>(
-    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
-    ConversionPatternRewriter& rewriter) {
+    stablehlo::ReduceOp reduce_op, Value input,
+    arith::ConstantOp reduction_indices, ConversionPatternRewriter& rewriter) {
   return failure();
 }
 
 template <>
 LogicalResult rewriteNonMatchInitValue<TFL::ReduceMinOp, void>(
-    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
-    ConversionPatternRewriter& rewriter) {
+    stablehlo::ReduceOp reduce_op, Value input,
+    arith::ConstantOp reduction_indices, ConversionPatternRewriter& rewriter) {
   return failure();
 }
 
 template <>
 LogicalResult rewriteNonMatchInitValue<TFL::ReduceAnyOp, void>(
-    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
-    ConversionPatternRewriter& rewriter) {
+    stablehlo::ReduceOp reduce_op, Value input,
+    arith::ConstantOp reduction_indices, ConversionPatternRewriter& rewriter) {
   return failure();
 }
 
-// Converts a mhlo.reduce op with a mlho binary operation into a tensorflow
-// reduction operation. If the initial value can be ignored, then convert it
-// into a single ReduceOp. Otherwise, convert it into a ReduceOp followed by
-// a BinaryOp.
-// For example:
-//   1) A mhlo::ReduceOp on value `x` with a mhlo::AndOp and a constant initial
+// Converts a stablehlo.reduce op with a stablehlo binary operation into a
+// tensorflow reduction operation. If the initial value can be ignored, then
+// convert it into a single ReduceOp. Otherwise, convert it into a ReduceOp
+// followed by a BinaryOp. For example:
+//   1) A stablehlo::ReduceOp on value `x` with a stablehlo::AndOp and a
+//   constant initial
 // value `true` is converted to a Any on value `x`.
-//   2) A mhlo::ReduceOp on value `x` with a mhlo::AndOp with a non-constant
+//   2) A stablehlo::ReduceOp on value `x` with a stablehlo::AndOp with a
+//   non-constant
 // initial value `y` is converted to a Any on value `x`, followed by a
 // And with initial value `y`.
 template <typename SrcBinaryOp, typename TargetReduceOp,
           typename TargetBinaryOp = void, bool BuilderHasFAF = false>
-class ConvertReduce : public OpConversionPattern<mhlo::ReduceOp> {
+class ConvertReduce : public OpConversionPattern<stablehlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      stablehlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     if (failed(MatchReduceOpOperand(reduce_op))) {
       return failure();
@@ -478,7 +495,7 @@ class ConvertReduce : public OpConversionPattern<mhlo::ReduceOp> {
   // target ReduceOp.
   virtual LogicalResult MatchInitValue(Value init_value) const = 0;
 
-  LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
+  LogicalResult MatchReduceOpOperand(stablehlo::ReduceOp reduce_op) const {
     if (reduce_op.getInputs().size() != 1 ||
         reduce_op.getInitValues().size() != 1 ||
         reduce_op.getResults().size() != 1)
@@ -492,7 +509,8 @@ class ConvertReduce : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 class ConvertReduceMul
-    : public ConvertReduce<mhlo::MulOp, TFL::ReduceProdOp, TFL::MulOp, true> {
+    : public ConvertReduce<stablehlo::MulOp, TFL::ReduceProdOp, TFL::MulOp,
+                           true> {
  public:
   using ConvertReduce::ConvertReduce;
 
@@ -517,7 +535,7 @@ class ConvertReduceMul
 };
 
 class ConvertReduceAdd
-    : public ConvertReduce<mhlo::AddOp, TFL::SumOp, TFL::AddOp, true> {
+    : public ConvertReduce<stablehlo::AddOp, TFL::SumOp, TFL::AddOp, true> {
  public:
   using ConvertReduce::ConvertReduce;
 
@@ -542,16 +560,16 @@ class ConvertReduceAdd
 };
 
 class ConvertReduceMaxToReduceAny
-    : public ConvertReduce<mhlo::MaxOp, TFL::ReduceAnyOp> {
+    : public ConvertReduce<stablehlo::MaxOp, TFL::ReduceAnyOp> {
  public:
   using ConvertReduce::ConvertReduce;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     // This pattern is applicable only if the initial value is a boolean with
     // False value. Only then will it make sense to convert a
-    // mhlo.reduce with mhlo.maximum reducer to a TFL.ReduceAnyOp. Because the
-    // maximum value across a slice of a tensor compared to False can be viewed
-    // as, checking if ANY value in the slice is True.
+    // stablehlo.reduce with stablehlo.maximum reducer to a TFL.ReduceAnyOp.
+    // Because the maximum value across a slice of a tensor compared to False
+    // can be viewed as, checking if ANY value in the slice is True.
     auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
 
     if (!mlir::isa<IntegerType>(type) || !type.isSignlessInteger() ||
@@ -567,7 +585,8 @@ class ConvertReduceMaxToReduceAny
   }
 };
 
-class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
+class ConvertReduceMax
+    : public ConvertReduce<stablehlo::MaxOp, TFL::ReduceMaxOp> {
  public:
   using ConvertReduce::ConvertReduce;
 
@@ -579,8 +598,9 @@ class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
           !const_value.isInfinity() || !const_value.isNegative())
         return failure();
     } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
-      // Do not handle the case where the mhlo.reduce of mhlo.maximum can be
-      // legalized to TFL.ReduceAny. This can be possible if the dtype is i1
+      // Do not handle the case where the stablehlo.reduce of stablehlo.maximum
+      // can be legalized to TFL.ReduceAny. This can be possible if the dtype is
+      // i1
       if (type.getIntOrFloatBitWidth() == 1) return failure();
       APInt const_value;
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
@@ -593,7 +613,8 @@ class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
   }
 };
 
-class ConvertReduceMin : public ConvertReduce<mhlo::MinOp, TFL::ReduceMinOp> {
+class ConvertReduceMin
+    : public ConvertReduce<stablehlo::MinOp, TFL::ReduceMinOp> {
  public:
   using ConvertReduce::ConvertReduce;
 
@@ -618,9 +639,10 @@ class ConvertReduceMin : public ConvertReduce<mhlo::MinOp, TFL::ReduceMinOp> {
 };
 
 class ConvertReduceAnd
-    : public ConvertReduce<mhlo::AndOp, TFL::ReduceAllOp, TFL::LogicalAndOp> {
+    : public ConvertReduce<stablehlo::AndOp, TFL::ReduceAllOp,
+                           TFL::LogicalAndOp> {
  public:
-  using ConvertReduce<mhlo::AndOp, TFL::ReduceAllOp,
+  using ConvertReduce<stablehlo::AndOp, TFL::ReduceAllOp,
                       TFL::LogicalAndOp>::ConvertReduce;
 
   LogicalResult MatchInitValue(Value init_value) const override {
@@ -633,10 +655,10 @@ class ConvertReduceAnd
   }
 };
 
-class ConvertReduceOr
-    : public ConvertReduce<mhlo::OrOp, TFL::ReduceAnyOp, TFL::LogicalOrOp> {
+class ConvertReduceOr : public ConvertReduce<stablehlo::OrOp, TFL::ReduceAnyOp,
+                                             TFL::LogicalOrOp> {
  public:
-  using ConvertReduce<mhlo::OrOp, TFL::ReduceAnyOp,
+  using ConvertReduce<stablehlo::OrOp, TFL::ReduceAnyOp,
                       TFL::LogicalOrOp>::ConvertReduce;
 
   LogicalResult MatchInitValue(Value init_value) const override {
@@ -654,7 +676,7 @@ class ConvertReduceOr
 //===------------------------------------------------------------------------===
 
 // Returns false if the given reduce op can be legalized to ArgMax/ArgMin ops.
-std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op) {
+std::optional<bool> IsReduceOpLegal(stablehlo::ReduceOp reduce_op) {
   if (succeeded(MatchReduceToArgMinMaxType1(reduce_op, true, true)) ||
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, false, true)) ||
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, true, false)) ||
@@ -680,25 +702,6 @@ template class ConvertReduceOpToArgMinMax<TFL::ReduceMinOp, TFL::ArgMinOp,
 template class ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp,
                                        TFL::ReduceAllOp>;
 
-template class ConvertReduceOpToArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp,
-                                          true>;
-template class ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
-
-template class ConvertReduceOpToArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp,
-                                          false>;
-template class ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
-
-void PopulateReduceArgMinMaxTFPatterns(MLIRContext* ctx,
-                                       RewritePatternSet& patterns) {
-  using ConvertReduceOpToTfArgmax =
-      ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
-
-  using ConvertReduceOpToTfArgmin =
-      ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
-
-  patterns.add<ConvertReduceOpToTfArgmin, ConvertReduceOpToTfArgmax>(ctx);
-}
-
 void PopulateReducePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                             ConversionTarget& target) {
   using ConvertReduceOpToTFLiteArgmax =
@@ -714,7 +717,7 @@ void PopulateReducePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                ConvertReduceMaxToReduceAny, ConvertReduceMin, ConvertReduceAnd,
                ConvertReduceOr>(ctx);
 
-  target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::ReduceOp>(IsReduceOpLegal);
 }
 
 }  // namespace odml

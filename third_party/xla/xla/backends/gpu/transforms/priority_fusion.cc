@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -32,7 +33,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -45,6 +48,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/debug_options_flags.h"
@@ -111,10 +115,85 @@ bool AllScansHaveDimSizeAtMost(const HloInstruction& instr, int64_t max_size) {
   return true;
 }
 
+bool IsCheapProducerOp(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kParameter:
+      return ShapeUtil::IsEffectiveScalar(instr.shape());
+    case HloOpcode::kIota:
+      return true;
+    case HloOpcode::kBroadcast:
+      return ShapeUtil::IsEffectiveScalar(instr.operand(0)->shape());
+    case HloOpcode::kFusion:
+      return absl::c_all_of(
+          instr.fused_instructions_computation()->instructions(),
+          [](const HloInstruction* fused) {
+            return IsCheapProducerOp(*fused);
+          });
+    default:
+      return instr.IsElementwise();
+  }
+}
+
+// Returns true if `producer` computes its output from only scalar operands,
+// scalar constants, iotas, broadcasts of scalars, and elementwise ops.
+bool IsCheapNoMemoryProducer(const HloInstruction& producer) {
+  return IsCheapProducerOp(producer) &&
+         absl::c_all_of(producer.operands(), [](const HloInstruction* operand) {
+           return ShapeUtil::IsEffectiveScalar(operand->shape());
+         });
+}
+
 // Bitcasts are fusible if they don't change the bit width.
 bool IsFusibleBitcast(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kBitcast &&
          hlo_instruction_utils::KeepsBitwidth(instr);
+}
+
+// Returns whether `user` evaluates `user.operand(operand_index)` across
+// multiple output threads in the `kLoop` emitter even though `HloCostAnalysis`
+// leaves `operand_utilization` at `1.0f` for that scalar operand.
+bool IsScalarOperandEvaluatedPerThread(const HloInstruction& user,
+                                       int64_t operand_index) {
+  if (!user.shape().IsArray() || user.shape().is_unbounded_dynamic() ||
+      ShapeUtil::ElementsIn(user.shape()) <= 1) {
+    return false;
+  }
+  if (const auto* dynamic_index = DynCast<HloDynamicIndexInstruction>(&user)) {
+    return operand_index >= dynamic_index->first_index_operand_number();
+  }
+  return user.opcode() == HloOpcode::kPad && operand_index == 1;
+}
+
+// Returns whether `param` inside a fusion computation feeds a scalar operand
+// that the `kLoop` emitter evaluates across multiple output threads.
+bool ParameterFeedsPerThreadScalarOperand(const HloInstruction& param) {
+  if (!param.shape().IsArray() ||
+      !ShapeUtil::IsEffectiveScalar(param.shape())) {
+    return false;
+  }
+  absl::InlinedVector<const HloInstruction*, 4> worklist = {&param};
+  absl::flat_hash_set<const HloInstruction*> visited = {&param};
+  while (!worklist.empty()) {
+    const HloInstruction* instruction = worklist.back();
+    worklist.pop_back();
+    for (const HloInstruction* user : instruction->users()) {
+      for (int64_t operand_index : user->OperandIndices(instruction)) {
+        if (IsScalarOperandEvaluatedPerThread(*user, operand_index)) {
+          return true;
+        }
+      }
+      bool can_forward_scalar =
+          user->shape().IsArray() &&
+          ShapeUtil::IsEffectiveScalar(user->shape()) &&
+          (user->IsElementwise() || user->opcode() == HloOpcode::kBitcast ||
+           user->opcode() == HloOpcode::kReshape);
+      if (can_forward_scalar && visited.insert(user).second) {
+        worklist.push_back(user);
+      }
+    }
+  }
+  return false;
 }
 
 bool IsFusible(const HloInstruction& instr) {
@@ -874,8 +953,7 @@ class PriorityFusionQueue {
           if (const auto* fusion_decision =
                   std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
             tiled_run_time_data_or_error = FusionDecision::Forbid(absl::StrCat(
-                "Fusion can not be tiled with SymbolicTileAnalysis: ",
-                fusion_decision->Explain()));
+                "Failed to tile the fusion: ", fusion_decision->Explain()));
           }
 
           {
@@ -919,7 +997,8 @@ class PriorityFusionQueue {
         return FusionDecision::Forbid(
             "producer fusion into a non-Triton scan fusion is not supported");
       }
-      if (!AllScansHaveDimSizeAtMost(*consumer, kMaxRowLocalScanDimSize)) {
+      if (!AllScansHaveDimSizeAtMost(*consumer, kMaxRowLocalScanDimSize) &&
+          !IsCheapNoMemoryProducer(*producer)) {
         return FusionDecision::Forbid(
             absl::StrCat("producer fusion into scan fusions with a scan "
                          "dimension > ",
@@ -1082,8 +1161,107 @@ class PriorityFusionQueue {
           "the fusion would result in an overly large code duplication");
     }
 
+    if (WouldOverBroadcastReductionInLoopFusion(producer, consumer)) {
+      return FusionDecision::Forbid(
+          "not fusing a reduction into a loop fusion that replicates or "
+          "broadcasts it across a much larger output domain");
+    }
+
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer,
                                                   alias_info_, std::nullopt);
+  }
+
+  // Returns whether fusing `producer` into `consumer` would create a `kLoop`
+  // fusion that re-evaluates a reduction across a much larger iteration domain
+  // (at least 16x the reduction's input elements in total evaluations and at
+  // least 256K excess output threads). Below this threshold (e.g. same-shape
+  // softmax stages or small-batch consumers), keeping the computation fused
+  // avoids extra kernel launch and memory traffic overhead.
+  bool WouldOverBroadcastReductionInLoopFusion(const HloInstruction* producer,
+                                               const HloInstruction* consumer) {
+    constexpr int64_t kMinOverBroadcastRatio = 16;
+    constexpr int64_t kMinOverBroadcastExcessElements = 256 * 1024;
+
+    std::optional<int64_t> min_reduce_input_elements =
+        GetMinReduceInputElements(*producer, &fusion_info_cache_);
+    if (!min_reduce_input_elements.has_value()) {
+      return false;
+    }
+
+    const Shape& consumer_root_shape =
+        consumer->shape().IsTuple() && !consumer->shape().tuple_shapes().empty()
+            ? consumer->shape().tuple_shapes(0)
+            : consumer->shape();
+    if (!consumer_root_shape.IsArray() ||
+        consumer_root_shape.is_unbounded_dynamic()) {
+      return false;
+    }
+    int64_t consumer_elements = ShapeUtil::ElementsIn(consumer_root_shape);
+    if (consumer_elements - *min_reduce_input_elements <
+        kMinOverBroadcastExcessElements) {
+      return false;
+    }
+
+    float utilization_by_this_consumer = 0;
+    int64_t producer_replication = 0;
+    bool feeds_per_thread_scalar_operand = false;
+    for (int64_t i = 0; i < consumer->operand_count(); ++i) {
+      if (consumer->operand(i) == producer ||
+          (consumer->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+           consumer->operand(i)->operand(0) == producer)) {
+        utilization_by_this_consumer +=
+            cost_analysis_->operand_utilization(*consumer, i);
+        if (consumer->opcode() == HloOpcode::kFusion) {
+          const HloInstruction* fused_param = consumer->fused_parameter(i);
+          producer_replication +=
+              static_cast<int64_t>(cost_analysis_->IrSize(*fused_param));
+          if (!feeds_per_thread_scalar_operand) {
+            feeds_per_thread_scalar_operand =
+                ParameterFeedsPerThreadScalarOperand(*fused_param);
+          }
+        } else if (!feeds_per_thread_scalar_operand) {
+          feeds_per_thread_scalar_operand =
+              IsScalarOperandEvaluatedPerThread(*consumer, i);
+        }
+      }
+    }
+
+    if (producer_replication <= 1 && utilization_by_this_consumer <= 1.0f &&
+        !feeds_per_thread_scalar_operand) {
+      return false;
+    }
+
+    const HloFusionAnalysis& analysis_fused =
+        fusion_analysis_cache_.Get(*producer, *consumer);
+    if (analysis_fused.emitter_fusion_kind() !=
+        HloFusionAnalysis::EmitterFusionKind::kLoop) {
+      return false;
+    }
+
+    // `InPlaceDynamicUpdateSliceFusion` launches threads over `update`'s shape
+    // (`operand(1)`) rather than `dest`'s shape (`consumer->shape()`).
+    if (IsDynamicUpdateSliceFusion(analysis_fused.fusion_spec()) &&
+        CanEmitFusedDynamicUpdateSlice(analysis_fused.fusion())
+            .value_or(false)) {
+      std::vector<HloInstructionAdaptor> dus_ops =
+          GetOutputDefiningDynamicUpdateSlices(analysis_fused.fusion_roots());
+      if (!dus_ops.empty()) {
+        HloInstructionAdaptor update_op = dus_ops.front().GetOperand(1);
+        const Shape& update_shape = update_op.shape();
+        if (!update_shape.IsArray() || update_shape.is_unbounded_dynamic()) {
+          return false;
+        }
+        consumer_elements = ShapeUtil::ElementsIn(update_shape);
+        if (consumer_elements - *min_reduce_input_elements <
+            kMinOverBroadcastExcessElements) {
+          return false;
+        }
+      }
+    }
+
+    int64_t replication_factor = std::max<int64_t>(1, producer_replication);
+    return absl::int128(consumer_elements) * replication_factor >=
+           absl::int128(*min_reduce_input_elements) * kMinOverBroadcastRatio;
   }
 
   [[nodiscard]] tsl::Future<FusionDecision> CanFuseCachedAsync(
@@ -1579,6 +1757,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
     case HloFusionAnalysis::EmitterFusionKind::kSort:
     case HloFusionAnalysis::EmitterFusionKind::kTensorIr:
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kCustom;
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:

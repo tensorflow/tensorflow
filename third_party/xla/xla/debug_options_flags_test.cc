@@ -88,11 +88,15 @@ TEST(DebugOptions, CommandBufferUpdateModeDefaultsToAlwaysUpdate) {
       DebugOptions::ALWAYS_UPDATE);
 }
 
-TEST(DebugOptions, SchedulerMemoryFencingDefaultsToDisabled) {
+TEST(DebugOptions,
+     SchedulerMemoryFencingDefaultsToAutomaticWithOneSlackWindow) {
   EXPECT_EQ(
       DefaultDebugOptionsIgnoringFlags()
           .xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(),
-      -1);
+      0);
+  EXPECT_EQ(DefaultDebugOptionsIgnoringFlags()
+                .xla_gpu_experimental_scheduler_memory_fencing_slack_windows(),
+            1);
 }
 
 TEST(DebugOptions, CommandBufferUpdateModesParseFromFlags) {
@@ -543,6 +547,44 @@ TEST(DebugOptions, AutotuneCacheRequireStrictCodegenMatchFlagsParsing) {
       "--xla_autotune_cache_require_strict_codegen_match=true"};
   EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
   EXPECT_TRUE(opts.xla_autotune_cache_require_strict_codegen_match());
+}
+
+TEST(DebugOptions,
+     ExperimentalUseAutotuneCacheAlsoForDeterministicOpsDefaultIsFalse) {
+  const DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  const bool use_cache =
+      opts.xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  EXPECT_FALSE(use_cache);
+}
+
+TEST(DebugOptions,
+     ExperimentalUseAutotuneCacheAlsoForDeterministicOpsFlagsParsing) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {
+      "--xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops="
+      "true"};
+  EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
+  const bool use_cache =
+      opts.xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  EXPECT_TRUE(use_cache);
+}
+
+TEST(DebugOptions, ResetFlagValuesPreservesCudaDataDirFromEnv) {
+  // Allocates the process-wide flags before the reset under test.
+  (void)GetDebugOptionsFromFlags();
+  tsl::setenv("XLA_FLAGS", "--xla_gpu_cuda_data_dir=/custom/cuda/dir", 1);
+
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+
+  EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_cuda_data_dir(),
+            "/custom/cuda/dir");
+
+  tsl::unsetenv("XLA_FLAGS");
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
 }
 }  // namespace
 }  // namespace xla

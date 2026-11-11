@@ -339,15 +339,18 @@ cc_library(
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":annotate_host_compute_offload",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/core/host_offloading:annotate_host_compute_offload",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_context",
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/hlo/transforms:offloaded_instruction_wrapper",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
@@ -370,6 +373,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@tsl//tsl/platform:casts",
     ],
+    alwayslink = True,
 )
 
 cc_library(

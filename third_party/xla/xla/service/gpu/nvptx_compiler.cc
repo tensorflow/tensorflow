@@ -59,10 +59,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -227,7 +225,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_rocm=*/false);
+      /*is_non_cuda_platform=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
@@ -273,18 +271,6 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           .status());
 
   return absl::OkStatus();
-}
-
-bool NVPTXCompiler::IsScaledDotSupportedByBackend(
-    const HloInstruction* instr,
-    const GpuTargetConfig& gpu_target_config) const {
-  if (GpuCompiler::IsScaledDotSupportedByBackend(instr, gpu_target_config)) {
-    return true;
-  }
-  if (const auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
-    return CudnnScaledDotHelper::IsSupported(scaled_dot);
-  }
-  return false;
 }
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
@@ -363,31 +349,6 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
     return absl::OkStatus();
   }
 
-  // Decide whether to run cuDNN compilation deviceless (no live cuDNN handle).
-  bool use_deviceless_cudnn = false;
-  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
-      use_deviceless_cudnn = false;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
-      // Force deviceless even if we have a device.
-      use_deviceless_cudnn = true;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
-    default:
-      // Deviceless only when there is no live device to query.
-      use_deviceless_cudnn = (stream_exec == nullptr);
-      break;
-  }
-  // Without a live device and without deviceless compilation there is nothing
-  // to do.
-  if (stream_exec == nullptr && !use_deviceless_cudnn) {
-    return absl::OkStatus();
-  }
-  se::dnn::DnnSupport* dnn_support =
-      use_deviceless_cudnn ? nullptr : stream_exec->AsDnn();
-
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
@@ -399,10 +360,10 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   const absl::flat_hash_set<absl::string_view> execution_threads = {
       HloInstruction::kMainExecutionThread,
       HloInstruction::kParallelExecutionThread};
-  CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
-                                      *dnn_compiled_graphs);
+  CuDnnFusionCompiler fusion_compiler(
+      stream_exec, gpu_device_info, *dnn_compiled_graphs, &cudnn_graph_cache_);
   ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
-  CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
+  CuDnnCustomCallCompiler call_compiler(stream_exec, gpu_device_info,
                                         *dnn_compiled_graphs);
   return call_compiler.Run(module, execution_threads).status();
 }

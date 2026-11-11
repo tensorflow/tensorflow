@@ -24,6 +24,11 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
+def register_extension_info(**_kwargs):
+    pass
+
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 def _to_clang_cl_flags(flags):
@@ -47,8 +52,8 @@ def _to_clang_cl_flags(flags):
             out.append("/clang:-flto")
         elif flag.startswith("-D") or flag.startswith("/"):
             out.append(flag)
-        elif flag.startswith("-std="):
-            # The Windows toolchain already passes /std:c++17.
+        elif flag.startswith("-std=") or flag == "-fno-exceptions":
+            # The Windows toolchain already passes /std:c++17 and /EHs- /EHc-.
             continue
         else:
             out.append("/clang:" + flag)
@@ -146,9 +151,12 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-g0",
         "-DNDEBUG",
         "-mprefer-vector-width=512",
-        "-DEIGEN_VECTORIZE_GENERIC",
         "-flax-vector-conversions",  # Jax Mac wheel build server has int64_t != long
         "-fno-builtin",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-fno-stack-protector",
         "-Wno-psabi",
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
@@ -247,3 +255,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         ],
         **kwargs
     )
+
+# `deps` are passed to the `{name}_lib` cc_library that compiles `src`.
+register_extension_info(
+    extension = cc_ir_header,
+    label_regex_for_dep = "{extension_name}_lib",
+)

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 
@@ -35,21 +36,17 @@ limitations under the License.
 // cuda_command_buffer_telemetry_stub.cc instead, where every function does
 // nothing; it is never reached because `SupportsNodeAnnotations()` is false.
 //
-// Instantiation and `cuGraphExecNodeSetParams` clone a graph's
-// user-object references into the executable graph. The cleanup must therefore
-// be attached before either call, so the entry outlives every executable graph
-// that can run the nodes.
+// Entry lifetime is owned by XLA, not by CUDA: each root `CudaCommandBuffer`
+// records the entries it creates in `telemetry_graphs_`, retains nested
+// entries installed on child nodes via `RetainGraphs`, and unregisters them on
+// update or destruction. CUDA user objects are deliberately not used for this:
+// an executable graph that owns any user object has a much smaller per-stream
+// in-flight launch limit (b/578493713).
 namespace stream_executor::gpu::command_buffer_telemetry {
 
-// A graph tracked in `CudaGraphAnnotationRegistry::Default()`, with the
-// token that its registrations must present and its KeySpace.
-struct TrackedGraph {
-  uint32_t graph_id = 0;
-  CudaGraphAnnotationRegistry::Token token =
-      CudaGraphAnnotationRegistry::kInvalidToken;
-  CudaGraphAnnotationRegistry::KeySpace space =
-      CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph;
-};
+// A graph tracked in `CudaGraphAnnotationRegistry::Default()`, with its
+// KeySpace.
+using TrackedGraph = CudaGraphAnnotationRegistry::GraphRef;
 
 // Returns `cuGraphGetId(graph)`, or `std::nullopt` if `graph` is null or the
 // call fails.
@@ -73,13 +70,17 @@ void ForEachSubgraphPair(
     CUgraphNode node, CUgraphNode original_node,
     absl::FunctionRef<void(CUgraph subgraph, CUgraph orig_subgraph)> fn);
 
-// Tracks graph_id and, if newly tracked, attaches the unregistering cleanup to
-// attach_to. On attach failure, untracks and returns nullopt.
-std::optional<TrackedGraph> TrackAndAttach(
-    uint32_t graph_id, CUgraph attach_to,
-    CudaGraphAnnotationRegistry::TrackMode mode,
-    CudaGraphAnnotationRegistry::KeySpace space =
-        CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph);
+// Tracks `graph_id` in `space` unless it is tracked already. If this call
+// created the entry, appends it to `owned`: the owner of that list must
+// unregister it (UnregisterTrackedGraphs) when the graph is destroyed.
+TrackedGraph Track(uint32_t graph_id, std::vector<TrackedGraph>& owned,
+                   CudaGraphAnnotationRegistry::KeySpace space =
+                       CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph);
+
+// Unregisters `graphs` from `CudaGraphAnnotationRegistry::Default()`, under a
+// single registry lock. While a harvest hold is active, their annotations stay
+// resolvable until it is released. Makes no CUDA calls.
+void UnregisterTrackedGraphs(absl::Span<const TrackedGraph> graphs);
 
 // Registers `annotation` for `node`, a node of `graph`, unless the node has an
 // annotation already.
@@ -88,11 +89,12 @@ void RegisterNode(const TrackedGraph& graph, CUgraphNode node,
 
 // Registers every node of `graph` (recursing into subgraphs) using `fallback`
 // or a copy from `original`. Relies on `cuGraphGetNodes` returning nodes of a
-// cloned graph in the same order as its original's. `kGetOrCreate` skips
-// subgraphs that are tracked already.
+// cloned graph in the same order as its original's. Skips subgraphs that are
+// tracked already, and appends the subgraphs it tracks to `owned`; subgraphs
+// live as long as `graph`, so they share its owner.
 void RegisterGraphNodes(CUgraph graph, const TrackedGraph& tracked,
                         CUgraph original, absl::string_view fallback,
-                        CudaGraphAnnotationRegistry::TrackMode child_mode);
+                        std::vector<TrackedGraph>& owned);
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry
 

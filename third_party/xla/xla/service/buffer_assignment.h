@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -143,6 +144,20 @@ class BufferAllocation {
     return is_entry_computation_parameter_;
   }
 
+  // Whether this entry parameter allocation has an input/output alias in
+  // HloInputOutputAliasConfig (kMustAlias or kMayAlias), so the computation may
+  // write it in place (and BufferAssigner may reuse it for temporaries when
+  // allow_reusing_aliased_entry_params_for_temp is enabled).
+  //
+  // At execution time this allocation is backed either by an exclusively
+  // donated buffer that does not overlap any other parameter subbuffer
+  // (including another leaf of the same tuple parameter), or, when kMayAlias
+  // donation is declined at runtime (for example via
+  // ExecuteOptions::non_donatable_input_indices), by a fresh buffer copy
+  // protected by the runtime before execution. Read only entry parameter
+  // subbuffers (and buffers whose kMayAlias donation was declined) may share
+  // memory with each other. Codegen may rely on this: buffers backing this
+  // allocation may be marked noalias against all other parameter subbuffers.
   bool is_parameter_aliased_with_output() const {
     return is_parameter_aliased_with_output_;
   }
@@ -197,6 +212,7 @@ class BufferAllocation {
 
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
+  ABSL_DEPRECATED("Use BufferAssignment::assigned_buffers instead.")
   const absl::flat_hash_map<const HloValue*, OffsetSize>& assigned_buffers()
       const {
     return assigned_buffers_;
@@ -293,6 +309,7 @@ class BufferAllocation {
   // GetSlice returns the Slice of contiguous memory that holds the value
   // described by the given 'buffer'.
   // REQUIRES: 'buffer' must be assigned to this allocation.
+  ABSL_DEPRECATED("Use BufferAssignment::GetAssignedSlice instead.")
   Slice GetSlice(const HloValue& buffer) const;
 
   std::string ToString() const;
@@ -304,6 +321,7 @@ class BufferAllocation {
   // allocation. The groups are sorted by the max size(Z-A) of the values in the
   // group. Percentile and more_than_k are used to control the number of groups
   // being reported.
+  ABSL_DEPRECATED("Use BufferAssignment::MemoryUsageReport instead.")
   std::string MemoryUsageReport(const std::string& prefix,
                                 float percentile = 0.05,
                                 int64_t more_than_k = 50,
@@ -350,6 +368,7 @@ class BufferAllocation {
   // reached at multiple points, the set of logical buffers live at the earliest
   // maximal point is returned. The vector is stably sorted by
   // BufferValue::Index.
+  ABSL_DEPRECATED("Use BufferAssignment::PeakMemoryLogicalBuffers instead.")
   const std::vector<const HloValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
@@ -364,6 +383,7 @@ class BufferAllocation {
   // allocation. They are carved into pre-existing holes and never grew the
   // allocation, so they are not part of its sizing attribution (this says
   // nothing about whether they happen to be live at the allocation's peak).
+  ABSL_DEPRECATED("Use BufferAssignment::CrossColorBuffers instead.")
   const std::vector<const HloValue*>& CrossColorBuffers() const {
     return cross_color_buffers_;
   }
@@ -470,23 +490,28 @@ class BufferAllocation {
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
+  // Deprecated: moving to BufferAssignment (b/530831203).
   absl::flat_hash_map<const HloValue*, OffsetSize> assigned_buffers_;
 
   // Parallel contiguous arrays of assigned HloValue* and their live range
   // bounds for fast sequential scanning in BufferAssigner::MaybeAssignBuffer.
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<const HloValue*> assigned_values_;
   std::vector<ValueLiveRange> assigned_live_ranges_;
 
   int64_t fragmentation_bytes_ = 0;
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<HeapSimulatorTrace> heap_traces_;
 
   // Set of buffers live at the point of peak memory usage for this allocation;
   // i.e. the buffers that drove the allocation's size.
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<const HloValue*> peak_buffers_;
 
   // Buffers placed in this allocation whose own color differs from the
   // allocation color (placed into pre-existing holes by cross-color reuse,
   // without growing the allocation).
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<const HloValue*> cross_color_buffers_;
 };
 
@@ -578,6 +603,34 @@ class BufferAssignment {
 
   const BufferAllocation& GetAssignedAllocation(
       const HloBuffer& hlo_buffer) const;
+
+  // Access to the logical buffers assigned to `allocation`, and their
+  // associated logical offsets and sizes.
+  const absl::flat_hash_map<const HloValue*, BufferAllocation::OffsetSize>&
+  assigned_buffers(const BufferAllocation& allocation) const {
+    return allocation.assigned_buffers_;
+  }
+
+  // Returns the Slice of contiguous memory assigned to `value`.
+  // REQUIRES: `value` must be assigned an allocation.
+  BufferAllocation::Slice GetAssignedSlice(const HloValue& value) const {
+    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+    return GetAssignedAllocation(value).GetSlice(value);
+  }
+
+  // Returns the LogicalBuffers which are live at the point of peak memory usage
+  // for `allocation`.
+  const std::vector<const HloValue*>& PeakMemoryLogicalBuffers(
+      const BufferAllocation& allocation) const {
+    return allocation.peak_buffers_;
+  }
+
+  // Returns the buffers placed in `allocation` whose own color differs from the
+  // allocation color.
+  const std::vector<const HloValue*>& CrossColorBuffers(
+      const BufferAllocation& allocation) const {
+    return allocation.cross_color_buffers_;
+  }
 
   // Returns the allocation with the given index. CHECKs if no allocation exists
   // with the given index.
@@ -680,6 +733,15 @@ class BufferAssignment {
   std::string MemoryUsageReport(float percentile = 0.05,
                                 int64_t more_than_k = 50,
                                 bool print_shape_layout = false) const;
+  std::string MemoryUsageReport(const BufferAllocation& allocation,
+                                const std::string& prefix,
+                                float percentile = 0.05,
+                                int64_t more_than_k = 50,
+                                bool print_shape_layout = false) const {
+    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+    return allocation.MemoryUsageReport(prefix, percentile, more_than_k,
+                                        print_shape_layout);
+  }
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(const AliasInfo* alias_info,
@@ -1132,12 +1194,12 @@ class BufferAssigner {
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value assignment_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value fallback_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     // Color of "view" buffers that are pointer stand-ins aliasing into another
     // allocation (see memory_space_assignment::Options::dus_view_color for the
@@ -1155,7 +1217,30 @@ class BufferAssigner {
         fallback_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
 
-    // If true, evaluate memory usage and fallback to DEFAULT algorithm.
+    // If true, the memory usage of each color is checked against its limit,
+    // and the colors that exceed it are reassigned with fallback algorithms.
+    // The best assignment of each color is kept.
+    //
+    // The fallbacks are tried in this order:
+    //  1. FAST_MERGE falls back to FAST_SPLIT.
+    //  2. The algorithms that may use more memory than BEST_OF_SPATIAL_TEMPORAL
+    //     are replaced with the fallback ones:
+    //     * For computations without a sequential ordering, FAST_MERGE is
+    //       replaced with
+    //       `fallback_algorithm_for_computations_without_ordering`.
+    //     * For the other computations, FAST_MERGE, FAST_SPLIT, SPATIAL and
+    //       TEMPORAL are replaced with `fallback_algorithm`.
+    //
+    // A DEFAULT `fallback_algorithm` tries SPATIAL and then TEMPORAL. This is
+    // equivalent to BEST_OF_SPATIAL_TEMPORAL, but skips TEMPORAL if SPATIAL
+    // fits.
+    //
+    // For example, with the default fallback algorithms, the
+    // {without ordering, sequential} algorithms {FAST_MERGE, FAST_MERGE} fall
+    // back to:
+    //  * {FAST_MERGE, FAST_SPLIT},
+    //  * {SPATIAL, SPATIAL},
+    //  * {SPATIAL, TEMPORAL}.
     bool enable_fallback = false;
 
     // Optional callback to return the memory limit for a given buffer color.

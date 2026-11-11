@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
@@ -500,6 +499,15 @@ class HloInstruction {
       const PrecisionConfig& precision_config,
       const SparsityConfig& sparsity_config = {},
       const BlockScalingConfig& block_scaling_config = {});
+
+  // Creates a dot-general op. `operands` holds lhs, rhs, then the sparsity
+  // indices, scales and zero points referenced by index from the configs.
+  static std::unique_ptr<HloInstruction> CreateDotGeneral(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config,
+      const BlockScalingConfig& block_scaling_config);
 
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
@@ -1126,13 +1134,6 @@ class HloInstruction {
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
       bool indices_are_sorted, bool unique_indices);
-
-  // Creates a kDomain instruction which delimits an HLO domain which have
-  // the provided user and operand side metadata.
-  static std::unique_ptr<HloInstruction> CreateDomain(
-      const Shape& shape, HloInstruction* operand,
-      std::unique_ptr<DomainMetadata> operand_side_metadata,
-      std::unique_ptr<DomainMetadata> user_side_metadata);
 
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
@@ -2475,12 +2476,6 @@ class HloInstruction {
 
   // Delegates to HloRaggedDotInstruction::ragged_dot_dimension_numbers().
   const RaggedDotDimensionNumbers& ragged_dot_dimension_numbers() const;
-
-  // Delegates to HloDomainInstruction::operand_side_metadata().
-  const DomainMetadata& operand_side_metadata() const;
-
-  // Delegates to HloDomainInstruction::user_side_metadata().
-  const DomainMetadata& user_side_metadata() const;
 
   // Delegates to HloConvolutionInstruction::sparsity_config.
   const SparsityConfig& sparsity_config() const;

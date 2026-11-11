@@ -47,14 +47,18 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
+using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
@@ -500,26 +504,27 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
 
 TEST_F(HloInstructionTest, DisjointReadWriteRegionsAttributes) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
-  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&instr));
-  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(nullptr));
-  SetDisjointReadWriteRegionsAttr(nullptr);  // Should be a no-op and not crash.
+  EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(&instr));
+  EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(nullptr));
+  frontend::SetDisjointReadWriteRegionsAttr(
+      nullptr);  // Should be a no-op and not crash.
 
-  SetDisjointReadWriteRegionsAttr(&instr);
-  EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&instr));
+  frontend::SetDisjointReadWriteRegionsAttr(&instr);
+  EXPECT_TRUE(frontend::HasDisjointReadWriteRegionsAttr(&instr));
 
   // Test different key variations and case-insensitive values.
-  for (absl::string_view key :
-       {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
+  for (absl::string_view key : {frontend::kXlaDisjointReadWriteRegions,
+                                "xla.disjoint_read_write_regions"}) {
     for (absl::string_view val : {"true", "True", "1", "yes", "YES"}) {
       HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
       test_instr.set_frontend_attribute(key, val);
-      EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&test_instr))
+      EXPECT_TRUE(frontend::HasDisjointReadWriteRegionsAttr(&test_instr))
           << "Failed for key: " << key << " and val: " << val;
     }
     for (absl::string_view val : {"false", "0", "no", "invalid", ""}) {
       HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
       test_instr.set_frontend_attribute(key, val);
-      EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&test_instr))
+      EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(&test_instr))
           << "Expected false for key: " << key << " and val: " << val;
     }
   }
@@ -653,6 +658,28 @@ ENTRY main {
   ASSERT_EQ(cp->opcode(), HloOpcode::kCollectivePermute);
   auto clone = cp->CloneWithNewOperands(cp->shape(), cp->operands());
   EXPECT_EQ(clone->operand_count(), 2);
+}
+
+TEST_F(HloInstructionTest, CloneCallPreservesIsComposite) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+decomposition {
+  ROOT p = f32[2] parameter(0)
+}
+
+ENTRY main {
+  arg = f32[2] parameter(0)
+  ROOT call = f32[2] call(arg), to_apply=decomposition, is_composite=true, frontend_attributes={composite.name="foo.bar"}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call->opcode(), HloOpcode::kCall);
+  ASSERT_TRUE(call->is_composite());
+  auto clone = call->CloneWithNewOperands(call->shape(), call->operands());
+  EXPECT_TRUE(clone->is_composite());
 }
 
 TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
@@ -1023,6 +1050,171 @@ ENTRY main {
   EXPECT_EQ(cloned_done->async_chain_start(), cloned_start);
 }
 
+TEST_F(HloInstructionTest, AsyncChainStartThroughWhileBodyWithTwoCallers) {
+  // Passes can briefly leave a cloned while next to the original, so the body
+  // has two while callers. The chain must still resolve through either one.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  ROOT neg = f32[2,4] negate(p0)
+}
+
+body {
+  p = (s32[], ((f32[2,4]), f32[2,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  state = ((f32[2,4]), f32[2,4], s32[]) get-tuple-element(p), index=1
+  done = f32[2,4] call-done(state)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  ROOT t = (s32[], ((f32[2,4]), f32[2,4], s32[])) tuple(next, state)
+}
+
+cond {
+  p = (s32[], ((f32[2,4]), f32[2,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(4)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  zero = s32[] constant(0)
+  start = ((f32[2,4]), f32[2,4], s32[]) call-start(p0), to_apply=async_comp
+  init = (s32[], ((f32[2,4]), f32[2,4], s32[])) tuple(zero, start)
+  w0 = (s32[], ((f32[2,4]), f32[2,4], s32[])) while(init), condition=cond, body=body
+  w1 = (s32[], ((f32[2,4]), f32[2,4], s32[])) while(init), condition=cond, body=body
+  ROOT r = ((s32[], ((f32[2,4]), f32[2,4], s32[])), (s32[], ((f32[2,4]), f32[2,4], s32[]))) tuple(w0, w1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  auto* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  auto* done = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  ASSERT_EQ(done->parent()->caller_instructions(HloOpcode::kWhile).size(), 2);
+
+  EXPECT_EQ(done->async_chain_start(), start);
+  ASSERT_NE(done->async_wrapped_instruction(), nullptr);
+  EXPECT_EQ(done->async_wrapped_instruction(),
+            start->async_wrapped_instruction());
+  EXPECT_FALSE(done->HasSideEffect());
+}
+
+TEST_F(HloInstructionTest, AsyncChainStartThroughRebuiltContextTuple) {
+  // Two async dynamic slices (`small` of shape f32[2,4] and `big` of shape
+  // f32[4,4]) read the same input buffer `buf`. Before entering the while loop,
+  // `big`'s async context tuple `ctx` is rebuilt from individual elements:
+  //   - Element 0 (`ops`, the input operand subtuple) takes `buf` through
+  //     `small`'s operand slot `{0, 0}`, which aliases the same `buf`.
+  //   - Elements 1 and 2 (`big_out` and `big_flag`) come from `big`.
+  // Both HloVerifier (via TraceAsyncDataflow) and HloAsyncInstruction chain
+  // queries must pair `done` inside the while body with `big`, and `small_done`
+  // (separated by an opt-barrier to exercise the non-direct forward walk) with
+  // `small`.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+slice_big {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[4,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={4,4}
+}
+
+slice_small {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[2,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={2,4}
+}
+
+body {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(p), index=1
+  state_ops = (f32[8,4], s32[], s32[]) get-tuple-element(state), index=0
+  body_buf = f32[8,4] get-tuple-element(state_ops), index=0
+  done = f32[4,4] async-done(state)
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  next_big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(body_buf, next, zero), calls=slice_big
+  ROOT t = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(next, next_big)
+}
+
+cond {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(4)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+ENTRY main {
+  buf = f32[8,4] parameter(0)
+  zero = s32[] constant(0)
+  two = s32[] constant(2)
+  small = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) async-start(buf, two, zero), calls=slice_small
+  big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(buf, zero, zero), calls=slice_big
+  small_ops = (f32[8,4], s32[], s32[]) get-tuple-element(small), index=0
+  small_buf = f32[8,4] get-tuple-element(small_ops), index=0
+  big_ops = (f32[8,4], s32[], s32[]) get-tuple-element(big), index=0
+  big_i = s32[] get-tuple-element(big_ops), index=1
+  big_z = s32[] get-tuple-element(big_ops), index=2
+  ops = (f32[8,4], s32[], s32[]) tuple(small_buf, big_i, big_z)
+  big_out = f32[4,4] get-tuple-element(big), index=1
+  big_flag = s32[] get-tuple-element(big), index=2
+  ctx = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) tuple(ops, big_out, big_flag)
+  init = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(zero, ctx)
+  w = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) while(init), condition=cond, body=body
+  epi_state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(w), index=1
+  epi_done = f32[4,4] async-done(epi_state)
+  small_barrier = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) opt-barrier(small)
+  small_done = f32[2,4] async-done(small_barrier)
+  ROOT r = (f32[2,4], f32[4,4]) tuple(small_done, epi_done)
+}
+)";
+
+  // ParseAndReturnVerifiedModule runs HloVerifier, checking that HloParser and
+  // ShapeVerifier::CheckAsyncDoneOperands also resolve `done` and `epi_done` to
+  // `slice_big` (f32[4,4]) rather than `slice_small` (f32[2,4]).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* small =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small"));
+  auto* small_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small_done"));
+  auto* big = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "big"));
+  auto* next_big =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "next_big"));
+  auto* done = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  auto* epi_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "epi_done"));
+
+  // 1. Backward walk from `done` inside the while body traces `state -> p ->
+  //    init -> ctx`: it must skip the shared operand in `ctx` element 0 and
+  //    resolve to the prologue `big` (`slice_big`, {4,4}), never `small`.
+  EXPECT_EQ(done->async_chain_start(), big);
+  EXPECT_EQ(done->async_wrapped_computation(),
+            big->async_wrapped_computation());
+  ASSERT_NE(done->async_wrapped_instruction(), nullptr);
+  EXPECT_EQ(done->async_wrapped_instruction(),
+            big->async_wrapped_instruction());
+
+  // 2. Backward walk from the post loop epilogue `epi_done` in ENTRY traces
+  //    `w#1 -> body ROOT t#1 -> next_big`.
+  EXPECT_EQ(epi_done->async_chain_start(), next_big);
+  EXPECT_EQ(epi_done->async_wrapped_computation(),
+            next_big->async_wrapped_computation());
+
+  // 3. Forward walk from `small` across `small_barrier` in ENTRY must pair
+  //    `small` with `small_done` and not get diverted into `w` along `{0, 0}`.
+  EXPECT_EQ(small->async_chain_done(), small_done);
+  EXPECT_EQ(small_done->async_chain_start(), small);
+}
+
 TEST_F(HloInstructionTest, AsyncPredicates) {
   const char* const kHlo = R"(
 HloModule async_predicates_test
@@ -1222,6 +1414,260 @@ ENTRY e {
               ::testing::UnorderedElementsAre(defused_copy, defused_root));
   EXPECT_THAT(defused_root->control_successors(),
               ::testing::ElementsAre(after));
+}
+
+TEST_F(HloInstructionTest, NestedAsyncStartPreservesExecutionThread) {
+  constexpr absl::string_view kHloString = R"(
+HloModule NestedAsyncThreads
+
+%inner_comp (p0: f32[8]) -> f32[8] {
+  %p0 = f32[8] parameter(0)
+  ROOT %neg = f32[8] negate(%p0)
+}, execution_thread="inner_thread"
+
+%fused_comp (fp0: f32[8]) -> f32[8] {
+  %fp0 = f32[8] parameter(0)
+  %inner_start = ((f32[8]), f32[8]) call-start(%fp0),
+    to_apply=%inner_comp, async_execution_thread="inner_thread"
+  %inner_done = f32[8] call-done(%inner_start)
+  ROOT %add = f32[8] add(%fp0, %inner_done)
+}
+
+%outer_async_comp (ap0: f32[8]) -> f32[8] {
+  %ap0 = f32[8] parameter(0)
+  ROOT %fus = f32[8] fusion(%ap0), kind=kCustom, calls=%fused_comp
+}
+
+ENTRY %main (x: f32[8]) -> f32[8] {
+  %x = f32[8] parameter(0)
+  %outer_start = ((f32[8]), f32[8]) async-start(%x), calls=%outer_async_comp
+  ROOT %outer_done = f32[8] async-done(%outer_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+
+  auto verify_threads = [](const HloModule& m) {
+    const HloInstruction* outer_done =
+        m.entry_computation()->root_instruction();
+    const HloInstruction* outer_start = outer_done->operand(0);
+    EXPECT_EQ(outer_start->async_execution_thread(),
+              HloInstruction::kMainExecutionThread);
+    EXPECT_EQ(outer_start->async_wrapped_computation()->execution_thread(),
+              HloInstruction::kMainExecutionThread);
+
+    const HloInstruction* fus = outer_start->async_wrapped_instruction();
+    const HloComputation* fused_comp = fus->fused_instructions_computation();
+    EXPECT_EQ(fused_comp->execution_thread(),
+              HloInstruction::kMainExecutionThread);
+
+    const HloInstruction* inner_done =
+        fused_comp->root_instruction()->operand(1);
+    const HloInstruction* inner_start = inner_done->operand(0);
+    EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
+    EXPECT_EQ(inner_done->async_execution_thread(), "inner_thread");
+    EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
+              "inner_thread");
+    EXPECT_EQ(inner_start->async_wrapped_instruction()
+                  ->to_apply()
+                  ->execution_thread(),
+              "inner_thread");
+  };
+
+  verify_threads(*module);
+
+  std::unique_ptr<HloModule> cloned = module->Clone();
+  verify_threads(*cloned);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> roundtrip,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  verify_threads(*roundtrip);
+
+  HloInstruction* cloned_fus = cloned->entry_computation()
+                                   ->root_instruction()
+                                   ->mutable_operand(0)
+                                   ->async_wrapped_instruction();
+  Cast<HloCallableInstruction>(cloned_fus)
+      ->RecursivelySetComputationsThreadName("parallel");
+  EXPECT_EQ(cloned_fus->fused_instructions_computation()->execution_thread(),
+            "parallel");
+  const HloInstruction* cloned_inner_start =
+      cloned_fus->fused_instructions_computation()
+          ->root_instruction()
+          ->operand(1)
+          ->operand(0);
+  EXPECT_EQ(cloned_inner_start->async_execution_thread(), "inner_thread");
+  EXPECT_EQ(cloned_inner_start->async_wrapped_computation()->execution_thread(),
+            "inner_thread");
+
+  HloInstruction* outer_done = module->entry_computation()->root_instruction();
+  HloInstruction* outer_start = outer_done->mutable_operand(0);
+  outer_start->set_async_execution_thread("parallel");
+  outer_done->set_async_execution_thread("parallel");
+  EXPECT_EQ(outer_start->async_wrapped_instruction()
+                ->fused_instructions_computation()
+                ->execution_thread(),
+            "parallel");
+  const HloInstruction* inner_start = outer_start->async_wrapped_instruction()
+                                          ->fused_instructions_computation()
+                                          ->root_instruction()
+                                          ->operand(1)
+                                          ->operand(0);
+  EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
+  EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
+            "inner_thread");
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeAllUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanSubsetOfUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape({n0, n1}, p1));
+  EXPECT_THAT(p0->users(), UnorderedElementsAre(n2, n3, n4));
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1));
+  EXPECT_THAT(std::vector<HloInstruction*>({n0, n1}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+  EXPECT_THAT(std::vector<HloInstruction*>({n2, n3, n4}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p0))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanManyUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p0->users(), p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+}
+
+TEST_F(HloInstructionTest, DefuseMultiOperandFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_comp {
+  fp0 = f32[4] parameter(0)
+  fp1 = f32[4] parameter(1)
+  fp2 = f32[4] parameter(2)
+  fadd = f32[4] add(fp0, fp1)
+  ftup = (f32[4], f32[4], f32[4]) tuple(fadd, fp1, fp2)
+  fgte = f32[4] get-tuple-element(ftup), index=2
+  ROOT froot = ((f32[4], f32[4], f32[4]), f32[4]) tuple(ftup, fgte)
+}
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  ROOT fus = ((f32[4], f32[4], f32[4]), f32[4]) fusion(p0, p1, p2), kind=kLoop, calls=fused_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* p2 = entry->parameter_instruction(2);
+  HloInstruction* fus = entry->root_instruction();
+
+  ASSERT_OK(fus->Defuse());
+
+  HloInstruction* defused_root = entry->root_instruction();
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_root->operand_count(), 2);
+
+  const HloInstruction* defused_ftup = defused_root->operand(0);
+  const HloInstruction* defused_fgte = defused_root->operand(1);
+  ASSERT_EQ(defused_ftup->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_fgte->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(defused_fgte->operands(), ::testing::ElementsAre(defused_ftup));
+
+  ASSERT_EQ(defused_ftup->operand_count(), 3);
+  const HloInstruction* defused_fadd = defused_ftup->operand(0);
+  EXPECT_EQ(defused_fadd->opcode(), HloOpcode::kAdd);
+  EXPECT_THAT(defused_fadd->operands(), ::testing::ElementsAre(p0, p1));
+  EXPECT_THAT(defused_ftup->operands(),
+              ::testing::ElementsAre(defused_fadd, p1, p2));
 }
 }  // namespace
 }  // namespace xla

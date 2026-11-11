@@ -61,7 +61,7 @@ limitations under the License.
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -140,13 +140,13 @@ class CpuOptProvider : public CompiledOptProvider {
     RegisterPass<ShardingPropagation>(
         /*is_spmd=*/true,
         /*propagate_metadata=*/false,
-        module_config.allow_spmd_sharding_propagation_to_output(),
-        module_config.allow_spmd_sharding_propagation_to_parameters(),
-        /*cse_prevention_only=*/false,
         /*sharding_helper=*/nullptr);
 
-    RegisterPass<spmd::StatefulRngSpmdPartitioner>(
-        module_config.num_partitions(), module_config.replica_count());
+    spmd::SpmdPartitionerOptions spmd_options;
+    spmd_options.threshold_for_windowed_einsum_mib = 100000;
+    RegisterPass<spmd::SpmdPartitioner>(module_config.num_partitions(),
+                                        module_config.replica_count(),
+                                        spmd_options);
     if (module_config.debug_options().xla_enable_enzyme_comms_opt()) {
       RegisterPass<RecognizeReduceWindow>();
     }

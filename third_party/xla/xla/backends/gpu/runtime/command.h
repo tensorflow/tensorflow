@@ -156,8 +156,8 @@ class Command : public Thunk {
   virtual bool requires_update_on_initialize() const { return false; }
 
   // Returns true if command requires a one-time fallback execution before it is
-  // recorded into a command buffer. This property must remain constant for the
-  // lifetime of the command.
+  // recorded into a command buffer by default. Thunks may override this per
+  // execution during Prepare via `CommandBufferRequests`.
   virtual bool requires_warmup() const { return false; }
 
   // Returns true if command buffer command parameters can change even when

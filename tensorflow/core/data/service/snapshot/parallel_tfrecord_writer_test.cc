@@ -120,7 +120,7 @@ absl::StatusOr<std::vector<T>> ReadRecords(const std::string& filename,
     TF_RETURN_IF_ERROR(status);
 
     for (const Tensor& tensor : record) {
-      result.push_back(tensor.unaligned_flat<T>().data()[0]);
+      result.push_back(tensor.unaligned_flat<T>()(0));
     }
   }
   return result;

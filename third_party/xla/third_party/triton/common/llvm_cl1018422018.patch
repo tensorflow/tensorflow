@@ -1,0 +1,55 @@
+--- a/include/triton/Analysis/AxisInfo.h
++++ b/include/triton/Analysis/AxisInfo.h
+@@ -223,7 +223,8 @@
+   void visitNonControlFlowArguments(
+       Operation *op, const RegionSuccessor & /*successor*/,
+       ValueRange /*nonSuccessorInputs*/,
+-      ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices) override;
++      ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices,
++      GetLatticeFn /*getLattice*/) override;
+ 
+   void
+   visitForOpInductionVar(scf::ForOp op,
+
+--- a/lib/Analysis/AxisInfo.cpp
++++ b/lib/Analysis/AxisInfo.cpp
+@@ -1261,7 +1261,8 @@
+ void AxisInfoAnalysis::visitNonControlFlowArguments(
+     Operation *op, const RegionSuccessor & /*successor*/,
+     ValueRange /*nonSuccessorInputs*/,
+-    ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices) {
++    ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices,
++    GetLatticeFn /*getLattice*/) {
+   if (auto forOp = dyn_cast<scf::ForOp>(op)) {
+     visitForOpInductionVar(forOp, argLattices);
+   } else {
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
+@@ -754,6 +754,7 @@
+            "expected the same number of successor inputs as operands");
+ 
+     auto valueToLattices = [&](Value v) { return getLatticeElement(v); };
++    auto getLattice = [&](Value v) { return getLatticeElementFor(point, v); };
+     unsigned firstIndex = 0;
+     if (inputs.size() != lattices.size()) {
+       if (!point->isBlockStart()) {
+@@ -767,7 +768,7 @@
+                 llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
+         visitNonControlFlowArguments(branch, parentSuccessor,
+                                      nonSuccessorInputs,
+-                                     nonSuccessorInputLattices);
++                                     nonSuccessorInputLattices, getLattice);
+       } else {
+         if (!inputs.empty())
+           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
+@@ -779,7 +780,7 @@
+                 llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
+         visitNonControlFlowArguments(branch, RegionSuccessor(region),
+                                      nonSuccessorInputs,
+-                                     nonSuccessorInputLattices);
++                                     nonSuccessorInputLattices, getLattice);
+       }
+     }
+ 
+

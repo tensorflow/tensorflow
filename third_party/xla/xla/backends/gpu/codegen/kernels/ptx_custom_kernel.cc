@@ -18,12 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -86,15 +88,20 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
 }
 
 absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
-    std::string kernel_name, std::shared_ptr<const std::vector<uint8_t>> cubin,
-    int num_args, se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes) {
+    const GpuKernelSpec& spec,
+    std::shared_ptr<const std::vector<uint8_t>> cubin) {
+  int num_args = spec.kernel_arguments().args().size();
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
-          std::move(cubin), kernel_name, /*arity=*/num_args,
+          std::move(cubin), std::string{spec.name()}, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
-  return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,
-                      thread_dim, shared_memory_bytes);
+  if (spec.cluster_dim().has_value()) {
+    return CustomKernel(std::string{spec.name()}, std::move(kernel_spec),
+                        spec.launch_dimensions().block_counts(),
+                        spec.launch_dimensions().thread_counts_per_block(),
+                        *spec.cluster_dim(), spec.shmem_bytes());
+  }
+  return CustomKernel(spec, std::move(kernel_spec));
 }
 
 }  // namespace xla::gpu::kernel

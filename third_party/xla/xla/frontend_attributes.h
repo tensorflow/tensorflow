@@ -14,11 +14,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <optional>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
+namespace frontend {
 
 // Attribute which indicates that an in-place instruction has disjoint read
 // and write regions w.r.t aliased input/output buffers.
@@ -47,6 +51,14 @@ inline constexpr absl::string_view kXlaNoInvariantOperands =
 // Returns a set of operand indices that should not be assumed invariant.
 absl::flat_hash_set<int> NonInvariantOperands(const HloInstruction&);
 
+// Frontend attribute name for instruction latency in nanoseconds.
+inline constexpr absl::string_view kXlaLatencyMetadata = "latency_metadata";
+
+// Returns the non-negative latency in nanoseconds specified in frontend
+// attributes under `latency_metadata`, or std::nullopt if absent. Logs a
+// warning and returns std::nullopt on unparsable or negative latency values.
+std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction);
+
 // Attribute which indicates that copy insertion should avoid inserting copies
 // for while loops. Can be set as a frontend attribute on kWhile instructions
 // or via xla_backend_extra_options in DebugOptions.
@@ -65,6 +77,8 @@ inline constexpr char kXlaPreserveTupleIndices[] = "xla_preserve_tuple_indices";
 // Returns 'true' if while loop DCE / tuple pruning should be disabled for
 // 'instruction'.
 bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction);
+
+}  // namespace frontend
 }  // namespace xla
 
 #endif  // XLA_FRONTEND_ATTRIBUTES_H_

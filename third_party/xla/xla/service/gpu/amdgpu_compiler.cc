@@ -118,8 +118,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
            .xla_gpu_experimental_disable_binary_libraries()) {
     pipeline.AddPass<ConvRewriter>(gpu_version);
     pipeline.AddPass<ConvPaddingLegalization>();
-    auto rcc = gpu_version.rocm_compute_capability();
-    pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version,
+    pipeline.AddPass<CudnnFusedConvRewriter>(gpu_version, dnn_version,
                                              toolkit_version);
   }
 
@@ -135,7 +134,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_rocm=*/true);
+      /*is_non_cuda_platform=*/true);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 

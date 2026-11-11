@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
@@ -827,7 +828,9 @@ TEST(GrpcSessionTest, LongErrorMessage) {
     auto a = test::graph::Constant(&g, Tensor());
     a->set_assigned_device_name(dev_a);
     std::vector<char> long_string_buffer(1024 * 1024, 'x');
-    absl::string_view long_string(long_string_buffer.data(), 1024 * 1024);
+    absl::string_view long_string =
+        absl::string_view(long_string_buffer.data(), long_string_buffer.size())
+            .substr(0, 1024 * 1024);
     std::string name = absl::StrCat(long_string, "fantasia!");
     auto a_err = test::graph::Error(&g, a, name);
     a_err->set_assigned_device_name(dev_a);

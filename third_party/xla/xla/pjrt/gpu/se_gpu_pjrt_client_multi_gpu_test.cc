@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -62,6 +64,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -74,6 +77,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/event_pool.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/runtime/device_id.h"
@@ -85,14 +89,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -329,6 +334,65 @@ ENTRY main {
     EXPECT_THAT(results[i][0]->GetReadyFuture().Await(),
                 StatusIs(input_error.code(), HasSubstr(input_error.message())));
   }
+}
+
+TEST(StreamExecutorGpuClientTest, ExecuteWithIncarnations) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+  const gpu::GpuExecutableRunOptions* run_options =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+          ->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+
+  static constexpr absl::string_view kAllReduceProgram = R"(
+HloModule AllReduce
+
+sum {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[4]{0} parameter(0)
+  ROOT ar = f32[4]{0} all-reduce(p0), replica_groups={{0,1}}, to_apply=sum
+}
+)";
+  CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(2);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      CompileExecutable(kAllReduceProgram, *client, compile_options));
+
+  Literal input = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        PjRtMemorySpace * memory_space,
+        client->addressable_devices()[i]->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                         client->BufferFromHostLiteral(input, memory_space));
+    buffers.push_back(std::move(buffer));
+  }
+
+  // All local devices belong to task 0.
+  ExecuteOptions options;
+  options.incarnations[0] = IncarnationId(1);
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute({{buffers[0].get()}, {buffers[1].get()}}, options));
+    ASSERT_EQ(results.size(), 2);
+    for (auto& result : results) {
+      ASSERT_OK_AND_ASSIGN(auto literal, result[0]->ToLiteral().Await());
+      EXPECT_THAT(literal->data<float>(),
+                  ElementsAreArray({2.0f, 4.0f, 6.0f, 8.0f}));
+    }
+  }
+  // With the old/racy behaviour, the 2 launcher threads raced to modify this.
+  EXPECT_FALSE(run_options->incarnations().has_value());
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {
@@ -1048,6 +1112,57 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
+TEST(StreamExecutorGpuClientTest,
+     VmmPinnedHostBufferOnEachDeviceIsHostAccessible) {
+  // Creating the client initializes the VMM allocator, which fails on GPUs
+  // without VMM support, so check the GPU first.
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("gpu"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  const se::GpuComputeCapability& cc =
+      executor->GetDeviceDescription().gpu_compute_capability();
+  if (!cc.IsCuda() && !cc.IsRocm()) {
+    GTEST_SKIP() << "VMM allocator is only supported on CUDA and ROCm.";
+  }
+  if (cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
+    GTEST_SKIP() << "This test requires at least a Hopper GPU (SM 9.0).";
+  }
+
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+
+  // All buffers stay alive until the end, so the host allocations of every
+  // device are live at once and each is released through its own device.
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  for (int i = 0; i < client->addressable_devices().size(); ++i) {
+    PjRtDevice* device = client->addressable_devices()[i];
+    ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * pinned_memory_space,
+                         device->memory_space_by_kind("pinned_host"));
+    std::vector<float> data(4, 10.0f * (i + 1));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr, pinned_memory_space,
+            /*device_layout=*/nullptr));
+    ASSERT_OK(buffer->GetReadyFuture().Await());
+    ASSERT_TRUE(buffer->IsOnCpu());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                         buffer->AcquireExternalReference());
+    const float* host_ptr =
+        reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+    EXPECT_EQ(host_ptr[0], data[0]);
+    EXPECT_EQ(host_ptr[3], data[3]);
+    buffers.push_back(std::move(buffer));
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
   // Create the client.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -1191,7 +1306,7 @@ TEST(StreamExecutorGpuClientTest,
 TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
   ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
-  auto* client = absl::down_cast<CommonPjRtClientImpl*>(pjrt_client.get());
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   ASSERT_OK_AND_ASSIGN(
@@ -1255,7 +1370,7 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
   EXPECT_THAT(kv_store->TryGet("gpu_fatal_error"),
               StatusIs(absl::StatusCode::kNotFound));
 
-  auto* se_client_0 = absl::down_cast<CommonPjRtClientImpl*>(client_0.get());
+  auto* se_client_0 = absl::down_cast<CommonPjRtClient*>(client_0.get());
   auto* raw_client_0 =
       absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
   ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,
@@ -1269,6 +1384,139 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
                        kv_store->Get("gpu_fatal_error", absl::Seconds(5)));
   EXPECT_THAT(kv_error, HasSubstr("Fatal GPU device error on node 0 device 0"));
   EXPECT_THAT(kv_error, HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS"));
+}
+
+// Holds `stream` until the returned notification is notified.
+std::shared_ptr<absl::Notification> HoldStream(se::Stream* stream) {
+  auto release = std::make_shared<absl::Notification>();
+  CHECK_OK(
+      stream->DoHostCallback([release] { release->WaitForNotification(); }));
+  return release;
+}
+
+class CrossDeviceCopyTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    setenv("XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES", "true", 1);
+    ASSERT_OK_AND_ASSIGN(
+        client_, GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+    common_client_ = absl::down_cast<CommonPjRtClient*>(client_.get());
+    raw_client_ = absl::down_cast<PjRtStreamExecutorRawClient*>(
+        common_client_->raw_client());
+    PjRtDevice* dev1 = client_->addressable_devices()[1];
+    ASSERT_OK_AND_ASSIGN(
+        d1_, raw_client_->GetLocalDeviceState(dev1->local_device_id()));
+    ASSERT_OK_AND_ASSIGN(d1_memory_, dev1->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(
+        PjRtMemorySpace * d0_memory,
+        client_->addressable_devices()[0]->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(src_,
+                         client_->BufferFromHostLiteral(literal_, d0_memory));
+    ASSERT_OK(src_->GetReadyFuture().Await());
+    ASSERT_OK_AND_ASSIGN(dst_shape_,
+                         common_client_->MakeDefaultShapeForMemorySpace(
+                             d1_memory_, literal_.shape(), /*layout=*/nullptr));
+  }
+
+  void TearDown() override {
+    unsetenv("XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES");
+  }
+
+  // Schedules a copy of `src_` into `dst`, populating `dst_` and `def_event_`.
+  absl::Status ScheduleCopy(PjRtRawBufferRef dst,
+                            PjRtDeviceEventRefVector dependencies) {
+    ABSL_ASSIGN_OR_RETURN(PjRtRawBufferRef src,
+                     PjRtRawBuffer::CreateRawAliasOfBuffer(src_.get()));
+    ABSL_ASSIGN_OR_RETURN(auto def,
+                     common_client_->CreateLinkedEventPromise(d1_memory_, ""));
+    ABSL_ASSIGN_OR_RETURN(auto usage, common_client_->CreateLinkedEventPromise(
+                                     src->memory_space(), ""));
+    src->ScheduleCopyTo(std::move(dependencies), dst, std::move(def.first),
+                        std::move(usage.first), /*allocation_event=*/nullptr);
+    def_event_ = std::move(def.second);
+    ABSL_ASSIGN_OR_RETURN(
+        dst_, common_client_->DefineBuffer(dst_shape_, d1_memory_,
+                                           std::move(dst), {def_event_}));
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<BufferSequencingEventRef> ScheduleCopyWithPeerDependency() {
+    ABSL_ASSIGN_OR_RETURN(PjRtRawBufferRef dst, AllocateOnD1());
+    raw_client_->MaterializeAllocationEvent(*dst);
+    TF_RET_CHECK(d1_->executor()->SynchronizeAllActivity());
+    auto d1_event =
+        BufferSequencingEvent::Create(raw_client_->async_work_runner());
+    ABSL_RETURN_IF_ERROR(
+        ScheduleCopy(std::move(dst), {PjRtDeviceEventRef(d1_event.CopyRef())}));
+    return d1_event;
+  }
+
+  // True if the copy defining `def_event_` is enqueued within 500ms.
+  bool RecordedSoon() const {
+    auto recorded = std::make_shared<absl::Notification>();
+    def_event_.down_cast<BufferSequencingEvent>()->event().AndThen(
+        [recorded] { recorded->Notify(); });
+    return recorded->WaitForNotificationWithTimeout(absl::Milliseconds(500));
+  }
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateOnD1() {
+    ABSL_ASSIGN_OR_RETURN(int64_t size, common_client_->GetOnDeviceBytesCount(
+                                       d1_memory_, dst_shape_));
+    return common_client_->AllocateRawBuffer(d1_memory_, size,
+                                             /*retry_on_oom=*/true,
+                                             /*allocate_after=*/{});
+  }
+
+  void ExpectCopied() {
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result,
+                         dst_->ToLiteral().Await());
+    EXPECT_EQ(literal_.data<float>(),
+              result->Relayout(literal_.shape().layout()).data<float>());
+  }
+
+  Literal literal_ = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  std::unique_ptr<PjRtClient> client_;
+  CommonPjRtClient* common_client_ = nullptr;
+  PjRtStreamExecutorRawClient* raw_client_ = nullptr;
+  LocalDeviceState* d1_ = nullptr;
+  PjRtMemorySpace* d1_memory_ = nullptr;
+  Shape dst_shape_;
+  std::unique_ptr<PjRtBuffer> src_;
+  std::unique_ptr<PjRtBuffer> dst_;
+  PjRtDeviceEventRef def_event_;
+};
+
+TEST_F(CrossDeviceCopyTest, WaitsOnHostForPeerDstAllocation) {
+  auto release = HoldStream(d1_->compute_stream());
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef dst, AllocateOnD1());
+  ASSERT_OK(ScheduleCopy(std::move(dst), {}));
+  EXPECT_FALSE(RecordedSoon());
+  release->Notify();
+  ExpectCopied();
+}
+
+TEST_F(CrossDeviceCopyTest, WaitsOnHostForPeerDependency) {
+  ASSERT_OK_AND_ASSIGN(BufferSequencingEventRef d1_event,
+                       ScheduleCopyWithPeerDependency());
+  auto release = HoldStream(d1_->compute_stream());
+  // Record after scheduling, so the copy first waits for the record.
+  ASSERT_OK(raw_client_->AllocateAndRecordEvent(d1_event, d1_,
+                                                d1_->compute_stream()));
+  EXPECT_FALSE(RecordedSoon());
+  release->Notify();
+  ExpectCopied();
+}
+
+TEST_F(CrossDeviceCopyTest, PropagatesPeerDependencyError) {
+  ASSERT_OK_AND_ASSIGN(BufferSequencingEventRef d1_event,
+                       ScheduleCopyWithPeerDependency());
+  ASSERT_OK_AND_ASSIGN(
+      EventPool::Handle handle,
+      d1_->event_pool().ThenAllocateAndRecordEvent(d1_->compute_stream()));
+  d1_event->SetSequencingEvent(std::move(handle), d1_->compute_stream());
+  d1_event.SetError(absl::InternalError("peer error"));
+  EXPECT_THAT(dst_->ToLiteral().Await(),
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("peer error")));
 }
 
 }  // namespace

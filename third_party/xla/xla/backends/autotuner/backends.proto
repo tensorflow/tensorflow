@@ -42,4 +42,5 @@ enum Backend {
   YNNPACK = 17;
   BLOCK_LEVEL_EMITTER_CPU = 18;
   TENSOR_IR = 19;
+  CUDNN_FISSION = 20;
 }

@@ -37,15 +37,12 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
-
-namespace m = match;
 
 bool AreAllreduceKeysEqual(AllReduceKey& key0, AllReduceKey& key1,
                            bool ignore_element_type) {
@@ -55,17 +52,12 @@ bool AreAllreduceKeysEqual(AllReduceKey& key0, AllReduceKey& key1,
     return std::get<0>(key0) == std::get<0>(key1) &&
            std::get<2>(key0) == std::get<2>(key1) &&
            std::get<3>(key0) == std::get<3>(key1) &&
-           std::get<4>(key0) == std::get<4>(key1) &&
-           std::get<5>(key0) == std::get<5>(key1);
+           std::get<4>(key0) == std::get<4>(key1);
   } else {
     return key0 == key1;
   }
 }
 // Returns if the given all reduce instructions are compatible with each other.
-// Note that since the given all-reduce instructions are connected to another
-// instruction by a direct data flow edge, they must belong to the same domain.
-// As a result, we don't need to include any domain information in the
-// AllReduceKey to check compatibility.
 bool AreCompatible(const HloAllReduceInstruction* ar0,
                    const HloAllReduceInstruction* ar1, ReductionKind op_kind,
                    bool ignore_element_type) {
@@ -79,46 +71,62 @@ bool AreCompatible(const HloAllReduceInstruction* ar0,
          kind0 == op_kind && HaveCompatibleCollectiveGroupKeys(*ar0, *ar1);
 }
 
+struct LookThroughResult {
+  HloInstruction* match = nullptr;
+  HloInstruction* convert = nullptr;
+  bool has_formatting = false;
+};
+
 // Look-through some formatting operations that might be in front of the
 // all-reduces we want to reassociate. Making sure the chain only has 1 user
 // throughout. Also check for possible reduce-scatter patterns (all-reduce +
 // dynamic-slice).
-HloInstruction* LookThroughForAllReduce(HloInstruction* instr,
-                                        const Literal& reduction_identity) {
+LookThroughResult LookThroughForAllReduce(HloInstruction* instr,
+                                          const Literal& reduction_identity,
+                                          bool reassociate_converted_ar) {
   // Match reduce-scatter pattern. Support only the non-formatted case at the
   // moment.
   if (instr->opcode() == HloOpcode::kDynamicSlice) {
     // Dynamic-slice to be matched needs to be immediately using an AllReduce.
     if (instr->operand(0)->opcode() != HloOpcode::kAllReduce ||
         instr->operand(0)->user_count() != 1 || instr->user_count() != 1) {
-      return nullptr;
+      return {};
     }
-    return instr;
+    return {instr};
   }
+  if (reassociate_converted_ar && instr->opcode() == HloOpcode::kConvert) {
+    // Convert to be matched needs to be immediately using an AllReduce.
+    if (instr->operand(0)->opcode() != HloOpcode::kAllReduce ||
+        instr->operand(0)->user_count() != 1 || instr->user_count() != 1) {
+      return {};
+    }
+    return {instr->mutable_operand(0), instr};
+  }
+  bool has_formatting = false;
   while (instr->opcode() != HloOpcode::kAllReduce) {
     if (instr->user_count() != 1) {
-      return nullptr;
+      return {};
     }
     if (instr->opcode() != HloOpcode::kReshape &&
         instr->opcode() != HloOpcode::kPad &&
-        instr->opcode() != HloOpcode::kSlice &&
-        instr->opcode() != HloOpcode::kConvert) {
-      return nullptr;
+        instr->opcode() != HloOpcode::kSlice) {
+      return {};
     }
     if (instr->opcode() == HloOpcode::kPad) {
       if (!instr->operand(1)->IsConstant()) {
-        return nullptr;
+        return {};
       }
       if (instr->operand(1)->literal() != reduction_identity) {
-        return nullptr;
+        return {};
       }
     }
+    has_formatting = true;
     instr = instr->mutable_operand(0);
   }
   if (instr->user_count() != 1) {
-    return nullptr;
+    return {};
   }
-  return instr;
+  return {instr, /*convert=*/nullptr, has_formatting};
 }
 
 // Because we can look through pads its possible that reassociating the
@@ -158,26 +166,6 @@ bool AreCompatibleConverts(const HloInstruction* convert0,
   }
   return is_compatible;
 }
-
-template <typename Pattern>
-auto OptionalConvertWithOneUser(HloInstruction** optional_convert,
-                                Pattern pattern) {
-  return m::AnyOf<HloInstruction>(
-      m::Convert(optional_convert, pattern).WithOneUser(), std::move(pattern));
-}
-
-bool MatchOperandsToAllReduceWithOptionalConvert(HloInstruction* inst,
-                                                 HloInstruction** convert0,
-                                                 HloInstruction** convert1) {
-  auto ar_op_optional_convert_pattern =
-      m::Op()
-          .WithOperand(0, OptionalConvertWithOneUser(convert0, m::AllReduce()))
-          .WithOperand(1, OptionalConvertWithOneUser(convert1, m::AllReduce()))
-          .WithPredicate([](const HloInstruction* inst) {
-            return inst->shape().IsArray();
-          });
-  return Match(inst, ar_op_optional_convert_pattern);
-}
 }  // namespace
 
 absl::StatusOr<bool> AllReduceReassociate::RunImpl(
@@ -207,17 +195,25 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
         continue;
       }
       // Find LHS all-reduce.
-      HloInstruction* lhs = LookThroughForAllReduce(inst->mutable_operand(0),
-                                                    *reduction_identity);
-      if (lhs == nullptr) {
+      LookThroughResult lhs_result =
+          LookThroughForAllReduce(inst->mutable_operand(0), *reduction_identity,
+                                  reassociate_converted_ar_);
+      if (lhs_result.match == nullptr) {
         continue;
       }
       // Find RHS all-reduce.
-      HloInstruction* rhs = LookThroughForAllReduce(inst->mutable_operand(1),
-                                                    *reduction_identity);
-      if (rhs == nullptr) {
+      LookThroughResult rhs_result =
+          LookThroughForAllReduce(inst->mutable_operand(1), *reduction_identity,
+                                  reassociate_converted_ar_);
+      if (rhs_result.match == nullptr) {
         continue;
       }
+      if ((lhs_result.convert != nullptr && rhs_result.has_formatting) ||
+          (rhs_result.convert != nullptr && lhs_result.has_formatting)) {
+        continue;
+      }
+      HloInstruction* lhs = lhs_result.match;
+      HloInstruction* rhs = rhs_result.match;
       if (!inst->shape().IsArray()) {
         continue;
       }
@@ -252,36 +248,16 @@ absl::StatusOr<bool> AllReduceReassociate::RunImpl(
         continue;
       }
 
-      HloInstruction* convert0 = nullptr;
-      HloInstruction* convert1 = nullptr;
-      if (!MatchOperandsToAllReduceWithOptionalConvert(inst, &convert0,
-                                                       &convert1)) {
-        VLOG(2) << "One or both inputs are type-converted.";
-      }
+      HloInstruction* convert0 = lhs_result.convert;
+      HloInstruction* convert1 = rhs_result.convert;
       // Check to see if input converts are present and preserving values and
       // precision.
       bool should_promote_ar = convert0 || convert1;
-      if (should_promote_ar) {
-        if (!reassociate_converted_ar_) {
-          VLOG(2) << "Promotions of all_reduces for reassociation will be "
-                     "disabled.";
-          continue;
-        }
-        if (!AreCompatibleConverts(convert0, convert1)) {
-          VLOG(2) << "Inputs' Converts are not preserving "
-                     "value, skipping";
-          continue;
-        }
+      if (should_promote_ar && !AreCompatibleConverts(convert0, convert1)) {
+        VLOG(2) << "Inputs' Converts are not preserving value, skipping";
+        continue;
       }
 
-      HloInstruction* op_operand0 = inst->mutable_operand(0);
-      HloInstruction* op_operand1 = inst->mutable_operand(1);
-      if (convert0) {
-        op_operand0 = convert0->mutable_operand(0);
-      }
-      if (convert1) {
-        op_operand1 = convert1->mutable_operand(0);
-      }
       if (!AreCompatible(ar0, ar1, *kind,
                          /*ignore_element_type=*/should_promote_ar)) {
         VLOG(2) << "All-Reduce operations are not compatible, skipping";

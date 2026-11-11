@@ -847,6 +847,46 @@ func.func @test_dot_general_batch(%arg0: tensor<2x8x8xf32>, %arg1: tensor<2x8x8x
 
 // -----
 
+func.func @test_dot_general_scalar(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1, 0] x [0, 1], precision = [DEFAULT, DEFAULT] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<f32>
+  %1 = arith.addf %0, %arg2 : tensor<f32>
+  return %1 : tensor<f32>
+}
+// CHECK-LABEL: @test_dot_general_scalar
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<16x8xf32>, %[[ARG2:.*]]: tensor<f32>)
+// CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<8x16xf32> to vector<8x16xf32>
+// CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<16x8xf32> to vector<16x8xf32>
+// CHECK-DAG: %[[ACC_VEC:.*]] = builtin.unrealized_conversion_cast %[[ARG2]] : tensor<f32> to vector<f32>
+// CHECK: %[[RHS_T:.*]] = vector.transpose %[[RHS]], [1, 0] : vector<16x8xf32> to vector<8x16xf32>
+// CHECK: %[[PROD:.*]] = arith.mulf %[[LHS]], %[[RHS_T]] : vector<8x16xf32>
+// CHECK: %[[ACC:.*]] = vector.extract %[[ACC_VEC]][] : f32 from vector<f32>
+// CHECK: %[[RES:.*]] = vector.multi_reduction <add>, %[[PROD]], %[[ACC]] [0, 1] : vector<8x16xf32> to f32
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[RES]] : f32 to vector<f32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<f32> to tensor<f32>
+// CHECK: return %[[RET]]
+
+// -----
+
+func.func @test_dot_general_scalar_i32(%arg0: tensor<8x16xi32>, %arg1: tensor<16x8xi32>, %arg2: tensor<i32>) -> tensor<i32> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1, 0] x [0, 1], precision = [DEFAULT, DEFAULT] : (tensor<8x16xi32>, tensor<16x8xi32>) -> tensor<i32>
+  %1 = arith.addi %0, %arg2 : tensor<i32>
+  return %1 : tensor<i32>
+}
+// CHECK-LABEL: @test_dot_general_scalar_i32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<8x16xi32>, %[[ARG1:.*]]: tensor<16x8xi32>, %[[ARG2:.*]]: tensor<i32>)
+// CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<8x16xi32> to vector<8x16xi32>
+// CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<16x8xi32> to vector<16x8xi32>
+// CHECK-DAG: %[[ACC_VEC:.*]] = builtin.unrealized_conversion_cast %[[ARG2]] : tensor<i32> to vector<i32>
+// CHECK: %[[RHS_T:.*]] = vector.transpose %[[RHS]], [1, 0] : vector<16x8xi32> to vector<8x16xi32>
+// CHECK: %[[PROD:.*]] = arith.muli %[[LHS]], %[[RHS_T]] : vector<8x16xi32>
+// CHECK: %[[ACC:.*]] = vector.extract %[[ACC_VEC]][] : i32 from vector<i32>
+// CHECK: %[[RES:.*]] = vector.multi_reduction <add>, %[[PROD]], %[[ACC]] [0, 1] : vector<8x16xi32> to i32
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[RES]] : i32 to vector<i32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<i32> to tensor<i32>
+// CHECK: return %[[RET]]
+
+// -----
+
 func.func @test_iota() -> tensor<8xi32> {
   %0 = stablehlo.iota dim = 0 : tensor<8xi32>
   return %0 : tensor<8xi32>
@@ -999,3 +1039,12 @@ func.func @test_copysign(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8
 }
 // CHECK-LABEL: @test_copysign
 // CHECK: math.copysign %{{.*}}, %{{.*}} : vector<8xf32>
+
+// -----
+
+func.func @test_fma(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = math.fma %arg0, %arg1, %arg2 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+// CHECK-LABEL: @test_fma
+// CHECK: math.fma %{{.*}}, %{{.*}}, %{{.*}} : vector<8xf32>

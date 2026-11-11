@@ -121,6 +121,21 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains) override {
+    return absl::UnimplementedError(
+        "CopyArraySlices is not supported for the IFRT proxy client.");
+  }
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArrayRef> slices,
+      absl::Span<const xla::ifrt::Index> origins) override {
+    return absl::UnimplementedError(
+        "UpdateArraySlices is not supported for the IFRT proxy client.");
+  }
+
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   tsl::Future<> DeleteValues(absl::Span<xla::ifrt::ValueRef> values) override;

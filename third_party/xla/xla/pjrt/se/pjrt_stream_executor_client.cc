@@ -224,11 +224,21 @@ void PjRtStreamExecutorRawClient::SetEventAsError(
 
 PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
     int id, PjRtDevice* device, absl::string_view kind, int kind_id)
-    : id_(id), device_(device), kind_(kind), kind_id_(kind_id) {
+    : id_(id),
+      device_(device),
+      kind_(kind),
+      kind_id_(kind_id),
+      capi_delegator_(this, device, kind_id) {
   to_string_ = absl::StrFormat("MEMORY_SPACE_%i", id_);
   debug_string_ = absl::StrFormat("PjRtStreamExecutorMemory(id=%i, device=%s)",
                                   id_, device_->DebugString());
 }
+
+const int PjRtStreamExecutorMemorySpace::kDefaultKindId = []() {
+  uint32_t kind_id =
+      tsl::Fingerprint32(PjRtStreamExecutorMemorySpace::kDefaultKind);
+  return static_cast<int>(kind_id);
+}();
 
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
@@ -261,7 +271,8 @@ absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
             devices[replica][partition]->client()->platform_name(), replica,
             partition);
       }
-      xla_assignment(replica, partition) = devices[replica][partition]->id();
+      xla_assignment(replica, partition) =
+          devices[replica][partition]->global_device_id().value();
     }
   }
   return xla_assignment;
@@ -370,25 +381,25 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 }  // namespace
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-    bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
+    PJRT_Memory* memory_space, size_t on_device_bytes_count, bool retry_on_oom,
+    tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
-  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
-    return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count);
+  if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
+                                       async_work_runner());
   }
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
-  PjRtMemorySpace* default_memory_space =
-      device->default_memory_space().value_or(nullptr);
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto layout_memory_space = Layout::kDefaultMemorySpace;
-  if (memory_space->kind() == PinnedHostMemorySpace::kKind) {
+  if (memory_space->memory_kind_id == PinnedHostMemorySpace::kKindId) {
     layout_memory_space = Layout::kHostMemorySpace;
-  } else if (memory_space != default_memory_space) {
+  } else if (memory_space->memory_kind_id !=
+             PjRtStreamExecutorMemorySpace::kDefaultKindId) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Buffer allocation: invalid memory space: ",
-                     memory_space->DebugString()));
+        absl::StrCat("Buffer allocation: invalid memory space kind_id: ",
+                     memory_space->memory_kind_id));
   }
   if (allocator_ == nullptr) {
     return absl::InternalError(
@@ -432,11 +443,11 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
 
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::AllocateRawBufferForExecute(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+    PJRT_Memory* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto mem = RawSEDeviceMemory::CreateDelayedMemory();
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device, std::move(mem), on_device_bytes_count);
@@ -445,11 +456,11 @@ PjRtStreamExecutorRawClient::AllocateRawBufferForExecute(
 absl::StatusOr<std::pair<PjRtRawBufferRef,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
 PjRtStreamExecutorRawClient::CreateRawBufferChannel(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count) {
+    PJRT_Memory* memory_space, size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto raw_buffer = tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device,
       tsl::AsyncValueRef<RawSEDeviceMemory>(buffer_promise),
@@ -462,11 +473,10 @@ PjRtStreamExecutorRawClient::CreateRawBufferChannel(
       buffer_promise->SetError(raw_buffer.status());
       return raw_buffer.status();
     }
-    if (memory_space != (*raw_buffer)->memory_space()) {
+    if (memory_space != (*raw_buffer)->c_memory_space()) {
       auto status = absl::InvalidArgumentError(absl::StrFormat(
-          "Memory space mismatch when forarding raw buffers: %s vs %s",
-          memory_space->DebugString(),
-          (*raw_buffer)->memory_space()->DebugString()));
+          "Memory space mismatch when forarding raw buffers: %p vs %p",
+          memory_space, (*raw_buffer)->c_memory_space()));
       buffer_promise->SetError(status);
       return status;
     }
@@ -516,9 +526,9 @@ void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
   }
 }
 
-bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
-  return memory_space->kind() == PinnedHostMemorySpace::kKind ||
-         memory_space->kind() == UnpinnedHostMemorySpace::kKind;
+bool PjRtStreamExecutorRawClient::IsOnCpu(const PJRT_Memory* memory_space) {
+  return memory_space->memory_kind_id == PinnedHostMemorySpace::kKindId ||
+         memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId;
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -619,17 +629,16 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
 
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
-    PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+    PJRT_Memory* memory_space, void* device_ptr, size_t size,
     absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
-  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
-    return CpuRawBuffer::ImportForeignMemory(device_ptr,
-                                             std::move(on_delete_callback),
-                                             size, memory_space, is_mutable);
+  if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    return CpuRawBuffer::ImportForeignMemory(
+        device_ptr, std::move(on_delete_callback), size, memory_space,
+        is_mutable, async_work_runner());
   }
-  CHECK_EQ(memory_space->devices().size(), 1);
-  auto* device = memory_space->devices().front();
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
 
   auto buffer = RawSEDeviceMemory::CreateForeign(
       se::DeviceAddressBase(device_ptr, size), std::move(on_delete_callback));
@@ -674,10 +683,26 @@ PjRtStreamExecutorExecutableLoadState::LoadRawExecutable(
   int partition = device_and_assign.partition;
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
+  std::shared_ptr<const DeviceAssignment> device_assignment;
+  if (local_exec->build_options().has_device_assignment()) {
+    device_assignment = std::shared_ptr<const DeviceAssignment>(
+        local_exec, &local_exec->build_options().device_assignment());
+  } else if (se_executable->num_replicas() == 1 &&
+             se_executable->num_partitions() == 1) {
+    auto da = std::make_shared<DeviceAssignment>(1, 1);
+    (*da)(0, 0) = device_and_assign.global_device_id.value();
+    device_assignment = std::move(da);
+  } else {
+    ABSL_ASSIGN_OR_RETURN(
+        DeviceAssignment default_da,
+        raw_client()->client()->backend().computation_placer()->AssignDevices(
+            se_executable->num_replicas(), se_executable->num_partitions()));
+    device_assignment =
+        std::make_shared<DeviceAssignment>(std::move(default_da));
+  }
   return std::make_unique<PjRtStreamExecutorRawLoadedExecutable>(
-      replica, partition, run_id, device,
-      std::move(device_and_assign.device_assignment), std::move(local_exec),
-      std::move(se_executable), raw_client());
+      replica, partition, run_id, device, std::move(device_assignment),
+      std::move(local_exec), std::move(se_executable), raw_client());
 }
 
 absl::Status PjRtStreamExecutorRawClient::TransferToInfeed(
@@ -789,11 +814,21 @@ using tsl::AsyncValueRef;
 using tsl::MakeConstructedAsyncValueRef;
 
 // Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+//
+// The completion events of the scheduled send operations are appended to
+// `send_events`, which must outlive the returned function. Send operations call
+// user-provided send callbacks, which may reference state that callers destroy
+// as soon as the execution completes (e.g. host callback contexts), so if the
+// execution fails, its error event must wait for the outstanding sends.
+//
+// The returned function is not thread-safe: it is only called from the thread
+// that launches the executable.
 static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
-    int replica, const ExecuteOptions& options,
-    AsyncWorkRunner* async_work_runner) {
+    int replica, absl::Span<const std::vector<SendCallback>> send_callbacks,
+    AsyncWorkRunner* async_work_runner,
+    std::vector<AsyncValueRef<std::unique_ptr<se::Event>>>* send_events) {
   // Check if we have callbacks registered for the given replica.
-  if (replica >= options.send_callbacks.size()) {
+  if (replica >= send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
                      const se::DeviceAddressBase&,
                      const absl::flat_hash_map<std::string, std::string>&) {
@@ -805,12 +840,14 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   }
 
   // SendCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const SendCallback> callbacks = options.send_callbacks[replica];
+  absl::Span<const SendCallback> callbacks = send_callbacks[replica];
 
-  return [callbacks, async_work_runner](
+  static constexpr size_t kMinPruneThreshold = 16;
+  return [callbacks, async_work_runner, send_events,
+          prune_threshold = kMinPruneThreshold](
              int64_t channel_id, se::Stream* stream, const Shape& shape,
              const se::DeviceAddressBase& src,
-             const absl::flat_hash_map<std::string, std::string>&)
+             const absl::flat_hash_map<std::string, std::string>&) mutable
              -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -822,12 +859,29 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
           channel_id);
     }
 
-    // Allocate event that will signal completion of send operation. We do not
-    // actually track the completion of the send callback, we only have to keep
-    // the device memory long enough to complete the memcpy command.
+    // Allocate event that will signal completion of send operation. It becomes
+    // available after the send callback returns (or the send fails). We have to
+    // keep the device memory long enough to complete the memcpy command, and if
+    // the execution fails, the event delays the execution's error event until
+    // the send operation is no longer running.
     ABSL_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
     auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
         std::move(se_event));
+
+    // Drop completed sends, so `send_events` does not grow in loops. Pruning
+    // only after the list has doubled keeps this amortized O(1).
+    if (send_events->size() >= prune_threshold) {
+      // Use erase-remove idiom for C++ 17 compatibility.
+      send_events->erase(
+          std::remove_if(
+              send_events->begin(), send_events->end(),
+              [](const AsyncValueRef<std::unique_ptr<se::Event>>& e) {
+                return e.IsAvailable();
+              }),
+          send_events->end());
+      prune_threshold = std::max(kMinPruneThreshold, 2 * send_events->size());
+    }
+    send_events->push_back(done_event);
 
     async_work_runner->Execute(
         [done_event, stream, src, channel_id, shape, send] {
@@ -965,9 +1019,9 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
 }  // namespace
 
 static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
-    int replica, const ExecuteOptions& options) {
+    int replica, absl::Span<const std::vector<RecvCallback>> recv_callbacks) {
   // Check if we have callbacks registered for the given replica.
-  if (replica >= options.recv_callbacks.size()) {
+  if (replica >= recv_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
                      se::DeviceAddressBase*,
                      const absl::flat_hash_map<std::string, std::string>&) {
@@ -979,7 +1033,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   }
 
   // RecvCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
+  absl::Span<const RecvCallback> callbacks = recv_callbacks[replica];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
                      se::DeviceAddressBase* dst,
@@ -1314,16 +1368,6 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   VLOG(3) << "Replica " << replica_ << ", partition " << partition_
           << " mapped to device ordinal for execution: " << device_ordinal;
 
-  // Schedule async send operations in the client thread pool.
-  auto* async_work_runner = raw_client_->async_work_runner();
-
-  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
-  // PjRt chunks via the user-provided callbacks.
-  SendDeviceMemoryFunction send_device_memory =
-      ConvertSendCallbacksToSendFunction(replica_, options, async_work_runner);
-  RecvDeviceMemoryFunction recv_device_memory =
-      ConvertRecvCallbacksToRecvFunction(replica_, options);
-
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
   // too far, not for correctness. Placing it before the executable launch
@@ -1341,12 +1385,16 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
         compute_semaphore->ScopedAcquire(1));
   }
-  auto* gpu_run_options = raw_client_->gpu_run_options();
+  // The devices of a process launch concurrently, sharing these options.
+  // Writing to the shared options' incarnations would need synchronisation.
+  const gpu::GpuExecutableRunOptions* gpu_run_options =
+      raw_client_->gpu_run_options();
+  std::shared_ptr<gpu::GpuExecutableRunOptions> launch_gpu_run_options;
   if (gpu_run_options && !options.incarnations.empty()) {
     absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
     for (const PjRtDevice* device : device_->client()->devices()) {
       int task_id = device->process_index();
-      GlobalDeviceId device_id(device->global_device_id().value());
+      GlobalDeviceId device_id = device->global_device_id();
 
       auto it = options.incarnations.find(task_id);
       if (it == options.incarnations.end()) {
@@ -1356,7 +1404,10 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
       device_incarnations[device_id] = it->second;
     }
-    gpu_run_options->set_incarnations(std::move(device_incarnations));
+    launch_gpu_run_options =
+        std::make_shared<gpu::GpuExecutableRunOptions>(*gpu_run_options);
+    launch_gpu_run_options->set_incarnations(std::move(device_incarnations));
+    gpu_run_options = launch_gpu_run_options.get();
   }
 
   // Keep these vectors empty when all outputs use the primary execute event.
@@ -1381,13 +1432,14 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
 
   auto launch_on_device =
       [device_state, gpu_run_options = gpu_run_options,
+       launch_gpu_run_options = std::move(launch_gpu_run_options),
        launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
        context = options.context, custom_options = options.custom_options,
        raw_client = raw_client_, device = device_,
        device_assignment = device_assignment_, is_predetermined_error,
        compute_reservation = std::move(compute_reservation),
-       send_device_memory = std::move(send_device_memory),
-       recv_device_memory = std::move(recv_device_memory),
+       send_callbacks = options.send_callbacks,
+       recv_callbacks = options.recv_callbacks,
        inputs = std::vector<PjRtRawBufferRef>(inputs.begin(), inputs.end()),
        results = std::vector<PjRtRawBufferRef>(results.begin(), results.end()),
        executable = executable_, execution_profile = options.execution_profile,
@@ -1398,6 +1450,18 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        result_definition_event_promises =
            std::move(result_definition_event_promises),
        control_deps = std::move(control_deps)]() mutable -> PjRtDeviceEventRef {
+    // Create PjRt<->StreamExecutor adaptors to send/recv device memory as PjRt
+    // chunks via the user-provided callbacks. Send operations are scheduled in
+    // the client thread pool. Sends are issued from this thread, so the send
+    // adaptor records their completion events directly in `send_events`.
+    std::vector<AsyncValueRef<std::unique_ptr<se::Event>>> send_events;
+    SendDeviceMemoryFunction send_device_memory =
+        ConvertSendCallbacksToSendFunction(replica, send_callbacks,
+                                           raw_client->async_work_runner(),
+                                           &send_events);
+    RecvDeviceMemoryFunction recv_device_memory =
+        ConvertRecvCallbacksToRecvFunction(replica, recv_callbacks);
+
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
     run_options.set_device_ordinal(device_state->local_device_id().value());
@@ -1492,8 +1556,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
     }
 
-    VLOG(1) << "Start calling RunAsync for "
-            << executable->executable()->module().name()
+    VLOG(1) << "Start calling RunAsync for " << executable->executable()->name()
             << ", device=" << device->DebugString()
             << ", run_id=" << run_options.run_id().ToInt();
 
@@ -1538,7 +1601,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     }
 
     VLOG(1) << "Finish calling RunAsync for "
-            << executable->executable()->module().name()
+            << executable->executable()->name()
             << ", device=" << device->DebugString()
             << ", run_id=" << run_options.run_id().ToInt()
             << ", replica=" << replica << ", partition=" << partition
@@ -1587,8 +1650,34 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
 
       if (!result_buffer_or_status.ok()) {
         StallStreamOnError(device_state, stream);
-        return raw_client->CreateErrorDeviceEvent(
-            add_error_context(result_buffer_or_status.status()));
+        absl::Status error =
+            add_error_context(result_buffer_or_status.status());
+
+        // Sends scheduled before the failure may still be running user send
+        // callbacks. Don't report the error until they complete, because
+        // callers may destroy the callback state once the execution is done.
+        std::vector<AsyncValueRef<std::unique_ptr<se::Event>>> pending_sends;
+        for (auto& send_event : send_events) {
+          if (!send_event.IsAvailable()) {
+            pending_sends.push_back(std::move(send_event));
+          }
+        }
+        // If there are no pending sends, we can report the error immediately.
+        if (pending_sends.empty()) {
+          return raw_client->CreateErrorDeviceEvent(std::move(error));
+        }
+        // Otherwise, use a promise to report error once pending sends complete.
+        auto promise = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
+            raw_client, device_state, raw_client->async_work_runner());
+        PjRtDeviceEventRef error_event = promise->event().CopyRef();
+        tsl::RunWhenReady(
+            absl::MakeConstSpan(pending_sends),
+            [promise = std::move(promise), error = std::move(error),
+             // Keep the pending sends alive until the callback completes.
+             pending_sends = pending_sends]() mutable {
+              promise->SetError(std::move(error));
+            });
+        return error_event;
       }
       absl::StatusOr<BufferSequencingEventRef> definition_event_or =
           device_state->GetEventForComputeStreamSyncPoint(
@@ -1833,8 +1922,15 @@ PjRtStreamExecutorRawClient::UpdateCompileOptions(
         }
         if (!this_process_index.has_value()) {
           this_process_index = all_process_indices.size() - 1;
-          if (local_device_id >= 0 &&
-              local_device_id < client()->backend().stream_executors().size()) {
+          if (LocalDeviceState* local_device =
+                  device_state(LocalDeviceId(local_device_id));
+              local_device != nullptr) {
+            int device_ordinal = local_device->executor()->device_ordinal();
+            has_device_oridinal = true;
+            build_options.set_device_ordinal(device_ordinal);
+          } else if (local_device_id >= 0 &&
+                     local_device_id <
+                         client()->backend().stream_executors().size()) {
             int device_ordinal = client()
                                      ->backend()
                                      .stream_executors()[local_device_id]
@@ -2047,8 +2143,8 @@ absl::Status PjRtStreamExecutorExecutableLoadState::Preload(
       .status();
 }
 
-tsl::RCReference<PjRtExecutableLoadState>
-PjRtStreamExecutorRawClient::MakeLoadState() {
+absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+PjRtStreamExecutorRawClient::MakeLoadState(const LoadOptions& load_options) {
   return tsl::MakeRef<PjRtStreamExecutorExecutableLoadState>(this);
 }
 

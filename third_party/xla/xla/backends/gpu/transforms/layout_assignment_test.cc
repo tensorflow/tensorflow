@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1510,6 +1513,122 @@ TEST_F(LayoutAssignmentTest,
   EXPECT_THAT(dot->operand(0)->shape().layout().minor_to_major(),
               ::testing::ElementsAre(3, 2, 0, 1));
 }
+
+struct ScaledDotLayoutTestCase {
+  std::string name;
+  // Shapes of lhs, rhs, lhs_scale, rhs_scale and the output, followed by the
+  // dot dimension numbers.
+  std::string lhs, rhs, lhs_scale, rhs_scale, output, dims;
+  // Expected minor_to_major of lhs and rhs.
+  std::string lhs_minor_to_major, rhs_minor_to_major;
+};
+
+class ScaledDotLayoutAssignmentTest
+    : public LayoutAssignmentTest,
+      public ::testing::WithParamInterface<ScaledDotLayoutTestCase> {};
+
+// Expects operand `operand_no` of `dot` to have `minor_to_major`, and its scale
+// (unless a no-op scalar) to have the same layout without the sub-byte element
+// size of an FP4 operand.
+void ExpectScaledDotSideLayout(const HloInstruction* dot, int64_t operand_no,
+                               absl::string_view minor_to_major) {
+  const Layout& operand_layout = dot->operand(operand_no)->shape().layout();
+  EXPECT_EQ(absl::StrJoin(operand_layout.minor_to_major(), ","),
+            minor_to_major);
+  const Shape& scale_shape = dot->operand(operand_no + 2)->shape();
+  if (ShapeUtil::IsScalar(scale_shape)) {
+    return;
+  }
+  EXPECT_EQ(scale_shape.layout(),
+            LayoutUtil::MakeLayout(operand_layout.minor_to_major()));
+}
+
+TEST_P(ScaledDotLayoutAssignmentTest, OperandsAndScalesAreContractingMinor) {
+  const ScaledDotLayoutTestCase& test_case = GetParam();
+  const std::string hlo_text =
+      absl::Substitute(R"(
+  HloModule ScaledDot
+  ENTRY main {
+    lhs = $0 parameter(0)
+    rhs = $1 parameter(1)
+    lhs_scale = $2 parameter(2)
+    rhs_scale = $3 parameter(3)
+    ROOT dot = $4 scaled-dot(lhs, rhs, lhs_scale, rhs_scale), $5
+  })",
+                       test_case.lhs, test_case.rhs, test_case.lhs_scale,
+                       test_case.rhs_scale, test_case.output, test_case.dims);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* dot =
+      FindInstruction(module.get(), HloOpcode::kScaledDot);
+  ASSERT_THAT(dot, NotNull());
+  ExpectScaledDotSideLayout(dot, 0, test_case.lhs_minor_to_major);
+  ExpectScaledDotSideLayout(dot, 1, test_case.rhs_minor_to_major);
+  EXPECT_TRUE(LayoutUtil::IsMonotonicWithDim0Major(dot->shape().layout()));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledDot, ScaledDotLayoutAssignmentTest,
+    ::testing::ValuesIn<ScaledDotLayoutTestCase>({
+        {"NN", "f8e4m3fn[128,64]", "f8e4m3fn[64,256]", "f8e8m0fnu[128,2]",
+         "f8e8m0fnu[2,256]", "bf16[128,256]",
+         "lhs_contracting_dims={1}, rhs_contracting_dims={0}", "1,0", "0,1"},
+        {"NT", "f8e4m3fn[128,64]", "f8e4m3fn[256,64]", "f8e8m0fnu[128,2]",
+         "f8e8m0fnu[256,2]", "bf16[128,256]",
+         "lhs_contracting_dims={1}, rhs_contracting_dims={1}", "1,0", "1,0"},
+        {"TN", "f8e4m3fn[64,128]", "f8e4m3fn[64,256]", "f8e8m0fnu[2,128]",
+         "f8e8m0fnu[2,256]", "bf16[128,256]",
+         "lhs_contracting_dims={0}, rhs_contracting_dims={0}", "0,1", "0,1"},
+        {"TT", "f8e4m3fn[64,128]", "f8e4m3fn[256,64]", "f8e8m0fnu[2,128]",
+         "f8e8m0fnu[256,2]", "bf16[128,256]",
+         "lhs_contracting_dims={0}, rhs_contracting_dims={1}", "0,1", "1,0"},
+        {"BatchedNN", "f8e4m3fn[4,128,64]", "f8e4m3fn[4,64,256]",
+         "f8e8m0fnu[4,128,2]", "f8e8m0fnu[4,2,256]", "bf16[4,128,256]",
+         "lhs_batch_dims={0}, lhs_contracting_dims={2}, "
+         "rhs_batch_dims={0}, rhs_contracting_dims={1}",
+         "2,1,0", "1,2,0"},
+        {"BatchedNT", "f8e4m3fn[4,128,64]", "f8e4m3fn[4,256,64]",
+         "f8e8m0fnu[4,128,2]", "f8e8m0fnu[4,256,2]", "bf16[4,128,256]",
+         "lhs_batch_dims={0}, lhs_contracting_dims={2}, "
+         "rhs_batch_dims={0}, rhs_contracting_dims={2}",
+         "2,1,0", "2,1,0"},
+        {"BatchedTN", "f8e4m3fn[4,64,128]", "f8e4m3fn[4,64,256]",
+         "f8e8m0fnu[4,2,128]", "f8e8m0fnu[4,2,256]", "bf16[4,128,256]",
+         "lhs_batch_dims={0}, lhs_contracting_dims={1}, "
+         "rhs_batch_dims={0}, rhs_contracting_dims={1}",
+         "1,2,0", "1,2,0"},
+        {"BatchedTT", "f8e4m3fn[4,64,128]", "f8e4m3fn[4,256,64]",
+         "f8e8m0fnu[4,2,128]", "f8e8m0fnu[4,256,2]", "bf16[4,128,256]",
+         "lhs_batch_dims={0}, lhs_contracting_dims={1}, "
+         "rhs_batch_dims={0}, rhs_contracting_dims={2}",
+         "1,2,0", "2,1,0"},
+        // rhs already has a valid contracting-minor layout and keeps it, which
+        // its scale must follow; lhs does not and gets reassigned.
+        {"PresetLayouts", "f8e4m3fn[64,128,4]{2,1,0}",
+         "f8e4m3fn[256,4,64]{2,1,0}", "f8e8m0fnu[2,128,4]{2,1,0}",
+         "f8e8m0fnu[256,4,2]{2,0,1}", "bf16[4,128,256]{0,2,1}",
+         "lhs_batch_dims={2}, lhs_contracting_dims={0}, "
+         "rhs_batch_dims={1}, rhs_contracting_dims={2}",
+         "0,1,2", "2,1,0"},
+        {"Fp4SingleScaleBlock", "f4e2m1fn[32,128]{1,0:E(4)}",
+         "f4e2m1fn[32,256]{0,1:E(4)}", "f8e8m0fnu[1,128]{1,0}",
+         "f8e8m0fnu[1,256]{1,0}", "bf16[128,256]{1,0}",
+         "lhs_contracting_dims={0}, rhs_contracting_dims={0}", "0,1", "0,1"},
+        {"ScalarScale", "bf16[64,128]{1,0}", "f8e4m3fn[256,64]{0,1}", "bf16[]",
+         "f8e8m0fnu[256,2]{0,1}", "bf16[128,256]{1,0}",
+         "lhs_contracting_dims={0}, rhs_contracting_dims={1}", "0,1", "1,0"},
+    }),
+    [](const ::testing::TestParamInfo<ScaledDotLayoutTestCase>& info) {
+      return info.param.name;
+    });
 
 }  // namespace
 }  // namespace gpu

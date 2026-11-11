@@ -54,8 +54,8 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/target_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -141,7 +141,8 @@ bool IsTritonSupportedRaggedDot(
 }
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
@@ -151,23 +152,26 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   for (int operand : {0, 1}) {
     ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
                      DotOperandDims::FromDotOperand(&dot, operand));
-    // cuBLAS only supports single contracting dimension.
-    if (dims.Rank(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) == 0) {
       return false;
     }
-    // cuBLAS doesn't support a physically minor batch dimension.
-    if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
-                              LayoutUtil::Minor(dims.shape().layout(), 0))) {
-      return false;
+    if (is_normalized) {
+      // cuBLAS only supports single contracting dimension.
+      if (dims.Rank(DotOperandDims::kContracting) > 1) {
+        return false;
+      }
+      // cuBLAS doesn't support a physically minor batch dimension.
+      if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
+                                LayoutUtil::Minor(dims.shape().layout(), 0))) {
+        return false;
+      }
+      // cuBLAS supports up to one non-contracting dimension.
+      if (dims.Rank(DotOperandDims::kNonContracting) > 1) {
+        return false;
+      }
     }
-    // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
-    if (nc_dims.size() > 1) {
-      return false;
-    }
-    if (nc_dims.size() == 1) {
-      num_matrix_operands += (nc_dims[0] != 1);
-    }
+    num_matrix_operands +=
+        (dims.TotalSize(DotOperandDims::kNonContracting) != 1);
   }
 
   if (num_matrix_operands == 0 ||
@@ -272,20 +276,29 @@ bool IsContiguousSlice(const HloInstruction& instr) {
   return false;
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
-  // On Intel GPUs, intrinsics may return a non-i32 integer type, so we first
-  // emit the intrinsic call to get the correct type for the compare
-  // instruction.
-  llvm::Value* tid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b);
-  llvm::Value* is_thread0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(tid->getType(), 0), tid);
-
-  llvm::Value* bid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b);
-  llvm::Value* is_block0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(bid->getType(), 0), bid);
-  return b->CreateAnd(is_thread0, is_block0);
+bool EmitsNoThunks(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    // The module is already scheduled, so instructions that only order other
+    // instructions are no-ops.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    // Their semantics are encoded by buffer assignment.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    // Constants are emitted as globals that are initialized when the
+    // executable is loaded.
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kCustomCall:
+      return hlo.custom_call_target() == kNopCustomCallTarget ||
+             hlo.custom_call_target() == kPinCustomCallTarget ||
+             hlo.custom_call_target() == kUnpinCustomCallTarget ||
+             hlo.custom_call_target() == kCreateBufferCustomCallTarget;
+    default:
+      return false;
+  }
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
@@ -500,59 +513,6 @@ void VerifyModule(const llvm::Module& module) {
   llvm::raw_string_ostream error_stream(error_str);
   bool broken = llvm::verifyModule(module, &error_stream);
   CHECK(!broken) << error_str;
-}
-
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b) {
-  // Find the unnested hlo instruction for which the kernel is generated for.
-  const HloInstruction* unnested_hlo = hlo;
-  const HloComputation* computation = hlo->parent();
-  if (computation->IsFusionComputation()) {
-    unnested_hlo = computation->FusionInstruction();
-  }
-
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  if (!shape_in_range(unnested_hlo->shape())) {
-    return i64_ty;
-  }
-
-  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
-    return shape_in_range(operand->shape());
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!absl::c_all_of(
-            unnested_hlo->fused_instructions_computation()->instructions(),
-            hlo_shape_in_range)) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
 }
 
 absl::StatusOr<std::string> GetProtoFingerprint(

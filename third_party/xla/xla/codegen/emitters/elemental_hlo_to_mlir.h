@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace emitters {
@@ -73,11 +76,18 @@ absl::Status SubgraphToMlirFunction(
     const CallTargetProvider& call_target_provider,
     mlir::MLIRContext* mlir_context);
 
-// Creates an `apply_indexing` op for the given map.
-llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,
-                                                mlir::ValueRange dims,
-                                                mlir::ValueRange symbols,
-                                                mlir::ImplicitLocOpBuilder& b);
+// Creates `apply_indexing` ops for the given map.
+//
+// When `preserve_result_ranges` is true (only valid when `map`'s domain and
+// constraints are guaranteed to hold at `b`'s insertion point), each variable
+// result with a constrained range under `map` is emitted as an
+// `ApplyIndexingOp` annotated with that range as `xla.range`. The op is only
+// folded to its SSA operand if `GetRange` of the operand is known and contained
+// in that range; otherwise (unknown operand range, or a range that is wider or
+// only partially overlaps) the unfolded op is kept.
+llvm::SmallVector<mlir::Value, 3> ApplyIndexing(
+    IndexingMap map, mlir::ValueRange dims, mlir::ValueRange symbols,
+    mlir::ImplicitLocOpBuilder& b, bool preserve_result_ranges = false);
 
 // Checks all the constraints and dimension ranges in the map.
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
@@ -147,6 +157,15 @@ void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
 
 // Is an operation with the given opcode supported by the elemental IR emitter?
 bool IsSupportedElementalOp(HloOpcode opcode);
+
+// Returns whether emitted ops should carry the source locations of their HLO
+// instructions, so that line info can be generated for them.
+bool IsLineInfoEnabled(const DebugOptions& debug_options);
+
+// Returns a location with the name of `instr` and, if present in its metadata,
+// its source file and line.
+mlir::Location GetInstructionLocation(const HloInstruction& instr,
+                                      mlir::MLIRContext* mlir_context);
 
 // Emits MLIR for a kIota instruction at the given target indices.
 absl::StatusOr<llvm::SmallVector<mlir::Value, 1>> EmitIota(

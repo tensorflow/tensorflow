@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -334,6 +335,7 @@ TEST_P(FissionTest, CanCreateFissionBackend) {
     expected_name = "HIPBLASLT_FISSION";
   }
   EXPECT_EQ(fission_backend_->name(), expected_name);
+  EXPECT_FALSE(fission_backend_->CanProduceWrongResults());
 }
 
 TEST_P(FissionTest, GetSupportedConfigs) {
@@ -577,6 +579,102 @@ TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
   ASSERT_THAT(configs, Not(IsEmpty()));
   EXPECT_OK(fission_backend_->ApplyConfig(fusion, *configs[0]));
   EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
+}
+
+// The scales of a cuDNN scaled dot fusion are pre-swizzled, so decomposing it
+// would be wrong.
+TEST_F(CublasFissionBackendTest, ScaledDotCudnnFusionIsNotSupported) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  c {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT dot = f32[256,384] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  main {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT f = f32[256,384] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=c,
+      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+  })"));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  EXPECT_FALSE(fission_backend_->IsSupported(fusion));
+  EXPECT_THAT(fission_backend_->GetSupportedConfigs(fusion),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(fusion, BackendConfig{}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support")));
+}
+
+// A Triton GEMM fusion whose dynamic-slice was annotated with a loop-dependent
+// `DynamicSliceConfig` while it was inside a while loop.
+constexpr absl::string_view kLoopDependentDynamicSliceFusionHlo = R"(
+  gemm_fusion {
+    act = bf16[4096,128]{0,1} parameter(0)
+    weights = bf16[4,128,128]{2,1,0} parameter(1)
+    layer = s32[] parameter(2)
+    c0 = s32[] constant(0)
+    ds = bf16[1,128,128]{2,1,0} dynamic-slice(weights, layer, c0, c0),
+        dynamic_slice_sizes={1,128,128},
+        backend_config={"dynamic_slice_config":{"loop_index":"0",
+          "linear":{"byte_offset":"0","byte_stride":"32768"}}}
+    w = bf16[128,128]{1,0} bitcast(ds)
+    dot = bf16[128,4096]{0,1} dot(w, act),
+        lhs_contracting_dims={0}, rhs_contracting_dims={1}
+    ROOT out = bf16[4096,128]{1,0} bitcast(dot)
+  }
+
+  ENTRY main {
+    act = bf16[4096,128]{0,1} parameter(0)
+    weights = bf16[4,128,128]{2,1,0} parameter(1)
+    layer = s32[] parameter(2)
+    ROOT fusion = bf16[4096,128]{1,0} fusion(act, weights, layer),
+        kind=kCustom, calls=gemm_fusion,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })";
+
+// The autotuner compiles the fusion outside of its enclosing while loop, so the
+// candidate must compute slice offsets from the offset operands instead of the
+// loop iteration (b/581519944).
+TEST_F(CublasFissionBackendTest,
+       CompileIgnoresLoopDependentDynamicSliceConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLoopDependentDynamicSliceFusionHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       fission_backend_->Compile(*fusion, *configs[0]));
+  auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr);
+  EXPECT_THAT(gpu_executable->thunk_executor().thunks().ToString(0),
+              Not(HasSubstr("kDynamicSliceFusion")));
+}
+
+// Applying the config to the original module keeps the annotation, since the
+// instruction stays inside its enclosing while loop.
+TEST_F(CublasFissionBackendTest,
+       ApplyConfigKeepsLoopDependentDynamicSliceConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLoopDependentDynamicSliceFusionHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(*fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+
+  ASSERT_OK(fission_backend_->ApplyConfig(*fusion, *configs[0]));
+  EXPECT_THAT(module->ToString(), HasSubstr("\"dynamic_slice_config\""));
 }
 
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {

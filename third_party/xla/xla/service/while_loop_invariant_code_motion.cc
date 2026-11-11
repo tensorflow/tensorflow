@@ -152,9 +152,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
   // This scan bails on any match, so it does not need the post order.
   for (const auto* instruction : while_body->instructions()) {
-    // LICM in the presence of domain instructions is complex, bail.
-    if (instruction->opcode() == HloOpcode::kDomain ||
-        instruction->IsCustomCall("SPMDFullToShardShape") ||
+    if (instruction->IsCustomCall("SPMDFullToShardShape") ||
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
       return false;
     }

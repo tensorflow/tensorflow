@@ -49,49 +49,31 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Mangler.h"
-#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
-#include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/SplitModule.h"
-#include "llvm/Transforms/Utils/ValueMapper.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Export.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -99,7 +81,9 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/embedded_while_loop_unroller.h"
+#include "xla/backends/cpu/transforms/fusion_wrapper.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
+#include "xla/backends/cpu/transforms/small_while_loop_hoisting_pass.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -193,12 +177,8 @@ limitations under the License.
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/export_hlo.h"
-#include "xla/service/cpu/fusion_wrapper.h"
-#include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
-#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -232,7 +212,7 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -250,7 +230,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -304,45 +283,6 @@ static cpu::JitCompiler::TaskRunner GetCompilationTaskRunner() {
   };
 }
 
-// For each computation in the module, determines whether that computation
-// calls a custom-call function, either directly or indirectly (e.g. because it
-// calls another computation that does).
-absl::flat_hash_map<const HloComputation*, bool>
-ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
-  absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
-
-  // Can never fail because we always return an OK status from the visitor.
-  CHECK_OK(call_graph->VisitNodes([&custom_call_map](
-                                      const CallGraphNode& node) {
-    const HloComputation* computation = node.computation();
-
-    for (const HloInstruction* instruction : computation->instructions()) {
-      // The computation contains a custom-call instruction directly.
-      if (DynCast<HloCustomCallInstruction>(instruction)) {
-        custom_call_map[computation] = true;
-        return absl::OkStatus();
-      }
-      // The computation calls something that contains a custom-call
-      // instruction (directly or indirectly). This lookup relies on the call
-      // graph traversing callees before callers, so that the map is always
-      // populated for all callees at this point.
-      for (const HloComputation* callee : instruction->called_computations()) {
-        bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
-        if (callee_contains_custom_call) {
-          custom_call_map[computation] = true;
-          return absl::OkStatus();
-        }
-      }
-    }
-
-    custom_call_map[computation] = false;
-    return absl::OkStatus();
-  }));
-
-  return custom_call_map;
-}
-
 }  // namespace
 
 namespace cpu {
@@ -386,85 +326,6 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
 }
 
 namespace {
-
-// This visitor records which HLO instructions should have profiling information
-// recorded.
-class CollectProfileCandidates : public DfsHloVisitorWithDefault {
- public:
-  static absl::StatusOr<absl::flat_hash_map<const HloInstruction*, int64_t>>
-  GetCandidatesForComputation(
-      const HloComputation& computation,
-      const absl::flat_hash_map<const HloInstruction*, int64_t>&
-          assigned_indices) {
-    absl::flat_hash_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
-    CollectProfileCandidates profile_candidates_for_computation(
-        &hlo_to_profile_idx, assigned_indices);
-    ABSL_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
-    return hlo_to_profile_idx;
-  }
-
- private:
-  CollectProfileCandidates(
-      absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx,
-      const absl::flat_hash_map<const HloInstruction*, int64_t>&
-          assigned_indices)
-      : hlo_to_profile_idx_(hlo_to_profile_idx),
-        assigned_indices_(assigned_indices) {}
-
-  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
-    hlo_to_profile_idx_->insert(
-        {hlo_instruction, FindOrDie(assigned_indices_, hlo_instruction)});
-    return absl::OkStatus();
-  }
-
-  absl::Status HandleCall(HloInstruction* call) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(call));
-    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
-                                                 assigned_indices_);
-    ABSL_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
-    return absl::OkStatus();
-  }
-  // Recurse into "conditional" so we can profile inside of it.
-  absl::Status HandleConditional(HloInstruction* conditional) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(conditional));
-
-    for (HloComputation* branch : conditional->branch_computations()) {
-      CollectProfileCandidates candidates_for_branch(hlo_to_profile_idx_,
-                                                     assigned_indices_);
-      ABSL_RETURN_IF_ERROR(branch->Accept(&candidates_for_branch));
-    }
-
-    return absl::OkStatus();
-  }
-
-  // Skip constants, there is nothing to profile.
-  absl::Status HandleConstant(HloInstruction*) override {
-    return absl::OkStatus();
-  }
-  // Skip parameters, they are a simple load.
-  absl::Status HandleParameter(HloInstruction*) override {
-    return absl::OkStatus();
-  }
-  // It is important to recurse for "while" or else we risk overly coarse
-  // profiling information.
-  absl::Status HandleWhile(HloInstruction* xla_while) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(xla_while));
-
-    CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_,
-                                                      assigned_indices_);
-    ABSL_RETURN_IF_ERROR(
-        xla_while->while_condition()->Accept(&candidates_for_condition));
-
-    CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_,
-                                                 assigned_indices_);
-    ABSL_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
-
-    return absl::OkStatus();
-  }
-
-  absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
-  const absl::flat_hash_map<const HloInstruction*, int64_t>& assigned_indices_;
-};
 
 // Adds the HloVerifier for CPU to the given pipeline.
 void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
@@ -640,12 +501,12 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<sdy::ShardyXLA>();
     } else {
       spmd_pipeline.AddPass<ShardingPropagation>(
-          /*is_spmd=*/true, /*propagate_metadata=*/false,
-          module->config().allow_spmd_sharding_propagation_to_output(),
-          module->config().allow_spmd_sharding_propagation_to_parameters());
+          /*is_spmd=*/true, /*propagate_metadata=*/false);
     }
-    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, module->config().replica_count());
+    spmd::SpmdPartitionerOptions spmd_options;
+    spmd_options.threshold_for_windowed_einsum_mib = 100000;
+    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
+        num_partitions, module->config().replica_count(), spmd_options);
     spmd_pipeline.AddPass<ControlDepRewriter>();
     spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
@@ -654,7 +515,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<xla::CallInliner>(
         /*single_call_site=*/false,
-        /*update_domain=*/false,
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
         /*override_policy=*/
         [](const xla::CallGraph& call_graph,
@@ -1326,40 +1186,6 @@ absl::Status VerifyLlvmModule(const llvm::Module& llvm_module) {
   return absl::OkStatus();
 }
 
-absl::Status CreateHloProfilingArtifacts(
-    const HloModule& module,
-    absl::flat_hash_map<const HloInstruction*, int64_t>*
-        instruction_to_profile_idx,
-    absl::flat_hash_map<const HloComputation*, int64_t>*
-        computation_to_profile_idx,
-    std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
-    std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
-  *hlo_profile_index_map = std::make_unique<HloProfileIndexMap>(module);
-  const HloComputation& entry_computation = *module.entry_computation();
-
-  ABSL_ASSIGN_OR_RETURN(*instruction_to_profile_idx,
-                   CollectProfileCandidates::GetCandidatesForComputation(
-                       entry_computation,
-                       (*hlo_profile_index_map)->instruction_to_profile_idx()));
-
-  auto shape_size_bytes = [](const Shape& shape) {
-    // On the cpu, opaques are pointers.
-    if (shape.IsOpaque()) {
-      return static_cast<int64_t>(sizeof(void*));
-    }
-    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-  };
-
-  HloCostAnalysis cost_analysis(shape_size_bytes);
-  ABSL_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
-  *hlo_profile_printer_data = CreateHloProfilePrinterData(
-      **hlo_profile_index_map, cost_analysis, entry_computation.name());
-  *computation_to_profile_idx =
-      (*hlo_profile_index_map)->computation_to_profile_idx();
-
-  return absl::OkStatus();
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
@@ -1459,138 +1285,6 @@ CreateOrcJITPostCompilationHook(const HloModule* hlo_module,
 
 }  // namespace
 
-// Removes unused globals and function declarations from the LLVM module.
-//
-// After splitting LLVM module into multiple parts, we end up with unused
-// symbols in each part: external globals and function declarations. We don't
-// support linking across modules added to SimpleOrcJIT, and we don't need it,
-// because we never construct LLVM IR that might require cross-module linking,
-// so we can just remove unused symbols from each part.
-static void RemoveUnusedSymbols(llvm::Module& module) {
-  llvm::SmallVector<llvm::GlobalVariable*> unused_globals;
-  llvm::SmallVector<llvm::Function*> unused_functions;
-
-  for (llvm::GlobalVariable& gv : module.globals()) {
-    if (gv.use_empty()) {
-      unused_globals.push_back(&gv);
-    }
-  }
-  for (llvm::Function& f : module.functions()) {
-    if (f.isDeclaration() && f.use_empty()) {
-      unused_functions.push_back(&f);
-    }
-  }
-
-  for (auto* gv : unused_globals) {
-    module.eraseGlobalVariable(gv);
-  }
-  for (auto* f : unused_functions) {
-    f->eraseFromParent();
-  }
-}
-
-// Clones a ThreadSafeModule from the given LLVM module in a new LLVM context.
-//
-// To enable parallel compilation, each LLVM module has to be owned by a
-// separate LLVM context. We take each part of the original module after a
-// split, and clone it into a new LLVM context.
-static llvm::orc::ThreadSafeModule CloneAsThreadSafeModule(
-    int64_t part, std::unique_ptr<llvm::Module> module) {
-  TraceMe trace([&] {
-    return TraceMeEncode("CpuCompiler::CloneAsThreadSafeModule",
-                         {{"part", part}});
-  });
-
-  // There is no way to clone a module from one context to another, so we need
-  // to serialize the module to bitcode and parse it back into the new context.
-  llvm::SmallString<0> bc;
-  llvm::raw_svector_ostream bcos(bc);
-  llvm::WriteBitcodeToFile(*module, bcos);
-
-  // Parse module back into its own LLVM context.
-  auto clone_context = std::make_unique<llvm::LLVMContext>();
-  auto clone_module = llvm::parseBitcodeFile(
-      llvm::MemoryBufferRef(
-          llvm::StringRef(bc.data(), bc.size()),
-          absl::StrFormat("%s_part_%02d", kXlaModuleIdentifier, part)),
-      *clone_context);
-
-  return llvm::orc::ThreadSafeModule(std::move(*clone_module),
-                                     std::move(clone_context));
-}
-
-namespace {
-// Compiled symbols (kernels and comparators) from a single LLVM module part.
-struct CompiledSymbolsPart {
-  std::vector<IrEmitter2::KernelInfo> kernels;
-  std::vector<IrEmitter2::ComparatorInfo> comparators;
-};
-}  // namespace
-
-// Collect IrEmitter2 symbols that got into the LLVM module part. We issue
-// compilation tasks in parallel, and to maximize concurrency we don't issue
-// separate compilation tasks that compile symbols from the same module.
-static CompiledSymbolsPart CollectCompiledSymbolsPart(
-    const IrEmitter2& ir_emitter, const llvm::Module& module) {
-  CompiledSymbolsPart syms;
-
-  auto find_kernel =
-      [&](llvm::StringRef name) -> std::optional<IrEmitter2::KernelInfo> {
-    for (auto& k : ir_emitter.kernels()) {
-      if (k.name == name) {
-        return k;
-      }
-    }
-    return std::nullopt;
-  };
-
-  auto find_comparator =
-      [&](llvm::StringRef name) -> std::optional<IrEmitter2::ComparatorInfo> {
-    for (auto& c : ir_emitter.comparators()) {
-      if (c.name == name) {
-        return c;
-      }
-    }
-    return std::nullopt;
-  };
-
-  for (auto& f : module.functions()) {
-    if (auto kernel = find_kernel(f.getName())) {
-      syms.kernels.push_back(*kernel);
-    }
-    if (auto comparator = find_comparator(f.getName())) {
-      syms.comparators.push_back(*comparator);
-    }
-  }
-
-  return syms;
-}
-
-// If LLVM module has large constants constructed from literals, we don't want
-// to split it, because it will cause us to copy large constants across module
-// parts. We should not be storing large constants in LLVM IR in a first place,
-// but while we do that, we have to be extra-careful, or it leads to extremely
-// long compilation times, OOMs and timeouts.
-//
-// TODO(b/361800465): Figure out how to avoid putting large constants into
-// LLVM IR in the first place.
-static bool HasLargeConstants(llvm::Module& module) {
-  static constexpr int kMaxConstantSize = 10000;
-  for (auto& g : module.globals()) {
-    if (!g.hasInitializer()) {
-      continue;
-    }
-
-    llvm::Constant* initializer = g.getInitializer();
-    if (auto* arr = llvm::dyn_cast<llvm::ArrayType>(initializer->getType())) {
-      if (arr->getNumElements() > kMaxConstantSize) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 inline void VlogMaxIsa(absl::string_view max_cpu_isa) {
   if (VLOG_IS_ON(1) && !max_cpu_isa.empty()) {
     if (tsl::port::IsX86CPU()) {
@@ -1603,59 +1297,6 @@ inline void VlogMaxIsa(absl::string_view max_cpu_isa) {
   }
 }
 
-// We keep HloProto in the CpuExecutable, but we don't need to keep literals
-// payload in it as we use it only for debugging and memory analysis.
-static void StripPayloadFromLiteralProto(HloProto& proto) {
-  auto* module = proto.mutable_hlo_module();
-  for (auto& computation : *module->mutable_computations()) {
-    for (auto& instruction : *computation.mutable_instructions()) {
-      // We only keep literal shape to correctly estimate memory usage of the
-      // HLO module, but we don't need the actual literal data.
-      if (instruction.has_literal()) {
-        LiteralProto literal;
-        *literal.mutable_shape() = instruction.literal().shape();
-        *instruction.mutable_literal() = std::move(literal);
-      }
-    }
-  }
-}
-
-// Extracts the given set of kernels from the original module.
-// Returns a new module with the extracted kernels.
-static absl::StatusOr<std::unique_ptr<llvm::Module>> ExtractKernelsFromModule(
-    llvm::Module* original_module,
-    absl::flat_hash_set<llvm::StringRef> kernels) {
-  // Clone into a new module, only keeping definitions of the relevant kernels.
-  auto should_clone_definition = [&kernels](const llvm::GlobalValue* gv) {
-    if (auto* func = llvm::dyn_cast<llvm::Function>(gv)) {
-      return kernels.contains(func->getName());
-    }
-    return false;
-  };
-  llvm::ValueToValueMapTy vmap;
-  std::unique_ptr<llvm::Module> module =
-      llvm::CloneModule(*original_module, vmap, should_clone_definition);
-
-  // Erase the cloned symbols from the original module.
-  for (const auto& kernel_name : tsl::SortedRange(kernels)) {
-    llvm::Function* to_be_removed = original_module->getFunction(kernel_name);
-    if (to_be_removed == nullptr) {
-      return Internal("Cannot remove kernel %s: cannot be found in module %s",
-                      kernel_name, original_module->getName());
-    }
-    to_be_removed->eraseFromParent();
-  }
-  return module;
-}
-
-static void AddXlaBackendExtraOptionsAsModuleFlag(
-    llvm::Module* llvm_module, llvm::StringRef backend_extra_options) {
-  auto* options_mdstring =
-      llvm::MDString::get(llvm_module->getContext(), backend_extra_options);
-  llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
-                             options_mdstring);
-}
-
 namespace {
 
 // We have to clone the LLVM module into a local
@@ -1663,25 +1304,9 @@ namespace {
 // have one object file for all the kernels.
 absl::StatusOr<std::unique_ptr<llvm::Module>> CopyLlvmModuleToLocalContext(
     llvm::LLVMContext& llvm_context, const llvm::Module& module) {
-  // There is no way to clone a module from one context to another, so we
-  // need to serialize the module to bitcode and parse it back into the
-  // new context.
-  llvm::SmallString<0> bc;
-  llvm::raw_svector_ostream bcos(bc);
-  llvm::WriteBitcodeToFile(module, bcos);
-
-  // Parse module back into its own LLVM context.
-  auto cloned_module = llvm::parseBitcodeFile(
-      llvm::MemoryBufferRef(
-          llvm::StringRef(bc.data(), bc.size()),
-          absl::StrFormat("%s_cloned_to_local_context", kXlaModuleIdentifier)),
-      llvm_context);
-
-  if (!cloned_module) {
-    return Internal("Failed to copy LLVM module to local context.");
-  }
-
-  return std::move(*cloned_module);
+  return llvm_ir::CloneModuleToContext(
+      module, llvm_context,
+      absl::StrFormat("%s_cloned_to_local_context", kXlaModuleIdentifier));
 };
 
 class LlvmMultipleModuleCompiler {
@@ -1715,24 +1340,27 @@ class JitLlvmMultipleModuleCompiler : public LlvmMultipleModuleCompiler {
 
 class AotLlvmMultipleModuleCompiler : public LlvmMultipleModuleCompiler {
  public:
-  explicit AotLlvmMultipleModuleCompiler(
-      const llvm::Module* llvm_module, std::unique_ptr<IrCompiler> ir_compiler)
+  AotLlvmMultipleModuleCompiler(const llvm::TargetMachine& target_machine,
+                                llvm::PICLevel::Level pic_level,
+                                llvm::PIELevel::Level pie_level,
+                                std::unique_ptr<IrCompiler> ir_compiler)
       : llvm_context_(std::make_unique<llvm::LLVMContext>()),
-        ir_compiler_(std::move(ir_compiler)) {}
+        llvm_module_(std::make_unique<llvm::Module>(kXlaModuleIdentifier,
+                                                    *llvm_context_)),
+        linker_(std::make_unique<llvm::Linker>(*llvm_module_)),
+        ir_compiler_(std::move(ir_compiler)) {
+    llvm_module_->setTargetTriple(target_machine.getTargetTriple());
+    llvm_module_->setDataLayout(target_machine.createDataLayout());
+    if (pic_level != llvm::PICLevel::NotPIC) {
+      llvm_module_->setPICLevel(pic_level);
+    }
+    if (pie_level != llvm::PIELevel::Default) {
+      llvm_module_->setPIELevel(pie_level);
+    }
+  }
 
   absl::Status AddModule(llvm::orc::ThreadSafeModule tsm,
                          size_t dylib_index) override {
-    // We don't need to link in the module if it is the same as the one we
-    // are currently linking.
-    if (llvm_module_ == nullptr) {
-      // We assume the first module is the main module to link into.
-      ABSL_ASSIGN_OR_RETURN(llvm_module_,
-                       CopyLlvmModuleToLocalContext(*llvm_context_,
-                                                    *tsm.getModuleUnlocked()));
-      linker_ = std::make_unique<llvm::Linker>(*llvm_module_);
-      return absl::OkStatus();
-    }
-
     ABSL_ASSIGN_OR_RETURN(
         auto cloned_module,
         CopyLlvmModuleToLocalContext(*llvm_context_, *tsm.getModuleUnlocked()));
@@ -1740,13 +1368,19 @@ class AotLlvmMultipleModuleCompiler : public LlvmMultipleModuleCompiler {
     // Match data layouts to avoid warning messages.
     cloned_module->setTargetTriple(llvm_module_->getTargetTriple());
     cloned_module->setDataLayout(llvm_module_->getDataLayout());
-    linker_->linkInModule(std::move(cloned_module));
+    if (linker_->linkInModule(std::move(cloned_module))) {
+      return Internal("Failed to link LLVM module for AOT compilation");
+    }
     return absl::OkStatus();
   }
 
   absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile(
       absl::Span<const FunctionLibrary::Symbol> compiled_symbols) &&
       override {
+    if (llvm_module_->getNamedMetadata(
+            std::string(kMemoryRegionNameMetadataName)) == nullptr) {
+      SetModuleMemoryRegionName(*llvm_module_, "aot_module");
+    }
     cantFail((*ir_compiler_)(*llvm_module_));
     return nullptr;
   }
@@ -1784,23 +1418,8 @@ CpuCompiler::CompileCpuExecutable(
             CallUserPostOptimizationHook(module);
           });
 
-  // Compile must be thread-safe so create a new LLVM context for the module.
-  mlir::MLIRContext mlir_context;
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  auto llvm_module =
-      std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                    ir_compiler->build_target_machine());
-
-  llvm_module->setTargetTriple(target_machine->getTargetTriple());
-  llvm_module->setDataLayout(target_machine->createDataLayout());
-
-  if (pic_level != llvm::PICLevel::NotPIC) {
-    llvm_module->setPICLevel(pic_level);
-  }
-  if (pie_level != llvm::PIELevel::Default) {
-    llvm_module->setPIELevel(pie_level);
-  }
 
   const DebugOptions& debug_options = module->config().debug_options();
 
@@ -1808,10 +1427,14 @@ CpuCompiler::CompileCpuExecutable(
   // CpuExecutable to an AOT compilation result.
   std::vector<ObjFileProto> obj_files;
 
-  // We split LLVM module and distribute it across separate DyLibs to enable
+  // Distribute compiled kernel modules across separate DyLibs to enable
   // parallel compilation at run time.
-  size_t parallel_codegen_split_count =
-      debug_options.xla_cpu_parallel_codegen_split_count();
+  int32_t split_count = debug_options.xla_cpu_parallel_codegen_split_count();
+  if (split_count <= 0) {
+    return Internal("xla_cpu_parallel_codegen_split_count (%d) must be > 0",
+                    split_count);
+  }
+  size_t parallel_codegen_split_count = static_cast<size_t>(split_count);
   VlogMaxIsa(debug_options.xla_cpu_max_isa());
 
   // Compiler hooks to intercept compiled LLVM IR modules.
@@ -1846,7 +1469,7 @@ CpuCompiler::CompileCpuExecutable(
         std::move(jit_compiler));
   } else {
     llvm_module_compiler = std::make_unique<AotLlvmMultipleModuleCompiler>(
-        llvm_module.get(), std::move(ir_compiler));
+        *target_machine, pic_level, pie_level, std::move(ir_compiler));
   }
 
   TargetMachineFeatures target_machine_features(target_machine.get());
@@ -1855,18 +1478,6 @@ CpuCompiler::CompileCpuExecutable(
   // wrapper: run_hlo_passes=false or --xla_disable_hlo_passes may skip it.
   FusionWrapper fusion_wrapper(&target_machine_features);
   ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(module.get()).status());
-
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instruction_to_profile_idx;
-  absl::flat_hash_map<const HloComputation*, int64_t>
-      computation_to_profile_idx;
-  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
-  if (module->config().hlo_profiling_enabled()) {
-    ABSL_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
-        *module, &instruction_to_profile_idx, &computation_to_profile_idx,
-        &hlo_profile_index_map, &hlo_profile_printer_data));
-  }
 
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
@@ -1904,228 +1515,81 @@ CpuCompiler::CompileCpuExecutable(
     return cpu_executable;
   };
 
-  // TODO(ezhulenev): Once we fully migrate to Thunks current IrEmitter should
-  // be renamed to NestedIrEmitter and be used only for emitting nested (aka
-  // thread local or embedded) computations (reductions, maps, etc.).
-
-  // (Nested) IrEmitter is responsible for building LLVM module with functions
-  // for all HLO computations. In thunk execution mode we only build LLVM
-  // functions for embedded computations (e.g. reduction computations) and all
-  // high-level operations (fusions, elementwise, etc.) are lowered to kernel
-  // functions (which are also LLVM functions, but use a HostKernel ABI).
-  IrEmitter nested_ir_emitter(
-      &mlir_context, *module, *assignment, llvm_module.get(),
-      std::move(instruction_to_profile_idx),
-      std::move(computation_to_profile_idx),
-      ModuleComputationsTransitivelyContainCustomCall(*module),
-      &target_machine_features, options::IsMsanEnabled(module->config()));
-
-  // The thunk runtime manages large constants, therefore we only emit
-  // small ones.
-  ABSL_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
-
-  // IR emitter is responsible for building LLVM module with host kernels for
-  // corresponding HLO instructions (fusions, elemental instructions, etc.).
-  IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
-
   // Thunk emitter is responsible for building a Thunk sequence that will
-  // resolved kernels in the compiled LLVM module and execute them together
+  // resolve kernels in the compiled LLVM modules and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
-  ThunkEmitter thunk_emitter(ir_emitter2, *GetCompilationThreadPool(),
-                             *assignment, target_machine_features, *module,
+  ThunkEmitter thunk_emitter(*GetCompilationThreadPool(), *assignment,
+                             target_machine_features, *module,
                              thunk_emitter_options);
   ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks,
                    thunk_emitter.EmitEntryComputation(*module));
 
   ABSL_ASSIGN_OR_RETURN(std::vector<ThunkEmitter::EmittedKernel> kernels,
                    thunk_emitter.ConsumeKernels());
+  std::vector<ThunkEmitter::EmittedKernel> comparators =
+      thunk_emitter.ConsumeComparators();
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
-    std::string emitter2_ir = llvm_ir::DumpToString(llvm_module.get());
-
     auto thunk_kernel_fmt = [](std::string* out,
                                const ThunkEmitter::EmittedKernel& kernel) {
       absl::StrAppend(out,
                       llvm_ir::DumpToString(kernel.module.getModuleUnlocked()));
     };
-    std::string thunks_ir = absl::StrJoin(kernels, "\n", thunk_kernel_fmt);
-
-    ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
+    ir_module_string = absl::StrJoin(kernels, "\n", thunk_kernel_fmt);
+    if (!comparators.empty()) {
+      if (!ir_module_string.empty()) {
+        absl::StrAppend(&ir_module_string, "\n");
+      }
+      absl::StrAppend(&ir_module_string,
+                      absl::StrJoin(comparators, "\n", thunk_kernel_fmt));
+    }
   }
 
-  ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
-  for (const auto& [name, module] : kernels) {
+  for (const auto& [name, module] :
+       llvm::concat<const ThunkEmitter::EmittedKernel>(kernels, comparators)) {
     ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
   }
 
-  // Some kernels have to be compiled separately because they have
-  // extra backend options.
-  int num_extra_functions = 0;
-  using BackendOptions = llvm::StringRef;
-  using Kernel = llvm::StringRef;
-  absl::flat_hash_map<BackendOptions, absl::flat_hash_set<Kernel>>
-      backend_extra_options_to_kernels;
-  for (const auto& k : ir_emitter2.kernels()) {
-    if (k.backend_extra_options.empty()) {
-      continue;
-    }
-    auto [_, inserted] =
-        backend_extra_options_to_kernels[k.backend_extra_options].insert(
-            k.name);
-    CHECK(inserted) << "Kernel " << k.name << " is not unique";
-    num_extra_functions++;
-  }
-  const int num_extra_parts = backend_extra_options_to_kernels.size();
-  // We assign one dylib to each set of kernels that have the same extra
-  // backend options. We do this because we work under the assumption that
-  // very few kernels will set extra options, and if they do, the options are
-  // likely to be identical.
-  if (num_extra_parts >= parallel_codegen_split_count) {
-    return Internal(
-        "Too many extra compilation parts due to non-default options (%d). "
-        "Consider reducing this number or increasing "
-        "parallel_codegen_split_count (%d)",
-        num_extra_parts, parallel_codegen_split_count);
-  }
-
-  // We define the number of module parts based on the total number of
-  // compiled functions (kernels and comparators) that are called from thunks,
-  // and the maximum number of parts that we want to split the module into.
-  size_t num_compiled_functions = ir_emitter2.kernels().size() +
-                                  ir_emitter2.comparators().size() +
-                                  kernels.size();
+  size_t num_compiled_functions = kernels.size() + comparators.size();
   size_t num_default_parts =
-      std::min(num_compiled_functions - num_extra_functions,
-               parallel_codegen_split_count - num_extra_parts);
+      thunk_emitter_options.is_aot_compilation
+          ? 1
+          : std::min(num_compiled_functions, parallel_codegen_split_count);
 
-  // JIT compile the LLVM IR module to in-memory machine code. We split the
-  // module into `num_jit_dylibs` parts to allow parallel compilation. In
-  // practice, all of the kernel functions are independent and don't call each
-  // other, so we can compile each individual part in parallel. We split
-  // module preserving locals, which should guarantee that all thread local
-  // computations end up in the same module with the corresponding kernel.
-
-  // Collect all compiled symbols grouped by LLVM module part, so that we can
-  // issue compile tasks in parallel without any interference.
-  std::vector<CompiledSymbolsPart> compiled_parts;
-
-  VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
-          << " kernels and " << ir_emitter2.comparators().size()
-          << " comparators";
-
-  int dylib_index = 0;
-  auto add_module_for_compilation =
-      [&](std::unique_ptr<llvm::Module> llvm_module_part) -> absl::Status {
-    // Collect symbols that are compiled in this LLVM module part.
-    RemoveUnusedSymbols(*llvm_module_part);
-    compiled_parts.push_back(
-        CollectCompiledSymbolsPart(ir_emitter2, *llvm_module_part));
-
-    std::string dump = llvm_ir::DumpToString(llvm_module_part.get());
-    VLOG(5) << "Adding compilation module:\n" << dump;
-
-    // Clone LLVM module part into its own thread safe context.
-    auto tsm =
-        CloneAsThreadSafeModule(dylib_index, std::move(llvm_module_part));
-
-    ABSL_RETURN_IF_ERROR(
-        llvm_module_compiler->AddModule(std::move(tsm), dylib_index++));
-
-    return absl::OkStatus();
-  };
-
-  // If there are extra parts, compile them first, since we must
-  // remove the affected kernels from the LLVM module.
-  if (num_extra_parts > 0) {
-    TraceMe trace([&] {
-      return TraceMeEncode("CompileExtraKernels",
-                           {{"num_extra_parts", num_extra_parts}});
-    });
-    for (const auto& [backend_extra_options, kernels] :
-         tsl::KeySortedRange(backend_extra_options_to_kernels)) {
-      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> new_module,
-                       ExtractKernelsFromModule(llvm_module.get(), kernels));
-      AddXlaBackendExtraOptionsAsModuleFlag(new_module.get(),
-                                            backend_extra_options);
-      ABSL_RETURN_IF_ERROR(add_module_for_compilation(std::move(new_module)));
-    }
-  }
-
-  if (HasLargeConstants(*llvm_module) ||
-      thunk_emitter_options.is_aot_compilation) {
-    VLOG(3) << "Skip parallel compilation due to large constants or AOT "
-               "compilation";
-    num_default_parts = 1;
-  }
-
-  if (num_default_parts > 1) {
-    VLOG(3) << "Split LLVM module into " << num_default_parts
-            << " parts before codegen to enable parallel compilation"
-            << " (max split count: " << parallel_codegen_split_count << ")";
-
-    TraceMe trace([&] {
-      return TraceMeEncode("SplitModule",
-                           {{"num_default_parts", num_default_parts}});
-    });
-
-    auto add_module_for_compilation_no_status =
-        [&](std::unique_ptr<llvm::Module> llvm_module_part) -> void {
-      CHECK_OK(add_module_for_compilation(std::move(llvm_module_part)));
-    };
-
-    llvm::SplitModule(*llvm_module, num_default_parts,
-                      add_module_for_compilation_no_status,
-                      /*PreserveLocals=*/true, /*RoundRobin=*/true);
-    // Free resources used by the original LLVM module.
-    llvm_module.reset();
-    llvm_context.reset();
-  } else {
-    VLOG(3) << "Compile LLVM module without splitting (max split count: "
-            << parallel_codegen_split_count << ")";
-    compiled_parts.push_back(
-        CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
-    ABSL_RETURN_IF_ERROR(llvm_module_compiler->AddModule(
-        llvm::orc::ThreadSafeModule(std::move(llvm_module),
-                                    std::move(llvm_context)),
-        /*dylib_index=*/0));
-  }
-
-  // Collect compiled symbols from all LLVM module parts.
+  // Collect compiled symbols from all LLVM modules.
   std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
   absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
       symbol_type_id_to_function_type_id;
 
   VLOG(3) << "Adding " << kernels.size() << " kernels to the JIT compiler";
-  // Make sure we use all the "default" modules for maximum parallelism.
-  int num_default_so_far = dylib_index - num_extra_parts;
-  int kernel_dylib_index =
-      num_default_so_far < num_default_parts ? num_default_so_far : 0;
+  size_t kernel_dylib_index = 0;
+  auto add_compiled_module =
+      [&](llvm::orc::ThreadSafeModule module) -> absl::Status {
+    size_t dylib_index =
+        thunk_emitter_options.is_aot_compilation ? 0 : kernel_dylib_index;
+    ABSL_RETURN_IF_ERROR(
+        llvm_module_compiler->AddModule(std::move(module), dylib_index));
+    if (!thunk_emitter_options.is_aot_compilation) {
+      // Simply roundrobin the default kernel dylibs.
+      kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
+    }
+    return absl::OkStatus();
+  };
   for (auto& [name, module] : kernels) {
     compiled_symbols.push_back(
         FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
     symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,
                                                SymbolProto::KERNEL);
-    ABSL_RETURN_IF_ERROR(llvm_module_compiler->AddModule(
-        std::move(module), num_extra_parts + kernel_dylib_index));
-    // Simply roundrobin the default kernel dylibs
-    kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
+    ABSL_RETURN_IF_ERROR(add_compiled_module(std::move(module)));
   }
-
-  for (const CompiledSymbolsPart& part : compiled_parts) {
-    for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
-      symbol_type_id_to_function_type_id.emplace(
-          compiled_symbols.back().type_id, SymbolProto::KERNEL);
-    }
-    for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
-      symbol_type_id_to_function_type_id.emplace(
-          compiled_symbols.back().type_id, SymbolProto::COMPARATOR);
-    }
+  for (auto& [name, module] : comparators) {
+    compiled_symbols.push_back(
+        FunctionLibrary::Sym<FunctionLibrary::Comparator>(name));
+    symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,
+                                               SymbolProto::COMPARATOR);
+    ABSL_RETURN_IF_ERROR(add_compiled_module(std::move(module)));
   }
 
   VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
@@ -2135,7 +1599,6 @@ CpuCompiler::CompileCpuExecutable(
         TraceMe trace_codegen([&] {
           return TraceMeEncode(
               "Codegen", {{"num_default_parts", num_default_parts},
-                          {"num_extra_parts", num_extra_parts},
                           {"num_compiled_functions", num_compiled_functions}});
         });
         return std::move(*llvm_module_compiler).Compile(compiled_symbols);

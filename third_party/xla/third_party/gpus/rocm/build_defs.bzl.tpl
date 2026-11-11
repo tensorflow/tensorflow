@@ -1,6 +1,53 @@
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
+_ROCM_ROOT = "%{rocm_root}"
+
+def rocm_path(*segments):
+    """Returns the path of `segments` inside the ROCm toolkit directory.
+
+    The result is relative to the `rocm` directory of this repository, so it can
+    be used as a label or a glob pattern in this repository's BUILD file.
+
+    Args:
+      *segments: Path segments below the ROCm toolkit root, joined with "/".
+    """
+    return "/".join([_ROCM_ROOT] + list(segments))
+
+def rocm_info():
+    """Returns the values the ROCm repository rule detected at configure time.
+
+    Fields:
+      rocm_root: ROCm toolkit directory, relative to the `rocm` directory of
+        this repository.
+      rocm_version: The composite ROCm version number, e.g. 70200 for 7.2.0.
+      rocm_toolkit_path: Absolute path of the ROCm toolkit on the host.
+      rocm_lib_paths: Colon-separated host library directories to add to the
+        rpath when building against multiple ROCm installations. Empty unless
+        TF_ROCM_MULTIPLE_PATHS was set.
+      rocm_rbe_docker_image: Docker image used by the RBE execution platform.
+      rocm_rbe_pool: RBE pool used by the RBE execution platform.
+      rocm_runfiles_path: Path of the ROCm toolkit relative to a binary's
+        runfiles directory.
+      rocm_execroot_path: Path of the ROCm toolkit relative to the execroot.
+    """
+    return struct(
+        rocm_root = _ROCM_ROOT,
+        rocm_version = %{rocm_version_number},
+        rocm_toolkit_path = "%{rocm_toolkit_path}",
+        rocm_lib_paths = "%{rocm_lib_paths}",
+        rocm_rbe_docker_image = "%{rocm_rbe_docker_image}",
+        rocm_rbe_pool = "%{rocm_rbe_pool}",
+        rocm_runfiles_path = "../{}/rocm/{}".format(
+            Label("//rocm:build_defs.bzl").repo_name,
+            _ROCM_ROOT,
+        ),
+        rocm_execroot_path = "{}/rocm/{}".format(
+            Label("//rocm:build_defs.bzl").workspace_root,
+            _ROCM_ROOT,
+        ),
+    )
+
 # Macros for building ROCm code.
 def if_rocm(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with ROCm.

@@ -67,6 +67,14 @@ std::vector<size_t> YnnDimensions(const Shape& shape) {
   return {dims.begin(), dims.end()};
 }
 
+// Returns value flags that prevent YNNPACK from eliding conversions through
+// integer values (e.g. f32 -> s8 -> f32), which would change the result.
+uint32_t YnnValueFlags(PrimitiveType type) {
+  return primitive_util::IsIntegralType(type)
+             ? YNN_VALUE_FLAG_NO_EXCESS_PRECISION
+             : 0;
+}
+
 absl::StatusOr<double> ReduceIdentity(const HloOpcode& opcode) {
   switch (opcode) {
     case HloOpcode::kAdd:
@@ -115,9 +123,9 @@ absl::StatusOr<uint32_t> DefineTensorValue(
     }
   }
 
-  uint32_t tensor_flags = 0;
+  uint32_t tensor_flags = YnnValueFlags(instr->shape().element_type());
   if (output_id != YNN_INVALID_VALUE_ID) {
-    tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
+    tensor_flags |= YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
   }
 
   YNN_RETURN_IF_ERROR(ynn_define_tensor(subgraph, type, dims.size(),
@@ -168,9 +176,9 @@ absl::StatusOr<uint32_t> DefineConstant(ynn_subgraph_t subgraph,
 
   const void* value = literals.Add(instr->literal().CloneToUnique());
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor(subgraph, type, dims.size(),
-                                        dims.data(), /*data=*/value,
-                                        /*flags=*/0, &tensor_id));
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
+      subgraph, type, dims.size(), dims.data(), /*data=*/value,
+      YnnValueFlags(instr->shape().element_type()), &tensor_id));
 
   return tensor_id;
 }
@@ -185,7 +193,10 @@ absl::StatusOr<uint32_t> DefineParameter(ynn_subgraph_t subgraph,
   ABSL_ASSIGN_OR_RETURN(auto type, YnnType(param->shape().element_type()));
 
   uint32_t tensor_id = param->parameter_number();
-  uint32_t flags = (data == nullptr) ? YNN_VALUE_FLAG_EXTERNAL_INPUT : 0;
+  uint32_t flags = YnnValueFlags(param->shape().element_type());
+  if (data == nullptr) {
+    flags |= YNN_VALUE_FLAG_EXTERNAL_INPUT;
+  }
   YNN_RETURN_IF_ERROR(ynn_define_tensor(subgraph, type, dims.size(),
                                         dims.data(), /*data=*/data, flags,
                                         &tensor_id));
@@ -388,7 +399,7 @@ absl::StatusOr<uint32_t> DefineIotaOp(ynn_subgraph_t subgraph,
   const size_t stride_dims[] = {1};
   YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph, ynn_element_type, 1, stride_dims, stride_value.untyped_data(),
-      YNN_VALUE_FLAG_COPY_DATA, &stride_id));
+      YNN_VALUE_FLAG_COPY_DATA | YnnValueFlags(element_type), &stride_id));
 
   // Make a 1D iota
   const size_t iota_dim_size = shape.dimensions(iota_dim);
@@ -618,10 +629,10 @@ absl::StatusOr<uint32_t> DefineReduceWindowOp(ynn_subgraph_t subgraph,
     ABSL_ASSIGN_OR_RETURN(ynn_type ynn_type, YnnType(input_type));
 
     uint32_t identity_id = YNN_INVALID_VALUE_ID;
-    YNN_RETURN_IF_ERROR(
-        ynn_define_tensor(subgraph, ynn_type, /*rank=*/0, /*dims=*/nullptr,
-                          /*data=*/identity_literal.untyped_data(),
-                          /*flags=*/YNN_VALUE_FLAG_COPY_DATA, &identity_id));
+    YNN_RETURN_IF_ERROR(ynn_define_tensor(
+        subgraph, ynn_type, /*rank=*/0, /*dims=*/nullptr,
+        /*data=*/identity_literal.untyped_data(),
+        YNN_VALUE_FLAG_COPY_DATA | YnnValueFlags(input_type), &identity_id));
 
     uint32_t padded_id = YNN_INVALID_VALUE_ID;
     YNN_RETURN_IF_ERROR(ynn_define_static_pad(
@@ -712,8 +723,9 @@ absl::StatusOr<uint32_t> DefineConvolutionOp(
     uint32_t split_id = YNN_INVALID_VALUE_ID;
     CHECK_EQ(rhs_dims.size(), 4);
     // [kh, kw, ci/g, co] -> [kh, kw, ci/g, g, co/g].
-    size_t filter_split[] = {feature_group_count,
-                             kernel_output_channels / feature_group_count};
+    size_t filter_split[] = {
+        feature_group_count,
+        static_cast<size_t>(kernel_output_channels / feature_group_count)};
     status = ynn_define_split_dim(subgraph, /*axis=*/-1, /*num_splits=*/2,
                                   filter_split, rhs_id, &split_id, /*flags=*/0);
     if (status != ynn_status_success) {
@@ -742,7 +754,8 @@ absl::StatusOr<uint32_t> DefineConvolutionOp(
                                /*rank=*/out_dims.size() + 2,
                                /*dims=*/unfused_dims.data(),
                                /*data=*/nullptr,
-                               /*flags=*/0, &output_unfused_id);
+                               YnnValueFlags(conv->shape().element_type()),
+                               &output_unfused_id);
     if (status != ynn_status_success) {
       return status;
     }
@@ -755,10 +768,12 @@ absl::StatusOr<uint32_t> DefineConvolutionOp(
 
     // Define padding value.
     uint64_t padding_value = 0;
-    status = ynn_define_tensor(subgraph, ynn_lhs_type,
-                               /*rank=*/0, /*dims=*/nullptr,
-                               /*data=*/&padding_value,
-                               /*flags=*/YNN_VALUE_FLAG_COPY_DATA, &padding_id);
+    status = ynn_define_tensor(
+        subgraph, ynn_lhs_type,
+        /*rank=*/0, /*dims=*/nullptr,
+        /*data=*/&padding_value,
+        YNN_VALUE_FLAG_COPY_DATA | YnnValueFlags(lhs->shape().element_type()),
+        &padding_id);
 
     if (status != ynn_status_success) {
       return status;

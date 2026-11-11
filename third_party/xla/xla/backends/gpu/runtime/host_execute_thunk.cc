@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
@@ -702,6 +704,11 @@ absl::StatusOr<const se::CommandBuffer::Command*> HostExecuteStartThunk::Record(
   CHECK(tsl::any_cast<std::shared_ptr<HostExecuteCallFrame>>(&it->second));
   std::shared_ptr<HostExecuteCallFrame> call_frame =
       *tsl::any_cast<std::shared_ptr<HostExecuteCallFrame>>(&it->second);
+
+  std::optional<tsl::profiler::ScopedAnnotation> annotation =
+      std::holds_alternative<RecordUpdate>(record_action)
+          ? GetInstructionAnnotation(profile_annotation())
+          : std::nullopt;
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested,
                    execute_params.stream->parent()->CreateCommandBuffer(

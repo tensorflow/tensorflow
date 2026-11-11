@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <atomic>
+#include <cstdint>
 #include <utility>
 
-#include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/hlo/testlib/test.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -118,6 +120,105 @@ TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
   }
   EXPECT_EQ(sem.value(), 10);
 }
+
+TEST(SemaphoreTest, TryAcquireDoesNotBargeAheadOfWaiter) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 1);
+  Semaphore semaphore(2);
+  semaphore.Acquire(2);
+
+  absl::Notification waiter_acquired;
+  absl::Notification allow_waiter_release;
+  absl::Notification waiter_done;
+
+  pool.Schedule([&]() {
+    semaphore.Acquire(2);
+    waiter_acquired.Notify();
+    allow_waiter_release.WaitForNotification();
+    semaphore.Release(2);
+    waiter_done.Notify();
+  });
+
+  // Deterministically wait until the waiter is queued at head_.
+  while (semaphore.TryAcquire(0)) {
+  }
+
+  // Call semaphore.Release(1) so semaphore.value() == 1 while the Acquire(2)
+  // waiter remains queued at head_.
+  semaphore.Release(1);
+  EXPECT_EQ(semaphore.value(), 1);
+
+  // Verify TryAcquire must not barge ahead of a queued waiter.
+  EXPECT_FALSE(semaphore.TryAcquire(1));
+
+  // Verify semaphore.Acquire(1) and semaphore.Release(1) succeed (a smaller
+  // Acquire can bypass an unsatisfiable larger waiter).
+  semaphore.Acquire(1);
+  semaphore.Release(1);
+
+  // Call semaphore.Release(1) to hand off all 2 units directly to the queued
+  // Acquire(2) waiter.
+  semaphore.Release(1);
+
+  waiter_acquired.WaitForNotification();
+  // Before allowing the waiter to release, verify value is 0 and TryAcquire(1)
+  // returns false.
+  EXPECT_EQ(semaphore.value(), 0);
+  EXPECT_FALSE(semaphore.TryAcquire(1));
+
+  // Notify the waiter to call semaphore.Release(2) and finish.
+  allow_waiter_release.Notify();
+  waiter_done.WaitForNotification();
+  EXPECT_EQ(semaphore.value(), 2);
+}
+
+TEST(SemaphoreTest, ConcurrentAcquireTryAcquireReleaseStress) {
+  constexpr int kNumThreads = 8;
+  constexpr int kItersPerThread = 200;
+  Semaphore semaphore(2);
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "stress", kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      pool.Schedule([&, i]() {
+        const int64_t amount = (i % 4 == 0) ? 2 : 1;
+        for (int iter = 0; iter < kItersPerThread; ++iter) {
+          if (!semaphore.TryAcquire(amount)) {
+            semaphore.Acquire(amount);
+          }
+          semaphore.Release(amount);
+        }
+      });
+    }
+  }
+  EXPECT_EQ(semaphore.value(), 2);
+}
+
+void BM_ContendedAcquireTryAcquire(benchmark::State& state) {
+  static std::atomic<uint64_t> max_wait_ns{0};
+  if (state.thread_index() == 0) {
+    max_wait_ns.store(0, std::memory_order_relaxed);
+  }
+  static Semaphore* semaphore = new Semaphore(4);
+  uint64_t local_max_wait_ns = 0;
+  for (auto _ : state) {
+    const uint64_t start_ns = tsl::Env::Default()->NowNanos();
+    if (!semaphore->TryAcquire(1)) {
+      semaphore->Acquire(1);
+    }
+    const uint64_t wait_ns = tsl::Env::Default()->NowNanos() - start_ns;
+    if (wait_ns > local_max_wait_ns) {
+      local_max_wait_ns = wait_ns;
+      uint64_t cur = max_wait_ns.load(std::memory_order_relaxed);
+      while (wait_ns > cur && !max_wait_ns.compare_exchange_weak(
+                                  cur, wait_ns, std::memory_order_relaxed)) {
+      }
+    }
+    semaphore->Release(1);
+  }
+  state.counters["max_wait_us"] = benchmark::Counter(
+      static_cast<double>(max_wait_ns.load(std::memory_order_relaxed)) / 1e3,
+      benchmark::Counter::kAvgThreads);
+}
+BENCHMARK(BM_ContendedAcquireTryAcquire)->ThreadRange(1, 32);
 
 }  // namespace
 }  // namespace xla

@@ -25,7 +25,7 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" -cse -canonicalize \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"xe2hpg\"}'" -cse -canonicalize \
 // RUN: | FileCheck %s --check-prefix=CHECK-ONEAPI
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
@@ -577,6 +577,37 @@ func.func @simple_atomic_rmw(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // -----
 
+func.func @sub_atomic_rmw(%arg0: tensor<2xf32>, %arg1: f32)
+    -> tensor<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+  -> tensor<2xf32> {
+    %atomic = xla.atomic_rmw %iter[%j] : tensor<2xf32> {
+      ^bb0(%current: f32):
+        %sub = arith.subf %current, %arg1 : f32
+        xla.yield %sub : f32
+      }
+    scf.yield %atomic : tensor<2xf32>
+  }
+  return %loop : tensor<2xf32>
+}
+
+// CHECK-HOPPER-LABEL:       @sub_atomic_rmw
+// CHECK-HOPPER-SAME:          (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: f32)
+// CHECK-HOPPER-DAG:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-HOPPER:               %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-HOPPER:               %[[LOOP:.*]] = scf.for
+// CHECK-HOPPER-SAME:          iter_args(%[[ITER:.*]] = %[[INIT]])
+// CHECK-HOPPER:                 %[[NEG:.*]] = arith.negf %[[ARG1]] : f32
+// CHECK-HOPPER:                 vector.insert %[[NEG]]
+// CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
+// CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
+// CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]
+
+// -----
+
 func.func @fold_insert_extract(%in: tensor<64xf32>, %out: tensor<64xf32>)
     -> tensor<64xf32> {
   %c0 = arith.constant 0 : index
@@ -744,6 +775,30 @@ func.func @too_many_bits_for_vectorize(%arg0: tensor<1024xf32>) -> (f32) {
 
 // -----
 
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
+func.func @too_few_bits_for_vectorize(%arg0: tensor<128xi2>) -> (i2) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c64 = arith.constant 64 : index
+  %cst = arith.constant 0 : i2
+  %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> i2 {
+    %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> i2 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<128xi2>
+      %added = arith.addi %iter1, %extracted : i2
+      scf.yield %added : i2
+    }
+    scf.yield %inner : i2
+  }
+  return %outer : i2
+}
+// CHECK-LABEL: @too_few_bits_for_vectorize
+// CHECK-NOT: vector.transfer_read
+
+// -----
+
 // Tests with an intermediate arith.andi between the extract and
 // the sub-byte trunc. InstCombine can sink the truncation through the andi, so
 // the transitive walk must still disable vectorization on oneAPI.
@@ -774,3 +829,22 @@ func.func @no_vectorize_trunc_through_intermediate_op(%arg0: tensor<1024xi8>)
 // CHECK-ONEAPI-LABEL: @no_vectorize_trunc_through_intermediate_op
 // CHECK-ONEAPI-NOT:   vector.transfer_read
 // CHECK-ONEAPI:       tensor.extract
+
+// -----
+
+func.func @no_fold_mismatched_vector_size(
+    %src: vector<4xf32>, %dst: tensor<16xf32>) -> tensor<16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %out = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %dst) -> tensor<16xf32> {
+    %elem = vector.extract %src[%j] : f32 from vector<4xf32>
+    %ins = tensor.insert %elem into %iter[%j] : tensor<16xf32>
+    scf.yield %ins : tensor<16xf32>
+  }
+  return %out : tensor<16xf32>
+}
+// CHECK-LABEL: @no_fold_mismatched_vector_size
+// CHECK: scf.for {{.*}} -> (vector<2xf32>)
+// CHECK: vector.transfer_write {{.*}} : vector<2xf32>, tensor<16xf32>
+// CHECK-NOT: vector.transfer_write {{.*}} : vector<4xf32>

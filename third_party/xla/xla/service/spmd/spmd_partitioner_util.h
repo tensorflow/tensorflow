@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -201,10 +202,30 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           const HloSharding& sharding,
                                           int64_t partition_id);
 
+// Returns S64 if any dimension in `dimensions` is >= INT32_MAX, otherwise S32.
+inline PrimitiveType GetOffsetType(absl::Span<const int64_t> dimensions) {
+  return absl::c_any_of(dimensions,
+                        [](int64_t dim) {
+                          return dim >= std::numeric_limits<int32_t>::max();
+                        })
+             ? S64
+             : S32;
+}
+
+inline PrimitiveType GetOffsetType(const Shape& shape) {
+  return GetOffsetType(shape.dimensions());
+}
+
 // Generates the HLO instructions that represent the dimension offsets on any
 // device. The size of the returned vector is the rank of the given shape.
 // If `dims` is non-empty, the generated offsets will only be non-zero for those
 // dimensions.
+// If `offset_type` is not specified, it is inferred from `shape` via
+// `GetOffsetType(shape)`.
+std::vector<HloInstruction*> MakePartitionOffsets(
+    const Shape& shape, const HloSharding& sharding,
+    HloInstruction* partition_id, SpmdBuilder* b, PrimitiveType offset_type,
+    absl::Span<const int64_t> dims = {});
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
     HloInstruction* partition_id, SpmdBuilder* b,
@@ -242,6 +263,11 @@ HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape, T* b,
 // Returns the padded shape when combining all partitions.
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
                                           const HloSharding& sharding);
+
+inline PrimitiveType GetOffsetType(const Shape& shape,
+                                   const HloSharding& sharding) {
+  return GetOffsetType(GetPaddedShapeForUnevenPartitioning(shape, sharding));
+}
 
 // Pads the HLO (with base shape) for uneven tiled partition to make it evenly
 // partitionable.

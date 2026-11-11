@@ -26,14 +26,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/tile.h"
 #include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -109,20 +113,29 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
 }
 
 double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const experimental::TiledHloInstruction& hbm_access_instr,
+    const TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info) {
   const HloInstruction* hlo = hbm_access_instr.hlo();
   const Shape& shape = hlo->shape();
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+      hbm_access_instr.tile(0).GetStaticTileSizes();
+  CHECK_OK(tile_sizes);
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_strides =
+      hbm_access_instr.tile(0).GetStaticTileStrides();
+  CHECK_OK(tile_strides);
 
   // Compute the number of elements in the contiguous part of the tile.
   int64_t contiguous_elements = 1;
   for (const auto dim_idx : shape.layout().minor_to_major()) {
     // This dimension is strided, so it's not contiguous.
-    if (hbm_access_instr.tile_stride(dim_idx) != 1) {
+    CHECK_LT(dim_idx, tile_strides->size());
+    if ((*tile_strides)[dim_idx] != 1) {
       break;
     }
 
-    int64_t tile_size = hbm_access_instr.tile_size(dim_idx);
+    CHECK_LT(dim_idx, tile_sizes->size());
+    int64_t tile_size = (*tile_sizes)[dim_idx];
     int64_t dim_size = shape.dimensions(dim_idx);
 
     // Make sure to ignore the mask if there is one.
@@ -162,8 +175,8 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
     absl::Span<const Interval> intervals, PrimitiveType element_type) {
   constexpr int64_t kBytesPerMemoryTransaction = 128;
   int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  int memory_transactions = 0;
-  int total_num_elements = 0;
+  int64_t memory_transactions = 0;
+  int64_t total_num_elements = 0;
   for (const auto& range : intervals) {
     int64_t num_elements = range.upper - range.lower + 1;
     memory_transactions += llvm::divideCeilSigned(num_elements * type_size,
@@ -173,7 +186,7 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
   if (memory_transactions == 0) {
     return true;
   }
-  int memory_transactions_lower_bound = llvm::divideCeilSigned(
+  int64_t memory_transactions_lower_bound = llvm::divideCeilSigned(
       total_num_elements * type_size, kBytesPerMemoryTransaction);
   // The magic value chosen by an uneducated guess.
   constexpr float kIsCoalescedThreshold = 0.9;
@@ -317,7 +330,7 @@ std::vector<Interval> FindIntervals(
 
   // Scan over the sorted unique indices and combine them in intervals.
   std::vector<Interval> intervals;
-  for (int i = 0, start, end; i < linear_indices.size();) {
+  for (int64_t i = 0, start, end; i < linear_indices.size();) {
     start = linear_indices[i++];
     end = start;
     while (i < linear_indices.size() && linear_indices[i] == end + 1) {
@@ -335,7 +348,7 @@ std::vector<Interval> ExtendIntervals(const std::vector<Interval>& intervals,
                                       int64_t length) {
   // Compute union of overlapped intervals.
   std::vector<Interval> overlapped_intervals;
-  for (int i = 0; i < intervals.size();) {
+  for (int64_t i = 0; i < intervals.size();) {
     int64_t lower = intervals[i].lower;
     int64_t upper = intervals[i].upper + length;
     ++i;
@@ -381,7 +394,7 @@ std::vector<Interval> FindContiguousIntervals(
                                   num_elems - 1}};
         }
         std::vector<Interval> intervals;
-        for (int i = 0, dm = 0; i < kNumThreadsPerWarp;
+        for (int64_t i = 0, dm = 0; i < kNumThreadsPerWarp;
              ++i, dm += multiplier.GetValue()) {
           intervals.push_back(
               {range_interval.lower + dm, range_interval.upper + dm});
@@ -390,7 +403,7 @@ std::vector<Interval> FindContiguousIntervals(
       }
       // Case 1.4: |multiplier| != 1 and g(s) != s.
       std::vector<Interval> intervals;
-      for (int i = 0, dm = 0; i < kNumThreadsPerWarp;
+      for (int64_t i = 0, dm = 0; i < kNumThreadsPerWarp;
            ++i, dm += multiplier.GetValue()) {
         intervals.push_back({dm, dm});
       }

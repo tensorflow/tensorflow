@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -1110,9 +1111,26 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
   int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
-  if (num_elements >= n_threads_max &&
-      !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
+  if (!MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
+    if (num_elements >= n_threads_max) {
+      unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
+    } else {
+      int64_t max_reduce_input_elements =
+          GetMaxReduceInputElements(analysis.fusion()).value_or(0);
+      // Require at least 4 warps per core after unrolling so small outputs
+      // still maintain enough wave occupancy to hide memory latency.
+      constexpr int64_t kMinWarpsPerCore = 4;
+      int64_t min_threads = kMinWarpsPerCore *
+                            analysis.device_info().threads_per_warp() *
+                            analysis.device_info().core_count();
+      if (max_reduce_input_elements >= n_threads_max && min_threads > 0 &&
+          num_elements >= min_threads) {
+        int64_t max_unroll = std::min<int64_t>(
+            MaxUnrollFactor(&analysis),
+            absl::bit_floor(static_cast<uint64_t>(num_elements / min_threads)));
+        unroll_factor = std::gcd(num_elements, max_unroll);
+      }
+    }
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
@@ -1198,6 +1216,67 @@ bool ContainsSignificantReduce(const HloInstruction& instr,
     return ContainsSignificantReduceNoCache(instr);
   }
   return cache->ContainsSignificantReduce(instr);
+}
+
+namespace {
+
+std::optional<int64_t> MinReduceInputElementsNoCache(
+    const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce) {
+    if (instr.operand_count() == 0 || !instr.operand(0)->shape().IsArray() ||
+        instr.operand(0)->shape().is_unbounded_dynamic()) {
+      return std::nullopt;
+    }
+    int64_t elements = ShapeUtil::ElementsIn(instr.operand(0)->shape());
+    return elements > 0 ? std::make_optional(elements) : std::nullopt;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return std::nullopt;
+  }
+  std::optional<int64_t> min_elements;
+  for (const HloInstruction* node :
+       instr.fused_instructions_computation()->instructions()) {
+    std::optional<int64_t> node_min = MinReduceInputElementsNoCache(*node);
+    if (node_min.has_value()) {
+      min_elements = min_elements.has_value()
+                         ? std::min(*min_elements, *node_min)
+                         : node_min;
+    }
+  }
+  return min_elements;
+}
+
+}  // namespace
+
+std::optional<int64_t> FusionInfoCache::GetMinReduceInputElements(
+    const HloInstruction& instr) {
+  return GetOrCompute(instr, &FusionInfoCache::min_reduce_input_elements_,
+                      [&]() { return MinReduceInputElementsNoCache(instr); });
+}
+
+std::optional<int64_t> GetMinReduceInputElements(
+    const HloInstruction& instr, FusionInfoCache* absl_nullable cache) {
+  if (cache == nullptr) {
+    return MinReduceInputElementsNoCache(instr);
+  }
+  return cache->GetMinReduceInputElements(instr);
+}
+
+std::optional<int64_t> GetMaxReduceInputElements(
+    const HloFusionAdaptor& fusion) {
+  std::optional<int64_t> max_reduce_input_elements;
+  fusion.ForEach([&](HloInstructionAdaptor node) {
+    if (node.opcode() == HloOpcode::kReduce) {
+      const Shape& shape = node.GetOperand(0).shape();
+      if (!shape.IsArray() || shape.is_unbounded_dynamic()) {
+        return;
+      }
+      int64_t elements = ShapeUtil::ElementsIn(shape);
+      max_reduce_input_elements =
+          std::max(max_reduce_input_elements.value_or(elements), elements);
+    }
+  });
+  return max_reduce_input_elements;
 }
 
 }  // namespace gpu

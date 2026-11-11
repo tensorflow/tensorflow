@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
@@ -179,6 +180,45 @@ TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallWithCorrectLowering) {
 ; CHECK-DAG:  addrspacecast ptr %arg2 to ptr addrspace(1)
 ; CHECK-DAG:  addrspacecast ptr %arg3 to ptr addrspace(1)
         )",
+                               /*match_optimized_ir=*/false));
+}
+
+TEST_F(GpuIrEmitterUnnestedTest,
+       NonInvariantTritonCustomCallDoesNotReuseInvariantKernel) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+  HloInstruction* param_2 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(2, scalar_shape, "arg_2"));
+  HloInstruction* param_3 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(3, scalar_shape, "arg_3"));
+
+  HloInstruction* call_0 =
+      computation_builder.AddInstruction(CreateTritonCustomCall(
+          tuple_shape, {param_0, param_1}, kMLIRText, kCallName));
+  HloInstruction* call_1 =
+      computation_builder.AddInstruction(CreateTritonCustomCall(
+          tuple_shape, {param_2, param_3}, kMLIRText, kCallName));
+  call_1->add_frontend_attribute("xla.no_invariant_operands", "0");
+  computation_builder.AddInstruction(
+      HloInstruction::CreateTuple({call_0, call_1}));
+
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  EXPECT_OK(CompileAndVerifyIr(std::move(module),
+                               R"(
+; CHECK-DAG: define ptx_kernel void @add_one(ptr noalias readonly align {{[0-9]+}} dereferenceable(4) %arg0,
+; CHECK-DAG: define ptx_kernel void @add_one{{.*}}(ptr align {{[0-9]+}} dereferenceable(4) %arg0,
+      )",
                                /*match_optimized_ir=*/false));
 }
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -2116,6 +2118,105 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 }
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityBatchTimeoutBoundaryRace) {
+  // Verifies that when the clock advances across the batch timeout boundary
+  // during ScheduleBatch(), the open batch is not closed and scheduled without
+  // first merging eligible low-priority tasks under kPriorityMerge.
+  class SteppingClockEnv : public EnvWrapper {
+   public:
+    explicit SteppingClockEnv(test_util::FakeClockEnv* fake_clock_env)
+        : EnvWrapper(fake_clock_env), fake_clock_env_(fake_clock_env) {}
+
+    void SetStepOnNowMicros(int step_micros) {
+      step_micros_.store(step_micros, std::memory_order_relaxed);
+    }
+
+    uint64_t NowMicros() const override {
+      const uint64_t now = fake_clock_env_->NowMicros();
+      const int step = step_micros_.load(std::memory_order_relaxed);
+      if (step > 0) {
+        fake_clock_env_->AdvanceByMicroseconds(step);
+      }
+      return now;
+    }
+
+   private:
+    test_util::FakeClockEnv* const fake_clock_env_;
+    std::atomic<int> step_micros_{0};
+  };
+
+  test_util::FakeClockEnv env(Env::Default());
+  SteppingClockEnv stepping_env(&env);
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  absl::Notification first_batch_processed;
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    EXPECT_TRUE(batch->IsClosed());
+    if (queue_callback_counter == 1) {
+      EXPECT_EQ(2, batch->num_tasks());
+      if (batch->num_tasks() == 2) {
+        EXPECT_EQ(3, batch->task(0).size());  // High pri task
+        EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+      }
+      first_batch_processed.Notify();
+    }
+  };
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(
+            /*num_batch_threads=*/1, &stepping_env, /*rank_queues=*/false,
+            /*use_global_scheduler=*/false,
+            /*batch_threads_startup_delay_micros=*/999 * 1000));
+    env.BlockUntilThreadsAsleep(1);
+
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue,
+        CreateQueue(scheduler, queue_options, queue_callback));
+
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(500 * 1000);
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    // Wake the batch thread at t = 999,998 us, 2 us before the 1 s timeout
+    // measured from the low priority task at t = 0. Each NowMicros() read
+    // then advances the clock by 1 us. PeriodicFunction::RunLoop consumes
+    // one read on wake, so the first schedulability check lands at
+    // 999,999 us and the next read lands on the boundary. Before the fix,
+    // the pad check and the close check straddled the boundary and closed
+    // the batch without the low priority task.
+    stepping_env.SetStepOnNowMicros(1);
+    env.AdvanceByMicroseconds(499 * 1000 + 998);
+    first_batch_processed.WaitForNotification();
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
        PriorityMergedMixedPriorityCompleteBatch) {
   // With the kPriorityMerge strategy, if there are enough of low + high
   // priority inputs to form a complete batch, it will be scheduled immediately.
@@ -2619,8 +2720,12 @@ void BM_QueueSchedule(::testing::benchmark::State& state) {
 }
 
 BENCHMARK(BM_QueueSchedule)->Apply([](benchmark::internal::Benchmark* b) {
-  b->ThreadRange(1,
-                 port::NumSchedulableCPUs() * tensorflow::port::CPUIDNumSMT());
+  const int smt = tensorflow::port::CPUIDNumSMT();
+  // CPUIDNumSMT() returns 0 on non-x86 architectures (such as Arm) or when SMT
+  // detection is unsupported. Default to 1 in that case.
+  const int max_threads =
+      std::max(1, port::NumSchedulableCPUs() * (smt > 0 ? smt : 1));
+  b->ThreadRange(1, max_threads);
 
   for (int queue_index : {0, 1, 2}) {
     b->ArgPair(10000, queue_index);
@@ -5019,6 +5124,70 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   stop_teardown.Notify();
 }
 
+// Tests that AddQueue overrides disable_padding to false when
+// enable_priority_aware_batch_scheduler is true, so batch_padding_policy is
+// still applied.
+TEST_P(SharedBatchSchedulerPriorityAwareTest, OverridesDisablePaddingToFalse) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification first_batch_processed;
+    absl::Notification second_batch_processed;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      EXPECT_TRUE(batch->IsClosed());
+      if (!first_batch_processed.HasBeenNotified()) {
+        // Because disable_padding is overridden to false, kBatchDownPolicy
+        // trims candidate size 3 to allowed batch size 2 instead of leaving it
+        // unpadded at 3.
+        EXPECT_EQ(batch->size(), 2);
+        first_batch_processed.Notify();
+        return;
+      }
+      if (!second_batch_processed.HasBeenNotified()) {
+        EXPECT_EQ(batch->size(), 1);
+        second_batch_processed.Notify();
+        return;
+      }
+      ADD_FAILURE() << "Unexpected batch callback invocation";
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/4,
+        /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
+    options.allowed_batch_sizes = {2, 4};
+    options.batch_padding_policy = kBatchDownPolicy;
+    options.disable_padding = true;
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                            CreateQueue(scheduler, options, callback));
+
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+
+    // Trigger batch timeout.
+    env.AdvanceByMicroseconds(1001);
+    first_batch_processed.WaitForNotification();
+
+    // Trigger batch timeout for the second batch.
+    env.AdvanceByMicroseconds(1001);
+    second_batch_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
 INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityAwareTest,
                          ::testing::Bool());
 
@@ -5128,6 +5297,71 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
 
   // Allow the first task to complete.
   t1_continue.Notify();
+}
+
+TEST(SharedBatchSchedulerPriorityPolicyTest,
+     GlobalSchedulerGrowsBatchAndWarmupThreadsToMax) {
+  Scheduler::Options options_1;
+  options_1.use_global_scheduler = true;
+  options_1.num_batch_threads = 1;
+  options_1.num_warmup_batch_threads = 0;
+  std::shared_ptr<Scheduler> scheduler_1;
+  TF_ASSERT_OK(Scheduler::Create(options_1, &scheduler_1));
+
+  Scheduler::QueueOptions queue_options;
+  queue_options.input_batch_size_limit = 1;
+  queue_options.max_enqueued_batches = 10;
+
+  std::atomic<int> active_regular_batches{0};
+  absl::Notification two_regular_batches_running;
+  absl::Notification warmup_batch_running;
+  absl::Notification proceed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->task(0).is_warmup()) {
+      warmup_batch_running.Notify();
+      proceed.WaitForNotification();
+    } else {
+      if (active_regular_batches.fetch_add(1) + 1 == 2) {
+        two_regular_batches_running.Notify();
+      }
+      proceed.WaitForNotification();
+    }
+  };
+
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler_1->AddQueue(queue_options, callback, &queue));
+
+  Scheduler::Options options_2;
+  options_2.use_global_scheduler = true;
+  options_2.num_batch_threads = 2;
+  options_2.num_warmup_batch_threads = 1;
+  std::shared_ptr<Scheduler> scheduler_2;
+  TF_ASSERT_OK(Scheduler::Create(options_2, &scheduler_2));
+  EXPECT_EQ(scheduler_1, scheduler_2);
+
+  Scheduler::Options options_3;
+  options_3.use_global_scheduler = true;
+  options_3.num_batch_threads = 1;
+  options_3.num_warmup_batch_threads = 0;
+  std::shared_ptr<Scheduler> scheduler_3;
+  TF_ASSERT_OK(Scheduler::Create(options_3, &scheduler_3));
+  EXPECT_EQ(scheduler_1, scheduler_3);
+
+  auto regular_task_1 = std::make_unique<FakeTask>(1);
+  auto regular_task_2 = std::make_unique<FakeTask>(1);
+  auto warmup_task = std::make_unique<FakeTask>(1);
+  warmup_task->set_is_warmup(true);
+
+  TF_EXPECT_OK(queue->Schedule(&regular_task_1));
+  TF_EXPECT_OK(queue->Schedule(&regular_task_2));
+  TF_EXPECT_OK(queue->Schedule(&warmup_task));
+
+  EXPECT_TRUE(two_regular_batches_running.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+  EXPECT_TRUE(
+      warmup_batch_running.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+  proceed.Notify();
 }
 
 }  // namespace

@@ -118,8 +118,8 @@ int64_t SparseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
                                              bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return Fingerprint64(values_.vec<tstring>().data()[start + n]);
-  return values_.vec<int64_t>().data()[start + n];
+    return Fingerprint64(values_.vec<tstring>()(start + n));
+  return values_.vec<int64_t>()(start + n);
 }
 
 template <>
@@ -147,32 +147,30 @@ template <>
 tstring SparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                              bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
-  if (DT_STRING == values_.dtype())
-    return values_.vec<tstring>().data()[start + n];
-  return std::to_string(values_.vec<int64_t>().data()[start + n]);
+  if (DT_STRING == values_.dtype()) return values_.vec<tstring>()(start + n);
+  return std::to_string(values_.vec<int64_t>()(start + n));
 }
 
 template <>
 tstring KeyedSparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                                   bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
-  if (DT_STRING == values_.dtype())
-    return values_.vec<tstring>().data()[start + n];
-  return std::to_string(values_.vec<int64_t>().data()[start + n]);
+  if (DT_STRING == values_.dtype()) return values_.vec<tstring>()(start + n);
+  return std::to_string(values_.vec<int64_t>()(start + n));
 }
 
 template <>
 absl::string_view SparseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
-  return values_.vec<tstring>().data()[start + n];
+  return values_.vec<tstring>()(start + n);
 }
 
 template <>
 absl::string_view KeyedSparseTensorColumn<absl::string_view>::Feature(
     int64_t batch, int64_t n, bool strong_hash) const {
   const int64_t start = feature_start_indices_[batch];
-  return values_.vec<tstring>().data()[start + n];
+  return values_.vec<tstring>()(start + n);
 }
 
 // A column that is backed by a dense tensor.
@@ -236,7 +234,7 @@ int64_t KeyedDenseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
     }
     return StrongKeyedHash(
         key_,
-        {reinterpret_cast<const char*>(tensor_.matrix<int64_t>()(batch, n)),
+        {reinterpret_cast<const char*>(&tensor_.matrix<int64_t>()(batch, n)),
          sizeof(tensor_.dtype())});
   }
   if (DT_STRING == tensor_.dtype())

@@ -189,9 +189,9 @@ class HloOpcode(enum.Enum):
 
   kDivide = 51
 
-  kDomain = 52
+  kDot = 52
 
-  kDot = 53
+  kDotGeneral = 53
 
   kDynamicReshape = 54
 

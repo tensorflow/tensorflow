@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -59,36 +60,33 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
-void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst) {
-  for (uint32_t arg_idx = 0; arg_idx < src.arg_size(); arg_idx++) {
-    // Get the original argument to extract attributes from if they exist.
-    llvm::Argument* src_arg = src.getArg(arg_idx);
-    llvm::Argument& dst_arg = *dst.getArg(arg_idx);
-    dst_arg.setName(absl::StrCat("arg", arg_idx));
-
-    if (src_arg->hasByValAttr()) {
-      dst.addParamAttr(arg_idx, src_arg->getAttribute(llvm::Attribute::ByVal));
-    }
-
-    // If the alignment has been specified in the original function, use it.
-    // Otherwise, use the alignment from the kernel argument.
-    if (src_arg->hasAttribute(llvm::Attribute::Alignment)) {
-      dst.addParamAttr(arg_idx,
-                       src_arg->getAttribute(llvm::Attribute::Alignment));
-    }
-    if (src_arg->hasAttribute("nvvm.grid_constant")) {
-      dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
-                                                     "nvvm.grid_constant"));
+absl::flat_hash_set<int64_t> NonInvariantSliceIndices(
+    const emitters::KernelArguments& arguments) {
+  absl::flat_hash_set<int64_t> non_invariant;
+  for (const emitters::KernelArgument& arg : arguments.args()) {
+    if (arg.kind() == emitters::KernelArgument::Kind::kManaged &&
+        !arg.invariant()) {
+      non_invariant.insert(arg.slice_index());
     }
   }
+  return non_invariant;
 }
+
+}  // namespace
 
 void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
                           llvm::Function& dst) {
+  const absl::flat_hash_set<int64_t> non_invariant_slices =
+      NonInvariantSliceIndices(arguments);
   for (auto&& [arg_idx, kernel_argument] : llvm::enumerate(arguments.args())) {
     llvm::Argument& dst_arg = *dst.getArg(arg_idx);
     dst_arg.setName(absl::StrCat("arg", arg_idx));
+
+    if (!dst_arg.getType()->isPointerTy()) {
+      continue;
+    }
 
     if (!dst_arg.hasByValAttr()) {
       dst.addDereferenceableParamAttr(arg_idx, kernel_argument.slice().size());
@@ -102,9 +100,23 @@ void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
           llvm::Attribute::get(dst_arg.getContext(), llvm::Attribute::Alignment,
                                kernel_argument.alignment()));
     }
-    if (!kernel_argument.aliased()) {
+    // NVPTX derives ld.global.nc from readonly plus noalias; omitting both on
+    // slices marked not invariant prevents inferred readonly from restoring it.
+    bool slice_invariant =
+        kernel_argument.kind() != emitters::KernelArgument::Kind::kManaged ||
+        !non_invariant_slices.contains(kernel_argument.slice_index());
+    if (!kernel_argument.aliased() && slice_invariant) {
       dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
                                                      llvm::Attribute::NoAlias));
+    }
+    if (!kernel_argument.written() && slice_invariant &&
+        !dst_arg.hasByValAttr() &&
+        !dst_arg.hasAttribute(llvm::Attribute::ReadNone) &&
+        !dst_arg.hasAttribute(llvm::Attribute::WriteOnly) &&
+        !dst_arg.hasAttribute(llvm::Attribute::Writable)) {
+      dst.addParamAttr(arg_idx,
+                       llvm::Attribute::get(dst_arg.getContext(),
+                                            llvm::Attribute::ReadOnly));
     }
   }
 }
@@ -147,73 +159,6 @@ absl::Status AnnotateKernelLaunchDimensions(
         absl::StrJoin({block_count.x, block_count.y, block_count.z}, ","));
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
-    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
-    const std::string& impl_fn_name, const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  // Create the kernel and add it to the module.
-  llvm::LLVMContext& context = llvm_module->getContext();
-  // Explicitly set global addrspace for SPIR backend.
-  int addrspace = llvm::Triple(llvm_module->getTargetTriple()).isSPIR() ? 1 : 0;
-  std::vector<llvm::Type*> kernel_args;
-  kernel_args.reserve(arguments.args().size());
-  for (const auto& arg : arguments.args()) {
-    // Handle pointer arguments.
-    // Either managed OR unmanaged with non-scalar shape.
-    if (arg.kind() == emitters::KernelArgument::Kind::kManaged ||
-        !arg.shape().dimensions().empty()) {
-      kernel_args.push_back(builder->getPtrTy(addrspace));
-      continue;
-    }
-    // Handle scalars.
-    llvm::Type* ir_type =
-        llvm_ir::PrimitiveTypeToIrType(arg.shape().element_type(), context);
-    if (!ir_type) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported scalar type: ",
-                       PrimitiveType_Name(arg.shape().element_type())));
-    }
-    kernel_args.push_back(ir_type);
-  }
-  llvm::FunctionType* kernel_type = llvm::FunctionType::get(
-      /*Result=*/llvm::Type::getVoidTy(context), std::move(kernel_args),
-      /*isVarArg=*/false);
-  llvm::Function* kernel =
-      llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
-                             unique_kernel_name, llvm_module);
-
-  AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-      gpu_device_info, launch_dimensions, kernel, llvm_module));
-
-  // Update the insert point to the entry basic block.
-  llvm::BasicBlock* entry_bb =
-      llvm::BasicBlock::Create(context, /*Name=*/"entry", /*Parent=*/kernel);
-
-  // Emit a "return void" at entry_bb's end, and set the insert point before
-  // that return instruction.
-  builder->SetInsertPoint(llvm::ReturnInst::Create(context, entry_bb));
-  // Get the original function to extract attributes.
-  llvm::Function* impl_func = llvm_module->getFunction(impl_fn_name);
-
-  if (impl_func) {
-    CopySelectAttrs(*impl_func, *kernel);
-  }
-  AnnotateAttrsIfUnset(arguments, *kernel);
-  return kernel;
-}
-
-absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
-    const std::string& impl_fn_name, const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  return BuildKernelPrototypeFromUniqueName(
-      llvm_module, gpu_device_info, impl_fn_name, unique_kernel_name, arguments,
-      launch_dimensions, builder);
 }
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(

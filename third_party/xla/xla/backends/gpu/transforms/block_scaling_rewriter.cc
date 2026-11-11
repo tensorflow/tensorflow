@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 
+#include <array>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -23,11 +25,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -39,14 +44,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -263,6 +274,39 @@ enum class CudnnMxType {
   NVFP4,
 };
 
+// TMA requires 16-byte (128-bit) alignment of contiguous dimensions.
+constexpr int64_t kTmaAlignmentBits = 128;
+
+CudnnMxType GetCudnnMxType(PrimitiveType input_type, PrimitiveType scale_type,
+                           int64_t block_size) {
+  // MXFP8: the input could be either E4M3FN or E5M2.
+  if (input_type == PrimitiveType::F8E4M3FN &&
+      scale_type == PrimitiveType::F8E8M0FNU &&
+      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+    return CudnnMxType::MXFP8_E4M3FN;
+  }
+  if (input_type == PrimitiveType::F8E5M2 &&
+      scale_type == PrimitiveType::F8E8M0FNU &&
+      block_size == BlockScalingRewriter::kBlockSizeMXFP8) {
+    return CudnnMxType::MXFP8_E5M2;
+  }
+
+  // MXFP4: the input is E2M1FN and the scale is E8M0FNU.
+  if (input_type == PrimitiveType::F4E2M1FN &&
+      scale_type == PrimitiveType::F8E8M0FNU &&
+      block_size == BlockScalingRewriter::kBlockSizeMXFP4) {
+    return CudnnMxType::MXFP4;
+  }
+
+  // NVFP4: the input is E2M1FN and the scale is E4M3FN.
+  if (input_type == PrimitiveType::F4E2M1FN &&
+      scale_type == PrimitiveType::F8E4M3FN &&
+      block_size == BlockScalingRewriter::kBlockSizeNVFP4) {
+    return CudnnMxType::NVFP4;
+  }
+  return CudnnMxType::UNSUPPORTED_TYPE;
+}
+
 CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
                            std::optional<int64_t> block_size) {
   // Non-default layout is not supported.
@@ -280,34 +324,12 @@ CudnnMxType GetCudnnMxType(const Shape& input_shape, const Shape& scale_shape,
           : GetBlockSize(input_shape, scale_shape).value_or(0);
   int64_t contracting_size = input_shape.dimensions().back();
 
-  // MXFP8: the input could be either E4M3FN or E5M2.
-  if (input_shape.element_type() == PrimitiveType::F8E4M3FN &&
-      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
-      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP8 &&
+  CudnnMxType type =
+      GetCudnnMxType(input_shape.element_type(), scale_shape.element_type(),
+                     actual_block_size);
+  if (type != CudnnMxType::UNSUPPORTED_TYPE &&
       contracting_size % actual_block_size == 0) {
-    return CudnnMxType::MXFP8_E4M3FN;
-  }
-  if (input_shape.element_type() == PrimitiveType::F8E5M2 &&
-      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
-      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP8 &&
-      contracting_size % actual_block_size == 0) {
-    return CudnnMxType::MXFP8_E5M2;
-  }
-
-  // MXFP4: the input is E2M1FN and the scale is E8M0FNU.
-  if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
-      scale_shape.element_type() == PrimitiveType::F8E8M0FNU &&
-      actual_block_size == BlockScalingRewriter::kBlockSizeMXFP4 &&
-      contracting_size % actual_block_size == 0) {
-    return CudnnMxType::MXFP4;
-  }
-
-  // NVFP4: the input is E2M1FN and the scale is E4M3FN.
-  if (input_shape.element_type() == PrimitiveType::F4E2M1FN &&
-      scale_shape.element_type() == PrimitiveType::F8E4M3FN &&
-      actual_block_size == BlockScalingRewriter::kBlockSizeNVFP4 &&
-      contracting_size % actual_block_size == 0) {
-    return CudnnMxType::NVFP4;
+    return type;
   }
 
   VLOG(3) << "Unsupported types in GetCudnnMxType: input="
@@ -331,8 +353,7 @@ bool IsSupportedByCudnn(CudnnMxType lhs, CudnnMxType rhs) {
 
 // Reshape inputs to shapes compatible with cuDNN.
 absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
-    XlaOp input_op, XlaOp scale_op, std::optional<int64_t> block_size,
-    bool pad_input) {
+    XlaOp input_op, XlaOp scale_op, std::optional<int64_t> block_size) {
   // Get shapes from the inputs.
   XlaBuilder& builder = *input_op.builder();
   ABSL_ASSIGN_OR_RETURN(Shape input_shape, builder.GetShape(input_op));
@@ -355,21 +376,21 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
   TF_RET_CHECK(size_noncontracting <= scale_noncontracting);
   TF_RET_CHECK(rank == 2 || scale_shape.dimensions(0) == batch_size);
 
-  // cuDNN kernel imposes constraints on the input shape sizes.
-  const int64_t kInputNonContractingTileSize = 128;
-  const int64_t kScaleContractingTileSize = 4;
-
   // Pad inputs, if necessary.
-  if (size_noncontracting % kInputNonContractingTileSize != 0 ||
-      scale_contracting % kScaleContractingTileSize != 0) {
+  if (size_noncontracting %
+              BlockScalingRewriter::kInputNonContractingTileSize !=
+          0 ||
+      scale_contracting % BlockScalingRewriter::kScaleContractingTileSize !=
+          0) {
     // Calculate new output shape sizes.
     int64_t padded_noncontracting =
-        RoundUpTo(size_noncontracting, kInputNonContractingTileSize);
-    int64_t padded_contracting =
-        RoundUpTo(scale_contracting, kScaleContractingTileSize);
+        RoundUpTo(size_noncontracting,
+                  BlockScalingRewriter::kInputNonContractingTileSize);
+    int64_t padded_contracting = RoundUpTo(
+        scale_contracting, BlockScalingRewriter::kScaleContractingTileSize);
 
     // Pad input tensor, if necessary.
-    if (size_noncontracting != padded_noncontracting && pad_input) {
+    if (size_noncontracting != padded_noncontracting) {
       PaddingConfig input_padding_config = MakeNoPaddingConfig(rank);
       input_padding_config.mutable_dimensions(rank - 2)->set_edge_padding_high(
           padded_noncontracting - size_noncontracting);
@@ -399,10 +420,12 @@ absl::StatusOr<std::tuple<XlaOp, XlaOp, int64_t>> BuildCudnnScaledDotInput(
   ABSL_ASSIGN_OR_RETURN(Shape scale_valid_shape, builder.GetShape(scale_op));
   int64_t scale_rows = scale_valid_shape.dimensions(rank - 2);
   int64_t scale_cols = scale_valid_shape.dimensions(rank - 1);
-  scale_op =
-      Reshape(scale_op, {batch_size, scale_rows / kInputNonContractingTileSize,
-                         4, 32, scale_cols / kScaleContractingTileSize,
-                         kScaleContractingTileSize});
+  scale_op = Reshape(
+      scale_op,
+      {batch_size,
+       scale_rows / BlockScalingRewriter::kInputNonContractingTileSize, 4, 32,
+       scale_cols / BlockScalingRewriter::kScaleContractingTileSize,
+       BlockScalingRewriter::kScaleContractingTileSize});
   scale_op = Transpose(scale_op, {0, 1, 4, 3, 2, 5});
   scale_op = Reshape(scale_op, scale_valid_shape.dimensions());
 
@@ -422,13 +445,11 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
 
   // Get inputs from parameters.
   ABSL_ASSIGN_OR_RETURN(auto lhs_ops_and_size,
-                   BuildCudnnScaledDotInput(lhs_input, lhs_scale, block_size,
-                                            /*pad_input=*/true));
+                   BuildCudnnScaledDotInput(lhs_input, lhs_scale, block_size));
   auto [lhs_input_op, lhs_scale_op, lhs_size] = lhs_ops_and_size;
 
   ABSL_ASSIGN_OR_RETURN(auto rhs_ops_and_size,
-                   BuildCudnnScaledDotInput(rhs_input, rhs_scale, block_size,
-                                            /*pad_input=*/true));
+                   BuildCudnnScaledDotInput(rhs_input, rhs_scale, block_size));
   auto [rhs_input_op, rhs_scale_op, rhs_size] = rhs_ops_and_size;
 
   // Calculate output shape.
@@ -644,71 +665,137 @@ absl::StatusOr<HloInstruction*> ExpandBlockScaledDotCustomCall(
 
 // ----- cuDNN scale swizzling
 
-absl::StatusOr<HloComputation*> CreateScaleSwizzleComputation(
-    const HloInstruction* input, const HloInstruction* scale) {
-  // Create XLA builder and parameters.
-  std::string name = absl::StrCat(scale->name(), "_swizzle");
-  XlaBuilder builder(name);
-  XlaOp input_op = Parameter(&builder, 0, input->shape(), "input");
-  XlaOp scale_op = Parameter(&builder, 1, scale->shape(), "scale");
-
-  // Build swizzle computation.
-  ABSL_ASSIGN_OR_RETURN(
-      auto ops_and_size,
-      BuildCudnnScaledDotInput(input_op, scale_op, /*block_size=*/std::nullopt,
-                               /*pad_input=*/false));
-  auto [result_input_op, result_scale_op, _] = ops_and_size;
-  Tuple(&builder, {result_input_op, result_scale_op});
-
-  ABSL_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-  ABSL_ASSIGN_OR_RETURN(
-      HloComputation * computation,
-      XlaComputationToHloComputation(xla_computation, input->GetModule()));
-
-  for (HloInstruction* instr : computation->instructions()) {
-    // Replace reshapes with bitcasts (post layout assignment).
-    if (instr->opcode() == HloOpcode::kReshape) {
-      ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(
-          instr, computation->AddInstruction(HloInstruction::CreateBitcast(
-                     instr->shape(), instr->mutable_operand(0)))));
-    }
-    // Fix transpose layouts (generated as no-ops).
-    if (instr->opcode() == HloOpcode::kTranspose) {
-      *instr->mutable_shape()->mutable_layout() =
-          LayoutUtil::GetDefaultLayoutForShape(instr->shape());
-    }
+// Returns the cuDNN MX type of an input/scale operand pair, ignoring layouts.
+CudnnMxType GetCudnnMxTypePreLayout(const DotOperandDims& input,
+                                    const DotOperandDims& scale) {
+  if (input.Rank(DotOperandDims::kBatch) > 1 ||
+      input.Rank(DotOperandDims::kNonContracting) != 1 ||
+      input.Rank(DotOperandDims::kContracting) != 1 ||
+      scale.Sizes(DotOperandDims::kBatch) !=
+          input.Sizes(DotOperandDims::kBatch) ||
+      scale.Sizes(DotOperandDims::kNonContracting) !=
+          input.Sizes(DotOperandDims::kNonContracting) ||
+      // A scale padded to the F8_128x4 tile along the non-contracting
+      // dimension would need a slice inside the fusion to match the data.
+      input.TotalSize(DotOperandDims::kNonContracting) %
+              BlockScalingRewriter::kInputNonContractingTileSize !=
+          0 ||
+      ShapeUtil::IsZeroElementArray(input.shape()) ||
+      ShapeUtil::IsZeroElementArray(scale.shape())) {
+    return CudnnMxType::UNSUPPORTED_TYPE;
   }
-  return computation;
+  int64_t k = input.TotalSize(DotOperandDims::kContracting);
+  int64_t scale_k = scale.TotalSize(DotOperandDims::kContracting);
+  // TMA requires the contiguous contracting dimension to be 16-byte (128-bit)
+  // aligned (e.g. K % 32 == 0 for 4-bit FP4).
+  if (k % scale_k != 0 ||
+      k % RoundUpTo(scale_k, BlockScalingRewriter::kScaleContractingTileSize) !=
+          0 ||
+      (k * primitive_util::BitWidth(input.shape().element_type())) %
+              kTmaAlignmentBits !=
+          0) {
+    return CudnnMxType::UNSUPPORTED_TYPE;
+  }
+  return GetCudnnMxType(input.shape().element_type(),
+                        scale.shape().element_type(), k / scale_k);
 }
 
-absl::Status SliceScaledDotOperands(HloInstruction* scaled_dot) {
-  // Create scaled dot operation with noncontracting dimensions sliced.
-  int rank = scaled_dot->shape().dimensions().size();
-  HloComputation* computation = scaled_dot->parent();
+// Returns true if the input and the scale are both laid out as
+// {contracting, non-contracting, batch} from minor to major.
+bool IsKMinor(const DotOperandDims& input, const DotOperandDims& scale) {
+  std::vector<int64_t> minor_to_major = {
+      input.Indices(DotOperandDims::kContracting)[0],
+      input.Indices(DotOperandDims::kNonContracting)[0]};
+  absl::c_copy(input.Indices(DotOperandDims::kBatch),
+               std::back_inserter(minor_to_major));
+  return input.shape().layout().minor_to_major() == minor_to_major &&
+         scale.shape().layout().minor_to_major() == minor_to_major;
+}
 
-  // Create slice operations for LHS/RHS.
-  std::vector<HloInstruction*> new_operands(scaled_dot->operands().begin(),
-                                            scaled_dot->operands().end());
-  for (int i = 0; i < 2; ++i) {
-    const Shape& input_shape = scaled_dot->operand(i)->shape();
-    const Shape& scale_shape = scaled_dot->operand(i + 2)->shape();
-    if (input_shape.dimensions(rank - 2) != scale_shape.dimensions(rank - 2)) {
-      std::vector<int64_t> start(rank, 0);
-      std::vector<int64_t> strides(rank, 1);
-      std::vector<int64_t> limit(input_shape.dimensions().begin(),
-                                 input_shape.dimensions().end());
-      limit[rank - 1] = scale_shape.dimensions(rank - 1);
-      new_operands[i + 2] =
-          computation->AddInstruction(HloInstruction::CreateSlice(
-              ShapeUtil::MakeShape(scale_shape.element_type(), limit),
-              scaled_dot->mutable_operand(i + 2), start, limit, strides));
-    }
+// Zero-pads `instr` up to `shape`.
+HloInstruction* ZeroPad(HloInstruction* instr, const Shape& shape) {
+  if (instr->shape() == shape) {
+    return instr;
   }
+  PaddingConfig padding = MakeNoPaddingConfig(shape.dimensions().size());
+  for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
+    padding.mutable_dimensions(dim)->set_edge_padding_high(
+        shape.dimensions(dim) - instr->shape().dimensions(dim));
+  }
+  HloComputation* parent = instr->parent();
+  HloInstruction* zero = parent->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
+  return parent->AddInstruction(
+      HloInstruction::CreatePad(shape, instr, zero, padding));
+}
 
-  // Replace scaled dot instruction operands.
-  HloInstruction* new_scaled_dot = computation->AddInstruction(
-      scaled_dot->CloneWithNewOperands(scaled_dot->shape(), new_operands));
-  return computation->ReplaceInstruction(scaled_dot, new_scaled_dot);
+// Pads the scale's contracting dimension to the F8_128x4 tile and swizzles the
+// scale into that layout. The scale must be K-minor, so that the reshapes
+// around the transpose are bitcasts, and its non-contracting dimension must be
+// a multiple of the tile.
+HloInstruction* PadAndSwizzleScale(HloInstruction* scale,
+                                   const DotOperandDims& dims) {
+  int64_t nc_dim = dims.Indices(DotOperandDims::kNonContracting)[0];
+  int64_t k_dim = dims.Indices(DotOperandDims::kContracting)[0];
+  Shape shape = scale->shape();
+  shape.set_dimensions(
+      k_dim, RoundUpTo(shape.dimensions(k_dim),
+                       BlockScalingRewriter::kScaleContractingTileSize));
+  scale = ZeroPad(scale, shape);
+
+  int64_t batch = dims.TotalSize(DotOperandDims::kBatch);
+  int64_t nc_tiles = shape.dimensions(nc_dim) /
+                     BlockScalingRewriter::kInputNonContractingTileSize;
+  int64_t k_tiles =
+      shape.dimensions(k_dim) / BlockScalingRewriter::kScaleContractingTileSize;
+  HloInstruction* tiled = MakeBitcastHlo(
+      scale, ShapeUtil::MakeShapeWithDescendingLayout(
+                 shape.element_type(),
+                 {batch, nc_tiles, 4, 32, k_tiles,
+                  BlockScalingRewriter::kScaleContractingTileSize}));
+  HloInstruction* swizzled =
+      scale->parent()->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShapeWithDescendingLayout(
+              shape.element_type(),
+              {batch, nc_tiles, k_tiles, 32, 4,
+               BlockScalingRewriter::kScaleContractingTileSize}),
+          tiled, {0, 1, 4, 3, 2, 5}));
+  return MakeBitcastHlo(swizzled, shape);
+}
+
+// Builds the fused computation. Only the contracting dimension of the scales
+// is padded, which keeps the scaled dot valid.
+HloComputation* BuildCudnnScaledDotFusionComputation(
+    const HloScaledDotInstruction* scaled_dot,
+    absl::Span<HloInstruction* const> fusion_operands) {
+  HloComputation::Builder builder(
+      absl::StrCat(scaled_dot->name(), "_cudnn_fusion"));
+  std::vector<HloInstruction*> parameters;
+  for (int i = 0; i < fusion_operands.size(); ++i) {
+    parameters.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
+        i, fusion_operands[i]->shape(), absl::StrCat("parameter_", i))));
+  }
+  builder.AddInstruction(
+      scaled_dot->CloneWithNewOperands(scaled_dot->shape(), parameters));
+  return scaled_dot->GetModule()->AddEmbeddedComputation(builder.Build());
+}
+
+absl::Status RewriteCudnnScaledDot(HloScaledDotInstruction* scaled_dot) {
+  HloComputation* parent = scaled_dot->parent();
+  ABSL_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromScaledDot(scaled_dot));
+  std::vector<HloInstruction*> fusion_operands = {
+      scaled_dot->mutable_operand(0),
+      scaled_dot->mutable_operand(1),
+      PadAndSwizzleScale(scaled_dot->mutable_operand(2), dims[2]),
+      PadAndSwizzleScale(scaled_dot->mutable_operand(3), dims[3]),
+  };
+  HloInstruction* fusion = parent->AddInstruction(HloInstruction::CreateFusion(
+      scaled_dot->shape(), HloInstruction::FusionKind::kCustom, fusion_operands,
+      BuildCudnnScaledDotFusionComputation(scaled_dot, fusion_operands)));
+  GpuBackendConfig gpu_config;
+  gpu_config.mutable_fusion_backend_config()->set_kind(kCuDnnFusionKind);
+  ABSL_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  return parent->ReplaceInstruction(scaled_dot, fusion);
 }
 
 }  // namespace
@@ -736,109 +823,73 @@ absl::StatusOr<HloInstruction*> BlockScalingRewriter::ExpandInstruction(
              << instruction->custom_call_target();
 }
 
-bool CudnnScaledDotHelper::IsSupported(
+bool CudnnScaledDotHelper::IsSupportedPreLayout(
     const HloScaledDotInstruction* scaled_dot) {
-  const HloInstruction* lhs_input = scaled_dot->operand(0);
-  const HloInstruction* rhs_input = scaled_dot->operand(1);
-  const HloInstruction* lhs_scale = scaled_dot->operand(2);
-  const HloInstruction* rhs_scale = scaled_dot->operand(3);
-
-  // Input fusion is not supported, as the underlying kernel reads from HBM.
-  auto is_parameter = [](const HloInstruction* instr, int index) {
-    bool is_param = instr->opcode() == HloOpcode::kParameter &&
-                    instr->parameter_number() == index &&
-                    instr->user_count() == 1;
-    if (!is_param) {
-      VLOG(3) << "Operand " << index
-              << " is not a parameter or has multiple users. Opcode: "
-              << instr->opcode() << ", param_num: "
-              << (instr->opcode() == HloOpcode::kParameter
-                      ? instr->parameter_number()
-                      : -1)
-              << ", users: " << instr->user_count();
-    }
-    return is_param;
-  };
-  if (!is_parameter(lhs_input, 0) || !is_parameter(rhs_input, 1) ||
-      !is_parameter(lhs_scale, 2) || !is_parameter(rhs_scale, 3)) {
-    VLOG(3) << "Operands are not parameters meeting criteria";
-    return false;
-  }
-
-  // The dot dimension numbers must have fixed order: batch dimension first
-  // (if present) and contracting dimension last.
-  const DotDimensionNumbers& dnums = scaled_dot->dot_dimension_numbers();
-  int rank = lhs_input->shape().dimensions().size();
-  if (dnums.lhs_contracting_dimensions()[0] != rank - 1 ||
-      dnums.rhs_contracting_dimensions()[0] != rank - 1 ||
-      (rank == 3 && (dnums.lhs_batch_dimensions()[0] != 0 ||
-                     dnums.rhs_batch_dimensions()[0] != 0))) {
-    VLOG(3) << "Unsupported dimension numbers: " << dnums.DebugString()
-            << ", rank: " << rank;
-    return false;
-  }
-
-  // cuDNN kernel supports a subset of block scaled types.
-  bool supported = IsSupportedByCudnn(
-      GetCudnnMxType(lhs_input->shape(), lhs_scale->shape(), std::nullopt),
-      GetCudnnMxType(rhs_input->shape(), rhs_scale->shape(), std::nullopt));
-
-  if (!supported) {
-    VLOG(3) << "Type combination not supported by cuDNN";
-  }
-  return supported;
+  absl::StatusOr<std::array<DotOperandDims, 4>> dims =
+      DotOperandDims::FromScaledDot(scaled_dot);
+  const PrecisionConfig& precision = scaled_dot->precision_config();
+  PrimitiveType out_type = scaled_dot->shape().element_type();
+  return dims.ok() &&
+         absl::c_all_of(precision.operand_precision(),
+                        [](int p) { return p == PrecisionConfig::DEFAULT; }) &&
+         precision.algorithm() == PrecisionConfig::ALG_UNSET &&
+         (out_type == PrimitiveType::F32 || out_type == PrimitiveType::F16 ||
+          out_type == PrimitiveType::BF16) &&
+         IsSupportedByCudnn(GetCudnnMxTypePreLayout((*dims)[0], (*dims)[2]),
+                            GetCudnnMxTypePreLayout((*dims)[1], (*dims)[3]));
 }
 
-absl::StatusOr<HloInstruction*> CudnnScaledDotHelper::AddScaleSwizzle(
-    HloFusionInstruction* fusion) {
-  HloComputation* parent = fusion->parent();
-  int rank = fusion->shape().dimensions().size();
+bool CudnnScaledDotHelper::IsSupportedPostLayout(
+    const HloScaledDotInstruction* scaled_dot) {
+  absl::StatusOr<std::array<DotOperandDims, 4>> dims =
+      DotOperandDims::FromScaledDot(scaled_dot);
+  if (!dims.ok() || !IsSupportedPreLayout(scaled_dot)) {
+    return false;
+  }
+  // CuDnnFusionCompiler requires a non-contracting output dim (M or N) to be
+  // unit-strided and the batch dim (dim 0 of 3D output) to be most major.
+  const Shape& shape = scaled_dot->shape();
+  int64_t rank = shape.dimensions().size();
+  if ((rank == 3 && LayoutUtil::Major(shape.layout(), 0) != 0) ||
+      !IsKMinor((*dims)[0], (*dims)[2]) || !IsKMinor((*dims)[1], (*dims)[3])) {
+    return false;
+  }
+  // cuDNN has no engine for MXFP4 with an M-minor (column-major) output.
+  bool m_minor = LayoutUtil::Minor(shape.layout(), 0) == rank - 2;
+  return !m_minor || (GetCudnnMxTypePreLayout((*dims)[0], (*dims)[2]) !=
+                          CudnnMxType::MXFP4 &&
+                      GetCudnnMxTypePreLayout((*dims)[1], (*dims)[3]) !=
+                          CudnnMxType::MXFP4);
+}
 
-  // Add swizzling to LHS/RHS.
-  std::vector<HloInstruction*> swizzled_operands(4);
-  for (int i = 0; i < 2; ++i) {
-    ABSL_ASSIGN_OR_RETURN(HloComputation * swizzle_computation,
-                     CreateScaleSwizzleComputation(fusion->operand(i),
-                                                   fusion->operand(i + 2)));
-    HloInstruction* call = parent->AddInstruction(HloInstruction::CreateCall(
-        swizzle_computation->root_instruction()->shape(),
-        {fusion->mutable_operand(i), fusion->mutable_operand(i + 2)},
-        swizzle_computation));
-    for (int j = 0; j < 2; ++j) {
-      swizzled_operands[i + j * 2] =
-          parent->AddInstruction(HloInstruction::CreateGetTupleElement(
-              call->shape().tuple_shapes(j), call, j));
+bool CudnnScaledDotHelper::IsAvailable(
+    const se::DeviceDescription& device_description) {
+  // The alignment constraints enforced by IsSupportedPostLayout are verified
+  // only on SM 10.0 (B200, GB200); other Blackwell variants are untested.
+  const se::CudaComputeCapability& cc =
+      device_description.cuda_compute_capability();
+  return cc.IsBlackwell() && cc.minor == 0 &&
+         se::dnn::VersionInfo(device_description.dnn_version()) >=
+             kCudnnSupportsBlockScaledDot;
+}
+
+absl::StatusOr<bool> CudnnScaledDotRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr);
+      if (scaled_dot == nullptr ||
+          !CudnnScaledDotHelper::IsSupportedPostLayout(scaled_dot)) {
+        continue;
+      }
+      ABSL_RETURN_IF_ERROR(RewriteCudnnScaledDot(scaled_dot));
+      changed = true;
     }
   }
-
-  // Update fusion computation parameter shapes, if needed.
-  HloComputation* computation = fusion->fused_instructions_computation();
-  bool need_slicing = false;
-  for (int i = 0; i < 4; ++i) {
-    HloInstruction* param = computation->parameter_instruction(i);
-    const Shape& swizzled_shape = swizzled_operands[i]->shape();
-    Shape* param_shape = param->mutable_shape();
-    if (*param_shape != swizzled_shape) {
-      need_slicing |= param_shape->dimensions(rank - 2) !=
-                      swizzled_shape.dimensions(rank - 2);
-      *param_shape = swizzled_shape;
-    }
-  }
-
-  // Replace scaled dot if any inputs need slicing.
-  if (need_slicing) {
-    HloInstruction* scaled_dot =
-        computation->parameter_instruction(0)->users()[0];
-    ABSL_RETURN_IF_ERROR(SliceScaledDotOperands(scaled_dot));
-  }
-
-  // Create new fusion with the swizzled operands.
-  HloInstruction* new_fusion =
-      parent->AddInstruction(HloInstruction::CreateFusion(
-          computation->root_instruction()->shape(), fusion->fusion_kind(),
-          swizzled_operands, fusion->fused_instructions_computation()));
-  ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(fusion, new_fusion));
-  return new_fusion;
+  return changed;
 }
 
 }  // namespace xla::gpu

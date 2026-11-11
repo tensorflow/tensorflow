@@ -277,7 +277,73 @@ setattr(np_arrays.ndarray, '_matmul', matmul)
 @tf_export.tf_export('experimental.numpy.tensordot', v1=[])
 @np_utils.np_doc('tensordot')
 def tensordot(a, b, axes=2):
-  return _bin_op(lambda a, b: math_ops.tensordot(a, b, axes=axes), a, b)
+  def f(a, b):  # pylint: disable=missing-docstring
+    # NumPy raises IndexError: tuple index out of range (its own internal
+    # indexing over `axes`) before any computation on out-of-bounds axes.
+    # The backend `tensordot` instead normalizes the raw entries itself and
+    # only checks an integer count against the first input: a too-large
+    # entry fails with a bare `IndexError` while indexing the static shape,
+    # and a negative out-of-bounds entry leaves a leftover negative value
+    # in the transpose `perm`, which fails in `array_ops.transpose` with a
+    # perm error unrelated to `axes`.
+    # Validate statically-known ranks and Python-int entries against NumPy's
+    # bounds up front; tensor axes or unknown ranks (e.g. `@tf.function` with
+    # an unspecified input signature) behave exactly as before, and no graph
+    # ops are added on the eager path.
+    norm_axes = None
+    if isinstance(axes, (list, tuple)) and len(axes) == 2:
+      a_entries, b_entries = axes
+      # A bare integer on one side names that side's single contraction
+      # axis, as in NumPy's mixed form `axes=(1, [0])`.
+      if isinstance(a_entries, (int, np.integer)):
+        a_entries = (a_entries,)
+      if isinstance(b_entries, (int, np.integer)):
+        b_entries = (b_entries,)
+      if isinstance(a_entries, (tuple, list)) and isinstance(
+          b_entries, (tuple, list)
+      ):
+        # Forward the normalized form so the backend does not have to
+        # re-derive it: `math_ops.tensordot` only wraps each bare integer
+        # when both sides are integers, so a mixed form would otherwise
+        # fail on `len()` of an int.
+        norm_axes = (a_entries, b_entries)
+      else:
+        # Tensor axes: leave validation to dynamic behavior as before.
+        a_entries, b_entries = (), ()
+      for entries, t in ((a_entries, a), (b_entries, b)):
+        maybe_rank = t.shape.rank
+        if maybe_rank is None:
+          continue
+        for entry in entries:
+          if isinstance(entry, (int, np.integer)) and not (
+              -maybe_rank <= int(entry) < maybe_rank
+          ):
+            raise ValueError(
+                f'Argument `axes` (received axes={entry}) is out of '
+                f'bounds for input with shape {t.shape} of rank '
+                f'{maybe_rank}.'
+            )
+    elif isinstance(axes, (int, np.integer)):
+      # Contraction over the last N axes of `a` and first N axes of `b`.
+      # NumPy errors when N exceeds either input's rank, but treats any
+      # negative N as an empty contraction (an outer product):
+      # np.tensordot(a, b, -1) has shape a.shape + b.shape.
+      maybe_rank_a = a.shape.rank
+      maybe_rank_b = b.shape.rank
+      num_axes = int(axes)
+      if num_axes < 0:
+        return math_ops.tensordot(a, b, axes=0)
+      for maybe_rank, t in ((maybe_rank_a, a), (maybe_rank_b, b)):
+        if maybe_rank is not None and num_axes > maybe_rank:
+          raise ValueError(
+              f'Argument `axes` (received axes={axes}) is out of bounds '
+              f'for input with shape {t.shape} of rank {maybe_rank}.'
+          )
+    if norm_axes is not None:
+      return math_ops.tensordot(a, b, axes=norm_axes)
+    return math_ops.tensordot(a, b, axes=axes)
+
+  return _bin_op(f, a, b)
 
 
 @tf_export.tf_export('experimental.numpy.inner', v1=[])
@@ -890,6 +956,10 @@ def floor(x):
 @tf_export.tf_export('experimental.numpy.conj', v1=[])
 @np_utils.np_doc('conj')
 def conj(x):
+  x = np_array_ops.asarray(x)
+  if x.dtype == dtypes.bool:
+    # `math_ops.conj` rejects bool, which has no imaginary part to negate.
+    return x
   return _scalar(math_ops.conj, x)
 
 
@@ -1058,7 +1128,7 @@ def cbrt(x):
 @tf_export.tf_export('experimental.numpy.conjugate', v1=[])
 @np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
-  return _scalar(math_ops.conj, x)
+  return conj(x)
 
 
 @tf_export.tf_export('experimental.numpy.exp2', v1=[])
@@ -1088,13 +1158,20 @@ def fix(x):
 @tf_export.tf_export('experimental.numpy.iscomplex', v1=[])
 @np_utils.np_doc('iscomplex')
 def iscomplex(x):
-  return np_array_ops.imag(x) != 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) != 0
+  # Comparing against 0 would fail for bool, so answer from the dtype.
+  return np_array_ops.zeros_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isreal', v1=[])
 @np_utils.np_doc('isreal')
 def isreal(x):
-  return np_array_ops.imag(x) == 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) == 0
+  return np_array_ops.ones_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.iscomplexobj', v1=[])

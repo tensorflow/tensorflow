@@ -29,6 +29,17 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 def register_extension_info(**kwargs):
     pass
 
+# Root of the repository that contains the TFLite sources, relative to the
+# execution root: "." when LiteRT is the main repository and "external/<repo>"
+# when LiteRT is an external repository. Pass it as `-I` to flatc so that `.fbs`
+# schema includes are resolved relative to this repository rather than to
+# TensorFlow's.
+# copybara:comment_begin(oss-only)
+workspace_root = Label("//:WORKSPACE").workspace_root or "."
+# copybara:comment_end_and_uncomment_begin
+# workspace_root = "."
+# copybara:uncomment_end
+
 def clean_dep(target):
     """Returns string to 'target' in @litert repository.
 

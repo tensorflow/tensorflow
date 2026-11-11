@@ -28,6 +28,7 @@ def repo():
             #   https://github.com/google/riegeli/archive/9f2744dc23e81d84c02f6f51244e9e9bb9802d57.tar.gz \
             #   > third_party/riegeli/layering_check.patch
             "//third_party/riegeli:layering_check.patch",
+            "//third_party/riegeli:binary_search_cxx20.patch",
         ],
         urls = tf_mirror_urls("https://github.com/google/riegeli/archive/9f2744dc23e81d84c02f6f51244e9e9bb9802d57.tar.gz"),
     )

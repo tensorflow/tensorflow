@@ -183,11 +183,15 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
 
   def _linop_solve(
       self,
-      left_operator: "LinearOperatorInversion",
+      left_operator: linear_operator.LinearOperator,
       right_operator: linear_operator.LinearOperator,
   ) -> linear_operator.LinearOperator:
     """Solve inverse of generic `LinearOperator`s."""
-    return left_operator.operator.matmul(right_operator)
+    # With `adjoint=True`, `left_operator` is `self.adjoint()`, which is a
+    # `LinearOperatorAdjoint` unless `self.is_self_adjoint` is True.
+    if isinstance(left_operator, LinearOperatorInversion):
+      return left_operator.operator.matmul(right_operator)
+    return super()._linop_solve(left_operator, right_operator)
 
   def _assert_non_singular(self):
     return self.operator.assert_non_singular()

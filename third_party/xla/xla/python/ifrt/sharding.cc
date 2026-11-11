@@ -158,7 +158,6 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards ||
       devices_->devices().front()->IsAddressable()) {
@@ -173,7 +172,6 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 SingleDeviceSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   std::vector<std::pair<DynamicShape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards ||
       devices_->devices().front()->IsAddressable()) {
@@ -188,7 +186,6 @@ SingleDeviceSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   std::vector<IndexDomain> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards ||
       devices_->devices().front()->IsAddressable()) {
@@ -199,7 +196,6 @@ absl::StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
 }
 
 std::string SingleDeviceSharding::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %v)",
                          devices_->devices().front()->DebugString(),
                          memory_kind_);
@@ -262,7 +258,6 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 OpaqueSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   return absl::InvalidArgumentError(
       "OpaqueSharding does not have shard shape information");
 }
@@ -271,7 +266,6 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 OpaqueSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   return absl::InvalidArgumentError(
       "OpaqueSharding does not have shard shape information");
 }
@@ -279,13 +273,11 @@ OpaqueSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   return absl::InvalidArgumentError(
       "OpaqueSharding does not have index domain information");
 }
 
 std::string OpaqueSharding::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat("OpaqueSharding(devices: %v, memory_kind: %v)",
                          *devices_, memory_kind_);
 }
@@ -365,7 +357,6 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   if (!has_static_shape()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("ConcreteSharding holds dynamic shape, but was asked "
@@ -413,7 +404,6 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   if (!has_dynamic_shape()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("ConcreteSharding holds static shape, but was asked "
@@ -461,7 +451,6 @@ ConcreteSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   if (!index_domains().has_value()) {
     return absl::InvalidArgumentError(
         "ConcreteSharding does not have index domain information");
@@ -490,7 +479,6 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
 }
 
 std::string ConcreteSharding::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat(
       "ConcreteSharding(devices: %v, shape: %v, shard_shapes: [%s], "
       "index_domains: %s, memory_kind: %v)",
@@ -571,7 +559,6 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   if (shape != this->shape()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "ConcreteEvenSharding can only disassemble shape %v, but was asked "
@@ -600,7 +587,6 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 ConcreteEvenSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   return absl::InvalidArgumentError(absl::StrFormat(
       "ConcreteEvenSharding can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %v",
@@ -610,7 +596,6 @@ ConcreteEvenSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   if (IsFullyReplicated() && this->shape() == shard_shape() &&
       this->shape() == shape) {
     std::vector<IndexDomain> result;
@@ -628,7 +613,6 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
 }
 
 std::string ConcreteEvenSharding::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat(
       "ConcreteEvenSharding(devices: %v, shape: %v, shard_shape: %v, "
       "memory_kind: %v, is_fully_replicated: %s)",

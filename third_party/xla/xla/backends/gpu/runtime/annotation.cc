@@ -831,6 +831,18 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
 
 namespace {
 thread_local const ModuleAnnotations* current_annotations = nullptr;
+
+// Returns the pre-built annotation of `profile_annotation` in the current
+// module's annotations, or nullptr if there is none.
+const InstructionAnnotation* FindInstructionAnnotation(
+    absl::string_view profile_annotation) {
+  if (current_annotations == nullptr) {
+    return nullptr;
+  }
+  auto iter = current_annotations->instructions.find(profile_annotation);
+  return iter == current_annotations->instructions.end() ? nullptr
+                                                         : &iter->second;
+}
 }  // namespace
 
 ScopedModuleAnnotations::ScopedModuleAnnotations(
@@ -841,24 +853,36 @@ ScopedModuleAnnotations::~ScopedModuleAnnotations() {
   current_annotations = restore_;
 }
 
+const ModuleAnnotations* GetCurrentModuleAnnotations() {
+  return current_annotations;
+}
+
 std::optional<ScopedAnnotation> GetInstructionAnnotation(
     absl::string_view profile_annotation) {
   if (profile_annotation.empty()) {
     return {};
   }
-  if (current_annotations) {
-    // Have a set of pre-prepared instruction annotations to use
-    const auto iter =
-        current_annotations->instructions.find(profile_annotation);
-    if (iter != current_annotations->instructions.end()) {
-      // Have a pre-prepared annotation, use it
-      return std::optional<ScopedAnnotation>{
-          std::in_place, [&] { return iter->second.xprof_name(); },
-          [&]() -> const InstructionAnnotation& { return iter->second; }};
-    }
+  if (const InstructionAnnotation* instruction =
+          FindInstructionAnnotation(profile_annotation)) {
+    // Have a pre-prepared annotation, use it
+    return std::optional<ScopedAnnotation>{
+        std::in_place, [&] { return instruction->xprof_name(); },
+        [&]() -> const InstructionAnnotation& { return *instruction; }};
   }
   return std::optional<ScopedAnnotation>{
       [&] { return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation); }};
+}
+
+std::string GetInstructionAnnotationString(
+    absl::string_view profile_annotation) {
+  if (profile_annotation.empty()) {
+    return "";
+  }
+  if (const InstructionAnnotation* instruction =
+          FindInstructionAnnotation(profile_annotation)) {
+    return std::string(instruction->xprof_name());
+  }
+  return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation);
 }
 
 }  // namespace xla::gpu

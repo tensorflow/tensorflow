@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -211,8 +212,13 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input) {
   xla::ExecutableBuildOptions output;
+  if (input.device_ordinal() < -1 ||
+      input.device_ordinal() > std::numeric_limits<int>::max()) {
+    return InvalidArgument("Invalid device_ordinal: %d",
+                           input.device_ordinal());
+  }
   if (input.device_ordinal() != -1) {
-    output.set_device_ordinal(input.device_ordinal());
+    output.set_device_ordinal(static_cast<int>(input.device_ordinal()));
   }
   if (input.has_result_layout()) {
     ABSL_ASSIGN_OR_RETURN(Shape result_layout,

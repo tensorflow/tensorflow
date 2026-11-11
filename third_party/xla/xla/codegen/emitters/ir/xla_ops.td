@@ -169,6 +169,65 @@ def XLA_PredicatedExtractOp : XLA_Op<"predicated_extract",
   }];
 }
 
+def XLA_CopySliceOp : XLA_Op<"copy_slice",
+    [Pure, AttrSizedOperandSegments,
+     TypesMatchWith<"result type matches dest type", "dest", "result", "$_self">]> {
+  let summary = "Copies a contiguous slice from one tensor to another.";
+  let description = [{
+    Copies `$num_elements` contiguous elements starting at `$src[$src_indices]`
+    into `$dest[$dest_indices]` in physical memory order and returns the
+    updated destination tensor.
+  }];
+  let arguments = (ins AnyRankedTensor:$src,
+                       AnyRankedTensor:$dest,
+                       Variadic<Index>:$src_indices,
+                       Variadic<Index>:$dest_indices,
+                       I64Attr:$num_elements);
+  let results = (outs AnyRankedTensor:$result);
+  let assemblyFormat = [{
+    $src `[` $src_indices `]` `into` $dest `[` $dest_indices `]`
+    `count` `(` $num_elements `)` attr-dict `:` type($src) `into` type($dest)
+  }];
+  let hasVerifier = 1;
+}
+
+def XLA_LinearExtractOp : XLA_Op<"linear_extract",
+    [Pure, TypesMatchWith<"result type matches tensor element type",
+                          "tensor", "result",
+                          "mlir::cast<mlir::ShapedType>($_self).getElementType()">]> {
+  let summary = "Extracts an element at a 1D physical element index.";
+  let description = [{
+    Extracts the element at 1D physical memory offset `$index` from `$tensor`
+    without applying its static layout strides.
+  }];
+  let arguments = (ins AnyRankedTensor:$tensor, Index:$index);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = [{
+    $tensor `[` $index `]` attr-dict `:` type($tensor)
+  }];
+  let hasVerifier = 1;
+}
+
+def XLA_LinearInsertOp : XLA_Op<"linear_insert",
+    [Pure,
+     TypesMatchWith<"result type matches tensor type", "tensor", "result",
+                    "$_self">,
+     TypesMatchWith<"value type matches tensor element type",
+                    "tensor", "value",
+                    "mlir::cast<mlir::ShapedType>($_self).getElementType()">]> {
+  let summary = "Inserts an element at a 1D physical element index.";
+  let description = [{
+    Inserts `$value` at 1D physical memory offset `$index` into `$tensor`
+    without applying its static layout strides and returns the updated tensor.
+  }];
+  let arguments = (ins AnyType:$value, AnyRankedTensor:$tensor, Index:$index);
+  let results = (outs AnyRankedTensor:$result);
+  let assemblyFormat = [{
+    $value `into` $tensor `[` $index `]` attr-dict `:` type($tensor)
+  }];
+  let hasVerifier = 1;
+}
+
 def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{
@@ -185,14 +244,27 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
     #map = #xla.indexing_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
     %results:2 = xla_ops.apply_indexing #map (%0 in [0, 10], %1 in [0, 11])[%2 in [11, 32]]
     ```
+
+    A single-result `apply_indexing` op may carry an optional
+    `xla.range = [lower, upper]` attribute. It is a closed interval that is
+    known to contain the result, and `GetRange` intersects it with the range
+    computed from the indexing map. Since folding a result that is a bare
+    dimension or symbol replaces the op with its operand, such a result is only
+    folded if the operand's known range is contained in `xla.range`. Otherwise
+    the op is kept, so that the tighter range is not lost. `xla.range` is not
+    allowed on multi-result ops, because a single interval cannot describe
+    several results.
   }];
   let arguments = (ins Variadic<Index>:$operands,
                    XLA_IndexingMapAttr:$indexing_map_attr);
   let results = (outs Variadic<Index>);
 
   let builders = [
+    // If `result_range` is set, the op is annotated with `xla.range`. This is
+    // only valid for single-result indexing maps.
     OpBuilder<(ins "mlir::ValueRange":$dims, "mlir::ValueRange":$symbols,
-                   "const IndexingMap&":$indexing_map)>,
+                   "const IndexingMap&":$indexing_map,
+                   CArg<"std::optional<Interval>", "std::nullopt">:$result_range)>,
     OpBuilder<(ins "mlir::ValueRange":$operands,
                    "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands, "xla::SymbolicMap":$symbolic_map,
@@ -310,6 +382,27 @@ def GetDynamicDimSizeOp : XLA_Op<"get_dynamic_dim_size", [
   let results = (outs I32:$result);
 
   let assemblyFormat = "$tensor $dim attr-dict `:` type($tensor)";
+  let hasVerifier = 1;
+}
+
+def SetDynamicDimSizeOp : XLA_Op<"set_dynamic_dim_size", [
+    Pure,
+    TypesMatchWith<"result type matches tensor type", "tensor", "result",
+                   "$_self">
+  ]> {
+  let summary = "Stores the dynamic size of a dimension into the metadata "
+                "suffix of a tensor.";
+  let description = [{
+    Stores `$size` into dynamic dimension slot `$dim` in the tail metadata array
+    of `$tensor` and returns the updated tensor. The `dim` argument can be
+    larger than `tensor`'s rank after passes such as `flatten_tensors` change
+    the view to 1D.
+  }];
+  let arguments = (ins AnyStaticShapeTensor:$tensor, I32:$size, I64Attr:$dim);
+  let results = (outs AnyStaticShapeTensor:$result);
+
+  let assemblyFormat = "$size `into` $tensor `[` $dim `]` attr-dict `:` type($tensor)";
+  let hasVerifier = 1;
 }
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS

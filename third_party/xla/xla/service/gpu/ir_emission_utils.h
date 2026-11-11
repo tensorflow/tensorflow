@@ -64,9 +64,12 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 // dimension.
 inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
-// Returns true if the given dot is supported by cuBLAS.
+// Returns true if the given dot is supported by cuBLAS. If `is_normalized` is
+// false, checks whether the dot will be supported after DotDimensionNormalizer
+// and GpuLayoutAssignment run.
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication);
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized = true);
 
 // Returns true if the given instruction is supported by gpuBLASLt
 // GroupedMatMul.
@@ -132,6 +135,16 @@ inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 // FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTensorIrFusionKind = "__tensorir";
 
+// Horizontal fusions that are emitted as a single thread-block-specialized
+// kernel have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kThreadBlockSpecializedFusionKind =
+    "__thread_block_specialized";
+
+// Multi-phase wrapper fusions emitted as a single thread-block-cluster kernel
+// have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kPhasedBlockClusterFusionKind =
+    "__phased_block_cluster";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
@@ -170,9 +183,13 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
-// Emits code that determines whether the current thread is thread 0 within
-// block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
+// Returns true if no thunks are emitted for `hlo`, i.e. it does no work on any
+// device stream when the executable runs: its semantics are encoded by buffer
+// assignment, by the schedule, or by data that is set up when the executable
+// is loaded. This is stricter than the latency hiding scheduler's notion of a
+// no-op, which also covers instructions whose work is negligible (e.g.
+// partition-id, a memset of 4 bytes).
+bool EmitsNoThunks(const HloInstruction& hlo);
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
@@ -296,17 +313,6 @@ absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);
-
-// Returns the llvm type for the indices used in the kernel that contains the
-// hlo instruction. Such indices include the index for the parallel loop and
-// the indices for the tensors accessed by the kernel. The return type is i32
-// iff the following conditions are met:
-//  . The launch_size of the kernel is within the range of i32.
-//  . The sizes of all the tensors accessed within the kernel are within the
-//    range of i32.
-// Otherwise, the return type is i64.
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // Returns a deterministic encoded string representation of the proto message.
 absl::StatusOr<std::string> GetProtoFingerprint(

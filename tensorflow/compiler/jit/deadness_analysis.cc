@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "xla/status_macros.h"
@@ -1396,8 +1397,8 @@ absl::Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
         break;
       }
     }
-    absl::Span<Node*> sub_topo(topo.data() + frame_start,
-                               /*length=*/frame_end - frame_start + 1);
+    absl::Span<Node*> sub_topo =
+        absl::MakeSpan(topo).subspan(frame_start, frame_end - frame_start + 1);
     frame_start = frame_end + 1;
 
     // First, try the optimistic mode.

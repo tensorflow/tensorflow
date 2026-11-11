@@ -128,6 +128,10 @@ using ::int64_t;
 constexpr char kAggregateToTopk[] = "aggregate_to_topk";
 constexpr char kApiVersion[] = "api_version";
 constexpr char kApproxTopK[] = "ApproxTopK";
+constexpr char kAsyncDynamicUpdateSliceDone[] =
+    "xla.async_dynamic_update_slice_done";
+constexpr char kAsyncDynamicUpdateSliceStart[] =
+    "xla.async_dynamic_update_slice_start";
 constexpr char kSparseActivationsUnstack[] = "SparseActivationsUnstack";
 constexpr char kSparseActivationsUnstackInterleaved[] =
     "SparseActivationsUnstackInterleaved";
@@ -953,17 +957,6 @@ static xla::ResultAccuracy Convert_result_accuracy(
   return result_accuracy;
 }
 
-// Returns an OpSharding proto from the "sharding" attribute of the op. If the
-// op doesn't have a sharding attribute or the sharding attribute is invalid,
-// returns std::nullopt.
-static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
-    mlir::Operation* op) {
-  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(xla::kMhloSharding);
-  if (!shardingAttr) {
-    return std::nullopt;
-  }
-  return xla::ConvertSharding(shardingAttr.getValue());
-}
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
@@ -1047,51 +1040,6 @@ static bool SomeOptionalShardingsAreSet(
                       });
 }
 
-// Extracts argument and result shardings from function.
-static void ExtractShardingsFromFunction(
-    mlir::func::FuncOp function,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
-    bool is_entry_function) {
-  arg_shardings->resize(function.getNumArguments(),
-                        std::optional<xla::OpSharding>());
-  auto module = function->getParentOfType<mlir::ModuleOp>();
-  std::optional<mlir::DictionaryAttr> sdy_meshes =
-      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
-          module, xla::sdy::kMeshesRoundTripAttr);
-
-  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
-    if (auto sharding = function.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloSharding)) {
-      (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
-      // Due to limitations with accurately getting OpShardings from manual
-      // computation bodies with Shardy shardings, only extract OpShardings from
-      // the entry function for now. This is ok since only the entry function
-      // uses the extracted OpShardings to modify layouts/create reshapes, other
-      // functions just use the OpShardings to populate the HloInstructionProto
-      // sharding field.
-    } else if (is_entry_function) {
-      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
-              function, i, sdy_meshes)) {
-        (*arg_shardings)[i] = sharding;
-      }
-    }
-  }
-
-  ret_shardings->resize(function.getNumResults(),
-                        std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
-    if (auto sharding = function.getResultAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloSharding)) {
-      (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
-    } else if (is_entry_function) {
-      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
-              function, i, sdy_meshes)) {
-        (*ret_shardings)[i] = sharding;
-      }
-    }
-  }
-}
 
 // Creates a tuple sharding with the given shardings if at least one is present.
 //
@@ -1227,6 +1175,22 @@ class ConvertToHloModule {
     return std::move(*computation.mutable_proto());
   }
 
+  // Returns or creates a cached OpSharding from a StringAttr.
+  std::optional<xla::OpSharding> GetOrCreateOpSharding(
+      mlir::StringAttr sharding_attr) {
+    if (!sharding_attr) {
+      return std::nullopt;
+    }
+    auto it = sharding_cache_.find(sharding_attr);
+    if (it != sharding_cache_.end()) {
+      return it->second;
+    }
+    std::optional<xla::OpSharding> sharding =
+        xla::ConvertSharding(sharding_attr.getValue());
+    sharding_cache_.try_emplace(sharding_attr, sharding);
+    return sharding;
+  }
+
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
       mlir::Region* region, xla::XlaComputationId& func,
@@ -1358,12 +1322,85 @@ class ConvertToHloModule {
 
   // Conversion options
   MlirToHloConversionOptions options_;
+
+  // Cache of parsed OpSharding protos keyed by interned StringAttr pointer.
+  llvm::DenseMap<mlir::StringAttr, std::optional<xla::OpSharding>>
+      sharding_cache_;
 };
 
 }  // namespace
 }  // namespace mlir
 
 namespace {
+
+// Returns an OpSharding proto from the "sharding" attribute of the op. If the
+// op doesn't have a sharding attribute or the sharding attribute is invalid,
+// returns std::nullopt.
+std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+    mlir::Operation* op, mlir::ConvertToHloModule* converter = nullptr) {
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(xla::kMhloSharding);
+  if (!shardingAttr) {
+    return std::nullopt;
+  }
+  if (converter != nullptr) {
+    return converter->GetOrCreateOpSharding(shardingAttr);
+  }
+  return xla::ConvertSharding(shardingAttr.getValue());
+}
+
+// Extracts argument and result shardings from function.
+void ExtractShardingsFromFunction(
+    mlir::func::FuncOp function,
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
+    bool is_entry_function, mlir::ConvertToHloModule* converter = nullptr) {
+  arg_shardings->resize(function.getNumArguments(),
+                        std::optional<xla::OpSharding>());
+  auto module = function->getParentOfType<mlir::ModuleOp>();
+  std::optional<mlir::DictionaryAttr> sdy_meshes =
+      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+          module, xla::sdy::kMeshesRoundTripAttr);
+
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
+    if (auto sharding = function.getArgAttrOfType<mlir::StringAttr>(
+            i, xla::kMhloSharding)) {
+      if (converter != nullptr) {
+        (*arg_shardings)[i] = converter->GetOrCreateOpSharding(sharding);
+      } else {
+        (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      }
+      // Due to limitations with accurately getting OpShardings from manual
+      // computation bodies with Shardy shardings, only extract OpShardings from
+      // the entry function for now. This is ok since only the entry function
+      // uses the extracted OpShardings to modify layouts/create reshapes, other
+      // functions just use the OpShardings to populate the HloInstructionProto
+      // sharding field.
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*arg_shardings)[i] = sharding;
+      }
+    }
+  }
+
+  ret_shardings->resize(function.getNumResults(),
+                        std::optional<xla::OpSharding>());
+  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
+    if (auto sharding = function.getResultAttrOfType<mlir::StringAttr>(
+            i, xla::kMhloSharding)) {
+      if (converter != nullptr) {
+        (*ret_shardings)[i] = converter->GetOrCreateOpSharding(sharding);
+      } else {
+        (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      }
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*ret_shardings)[i] = sharding;
+      }
+    }
+  }
+}
 
 struct OpLoweringContext {
   llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
@@ -2629,11 +2666,126 @@ LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
   return failure();
 }
 
+// Converts the `xla.async_dynamic_update_slice_start` and
+// `xla.async_dynamic_update_slice_done` custom calls into an HLO `kAsyncStart`
+// / `kAsyncDone` pair wrapping a `dynamic-update-slice` computation.
+//
+// Why custom calls: `stablehlo.async_start` accepts a `dynamic_update_slice`
+// body, but `ExportXlaOp(AsyncStartOp)` below only exports collective bodies,
+// and frontends such as JAX emit their async collectives through paired custom
+// calls rather than `stablehlo.async_start`. These custom calls follow that
+// convention.
+//
+// Lowering:
+// - `xla.async_dynamic_update_slice_start(operand, update, idx_0, ...)` becomes
+//   a `kAsyncStart` whose result is the bundle
+//   `((operand, update, idx_0, ...), output, s32[])`. Element `{1}` (the
+//   updated array) is aliased to operand 0 via
+//   `output_to_operand_aliasing={{1}: (0, {})}` so the update happens in place.
+// - `xla.async_dynamic_update_slice_done(bundle)` becomes the matching
+//   `kAsyncDone`, which returns the updated array.
+
+// Builds the `DynamicUpdateSlice` computation wrapped by the `kAsyncStart`.
+// Parameter 0 is the array being updated, parameter 1 is the update slice, and
+// parameters 2..N-1 are the scalar start indices, one per dimension.
+absl::StatusOr<xla::XlaComputationId>
+BuildAsyncDynamicUpdateSliceSubComputation(
+    xla::XlaBuilder* builder, absl::Span<const xla::Shape> operand_shapes) {
+  std::unique_ptr<xla::XlaBuilder> sub_builder =
+      builder->CreateSubBuilder("async_dynamic_update_slice");
+  xla::XlaOp p0 = xla::Parameter(sub_builder.get(), 0, operand_shapes[0], "p0");
+  xla::XlaOp p1 = xla::Parameter(sub_builder.get(), 1, operand_shapes[1], "p1");
+  std::vector<xla::XlaOp> p_indices;
+  p_indices.reserve(operand_shapes.size() - 2);
+  for (size_t i = 2; i < operand_shapes.size(); ++i) {
+    p_indices.push_back(
+        xla::Parameter(sub_builder.get(), static_cast<int64_t>(i),
+                       operand_shapes[i], absl::StrCat("idx_", i - 2)));
+  }
+  xla::XlaOp dus_root = xla::DynamicUpdateSlice(p0, p1, p_indices);
+  return sub_builder->BuildSubComputation(dus_root);
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSliceStart(
+    CustomCallOpTy op, OpLoweringContext ctx, llvm::ArrayRef<xla::XlaOp> args) {
+  if (args.size() < 3 || op.getInputs().size() < 3 || op.getNumResults() != 1) {
+    return op.emitOpError() << kAsyncDynamicUpdateSliceStart
+                            << " requires at least 3 operands "
+                               "(operand, update, and start_indices); got "
+                            << args.size();
+  }
+
+  std::vector<xla::Shape> operand_shapes;
+  operand_shapes.reserve(op.getInputs().size());
+  for (auto operand_val : op.getInputs()) {
+    operand_shapes.push_back(xla::TypeToShape(operand_val.getType()));
+  }
+
+  auto computation_id_or =
+      BuildAsyncDynamicUpdateSliceSubComputation(ctx.builder, operand_shapes);
+  if (!computation_id_or.ok()) {
+    return op.emitOpError() << "failed to build async DUS subcomputation: "
+                            << computation_id_or.status().message();
+  }
+  xla::XlaComputationId computation = *computation_id_or;
+
+  // Async bundle: ((operand, update, idx_0, ...), output, s32[] context).
+  xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(operand_shapes);
+  xla::Shape output_shape = operand_shapes[0];
+  xla::Shape start_shape = xla::ShapeUtil::MakeTupleShape(
+      {input_shape, output_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
+
+  // Alias the output (bundle element {1}) to operand 0 so the update is done
+  // in place.
+  std::vector<std::pair<xla::ShapeIndex, std::pair<int64_t, xla::ShapeIndex>>>
+      aliasing = {{{1}, {0, {}}}};
+
+  auto& value_map = *ctx.values;
+  value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildAsyncStart(
+      ctx.builder, absl::Span<const xla::XlaOp>(args.data(), args.size()),
+      xla::HloInstruction::kMainExecutionThread, computation, start_shape,
+      aliasing);
+  return success();
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSliceDone(
+    CustomCallOpTy op, OpLoweringContext ctx, llvm::ArrayRef<xla::XlaOp> args) {
+  if (args.empty() || op.getNumResults() != 1) {
+    return op.emitOpError()
+           << kAsyncDynamicUpdateSliceDone << " requires at least 1 operand";
+  }
+  auto& value_map = *ctx.values;
+  xla::Shape out_shape = xla::TypeToShape(op.getResult(0).getType());
+  value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+      ctx.builder, args[0], out_shape);
+  return success();
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSlice(CustomCallOpTy op,
+                                            OpLoweringContext ctx,
+                                            llvm::ArrayRef<xla::XlaOp> args) {
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart) {
+    return ExportAsyncDynamicUpdateSliceStart(op, ctx, args);
+  }
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return ExportAsyncDynamicUpdateSliceDone(op, ctx, args);
+  }
+  return failure();
+}
+
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) {
     return failure();
+  }
+
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart ||
+      op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return ExportAsyncDynamicUpdateSlice(op, ctx, args);
   }
 
   // Specially handle custom_calls from StableHLO that need stability guarantees
@@ -4181,34 +4333,16 @@ LogicalResult ExportXlaOp(RaggedDotOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
-
-  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), valueMap, &operand, op))) {
-    return failure();
-  }
-
-  auto entry = xla::ConvertSharding(op.getEntryMetadata());
-  if (!entry) {
-    return failure();
-  }
-  auto exit = xla::ConvertSharding(op.getExitMetadata());
-  if (!exit) {
-    return failure();
-  }
-
-  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
-      ctx.builder, operand, *exit, *entry, shape);
-  return success();
-}
-
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) {
     return failure();
+  }
+
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart ||
+      op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return stablehlo::ExportAsyncDynamicUpdateSlice(op, ctx, args);
   }
 
   // Specially handle custom_calls from StableHLO that need stability guarantees
@@ -5288,7 +5422,7 @@ LogicalResult ConvertToHloModule::LowerConstant(
   }
 
   xla::XlaScopedShardingAssignment scoped_sharding(
-      builder, CreateOpShardingFromAttribute(inst));
+      builder, CreateOpShardingFromAttribute(inst, this));
   auto constant = xla::ConstantLiteral(builder, literal_or.value());
   auto& value_map = *value_lowering;
   value_map[inst->getResult(0)] = constant;
@@ -5549,7 +5683,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     mlir::StackFrameIndexBuilder* stack_frame_indexes_builder) {
   xla::XlaScopedShardingAssignment scoped_sharding(
-      builder, CreateOpShardingFromAttribute(call_op));
+      builder, CreateOpShardingFromAttribute(call_op, this));
 
   auto& value_map = *value_lowering;
   mlir::func::FuncOp callee =
@@ -5677,7 +5811,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     }
   }
   ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
-                               entry_function);
+                               entry_function, this);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           &f.front(), builder.get(), entry_function, false,
@@ -6206,8 +6340,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
           xla::kMhloSpmdOutputSharding)) {
-    *hlo_module.mutable_spmd_output_sharding() =
-        *xla::ConvertSharding(spmd_output_sharding.getValue());
+    if (std::optional<xla::OpSharding> sharding =
+            converter.GetOrCreateOpSharding(spmd_output_sharding)) {
+      *hlo_module.mutable_spmd_output_sharding() = *std::move(sharding);
+    }
   }
   if (auto input_output_alias =
           module->getAttrOfType<mlir::ArrayAttr>(xla::kMhloInputOutputAlias)) {
@@ -6223,20 +6359,27 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
           hlo_module.add_spmd_parameters_shardings();
       tuple_sharding->set_type(xla::OpSharding::TUPLE);
       for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-        xla::OpSharding param_sharding = *xla::ConvertSharding(
-            mlir::cast<mlir::StringAttr>(sharding).getValue());
-        if (param_sharding.type() == xla::OpSharding::TUPLE) {
-          for (const auto& element : param_sharding.tuple_shardings()) {
-            *tuple_sharding->add_tuple_shardings() = element;
+        std::optional<xla::OpSharding> param_sharding =
+            converter.GetOrCreateOpSharding(
+                mlir::cast<mlir::StringAttr>(sharding));
+        if (param_sharding) {
+          if (param_sharding->type() == xla::OpSharding::TUPLE) {
+            for (const auto& element : param_sharding->tuple_shardings()) {
+              *tuple_sharding->add_tuple_shardings() = element;
+            }
+          } else {
+            *tuple_sharding->add_tuple_shardings() = *std::move(param_sharding);
           }
-        } else {
-          *tuple_sharding->add_tuple_shardings() = std::move(param_sharding);
         }
       }
     } else {
       for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-        *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
-            mlir::cast<mlir::StringAttr>(sharding).getValue());
+        if (std::optional<xla::OpSharding> param_sharding =
+                converter.GetOrCreateOpSharding(
+                    mlir::cast<mlir::StringAttr>(sharding))) {
+          *hlo_module.add_spmd_parameters_shardings() =
+              *std::move(param_sharding);
+        }
       }
     }
   }

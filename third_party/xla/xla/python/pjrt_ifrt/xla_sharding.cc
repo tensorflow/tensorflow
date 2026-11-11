@@ -99,7 +99,6 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 HloSharding::Disassemble(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   bool is_even_sharding = false;
   if (xla_hlo_sharding().IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding().IsUnreduced()) {
@@ -186,7 +185,6 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 HloSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   return absl::InvalidArgumentError(absl::StrFormat(
       "HloSharding can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %v",
@@ -196,7 +194,6 @@ HloSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  DCHECK(this);
   ABSL_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
                    sharding_spec_->IndexDomains(shape));
   DCHECK_EQ(index_domains.size(), devices_->size());

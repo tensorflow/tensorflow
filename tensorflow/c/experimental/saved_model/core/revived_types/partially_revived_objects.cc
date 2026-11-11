@@ -86,6 +86,12 @@ absl::Status TensorHandleFromNode(int node_id,
                                   const SavedObjectGraph& obj_graph,
                                   const PartiallyRevivedObjects& objects,
                                   ImmediateExecutionTensorHandle** handle) {
+  if (node_id < 0 || node_id >= obj_graph.nodes().size()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Tried to convert node id ", node_id,
+                     " to a tensor handle, but the id is out of range of "
+                     "the set of nodes"));
+  }
   const SavedObject& node = obj_graph.nodes(node_id);
   SavedObject::KindCase kind = node.kind_case();
   switch (kind) {

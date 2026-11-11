@@ -163,7 +163,7 @@ public interface InterpreterApi extends AutoCloseable {
      * Advanced: Set if the interpreter is able to be cancelled.
      *
      * <p>Interpreters may have an experimental API <a
-     * href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
+     * href="https://developers.google.com/edge/api/tflite/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
      * If this interpreter is cancellable and such a method is invoked, a cancellation flag will be
      * set to true. The interpreter will check the flag between Op invocations, and if it's {@code
      * true}, the interpreter will stop execution. The interpreter will remain a cancelled state
@@ -178,7 +178,7 @@ public interface InterpreterApi extends AutoCloseable {
      * Advanced: Returns whether the interpreter is able to be cancelled.
      *
      * <p>Interpreters may have an experimental API <a
-     * href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
+     * href="https://developers.google.com/edge/api/tflite/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
      * If this interpreter is cancellable and such a method is invoked, a cancellation flag will be
      * set to true. The interpreter will check the flag between Op invocations, and if it's {@code
      * true}, the interpreter will stop execution. The interpreter will remain a cancelled state
@@ -403,7 +403,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     that it is set the appropriate write position. A null value is allowed, and is useful for
    *     certain cases, e.g., if the caller is using a {@link Delegate} that allows buffer handle
    *     interop, and such a buffer has been bound to the output {@link Tensor} (see also <a
-   *     href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter.Options#setAllowBufferHandleOutput(boolean)">Interpreter.Options#setAllowBufferHandleOutput(boolean)</a>),
+   *     href="https://developers.google.com/edge/api/tflite/java/org/tensorflow/lite/Interpreter.Options#setAllowBufferHandleOutput(boolean)">Interpreter.Options#setAllowBufferHandleOutput(boolean)</a>),
    *     or if the graph has dynamically shaped outputs and the caller must query the output {@link
    *     Tensor} shape after inference has been invoked, fetching the data directly from the output
    *     tensor (via {@link Tensor#asReadOnlyBuffer()}).

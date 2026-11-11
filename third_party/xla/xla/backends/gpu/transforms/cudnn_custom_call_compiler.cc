@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -526,10 +527,10 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
 
 class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnCustomCallVisitor(se::dnn::DnnSupport* dnn_support,
+  explicit CuDnnCustomCallVisitor(se::StreamExecutor* stream_exec,
                                   const se::DeviceDescription& gpu_device_info,
                                   BinaryMap& compilation_results)
-      : dnn_support_(dnn_support),
+      : stream_exec_(stream_exec),
         gpu_device_info_(gpu_device_info),
         compilation_results_(compilation_results) {}
 
@@ -555,8 +556,14 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
       ABSL_ASSIGN_OR_RETURN(
+          se::dnn::DnnSupport * dnn_support,
+          ResolveCudnnSupport(hlo->GetModule()->config().debug_options(),
+                              stream_exec_, gpu_device_info_.dnn_version()),
+          _ << "failed to resolve cuDNN support for custom call: "
+            << hlo->custom_call_target());
+      ABSL_ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
-          HloCustomCallToCuDnnGraph(dnn_support_, gpu_device_info_,
+          HloCustomCallToCuDnnGraph(dnn_support, gpu_device_info_,
                                     DynCast<HloCustomCallInstruction>(hlo)));
 
       const int64_t workspace_size = graph.Graph().get_workspace_size();
@@ -583,7 +590,7 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::dnn::DnnSupport* dnn_support_;
+  se::StreamExecutor* stream_exec_;
   const se::DeviceDescription& gpu_device_info_;
   BinaryMap& compilation_results_;
   absl::flat_hash_map<std::string, int64_t> workspace_sizes_;
@@ -595,7 +602,7 @@ absl::StatusOr<bool> CuDnnCustomCallCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("cuDNN custom call compiler", 8);
-  return CuDnnCustomCallVisitor(dnn_support_, gpu_device_info_,
+  return CuDnnCustomCallVisitor(stream_exec_, gpu_device_info_,
                                 compilation_results_)
       .RunOnModule(module, execution_threads);
 }

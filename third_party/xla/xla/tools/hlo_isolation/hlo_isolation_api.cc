@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/defuser.h"
 #include "xla/hlo/transforms/despecializer.h"
@@ -97,6 +98,8 @@ namespace {
 
 constexpr absl::string_view kResultsFilename =
     "hlo_isolation_test_results.pbtxt";
+
+constexpr absl::string_view kSparseCoreThread = "sparsecore";
 
 absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   if (!options.run_module_fn) {
@@ -641,7 +644,60 @@ bool RetryWithoutExcessPrecision(const HloModule& module,
       .ok();
 }
 
+bool IsRoutingOpcode(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kParameter:
+    case HloOpcode::kConstant:
+    case HloOpcode::kCall:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+    case HloOpcode::kTuple:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kBitcast:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
+
+bool IsSparseCoreModule(const HloModule& module) {
+  for (const HloComputation* computation :
+       module.computations({HloInstruction::kMainExecutionThread})) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAsyncStart &&
+          instruction->async_execution_thread() == kSparseCoreThread) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::optional<std::string> SparseCoreOffloadSkipReason(
+    const HloModule& module) {
+  bool found_work = false;
+  for (const HloComputation* computation : module.computations()) {
+    if (ComputationHasRng(computation)) {
+      return "CONTAINS_RNG";
+    }
+    if (computation->execution_thread() != kSparseCoreThread) {
+      continue;
+    }
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->IsCustomCall("tpu_custom_call")) {
+        return "CONTAINS_MOSAIC_KERNEL";
+      }
+      found_work |= !IsRoutingOpcode(instr->opcode());
+    }
+  }
+  if (!found_work) {
+    return "NO_WORK_IN_SPARSECORE_OFFLOAD";
+  }
+  return std::nullopt;
+}
 
 std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
     HloModule* module, std::shared_ptr<ExpectedLiteralsMap> expected_literals,
@@ -719,12 +775,39 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
     }
   }
 
+  const HloInstruction* entry_root =
+      test_module_clone->entry_computation()->root_instruction();
+  xla::FrontendAttributes frontend_attributes;
   for (auto* computation : test_module_clone->computations()) {
     for (auto* instruction : computation->instructions()) {
       int64_t hlo_id = next_hlo_id++;
-      xla::FrontendAttributes frontend_attributes;
+      frontend_attributes.Clear();
       (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
       instruction->add_frontend_attributes(frontend_attributes);
+
+      // Inputs and pass through ops carry no computation of their own, so a
+      // match on them is not reported as verified.
+      const bool record_verified =
+          instruction->opcode() != HloOpcode::kParameter &&
+          instruction->opcode() != HloOpcode::kConstant &&
+          instruction->opcode() != HloOpcode::kTuple &&
+          instruction->opcode() != HloOpcode::kGetTupleElement;
+
+      // The fusion debugger only instruments fused instructions. Top level
+      // ops are logged on TPU through debug attributes keyed by callback id.
+      if (record_verified && !instruction->IsFused() &&
+          instruction->opcode() != HloOpcode::kFusion &&
+          instruction != entry_root && instruction->shape().IsArray()) {
+        if (instruction->original_value() == nullptr) {
+          instruction->set_original_value(
+              OriginalValue::CreateFromInstruction(instruction));
+        }
+        if (auto array = instruction->original_value()->original_array({})) {
+          test_module_clone->AddDebugAttributes(
+              *array, {HloModule::DebugAttributes::DebugLogMode::kDefault,
+                       hlo_id, /*partitioned=*/false, /*op_id=*/0});
+        }
+      }
 
       std::string op_name(instruction->name());
       std::string ref_op_name = op_name;
@@ -740,7 +823,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
       dynamic_cb.callback_id = hlo_id;
       dynamic_cb.num_operands = 1;
       dynamic_cb.callback =
-          [op_name, ref_op_name, expected_literals,
+          [op_name, ref_op_name, expected_literals, record_verified,
            module_name = original_module.name(), abs_error, rel_error,
            result_mutex, test_result](
               int64_t replica_id, int64_t partition_id,
@@ -819,6 +902,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                 }
               }
               PopulateNumericCheckMismatches(numeric_check, top_mismatches);
+            } else if (record_verified) {
+              absl::MutexLock lock(*result_mutex);
+              test_result->add_verified_instructions(op_name);
             }
           };
 
@@ -982,7 +1068,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
                          const absl::Status& status,
                          absl::string_view module_name) {
     result.set_state(State::FAILURE);
-    result.set_reason(std::string(reason));
+    result.set_reason(reason);
     log_failure(prefix, status, module_name);
     report_mismatches();
     return result;
@@ -995,21 +1081,27 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   // the fusion under test. When that (or a timeout) happens the defused
   // reference is simply unavailable for this module; it is not evidence of a
   // miscompile, so fall through to the interpreter reference instead.
-  std::unique_ptr<HloModule> defused_module = module.Clone("defused");
-  ABSL_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
-  defused_output =
-      run_module(std::move(defused_module), test_runner, input_data);
-  if (!defused_output.ok()) {
-    if (!absl::IsResourceExhausted(defused_output.status()) &&
-        !absl::IsDeadlineExceeded(defused_output.status())) {
-      return fail_runner("DEFUSED_TEST_RUNNER_FAILURE",
-                         "Test runner failed for defused module: ",
-                         defused_output.status(), module.name());
+  //
+  // SparseCore can not lower arbitrary unfused ops, so a SparseCore module is
+  // never defused; the interpreter is its only reference.
+  const bool is_sc_module = IsSparseCoreModule(module);
+  if (!is_sc_module) {
+    std::unique_ptr<HloModule> defused_module = module.Clone("defused");
+    ABSL_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
+    defused_output =
+        run_module(std::move(defused_module), test_runner, input_data);
+    if (!defused_output.ok()) {
+      if (!absl::IsResourceExhausted(defused_output.status()) &&
+          !absl::IsDeadlineExceeded(defused_output.status())) {
+        return fail_runner("DEFUSED_TEST_RUNNER_FAILURE",
+                           "Test runner failed for defused module: ",
+                           defused_output.status(), module.name());
+      }
+      LOG(WARNING) << "Skipping the defused reference for module "
+                   << module.name()
+                   << " because the defused module could not be run: "
+                   << defused_output.status();
     }
-    LOG(WARNING) << "Skipping the defused reference for module "
-                 << module.name()
-                 << " because the defused module could not be run: "
-                 << defused_output.status();
   }
 
   // Potentially skip reference run.
@@ -1069,10 +1161,16 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
   // TODO(b/524252856): with a pre-flight peak-memory estimate for the defused
   // module we could tell "too big for HBM but fine on the host" apart from
   // "too big for anything" and still use the interpreter for the former.
-  if (!defused_output.ok()) {
+  if (!is_sc_module && !defused_output.ok()) {
     LOG(WARNING) << "No usable reference for module: " << module.name();
     result.set_state(State::SKIPPED);
     result.set_reason("DEFUSED_REFERENCE_UNAVAILABLE");
+    return result;
+  }
+  if (is_sc_module && reference_runner == nullptr) {
+    LOG(WARNING) << "No reference for SparseCore module: " << module.name();
+    result.set_state(State::SKIPPED);
+    result.set_reason("REFERENCE_UNAVAILABLE");
     return result;
   }
 
@@ -1087,6 +1185,14 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     absl::StatusOr<Literal> reference_output = run_module(
         std::move(despecialized_module), reference_runner, input_data);
     if (!reference_output.ok()) {
+      if (is_sc_module && (absl::IsUnimplemented(reference_output.status()) ||
+                           absl::IsNotFound(reference_output.status()))) {
+        LOG(WARNING) << "Reference unimplemented for SparseCore module "
+                     << module.name() << ": " << reference_output.status();
+        result.set_state(State::SKIPPED);
+        result.set_reason("REFERENCE_UNIMPLEMENTED");
+        return result;
+      }
       return fail_runner("REFERENCE_RUNNER_FAILURE",
                          "Reference runner failed: ", reference_output.status(),
                          despecialized_module_name);
@@ -1102,7 +1208,8 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
       return result;
     }
 
-    if (options.enable_fusion_debugger) {
+    // TODO(b/527142533): Enable fusion debugger for SparseCore modules.
+    if (options.enable_fusion_debugger && !is_sc_module) {
       // If there was a mismatch then we should re-run the failing HLO module
       // with the fusion debugger enabled - to isolate the mismatch.
       // Run the reference runner again with despecialization to dump reference
@@ -1686,6 +1793,62 @@ std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
       for (const auto& m : check.top_mismatches()) {
         all_details.push_back(
             ConvertToMismatchDetails(op_name, m, is_op_tuple));
+      }
+    }
+  }
+
+  // 3. Verified matches, for ops with a passing comparison and no failure.
+  absl::flat_hash_set<std::string> reported;
+  for (const auto& details : all_details) {
+    reported.insert(details.target_instruction_name);
+  }
+  for (const std::string& op_name : result.verified_instructions()) {
+    if (name_to_instr.contains(op_name) && reported.insert(op_name).second) {
+      numerics::debug_info::MismatchDetails details;
+      details.target_instruction_name = op_name;
+      details.diff_score = 0.0;
+      details.verified_match = true;
+      all_details.push_back(std::move(details));
+    }
+  }
+
+  // 4. A fusion without a result of its own takes the results of the root it
+  // unwraps to, per output for tuple roots.
+  const size_t num_direct = all_details.size();
+  auto unwrap = [](const HloInstruction* instr) {
+    while (instr->opcode() == HloOpcode::kFusion) {
+      instr = instr->fused_expression_root();
+    }
+    return instr;
+  };
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      absl::string_view name = instr->name();
+      if (instr->opcode() != HloOpcode::kFusion || reported.contains(name)) {
+        continue;
+      }
+      std::vector<std::pair<const HloInstruction*, std::optional<int64_t>>>
+          leaves;
+      const HloInstruction* root = unwrap(instr);
+      if (root->opcode() == HloOpcode::kTuple) {
+        leaves.reserve(root->operand_count());
+        for (int64_t i = 0; i < root->operand_count(); ++i) {
+          leaves.push_back({unwrap(root->operand(i)), i});
+        }
+      } else {
+        leaves.push_back({root, std::nullopt});
+      }
+      for (size_t j = 0; j < num_direct; ++j) {
+        for (const auto& [leaf, index] : leaves) {
+          if (all_details[j].target_instruction_name == leaf->name()) {
+            numerics::debug_info::MismatchDetails copy = all_details[j];
+            copy.target_instruction_name = std::string(name);
+            if (index.has_value()) {
+              copy.output_shape_index = index;
+            }
+            all_details.push_back(std::move(copy));
+          }
+        }
       }
     }
   }

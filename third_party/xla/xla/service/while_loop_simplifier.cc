@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -632,7 +634,7 @@ int64_t EraseIndicesDeadAsGroup(WhileInputDependencies& deps,
 
 absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
-  if (HasDisableWhileLoopDceAttr(while_op)) {
+  if (frontend::HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
 
@@ -835,6 +837,11 @@ H AbslHashValue(H h, const RepeatedWhileTupleIndicesKey& key) {
                     key.dynamic_update_slice_value,
                     key.dynamic_update_slice_indices);
 }
+
+const HloPassFactory* const kWhileLoopSimplifierRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<WhileLoopSimplifier>>(
+        "simplify-while-loops");
+
 }  // namespace
 
 // If the while loop init passes the same values to several tuple indices, and
@@ -842,7 +849,7 @@ H AbslHashValue(H h, const RepeatedWhileTupleIndicesKey& key) {
 static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
-  if (HasDisableWhileLoopDceAttr(while_op)) {
+  if (frontend::HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
 
@@ -938,7 +945,7 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
 // Removes each loop parameter (i.e. member of the while loop tuple) that is a
 // constant and is the same in the while loop body and the while loop init.
 static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
-  if (HasDisableWhileLoopDceAttr(while_op)) {
+  if (frontend::HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
   HloModule* module = while_op->GetModule();
@@ -1133,7 +1140,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //
 // Returns true if it made a change to the graph.
 static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
-  if (HasDisableWhileLoopDceAttr(while_op)) {
+  if (frontend::HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
   // Cowardly refuse to remove loops that are not removable.  In practice, this
@@ -1361,7 +1368,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
 }
 
 static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
-  if (HasDisableWhileLoopDceAttr(while_op)) {
+  if (frontend::HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
   auto flatten_original_value = [&](const HloInstruction* old_instr,
@@ -1802,7 +1809,7 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // to do it right now, so just add a bail-out to be conservative.
     if (while_op->while_body()->caller_instructions().size() > 1 ||
         while_op->while_condition()->caller_instructions().size() > 1 ||
-        HasDisableWhileLoopDceAttr(while_op)) {
+        frontend::HasDisableWhileLoopDceAttr(while_op)) {
       continue;
     }
 
@@ -1869,15 +1876,6 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     if (result) {
       // Don't continue simplifying after successfully removing the while loop
       // -- that would result in use-after-free nastiness.
-      continue;
-    }
-
-    // TODO(b/119281462): Cowardly refuse to perform any of the following
-    // optimizations in the presence of kDomain instructions.  It seems that
-    // modifying a while loop's tuple doesn't work when kDomain is present.
-    if (ContainsInstrWithOpcode(while_op->while_body(), {HloOpcode::kDomain}) ||
-        ContainsInstrWithOpcode(while_op->while_condition(),
-                                {HloOpcode::kDomain})) {
       continue;
     }
 

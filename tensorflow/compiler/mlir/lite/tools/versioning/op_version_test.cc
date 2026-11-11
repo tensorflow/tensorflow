@@ -218,6 +218,12 @@ TEST(OpVersionTest, VersioningLessEqualTest) {
 
 TEST(OpVersionTest, VersioningGreaterTest) {
   SimpleVersioningTest(BuiltinOperator_GREATER);
+
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_GREATER,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningGreaterEqualTest) {
@@ -751,6 +757,69 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
       .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 14);
+
+  // An N-D blockwise quantized weight is version 16 regardless of its type.
+  for (TfLiteType weight_type : {kTfLiteInt2, kTfLiteInt4, kTfLiteUInt4,
+                                 kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16}) {
+    fully_connected_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_FULLY_CONNECTED,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, weight_type, kTfLiteInt32}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+    };
+    fake_op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+        true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 16);
+
+    // The dynamic range variant (float32 or float16 input and output) is
+    // version 17.
+    for (TfLiteType float_type : {kTfLiteFloat32, kTfLiteFloat16}) {
+      fully_connected_params = {};
+      fake_op_sig = {
+          .op = BuiltinOperator_FULLY_CONNECTED,
+          .inputs = CreateOpSignatureTensorSpecs(
+              std::vector<TfLiteType>{float_type, weight_type, float_type}),
+          .outputs = CreateOpSignatureTensorSpecs(float_type),
+          .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      };
+      fake_op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+          true;
+      EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 17);
+    }
+  }
+}
+
+TEST(OpVersionTest, VersioningEmbeddingLookupTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_EMBEDDING_LOOKUP,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt4});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt2});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  // An N-D blockwise quantized table is version 6 regardless of its type.
+  for (TfLiteType table_type : {kTfLiteInt2, kTfLiteInt4, kTfLiteUInt4,
+                                kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16}) {
+    fake_op_sig = {
+        .op = BuiltinOperator_EMBEDDING_LOOKUP,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt32, table_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+    };
+    fake_op_sig.ext_options.embedding_lookup.is_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+  }
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -792,6 +861,16 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // N-D blockwise quantization takes precedence over the input type.
+  for (TfLiteType type : {kTfLiteInt8, kTfLiteInt4, kTfLiteInt2}) {
+    fake_op_sig = {
+        .op = BuiltinOperator_DEQUANTIZE,
+        .inputs = CreateOpSignatureTensorSpecs(type),
+    };
+    fake_op_sig.ext_options.dequantize.is_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+  }
 }
 
 TEST(OpVersionTest, VersioningQuantizeTest) {
@@ -1365,6 +1444,34 @@ TEST(OpVersionTest, VersioningBatchMatMulTest) {
   };
   batch_mat_mul_params.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  // Sub-byte RHS without N-D block_shape is version 5.
+  for (TfLiteType rhs_type : {kTfLiteInt4, kTfLiteUInt4, kTfLiteInt2}) {
+    batch_mat_mul_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_BATCH_MATMUL,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, rhs_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+    };
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  }
+
+  // N-D blockwise quantized RHS is version 5 regardless of RHS integer type.
+  for (TfLiteType rhs_type : {kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16,
+                              kTfLiteInt4, kTfLiteUInt4, kTfLiteInt2}) {
+    batch_mat_mul_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_BATCH_MATMUL,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, rhs_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+    };
+    fake_op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  }
 }
 TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   // Default.
@@ -1419,6 +1526,13 @@ TEST(OpVersionTest, VersioningBroadcastToTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningGeluTest) {

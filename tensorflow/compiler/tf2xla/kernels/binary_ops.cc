@@ -19,22 +19,25 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
-#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/client_library.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/primitive_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 namespace {
@@ -42,7 +45,7 @@ namespace {
 // A subclass of a XlaBinaryOp must build the computation that
 // describes the (tensor,tensor)->tensor function to apply to each element of
 // the input.
-#define XLA_MAKE_BINARY(NAME, HLO)                                         \
+#define XLA_DEFINE_BINARY_OP(NAME, HLO)                                    \
   class NAME##Op : public XlaBinaryOp {                                    \
    public:                                                                 \
     explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}     \
@@ -59,7 +62,10 @@ namespace {
       (void)extend_dimensions;                                             \
       return HLO;                                                          \
     }                                                                      \
-  };                                                                       \
+  }
+
+#define XLA_MAKE_BINARY(NAME, HLO) \
+  XLA_DEFINE_BINARY_OP(NAME, HLO); \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
@@ -206,17 +212,46 @@ XLA_MAKE_BINARY(LogicalOr, xla::Or(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mod, xla::Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, xla::Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, xla::Min(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
-XLA_MAKE_BINARY(
-    RsqrtGrad,
-    xla::Mul((lhs * lhs) * lhs,
-             xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
-             extend_dimensions));
+// RealDiv is float/complex only, matching the TF CPU/GPU kernels; integer
+// division must go through Div, FloorDiv or TruncateDiv.
+XLA_DEFINE_BINARY_OP(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
+REGISTER_XLA_OP(Name("RealDiv").TypeConstraint("T", kFloatAndComplexTypes),
+                RealDivOp);
+
+// Implementation of ReciprocalGrad, RsqrtGrad and SqrtGrad, given the output
+// `y` of the forward op, the upstream gradient `dy` and the gradient `grad`
+// computed from them. Like the TF kernels, returns 0 wherever `dy` is 0, even
+// where `grad` is inf or NaN. Pseudo-code:
+// if (dy == 0) {
+//   return 0
+// } else {
+//   return grad
+// }
+static xla::XlaOp UnaryGradImpl(xla::XlaBuilder* b, DataType dtype,
+                                xla::XlaOp y, xla::XlaOp dy,
+                                const BCast& broadcast_helper,
+                                xla::XlaOp grad) {
+  std::tie(std::ignore, dy) = XlaBinaryOp::Broadcast(y, dy, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto dy_equals_0 = xla::Eq(dy, zero);
+  auto zeros = xla::ZerosLike(grad);
+  return xla::Select(dy_equals_0, zeros, grad);
+}
+XLA_MAKE_BINARY(ReciprocalGrad,
+                UnaryGradImpl(b, input_type(0), lhs, rhs, broadcast_helper,
+                              xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs)))));
+XLA_MAKE_BINARY(RsqrtGrad,
+                UnaryGradImpl(b, input_type(0), lhs, rhs, broadcast_helper,
+                              xla::Mul((lhs * lhs) * lhs,
+                                       xla::Div(rhs, XlaHelpers::IntegerLiteral(
+                                                         b, input_type(0), -2)),
+                                       extend_dimensions)));
 XLA_MAKE_BINARY(
     SqrtGrad,
-    xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
-             lhs, extend_dimensions));
+    UnaryGradImpl(
+        b, input_type(0), lhs, rhs, broadcast_helper,
+        xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                 lhs, extend_dimensions)));
 
 // Implementation of TruncateDiv.
 //
@@ -263,7 +298,42 @@ XLA_MAKE_BINARY(TanhGrad,
                 xla::Mul(rhs, xla::Sub(XlaHelpers::One(b, input_type(0)),
                                        xla::Mul(lhs, lhs))));
 
-XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
+XLA_DEFINE_BINARY_OP(Pow, xla::Pow(lhs, rhs, extend_dimensions));
+
+// Like the TF kernels, rejects an integer power with a negative exponent
+// unless the result is empty. XLA can't report errors at run time, so only a
+// statically non-empty base with a compile-time constant exponent is checked.
+class IntegerCheckedPowOp : public PowOp {
+ public:
+  explicit IntegerCheckedPowOp(OpKernelConstruction* ctx) : PowOp(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    if (DataTypeIsSigned(input_type(1))) {
+      OP_REQUIRES_VALUE(const xla::Shape lhs_shape, ctx, ctx->InputXlaShape(0));
+      OP_REQUIRES_VALUE(const xla::Shape rhs_shape, ctx, ctx->InputXlaShape(1));
+      xla::Literal exponent;
+      if (lhs_shape.is_static() && rhs_shape.is_static() &&
+          !xla::ShapeUtil::IsZeroElementArray(lhs_shape) &&
+          BCast(BCast::Vec(lhs_shape.dimensions().begin(),
+                           lhs_shape.dimensions().end()),
+                BCast::Vec(rhs_shape.dimensions().begin(),
+                           rhs_shape.dimensions().end()),
+                /*fewer_dims_optimization=*/false)
+              .IsValid() &&
+          ctx->ConstantInput(1, &exponent).ok()) {
+        OP_REQUIRES_VALUE(xla::Literal exponent_s64, ctx,
+                          exponent.Convert(xla::S64));
+        OP_REQUIRES(ctx,
+                    absl::c_none_of(exponent_s64.data<int64_t>(),
+                                    [](int64_t y) { return y < 0; }),
+                    absl::InvalidArgumentError(
+                        "Integers to negative integer powers are not allowed"));
+      }
+    }
+    PowOp::Compile(ctx);
+  }
+};
+REGISTER_XLA_OP(Name("Pow"), IntegerCheckedPowOp);
 
 xla::XlaOp SquaredDifferenceImpl(
     DataType dtype, xla::XlaOp x, xla::XlaOp y,
@@ -328,6 +398,7 @@ xla::XlaOp ZetaImpl(xla::XlaOp x, xla::XlaOp q, const BCast& broadcast_helper) {
 XLA_MAKE_BINARY(Zeta, ZetaImpl(lhs, rhs, broadcast_helper));
 
 #undef XLA_MAKE_BINARY
+#undef XLA_DEFINE_BINARY_OP
 
 class ApproximateEqualOp : public XlaOpKernel {
  public:
@@ -340,7 +411,10 @@ class ApproximateEqualOp : public XlaOpKernel {
     xla::XlaBuilder* b = ctx->builder();
     auto abs = xla::Abs(xla::Sub(ctx->Input(0), ctx->Input(1)));
     auto abs_shape = b->GetShape(abs);
-    OP_REQUIRES_OK(ctx, abs_shape.status());
+    if (!abs_shape.ok()) {
+      ctx->SetStatus(abs_shape.status());
+      return;
+    }
     auto abs_type = abs_shape.value().element_type();
     auto result =
         xla::Lt(abs, xla::ConvertElementType(

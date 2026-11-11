@@ -15,6 +15,7 @@ limitations under the License.
 
 // This pass fuses Q and DQ ops and creates quantized kernels.
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -69,6 +71,22 @@ namespace {
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 enum class OpQuantizationType { kSRQ, kDRQ, kWeightOnly, kUnsupported };
+
+// Float activation types: f32, and f16 / bf16 in float16 graphs.
+bool IsFloatActivationType(Type type) {
+  return type.isF32() || type.isF16() || type.isBF16();
+}
+
+// Whether an unquantized float operand or result of type `type` can pass
+// through an op of quantization type `op_quant_type` unchanged. f16 / bf16
+// pass through SRQ and weight-only ops like f32, but not DRQ ops: the hybrid
+// kernels only take float16 activations with blockwise filters, which are
+// produced by casting to float32 around the op and folding the casts
+// (`FoldFp16CastsIntoFullyConnectedPass`) instead.
+bool IsPassThroughFloatType(Type type, OpQuantizationType op_quant_type) {
+  if (op_quant_type == OpQuantizationType::kDRQ) return type.isF32();
+  return IsFloatActivationType(type);
+}
 
 LogicalResult IsDrqTensor(mlir::Value value, mlir::Value& fq_input) {
   if (auto composite_op = llvm::dyn_cast_or_null<stablehlo::CompositeOp>(
@@ -89,13 +107,72 @@ LogicalResult IsDrqTensor(mlir::Value value, mlir::Value& fq_input) {
   return failure();
 }
 
-LogicalResult HasDQParent(mlir::Value value, mlir::Value& dq_input) {
+// Returns true if `op` fake quantizes to the full int8 range [-128, 127], the
+// only range the hybrid kernels quantize their float inputs to at runtime.
+template <typename OpType>
+bool IsFullRangeInt8FakeQuant(OpType op) {
+  // Blockwise annotations describe a per-block scheme lowered earlier.
+  if (IsBlockwiseAnnotation(op)) return false;
+  auto dtype = llvm::dyn_cast_or_null<StringAttr>(GetOpAttribute(op, "dtype"));
+  if (dtype == nullptr || dtype.getValue() != "i8") return false;
+  auto narrow_range =
+      llvm::dyn_cast_or_null<BoolAttr>(GetOpAttribute(op, "narrow_range"));
+  return narrow_range == nullptr || !narrow_range.getValue();
+}
+
+// Returns true if `value` is produced by a full range int8 fake quant.
+bool IsFullRangeInt8DrqTensor(mlir::Value value) {
+  mlir::Operation* def = value.getDefiningOp();
+  if (auto composite_op = llvm::dyn_cast_or_null<stablehlo::CompositeOp>(def)) {
+    return IsFullRangeInt8FakeQuant(composite_op);
+  }
+  if (auto custom_call_op =
+          llvm::dyn_cast_or_null<stablehlo::CustomCallOp>(def)) {
+    return IsFullRangeInt8FakeQuant(custom_call_op);
+  }
+  return false;
+}
+
+LogicalResult HasDQParent(mlir::Operation* consumer, unsigned operand_index,
+                          mlir::Value value, mlir::Value& dq_input) {
   if (auto dq_op =
           llvm::dyn_cast_or_null<DequantizeOp>(value.getDefiningOp())) {
-    dq_input = dq_op.getOperand();
+    mlir::Value input = dq_op.getOperand();
+    if (mlir::isa<BlockwiseQuantType>(getElementTypeOrSelf(input.getType())) &&
+        (operand_index != 1 || !IsInt8SrqBlockwiseWeightConsumer(consumer))) {
+      return failure();
+    }
+    dq_input = input;
     return success();
   }
   return failure();
+}
+
+mlir::Value FoldBlockwiseWeightToQConst(TFL::BlockwiseDequantizeOp bw_deq,
+                                        PatternRewriter& rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(bw_deq);
+  auto output_type = mlir::cast<RankedTensorType>(bw_deq.getType());
+  ElementsAttr values = GetConstantElements(bw_deq.getInput());
+  auto storage_type = mlir::cast<IntegerType>(values.getElementType());
+  ElementsAttr scales = GetConstantElements(bw_deq.getScales());
+  ElementsAttr zero_points;
+  if (!mlir::isa<NoneType>(bw_deq.getZeroPoints().getType())) {
+    zero_points = GetConstantElements(bw_deq.getZeroPoints());
+  }
+  SmallVector<int64_t> block_shape;
+  block_shape.reserve(bw_deq.getBlockShape().size());
+  for (Attribute block_size : bw_deq.getBlockShape()) {
+    block_shape.push_back(mlir::cast<IntegerAttr>(block_size).getInt());
+  }
+  auto blockwise_type =
+      BlockwiseQuantType::get(storage_type, output_type.getElementType(),
+                              block_shape, scales, zero_points);
+  auto qtype =
+      RankedTensorType::get(values.getShapedType().getShape(), blockwise_type);
+  return TFL::QConstOp::create(rewriter, bw_deq.getLoc(), TypeAttr::get(qtype),
+                               values)
+      .getOutput();
 }
 
 bool IsQuantizableOp(mlir::Operation* op) {
@@ -127,14 +204,22 @@ OpQuantizationType GetOpQuantizationType(mlir::Operation* op) {
   // Indicates if an input which is not an FQ is seen.
   bool non_fq_float_input_seen = false;
   mlir::Value fq_input, dq_input;
-  for (auto operand : op->getOperands()) {
+  for (const auto& enumerated_operand : llvm::enumerate(op->getOperands())) {
+    mlir::Value operand = enumerated_operand.value();
+    unsigned operand_index = enumerated_operand.index();
     if (IsDrqTensor(operand, fq_input).succeeded()) {
       // As soon as a DRQ tensor is encountered, the op is DRQ.
       return OpQuantizationType::kDRQ;
     }
 
-    if (HasDQParent(operand, dq_input).succeeded()) {
+    if (HasDQParent(op, operand_index, operand, dq_input).succeeded()) {
       // Operands with QDQ can not specify the quantization type.
+      continue;
+    }
+
+    if (CanFoldBlockwiseWeightOperand(op, operand_index, operand)) {
+      // Constant blockwise-dequantized weights act like DQ operands when
+      // determining whether the op is SRQ or weight-only.
       continue;
     }
 
@@ -144,12 +229,13 @@ OpQuantizationType GetOpQuantizationType(mlir::Operation* op) {
 
     auto element_type = getElementTypeOrSelf(operand.getType());
 
-    // Ignore non-f32 tensors when determining the quantization type.
+    // Ignore non-float tensors when determining the quantization type.
     // Examples:
     //  - i32 operands are generally index tensors (e.g. in transpose
     // permutation)
     //  - bool operands can be the `condition` operand in a select_v2 op.
-    if (element_type.isF32()) {
+    // f16 and bf16 (float16 graphs) count like f32.
+    if (IsFloatActivationType(element_type)) {
       non_fq_float_input_seen = true;
     }
   }
@@ -213,25 +299,39 @@ LogicalResult GetQuantizedInputs(mlir::Operation* quantizing_op,
                                  SmallVector<mlir::Value, 4>& inputs,
                                  bool& updated) {
   inputs.reserve(quantizing_op->getNumOperands());
-  for (auto operand : quantizing_op->getOperands()) {
+  for (const auto& enumerated_operand :
+       llvm::enumerate(quantizing_op->getOperands())) {
+    mlir::Value operand = enumerated_operand.value();
+    unsigned operand_index = enumerated_operand.index();
     Type operand_type = operand.getType();
 
-    if (mlir::Value dq_input; HasDQParent(operand, dq_input).succeeded()) {
+    if (mlir::Value dq_input;
+        HasDQParent(quantizing_op, operand_index, operand, dq_input)
+            .succeeded()) {
       if (op_quant_type == OpQuantizationType::kWeightOnly) {
         inputs.push_back(operand);
       } else {
         updated = true;
         inputs.push_back(dq_input);
       }
+    } else if (CanFoldBlockwiseWeightOperand(quantizing_op, operand_index,
+                                             operand)) {
+      if (op_quant_type == OpQuantizationType::kSRQ) {
+        updated = true;
+        inputs.push_back(FoldBlockwiseWeightToQConst(
+            operand.getDefiningOp<TFL::BlockwiseDequantizeOp>(), rewriter));
+      } else {
+        inputs.push_back(operand);
+      }
     } else if (mlir::Value fq_input;
                IsDrqTensor(operand, fq_input).succeeded()) {
       updated = true;
       inputs.push_back(fq_input);
     } else if (auto ele_type = getElementTypeOrSelf(operand_type);
-               ele_type.isF32() || ele_type.isInteger(32) ||
-               ele_type.isInteger(64) || ele_type.isInteger(1) ||
-               mlir::isa<NoneType>(ele_type)) {
-      // If it's F32 (non-weight-only and non-drq) or I32 or bool, just
+               IsPassThroughFloatType(ele_type, op_quant_type) ||
+               ele_type.isInteger(32) || ele_type.isInteger(64) ||
+               ele_type.isInteger(1) || mlir::isa<NoneType>(ele_type)) {
+      // If it's float (non-weight-only and non-drq) or I32 or bool, just
       // directly add the input.
       inputs.push_back(operand);
     } else {
@@ -300,13 +400,14 @@ LogicalResult GetQuantizedOutputTypes(
             dyn_cast_or_null<QuantizeOp>(*result.user_begin()).getOutput();
         output_types.push_back(q_user.getType());
       }
-    } else if (result_ele_type.isF32() || mlir::isa<NoneType>(result_type)) {
+    } else if (IsPassThroughFloatType(result_ele_type, op_quant_type) ||
+               mlir::isa<NoneType>(result_type)) {
       outputs_replaced.insert({result, {enumerated_result.index(), nullptr}});
       output_types.push_back(result.getType());
     } else {
       return rewriter.notifyMatchFailure(
           quantizing_op,
-          "is a fake quantized op with an output that is not float32.");
+          "is a fake quantized op with an output that is not float.");
     }
   }
   return success();
@@ -470,6 +571,92 @@ struct FixFullyConnectedKeepNumDims
   }
 };
 
+// Rewrites an int8 dynamic range quantized `tfl.fully_connected` whose filter
+// is a constant `tfl.blockwise_dequantize` into a hybrid `tfl.fully_connected`
+// that consumes the float input and the blockwise quantized filter directly:
+//
+//   drq_fake_quant(input) -> tfl.fully_connected(_, blockwise_dequantize(w))
+//
+// becomes
+//
+//   tfl.fully_connected(input, pseudo_qconst(w : !tfl.blockwise_quant<...>))
+//
+// The FULLY_CONNECTED kernel quantizes each input row to int8 at runtime. A
+// dynamic range fake quant quantizes each row asymmetrically over the full int8
+// range (the only scheme the producer emits; the annotation does not record
+// it), so the rewritten op sets `asymmetric_quantize_inputs` to carry those
+// semantics. The `FuseQDQ` pattern below cannot match these ops because none of
+// their operands comes from a `tfl.dequantize`.
+class FuseDrqBlockwiseFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc,
+                                PatternRewriter& rewriter) const override {
+    mlir::Value fq_input;
+    if (IsDrqTensor(fc.getInput(), fq_input).failed()) {
+      return rewriter.notifyMatchFailure(fc, "input is not a DRQ tensor.");
+    }
+    // The kernel quantizes the input rows to the full int8 range.
+    if (!IsFullRangeInt8DrqTensor(fc.getInput())) {
+      return rewriter.notifyMatchFailure(fc,
+                                         "DRQ input is not full range int8.");
+    }
+    if (!IsDrqBlockwiseFilterConsumer(fc)) {
+      return rewriter.notifyMatchFailure(
+          fc,
+          "is not supported as a dynamic range op with a blockwise filter.");
+    }
+    if (!getElementTypeOrSelf(fq_input.getType()).isF32()) {
+      return rewriter.notifyMatchFailure(fc, "DRQ input is not float32.");
+    }
+    if (!IsConstantBlockwiseDequantizedFilter(fc, fc.getFilter())) {
+      return rewriter.notifyMatchFailure(
+          fc, "filter is not a constant tfl.blockwise_dequantize.");
+    }
+    mlir::Value filter = FoldBlockwiseWeightToQConst(
+        fc.getFilter().getDefiningOp<TFL::BlockwiseDequantizeOp>(), rewriter);
+    rewriter.modifyOpInPlace(fc, [&]() {
+      fc.getInputMutable().assign(fq_input);
+      fc.getFilterMutable().assign(filter);
+      fc.setAsymmetricQuantizeInputsAttr(rewriter.getBoolAttr(true));
+    });
+    return success();
+  }
+};
+
+// Folds a constant `tfl.blockwise_dequantize` table of a `tfl.embedding_lookup`
+// into a `!tfl.blockwise_quant` constant, so that the EMBEDDING_LOOKUP kernel
+// only dequantizes the looked up rows (as for a hybrid lookup of an affine
+// quantized table) rather than the whole table being dequantized:
+//
+//   %table = tfl.blockwise_dequantize(%q, %scales, %zero_points)
+//   %out = tfl.embedding_lookup(%ids, %table)
+//
+// becomes
+//
+//   %table = tfl.pseudo_qconst() {qtype = !tfl.blockwise_quant<...>}
+//   %out = tfl.embedding_lookup(%ids, %table)
+class FoldBlockwiseTableIntoEmbeddingLookup
+    : public OpRewritePattern<TFL::EmbeddingLookupOp> {
+  using OpRewritePattern<TFL::EmbeddingLookupOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::EmbeddingLookupOp op,
+                                PatternRewriter& rewriter) const override {
+    auto bw_deq = op.getValue().getDefiningOp<TFL::BlockwiseDequantizeOp>();
+    if (!bw_deq || !IsFoldableBlockwiseDequantize(bw_deq)) {
+      return rewriter.notifyMatchFailure(
+          op, "table is not a foldable constant tfl.blockwise_dequantize");
+    }
+    if (!getElementTypeOrSelf(op.getType()).isF32()) {
+      return rewriter.notifyMatchFailure(op, "expects an f32 output");
+    }
+    mlir::Value table = FoldBlockwiseWeightToQConst(bw_deq, rewriter);
+    rewriter.modifyOpInPlace(op, [&]() { op.getValueMutable().assign(table); });
+    return success();
+  }
+};
+
 class FuseQDQ : public OpRewritePattern<mlir::TFL::DequantizeOp> {
   using OpRewritePattern<mlir::TFL::DequantizeOp>::OpRewritePattern;
 
@@ -573,10 +760,11 @@ void FuseQDQPass::runOnOperation() {
   mlir::ModuleOp module = getOperation();
 
   RewritePatternSet patterns(ctx);
-  patterns
-      .add<FuseQDQ, PushForwardDrqFQ, RemoveUnusedFQ, RemoveUnusedCustomCallFQ,
-           FixFullyConnectedKeepNumDims, QuantizeConstPattern, FuseDqQToRequant,
-           FuseQQToRequant, RemoveNoOpQ>(ctx);
+  patterns.add<FuseQDQ, FuseDrqBlockwiseFullyConnected, PushForwardDrqFQ,
+               RemoveUnusedFQ, RemoveUnusedCustomCallFQ,
+               FixFullyConnectedKeepNumDims,
+               FoldBlockwiseTableIntoEmbeddingLookup, QuantizeConstPattern,
+               FuseDqQToRequant, FuseQQToRequant, RemoveNoOpQ>(ctx);
 
   // Configure the greedy pattern rewrite driver.
   GreedyRewriteConfig greedy_config;

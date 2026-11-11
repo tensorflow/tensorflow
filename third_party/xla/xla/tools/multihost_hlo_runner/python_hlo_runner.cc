@@ -272,11 +272,12 @@ absl::Status RegisterCustomCallTarget(const std::string& fn_name, nb::object fn,
             "PyCapsule fn object for all dict keys");
       };
 
-      XLA_FFI_Handler_Bundle bundle;
+      XLA_FFI_Handler_Bundle bundle = {};
       ABSL_ASSIGN_OR_RETURN(bundle.instantiate, handler("instantiate"));
       ABSL_ASSIGN_OR_RETURN(bundle.prepare, handler("prepare"));
       ABSL_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
       ABSL_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
+      ABSL_ASSIGN_OR_RETURN(bundle.record, handler("record"));
 
       return ffi::TakeError(ffi::Ffi::RegisterStaticHandler(
           ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));
@@ -319,6 +320,7 @@ nb::dict GetRegisteredCustomCallTargets(const std::string& platform) {
     export_handler("prepare", registration.bundle.prepare);
     export_handler("initialize", registration.bundle.initialize);
     export_handler("execute", registration.bundle.execute);
+    export_handler("record", registration.bundle.record);
     targets[nb::str(name.data(), name.size())] = std::move(bundle);
   }
   return targets;

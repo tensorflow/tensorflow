@@ -53,14 +53,8 @@ class TritonFusion : public FusionInterface {
   AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
                           const HloFusionInstruction& fusion) const final;
 
-  // This is a more concrete emission result that can be used in
-  // places where we know we are dealing with Triton fusions.
-  struct EmitResult {
-    KernelReuseCache::Entry entry;
-    emitters::KernelArguments kernel_arguments;
-  };
-  using EmitThunk =
-      absl::AnyInvocable<absl::StatusOr<ThunkSequence>(EmitResult)>;
+  using EmitThunk = absl::AnyInvocable<absl::StatusOr<ThunkSequence>(
+      KernelReuseCache::Kernel)>;
   // Overload of [Emit] that allows passing overrides for instructions
   // and unmanaged arguments.
   // - Instruction overloads are required when we forcibly form fusions for
@@ -77,7 +71,7 @@ class TritonFusion : public FusionInterface {
   // based fusions earlier in the compiler pipeline.
   // Returns a pair of the kernel thunk and an llvm module. The local module
   // is only returned if the kernel was not cached.
-  xla::Future<EmitResult> Emit(
+  xla::Future<KernelReuseCache::Kernel> Emit(
       IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
       const HloInstruction* instr_override,
       absl::Span<const Shape> unmanaged_arguments) const;

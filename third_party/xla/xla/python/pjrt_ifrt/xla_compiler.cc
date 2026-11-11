@@ -74,6 +74,11 @@ class XlaCompileOptionsSerDes
           "xla::ifrt::XlaCompileOptions with loaded_host_callbacks is not "
           "serializable");
     }
+    if (xla_compile_options.entrypoint_relocatable != nullptr ||
+        !xla_compile_options.dependent_relocatables.empty()) {
+      return absl::UnimplementedError(
+          "xla::ifrt::XlaCompileOptions with relocatables is not serializable");
+    }
     if (xla_compile_options.outputs_bundle_slice_sizes.has_value()) {
       if (version.version_number() < SerDesVersionNumber(4)) {
         return absl::FailedPreconditionError(

@@ -480,18 +480,6 @@ absl::Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
   return absl::OkStatus();
 }
 
-absl::Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
-  // Domain does not have any computation or data transfer.
-  current_should_compute_bottleneck_time_ = false;
-  current_properties_[kBytesAccessedKey] = 0;
-  current_properties_.set_output_bytes_accessed(0);
-  for (int i = 0; i < domain->operand_count(); ++i) {
-    current_properties_.set_operand_bytes_accessed(i, 0);
-  }
-  current_properties_[kOptimalSecondsKey] = 0;
-  return absl::OkStatus();
-}
-
 /* static */
 int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
                                      const Shape& result_shape,
@@ -529,6 +517,15 @@ absl::Status HloCostAnalysis::HandleRaggedDot(
 }
 
 absl::Status HloCostAnalysis::HandleScaledDot(const HloInstruction* dot) {
+  current_properties_[kFlopsKey] = GetDotFlops(
+      dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleDotGeneral(const HloInstruction* dot) {
+  // TODO: b/581447764 - Account for sparsity and block scaling. With a sparse
+  // lhs this counts the compressed contracting size, with a sparse rhs the
+  // dense one.
   current_properties_[kFlopsKey] = GetDotFlops(
       dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
   return absl::OkStatus();

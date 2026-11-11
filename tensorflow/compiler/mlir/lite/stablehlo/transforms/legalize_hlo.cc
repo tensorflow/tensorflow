@@ -49,14 +49,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -64,11 +62,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "stablehlo/dialect/BroadcastUtils.h"  // from @stablehlo
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
+#include "stablehlo/dialect/BroadcastUtils.h"  // from @stablehlo  // IWYU pragma: keep
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/hlo_matchers.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/reduce.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -76,12 +74,26 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace mlir {
 namespace odml {
+
 namespace {
+
+// This MHLO-based legalization uses the MHLO versions of the helpers.
+using ::mlir::odml::mhlo_legacy::BuildIntArrayConstOp;
+using ::mlir::odml::mhlo_legacy::BuildIntConstOp;
+using ::mlir::odml::mhlo_legacy::GetInversePermutationAndShape;
+using ::mlir::odml::mhlo_legacy::GetInversePermutationArray;
+using ::mlir::odml::mhlo_legacy::GetPermutationAndTransposedShape;
+using ::mlir::odml::mhlo_legacy::GetReformatTypeAndPermutation;
+using ::mlir::odml::mhlo_legacy::InsertTranspose;
+using ::mlir::odml::mhlo_legacy::MatchBinaryReduceFunction;
+using ::mlir::odml::mhlo_legacy::MatchIota;
+using ::mlir::odml::mhlo_legacy::NeedsReformatTypeAndPermutation;
+using ::mlir::odml::mhlo_legacy::NormalizeIndexVector;
+using ::mlir::odml::mhlo_legacy::PopulateReduceArgMinMaxTFPatterns;
 
 #define DEBUG_TYPE "tf-legalize-hlo"
 
@@ -1363,7 +1375,7 @@ size_t Size(Range&& range, RangeTs&&... ranges) {
 template <typename ValueT, typename... RangeTs>
 llvm::SmallVector<ValueT, 4> Concat(RangeTs&&... ranges) {
   llvm::SmallVector<int64_t, 4> results;
-  results.reserve(Size(std::forward<RangeTs>(ranges)...));
+  results.reserve(Size(ranges...));
   Append(results, std::forward<RangeTs>(ranges)...);
   return results;
 }
@@ -1376,29 +1388,6 @@ struct DimensionVector {
   llvm::SmallVector<int64_t, 4> axes;
   llvm::SmallVector<int64_t, 4> sizes;
 };
-
-// Create a tensor that is reshaped from input.
-Value BuildReshapeOp(ImplicitLocOpBuilder& builder,
-                     ConversionPatternRewriter& rewriter, Value input,
-                     ArrayRef<int64_t> shape, Type idx_type,
-                     Type element_type) {
-  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
-  Value reshaped_input = TF::ReshapeOp::create(
-      builder, RankedTensorType::get(shape, element_type), input, shape_cst);
-  return reshaped_input;
-}
-
-// Create a tensor which is equal to input[begin: begin + size].
-Value BuildSliceOp(ImplicitLocOpBuilder& builder,
-                   ConversionPatternRewriter& rewriter, Value input,
-                   Value begin, ArrayRef<int64_t> shape, Type idx_type,
-                   Type element_type) {
-  Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
-  Value slice_result =
-      TF::SliceOp::create(builder, RankedTensorType::get(shape, element_type),
-                          input, begin, shape_cst);
-  return slice_result;
-}
 
 class ConvertDynamicUpdateSliceOp
     : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
@@ -1550,7 +1539,7 @@ class DotDimensionsInfo {
       return ShapedType::kDynamic;
     }
     return std::accumulate(contracting_dimensions_.sizes.begin(),
-                           contracting_dimensions_.sizes.end(), 1,
+                           contracting_dimensions_.sizes.end(), int64_t{1},
                            std::multiplies<int64_t>());
   }
 
@@ -1560,7 +1549,7 @@ class DotDimensionsInfo {
       return ShapedType::kDynamic;
     }
     return std::accumulate(out_dimensions_.sizes.begin(),
-                           out_dimensions_.sizes.end(), 1,
+                           out_dimensions_.sizes.end(), int64_t{1},
                            std::multiplies<int64_t>());
   }
 

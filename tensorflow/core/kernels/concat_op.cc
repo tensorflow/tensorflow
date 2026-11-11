@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -67,36 +68,37 @@ class ConcatBaseOp : public OpKernel {
     const Tensor& concat_dim_tensor = c->input(axis_input_index_);
 
     // TODO(rmlarsen): Disallow legacy use of length-1 vectors as scalars.
-    OP_REQUIRES(c,
-                (TensorShapeUtils::IsScalar(concat_dim_tensor.shape()) ||
-                 (TensorShapeUtils::IsVector(concat_dim_tensor.shape()) &&
-                  concat_dim_tensor.shape().dim_size(0) == 1)),
-                absl::InvalidArgumentError(absl::StrCat(
-                    axis_attribute_name_,
-                    " tensor should be a scalar integer, but got shape ",
-                    concat_dim_tensor.shape().DebugString())));
+    const int concat_dim_num_dims = concat_dim_tensor.dims();
+    OP_REQUIRES(
+        c,
+        (concat_dim_num_dims == 0 ||
+         (concat_dim_num_dims == 1 && concat_dim_tensor.NumElements() == 1)),
+        absl::InvalidArgumentError(
+            absl::StrCat(axis_attribute_name_,
+                         " tensor should be a scalar integer, but got shape ",
+                         concat_dim_tensor.shape().DebugString())));
     int64_t concat_dim;
+    const DataType concat_dim_dtype = concat_dim_tensor.dtype();
     // In case of ConcatV2, "axis" could be int32 or int64
-    if (AxisArgName == NAME_IS_AXIS) {
-      OP_REQUIRES(c,
-                  (concat_dim_tensor.dtype() == DT_INT32 ||
-                   concat_dim_tensor.dtype() == DT_INT64),
-                  absl::InvalidArgumentError(
-                      absl::StrCat(axis_attribute_name_,
-                                   " tensor should be int32 or int64, but got ",
-                                   DataTypeString(concat_dim_tensor.dtype()))));
+    if constexpr (AxisArgName == NAME_IS_AXIS) {
+      OP_REQUIRES(
+          c, (concat_dim_dtype == DT_INT32 || concat_dim_dtype == DT_INT64),
+          absl::InvalidArgumentError(
+              absl::StrCat(axis_attribute_name_,
+                           " tensor should be int32 or int64, but got ",
+                           DataTypeString(concat_dim_dtype))));
     } else {
-      OP_REQUIRES(c, (concat_dim_tensor.dtype() == DT_INT32),
+      OP_REQUIRES(c, (concat_dim_dtype == DT_INT32),
                   absl::InvalidArgumentError(absl::StrCat(
                       axis_attribute_name_, " tensor should be int32, but got ",
-                      DataTypeString(concat_dim_tensor.dtype()))));
+                      DataTypeString(concat_dim_dtype))));
     }
-    if (concat_dim_tensor.dtype() == DT_INT32) {
+    if (concat_dim_dtype == DT_INT32) {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32_t>()());
+          internal::SubtleMustCopy(concat_dim_tensor.flat<int32_t>()(0));
     } else {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor.scalar<int64_t>()());
+          internal::SubtleMustCopy(concat_dim_tensor.flat<int64_t>()(0));
     }
 
     const int N = values_input_end_index_ - values_input_start_index_;
@@ -116,65 +118,102 @@ class ConcatBaseOp : public OpKernel {
     // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
     // the dimension indicated with size y0, we flatten it to {x, y}, where y =
     // Prod_i(yi) and x = ((n > 0) ? Prod_i(xi) : 1).
-    ConstMatrixVector inputs_flat;
-    inputs_flat.reserve(N);
+    OP_REQUIRES(
+        c, input_dims > 0,
+        absl::InvalidArgumentError("ConcatOp : Can't concatenate scalars "
+                                   "(use tf.stack instead)"));
+
+    absl::InlinedVector<int64_t, 8> expected_dims(input_dims);
+    for (int d = 0; d < input_dims; ++d) {
+      expected_dims[d] = input_shape.dim_size(d);
+    }
+
     int64_t inputs_flat_dim0 = 1;
     for (int d = 0; d < axis; ++d) {
-      inputs_flat_dim0 *= input_shape.dim_size(d);
+      inputs_flat_dim0 *= expected_dims[d];
     }
-    int64_t output_concat_dim = 0;
-    for (int i = 0; i < N; ++i) {
-      const auto& in = c->input(values_input_start_index_ + i);
+    int64_t inputs_flat_inner = 1;
+    for (int d = axis + 1; d < input_dims; ++d) {
+      inputs_flat_inner *= expected_dims[d];
+    }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    constexpr bool kIsGpu = std::is_same_v<Device, GPUDevice>;
+#else
+    constexpr bool kIsGpu = false;
+#endif
+    int64_t output_concat_dim = expected_dims[axis];
+    absl::InlinedVector<ConcatSlice<T>, 64> slices;
+    if constexpr (!kIsGpu) {
+      slices.reserve(N);
+      if (first_input.NumElements() > 0) {
+        slices.push_back(ConcatSlice<T>{
+            static_cast<const T*>(first_input.data()),
+            static_cast<ptrdiff_t>(output_concat_dim * inputs_flat_inner)});
+      }
+    }
+    for (int i = 1; i < N; ++i) {
+      const Tensor& input = c->input(values_input_start_index_ + i);
       OP_REQUIRES(
-          c, in.dims() > 0,
+          c, input.dims() > 0,
           absl::InvalidArgumentError("ConcatOp : Can't concatenate scalars "
                                      "(use tf.stack instead)"));
       OP_REQUIRES(
-          c, in.dims() == input_dims,
+          c, input.dims() == input_dims,
           absl::InvalidArgumentError(absl::StrCat(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString())));
+              "] = ", input.shape().DebugString())));
       for (int j = 0; j < input_dims; ++j) {
         if (j == axis) {
           continue;
         }
-        OP_REQUIRES(c, in.dim_size(j) == input_shape.dim_size(j),
+        OP_REQUIRES(c, input.dim_size(j) == expected_dims[j],
                     absl::InvalidArgumentError(
                         absl::StrCat("ConcatOp : Dimension ", j,
                                      " in both shapes must be equal: "
                                      "shape[0] = ",
                                      input_shape.DebugString(), " vs. shape[",
-                                     i, "] = ", in.shape().DebugString())));
+                                     i, "] = ", input.shape().DebugString())));
       }
-      if (in.NumElements() > 0) {
-        int64_t inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
-        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-            in.template shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
+      const int64_t axis_dim = input.dim_size(axis);
+      output_concat_dim += axis_dim;
+      if constexpr (!kIsGpu) {
+        if (input.NumElements() > 0) {
+          slices.push_back(ConcatSlice<T>{
+              static_cast<const T*>(input.data()),
+              static_cast<ptrdiff_t>(axis_dim * inputs_flat_inner)});
+        }
       }
-      // TODO(rmlarsen): Remove check once !allow_legacy_scalars()?
-      output_concat_dim += in.dims() > 0 ? in.dim_size(axis) : 1;
     }
 
     TensorShape output_shape(input_shape);
-    // TODO(rmlarsen): Remove rank 0 case once !allow_legacy_scalars()?
-    if (output_shape.dims() == 0) {
-      OP_REQUIRES_OK(c, output_shape.AddDimWithStatus(output_concat_dim));
-    } else {
-      output_shape.set_dim(axis, output_concat_dim);
-    }
+    output_shape.set_dim(axis, output_concat_dim);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
     if (output->NumElements() > 0) {
-      int64_t output_dim1 = output->NumElements() / inputs_flat_dim0;
-      auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
+      const int64_t output_dim1 = output_concat_dim * inputs_flat_inner;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (std::is_same<Device, GPUDevice>::value) {
+      if constexpr (kIsGpu) {
+        ConstMatrixVector inputs_flat;
+        inputs_flat.reserve(N);
+        for (int i = 0; i < N; ++i) {
+          const Tensor& input = c->input(values_input_start_index_ + i);
+          if (input.NumElements() > 0) {
+            inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+                input.template shaped<T, 2>(
+                    {inputs_flat_dim0,
+                     input.dim_size(axis) * inputs_flat_inner})));
+          }
+        }
+        auto output_flat =
+            output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+      ConcatCPUSlices<T>(c->device(), slices, inputs_flat_dim0, output_dim1,
+                         static_cast<T*>(output->data()));
     }
   }
 

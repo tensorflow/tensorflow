@@ -39,6 +39,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/logging.h"
 
+namespace pjrt {
+class PjRtCApiMultiSliceConfig;
+}  // namespace pjrt
+
 namespace xla {
 namespace megascale {
 namespace c_api_client {
@@ -104,6 +108,38 @@ GetOrCreateRuntimeError(
     std::optional<
         runtime::external::MegaScaleRuntimeError::UnrecoverableErrorType>
         unrecoverable_error_type = std::nullopt);
+
+// Discovers slices using the Megascale client context and returns a
+// multi-slice configuration wrapped in PjRtCApiMultiSliceConfig.
+absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>> DiscoverSlices(
+    std::shared_ptr<CApiPjRtClientContext> megascale_client_ctx);
+
+// Convenience wrapper discovering slices directly from a PjRtClient.
+absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
+DiscoverSlicesFromClient(xla::PjRtClient* client);
+
+// Returns the incarnation ID for the given MultiSliceConfig.
+absl::StatusOr<int64_t> GetIncarnationId(
+    const pjrt::PjRtCApiMultiSliceConfig& config);
+absl::StatusOr<int64_t> GetIncarnationId(const xla::MultiSliceConfig& config);
+
+// Returns the local host ID for the given MultiSliceConfig.
+absl::StatusOr<int32_t> GetLocalHostId(
+    const pjrt::PjRtCApiMultiSliceConfig& config);
+absl::StatusOr<int32_t> GetLocalHostId(const xla::MultiSliceConfig& config);
+
+// Returns the number of hosts for the given MultiSliceConfig.
+absl::StatusOr<int32_t> GetNumHosts(
+    const pjrt::PjRtCApiMultiSliceConfig& config);
+absl::StatusOr<int32_t> GetNumHosts(const xla::MultiSliceConfig& config);
+
+// Executes a global barrier across slices for the given MultiSliceConfig.
+absl::Status GlobalBarrier(const pjrt::PjRtCApiMultiSliceConfig& config,
+                           absl::string_view barrier_id,
+                           absl::Duration timeout);
+absl::Status GlobalBarrier(const xla::MultiSliceConfig& config,
+                           absl::string_view barrier_id,
+                           absl::Duration timeout);
 
 }  // namespace c_api_client
 }  // namespace megascale

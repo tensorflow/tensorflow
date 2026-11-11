@@ -14,6 +14,7 @@
 // ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
 // RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops="max_unroll_factor=16" | FileCheck %s --check-prefix=CHECK-MAX16
+// RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops="only_inner_loops=true" | FileCheck %s --check-prefix=CHECK-INNER
 
 #map = #xla.indexing_map<"(d0) -> (d0 floordiv 8), domain: d0 in [0, 31]">
 #map1 = #xla.indexing_map<"(d0) -> (d0 mod 8), domain: d0 in [0, 31]">
@@ -78,6 +79,10 @@ module {
 
 // CHECK-LABEL: @fully_unroll
 // CHECK-NOT: scf.for
+// CHECK-INNER-LABEL: @fully_unroll
+// CHECK-INNER: scf.for
+// CHECK-INNER-NOT: scf.for
+// CHECK-INNER: return
 
 // -----
 
@@ -99,6 +104,9 @@ module {
 // CHECK-LABEL: @unroll_by_factor
 // CHECK: %[[C8:.*]] = arith.constant 8 : index
 // CHECK: scf.for {{.*}} step %[[C8]]
+// CHECK-INNER-LABEL: @unroll_by_factor
+// CHECK-INNER: %[[C1_INNER:.*]] = arith.constant 1 : index
+// CHECK-INNER: scf.for {{.*}} step %[[C1_INNER]]
 
 // -----
 
@@ -143,3 +151,25 @@ module {
 // CHECK: scf.for {{.*}} step %[[C8]]
 // CHECK-MAX16-LABEL: @unroll_up_to_max
 // CHECK-MAX16-NOT: scf.for
+
+// -----
+
+module {
+  func.func @do_not_unroll_sync_threads(%arg0: tensor<64xf32>) -> tensor<64xf32> {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    %ret = scf.for %i = %c0 to %c4 step %c1 iter_args (%t = %arg0) -> (tensor<64xf32>) {
+      %synced = xla_gpu.sync_threads %t : tensor<64xf32>
+      scf.yield %synced : tensor<64xf32>
+    }
+    return %ret : tensor<64xf32>
+  }
+}
+
+// CHECK-LABEL: @do_not_unroll_sync_threads
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: scf.for {{.*}} step %[[C1]]
+// CHECK-MAX16-LABEL: @do_not_unroll_sync_threads
+// CHECK-MAX16: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-MAX16: scf.for {{.*}} step %[[C1]]

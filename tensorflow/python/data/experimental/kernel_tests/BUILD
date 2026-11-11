@@ -327,9 +327,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "make_batched_features_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["make_batched_features_dataset_test.py"],
-    shard_count = 6,
+    shard_count = 11,
     deps = [
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",

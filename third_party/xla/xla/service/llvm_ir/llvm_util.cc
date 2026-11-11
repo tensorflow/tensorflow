@@ -18,16 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <limits>
-#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -37,19 +33,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/FloatingPointMode.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/InstrTypes.h"
@@ -57,26 +53,25 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TypeSize.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
-#include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/layout_util.h"
-#include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/byte_order.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -172,27 +167,6 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
                                       {lhs_value, rhs_value},
                                       {lhs_value->getType()}, b);
-}
-
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilderBase* b) {
-  llvm::Type* array_type = array->getType();
-  CHECK(array_type->isPointerTy());
-  VLOG(2) << "EmitBufferIndexingGEP with type="
-          << llvm_ir::DumpToString(array_type)
-          << " array=" << llvm_ir::DumpToString(array)
-          << " index=" << llvm_ir::DumpToString(index);
-
-  return b->CreateInBoundsGEP(
-      element_type, array,
-      llvm::isa<llvm::GlobalVariable>(array)
-          ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
-          : index);
-}
-
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilderBase* b) {
-  return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -323,21 +297,6 @@ PrimitiveType PrimitiveTypeFromIrType(llvm::Type* type,
   return PRIMITIVE_TYPE_INVALID;
 }
 
-int GetSizeInBits(llvm::Type* type) {
-  const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
-  if (struct_ty) {
-    CHECK(struct_ty->isPacked());
-    int bits = 0;
-    for (auto element_type : struct_ty->elements()) {
-      bits += GetSizeInBits(element_type);
-    }
-    return bits;
-  }
-  int bits = type->getPrimitiveSizeInBits();
-  CHECK_GT(bits, 0) << "type is not sized";
-  return bits;
-}
-
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
   llvm::Type* result_type =
       PrimitiveTypeToIrType(shape.element_type(), context);
@@ -354,89 +313,20 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
   return result_type;
 }
 
-absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
-  const std::string encoded_shape = shape.ToProto().SerializeAsString();
-  if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return Internal("Encoded shape size exceeded int32_t size limit.");
+absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
+    const llvm::Module& module, llvm::LLVMContext& context,
+    absl::string_view module_id) {
+  llvm::SmallString<0> bitcode;
+  llvm::raw_svector_ostream stream(bitcode);
+  llvm::WriteBitcodeToFile(module, stream);
+  llvm::Expected<std::unique_ptr<llvm::Module>> clone = llvm::parseBitcodeFile(
+      llvm::MemoryBufferRef(bitcode.str(), AsStringRef(module_id)), context);
+  if (!clone) {
+    return Internal("Failed to clone LLVM module %s into a new context: %s",
+                    module.getModuleIdentifier(),
+                    llvm::toString(clone.takeError()));
   }
-  *shape_size = static_cast<int32_t>(encoded_shape.size());
-  return b->CreateGlobalString(encoded_shape);
-}
-
-llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::Module* module) {
-  const char* data = static_cast<const char*>(literal.untyped_data());
-  int64_t size_bytes = literal.size_bytes();
-  CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  std::vector<char> packed_data;
-  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
-    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
-    int elements_per_byte = 8 / bit_width;
-    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
-    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
-             absl::MakeSpan(packed_data));
-    data = packed_data.data();
-    size_bytes = packed_data.size();
-  }
-  return llvm::ConstantDataArray::getString(module->getContext(),
-                                            llvm::StringRef(data, size_bytes),
-                                            /*AddNull=*/false);
-}
-
-llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
-                                               llvm::Type* tile_type,
-                                               absl::string_view name) {
-  // Both AMDGPU and NVPTX use the same address space for shared memory.
-  const int kGPUSharedMemoryAddrSpace = 3;
-  return new llvm::GlobalVariable(
-      *module, tile_type,
-      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
-      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
-}
-
-SharedMemoryTile AllocateSharedMemoryTile(
-    llvm::Module* module, llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  return SharedMemoryTile{
-      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
-}
-
-static std::vector<llvm::Value*> IndexWith0(
-    absl::Span<llvm::Value* const> index, llvm::IRBuilderBase* b) {
-  std::vector<llvm::Value*> index_with_0{
-      llvm::ConstantInt::get(index.front()->getType(), 0)};
-  absl::c_copy(index, std::back_inserter(index_with_0));
-  return index_with_0;
-}
-
-llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
-                                       llvm::IRBuilderBase* b) const {
-  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
-                                          IndexWith0(index, b));
-  // __shared__ memory uses a different address space, so we cast it
-  // to global address space before writing or reading.
-  return b->CreateAddrSpaceCast(gep,
-                                llvm::PointerType::get(b->getContext(), 0));
-};
-
-llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
-                                    llvm::IRBuilderBase* b) const {
-  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
-      base_ptr_->getValueType(), IndexWith0(index, b));
-  return b->CreateLoad(load_type, Address(index, b));
-}
-
-llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
-                                         absl::Span<llvm::Value* const> index,
-                                         llvm::IRBuilderBase* b) const {
-  return b->CreateStore(value, Address(index, b));
+  return std::move(*clone);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -518,38 +408,6 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                     if_data.after_block->getFirstInsertionPt());
 
   return if_data;
-}
-
-llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
-                            llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilderBase* b, absl::string_view name) {
-  llvm::Value* comparison_result;
-  if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result =
-        b->CreateICmp(predicate, lhs_value, rhs_value, AsStringRef(name));
-  } else {
-    comparison_result =
-        b->CreateFCmp(predicate, lhs_value, rhs_value, AsStringRef(name));
-  }
-  // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
-  // arrays. So we extend it to i8 so that it's addressable.
-  return b->CreateZExt(comparison_result,
-                       llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
-}
-
-// Internal helper that is called from emitted code to log an int64_t value with
-// a tag.
-static void LogS64(const char* tag, int64_t value) {
-  LOG(INFO) << tag << " (int64_t): " << value;
-}
-
-void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilderBase* b) {
-  llvm::FunctionType* log_function_type = llvm::FunctionType::get(
-      b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(log_function_type,
-                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  b->getPtrTy()),
-                {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -670,11 +528,6 @@ void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   }
 }
 
-int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
-  unsigned pointer_size = data_layout.getPointerSize();
-  return ShapeUtil::ByteSizeOf(shape, pointer_size);
-}
-
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
   const auto& options = module_config.debug_options();
@@ -729,54 +582,6 @@ void SinkContractableFMulToFAddFSub(llvm::Module& module) {
   }
 }
 
-std::map<int, llvm::MDNode*> MergeMetadata(
-    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
-    const std::map<int, llvm::MDNode*>& b) {
-  // We should extend this as needed to deal with other kinds of metadata like
-  // !dereferenceable and !range.
-
-  std::map<int, llvm::MDNode*> result;
-  for (auto kind_md_pair : a) {
-    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
-      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
-      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
-      for (const auto& scope_a : kind_md_pair.second->operands()) {
-        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
-        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
-      }
-      auto it = b.find(kind_md_pair.first);
-      if (it != b.end()) {
-        for (const auto& scope_b : it->second->operands()) {
-          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
-            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
-          }
-        }
-      }
-      result[llvm::LLVMContext::MD_alias_scope] =
-          llvm::MDNode::get(*context, union_of_scopes);
-    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
-      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
-      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
-      for (const auto& scope_a : kind_md_pair.second->operands()) {
-        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
-      }
-      auto it = b.find(kind_md_pair.first);
-      if (it != b.end()) {
-        for (const auto& scope_b : it->second->operands()) {
-          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
-            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
-          }
-        }
-      }
-      if (!intersection_of_scopes.empty()) {
-        result[llvm::LLVMContext::MD_noalias] =
-            llvm::MDNode::get(*context, intersection_of_scopes);
-      }
-    }
-  }
-  return result;
-}
-
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
@@ -828,96 +633,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   return function;
 }
 
-unsigned GetGlobalMemoryAddressSpace() { return 1; }
-
-llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
-                                                     llvm::IRBuilderBase* b) {
-  static const char* kRngStateVariableName = "rng_state";
-  llvm::GlobalVariable* state_ptr =
-      module->getNamedGlobal(kRngStateVariableName);
-  if (!state_ptr) {
-    // Limit the state type to 64-bit for SPIR-V, because SPIR-V supports wider
-    // integer types only through the FPGA-specific arbitrary precision integer
-    // extension, which GPU drivers do not support.
-    // TODO(intel-tf): Remove this restriction once the LLVM SPIR-V backend adds
-    // support for arbitrary precision integers on GPU targets.
-    auto bitwidth =
-        llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 64 : 128;
-    llvm::Type* state_type = b->getIntNTy(bitwidth);
-    // Use a non-zero initial value as zero state can cause the result of the
-    // first random number generation not passing the chi-square test. The
-    // values used here are arbitrarily chosen, any non-zero values should be
-    // fine.
-    state_ptr = new llvm::GlobalVariable(
-        /*M=*/*module,
-        /*Ty=*/state_type,
-        /*isConstant=*/false,
-        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/llvm::ConstantInt::get(state_type, 0x7012395ull),
-        /*Name=*/kRngStateVariableName,
-        /*InsertBefore=*/nullptr,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/GetGlobalMemoryAddressSpace(),
-        /*isExternallyInitialized=*/false);
-  }
-  return state_ptr;
-}
-
-llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilderBase* builder) {
-  llvm::GlobalVariable* state_ptr =
-      GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old =
-      builder->CreateLoad(state_ptr->getValueType(), state_ptr, "load_state");
-  llvm::Value* state_value_new = builder->CreateAdd(
-      state_value_old,
-      llvm::ConstantInt::get(state_value_old->getType(), delta));
-  builder->CreateStore(state_value_new, state_ptr);
-  return state_value_old;
-}
-
-llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b) {
-  llvm::Function* function = b->GetInsertBlock()->getParent();
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::IRBuilderBase::InsertPointGuard guard(*b);
-  llvm::BasicBlock* early_return =
-      llvm::BasicBlock::Create(/*Context=*/module->getContext(),
-                               /*Name=*/"early_return",
-                               /*Parent=*/function);
-  b->SetInsertPoint(early_return);
-  b->CreateRetVoid();
-  return early_return;
-}
-
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
-                     llvm::BasicBlock* return_block) {
-  if (!return_block) {
-    return_block = EmitReturnBlock(b);
-  }
-
-  llvm::BasicBlock* continued;
-
-  // Implicitly check whtether we are already at the end of unterminated block.
-  if (!b->GetInsertBlock()->hasTerminator()) {
-    // If we are generating code into an incomplete basic block we can just
-    // create a new basic block to jump to after our conditional branch.
-    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
-                                          /*name=*/"", b);
-  } else {
-    // If we are generating code into a basic block that already has code, we
-    // need to split that block so as to not disturb the existing code.
-    auto original = b->GetInsertBlock();
-    continued = original->splitBasicBlock(b->GetInsertPoint());
-    // Remove the auto-generated unconditional branch to replace with our
-    // conditional branch.
-    original->getTerminator()->eraseFromParent();
-    b->SetInsertPoint(original);
-  }
-
-  b->CreateCondBr(condition, continued, return_block);
-  b->SetInsertPoint(continued, continued->getFirstInsertionPt());
-}
-
 absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
     int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b) {
@@ -927,6 +642,14 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
     return Unimplemented(
         "ReducePrecision cannot accept non-floating-point type %s.",
         PrimitiveType_Name(src_ty));
+  }
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = primitive_util::ExponentWidth(src_ty);
+  if (dest_mantissa_bits == src_mantissa_bits &&
+      dest_exponent_bits == src_exponent_bits) {
+    return x;
   }
 
   // Integer and float types for casting and constant generation.
@@ -946,10 +669,6 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   auto int_const = [&](const APInt& val) -> llvm::Constant* {
     return llvm::ConstantInt::get(int_work_type, val);
   };
-
-  // SignificandWidth includes the implicit extra bit.
-  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
-  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_work_type);

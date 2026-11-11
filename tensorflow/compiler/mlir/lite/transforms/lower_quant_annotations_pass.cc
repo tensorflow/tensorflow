@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -101,10 +102,12 @@ LogicalResult ReadNumericElements(ElementsAttr attr,
   if (blob == nullptr) return failure();
 
   const Type element_type = dense_resource.getType().getElementType();
-  if (element_type.isF32()) {
-    AppendBlobAs<float>(blob, out);
-  } else if (element_type.isF64()) {
-    AppendBlobAs<double>(blob, out);
+  if (mlir::isa<FloatType>(element_type)) {
+    // f16, bf16, f32 and f64 (shared with the bias quantizer).
+    std::optional<SmallVector<double>> values =
+        ReadFloatElementsAsDoubles(attr);
+    if (!values.has_value()) return failure();
+    out.append(values->begin(), values->end());
   } else if (element_type.isInteger(8)) {
     AppendBlobAs<int8_t>(blob, out);
   } else if (element_type.isInteger(16)) {

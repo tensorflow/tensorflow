@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer_telemetry.h"
 #include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
@@ -46,19 +47,18 @@ void ForEachSubgraphPair(
     CUgraphNode /*node*/, CUgraphNode /*original_node*/,
     absl::FunctionRef<void(CUgraph subgraph, CUgraph orig_subgraph)> /*fn*/) {}
 
-std::optional<TrackedGraph> TrackAndAttach(
-    uint32_t /*graph_id*/, CUgraph /*attach_to*/,
-    CudaGraphAnnotationRegistry::TrackMode /*mode*/,
-    CudaGraphAnnotationRegistry::KeySpace /*space*/) {
-  return std::nullopt;
+TrackedGraph Track(uint32_t graph_id, std::vector<TrackedGraph>& /*owned*/,
+                   CudaGraphAnnotationRegistry::KeySpace space) {
+  return TrackedGraph{graph_id, space};
 }
+
+void UnregisterTrackedGraphs(absl::Span<const TrackedGraph> /*graphs*/) {}
 
 void RegisterNode(const TrackedGraph& /*graph*/, CUgraphNode /*node*/,
                   absl::string_view /*annotation*/) {}
 
 void RegisterGraphNodes(CUgraph /*graph*/, const TrackedGraph& /*tracked*/,
                         CUgraph /*original*/, absl::string_view /*fallback*/,
-                        CudaGraphAnnotationRegistry::TrackMode /*child_mode*/) {
-}
+                        std::vector<TrackedGraph>& /*owned*/) {}
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry

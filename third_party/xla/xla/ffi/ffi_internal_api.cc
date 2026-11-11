@@ -275,6 +275,18 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CommandBufferRequests_Get(
+    XLA_FFI_InvokeContext* ctx, void** command_buffer_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_InvokeContext::GpuContext>(
+          &ctx->backend_context)) {
+    *command_buffer_requests = gpu->command_buffer_requests;
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 const XLA_FFI_InternalApi* GetInternalApi() {
   static XLA_FFI_InternalApi internal_api = {
       // Generic XLA APIs available on all XLA backends.
@@ -303,6 +315,7 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_CollectiveMemory_Get,
       XLA_FFI_INTERNAL_GpuComputeCapability_Get,
       XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get,
+      XLA_FFI_INTERNAL_CommandBufferRequests_Get,
   };
 
   return &internal_api;

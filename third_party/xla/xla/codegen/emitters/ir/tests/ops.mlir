@@ -214,3 +214,41 @@ func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
 }
 // CHECK-LABEL: @get_dynamic_dim_size
 // CHECK: xla.get_dynamic_dim_size
+
+// -----
+
+func.func @copy_slice(%src: tensor<4x3xf32>, %dst: tensor<4x5xf32>,
+                      %i: index, %j: index) -> tensor<4x5xf32> {
+  %out = xla.copy_slice %src[%i, %j] into %dst[%i, %j] count(3)
+      : tensor<4x3xf32> into tensor<4x5xf32>
+  func.return %out : tensor<4x5xf32>
+}
+// CHECK-LABEL: @copy_slice
+// CHECK: xla.copy_slice %{{.*}}[%{{.*}}, %{{.*}}] into %{{.*}}[%{{.*}}, %{{.*}}] count(3) : tensor<4x3xf32> into tensor<4x5xf32>
+
+// -----
+
+func.func @linear_extract(%src: tensor<4x3xf32>, %idx: index) -> f32 {
+  %out = xla.linear_extract %src[%idx] : tensor<4x3xf32>
+  func.return %out : f32
+}
+// CHECK-LABEL: @linear_extract
+// CHECK: xla.linear_extract %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @linear_insert(%val: f32, %dst: tensor<4x3xf32>, %idx: index) -> tensor<4x3xf32> {
+  %out = xla.linear_insert %val into %dst[%idx] : tensor<4x3xf32>
+  func.return %out : tensor<4x3xf32>
+}
+// CHECK-LABEL: @linear_insert
+// CHECK: xla.linear_insert %{{.*}} into %{{.*}}[%{{.*}}] : tensor<4x3xf32>
+
+// -----
+
+func.func @set_dynamic_dim_size(%in: tensor<16x8x4xf32>, %size: i32) -> tensor<16x8x4xf32> {
+  %out = xla.set_dynamic_dim_size %size into %in[1] : tensor<16x8x4xf32>
+  func.return %out : tensor<16x8x4xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: xla.set_dynamic_dim_size %{{.*}} into %{{.*}}[1] : tensor<16x8x4xf32>

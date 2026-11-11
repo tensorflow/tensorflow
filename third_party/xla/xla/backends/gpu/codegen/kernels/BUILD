@@ -52,9 +52,11 @@ cc_library(
     ],
     deps = [
         ":custom_kernel_proto_cc",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -89,6 +91,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/stream_executor:kernel_args_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",

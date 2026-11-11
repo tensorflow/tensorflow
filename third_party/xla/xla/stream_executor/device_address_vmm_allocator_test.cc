@@ -124,11 +124,12 @@ class TestDeviceAddressVmmAllocator final : public DeviceAddressVmmAllocator {
       const Platform* platform, absl::Span<const DeviceConfig> devices,
       uint64_t physical_size_padding = 0,
       std::function<void(int)> on_device_destroy = nullptr,
-      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr) {
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
+      std::vector<FreeVisitor> free_visitors = {}) {
     auto allocator = std::unique_ptr<TestDeviceAddressVmmAllocator>(
-        new TestDeviceAddressVmmAllocator(platform, physical_size_padding,
-                                          on_device_destroy,
-                                          std::move(host_allocator)));
+        new TestDeviceAddressVmmAllocator(
+            platform, physical_size_padding, on_device_destroy,
+            std::move(host_allocator), std::move(free_visitors)));
     absl::Status status = PopulateDevices(allocator.get(), devices);
     if (!status.ok()) {
       return status;
@@ -190,10 +191,12 @@ class TestDeviceAddressVmmAllocator final : public DeviceAddressVmmAllocator {
   TestDeviceAddressVmmAllocator(
       const Platform* platform, uint64_t physical_size_padding,
       std::function<void(int)> on_device_destroy,
-      std::unique_ptr<DeviceAddressAllocator> host_allocator)
+      std::unique_ptr<DeviceAddressAllocator> host_allocator,
+      std::vector<FreeVisitor> free_visitors)
       : DeviceAddressVmmAllocator(platform,
                                   /*reclaim_exempt_memory_space=*/std::nullopt,
-                                  std::move(host_allocator)),
+                                  std::move(host_allocator),
+                                  std::move(free_visitors)),
         physical_size_padding_(physical_size_padding),
         on_device_destroy_(on_device_destroy) {}
 
@@ -876,6 +879,17 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   }
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest,
+       HostMemorySpaceWithoutHostAllocatorFails) {
+  ASSERT_OK_AND_ASSIGN(auto allocator, TestDeviceAddressVmmAllocator::Create(
+                                           &platform_, {Config(UINT64_MAX)}));
+  EXPECT_THAT(allocator->Allocate(/*device_ordinal=*/0, kGranularity,
+                                  /*retry_on_failure=*/true,
+                                  static_cast<int64_t>(MemorySpace::kHost)),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(allocator->allocation_count(), 0);
+}
+
 TEST_F(DeviceAddressVmmAllocatorHostTest,
        HostAllocatorIsCalledWithoutDeviceLock) {
   std::vector<bool> lock_free_in_host_calls;
@@ -960,6 +974,76 @@ TEST_F(DeviceAddressVmmAllocatorHostTest, DuplicateHostAddressIsNotFreed) {
 
   first = ScopedDeviceAddress<uint8_t>();
   EXPECT_EQ(host_->deallocation_count(), 1);
+}
+
+TEST_F(DeviceAddressVmmAllocatorTest,
+       FreeVisitorsRunOnlyWhenMappingsAreUnmapped) {
+  struct FreeEvent {
+    int visitor_id;
+    void* ptr;
+    int device_ordinal;
+    size_t num_bytes;
+    int active_mapping_count;
+
+    bool operator==(const FreeEvent& other) const {
+      return visitor_id == other.visitor_id && ptr == other.ptr &&
+             device_ordinal == other.device_ordinal &&
+             num_bytes == other.num_bytes &&
+             active_mapping_count == other.active_mapping_count;
+    }
+  };
+
+  std::vector<FreeEvent> events;
+  TestMemoryReservation reservation(2 * kGranularity);
+  auto make_visitor = [&](int visitor_id) {
+    return [&, visitor_id](void* ptr, int device_ordinal, size_t num_bytes) {
+      events.push_back({visitor_id, ptr, device_ordinal, num_bytes,
+                        reservation.active_mapping_count()});
+    };
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      TestDeviceAddressVmmAllocator::Create(
+          &platform_, {Config(UINT64_MAX)}, /*physical_size_padding=*/0,
+          /*on_device_destroy=*/nullptr, /*host_allocator=*/nullptr,
+          {make_visitor(1), make_visitor(2)}));
+
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       allocator->Allocate(/*device_ordinal=*/0, kGranularity));
+  void* alloc_ptr = alloc->opaque();
+  ASSERT_THAT(allocator->Map(/*device_ordinal=*/0, alloc.cref(), &reservation,
+                             /*reservation_offset=*/0, /*size=*/kGranularity),
+              absl_testing::IsOk());
+
+  // Deferred UnMap() + reuse via Map() should not invoke free visitors.
+  ASSERT_THAT(allocator->UnMap(/*device_ordinal=*/0, &reservation,
+                               /*reservation_offset=*/0, /*size=*/kGranularity),
+              absl_testing::IsOk());
+  EXPECT_TRUE(events.empty());
+  ASSERT_THAT(allocator->Map(/*device_ordinal=*/0, alloc.cref(), &reservation,
+                             /*reservation_offset=*/0, /*size=*/kGranularity),
+              absl_testing::IsOk());
+  EXPECT_TRUE(events.empty());
+
+  // UnMap() + Deallocate() still defer actual teardown until synchronized.
+  ASSERT_THAT(allocator->UnMap(/*device_ordinal=*/0, &reservation,
+                               /*reservation_offset=*/0, /*size=*/kGranularity),
+              absl_testing::IsOk());
+  ASSERT_THAT(allocator->Deallocate(/*device_ordinal=*/0, alloc.Release()),
+              absl_testing::IsOk());
+  EXPECT_TRUE(events.empty());
+
+  // Synchronizing pending operations completes both the reservation alias unmap
+  // and the allocator address deallocation, invoking visitors in reverse order.
+  ASSERT_THAT(allocator->SynchronizePendingOperations(/*device_ordinal=*/0),
+              absl_testing::IsOk());
+  void* reservation_ptr = reservation.address().opaque();
+  EXPECT_THAT(events,
+              ElementsAre(FreeEvent{2, reservation_ptr, 0, kGranularity, 1},
+                          FreeEvent{1, reservation_ptr, 0, kGranularity, 1},
+                          FreeEvent{2, alloc_ptr, 0, kGranularity, 0},
+                          FreeEvent{1, alloc_ptr, 0, kGranularity, 0}));
 }
 
 }  // namespace

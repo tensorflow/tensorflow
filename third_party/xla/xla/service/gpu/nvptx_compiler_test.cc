@@ -17,25 +17,36 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -105,6 +116,231 @@ class NVPTXCompilerTestTriton : public NVPTXCompilerTest {
     return debug_options;
   }
 };
+
+constexpr absl::string_view kScaledDotHlo = R"hlo(
+  ENTRY e {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[256,128] parameter(1)
+    lhs_scale = f8e8m0fnu[8,128] parameter(2)
+    rhs_scale = f8e8m0fnu[8,128] parameter(3)
+    ROOT dot = bf16[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  })hlo";
+
+class NVPTXCompilerScaledDotTest : public NVPTXCompilerTest {
+ public:
+  void SetUp() override {
+    NVPTXCompilerTest::SetUp();
+    if (!CudnnScaledDotHelper::IsAvailable(device_description())) {
+      GTEST_SKIP() << "cuDNN scaled dot requires Blackwell and cuDNN 9.10+.";
+    }
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = NVPTXCompilerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(false);
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
+  absl::StatusOr<std::unique_ptr<HloModule>> CompileScaledDot(
+      bool disable_binary_libraries) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_disable_binary_libraries(
+            disable_binary_libraries);
+    return GetOptimizedModule(kScaledDotHlo, config);
+  }
+
+  // `triangular-solve` constrains its RHS (`dot`) to M-minor `{0,1}` layout.
+  absl::StatusOr<std::unique_ptr<HloModule>> CompileMMinorScaledDot(
+      absl::string_view scale_shape) {
+    std::string hlo = absl::Substitute(R"hlo(
+      ENTRY e {
+        a = f32[128,128] parameter(0)
+        lhs = f4e2m1fn[128,256] parameter(1)
+        rhs = f4e2m1fn[128,256] parameter(2)
+        lhs_scale = $0 parameter(3)
+        rhs_scale = $0 parameter(4)
+        dot = f32[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+            lhs_contracting_dims={1}, rhs_contracting_dims={1}
+        ROOT trsm = f32[128,128] triangular-solve(a, dot),
+            lower=true, unit_diagonal=true, transpose_a=NO_TRANSPOSE
+      })hlo",
+                                       scale_shape);
+    return GetOptimizedModule(hlo, GetModuleConfigForTest());
+  }
+};
+
+// ContainsInstrWithOpcode recurses into called computations.
+bool HasScaledDot(const HloModule& module) {
+  return hlo_query::ContainsInstrWithOpcode(module.entry_computation(),
+                                            {HloOpcode::kScaledDot});
+}
+
+bool HasDot(const HloModule& module) {
+  return hlo_query::ContainsInstrWithOpcode(module.entry_computation(),
+                                            {HloOpcode::kDot});
+}
+
+bool HasCublasLtMatmul(const HloModule& module) {
+  return absl::c_any_of(module.computations(), [](const HloComputation* comp) {
+    return absl::c_any_of(comp->instructions(), [](const HloInstruction* hlo) {
+      return IsCublasLtMatmul(*hlo);
+    });
+  });
+}
+
+bool HasCudnnFusion(const HloModule& module) {
+  return absl::c_any_of(
+      module.entry_computation()->instructions(),
+      [](const HloInstruction* instr) { return IsCudnnFusion(*instr); });
+}
+
+TEST_F(NVPTXCompilerScaledDotTest, ScaledDotIsLoweredToCudnnFusion) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       CompileScaledDot(/*disable_binary_libraries=*/false));
+  EXPECT_TRUE(HasCudnnFusion(*module));
+  EXPECT_TRUE(HasScaledDot(*module));
+  EXPECT_FALSE(absl::c_any_of(module->entry_computation()->instructions(),
+                              HloPredicateIsOp<HloOpcode::kScaledDot>));
+}
+
+TEST_F(NVPTXCompilerScaledDotTest,
+       ScaledDotIsDecomposedWithoutBinaryLibraries) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       CompileScaledDot(/*disable_binary_libraries=*/true));
+  EXPECT_FALSE(HasCudnnFusion(*module));
+  EXPECT_FALSE(HasScaledDot(*module));
+  EXPECT_TRUE(HasDot(*module));
+}
+
+TEST_F(NVPTXCompilerScaledDotTest, MMinorMxfp4FallsBackToCublasLt) {
+  // NVFP4 accepts M-minor output, confirming `dot` survives pre-layout and gets
+  // `{0,1}` layout; CUDNN_FISSION rejects M-minor MXFP4, so CUBLASLT_FISSION
+  // lowers it to a GEMM.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> nvfp4_module,
+                       CompileMMinorScaledDot("f8e4m3fn[128,16]"));
+  EXPECT_TRUE(HasCudnnFusion(*nvfp4_module));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> mxfp4_module,
+                       CompileMMinorScaledDot("f8e8m0fnu[128,8]"));
+  EXPECT_FALSE(HasCudnnFusion(*mxfp4_module));
+  EXPECT_FALSE(HasScaledDot(*mxfp4_module));
+  EXPECT_TRUE(HasCublasLtMatmul(*mxfp4_module));
+}
+
+TEST_F(NVPTXCompilerScaledDotTest,
+       ScaledDotIsDecomposedWhenCudnnFissionExcludedFromAutotuneBackends) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto* backends = config.mutable_debug_options()
+                       .mutable_xla_gpu_experimental_autotune_backends();
+  backends->Clear();
+  backends->Add(autotuner::Backend::CUBLASLT);
+  backends->Add(autotuner::Backend::CUBLASLT_FISSION);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kScaledDotHlo, config));
+  EXPECT_FALSE(HasCudnnFusion(*module));
+  EXPECT_FALSE(HasScaledDot(*module));
+  EXPECT_TRUE(HasCublasLtMatmul(*module));
+}
+
+// Plain CUDNN only tunes kDot fusions (not kScaledDot), so when TRITON is
+// excluded by autotune_backends or disabled by deterministic mode, the scaled
+// dot must decompose pre-layout.
+TEST_F(NVPTXCompilerScaledDotTest,
+       ScaledDotIsDecomposedWhenTritonDisabledByAutotuneFlags) {
+  auto make_config = [&]() {
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions& opts = config.mutable_debug_options();
+    opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
+    opts.set_xla_gpu_cudnn_gemm_fusion_level(2);
+    opts.clear_xla_gpu_experimental_autotune_backends();
+    opts.add_xla_gpu_experimental_autotune_backends(autotuner::Backend::CUDNN);
+    return config;
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> excluded_module,
+                       GetOptimizedModule(kScaledDotHlo, make_config()));
+  EXPECT_FALSE(HasScaledDot(*excluded_module));
+  EXPECT_TRUE(HasCudnnFusion(*excluded_module));
+
+  HloModuleConfig deterministic = make_config();
+  deterministic.mutable_debug_options()
+      .add_xla_gpu_experimental_autotune_backends(autotuner::Backend::TRITON);
+  deterministic.mutable_debug_options().set_xla_gpu_deterministic_ops(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> deterministic_module,
+                       GetOptimizedModule(kScaledDotHlo, deterministic));
+  EXPECT_FALSE(HasScaledDot(*deterministic_module));
+  EXPECT_TRUE(HasCudnnFusion(*deterministic_module));
+}
+
+// Without GemmFusion, neither Triton nor CUDNN_FISSION can see the scaled dot.
+TEST_F(NVPTXCompilerScaledDotTest, ScaledDotIsDecomposedWithoutTritonGemm) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kScaledDotHlo, config));
+  EXPECT_FALSE(HasCudnnFusion(*module));
+  EXPECT_FALSE(HasScaledDot(*module));
+  EXPECT_TRUE(HasCublasLtMatmul(*module));
+}
+
+// Deviceless cuDNN compilation is off unless explicitly set to AUTO or ALWAYS,
+// so the scaled dot must decompose before reaching CUDNN_FISSION.
+TEST_F(NVPTXCompilerScaledDotTest,
+       ScaledDotIsDecomposedInDevicelessCompilation) {
+  for (auto mode : {DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET,
+                    DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED}) {
+    SCOPED_TRACE(DebugOptions::CudnnDevicelessCompilationMode_Name(mode));
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.mutable_debug_options()
+        .set_xla_gpu_cudnn_deviceless_compilation_mode(mode);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> parsed,
+                         ParseAndReturnVerifiedModule(kScaledDotHlo, config));
+    Compiler::CompileOptions options;
+    options.gpu_topology = GetSingleDeviceGpuTopology("", gpu_target_config());
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        compiler()->RunHloPasses(std::move(parsed),
+                                 /*executor=*/nullptr, options));
+    EXPECT_FALSE(HasCudnnFusion(*module));
+    EXPECT_FALSE(HasScaledDot(*module));
+    EXPECT_TRUE(HasDot(*module));
+  }
+}
+
+TEST_F(NVPTXCompilerScaledDotTest,
+       Block16Fp4ScaledDotUsesCudnnWhenTritonEnabled) {
+  constexpr absl::string_view kNvfp4Hlo = R"hlo(
+    ENTRY e {
+      lhs = f4e2m1fn[128,256] parameter(0)
+      rhs = f4e2m1fn[128,256] parameter(1)
+      lhs_scale = f8e4m3fn[128,16] parameter(2)
+      rhs_scale = f8e4m3fn[128,16] parameter(3)
+      ROOT dot = bf16[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    })hlo";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_scaled_dot_with_triton(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kNvfp4Hlo, config));
+  EXPECT_TRUE(HasCudnnFusion(*module));
+}
+
+TEST_F(NVPTXCompilerScaledDotTest, ScaledDotAutotunesBetweenTritonAndCudnn) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
+  opts.set_xla_gpu_autotune_level(4);
+  opts.set_xla_gpu_crash_on_verification_failures(true);
+  opts.set_xla_gpu_cublas_fallback(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kScaledDotHlo, config));
+  EXPECT_TRUE(HasScaledDot(*module));
+  EXPECT_FALSE(HasCublasLtMatmul(*module));
+}
 
 TEST_F(NVPTXCompilerTest, AllReducePerformedInplace) {
   const absl::string_view hlo_string = R"(
@@ -248,7 +484,7 @@ ENTRY main {
   GpuTopology gpu_topology =
       GpuTopology(/*platform_version=*/"", 1, 1, 1, gpu_target_config());
   EXPECT_OK(compiler.RunPostSchedulingPipelines(
-      module.get(), 100000, gpu_topology, alias_info.get(), &mlir_context_));
+      module.get(), 100000, gpu_topology, alias_info.get()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

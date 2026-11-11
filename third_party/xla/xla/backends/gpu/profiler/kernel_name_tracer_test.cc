@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -193,11 +194,16 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
                        stream_executor::gpu::GetGpuTestKernelsFatbin(
                            executor->GetPlatform()->Name()));
+  CommandBufferRequests command_buffer_requests;
   ASSERT_THAT(
-      thunk.Initialize({executor,
+      thunk.Initialize({/*executor=*/executor,
+                        /*src=*/
                         Thunk::ExecutableSource{/*text=*/"", fatbin,
                                                 /*dnn_compiled_graphs=*/{}},
-                        &allocations, stream}),
+                        /*buffer_allocations=*/&allocations,
+                        /*stream=*/stream,
+                        /*command_buffer_trace_stream=*/nullptr,
+                        /*command_buffer_requests=*/&command_buffer_requests}),
       IsOk());
 
   // Execute command buffer thunk and verify that it added the value.

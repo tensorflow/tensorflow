@@ -476,26 +476,6 @@ MlirStringRef mlirMhloComparisonTypeAttrGetValue(MlirAttribute attr) {
 }
 
 //
-// DomainKindAttr.
-//
-
-MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef value) {
-  std::optional<mlir::mhlo::DomainKind> domainKind =
-      mlir::mhlo::symbolizeDomainKind(unwrap(value));
-  if (!domainKind) llvm_unreachable("Invalid value.");
-  return wrap(mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.value()));
-}
-
-bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr) {
-  return mlir::isa<mlir::mhlo::DomainKindAttr>(unwrap(attr));
-}
-
-MlirStringRef mlirMhloDomainKindAttrGetValue(MlirAttribute attr) {
-  return wrap(mlir::mhlo::stringifyDomainKind(
-      mlir::cast<mlir::mhlo::DomainKindAttr>(unwrap(attr)).getValue()));
-}
-
-//
 // PrecisionAttr.
 //
 

@@ -141,13 +141,13 @@ class TimestampTest : public OpsTestBase {
 TEST_F(TimestampTest, WaitAtLeast) {
   TF_ASSERT_OK(Init());
   TF_ASSERT_OK(RunOpKernel());
-  double ts1 = *((*GetOutput(0)).flat<double>().data());
+  double ts1 = (*GetOutput(0)).flat<double>()(0);
 
   // wait 1 second
   std::this_thread::sleep_for(std::chrono::seconds(1));
 
   TF_ASSERT_OK(RunOpKernel());
-  double ts2 = *((*GetOutput(0)).flat<double>().data());
+  double ts2 = (*GetOutput(0)).flat<double>()(0);
 
   EXPECT_LE(1.0, ts2 - ts1);
 }

@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -310,6 +311,37 @@ TEST_F(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
       const CommandBuffer::Command* cmd,
       cmd_buffer->CreateLaunch(ThreadDim(128, 1, 1), BlockDim(2, 1, 1),
                                cluster_dims, *kernel,
+                               *stream_executor::PackKernelArgs(
+                                   /*shmem_bytes=*/0, dummy),
+                               {}));
+  ASSERT_NE(cmd, nullptr);
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+TEST_F(CudaCommandBufferTest, LaunchWithNonPortableClusterSizeSucceeds) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires at least a Hopper GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  KernelLoaderSpec spec = stream_executor::gpu::GetMinimalClusterKernelSpec();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(spec));
+  DeviceAddress<uint8_t> dummy = executor->AllocateArray<uint8_t>(256);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  // Clusters larger than 8 blocks need the non-portable cluster attribute.
+  ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* cmd,
+      cmd_buffer->CreateLaunch(ThreadDim(128, 1, 1), BlockDim(16, 1, 1),
+                               ClusterDim{16, 1, 1}, *kernel,
                                *stream_executor::PackKernelArgs(
                                    /*shmem_bytes=*/0, dummy),
                                {}));

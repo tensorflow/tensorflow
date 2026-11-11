@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,17 +29,27 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/partial_program_utils.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/string_utils.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -214,6 +226,399 @@ PjRtCApiPhaseCompiler::RunPhases(
                                            run_args.num_output_programs)));
 
   return output_programs;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
+PjRtCApiPhaseCompiler::CompileToRelocatable(
+    CompileOptions options, MaybeOwningMlirModule module,
+    const PjRtTopologyDescription& topology, absl::string_view name,
+    bool is_entrypoint, PjRtClient* client) {
+  if (!module.mlir_module()) {
+    return absl::InvalidArgumentError(
+        "PjRtCApiPhaseCompiler::CompileToRelocatable: MLIR module is null");
+  }
+
+  PJRT_TopologyDescription* topology_description =
+      absl::down_cast<const PjRtCApiTopologyDescription*>(&topology)
+          ->c_topology();
+
+  ABSL_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto, options.ToProto());
+  std::string options_str = options_proto.SerializeAsString();
+
+  std::string target_version = GetPluginStablehloVersionOrDefault(api_, client);
+  std::string sdy_version = GetPluginSdyVersionOrDefault(api_, client);
+  ABSL_ASSIGN_OR_RETURN(
+      std::string code,
+      xla::Serialize(module.mlir_module(), target_version, sdy_version,
+                     /*inplace=*/options.allow_in_place_mlir_modification));
+  std::string format(pjrt::kMlirFormat);
+
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.extension_start = nullptr;
+  program.code = code.data();
+  program.code_size = code.size();
+  program.format = format.c_str();
+  program.format_size = format.size();
+
+  PJRT_PhaseCompile_CompileToRelocatable_Args args;
+  args.struct_size = PJRT_PhaseCompile_CompileToRelocatable_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.phase_compiler = GetPhaseCompiler();
+  args.topology = topology_description;
+  args.program = &program;
+  args.compile_options = options_str.c_str();
+  args.compile_options_size = options_str.size();
+  args.name = name.data();
+  args.name_size = name.size();
+  args.is_entrypoint = is_entrypoint;
+  if (client == nullptr) {
+    args.client = nullptr;
+  } else {
+    args.client = absl::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
+  }
+  args.relocatable = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->phase_compile_compile_to_relocatable(&args),
+      api_);
+  return std::make_unique<PjRtCApiRelocatable>(api_, phase_compile_extension_,
+                                               args.relocatable);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtRelocatable>>
+PjRtCApiPhaseCompiler::DeserializeRelocatable(
+    absl::string_view serialized) const {
+  PJRT_PhaseCompile_DeserializeRelocatable_Args args;
+  args.struct_size = PJRT_PhaseCompile_DeserializeRelocatable_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.phase_compiler = GetPhaseCompiler();
+  args.serialized_relocatable = serialized.data();
+  args.serialized_relocatable_size = serialized.size();
+  args.relocatable = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->phase_compile_deserialize_relocatable(&args),
+      api_);
+  return std::make_unique<PjRtCApiRelocatable>(api_, phase_compile_extension_,
+                                               args.relocatable);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtCApiPhaseCompiler::LinkRelocatables(
+    CompileOptions options, const PjRtTopologyDescription& topology,
+    std::shared_ptr<const PjRtRelocatable> entrypoint,
+    std::vector<std::shared_ptr<const PjRtRelocatable>> dependencies) {
+  PJRT_TopologyDescription* topology_description =
+      absl::down_cast<const PjRtCApiTopologyDescription*>(&topology)
+          ->c_topology();
+
+  ABSL_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto, options.ToProto());
+  std::string options_str = options_proto.SerializeAsString();
+
+  const PJRT_Relocatable* c_entrypoint = nullptr;
+  if (entrypoint != nullptr) {
+    c_entrypoint = absl::down_cast<const PjRtCApiRelocatable*>(entrypoint.get())
+                       ->c_relocatable();
+  }
+
+  std::vector<const PJRT_Relocatable*> c_dependencies;
+  c_dependencies.reserve(dependencies.size());
+  for (const auto& dep : dependencies) {
+    if (dep != nullptr) {
+      c_dependencies.push_back(
+          absl::down_cast<const PjRtCApiRelocatable*>(dep.get())
+              ->c_relocatable());
+    } else {
+      c_dependencies.push_back(nullptr);
+    }
+  }
+
+  PJRT_PhaseCompile_LinkRelocatables_Args args;
+  args.struct_size = PJRT_PhaseCompile_LinkRelocatables_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.phase_compiler = GetPhaseCompiler();
+  args.topology = topology_description;
+  args.compile_options = options_str.c_str();
+  args.compile_options_size = options_str.size();
+  args.entrypoint = c_entrypoint;
+  args.dependencies = c_dependencies.data();
+  args.num_dependencies = c_dependencies.size();
+  args.executable = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->phase_compile_link_relocatables(&args), api_);
+  return std::make_unique<PjRtCApiExecutable>(api_, args.executable);
+}
+
+// ------------------------------- Relocatables --------------------------------
+
+PjRtCApiRelocatable::PjRtCApiRelocatable(
+    const PJRT_Api* c_api,
+    const PJRT_PhaseCompile_Extension* phase_compile_extension,
+    PJRT_Relocatable* relocatable)
+    : c_api_(c_api),
+      phase_compile_extension_(phase_compile_extension),
+      relocatable_(relocatable, [c_api, phase_compile_extension](
+                                    PJRT_Relocatable* reloc) {
+        PJRT_Relocatable_Destroy_Args destroy_args;
+        destroy_args.struct_size = PJRT_Relocatable_Destroy_Args_STRUCT_SIZE;
+        destroy_args.extension_start = nullptr;
+        destroy_args.relocatable = reloc;
+        pjrt::LogFatalIfPjrtError(
+            phase_compile_extension->relocatable_destroy(&destroy_args), c_api);
+      }) {}
+
+absl::string_view PjRtCApiRelocatable::name() const {
+  PJRT_Relocatable_Name_Args args;
+  args.struct_size = PJRT_Relocatable_Name_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  pjrt::LogFatalIfPjrtError(phase_compile_extension_->relocatable_name(&args),
+                            c_api_);
+  return absl::string_view(args.relocatable_name, args.relocatable_name_size);
+}
+
+absl::string_view PjRtCApiRelocatable::build_id() const {
+  PJRT_Relocatable_BuildId_Args args;
+  args.struct_size = PJRT_Relocatable_BuildId_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  pjrt::LogFatalIfPjrtError(
+      phase_compile_extension_->relocatable_build_id(&args), c_api_);
+  return absl::string_view(args.build_id, args.build_id_size);
+}
+
+absl::string_view PjRtCApiRelocatable::call_backend_config() const {
+  PJRT_Relocatable_CallBackendConfig_Args args;
+  args.struct_size = PJRT_Relocatable_CallBackendConfig_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  pjrt::LogFatalIfPjrtError(
+      phase_compile_extension_->relocatable_call_backend_config(&args), c_api_);
+  return absl::string_view(args.call_backend_config,
+                           args.call_backend_config_size);
+}
+
+bool PjRtCApiRelocatable::has_side_effects() const {
+  PJRT_Relocatable_HasSideEffects_Args args;
+  args.struct_size = PJRT_Relocatable_HasSideEffects_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  pjrt::LogFatalIfPjrtError(
+      phase_compile_extension_->relocatable_has_side_effects(&args), c_api_);
+  return args.has_side_effects;
+}
+
+absl::StatusOr<std::string> PjRtCApiRelocatable::Serialize() const {
+  PJRT_Relocatable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Relocatable_Serialize_Args_STRUCT_SIZE;
+  ser_args.extension_start = nullptr;
+  ser_args.relocatable = c_relocatable();
+  ser_args.serialized_relocatable = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_serialize(&ser_args), c_api_);
+  absl::Cleanup cleanup = [&ser_args] {
+    ser_args.serialized_relocatable_deleter(ser_args.serialized_relocatable);
+  };
+  return std::string(ser_args.serialized_bytes, ser_args.serialized_bytes_size);
+}
+
+absl::StatusOr<std::vector<PrimitiveType>>
+PjRtCApiRelocatable::GetParameterElementTypes() const {
+  PJRT_Relocatable_ParameterElementTypes_Args args;
+  args.struct_size = PJRT_Relocatable_ParameterElementTypes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_parameter_element_types(&args),
+      c_api_);
+
+  std::vector<PrimitiveType> out;
+  out.reserve(args.num_parameter_types);
+  for (size_t i = 0; i < args.num_parameter_types; ++i) {
+    out.push_back(pjrt::ConvertFromPjRtBufferType(args.parameter_types[i]));
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<PrimitiveType>>
+PjRtCApiRelocatable::GetOutputElementTypes() const {
+  PJRT_Relocatable_OutputElementTypes_Args args;
+  args.struct_size = PJRT_Relocatable_OutputElementTypes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_output_element_types(&args),
+      c_api_);
+
+  std::vector<PrimitiveType> out;
+  out.reserve(args.num_output_types);
+  for (size_t i = 0; i < args.num_output_types; ++i) {
+    out.push_back(pjrt::ConvertFromPjRtBufferType(args.output_types[i]));
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<DimensionVector>>
+PjRtCApiRelocatable::GetParameterDimensions() const {
+  PJRT_Relocatable_ParameterDimensions_Args args;
+  args.struct_size = PJRT_Relocatable_ParameterDimensions_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_parameter_dimensions(&args),
+      c_api_);
+
+  std::vector<DimensionVector> out;
+  out.reserve(args.num_parameters);
+  size_t index = 0;
+  for (size_t i = 0; i < args.num_parameters; ++i) {
+    DimensionVector dimensions;
+    dimensions.reserve(args.dim_sizes[i]);
+    for (size_t j = 0; j < args.dim_sizes[i]; ++j) {
+      dimensions.push_back(args.dims[index++]);
+    }
+    out.push_back(std::move(dimensions));
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<DimensionVector>>
+PjRtCApiRelocatable::GetOutputDimensions() const {
+  PJRT_Relocatable_OutputDimensions_Args args;
+  args.struct_size = PJRT_Relocatable_OutputDimensions_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_output_dimensions(&args), c_api_);
+
+  std::vector<DimensionVector> out;
+  out.reserve(args.num_outputs);
+  size_t index = 0;
+  for (size_t i = 0; i < args.num_outputs; ++i) {
+    DimensionVector dimensions;
+    dimensions.reserve(args.dim_sizes[i]);
+    for (size_t j = 0; j < args.dim_sizes[i]; ++j) {
+      dimensions.push_back(args.dims[index++]);
+    }
+    out.push_back(std::move(dimensions));
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+PjRtCApiRelocatable::GetParameterLayouts() const {
+  PJRT_Layouts_Extension* layouts_extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api_, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (layouts_extension == nullptr ||
+      layouts_extension->PJRT_Layouts_MemoryLayout_Serialize == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_Layouts_Extension is required to serialize relocatable "
+        "parameter layouts.");
+  }
+
+  PJRT_Relocatable_ParameterLayouts_Args args;
+  args.struct_size = PJRT_Relocatable_ParameterLayouts_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_parameter_layouts(&args), c_api_);
+
+  std::vector<std::shared_ptr<const PjRtLayout>> layouts;
+  layouts.reserve(args.num_parameters);
+  for (size_t i = 0; i < args.num_parameters; ++i) {
+    PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+    serialize_args.struct_size =
+        PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+    serialize_args.extension_start = nullptr;
+    serialize_args.layout = args.layouts[i];
+    pjrt::LogFatalIfPjrtError(
+        layouts_extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args),
+        c_api_);
+
+    absl::Cleanup cleanup = [&serialize_args] {
+      serialize_args.serialized_layout_deleter(
+          serialize_args.serialized_layout);
+    };
+
+    std::string serialized_layout(serialize_args.serialized_bytes,
+                                  serialize_args.serialized_bytes_size);
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                     PjRtLayout::Deserialize(serialized_layout));
+    layouts.push_back(std::move(pjrt_layout));
+  }
+  return layouts;
+}
+
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+PjRtCApiRelocatable::GetOutputLayouts() const {
+  PJRT_Layouts_Extension* layouts_extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api_, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (layouts_extension == nullptr ||
+      layouts_extension->PJRT_Layouts_MemoryLayout_Serialize == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_Layouts_Extension is required to serialize relocatable "
+        "output layouts.");
+  }
+
+  PJRT_Relocatable_OutputLayouts_Args args;
+  args.struct_size = PJRT_Relocatable_OutputLayouts_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_output_layouts(&args), c_api_);
+
+  std::vector<std::shared_ptr<const PjRtLayout>> layouts;
+  layouts.reserve(args.num_outputs);
+  for (size_t i = 0; i < args.num_outputs; ++i) {
+    PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+    serialize_args.struct_size =
+        PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+    serialize_args.extension_start = nullptr;
+    serialize_args.layout = args.layouts[i];
+    pjrt::LogFatalIfPjrtError(
+        layouts_extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args),
+        c_api_);
+
+    absl::Cleanup cleanup = [&serialize_args] {
+      serialize_args.serialized_layout_deleter(
+          serialize_args.serialized_layout);
+    };
+
+    std::string serialized_layout(serialize_args.serialized_bytes,
+                                  serialize_args.serialized_bytes_size);
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                     PjRtLayout::Deserialize(serialized_layout));
+    layouts.push_back(std::move(pjrt_layout));
+  }
+  return layouts;
+}
+
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>>
+PjRtCApiRelocatable::GetParameterOutputAliases() const {
+  PJRT_Relocatable_ParameterOutputAliases_Args args;
+  args.struct_size = PJRT_Relocatable_ParameterOutputAliases_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.relocatable = c_relocatable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      phase_compile_extension_->relocatable_parameter_output_aliases(&args),
+      c_api_);
+
+  std::vector<std::pair<int64_t, int64_t>> out;
+  out.reserve(args.num_aliases);
+  for (size_t i = 0; i < args.num_aliases; ++i) {
+    out.emplace_back(args.parameter_indices[i], args.output_indices[i]);
+  }
+  return out;
 }
 
 }  // namespace xla

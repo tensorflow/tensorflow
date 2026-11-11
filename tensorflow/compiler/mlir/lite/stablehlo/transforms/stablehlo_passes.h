@@ -62,6 +62,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeChloToTflPass();
 // Rewrites MHLO in preparation for tflite legalization.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
 
+// Folds and simplifies StableHLO before prepare-hlo.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSimplifyHloPass();
+
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
@@ -72,6 +75,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateDropShapeAssertionsPass();
 // Legalizes vhlo custom calls for quantization ops to stablehlo.custom_call.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLegalizeVhloQuantCustomCallsPass();
+
+// Legalizes stablehlo.einsum ops to stablehlo.dot_general (+ transpose).
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLegalizeStablehloEinsumToDotGeneralPass();
 
 #define GEN_PASS_DECL
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"

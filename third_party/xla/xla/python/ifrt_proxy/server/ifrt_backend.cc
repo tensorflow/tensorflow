@@ -642,6 +642,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
           HandleDestructArrayRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCompileRequest:
       return tsl::Future<Response>(HandleCompileRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kDeserializeLoadedExecutableRequest:
+      return HandleDeserializeLoadedExecutableRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableMetadataRequest:
       return HandleLoadedExecutableMetadataRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableMpmdMetadataRequest:
@@ -715,6 +717,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kCancelExecutionRequest:
       return tsl::Future<Response>(
           HandleCancelExecutionRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kHashValuesRequest:
+      return HandleHashValuesRequest(std::move(request));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
@@ -1443,6 +1447,90 @@ IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
   return ifrt_resp;
 }
 
+void IfrtBackend::PopulateCompileResponse(
+    xla::ifrt::LoadedExecutableRef executable,
+    std::vector<std::shared_ptr<RemoteLoadedHostCallbackQueue>>
+        host_callback_queues,
+    CompileResponse* compile_resp) {
+  uint64_t handle = handle_generator_.GenerateAtServer();
+  compile_resp->set_loaded_executable_handle(handle);
+
+  std::vector<uint64_t> host_callback_handles(host_callback_queues.size());
+  handle_generator_.GenerateAtServerBulk(absl::MakeSpan(host_callback_handles));
+  compile_resp->mutable_loaded_host_callback_handles()->Add(
+      host_callback_handles.begin(), host_callback_handles.end());
+
+  // Populate executable metadata.
+  compile_resp->set_name(AsProtoStringData(executable->name()));
+  if (std::optional<xla::ifrt::DeviceListRef> device_list =
+          executable->devices();
+      device_list.has_value()) {
+    compile_resp->set_num_devices((*device_list)->size());
+    for (const auto* device :
+         (*device_list)->AddressableDeviceList()->devices()) {
+      compile_resp->add_addressable_device_ids(device->Id().value());
+    }
+    for (const auto* device : (*device_list)->devices()) {
+      compile_resp->add_device_ids(device->Id().value());
+    }
+  }
+  // TODO(b/282757875): Consider making fingerprint calculation asynchronous
+  // if it is expected to take long.
+  auto fingerprint = executable->Fingerprint();
+  if (!fingerprint.ok()) {
+    *compile_resp->mutable_fingerprint_error() =
+        tsl::StatusToProto(fingerprint.status());
+  } else if (fingerprint->has_value()) {
+    compile_resp->set_fingerprint_value(std::move(fingerprint)->value());
+  }
+  if (protocol_version() >= protocol_version::kMpmdLoadedExecutableMethods) {
+    auto* mpmd_executable = dyn_cast<MpmdLoadedExecutable>(executable.get());
+    // Only populate MPMD addressable devices for MPMD executables.
+    if (mpmd_executable != nullptr) {
+      auto mpmd_addressable_devices =
+          mpmd_executable->GetMpmdAddressableDevices();
+      if (mpmd_addressable_devices.ok()) {
+        for (const auto& [name, devices] : *mpmd_addressable_devices) {
+          auto& device_list = (*compile_resp->mutable_mpmd_addressable_devices()
+                                    ->mutable_mpmd_addressable_devices())[name];
+          for (const auto* device : devices) {
+            device_list.add_mpmd_addressable_device_ids(device->Id().value());
+          }
+        }
+      } else {
+        *compile_resp->mutable_mpmd_addressable_devices_error() =
+            tsl::StatusToProto(mpmd_addressable_devices.status());
+      }
+    }
+  }
+  // Register the ready future to `futures_`. Caller is expected to call
+  // `CheckFuture` exactly once to check for its status and erase it. In
+  // future, we may introduce separate mechanisms to remove futures from
+  // `futures_` without checking its status for situations where futures are
+  // not used.
+  //
+  // TODO(junwhan): Clean this up once the client stops querying the ready
+  // future.
+  {
+    absl::MutexLock lock(futures_mutex_);
+    compile_resp->set_ready_future_handle(handle_generator_.GenerateAtServer());
+    futures_.insert({compile_resp->ready_future_handle(), absl::OkStatus()});
+  }
+
+  {
+    absl::MutexLock lock(executables_mutex_);
+    executables_.insert({handle, std::make_shared<LoadedExecutableWithInfo>(
+                                     std::move(executable))});
+  }
+  {
+    absl::MutexLock lock(host_callback_queues_mutex_);
+    for (int i = 0; i < host_callback_queues.size(); ++i) {
+      host_callback_queues_.insert(
+          {host_callback_handles[i], std::move(host_callback_queues[i])});
+    }
+  }
+}
+
 tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     std::unique_ptr<IfrtRequest> request) {
   // Perform compilation on a thread pool in order to (1) avoid blocking the RPC
@@ -1508,89 +1596,88 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
         NewIfrtResponse(request->request_metadata().op_id());
-    auto* compile_resp = ifrt_resp->mutable_compile_response();
+    PopulateCompileResponse(std::move(executable),
+                            std::move(host_callback_queues),
+                            ifrt_resp->mutable_compile_response());
+    return ifrt_resp;
+  };
+  return AsyncExecute(std::move(f), &compile_thread_pool_);
+}
 
-    uint64_t handle = handle_generator_.GenerateAtServer();
-    compile_resp->set_loaded_executable_handle(handle);
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleDeserializeLoadedExecutableRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  // Like compilation, loading a serialized executable can take long and use
+  // deep stacks. Run it on the compile thread pool. The lookup of the uploaded
+  // bytes runs there too, because it can wait for the upload and must not block
+  // the thread that processes the session requests.
+  auto f = [this, request = std::shared_ptr<IfrtRequest>(
+                      std::move(request))]() -> absl::StatusOr<Response> {
+    const DeserializeLoadedExecutableRequest& deserialize_request =
+        request->deserialize_loaded_executable_request();
+    const uint64_t host_buffer_handle =
+        deserialize_request.serialized_executable_handle();
 
-    std::vector<uint64_t> host_callback_handles(host_callback_queues.size());
-    handle_generator_.GenerateAtServerBulk(
-        absl::MakeSpan(host_callback_handles));
-    compile_resp->mutable_loaded_host_callback_handles()->Add(
-        host_callback_handles.begin(), host_callback_handles.end());
+    // Delete the host buffer on every path, also when a check or the lookup
+    // fails. Otherwise a rejected request leaves the bytes in the store.
+    absl::Cleanup delete_host_buffer = [&] {
+      host_buffer_store_->Delete(host_buffer_handle).IgnoreError();
+    };
 
-    // Populate executable metadata.
-    compile_resp->set_name(AsProtoStringData(executable->name()));
-    if (std::optional<xla::ifrt::DeviceListRef> device_list =
-            executable->devices();
-        device_list.has_value()) {
-      compile_resp->set_num_devices((*device_list)->size());
-      for (const auto* device :
-           (*device_list)->AddressableDeviceList()->devices()) {
-        compile_resp->add_addressable_device_ids(device->Id().value());
+    if (host_buffer_handle == 0) {
+      return absl::InvalidArgumentError(
+          "`DeserializeLoadedExecutable` requires a host buffer handle");
+    }
+
+    ABSL_ASSIGN_OR_RETURN(
+        HostBufferStore::MemRegion host_buffer,
+        host_buffer_store_->Lookup(host_buffer_handle,
+                                   /*timeout=*/absl::InfiniteDuration()));
+    // Wrap the bytes without copying. The `Cord` keeps the region alive.
+    // `MakeCordFromExternal` may copy small buffers and release them at once.
+    absl::Cord serialized = absl::MakeCordFromExternal(
+        *host_buffer, [keep_alive = host_buffer]() {});
+    std::move(delete_host_buffer).Invoke();
+
+    auto xla_options =
+        std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
+    if (deserialize_request.has_compile_options()) {
+      ABSL_ASSIGN_OR_RETURN(
+          auto compile_options,
+          Deserialize<xla::ifrt::CompileOptions>(
+              deserialize_request.compile_options(), /*options=*/nullptr));
+      ABSL_ASSIGN_OR_RETURN(
+          auto xla_compile_options,
+          xla::ifrt::GetXlaCompileOptions(std::move(compile_options)));
+      xla_options->compile_options =
+          std::move(xla_compile_options->compile_options);
+    }
+
+    if (deserialize_request.device_ids_size() > 0) {
+      std::vector<xla::ifrt::Device*> device_vector;
+      device_vector.reserve(deserialize_request.device_ids_size());
+      for (const int32_t device_id : deserialize_request.device_ids()) {
+        ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+                         client_->LookupDevice(xla::ifrt::DeviceId(device_id)));
+        device_vector.push_back(device);
       }
-      for (const auto* device : (*device_list)->devices()) {
-        compile_resp->add_device_ids(device->Id().value());
-      }
-    }
-    // TODO(b/282757875): Consider making fingerprint calculation asynchronous
-    // if it is expected to take long.
-    auto fingerprint = executable->Fingerprint();
-    if (!fingerprint.ok()) {
-      *compile_resp->mutable_fingerprint_error() =
-          tsl::StatusToProto(fingerprint.status());
-    } else if (fingerprint->has_value()) {
-      compile_resp->set_fingerprint_value(std::move(fingerprint)->value());
-    }
-    if (protocol_version() >= protocol_version::kMpmdLoadedExecutableMethods) {
-      auto* mpmd_executable = dyn_cast<MpmdLoadedExecutable>(executable.get());
-      // Only populate MPMD addressable devices for MPMD executables.
-      if (mpmd_executable != nullptr) {
-        auto mpmd_addressable_devices =
-            mpmd_executable->GetMpmdAddressableDevices();
-        if (mpmd_addressable_devices.ok()) {
-          for (const auto& [name, devices] : *mpmd_addressable_devices) {
-            auto& device_list =
-                (*compile_resp->mutable_mpmd_addressable_devices()
-                      ->mutable_mpmd_addressable_devices())[name];
-            for (const auto* device : devices) {
-              device_list.add_mpmd_addressable_device_ids(device->Id().value());
-            }
-          }
-        } else {
-          *compile_resp->mutable_mpmd_addressable_devices_error() =
-              tsl::StatusToProto(mpmd_addressable_devices.status());
-        }
-      }
-    }
-    // Register the ready future to `futures_`. Caller is expected to call
-    // `CheckFuture` exactly once to check for its status and erase it. In
-    // future, we may introduce separate mechanisms to remove futures from
-    // `futures_` without checking its status for situations where futures are
-    // not used.
-    //
-    // TODO(junwhan): Clean this up once the client stops querying the ready
-    // future.
-    {
-      absl::MutexLock lock(futures_mutex_);
-      compile_resp->set_ready_future_handle(
-          handle_generator_.GenerateAtServer());
-      futures_.insert({compile_resp->ready_future_handle(), absl::OkStatus()});
+      ABSL_ASSIGN_OR_RETURN(xla_options->devices,
+                       client_->MakeDeviceList(device_vector));
     }
 
-    {
-      absl::MutexLock lock(executables_mutex_);
-      executables_.insert({handle, std::make_shared<LoadedExecutableWithInfo>(
-                                       std::move(executable))});
-    }
-    {
-      absl::MutexLock lock(host_callback_queues_mutex_);
-      for (int i = 0; i < host_callback_queues.size(); ++i) {
-        host_callback_queues_.insert(
-            {host_callback_handles[i], std::move(host_callback_queues[i])});
-      }
-    }
+    ABSL_ASSIGN_OR_RETURN(
+        auto executable,
+        client_->GetDefaultCompiler()
+            ->DeserializeLoadedExecutable(serialized, std::move(xla_options))
+            .Await());
 
+    std::unique_ptr<IfrtResponse> ifrt_resp =
+        NewIfrtResponse(request->request_metadata().op_id());
+    PopulateCompileResponse(
+        std::move(executable),
+        /*host_callback_queues=*/{},
+        ifrt_resp->mutable_deserialize_loaded_executable_response()
+            ->mutable_compile_response());
     return ifrt_resp;
   };
   return AsyncExecute(std::move(f), &compile_thread_pool_);
@@ -2361,6 +2448,38 @@ IfrtBackend::HandleCancelExecutionRequest(
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   ifrt_resp->mutable_cancel_execution_response();
   return ifrt_resp;
+}
+
+tsl::Future<BackendInterface::Response> IfrtBackend::HandleHashValuesRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const HashValuesRequest& hash_request = request->hash_values_request();
+  absl::StatusOr<xla::ifrt::Client::HashMode> hash_mode =
+      FromHashModeProto(hash_request.hash_mode());
+  if (!hash_mode.ok()) {
+    return tsl::Future<Response>(hash_mode.status());
+  }
+
+  std::vector<xla::ifrt::ValueRef> values;
+  values.reserve(hash_request.value_handles_size());
+  for (const uint64_t value_handle : hash_request.value_handles()) {
+    // TODO(b/261991179): Support other Value types.
+    absl::StatusOr<IfrtArrayRef> array = array_store_.Find(value_handle);
+    if (!array.ok()) {
+      return tsl::Future<Response>(array.status());
+    }
+    values.push_back(*std::move(array));
+  }
+
+  return client_->HashValues(values, *hash_mode)
+      .Map<BackendInterface::Response>(
+          [op_id = request->request_metadata().op_id()](
+              const std::vector<uint64_t>& hashes) {
+            Response ifrt_resp = NewIfrtResponse(op_id);
+            HashValuesResponse* hash_resp =
+                ifrt_resp->mutable_hash_values_response();
+            hash_resp->mutable_hashes()->Assign(hashes.begin(), hashes.end());
+            return ifrt_resp;
+          });
 }
 
 absl::StatusOr<std::shared_ptr<IfrtBackend::LoadedExecutableWithInfo>>

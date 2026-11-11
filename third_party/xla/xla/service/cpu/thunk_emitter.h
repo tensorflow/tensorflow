@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_fusion_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
@@ -54,9 +54,9 @@ namespace xla::cpu {
 // sequence of thunks that will launch "work" on the CPU: launch host kernels,
 // call into the libraries (oneDNN, Eigen, etc.).
 //
-// During the thunk emission it emits IR (LLVM IR) for the host kernels via the
-// IrEmitter that later will be compiled into the executable binary (one or
-// multiple LLVM modules compiled to object files).
+// During thunk emission it lowers fusions and host kernels to LLVM modules
+// that are later compiled into the executable binary (one or multiple LLVM
+// modules compiled to object files).
 class ThunkEmitter {
  public:
   struct Options {
@@ -74,7 +74,7 @@ class ThunkEmitter {
     llvm::orc::ThreadSafeModule module;
   };
 
-  ThunkEmitter(IrEmitter2& ir_emitter, tsl::thread::ThreadPool& thread_pool,
+  ThunkEmitter(tsl::thread::ThreadPool& thread_pool,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModule& hlo_module,
@@ -84,16 +84,14 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
 
   absl::StatusOr<std::vector<EmittedKernel>> ConsumeKernels();
+  std::vector<EmittedKernel> ConsumeComparators() {
+    return std::move(comparators_);
+  }
 
   static std::optional<SortThunk::SortDirection> MatchSortDirection(
       const HloSortInstruction* sort);
 
  private:
-  struct HostKernelAllocationSlices {
-    std::vector<ShapedSlice> arguments;
-    std::vector<ShapedSlice> results;
-  };
-
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
@@ -112,7 +110,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCallThunk(
       const HloInstruction* instruction);
 
-  absl::StatusOr<ThunkSequence> EmitConcatenateKernelThunk(
+  // Emits a call marked by SmallWhileLoopHoistingPass as one kernel that runs
+  // the thunks of the called computation.
+  absl::StatusOr<ThunkSequence> EmitSmallCallThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitGetDimensionSizeThunk(
@@ -131,9 +131,6 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitCopyThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitPadKernelThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloInstruction* instruction);
@@ -193,6 +190,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitPadToStaticThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitSliceToDynamicThunk(
       const HloInstruction* instruction);
 
@@ -205,6 +205,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitSortThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<std::string> EmitSortComparator(
+      const HloComputation* comparator);
+
   absl::StatusOr<ThunkSequence> EmitXnnFusionThunk(
       const HloInstruction* instruction);
 
@@ -212,14 +215,6 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitOneDnnFusionThunk(
-      const HloInstruction* instruction);
-
-  // Returns the list of buffer allocation slices assigned to the given
-  // instruction that will be passed to the host kernel as arguments: a
-  // flattened list of all the leaf buffers for all operands and result. We do
-  // not materialize tuples at run time and only read and write from buffers
-  // corresponding to arrays.
-  absl::StatusOr<HostKernelAllocationSlices> GetHostKernelAllocationSlices(
       const HloInstruction* instruction);
 
   // Verifies that the element types of all of the given operand instructions
@@ -231,16 +226,23 @@ class ThunkEmitter {
 
   // Convenience function that creates a thunk sequence containing given kernel.
   static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
-      const HloInstruction* instruction,
-      const ThunkEmitter::HostKernelAllocationSlices& buffers,
-      const IrEmitter2::KernelInfo& kernel,
-      std::optional<uint64_t> min_alignment = std::nullopt);
-
-  static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
       const HloInstruction* instruction, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
-  IrEmitter2& ir_emitter_;
+  // Adds a compiled kernel to the executable.
+  void AddKernel(absl::string_view name, llvm::orc::ThreadSafeModule module);
+
+  // Reserves all non small call kernel and comparator names in `module`.
+  absl::Status ReserveKernelNames(const HloModule& module);
+
+  // A small call kernel whose nested kernels are linked into it once all
+  // kernels are compiled.
+  struct SmallCallKernel {
+    std::string name;
+    llvm::orc::ThreadSafeModule module;
+    std::vector<std::string> nested_kernels;
+  };
+
   const BufferAssignment& buffer_assignment_;
 
   const TargetMachineFeatures& target_machine_features_;
@@ -258,6 +260,20 @@ class ThunkEmitter {
       token_resources_;
 
   std::vector<EmittedKernel> kernels_;
+  std::vector<EmittedKernel> comparators_;
+  absl::flat_hash_map<const HloComputation*, std::string> comparator_names_;
+
+  // Kernels with a standalone LLVM module, which small calls can link in.
+  absl::flat_hash_set<std::string> linkable_kernels_;
+  absl::flat_hash_set<std::string> reserved_kernel_names_;
+  bool kernel_names_reserved_ = false;
+
+  // In emission order, so nested small calls come before the calls using them.
+  std::vector<SmallCallKernel> small_call_kernels_;
+
+  // Kernels launched by the entry computation thunks. Kernels launched only
+  // from small calls are linked into them and not added on their own.
+  absl::flat_hash_set<std::string> entry_kernels_;
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
   FusionCompiler fusion_compiler_;

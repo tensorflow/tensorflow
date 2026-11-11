@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace {
@@ -45,6 +47,32 @@ absl::Status ValidSpatialDimensions(
   }
   for (int i = 0; i < spatial_dimensions.size(); ++i) {
     TF_RETURN_IF_ERROR(ValidDim(dims, spatial_dimensions.Get(i)));
+  }
+  return absl::OkStatus();
+}
+
+// Checks that the batch, feature and spatial dimension numbers for one tensor
+// together form a permutation of [0, dims), i.e. every dimension index appears
+// exactly once (defensively re-checking [0, dims) bounds before indexing).
+absl::Status ValidDimensionNumbersPermutation(
+    int64_t dims, int64_t batch_dimension, int64_t feature_dimension,
+    const protobuf::RepeatedField<int64_t>& spatial_dimensions,
+    absl::string_view tensor_name) {
+  absl::InlinedVector<bool, 8> seen(dims, false);
+  const auto mark = [&](int64_t dim) -> absl::Status {
+    if (dim < 0 || dim >= dims || seen[dim]) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          tensor_name,
+          " dimension numbers must be a permutation of [0, rank). Given rank ",
+          dims, " with a repeated or out-of-range dimension number ", dim));
+    }
+    seen[dim] = true;
+    return absl::OkStatus();
+  };
+  TF_RETURN_IF_ERROR(mark(batch_dimension));
+  TF_RETURN_IF_ERROR(mark(feature_dimension));
+  for (int i = 0; i < spatial_dimensions.size(); ++i) {
+    TF_RETURN_IF_ERROR(mark(spatial_dimensions.Get(i)));
   }
   return absl::OkStatus();
 }
@@ -116,7 +144,20 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
 
   if (dimension_numbers_.input_spatial_dimensions_size() == 0) {
-    // dimension_numbers Attr string was empty.
+    // dimension_numbers Attr string was empty. The kernel and output spatial
+    // dimensions are appended below, so they must not already be populated;
+    // otherwise a partially specified attr would leave extra dimension numbers
+    // behind and CalculateOutputShape would index the output shape with them.
+    if (dimension_numbers_.kernel_spatial_dimensions_size() != 0 ||
+        dimension_numbers_.output_spatial_dimensions_size() != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "kernel_spatial_dimensions and output_spatial_dimensions must be "
+          "empty when input_spatial_dimensions is empty. Given "
+          "kernel_spatial_dimensions size ",
+          dimension_numbers_.kernel_spatial_dimensions_size(),
+          " and output_spatial_dimensions size ",
+          dimension_numbers_.output_spatial_dimensions_size()));
+    }
     dimension_numbers_.set_input_batch_dimension(0);
     dimension_numbers_.set_input_feature_dimension(1);
     for (int64_t i = 0; i < num_spatial_dims; ++i) {
@@ -155,6 +196,24 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
         ValidDim(dims, dimension_numbers_.output_feature_dimension()));
     TF_RETURN_IF_ERROR(ValidSpatialDimensions(
         dims, dimension_numbers_.output_spatial_dimensions()));
+
+    // The dimension numbers are used as transpose permutations and to index
+    // the output buffer, so each set must be a full permutation of [0, dims).
+    // The checks above only bound each index individually; a repeated index
+    // (e.g. input_batch_dimension == input_feature_dimension) would otherwise
+    // pass and cause out-of-bounds access downstream in the transpose.
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.input_batch_dimension(),
+        dimension_numbers_.input_feature_dimension(),
+        dimension_numbers_.input_spatial_dimensions(), "lhs"));
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.kernel_output_feature_dimension(),
+        dimension_numbers_.kernel_input_feature_dimension(),
+        dimension_numbers_.kernel_spatial_dimensions(), "rhs"));
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.output_batch_dimension(),
+        dimension_numbers_.output_feature_dimension(),
+        dimension_numbers_.output_spatial_dimensions(), "output"));
   }
 
   // Validate lhs_shape, rhs_shape, feature_group_count, and batch_group_count.

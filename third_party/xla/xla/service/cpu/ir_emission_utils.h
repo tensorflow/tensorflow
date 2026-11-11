@@ -37,6 +37,10 @@ bool CanUseEigenConvolution(
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features);
 
+// Returns true if no thunks are emitted for `hlo`: its semantics are encoded by
+// buffer assignment, by the schedule, or by constants owned by the executable.
+bool EmitsNoThunks(const HloInstruction& hlo);
+
 }  // namespace cpu
 }  // namespace xla
 

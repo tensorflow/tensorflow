@@ -33,14 +33,17 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/zeroed_outputs.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/service/shaped_slice.pb.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -73,7 +76,12 @@ CustomKernelThunk::CustomKernelThunk(
       device_states_(devices_in_process) {}
 
 std::string CustomKernelThunk::ToString(int indent) const {
-  return custom_kernel_.ToString();
+  return KernelThunkToString(custom_kernel_.name(),
+                             thunk_info().profile_annotation,
+                             LaunchDimensions(custom_kernel_.block_dims(),
+                                              custom_kernel_.thread_dims()),
+                             custom_kernel_.cluster_dims(),
+                             custom_kernel_.shared_memory_bytes(), use_pdl_);
 }
 
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
@@ -170,11 +178,27 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelThunk::Record(
   auto kernel_args =
       se::PackKernelArgs(buffer_args, custom_kernel_.shared_memory_bytes());
 
+  std::vector<se::DeviceAddressBase> zeroed_outputs;
+  zeroed_outputs.reserve(zeroed_output_buffer_indices_.size());
+  for (int64_t index : zeroed_output_buffer_indices_) {
+    zeroed_outputs.push_back(
+        execute_params.buffer_allocations->GetDeviceAddress(
+            args_[index].slice));
+  }
+  ABSL_ASSIGN_OR_RETURN(ZeroedOutputs zeroed,
+                   RecordZeroedOutputs(this, record_params, record_action,
+                                       command_buffer, zeroed_outputs));
+
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
-    return command_buffer->CreateLaunch(
-        custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
-        custom_kernel_.cluster_dims(), *kernel, *kernel_args,
-        create->dependencies, priority());
+    ABSL_ASSIGN_OR_RETURN(
+        const se::CommandBuffer::Command* command,
+        command_buffer->CreateLaunch(
+            custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
+            custom_kernel_.cluster_dims(), *kernel, *kernel_args,
+            zeroed.dependencies(create->dependencies), priority()));
+    ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                        command, std::move(zeroed)));
+    return command;
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(

@@ -107,6 +107,9 @@ class StreamExecutorExecutable;
 
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
  public:
+  static constexpr absl::string_view kDefaultKind = "device";
+  static const int kDefaultKindId;
+
   PjRtStreamExecutorMemorySpace(int id, PjRtDevice* device,
                                 absl::string_view kind, int kind_id);
 
@@ -135,7 +138,7 @@ class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
   int kind_id_;
   std::string debug_string_;
   std::string to_string_;
-  PjRtMemorySpaceCApiDelegator capi_delegator_{this};
+  PjRtMemorySpaceCApiDelegator capi_delegator_;
 };
 
 class PjRtStreamExecutorRawClient : public PjRtRawClient {
@@ -169,7 +172,10 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  const gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
+  gpu::GpuExecutableRunOptions* mutable_gpu_run_options() {
     return gpu_run_options_.get();
   }
 
@@ -252,19 +258,19 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // and reported by `WaitForAllocation` instead.
   void MaterializeAllocationEvent(const PjRtRawBufferInterface& raw_buffer);
 
-  static bool IsOnCpu(PjRtMemorySpace* memory_space);
+  static bool IsOnCpu(const PJRT_Memory* memory_space);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
   absl::StatusOr<std::pair<PjRtRawBufferRef,
                            CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+  CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -313,7 +319,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
                       absl::AnyInvocable<void()> execute_fn) const override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
-      PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+      PJRT_Memory* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback,
       bool is_mutable) override;
 
@@ -372,7 +378,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   virtual void RecordMemoryStats(LocalDeviceState* local_device_state) {}
 
-  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options) override;
 
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
@@ -453,7 +460,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
  public:
   PjRtStreamExecutorRawLoadedExecutable(
       int replica, int partition, RunId run_id, PjRtDevice* device,
-      std::shared_ptr<DeviceAssignment> device_assignment,
+      std::shared_ptr<const DeviceAssignment> device_assignment,
       std::shared_ptr<LocalExecutable> executable,
       tsl::AsyncValueRef<StreamExecutorExecutable> se_executable,
       PjRtStreamExecutorRawClient* raw_client)
@@ -478,7 +485,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
   int partition_;
   RunId run_id_;
   PjRtDevice* device_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
+  std::shared_ptr<const DeviceAssignment> device_assignment_;
   std::shared_ptr<LocalExecutable> executable_;
   tsl::AsyncValueRef<StreamExecutorExecutable> se_executable_;
   PjRtStreamExecutorRawClient* raw_client_;

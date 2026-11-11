@@ -196,6 +196,59 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
 
+namespace {
+
+// Checks that the block scale of operand `values_idx` has the rank of the
+// operand. Without explicit block sizes each scale dimension must evenly divide
+// the operand's; explicit block sizes must be positive, one per dimension.
+absl::Status VerifyBlockScaleShape(
+    const HloInstruction* hlo, int64_t values_idx,
+    const BlockScalingConfig::TensorBlockScalingConfig& config) {
+  const Shape& values = hlo->operand(values_idx)->shape();
+  const Shape& scale = hlo->operand(config.scale_idx())->shape();
+  if (!values.IsArray()) {
+    return InvalidArgument(
+        "Expected array operand %d for block scaling, got %s in %s", values_idx,
+        ShapeUtil::HumanString(values), hlo->ToString());
+  }
+  const int64_t rank = values.dimensions().size();
+  if (scale.dimensions().size() != rank) {
+    return InvalidArgument(
+        "Block scale %s must have the same rank as operand %d %s in %s",
+        ShapeUtil::HumanString(scale), values_idx,
+        ShapeUtil::HumanString(values), hlo->ToString());
+  }
+  absl::Span<const int64_t> block_sizes = config.block_sizes();
+  if (!block_sizes.empty() && block_sizes.size() != rank) {
+    return InvalidArgument(
+        "Block scaling block_sizes for operand %d must have %d entries, got %d "
+        "in %s",
+        values_idx, rank, block_sizes.size(), hlo->ToString());
+  }
+  for (int64_t d = 0; d < rank; ++d) {
+    const int64_t scale_dim = scale.dimensions(d);
+    const int64_t values_dim = values.dimensions(d);
+    if (block_sizes.empty()) {
+      if (scale_dim <= 0 || values_dim % scale_dim != 0) {
+        return InvalidArgument(
+            "Block scale dimension %d (size %d) must evenly divide operand %d "
+            "dimension %d (size %d) in %s",
+            d, scale_dim, values_idx, d, values_dim, hlo->ToString());
+      }
+      continue;
+    }
+    if (block_sizes[d] <= 0 || scale_dim <= 0) {
+      return InvalidArgument(
+          "Block scaling block size %d and scale size %d for operand %d "
+          "dimension %d must be positive in %s",
+          block_sizes[d], scale_dim, values_idx, d, hlo->ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
   if (hlo->operand_count() < 2) {
     return InvalidArgument("%s must have at least 2 operands, got %d",
@@ -251,7 +304,27 @@ absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
         "block_scaling_config, but %d were referenced",
         hlo->operand_count() - 2, seen_count);
   }
-
+  // Indices are validated above, so the scale operands can be inspected.
+  const BlockScalingConfig& block_scaling = hlo->block_scaling_config();
+  const BlockScalingConfig::TensorBlockScalingConfig* sides[] = {
+      block_scaling.has_lhs() ? &block_scaling.lhs() : nullptr,
+      block_scaling.has_rhs() ? &block_scaling.rhs() : nullptr};
+  for (int64_t values_idx = 0; values_idx < 2; ++values_idx) {
+    if (sides[values_idx] == nullptr) {
+      continue;
+    }
+    const BlockScalingConfig::TensorBlockScalingConfig& config =
+        *sides[values_idx];
+    ABSL_RETURN_IF_ERROR(VerifyBlockScaleShape(hlo, values_idx, config));
+    if (config.has_zero_idx() &&
+        !ShapeUtil::SameDimensions(hlo->operand(config.zero_idx())->shape(),
+                                   hlo->operand(config.scale_idx())->shape())) {
+      return InvalidArgument(
+          "Block scaling zero point and scale for operand %d must have the "
+          "same dimensions in %s",
+          values_idx, hlo->ToString());
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -264,6 +337,29 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
                        /*preferred_element_type=*/dot->shape().element_type(),
                        dot->sparsity_config()));
 
+  return CheckShape(dot, expected);
+}
+
+absl::Status ShapeVerifier::HandleDotGeneral(HloInstruction* dot) {
+  // A plain dot must use kDot; dot-general always carries extra operands.
+  if (dot->operand_count() <= 2) {
+    return InvalidArgument(
+        "dot-general must have sparsity or block scaling operands: %s",
+        dot->ToString());
+  }
+  // Only the lhs and rhs have precisions.
+  if (dot->precision_config().operand_precision_size() != 2) {
+    return InvalidArgument(
+        "dot-general must have exactly 2 operand precisions, got %d: %s",
+        dot->precision_config().operand_precision_size(), dot->ToString());
+  }
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(dot));
+  ABSL_ASSIGN_OR_RETURN(const Shape expected,
+                   ShapeInference::InferDotOpShape(
+                       dot->operand(0)->shape(), dot->operand(1)->shape(),
+                       dot->dot_dimension_numbers(),
+                       /*preferred_element_type=*/dot->shape().element_type(),
+                       dot->sparsity_config()));
   return CheckShape(dot, expected);
 }
 
@@ -2560,6 +2656,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
     case HloOpcode::kAllReduce:
@@ -2577,7 +2674,6 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
@@ -3132,7 +3228,6 @@ bool IsCarriedAcrossWhileLoop(const HloInstruction* async_op) {
           user->opcode() == HloOpcode::kTuple ||
           user->opcode() == HloOpcode::kGetTupleElement ||
           user->opcode() == HloOpcode::kOptimizationBarrier ||
-          user->opcode() == HloOpcode::kDomain ||
           user->opcode() == HloOpcode::kCall ||
           user->opcode() == HloOpcode::kConditional) {
         worklist.push_back(user);
@@ -3165,7 +3260,6 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
                      instruction->opcode() != HloOpcode::kCall &&
                      instruction->opcode() != HloOpcode::kConditional &&
                      instruction->opcode() != HloOpcode::kOptimizationBarrier &&
-                     instruction->opcode() != HloOpcode::kDomain &&
                      !instruction->IsAllowedAsyncIntermediary()) {
             return Internal(
                 "Async instruction %s used as operand %d of %s. "
@@ -4002,17 +4096,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
-bool IsCollectivesGroupComputation(HloComputation* computation) {
-  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
-  if (!maybe_caller.has_value()) {
-    return false;
-  }
-  return (*maybe_caller)
-      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
-      .has_value();
-}
-
-bool IsAsyncBarrierComputation(HloComputation* computation) {
+bool IsAsyncBarrierComputation(const HloComputation* computation) {
   return absl::c_all_of(
       computation->instructions(),
       [root = computation->root_instruction()](const HloInstruction* instr) {
@@ -4037,12 +4121,81 @@ int64_t CountWriters(const HloInstruction* inst,
 //    call2 = b(f32[32]) custom-call(b1),
 //      custom_call_target="writer_2",
 //      output_to_operand_aliasing={{}: (0, {})},
+// Returns true if `inst` is an inner or outer cross buffer slice or update
+// custom fusion:
+// - An inner slice custom fusion whose root is kDynamicUpdateSlice(dst,
+//   kDynamicSlice(src, ...), ...), or
+// - An outer custom fusion with output_to_operand_aliasing whose root is an
+//   inner slice custom fusion or a two element tuple (src_param,
+//   inner_slice_fusion).
+bool IsCrossBufferSliceCustomFusion(const HloInstruction* inst) {
+  if (inst == nullptr || !inst->IsCustomFusion()) {
+    return false;
+  }
+  const HloInstruction* root = inst->fused_expression_root();
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+      root->operand(1)->opcode() == HloOpcode::kDynamicSlice) {
+    return true;
+  }
+  if (inst->output_operand_aliasing().empty()) {
+    return false;
+  }
+  // Unwrap the outer (src_param, inner_slice_fusion) tuple root of a two
+  // element tuple gather cross_buffer_slice_fusion and verify that the inner
+  // custom fusion updates its destination from a DynamicSlice.
+  if (root->opcode() == HloOpcode::kTuple && root->operand_count() == 2 &&
+      root->operand(0)->opcode() == HloOpcode::kParameter) {
+    root = root->operand(1);
+  }
+  return root->IsCustomFusion() &&
+         root->fused_expression_root()->opcode() ==
+             HloOpcode::kDynamicUpdateSlice &&
+         root->fused_expression_root()->operand(1)->opcode() ==
+             HloOpcode::kDynamicSlice;
+}
+
 int64_t CountWritersInUser(const HloInstruction* inst,
                            absl::Span<const int64_t> shape_index,
                            const HloInstruction* user) {
+  // For cross buffer slice custom fusions and async-start instructions wrapping
+  // them, inspect the called computation's parameter users rather than
+  // conservatively assuming the instruction always writes to the buffer. This
+  // distinguishes read only buffer accesses (such as async gather) from
+  // mutating accesses (such as async scatter), preventing false multiple writer
+  // errors.
+  if (IsCrossBufferSliceCustomFusion(user) ||
+      (user->opcode() == HloOpcode::kAsyncStart &&
+       IsCrossBufferSliceCustomFusion(user->async_wrapped_instruction()))) {
+    const HloComputation* callee = user->opcode() == HloOpcode::kFusion
+                                       ? user->fused_instructions_computation()
+                                       : user->async_wrapped_computation();
+    int64_t num_writers = 0;
+    for (int64_t i = 0; i < user->operand_count(); ++i) {
+      if (user->operand(i) == inst) {
+        const HloInstruction* param = callee->parameter_instruction(i);
+        num_writers += CountWriters(param, shape_index);
+      }
+    }
+    return num_writers;
+  }
+
+  // Since conditional branches are mutually exclusive at runtime, a buffer can
+  // have at most the maximum number of writers across all branches rather than
+  // the sum across branches.
+  if (user->opcode() == HloOpcode::kConditional) {
+    int64_t max_writers = 0;
+    for (int64_t b = 0; b < user->branch_count(); ++b) {
+      if (user->operand(b + 1) == inst) {
+        const HloComputation* branch = user->branch_computation(b);
+        const HloInstruction* param = branch->parameter_instruction(0);
+        max_writers = std::max(max_writers, CountWriters(param, shape_index));
+      }
+    }
+    return max_writers;
+  }
+
   if (HloCallableInstruction::ClassOf(user) ||
       user->opcode() == HloOpcode::kWhile ||
-      user->opcode() == HloOpcode::kConditional ||
       user->opcode() == HloOpcode::kDynamicUpdateSlice) {
     // For HloCallableInstruction, we may overcount here if we will allow
     // a buffer operand not in results.
@@ -4209,7 +4362,7 @@ absl::Status VerifyFanOut(const HloCustomCallInstruction* inst,
         "custom-call to FanOut must have one buffer operand");
   }
 
-  if (!inst->shape().IsTuple() || inst->shape().tuple_shapes_size() < 2) {
+  if (!inst->shape().IsTuple() || inst->shape().tuple_shapes().size() < 2) {
     return InvalidArgument(
         "custom-call to FanOut must have a tuple result with >= 2 elements");
   }
@@ -4239,7 +4392,7 @@ absl::Status VerifyFanOut(const HloCustomCallInstruction* inst,
         FormatOutputToOperandAliasing(inst));
   }
 
-  for (int64_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < inst->shape().tuple_shapes().size(); ++i) {
     ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriter(inst, {i}));
   }
 
@@ -4465,17 +4618,24 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
       if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
                                      inst->frontend_attributes().map().contains(
                                          kXlaStreamAnnotationAttr))) {
-        // No need for additional buffer verification as the correctness of
-        // buffer usage in AsyncStart/Update/Done is guaranteed through:
-        //   .Making sure these ops are consistent with the wrapped computation.
-        //   .Buffer verification for the custom-call op inside the wrapped
-        //    computation.
+        // No need for additional buffer verification on start/update as the
+        // correctness of buffer usage is guaranteed through consistency with
+        // the wrapped computation and buffer verification inside it. For
+        // AsyncDone, verify that any buffer outputs have at most one writer in
+        // the caller computation.
+        if (inst->opcode() == HloOpcode::kAsyncDone) {
+          ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
+        }
         continue;
       }
       if (inst->opcode() == HloOpcode::kCustomCall) {
         ABSL_RETURN_IF_ERROR(VerifyCustomCall(Cast<HloCustomCallInstruction>(inst),
                                          layout_sensitive));
-      } else if (inst->opcode() == HloOpcode::kWhile) {
+      } else if (inst->opcode() == HloOpcode::kWhile ||
+                 IsCrossBufferSliceCustomFusion(inst)) {
+        // Verify unique buffer writers on cross buffer slice custom fusions to
+        // ensure that internal buffer aliasing and concurrent stream writes do
+        // not create conflicting buffer updates.
         ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
         if (comp->IsEntryComputation()) {
@@ -4493,6 +4653,25 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
             return InvalidArgument(
                 "DynamicUpdateSlice result must be a buffer if operand 0 is a "
                 "buffer");
+          }
+        } else {
+          ABSL_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));
+        }
+      } else if (inst->opcode() == HloOpcode::kDynamicSlice) {
+        if (inst->operand(0)->shape().IsBuffer() &&
+            comp->IsFusionComputation() &&
+            IsCrossBufferSliceCustomFusion(comp->FusionInstruction())) {
+          // DynamicSlice reading from a buffer is allowed only inside cross
+          // buffer slice custom fusions (such as async gather on stream buffer
+          // views), since generic HLO passes do not support top level buffer
+          // DynamicSlice. Enforce that start indices are not buffers and that
+          // the sliced output is a regular array rather than an escaping buffer
+          // type.
+          for (int i = 1; i < inst->operand_count(); ++i) {
+            ABSL_RETURN_IF_ERROR(VerifyNoBuffers(inst->operand(i)->shape(), inst));
+          }
+          if (inst->shape().IsBuffer()) {
+            return InvalidArgument("DynamicSlice result cannot be a buffer");
           }
         } else {
           ABSL_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));
@@ -4901,10 +5080,7 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
       ABSL_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
       // Verify that async computations contain a single instruction unless
       // they are explicitly marked as a collectives group or async barrier.
-      if (computation->IsAsyncComputation() &&
-          computation->execution_thread() ==
-              HloInstruction::kMainExecutionThread &&
-          !IsCollectivesGroupComputation(computation) &&
+      if (computation->IsRestrictedAsyncComputation() &&
           !IsAsyncBarrierComputation(computation)) {
         ABSL_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }

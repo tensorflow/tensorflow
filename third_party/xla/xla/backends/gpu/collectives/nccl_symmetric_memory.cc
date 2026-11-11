@@ -71,8 +71,12 @@ void LogInterconnectStatus(stream_executor::StreamExecutor* stream_executor) {
 NcclSymmetricMemory::NcclSymmetricMemory(
     std::shared_ptr<NcclCommState> comm_state, ncclWindow_t win,
     stream_executor::DeviceAddressBase addr,
-    std::shared_ptr<tsl::Executor> executor)
-    : comm_state_(comm_state), win_(win), addr_(addr), executor_(executor) {}
+    std::shared_ptr<tsl::Executor> executor, bool symmetric_window)
+    : comm_state_(std::move(comm_state)),
+      win_(win),
+      addr_(addr),
+      executor_(std::move(executor)),
+      symmetric_window_(symmetric_window) {}
 
 absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>>
 NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
@@ -109,6 +113,9 @@ NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
         comm, addr.opaque(), addr.size(), win_flags);
     nccl_status = ncclCommWindowRegister(comm, addr.opaque(), addr.size(), &win,
                                          win_flags);
+    if (nccl_status == ncclSuccess && win != nullptr && symmetric_window) {
+      ++comm_state->num_symmetric_windows;
+    }
   }
 
   if (nccl_status != ncclSuccess) {
@@ -124,8 +131,8 @@ NcclSymmetricMemory::Create(std::shared_ptr<NcclCommState> comm_state,
         "CUMEM is unavailable on fractional/virtualized GPU slices).");
   }
 
-  return absl::WrapUnique(
-      new NcclSymmetricMemory(comm_state, win, addr, executor));
+  return absl::WrapUnique(new NcclSymmetricMemory(
+      std::move(comm_state), win, addr, executor, symmetric_window));
 }
 
 NcclSymmetricMemory::~NcclSymmetricMemory() {
@@ -139,8 +146,12 @@ NcclSymmetricMemory::~NcclSymmetricMemory() {
                 "Destroy %v with addr=%p, size=%ld executor=%p", *this,
                 addr_.opaque(), addr_.size(), executor_.get());
             absl::MutexLock lock(comm_state_->mutex);
-            XLA_NCCL_LOG_IF_ERROR(
-                ncclCommWindowDeregister(comm_state_->comm, win_));
+            ncclResult_t nccl_status =
+                ncclCommWindowDeregister(comm_state_->comm, win_);
+            if (nccl_status == ncclSuccess && symmetric_window_) {
+              --comm_state_->num_symmetric_windows;
+            }
+            XLA_NCCL_LOG_IF_ERROR(nccl_status);
             return absl::OkStatus();
           },
           executor_)

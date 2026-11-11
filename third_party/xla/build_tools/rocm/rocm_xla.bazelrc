@@ -1,6 +1,5 @@
 # Test-related settings.
 
-common:rocm_base --test_verbose_timeout_warnings
 common:rocm_base --test_timeout=920,2400,7200,9600
 
 # Backend-agnostic RBE settings. Shared by rocm_rbe (EngFlow) and

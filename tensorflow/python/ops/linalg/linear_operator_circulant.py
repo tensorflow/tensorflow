@@ -318,7 +318,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
-        is_square=True)
+        is_square=True,
+        input_output_dtype=self.dtype,
+    )
 
   def _linop_inverse(self) -> "_BaseLinearOperatorCirculant":
     return _BaseLinearOperatorCirculant(
@@ -343,13 +345,19 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         spectrum=left_operator.spectrum * right_operator.spectrum,
         block_depth=left_operator.block_depth,
         is_non_singular=property_hint_util.combined_non_singular_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_positive_definite=(
             property_hint_util.combined_commuting_positive_definite_hint(
-                left_operator, right_operator)),
-        is_square=True)
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+        input_output_dtype=left_operator.dtype,
+    )
 
   def _linop_solve(
       self,
@@ -364,13 +372,19 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         spectrum=right_operator.spectrum / left_operator.spectrum,
         block_depth=left_operator.block_depth,
         is_non_singular=property_hint_util.combined_non_singular_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_positive_definite=(
             property_hint_util.combined_commuting_positive_definite_hint(
-                left_operator, right_operator)),
-        is_square=True)
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+        input_output_dtype=left_operator.dtype,
+    )
 
   @property
   def block_shape(self):
@@ -657,6 +671,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     spectrum = _to_complex(self.spectrum)
     if adjoint:
       spectrum = math_ops.conj(spectrum)
+
+    rhs = math_ops.cast(rhs, spectrum.dtype)
 
     rhs, spectrum = self._broadcast_batch_dims(rhs, spectrum)
 
@@ -1007,7 +1023,9 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
-        is_square=True)
+        is_square=True,
+        input_output_dtype=self.dtype,
+    )
 
   def _linop_inverse(self) -> "LinearOperatorCirculant":
     return LinearOperatorCirculant(
@@ -1042,6 +1060,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
             )
         ),
         is_square=True,
+        input_output_dtype=left_operator.dtype,
     )
 
   def _linop_solve(
@@ -1055,13 +1074,19 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
     return LinearOperatorCirculant(
         spectrum=right_operator.spectrum / left_operator.spectrum,
         is_non_singular=property_hint_util.combined_non_singular_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_positive_definite=(
             property_hint_util.combined_commuting_positive_definite_hint(
-                left_operator, right_operator)),
-        is_square=True)
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+        input_output_dtype=left_operator.dtype,
+    )
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
@@ -1262,7 +1287,9 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
-        is_square=True)
+        is_square=True,
+        input_output_dtype=self.dtype,
+    )
 
   def _linop_inverse(self) -> "LinearOperatorCirculant2D":
     return LinearOperatorCirculant2D(
@@ -1297,6 +1324,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
             )
         ),
         is_square=True,
+        input_output_dtype=left_operator.dtype,
     )
 
   def _linop_solve(
@@ -1310,13 +1338,19 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
     return LinearOperatorCirculant2D(
         spectrum=right_operator.spectrum / left_operator.spectrum,
         is_non_singular=property_hint_util.combined_non_singular_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_positive_definite=(
             property_hint_util.combined_commuting_positive_definite_hint(
-                left_operator, right_operator)),
-        is_square=True)
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+        input_output_dtype=left_operator.dtype,
+    )
 
 
 @tf_export("linalg.LinearOperatorCirculant3D")
@@ -1490,7 +1524,9 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
-        is_square=True)
+        is_square=True,
+        input_output_dtype=self.dtype,
+    )
 
   def _linop_inverse(self) -> "LinearOperatorCirculant3D":
     return LinearOperatorCirculant3D(
@@ -1525,6 +1561,7 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
             )
         ),
         is_square=True,
+        input_output_dtype=left_operator.dtype,
     )
 
   def _linop_solve(
@@ -1538,13 +1575,19 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
     return LinearOperatorCirculant3D(
         spectrum=right_operator.spectrum / left_operator.spectrum,
         is_non_singular=property_hint_util.combined_non_singular_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
-            left_operator, right_operator),
+            left_operator, right_operator
+        ),
         is_positive_definite=(
             property_hint_util.combined_commuting_positive_definite_hint(
-                left_operator, right_operator)),
-        is_square=True)
+                left_operator, right_operator
+            )
+        ),
+        is_square=True,
+        input_output_dtype=left_operator.dtype,
+    )
 
 
 def _to_complex(x):

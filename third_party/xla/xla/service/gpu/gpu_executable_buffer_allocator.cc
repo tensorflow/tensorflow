@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -173,11 +174,11 @@ GpuExecutableBufferAllocator::GpuExecutableBufferAllocator(
 
 absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateTransientBuffer(
-    int device_ordinal, const BufferAllocation& allocation, int64_t buffer_size,
+    const BufferAllocation& allocation, int64_t buffer_size,
     se::DeviceAddressAllocator* memory_allocator) {
   ABSL_ASSIGN_OR_RETURN(
       se::ScopedDeviceAddress<uint8_t> buffer,
-      memory_allocator->Allocate(device_ordinal, buffer_size,
+      memory_allocator->Allocate(device_ordinal_, buffer_size,
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color()));
   return buffer.Release();
@@ -188,8 +189,7 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
     ParameterBufferResolver get_parameter_buffer,
     const BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
-    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
-    int64_t arg_idx) {
+    se::DeviceAddressAllocator* const memory_allocator, int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceAddressBase{};
   }
@@ -221,9 +221,9 @@ GpuExecutableBufferAllocator::ExecutionScope::BufferForAllocation(
   int64_t buffer_size = allocation.size();
   se::DeviceAddressBase buffer_address;
   if (buffer_size > 0) {
-    ABSL_ASSIGN_OR_RETURN(buffer_address,
-                     AllocateTransientBuffer(device_ordinal, allocation,
-                                             buffer_size, memory_allocator));
+    ABSL_ASSIGN_OR_RETURN(
+        buffer_address,
+        AllocateTransientBuffer(allocation, buffer_size, memory_allocator));
   }
   return buffer_address;
 }
@@ -233,7 +233,7 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
     const ServiceExecutableRunOptions* run_options,
     ParameterBufferResolver get_parameter_buffer,
     const BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal) {
+    se::DeviceAddressAllocator* const memory_allocator) {
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
@@ -244,7 +244,7 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
           run_options->run_options().device_assignment());
 
   const int64_t num_buffers = owner_->allocations_.size();
-  ABSL_RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
+  ABSL_RETURN_IF_ERROR(Prepare(run_options));
 
   // Resolve allocations in two passes so that every collective memory (S(1))
   // buffer of this execution is allocated before any default memory (S(0))
@@ -258,9 +258,9 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
   std::vector<se::DeviceAddressBase> buffers(num_buffers);
   auto resolve = [&](int64_t i) -> absl::Status {
     const BufferAllocation& allocation = *owner_->allocations_[i];
-    ABSL_ASSIGN_OR_RETURN(buffers[i], BufferForAllocation(
-                                     get_parameter_buffer, globals, allocation,
-                                     memory_allocator, device_ordinal, i));
+    ABSL_ASSIGN_OR_RETURN(buffers[i],
+                     BufferForAllocation(get_parameter_buffer, globals,
+                                         allocation, memory_allocator, i));
     return CheckAlignment(allocation, buffers[i], i);
   };
 
@@ -277,25 +277,25 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
   for (int64_t i : deferred_indices) {
     ABSL_RETURN_IF_ERROR(resolve(i));
   }
-  return BufferAllocations(buffers, device_ordinal, memory_allocator);
+  return BufferAllocations(buffers, device_ordinal_, memory_allocator);
 }
 
 absl::StatusOr<se::DeviceAddressBase>
 GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
     const ServiceExecutableRunOptions* run_options,
     BufferAllocations& buffer_allocations, const ShapeIndex& index,
-    const BufferAllocation& allocation, int device_ordinal,
+    const BufferAllocation& allocation,
     se::DeviceAddressAllocator* const memory_allocator,
     absl::FunctionRef<absl::Status(absl::Status)> allocation_error) {
   // The caller guards this against aliasing pass-through params, as we do not
   // need to write into the output buffer in that case.
-  XLA_VLOG_DEVICE(3, device_ordinal)
+  XLA_VLOG_DEVICE(3, device_ordinal_)
       << "Using copy-protection: aliasing is specified, but the "
          "buffer is not donated; allocating a fresh buffer";
   int64_t allocation_size = ShapeUtil::ByteSizeOf(
       ShapeUtil::GetSubshape(owner_->result_shape_, index));
   absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
-      memory_allocator->Allocate(device_ordinal, allocation_size,
+      memory_allocator->Allocate(device_ordinal_, allocation_size,
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color());
   if (!allocated_buffer.ok()) {
@@ -313,7 +313,7 @@ GpuExecutableBufferAllocator::ExecutionScope::AllocateCopyProtectedOutputBuffer(
 
 absl::Status
 GpuExecutableBufferAllocator::ExecutionScope::ExecuteWithBufferAllocations(
-    const BufferAllocations& owning_buffer_allocations, int device_ordinal,
+    const BufferAllocations& owning_buffer_allocations,
     absl::FunctionRef<
         absl::Status(const BufferAllocations&,
                      std::optional<absl::Span<const BufferAllocation::Index>>
@@ -323,11 +323,18 @@ GpuExecutableBufferAllocator::ExecutionScope::ExecuteWithBufferAllocations(
                  absl::MakeConstSpan(owner_->constant_alloc_indices_));
 }
 
+absl::Status GpuExecutableBufferAllocator::ExecutionScope::TearDown(
+    const std::set<se::DeviceAddressBase>& live_addresses,
+    BufferAllocations& buffer_allocations) {
+  return buffer_allocations.TearDown(live_addresses, owner_->allocations());
+}
+
 absl::StatusOr<std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope>>
 GpuExecutableBufferAllocator::CreateExecutionScope(
     const ServiceExecutableRunOptions* run_options,
     se::DeviceAddressAllocator* memory_allocator, int device_ordinal) {
-  return std::unique_ptr<ExecutionScope>(new ExecutionScope(this));
+  return std::unique_ptr<ExecutionScope>(
+      new ExecutionScope(this, device_ordinal));
 }
 
 }  // namespace xla::gpu

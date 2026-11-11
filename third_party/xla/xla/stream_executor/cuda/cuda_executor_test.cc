@@ -28,7 +28,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/debug_options_flags.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -252,6 +254,74 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
   EXPECT_NE(allocation.opaque(), nullptr);
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
               absl_testing::IsOkAndHolds(MemorySpace::kDevice));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithRegisteredHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  constexpr size_t kSize = 64 * 1024;
+  std::vector<uint8_t> buffer(kSize);
+  // Pageable host memory isn't pinned until we register it.
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data() + 1024, 4096));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), 0));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data() + kSize / 2, kSize));
+
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
+// Without XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT, host memory is
+// registered in the primary context (see cuda_executor_shared_context_test).
+TEST(CudaExecutorTest, HostMemoryRegisterUsesPrimaryContextByDefault) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  CUcontext primary = nullptr;
+  {
+    std::unique_ptr<ActivateContext> activation = executor->Activate();
+    ASSERT_EQ(cuCtxGetCurrent(&primary), CUDA_SUCCESS);
+  }
+
+  std::vector<uint8_t> buffer(64 * 1024);
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  CUcontext context = nullptr;
+  EXPECT_EQ(cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT,
+                                  reinterpret_cast<CUdeviceptr>(buffer.data())),
+            CUDA_SUCCESS);
+  EXPECT_EQ(context, primary);
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       executor->HostMemoryAllocate(256));
+  EXPECT_TRUE(
+      executor->IsHostMemoryPinned(allocation->address().opaque(), 256));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedIsFalseForDeviceAddress) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  DeviceAddressBase allocation = executor->Allocate(256);
+  ASSERT_NE(allocation.opaque(), nullptr);
+  EXPECT_FALSE(executor->IsHostMemoryPinned(allocation.opaque(), 256));
+  executor->Deallocate(&allocation);
 }
 
 TEST(CudaExecutorTest, AllocateCollectiveMemoryWithDeviceAllocator) {

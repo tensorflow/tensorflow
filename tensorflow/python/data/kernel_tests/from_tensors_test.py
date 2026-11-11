@@ -80,6 +80,15 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[components])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsHostPlacement(self):
+    x = np.array([1, 2, 3], dtype=np.int64)
+    with ops.device("/device:GPU:0"):
+      dataset = dataset_ops.DatasetV2.from_tensors(x)
+    for t in dataset._tensors:  # pylint: disable=protected-access
+      self.assertIn("CPU", t.device)
+    self.assertDatasetProduces(dataset, expected_output=[x])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsDataset(self):
     """Test a dataset that represents a dataset."""
     dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))

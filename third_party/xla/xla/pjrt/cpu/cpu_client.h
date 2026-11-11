@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_CPU_CLIENT_H_
 #define XLA_PJRT_CPU_CPU_CLIENT_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -25,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -37,6 +37,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
@@ -53,10 +54,8 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -72,14 +71,13 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -106,7 +104,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous, int max_transpose_threads,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-      int cpu_device_count, int max_inflight_computations);
+      int cpu_device_count, int max_inflight_computations,
+      const Eigen::ThreadPoolDevice* intra_op_device = nullptr);
 
   ~PjRtCpuRawClient() override;
 
@@ -129,12 +128,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
     return compile_thread_pool_.get();
   }
 
-  tsl::thread::ThreadPool* eigen_intraop_pool() const {
-    return eigen_intraop_pool_.get();
-  }
-
-  Eigen::ThreadPoolDevice* eigen_intraop_device() const {
-    return eigen_intraop_device_.get();
+  const Eigen::ThreadPoolDevice* eigen_intraop_device() const {
+    return intraop_device_;
   }
 
   cpu::CpuCollectives* collectives() const { return collectives_.get(); }
@@ -148,16 +143,16 @@ class PjRtCpuRawClient : public PjRtRawClient {
       tsl::AsyncValueRef<CpuEvent> execute_event);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
   absl::StatusOr<std::pair<PjRtRawBufferRef,
                            CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+  CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -169,7 +164,7 @@ class PjRtCpuRawClient : public PjRtRawClient {
       Future<> dependency) override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
-      PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+      PJRT_Memory* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback,
       bool is_mutable) override;
 
@@ -197,7 +192,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
             PjRtFulfillAsyncExecutableCallback>
   CreateLinkedExecutablePromise() const override;
 
-  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
                                        int32_t launch_id,
@@ -306,14 +302,15 @@ class PjRtCpuRawClient : public PjRtRawClient {
   // the member variables of this class that are already destroyed.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+  const Eigen::ThreadPoolDevice* intraop_device_ = nullptr;
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> execute_work_runner_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;
 };
 
-// Standalone factory that creates a CommonPjRtClientImpl for CPU using the
+// Standalone factory that creates a CommonPjRtClient for CPU using the
 // given raw client, topology, and process ID.
-std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
+std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
     std::unique_ptr<PjRtCpuRawClient> raw_client,
     std::shared_ptr<const CpuTopologyDescription> topology, int process_id);
 
@@ -338,7 +335,7 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
   friend class CpuExecutableLoadState;
 
   const PjRtCpuExecutable* executable_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
+  std::shared_ptr<const DeviceAssignment> device_assignment_;
   size_t num_addressable_devices_;
   LocalDeviceId local_device_id_;
   GlobalDeviceId global_device_id_;
@@ -356,6 +353,9 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
   void Delete() override { is_deleted_.store(true); }
   bool IsDeleted() const override { return is_deleted_.load(); }
 
+  absl::StatusOr<std::shared_ptr<const DeviceAssignment>> GetDeviceAssignment(
+      PjRtExecutable* executable, int process_index);
+
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       tsl::AsyncValueRef<PjRtExecutable> executable,
       const ExecuteOptions& options, size_t host_callback_idx,
@@ -365,6 +365,10 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
  private:
   PjRtCpuRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
+
+  absl::Mutex mu_;
+  std::optional<std::shared_ptr<const DeviceAssignment>> device_assignment_
+      ABSL_GUARDED_BY(mu_);
 };
 
 class PjRtCpuExecutable final : public PjRtExecutable {

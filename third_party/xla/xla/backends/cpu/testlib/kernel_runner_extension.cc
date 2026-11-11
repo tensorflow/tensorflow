@@ -30,10 +30,7 @@ limitations under the License.
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
-#include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
@@ -42,6 +39,7 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
+#include "xla/backends/cpu/transforms/fusion_wrapper.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
@@ -163,33 +160,6 @@ NB_MODULE(_extension, kernel_runner_module) {
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
-
-  nb::class_<ConcatenateKernelEmitter, KernelEmitter<LlvmKernelSource>>(
-      kernel_runner_module, "ConcatenateKernelEmitter")
-      .def(nb::init<const HloInstruction*, const BufferAssignment*,
-                    const TargetMachineFeatures*>(),
-           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-           nb::keep_alive<1, 4>());
-
-  nb::class_<ComputationKernelEmitter, KernelEmitter<LlvmKernelSource>>(
-      kernel_runner_module, "ComputationKernelEmitter")
-      .def(
-          "__init__",
-          [](ComputationKernelEmitter* self, const HloInstruction* instruction,
-             const BufferAssignment* buffer_assignment,
-             const TargetMachineFeatures* target_machine) {
-            absl::StatusOr<ComputationKernelArguments> arguments =
-                ComputationKernelArguments::Create(*instruction->to_apply(),
-                                                   *buffer_assignment);
-            if (!arguments.ok()) {
-              throw std::runtime_error(arguments.status().ToString());
-            }
-            new (self)
-                ComputationKernelEmitter(instruction, buffer_assignment,
-                                         target_machine, *std::move(arguments));
-          },
-          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
-          nb::keep_alive<1, 4>());
 
   nb::class_<CpuScatterFusion, KernelEmitter<MlirKernelSource>>(
       kernel_runner_module, "ScatterKernelEmitter")

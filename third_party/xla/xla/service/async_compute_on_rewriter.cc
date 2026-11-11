@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,21 +42,12 @@ namespace xla {
 
 namespace {
 
-bool IsComputeOnCustomCall(const HloInstruction* instr,
-                           absl::string_view suffix) {
-  if (instr->opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  absl::string_view target = instr->custom_call_target();
-  if (!absl::ConsumeSuffix(&target, suffix)) {
-    return false;
-  }
-  return target == "compute-on";
-}
+constexpr absl::string_view kComputeOnStartTarget = "compute-on-start";
+constexpr absl::string_view kComputeOnDoneTarget = "compute-on-done";
 
 // Validates that `called_comp` is a compute-on computation that this pass knows
-// how to rewrite, i.e. it consists only of parameter instructions and exactly
-// one all-gather, which must have a single operand.
+// how to rewrite in legacy collectives mode, i.e. it consists only of parameter
+// instructions and exactly one all-gather, which must have a single operand.
 // Returns that all-gather on success.
 absl::StatusOr<HloAllGatherInstruction*> FindComputeOnAllGather(
     HloComputation* called_comp) {
@@ -141,11 +131,11 @@ absl::StatusOr<bool> AsyncComputeOnRewriter::ProcessComputeOn(
   if (simplified) {
     return true;
   }
-  ABSL_ASSIGN_OR_RETURN(HloAllGatherInstruction * all_gather,
-                   FindComputeOnAllGather(called_comp));
   HloInstruction* async_start;
   HloInstruction* async_done;
   if (use_legacy_collectives) {
+    ABSL_ASSIGN_OR_RETURN(HloAllGatherInstruction * all_gather,
+                     FindComputeOnAllGather(called_comp));
     Shape shape = start_call->shape();
     Shape start_shape =
         ShapeUtil::MakeTupleShape({start_call->operand(0)->shape(), shape});
@@ -190,23 +180,17 @@ absl::StatusOr<bool> AsyncComputeOnRewriter::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     std::vector<HloInstruction*> done_calls;
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      if (IsComputeOnCustomCall(instr, "-done")) {
+      if (instr->IsCustomCall(kComputeOnDoneTarget)) {
         VLOG(1) << "Candidate done: " << instr->name();
         done_calls.push_back(instr);
       }
     }
 
     for (HloInstruction* done_call : done_calls) {
-      auto expected_start =
-          MatchingStartTarget(done_call->custom_call_target());
-      if (!expected_start.has_value()) {
-        VLOG(1) << "No matching start for " << done_call->name();
-        continue;
-      }
       auto trace = hlo_instruction_utils::async::TraceDataflowPath(
           done_call, [&](const HloInstruction* instr) {
             return instr->parent() == computation &&
-                   instr->IsCustomCall(*expected_start);
+                   instr->IsCustomCall(kComputeOnStartTarget);
           });
       if (!trace.has_value()) {
         VLOG(1) << "No trace found for " << done_call->name();

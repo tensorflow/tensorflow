@@ -468,15 +468,15 @@ message DebugOptions {
   //     use fixed VMM reservation addresses; other dynamic allocations still
   //     trigger command updates when their addresses change.
   //
-  //   SKIP_PROFILED: For the first few executions, buffers use regular
-  //     dynamically allocated addresses. Preallocated temp buffers are
-  //     automatically selected for remapping while the runtime records which
-  //     other non-constant, non-thread-local command-buffer-referenced
+  //   SKIP_PROFILED: Preallocated temp buffers are automatically selected
+  //     and, as in SKIP_TEMP, allocated through the VMM reservation from the
+  //     first execution. For the first few executions the other buffers use
+  //     regular dynamically allocated addresses while the runtime records
+  //     which non-constant, non-thread-local command-buffer-referenced
   //     allocations keep a stable address. Afterwards, the temp buffers and
   //     stable profile candidates use fixed VMM reservation addresses during
-  //     execution. Temp buffers are allocated through the reservation;
-  //     finalized input and output addresses are aliased into it immediately
-  //     before execution.
+  //     execution; finalized input and output addresses are aliased into the
+  //     reservation immediately before execution.
   //     Remapping enforces address stability, so a mispredicted profile costs
   //     an extra VMM remap instead of correctness. Requires the VMM allocator
   //     and assumes symmetric behavior across ranks.
@@ -648,6 +648,12 @@ message DebugOptions {
   // this field.
   optional float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
+  // If true, the GPU autotuner flushes the L2 cache before every timed run of
+  // a candidate, so that candidates read their operands from device memory as
+  // they do in production, where large operands such as weights are usually not
+  // cached. Default: true.
+  optional bool xla_gpu_autotune_flush_l2_cache = 570;
+
   // Relative precision for comparing different GEMM solutions
   optional float xla_gpu_autotune_gemm_rtol = 316;
 
@@ -665,6 +671,10 @@ message DebugOptions {
   // This might be useful if underlying math library returns too many GEMM
   // solutions.
   optional int64 xla_gpu_autotune_max_solutions = 288 [deprecated = true];
+
+  // Number of timed runs of each candidate during GPU autotuning. The mean run
+  // time is used to rank the candidates. Default: 3.
+  optional int32 xla_gpu_autotune_num_timed_runs = 571;
 
   // Maximum number of BLAS library algorithms to evaluate during autotuning.
   // Setting this to a lower value (e.g., 16 or 32) speeds up compilation at the
@@ -748,6 +758,12 @@ message DebugOptions {
   // 2: Enabled on all supported GPUs (Ampere+).
   optional int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
+  // Lets cuDNN compile non-GEMM fusions.
+  // Current levels:
+  // 0: Disabled.
+  // 1: Compile pointwise fusions with cuDNN.
+  optional int32 xla_gpu_cudnn_non_gemm_fusion_level = 510;
+
   // Limit for the number of kernel configurations (plans) to use during
   // autotuning of cuDNN GEMM fusions. The more - the slower the autotuning
   // but potentially higher the performance.
@@ -829,6 +845,10 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Records the HLO annotation of each CUDA graph node so profiles can
+  // attribute command buffer work to HLO ops. Requires CUDA 13.2+.
+  optional bool xla_gpu_enable_command_buffer_telemetry = 564;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -1129,7 +1149,8 @@ message DebugOptions {
   optional int32 xla_gpu_experimental_force_split_k = 472;
 
   // Enable GEMM fusion v2 pass for building Triton fusions.
-  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475;
+  // TODO(b/487920266): Remove this flag entirely.
+  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475 [deprecated = true];
 
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing
@@ -1191,6 +1212,15 @@ message DebugOptions {
       xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
 
   optional bool xla_gpu_experimental_stream_annotation = 342;
+
+  // Whether to use the autotune cache even when deterministic ops are required
+  // (xla_gpu_deterministic_ops or xla_gpu_exclude_nondeterministic_ops). Cached
+  // entries may come from timing-based autotuning in other modules.
+  //
+  // TODO(b/582688534): Remove this flag once autotuner cache keys respect
+  // flags or deviceless cudnn compilation works by default.
+  optional bool
+      xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops = 566;
 
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
@@ -1386,6 +1416,11 @@ message DebugOptions {
   // `NotFound` error will be returned.
   optional bool xla_gpu_require_complete_aot_autotune_results = 284;
 
+  // If true, require that BlasLt matmuls execute the exact algorithm described
+  // by `BlasLtMatmulAlgorithmProto` rather than falling back to the heuristic
+  // algorithm index.
+  optional bool xla_gpu_require_exact_blas_lt_algorithm = 563;
+
   // If true, XLA runtime will retain exclusive ownership of the GPU when
   // running a module, so there are no multi-thread conflicts on the GPU. This
   // can enable some optimizations that reduce the cost of resource management,
@@ -1553,9 +1588,9 @@ message DebugOptions {
   // generated IR.
   optional bool xla_llvm_enable_noalias_metadata = 71;
 
-  // If true, in LLVM-based backends, emit !invariant.load metadata in
-  // the generated IR.
-  optional bool xla_llvm_enable_invariant_load_metadata = 72;
+  // Deprecated, has no effect. XLA no longer emits !invariant.load metadata.
+  optional bool xla_llvm_enable_invariant_load_metadata = 72
+      [deprecated = true];
 
   // If true, a set of expensive LLVM optimization passes will not be run.
   optional bool xla_llvm_disable_expensive_passes = 73;
@@ -1893,11 +1928,6 @@ message DebugOptions {
   // overhead. Set to -1 to disable async device-to-device copies.
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
-  // If true, enable experimental tiling propagation.
-  // TODO(b/514293537): drop the flag.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
-      [deprecated = true];
-
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
@@ -1982,7 +2012,30 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 563
+  // If true, enables experimental thread-block specialized horizontal fusion of
+  // independent small-grid GPU kernels.
+  optional bool xla_gpu_experimental_enable_horizontal_fusion = 565;
+
+  // If true, fuses dependent small fusions into nested fusions. Nested fusions
+  // are emitted as a sequence of phases of a single kernel. Phases exchange
+  // data via HBM or caches and synchronize with block cluster barriers.
+  optional bool xla_gpu_experimental_multi_phase_fusion = 567;
+
+  // Relevant to GPU backend only. If true, temporary buffers for fully-sharded
+  // modules (modules using all devices in the topology) are allocated in the
+  // collective memory space (color 7) instead of the default memory space
+  // (color 0).
+  optional bool xla_gpu_temp_buffer_use_collective_color = 568;
+
+  // Weight applied to the (hbm_bw / fabric_bw) ratio when the
+  // ragged-all-to-all device kernel scores remote-peer copies for per-CTA
+  // work assignment (0.0-1.0). Higher value => remote writes score higher
+  // cost => more CTAs are routed to remote work. Default 0.22 was fitted
+  // empirically on GB200; values outside (0, 1] fall back to the default.
+  optional float xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight =
+      569;
+
+  // Next id: 572
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -2068,6 +2121,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
   reserved "xla_gpu_experimental_enable_nan_counter_on_thunks";
   reserved "xla_gpu_experimental_enable_split_k_rewrite";
+  reserved "xla_gpu_experimental_enable_tiling_propagation";
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
@@ -2122,8 +2176,8 @@ message DebugOptions {
       234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
       278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
       325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
-      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
-      477, 480;
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 456, 458,
+      464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

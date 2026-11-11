@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/backend/device_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "Eigen/Core"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -4793,6 +4795,14 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
   stats_strides[3] = 1;
 
+  // Each of the B physical rows holds at most S tokens, so the packed total
+  // token count is bounded by B * S. Declaring this to cuDNN avoids sizing the
+  // workspace buffers that scale with the total token count (dQ_accum, and the
+  // dK/dV full-head buffers for GQA/MQA) for the inflated B * max_seg_per_batch
+  // batch dimension. Must be computed before the dims are fixed up below.
+  const int64_t max_total_seq_len_q = q_dims[0] * q_dims[2];
+  const int64_t max_total_seq_len_kv = k_dims[0] * k_dims[2];
+
   if (max_seg_per_batch > 1) {
     FixDimsForRaggedOffset(q_dims, max_seg_per_batch);
     FixDimsForRaggedOffset(k_dims, max_seg_per_batch);
@@ -4966,6 +4976,11 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 
   if (sliding_window_length > 0) {
     sdpa_backward_options.set_sliding_window_length(sliding_window_length);
+  }
+
+  if (max_seg_per_batch > 1) {
+    sdpa_backward_options.set_max_total_seq_len_q(max_total_seq_len_q);
+    sdpa_backward_options.set_max_total_seq_len_kv(max_total_seq_len_kv);
   }
 
   if (score_mod) {
@@ -6881,17 +6896,67 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
+namespace {
+
+// cuDNN graph deserialization fails if the runtime device has a different SM
+// count than the device the graph was compiled for. To run AOT binaries on a
+// device with more SMs than the compile target (e.g. compile for p199, run on
+// an A100), we pass cuDNN the compile-time device properties.
+bool ShouldUseTargetDeviceProperties(
+    const std::optional<dnn::DnnGraphTargetDevice>& target_device,
+    const DeviceDescription& runtime_desc) {
+  if (!target_device.has_value() ||
+      target_device->serialized_device_properties.empty()) {
+    return false;
+  }
+  // `cudnn_frontend::DeviceProperties` requires cuDNN >= 9.8.
+  if (cudnn_frontend::detail::get_backend_version() < 90800) {
+    return false;
+  }
+  // GpuExecutable already rejects a compute capability mismatch, so we only
+  // need to compare SM counts.
+  return target_device->core_count > 0 &&
+         target_device->core_count < runtime_desc.core_count();
+}
+
+}  // namespace
+
 absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
-    Stream& stream, absl::string_view serialized_data) const {
+    Stream& stream, absl::string_view serialized_data,
+    const std::optional<dnn::DnnGraphTargetDevice>& target_device) const {
   // Deserializing a graph runs a warmup execution by default. Use a private
   // stream for the warmup to avoid race conditions.
   ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
                    cudnn_->GetCompilationHandle(stream.parent()));
   cudnn_frontend::graph::Graph graph;
-  RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(
-      cudnn.handle(),
-      std::vector<uint8_t>(serialized_data.data(),
-                           serialized_data.data() + serialized_data.size())));
+  std::vector<uint8_t> serialized_bytes(serialized_data.begin(),
+                                        serialized_data.end());
+
+  const DeviceDescription& runtime_desc =
+      stream.parent()->GetDeviceDescription();
+  if (ShouldUseTargetDeviceProperties(target_device, runtime_desc)) {
+    LOG(WARNING) << "Running cuDNN graph compiled for "
+                 << target_device->core_count << " SMs on a device with "
+                 << runtime_desc.core_count() << " SMs.";
+    auto device_props = std::make_shared<cudnn_frontend::DeviceProperties>();
+    std::vector<uint8_t> prop_bytes(
+        target_device->serialized_device_properties.begin(),
+        target_device->serialized_device_properties.end());
+    RETURN_IF_CUDNN_FRONTEND_ERROR(device_props->deserialize(prop_bytes));
+    graph.set_device_properties(device_props);
+    // Deserializing with device properties has known bugs (as of cuDNN 9.23,
+    // some properties aren't populated correctly), so this may still fail. We
+    // try anyway, since without the SM count override deserialization would
+    // always fail.
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(serialized_bytes));
+    // The graph.deserialize with a handle does a warmup, so we also should do
+    // one here.
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph.warmup(cudnn.handle()));
+    return std::make_unique<CudnnGraph>(std::move(graph));
+  }
+
+  RETURN_IF_CUDNN_FRONTEND_ERROR(
+      graph.deserialize(cudnn.handle(), serialized_bytes));
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
@@ -6961,18 +7026,39 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
       graph_.select_behavior_notes(
           {cudnn_frontend::BehaviorNote_t::SUPPORTS_CUDA_GRAPH_NATIVE_API});
     }
+    if (engine_options.force_tensor_ir) {
+      // CUTLASS FALLBACK engines (eng0..eng2) report
+      // NUMERICAL_NOTE_TENSOR_CORE;
+      // CUDNN_GENERIC_MEMBOUND_FUSION_TENSOR_IR_ENGINE (eng3) does not.
+      graph_.deselect_numeric_notes(
+          {cudnn_frontend::NumericalNote_t::TENSOR_CORE});
+    }
     return absl::OkStatus();
   };
 
   ABSL_RETURN_IF_ERROR(SetGraphSmVersion(graph_, gpu_device_info));
+  force_tensor_ir_ = engine_options.force_tensor_ir;
 
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    // Holds the lock on the shared compilation handle until the end of scope.
-    ABSL_ASSIGN_OR_RETURN(
-        CudnnHandle cudnn,
-        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
+    // cuDNN's TensorIR engine eagerly loads CUDA modules during "compile"
+    // when some context is current; explicitly clearing any CUDA context
+    // left active by unrelated prior work on this thread makes it defer
+    // that work to execute time instead, where XLA's real Execute() path
+    // (via CudnnHandle's RAII) always activates the correct context on its
+    // own. See the deviceless branch below for a different, unrelated reason
+    // ScopedDeactivateContext is used there.
+    //
+    // The handle must be acquired first: CudnnHandle's constructor activates
+    // the executor's context, which would undo an earlier deactivation.
+    ABSL_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetCompilationHandle(
+                                     cudnn_support.parent_));
+    std::unique_ptr<ActivateContext> deactivate;
+    if (force_tensor_ir_) {
+      deactivate =
+          std::make_unique<stream_executor::gpu::ScopedDeactivateContext>();
+    }
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
     RETURN_IF_CUDNN_FRONTEND_ERROR(
         graph_.build_operation_graph(cudnn.handle()));
@@ -6987,6 +7073,18 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
           "Deviceless cuDNN compilation requires cuDNN >= ",
           kMinDevicelessCudnnVersion.ToString(), " (loaded ",
           cudnn_frontend::detail::get_backend_version_string(), ")."));
+    }
+    // Deviceless mode. No cuDNN version guard needed: DeviceProperties
+    // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
+    // For the TensorIR path, explicitly clear any CUDA context left active by
+    // unrelated prior work on this thread, so cuDNN's internal "is a context
+    // current?" checks reliably see this compile as truly deviceless. Other
+    // paths must keep the ambient context or cuDNN's precompiled engines
+    // segfault.
+    std::unique_ptr<ActivateContext> deactivate;
+    if (force_tensor_ir_) {
+      deactivate =
+          std::make_unique<stream_executor::gpu::ScopedDeactivateContext>();
     }
     ABSL_ASSIGN_OR_RETURN(auto device_props,
                      xla::gpu::BuildDeviceProperties(gpu_device_info));
@@ -7005,9 +7103,16 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(
-        CudnnHandle cudnn,
-        cudnn_support.cudnn_->GetCompilationHandle(cudnn_support.parent_));
+    // See the comment in Prepare()'s device branch: only the TensorIR path
+    // needs the context cleared, everything else needs it activated as
+    // usual or cuDNN's precompiled engines segfault.
+    ABSL_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetCompilationHandle(
+                                     cudnn_support.parent_));
+    std::unique_ptr<ActivateContext> deactivate;
+    if (force_tensor_ir_) {
+      deactivate =
+          std::make_unique<stream_executor::gpu::ScopedDeactivateContext>();
+    }
     if (plan_id.has_value()) {
       RETURN_CUDNN_FRONTEND_STATUS(
           graph_.build_plan_at_index(cudnn.handle(), *plan_id));
@@ -7015,6 +7120,13 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
     RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn.handle()));
   } else {
     // no need to set_device_properties, it is done in Prepare()
+    // See the comment in Prepare()'s deviceless branch for why this is
+    // cleared only for the TensorIR path.
+    std::unique_ptr<ActivateContext> deactivate;
+    if (force_tensor_ir_) {
+      deactivate =
+          std::make_unique<stream_executor::gpu::ScopedDeactivateContext>();
+    }
     if (plan_id.has_value()) {
       RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plan_at_index(*plan_id));
     }

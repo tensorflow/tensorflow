@@ -310,6 +310,70 @@ TEST_F(SortingTest, SortFusionWithPartialLastTile) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
 }
 
+// Tests multi-tile bitonic sort when the sort dimension has full tiles and a
+// partial trailing tile across multiple outer stages with iota operands.
+TEST_F(SortingTest, SortFusionWithMultipleTilesAndPartialTile) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    compare {
+      p.0.lhs = s64[] parameter(0)
+      p.0.rhs = s64[] parameter(1)
+      p.1.lhs = s64[] parameter(2)
+      p.1.rhs = s64[] parameter(3)
+      p.2.lhs = s64[] parameter(4)
+      p.2.rhs = s64[] parameter(5)
+      p.3.lhs = s64[] parameter(6)
+      p.3.rhs = s64[] parameter(7)
+      lt_key = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+      eq_key = pred[] compare(p.0.lhs, p.0.rhs), direction=EQ
+      lt_idx = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+      ROOT res = pred[] select(eq_key, lt_idx, lt_key)
+    }
+
+    sort_fusion {
+      p0 = s64[2, 2500]{1, 0} parameter(0)
+      iota = s64[2, 2500]{1, 0} iota(), iota_dimension=1
+      ROOT sort = (s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0},
+                   s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0})
+          sort(p0, iota, iota, iota), dimensions={1}, is_stable=true,
+          to_apply=compare
+    }
+
+    ENTRY main {
+      p0 = s64[2, 2500]{1, 0} parameter(0)
+      ROOT fusion = (s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0},
+                     s64[2, 2500]{1, 0}, s64[2, 2500]{1, 0})
+          fusion(p0), kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
+}
+
+TEST_F(SortingTest, SortFusionMultiStageWithPartialTile) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    compare {
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    sort_fusion {
+      p0 = f32[2, 10000]{1, 0} parameter(0)
+      ROOT sort = f32[2, 10000]{1, 0} sort(p0), dimensions={1}, to_apply=compare
+    }
+
+    ENTRY main {
+      p0 = f32[2, 10000]{1, 0} parameter(0)
+      ROOT fusion = f32[2, 10000]{1, 0} fusion(p0),
+          kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{0, 0}));
+}
+
 // Test that verifies the IgnoreMemorySpace option works correctly
 TEST_F(SortingTest, LayoutsInShapesEqualWithIgnoreMemorySpace) {
   const char* hlo_text = R"(

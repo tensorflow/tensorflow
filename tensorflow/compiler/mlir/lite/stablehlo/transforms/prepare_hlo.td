@@ -15,17 +15,17 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mhlo/IR/hlo_ops.td"
+include "stablehlo/dialect/StablehloOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
 //===------------------------------------------------------------------------===
-// mhlo.convolution
+// stablehlo.convolution
 //===------------------------------------------------------------------------===
 
 // Re-Layout Patterns
 //
-// mhlo.convolution can encode arbitrary layouts for all its parameters
-// (mhlo::ConvDimensionNumbersAttr). TFL convolutions require parameter layouts
+// stablehlo.convolution can encode arbitrary layouts for all its parameters
+// (stablehlo::ConvDimensionNumbersAttr). TFL convolutions require parameter layouts
 // to be of a specific configuration:
 //
 // TFL Native Standard Conv Layouts:
@@ -33,23 +33,21 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 // 3D             : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
 // 2D (depthwise) : [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
 //
-// The following patterns transpose the inputs and output of mhlo.convolution
+// The following patterns transpose the inputs and output of stablehlo.convolution
 // ops until they are complicit with the TFL required layout.
 // Some of these defs depend on types in `conv_util.h`.
 
 // Given from, to `Layout` get the permutation array for transposing one to
 // the other.
 def PermForReLayout : NativeCodeCall<
-   "DenseIntElementsAttr::get("
-      "RankedTensorType::get("
-        "{$0.Rank()},"
-        "$_builder.getI64Type()),"
+   "DenseI64ArrayAttr::get("
+      "$_builder.getContext(),"
       "$0.GetPermForReLayout($1))">;
 
 def AreDnumsFullyDefined : Constraint<CPred<
-  "$0.getDefiningOp<mhlo::ConvolutionOp>()"
+  "$0.getDefiningOp<stablehlo::ConvolutionOp>()"
     ".getLhs().getType().getShape().size()"
-  "== $0.getDefiningOp<mhlo::ConvolutionOp>()"
+  "== $0.getDefiningOp<stablehlo::ConvolutionOp>()"
     ".getDimensionNumbers().getInputSpatialDimensions().size() + 2">>;
 
 // Given $0: Layout (from layout), $1: Layout (to layout), $2: Value
@@ -62,13 +60,13 @@ def PermuteShape : NativeCodeCall<
       "llvm::cast<RankedTensorType>($2.getType()).getShape()))">;
 
 def IsStandardConv : Constraint<CPred<
-  "IsStandardConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
+  "IsStandardConv($0.getDefiningOp<stablehlo::ConvolutionOp>())">>;
 
 def IsDepthwiseConv : Constraint<CPred<
-  "IsDepthwiseConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
+  "IsDepthwiseConv($0.getDefiningOp<stablehlo::ConvolutionOp>())">>;
 
 def IsSupportedNonTrivialConv : Constraint<CPred<
-  "IsSupportedNonTrivialConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
+  "IsSupportedNonTrivialConv($0.getDefiningOp<stablehlo::ConvolutionOp>())">>;
 
 def IsSupportedConv : Constraint<Or
   <[IsStandardConv.predicate, IsDepthwiseConv.predicate, IsSupportedNonTrivialConv.predicate]>>;
@@ -110,7 +108,7 @@ def CloneDnumsWithTFLNativeInputLayout : NativeCodeCall<
       "$0,"
       "GetTFLNativeInputOrOutputLayout($0))">;
 
-def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
+def ReLayoutConvInput : Pat<(StableHLO_ConvolutionOp:$conv
                                 $input,
                                 $kernel,
                                 $strides,
@@ -123,8 +121,8 @@ def ReLayoutConvInput : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (MHLO_ConvolutionOp
-                                (MHLO_TransposeOp
+                            (StableHLO_ConvolutionOp
+                                (StableHLO_TransposeOp
                                   $input,
                                     (PermForReLayout
                                       (InputLayout $dnums),
@@ -185,7 +183,7 @@ def CloneDnumsWithTFLNativeStandardConvKernelLayout : NativeCodeCall<
       "GetTFLNativeStandardConvKernelLayout($0))">;
 
 
-def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
+def ReLayoutConvKernel : Pat<(StableHLO_ConvolutionOp:$conv
                                 $input,
                                 $kernel,
                                 $strides,
@@ -198,9 +196,9 @@ def ReLayoutConvKernel : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (MHLO_ConvolutionOp
+                            (StableHLO_ConvolutionOp
                                 $input,
-                                (MHLO_TransposeOp
+                                (StableHLO_TransposeOp
                                   $kernel,
                                     (PermForReLayout
                                       (KernelLayout $dnums),
@@ -245,7 +243,7 @@ def CloneDnumsWithTFLNativeDepthwiseConvKernelLayout : NativeCodeCall<
       "GetTFLNativeDepthwiseConvKernelLayout())">;
 
 
-def ReLayoutConvKernelDepthwise : Pat<(MHLO_ConvolutionOp:$conv
+def ReLayoutConvKernelDepthwise : Pat<(StableHLO_ConvolutionOp:$conv
                                 $input,
                                 $kernel,
                                 $strides,
@@ -258,9 +256,9 @@ def ReLayoutConvKernelDepthwise : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (MHLO_ConvolutionOp
+                            (StableHLO_ConvolutionOp
                                 $input,
-                                (MHLO_TransposeOp
+                                (StableHLO_TransposeOp
                                   $kernel,
                                     (PermForReLayout
                                       (KernelLayout $dnums),
@@ -314,7 +312,7 @@ def CloneDnumsWithTFLNativeOutputLayout : NativeCodeCall<
       "$0,"
       "GetTFLNativeInputOrOutputLayout($0))">;
 
-def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
+def ReLayoutConvOutput : Pat<(StableHLO_ConvolutionOp:$conv
                                 $input,
                                 $kernel,
                                 $strides,
@@ -327,8 +325,8 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (MHLO_TransposeOp
-                              (MHLO_ConvolutionOp
+                            (StableHLO_TransposeOp
+                              (StableHLO_ConvolutionOp
                                   $input,
                                   $kernel,
                                   $strides,
@@ -361,7 +359,7 @@ def ReLayoutConvOutput : Pat<(MHLO_ConvolutionOp:$conv
 // This has the benifit of allowing for a single point of control
 // for turning negative padding into slices. TFL convs can fuse
 // "SAME" padding back in post-legalization. Note when lhs dilations
-// are non-trivial, the mhlo.convolution has the semantics of a deconvolution.
+// are non-trivial, the stablehlo.convolution has the semantics of a deconvolution.
 // In this case padding is interpreted differently and so we leave it in the op.
 //===---------------------------------------------------------------------------
 
@@ -373,10 +371,10 @@ class AreI64ElementsAll<int val> : Constraint<CPred<
 class AreI64ElementsNotAll<int val> :
   Constraint<Neg<AreI64ElementsAll<val>.predicate>>;
 
-// Gets a tuple of DenseElements (i64) given result from mhlo.convolution.
+// Gets a tuple of DenseElements (i64) given result from stablehlo.convolution.
 def GetExplicitPaddingArgs : NativeCodeCall<
   "GetExplicitPaddingArgs($_builder,"
-    "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
+    "$0.getDefiningOp<stablehlo::ConvolutionOp>())">;
 
 // Gets element type from Value.
 def GetElementType : NativeCodeCall<
@@ -391,13 +389,13 @@ def GetZeroScalarAttrFromType : NativeCodeCall<
 def GetTrivialPaddingAttr : NativeCodeCall<
   "$_builder.getZeroAttr($0.getType())">;
 
-// Given mhlo.convolution result, build an explicit mhlo.pad op
+// Given stablehlo.convolution result, build an explicit stablehlo.pad op
 // which is semantically equivalant.
 def ExplicitlyPadInput : NativeCodeCall<
   "CreatePadOpFromConvPadding($_builder,"
-     "$0.getDefiningOp<mhlo::ConvolutionOp>())">;
+     "$0.getDefiningOp<stablehlo::ConvolutionOp>())">;
 
-def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
+def UnfuseConvWithExplicitPadding : Pat<(StableHLO_ConvolutionOp:$conv
                                 $input,
                                 $kernel,
                                 $strides,
@@ -410,7 +408,7 @@ def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
                                 $batch_groups,
                                 $precision_config
                             ),
-                            (MHLO_ConvolutionOp
+                            (StableHLO_ConvolutionOp
                                 (ExplicitlyPadInput $conv),
                                 $kernel,
                                 $strides,
@@ -431,43 +429,42 @@ def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
 
 
 //===------------------------------------------------------------------------===
-// mhlo.pad
+// stablehlo.pad
 //===------------------------------------------------------------------------===
 
 // Pull negative pads into slice
 //===---------------------------
 
 def TrivialStrides : NativeCodeCall<
-  "DenseIntElementsAttr::get("
-    "RankedTensorType::get({llvm::cast<ShapedType>($0.getType()).getRank()},"
-      "$_builder.getI64Type()),"
-      "llvm::SmallVector<int64_t>(llvm::cast<ShapedType>($0.getType()).getRank(),"
-        "1))">;
+  "DenseI64ArrayAttr::get("
+    "$_builder.getContext(),"
+    "llvm::SmallVector<int64_t>(llvm::cast<ShapedType>($0.getType()).getRank(),"
+      "1))">;
 
 def SliceStart : NativeCodeCall<
-  "SliceStartFromNegPadLows($0.getDefiningOp<mhlo::PadOp>())">;
+  "SliceStartFromNegPadLows($0.getDefiningOp<stablehlo::PadOp>())">;
 
 def SliceEnd : NativeCodeCall<
-  "SliceEndFromNegPadHighs($0.getDefiningOp<mhlo::PadOp>())">;
+  "SliceEndFromNegPadHighs($0.getDefiningOp<stablehlo::PadOp>())">;
 
 def AnyNegativePads : Constraint<CPred<
-  "AnyNegativePads($0.getDefiningOp<mhlo::PadOp>())">>;
+  "AnyNegativePads($0.getDefiningOp<stablehlo::PadOp>())">>;
 
 def MakePadPositive : NativeCodeCall<
-  "ReplaceNegsWithZero($0)">;
+  "ReplaceNegsWithZero($0, $_builder.getContext())">;
 
 def TrivialInterior : Constraint<CPred<
-  "TrivialInterior($0.getDefiningOp<mhlo::PadOp>())">>;
+  "TrivialInterior($0.getDefiningOp<stablehlo::PadOp>())">>;
 
-def PullOutNegativePads : Pat<(MHLO_PadOp:$pad
+def PullOutNegativePads : Pat<(StableHLO_PadOp:$pad
                                 $input,
                                 $val,
                                 $low,
                                 $high,
                                 $interior
                               ),
-                              (MHLO_PadOp
-                                (MHLO_SliceOp
+                              (StableHLO_PadOp
+                                (StableHLO_SliceOp
                                   $input,
                                   (SliceStart $pad),
                                   (SliceEnd $pad),

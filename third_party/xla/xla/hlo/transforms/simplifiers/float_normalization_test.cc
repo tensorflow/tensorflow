@@ -74,6 +74,9 @@ class TestFloatSupport : public FloatSupport {
       // Test that only the first operand of kDot supports low-precision.
       return operand_index == 0;
     }
+    if (hlo.opcode() == HloOpcode::kReducePrecision) {
+      return FloatSupport::SupportsLowPrecisionOperand(hlo, operand_index);
+    }
     return false;
   }
 
@@ -84,6 +87,9 @@ class TestFloatSupport : public FloatSupport {
         hlo.opcode() == HloOpcode::kGetTupleElement ||
         hlo.opcode() == HloOpcode::kAllToAll) {
       return true;
+    }
+    if (hlo.opcode() == HloOpcode::kReducePrecision) {
+      return FloatSupport::SupportsLowPrecisionOutput(hlo);
     }
     return false;
   }
@@ -908,6 +914,80 @@ TEST_P(FloatNormalizationExcessPrecisionTest, BF16DotTuple) {
         module->entry_computation()->root_instruction(),
         GmockMatch(m::Tuple(m::Convert(m::Convert(m::Dot())), m::Convert())));
   }
+}
+
+TEST_P(FloatNormalizationF8Test, IdentityReducePrecisionNotNormalized) {
+  PrimitiveType f8_type = GetParam();
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  a = $0[2,4] parameter(0)
+  ROOT rp = $0[2,4] reduce-precision(a), exponent_bits=$1, mantissa_bits=$2
+}
+)";
+  absl::string_view f8_type_name =
+      xla::primitive_util::LowercasePrimitiveTypeName(f8_type);
+  int exponent_bits = xla::primitive_util::ExponentWidth(f8_type);
+  int mantissa_bits = xla::primitive_util::SignificandWidth(f8_type) - 1;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(absl::Substitute(
+                           kHlo, f8_type_name, exponent_bits, mantissa_bits)));
+
+  EXPECT_FALSE(Normalize(module.get(), f8_type, F16));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReducePrecision);
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->shape().element_type(),
+      f8_type);
+}
+
+TEST_P(FloatNormalizationF8Test, NonIdentityReducePrecisionNormalized) {
+  PrimitiveType f8_type = GetParam();
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  a = $0[2,4] parameter(0)
+  ROOT rp = $0[2,4] reduce-precision(a), exponent_bits=1, mantissa_bits=1
+}
+)";
+  absl::string_view f8_type_name =
+      xla::primitive_util::LowercasePrimitiveTypeName(f8_type);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHlo, f8_type_name)));
+
+  EXPECT_TRUE(Normalize(module.get(), f8_type, F16));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConvert);
+  EXPECT_EQ(module->entry_computation()
+                ->root_instruction()
+                ->operand(0)
+                ->shape()
+                .element_type(),
+            F16);
+}
+
+TEST_P(FloatNormalizationExcessPrecisionTest,
+       IdentityReducePrecisionPreventsExcessPrecision) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule reduce_precision_excess_precision
+
+    ENTRY main {
+      p0 = f8e4m3fn[2,4] parameter(0)
+      mul = f8e4m3fn[2,4] multiply(p0, p0)
+      rp = f8e4m3fn[2,4] reduce-precision(mul), exponent_bits=4, mantissa_bits=3
+      ROOT out = f16[2,4] convert(rp)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  EXPECT_TRUE(Normalize(module.get(), F8E4M3FN, F16));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Convert(m::ReducePrecision(m::Convert(m::Multiply()))
+                                .WithShape(F8E4M3FN, {2, 4}))));
 }
 
 }  // namespace

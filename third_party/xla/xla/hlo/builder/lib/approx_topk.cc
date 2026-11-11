@@ -293,12 +293,9 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     return builder->ReportError(status_or_approx_output_size.status());
   }
   auto output_size = status_or_approx_output_size.value().first;
-  // Temporary lower fallback approx_top_k to stable sort to preserve historical
-  // behavior on GPU.
-  // TODO(b/534418378): Lower approx_top_k to unstable_sort+slice for better
-  // performance once critical DL models can handle the output variation.
+  // Lower approx_top_k to unstable_sort+slice on CPU and GPU.
   return AggregateToTopKBuilder(builder, operands, init_values, output_size,
-                                reduction_dim, comparator, /*is_stable=*/true);
+                                reduction_dim, comparator, /*is_stable=*/false);
 }
 
 XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,

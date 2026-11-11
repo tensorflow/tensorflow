@@ -78,10 +78,8 @@ cc_library(
         "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
-        "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
@@ -223,6 +221,7 @@ xla_cc_test(
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/codegen/intrinsic:simple_jit_runner",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "@com_google_absl//absl/strings",
