@@ -37,6 +37,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -261,8 +263,7 @@ class TileInfo {
     return replica_id_bounds_;
   }
 
-  // The storage type of the tensor. This could be different from the element
-  // type. e.g. predicates are stored as i8 instead of i1.
+  // Element type of the tensor in XTile SSA tiles.
   mlir::Type storage_type() const { return storage_type_; }
 
  private:
@@ -309,7 +310,25 @@ absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
 // MLIR type -> XLA type conversions.
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
+// Element type used for `t` in XTile SSA tiles.
 mlir::Type StorageType(mlir::Type t);
+
+// Byte-addressable element type used for `elem_type` in memory.
+mlir::Type MemoryStorageType(mlir::Type elem_type);
+
+bool IsI1MemRef(mlir::Type type);
+bool HasUnlegalizedI1Storage(mlir::Operation* op);
+
+// Converts `storage_value` from its `MemoryStorageType` representation to
+// `logical_elem_type`.
+TensorValue UnpackFromMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                    TensorValue storage_value,
+                                    mlir::Type logical_elem_type);
+
+// Converts `logical_value` to its `MemoryStorageType` representation.
+TensorValue PackToMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                TensorValue logical_value);
+
 mlir::Type GetSignlessType(mlir::Type t);
 
 // Returns whether the scan `combiner` computes a running sum: it has two

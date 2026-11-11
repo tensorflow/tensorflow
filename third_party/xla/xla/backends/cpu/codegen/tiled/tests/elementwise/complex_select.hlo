@@ -12,14 +12,14 @@ fusion {
 }
 
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
-// CHECK-SAME:     %[[COND:[^:]+]]: memref<128x256xi8>,
+// CHECK-SAME:     %[[COND:[^:]+]]: memref<128x256xi1>,
 // CHECK-SAME:     %[[ON_TRUE:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[ON_FALSE:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[COND]]
-// CHECK-SAME:    : memref<128x256xi8> -> tensor<1x4xi8>
+// CHECK-SAME:    : memref<128x256xi1> -> tensor<1x4xi1>
 // CHECK:       %[[T_1:.*]] = xtile.extract %[[ON_TRUE]]
 // CHECK-SAME:    : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
 // CHECK:       %[[T_2:.*]] = xtile.extract %[[ON_FALSE]]

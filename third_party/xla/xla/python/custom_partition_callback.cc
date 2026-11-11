@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,13 +46,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/spmd_partitioner.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -117,40 +118,63 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
   explicit CApiCustomCallPartitioner(JAX_CustomCallPartitioner_Callbacks* c_fns)
       : c_fns_(c_fns) {}
   ~CApiCustomCallPartitioner() override { c_fns_->dtor(c_fns_); }
+
+  absl::StatusOr<std::optional<xla::CustomCallPartitionResult>> PartitionToMlir(
+      absl::Span<const Shape> arg_shapes,
+      absl::Span<const std::optional<HloSharding>> arg_shardings,
+      const Shape& result_shape,
+      const std::optional<HloSharding>& result_sharding,
+      absl::string_view backend_config) const override;
+
   absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
                          HloInstruction* instruction) const override {
-    JAX_CustomCallPartitioner_Partition_Args args;
-    auto scratch = jax::PopulateArgs(&args, instruction);
-    c_fns_->partition(c_fns_, &args);
-
+    // Collect global shapes and shardings and delegate to `PartitionToMlir`.
+    std::vector<Shape> arg_shapes;
+    std::vector<std::optional<HloSharding>> arg_shardings_in;
+    arg_shapes.reserve(instruction->operand_count());
+    arg_shardings_in.reserve(instruction->operand_count());
+    for (const HloInstruction* operand : instruction->operands()) {
+      arg_shapes.push_back(operand->shape());
+      arg_shardings_in.push_back(operand->has_sharding()
+                                     ? std::make_optional(operand->sharding())
+                                     : std::nullopt);
+    }
+    std::optional<HloSharding> result_sharding_in =
+        instruction->has_sharding()
+            ? std::make_optional(instruction->sharding())
+            : std::nullopt;
+    ABSL_ASSIGN_OR_RETURN(std::optional<xla::CustomCallPartitionResult> result,
+                     PartitionToMlir(arg_shapes, arg_shardings_in,
+                                     instruction->shape(), result_sharding_in,
+                                     instruction->raw_backend_config_string()));
+    if (!result.has_value()) {
+      return xla::Internal(
+          "Expected PartitionResult for custom call partitioning of %s",
+          instruction->ToString());
+    }
     XlaComputation computation;
-    std::vector<HloSharding> arg_shardings;
-    std::optional<HloSharding> result_sharding;
-    std::string mlir_module;
-    ABSL_ASSIGN_OR_RETURN(std::tie(mlir_module, arg_shardings, result_sharding),
-                     jax::ConsumeResults(&args));
     ABSL_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
-        mlir_module, computation, /*use_tuple_args=*/false,
+        result->mlir_module, computation, /*use_tuple_args=*/false,
         /*return_tuple=*/false));
-    auto hlo_module_config =
+    ABSL_ASSIGN_OR_RETURN(
+        HloModuleConfig hlo_module_config,
         xla::HloModule::CreateModuleConfigFromProto(
-            computation.proto(), xla::DefaultDebugOptionsIgnoringFlags())
-            .value();
+            computation.proto(), xla::DefaultDebugOptionsIgnoringFlags()));
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                      xla::HloModule::CreateFromProto(computation.proto(),
                                                      hlo_module_config));
     std::vector<HloInstruction*> operands;
     operands.reserve(instruction->operand_count());
-    if (arg_shardings.size() != instruction->operand_count()) {
+    if (result->arg_shardings.size() != instruction->operand_count()) {
       return xla::Internal(
           "Shardings returned from partitioning %s must match: %d vs %d",
-          instruction->ToString(), arg_shardings.size(),
+          instruction->ToString(), result->arg_shardings.size(),
           instruction->operand_count());
     }
     for (size_t i = 0; i < instruction->operand_count(); ++i) {
       operands.push_back(
           partitioner->GetPartitionedHlo(instruction->mutable_operand(i))
-              .Reshard(arg_shardings[i])
+              .Reshard(result->arg_shardings[i])
               .hlo());
     }
 
@@ -171,7 +195,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
                          partitioner->builder(), operands,
                          [partitioner]() { return partitioner->NewChannel(); },
                          "_custom_call_lowering_rule"));
-    partitioned_hlo->set_sharding(result_sharding.value());
+    partitioned_hlo->set_sharding(result->result_sharding);
 
     spmd::PartitionedHlo result_partitioned =
         spmd::PartitionedHlo(partitioned_hlo, instruction->shape(),
@@ -184,7 +208,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
   HloSharding PropagateUserSharding(
       const HloInstruction* instruction, const HloInstruction* user,
       const HloSharding& sharding) const override {
-    JAX_CustomCallPartitioner_PropagateUserSharding_Args args;
+    JAX_CustomCallPartitioner_PropagateUserSharding_Args args{};
     auto scratch = jax::PopulateArgs(&args, instruction, sharding);
     c_fns_->propagate_user_sharding(c_fns_, &args);
     auto status_or_result = jax::ConsumeResults(&args);
@@ -193,7 +217,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
   }
   std::optional<HloSharding> InferShardingFromOperands(
       const HloInstruction* instruction) const override {
-    JAX_CustomCallPartitioner_InferShardingFromOperands_Args args;
+    JAX_CustomCallPartitioner_InferShardingFromOperands_Args args{};
     auto scratch = jax::PopulateArgs(&args, instruction);
     c_fns_->infer_sharding(c_fns_, &args);
     auto status_or_result = jax::ConsumeResults(&args);
@@ -228,17 +252,53 @@ absl::string_view ToStringView(JAX_CustomCallPartitioner_string data) {
 }
 
 void SetCAPIAval(JAX_CustomCallPartitioner_aval& result,
-                 const xla::HloInstruction* inst,
+                 const xla::Shape& shape,
+                 const std::optional<xla::HloSharding>& sharding,
                  std::vector<std::string>& scratch) {
-  SetCAPIString(result.shape, inst->shape().ToProto().SerializeAsString(),
-                scratch);
-  if (inst->has_sharding()) {
+  SetCAPIString(result.shape, shape.ToProto().SerializeAsString(), scratch);
+  if (sharding.has_value()) {
     result.has_sharding = true;
-    SetCAPIString(result.sharding,
-                  inst->sharding().ToProto().SerializeAsString(), scratch);
+    SetCAPIString(result.sharding, sharding->ToProto().SerializeAsString(),
+                  scratch);
   } else {
     result.has_sharding = false;
   }
+}
+
+void SetCAPIAval(JAX_CustomCallPartitioner_aval& result,
+                 const xla::HloInstruction* inst,
+                 std::vector<std::string>& scratch) {
+  SetCAPIAval(result, inst->shape(),
+              inst->has_sharding() ? std::make_optional(inst->sharding())
+                                   : std::nullopt,
+              scratch);
+}
+
+PartitionScratch PopulatePartitionArgs(
+    JAX_CustomCallPartitioner_Partition_Args* args,
+    absl::Span<const xla::Shape> arg_shapes,
+    absl::Span<const std::optional<xla::HloSharding>> arg_shardings,
+    const xla::Shape& result_shape,
+    const std::optional<xla::HloSharding>& result_sharding,
+    absl::string_view backend_config) {
+  CHECK_EQ(arg_shapes.size(), arg_shardings.size());
+  args->header.api_version = 0;
+  args->header.has_error = false;
+  args->header.data = nullptr;
+  args->header.cleanup_fn = nullptr;
+  PartitionScratch scratch;
+  scratch.op_args_storage.resize(arg_shapes.size());
+  scratch.strings.reserve(arg_shapes.size() * 2 + 2);
+  for (size_t i = 0; i < arg_shapes.size(); ++i) {
+    SetCAPIAval(scratch.op_args_storage[i], arg_shapes[i], arg_shardings[i],
+                scratch.strings);
+  }
+  args->num_args = arg_shapes.size();
+  args->op_args = scratch.op_args_storage.data();
+  SetCAPIAval(args->op_result, result_shape, result_sharding, scratch.strings);
+  args->backend_config.data = backend_config.data();
+  args->backend_config.size = backend_config.size();
+  return scratch;
 }
 
 }  // namespace
@@ -302,9 +362,11 @@ void PopulateResults(
                               xla::HloSharding>>
         results,
     JAX_CustomCallPartitioner_Partition_Args* args) {
-  if (PopulateErrorHeader(args->header, results.status())) {
+  if (!results.ok()) {
+    PopulateErrorHeader(args->header, results.status());
     return;
   }
+  args->header.has_error = false;
   auto* scratch = new ResultScratch;
   args->header.data = scratch;
   args->header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
@@ -347,23 +409,21 @@ ConsumeResults(JAX_CustomCallPartitioner_Partition_Args* args) {
 
 PartitionScratch PopulateArgs(JAX_CustomCallPartitioner_Partition_Args* args,
                               const xla::HloInstruction* instruction) {
-  args->header.api_version = 0;
-  args->header.data = nullptr;
-  args->header.cleanup_fn = nullptr;
-  PartitionScratch scratch;
-  scratch.op_args_storage.resize(instruction->operand_count());
-  scratch.strings.reserve(instruction->operand_count() * 2 + 2);
-  size_t i = 0;
-  for (xla::HloInstruction* operand : instruction->operands()) {
-    SetCAPIAval(scratch.op_args_storage[i], operand, scratch.strings);
-    ++i;
+  std::vector<xla::Shape> arg_shapes;
+  std::vector<std::optional<xla::HloSharding>> arg_shardings;
+  arg_shapes.reserve(instruction->operand_count());
+  arg_shardings.reserve(instruction->operand_count());
+  for (const xla::HloInstruction* operand : instruction->operands()) {
+    arg_shapes.push_back(operand->shape());
+    arg_shardings.push_back(operand->has_sharding()
+                                ? std::make_optional(operand->sharding())
+                                : std::nullopt);
   }
-  args->num_args = instruction->operand_count();
-  args->op_args = scratch.op_args_storage.data();
-  SetCAPIAval(args->op_result, instruction, scratch.strings);
-  args->backend_config.data = instruction->raw_backend_config_string().data();
-  args->backend_config.size = instruction->raw_backend_config_string().size();
-  return scratch;
+  return PopulatePartitionArgs(
+      args, arg_shapes, arg_shardings, instruction->shape(),
+      instruction->has_sharding() ? std::make_optional(instruction->sharding())
+                                  : std::nullopt,
+      instruction->raw_backend_config_string());
 }
 
 absl::StatusOr<std::tuple<
@@ -431,6 +491,7 @@ PartitionScratch PopulateArgs(
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args,
     const xla::HloInstruction* instruction) {
   args->header.api_version = 0;
+  args->header.has_error = false;
   args->header.data = nullptr;
   args->header.cleanup_fn = nullptr;
   PartitionScratch scratch;
@@ -454,9 +515,11 @@ PartitionScratch PopulateArgs(
 void PopulateResults(
     absl::StatusOr<std::optional<xla::HloSharding>> result,
     JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
-  if (PopulateErrorHeader(args->header, result.status())) {
+  if (!result.ok()) {
+    PopulateErrorHeader(args->header, result.status());
     return;
   }
+  args->header.has_error = false;
   args->has_result_sharding = result->has_value();
   if (result->has_value()) {
     auto* data = new std::string((*result)->ToProto().SerializeAsString());
@@ -493,6 +556,7 @@ PartitionScratch PopulateArgs(
     JAX_CustomCallPartitioner_PropagateUserSharding_Args* args,
     const xla::HloInstruction* instruction, const xla::HloSharding& sharding) {
   args->header.api_version = 0;
+  args->header.has_error = false;
   args->header.data = nullptr;
   args->header.cleanup_fn = nullptr;
   PartitionScratch scratch;
@@ -510,9 +574,11 @@ PartitionScratch PopulateArgs(
 void PopulateResults(
     absl::StatusOr<xla::HloSharding> result,
     JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
-  if (PopulateErrorHeader(args->header, result.status())) {
+  if (!result.ok()) {
+    PopulateErrorHeader(args->header, result.status());
     return;
   }
+  args->header.has_error = false;
   auto* data = new std::string(result->ToProto().SerializeAsString());
   args->header.data = data;
   args->header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
@@ -535,3 +601,27 @@ std::unique_ptr<xla::CustomCallPartitioner> CreateCApiCustomCallPartitioner(
 }
 
 }  // namespace jax
+
+namespace xla {
+
+absl::StatusOr<std::optional<CustomCallPartitionResult>>
+CApiCustomCallPartitioner::PartitionToMlir(
+    absl::Span<const Shape> arg_shapes,
+    absl::Span<const std::optional<HloSharding>> arg_shardings,
+    const Shape& result_shape,
+    const std::optional<HloSharding>& result_sharding,
+    absl::string_view backend_config) const {
+  JAX_CustomCallPartitioner_Partition_Args args{};
+  jax::PartitionScratch scratch =
+      jax::PopulatePartitionArgs(&args, arg_shapes, arg_shardings, result_shape,
+                                 result_sharding, backend_config);
+  c_fns_->partition(c_fns_, &args);
+
+  CustomCallPartitionResult out;
+  ABSL_ASSIGN_OR_RETURN(
+      std::tie(out.mlir_module, out.arg_shardings, out.result_sharding),
+      jax::ConsumeResults(&args));
+  return out;
+}
+
+}  // namespace xla

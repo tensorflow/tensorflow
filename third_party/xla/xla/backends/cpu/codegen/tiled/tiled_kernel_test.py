@@ -534,16 +534,13 @@ class XtileLoweringTest(absltest.TestCase):
     ir = """
       module @__compute_module_bitcast_copy_fusion {
         xtile.entry_func @bitcast_copy_fusion(
-            %arg0: memref<2x3xi8>, %arg1: memref<2x3x1xi8>,
+            %arg0: memref<2x3xi1>, %arg1: memref<2x3x1xi1>,
             %arg2: index) {
           %c0 = arith.constant 0 : index
-          %1 = xtile.extract %arg0[%c0, %c0] [2, 4] [1, 1] : memref<2x3xi8> -> tensor<2x4xi8>
-          %cst = arith.constant dense<0> : tensor<2x4xi8>
-          %2 = arith.cmpi ne, %1, %cst : tensor<2x4xi8>
-          %3 = stablehlo.reshape %2 : (tensor<2x4xi1>) -> tensor<1x2x4xi1>
-          %4 = stablehlo.transpose %3, dims = [1, 2, 0] : (tensor<1x2x4xi1>) -> tensor<2x4x1xi1>
-          %5 = arith.extui %4 : tensor<2x4x1xi1> to tensor<2x4x1xi8>
-          xtile.insert %5 into %arg1[%c0, %c0, %c0] [2, 4, 1] [1, 1, 1] : tensor<2x4x1xi8> -> memref<2x3x1xi8>
+          %1 = xtile.extract %arg0[%c0, %c0] [2, 4] [1, 1] : memref<2x3xi1> -> tensor<2x4xi1>
+          %2 = stablehlo.reshape %1 : (tensor<2x4xi1>) -> tensor<1x2x4xi1>
+          %3 = stablehlo.transpose %2, dims = [1, 2, 0] : (tensor<1x2x4xi1>) -> tensor<2x4x1xi1>
+          xtile.insert %3 into %arg1[%c0, %c0, %c0] [2, 4, 1] [1, 1, 1] : tensor<2x4x1xi1> -> memref<2x3x1xi1>
           xtile.return
         }
       }

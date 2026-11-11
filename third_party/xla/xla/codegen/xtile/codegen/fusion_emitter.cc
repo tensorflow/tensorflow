@@ -2630,28 +2630,17 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
                                           emitter_ctx.entry_func().getArgument(
                                               fusion.operand_index(hlo))));
 
-    // Workaround(i1_to_i8_workaround)
-    // Some types are stored using different types, e.g. i1 is stored in memory
-    // as i8. It's important to type checking that we perform a conversion after
-    // loading if the type of the loaded parameter does not match what is
-    // expected.
     Type loaded_element_type = getElementTypeOrSelf(parameter.getType());
     ABSL_ASSIGN_OR_RETURN(Type expected_element_type,
                      PrimitiveTypeToMlirType(b, hlo->shape().element_type()));
 
-    if (expected_element_type != loaded_element_type) {
-      // Ensure that we didn't mess up somewhere else by checking that we
-      // indeed loaded the expected storage type for the expected element type.
-      if (loaded_element_type != StorageType(expected_element_type)) {
-        return absl::InternalError(absl::StrCat(
-            "Parameters were loaded with an unexpected element type "
-            "while lowering ",
-            fusion.called_computation()->ToString()));
-      }
-      if (!IsPackedTritonDotScaledOperandType(hlo->shape().element_type())) {
-        parameter =
-            mlir::cast<TensorValue>(Cast(b, parameter, expected_element_type));
-      }
+    if (expected_element_type != loaded_element_type &&
+        (loaded_element_type != StorageType(expected_element_type) ||
+         !IsPackedTritonDotScaledOperandType(hlo->shape().element_type()))) {
+      return absl::InternalError(
+          absl::StrCat("Parameters were loaded with an unexpected element type "
+                       "while lowering ",
+                       fusion.called_computation()->ToString()));
     }
     return parameter;
   }
@@ -3105,17 +3094,6 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
        llvm::zip(tiled_computation.roots(), results,
                  fn.getInputOutputBuffers().drop_front(
                      computation->num_parameters()))) {
-    // Workaround(i1_to_i8_workaround)
-    // Some types are stored using different types, e.g. i1 is stored in memory
-    // as i8. It's important to check converted types before storing if the type
-    // of the result does not match the type of the output pointer.
-    Type result_element_type = getElementTypeOrSelf(result.getType());
-    Type result_storage_type = StorageType(result_element_type);
-
-    if (result_element_type != result_storage_type) {
-      result = mlir::cast<TensorValue>(Cast(b, result, result_storage_type));
-    }
-
     ABSL_ASSIGN_OR_RETURN(auto tile_info, TileInfo::Construct(emitter_ctx, *root));
 
     xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),

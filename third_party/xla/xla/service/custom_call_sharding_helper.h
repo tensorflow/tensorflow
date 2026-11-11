@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/shape.h"
 
 #ifndef XLA_SERVICE_CUSTOM_CALL_SHARDING_HELPER_H_
 #define XLA_SERVICE_CUSTOM_CALL_SHARDING_HELPER_H_
@@ -60,12 +64,33 @@ namespace spmd {
 class SpmdPartitioningVisitor;
 }  // namespace spmd
 
+// Holds the result of invoking a partitioner-agnostic custom call partitioning
+// callback.
+struct CustomCallPartitionResult {
+  std::string mlir_module;
+  std::vector<HloSharding> arg_shardings;
+  HloSharding result_sharding = HloSharding::Replicate();
+};
+
 // Helper class that provides a partitioning function in addition to sharding
 // policies.
 class CustomCallPartitioner : public CustomCallShardingHelper {
  public:
   virtual absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
                                  HloInstruction* hlo) const;
+
+  // Invokes a partitioner-agnostic custom call partitioning callback (such as
+  // JAX's `@custom_partitioning` C-API callback) using unpadded global shapes,
+  // shardings, and raw `backend_config` bytes to produce a shard-local MLIR
+  // module and desired operand/result shardings. Returns `std::nullopt` if this
+  // partitioner only implements the GSPMD `Partition(SpmdPartitioningVisitor*,
+  // HloInstruction*)` method.
+  virtual absl::StatusOr<std::optional<CustomCallPartitionResult>>
+  PartitionToMlir(absl::Span<const Shape> arg_shapes,
+                  absl::Span<const std::optional<HloSharding>> arg_shardings,
+                  const Shape& result_shape,
+                  const std::optional<HloSharding>& result_sharding,
+                  absl::string_view backend_config) const;
 
   // Invokes a sharding-inspection callback for custom calls such as
   // `InspectSharding` without requiring an HloInstruction or GSPMD visitor.

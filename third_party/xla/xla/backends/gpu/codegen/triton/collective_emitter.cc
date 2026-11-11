@@ -218,20 +218,8 @@ absl::StatusOr<ContextT> CreateReductionEmitterContext(
           type_string));
     }
     operand.input_tile = mlir::cast<xtile::TensorValue>(op->getOperand(i));
-    // We assume the input to the reduction collective is an
-    // xtile::ExtractTileOp, or that the parent of the input is an
-    // xtile::ExtractTileOp (edge case for booleans).
     operand.input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
         operand.input_tile.getDefiningOp());
-    if (!operand.input_extract && operand.input_tile.getDefiningOp() &&
-        operand.input_tile.getDefiningOp()->getNumOperands() > 0) {
-      // Workaround(i1_to_i8_workaround).
-      // Go one place up this is an edge case for booleans
-      // Booleans are stored as i8 and then casted to i1 so the tile we get is
-      // after the cast. To get the extract tile we need to go one step up.
-      operand.input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
-          operand.input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
-    }
     if (!operand.input_extract) {
       return absl::InvalidArgumentError(
           "Collective op must have an extract tile op as operand in order to "
@@ -542,7 +530,6 @@ void EmitBlockBarrier(mlir::ImplicitLocOpBuilder& b,
 }
 
 struct CollectiveOperandExtractInfo {
-  xtile::TensorValue input_tile;
   xtile::ExtractTileOp input_extract;
   mlir::TypedValue<mlir::MemRefType> input_buffer;
   mlir::Value remote_buffers_arg;
@@ -552,16 +539,7 @@ struct CollectiveOperandExtractInfo {
 absl::StatusOr<CollectiveOperandExtractInfo> ExtractCollectiveOperand(
     mlir::Value operand, int64_t operand_index, absl::string_view op_name,
     xtile::EntryFuncOp entry_func, mlir::ValueRange remote_buffers) {
-  auto input_tile = mlir::cast<xtile::TensorValue>(operand);
-  auto input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
-      input_tile.getDefiningOp());
-  if (!input_extract && input_tile.getDefiningOp() &&
-      input_tile.getDefiningOp()->getNumOperands() > 0) {
-    // Workaround(i1_to_i8_workaround): booleans are stored as i8 and cast to
-    // i1 after ExtractTileOp.
-    input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
-        input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
-  }
+  auto input_extract = operand.getDefiningOp<xtile::ExtractTileOp>();
   if (!input_extract) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "%s operand %d must be defined by xtile::ExtractTileOp.", op_name,
@@ -579,7 +557,7 @@ absl::StatusOr<CollectiveOperandExtractInfo> ExtractCollectiveOperand(
         "%s operand %d must be extracted from a fusion parameter.", op_name,
         operand_index));
   }
-  if (!input_extract->hasOneUse() || !input_tile.hasOneUse()) {
+  if (!input_extract->hasOneUse()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("%s input tile %d must only be used by the %s op.",
                         op_name, operand_index, op_name));
@@ -594,7 +572,6 @@ absl::StatusOr<CollectiveOperandExtractInfo> ExtractCollectiveOperand(
   }
 
   CollectiveOperandExtractInfo info;
-  info.input_tile = input_tile;
   info.input_extract = input_extract;
   info.input_buffer = input_extract.getSource();
   info.remote_buffers_arg = remote_buffers[input_arg.getArgNumber()];
@@ -609,7 +586,6 @@ class ReductionEmitter {
     // Layout of the input tensor in minor-to-major order.
     llvm::SmallVector<int64_t> layout;
     mlir::Type elem_type;
-    mlir::Type elem_storage_type;
   };
 
   ReductionEmitter(ReductionEmitterContext& ctx,
@@ -653,7 +629,6 @@ class ReductionEmitter {
     for (ReductionOperandContext& op_ctx : base_ctx_.operands) {
       OperandState state;
       state.elem_type = mlir::getElementTypeOrSelf(op_ctx.input_tile.getType());
-      state.elem_storage_type = xtile::StorageType(state.elem_type);
       ABSL_ASSIGN_OR_RETURN(state.layout,
                        xtile::GetPermutationMinorToMajor(
                            op_ctx.input_extract.getSource().getType()));
@@ -688,21 +663,10 @@ class ReductionEmitter {
     const OperandState& state = operand_states_[operand_idx];
     mlir::TypedValue<mlir::MemRefType> remote_memref =
         GetRemoteBufferMemref(operand_idx, rank_idx);
-    auto storage_tile_type =
-        mlir::RankedTensorType::get(shape, state.elem_storage_type);
-    xtile::TensorValue next_tile =
-        xtile::ExtractTileOp::create(builder_, storage_tile_type, remote_memref,
-                                     offsets, shape, strides)
-            .getResult();
-    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // See fusion emitter for more details.
-    if (state.elem_storage_type != state.elem_type) {
-      next_tile = mlir::cast<xtile::TensorValue>(
-          arith::TruncIOp::create(
-              builder_, next_tile.getType().clone(state.elem_type), next_tile)
-              .getResult());
-    }
-    return next_tile;
+    auto tile_type = mlir::RankedTensorType::get(shape, state.elem_type);
+    return xtile::ExtractTileOp::create(builder_, tile_type, remote_memref,
+                                        offsets, shape, strides)
+        .getResult();
   }
 
   // Overload for integer rank.
@@ -722,22 +686,9 @@ class ReductionEmitter {
                            llvm::ArrayRef<int64_t> strides,
                            llvm::ArrayRef<int64_t> shape) {
     CHECK(initialized_);
-    const OperandState& state = operand_states_[operand_idx];
     mlir::TypedValue<mlir::MemRefType> remote_memref =
         GetRemoteBufferMemref(operand_idx, base_ctx_.xtile_entry_fn.getRank());
-    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // The parameter extraction casts the storage type to the logical type.
-    // But for copying to the remote buffer we need to cast it back to the
-    // storage type. Downstream passes should be able to optimize this away.
-    xtile::TensorValue storage_tile = tile_to_store;
-    if (state.elem_storage_type != state.elem_type) {
-      storage_tile = mlir::cast<xtile::TensorValue>(
-          arith::ExtUIOp::create(
-              builder_, storage_tile.getType().clone(state.elem_storage_type),
-              storage_tile)
-              .getResult());
-    }
-    xtile::InsertTileOp::create(builder_, storage_tile, remote_memref, offsets,
+    xtile::InsertTileOp::create(builder_, tile_to_store, remote_memref, offsets,
                                 shape, strides);
   }
 
@@ -903,8 +854,8 @@ class AllReduceEmitter : public ReductionEmitter {
       llvm::ArrayRef<int64_t> subtile_shape, int64_t world_size) {
     const OperandState& state = operand_states_[operand_idx];
     const llvm::ArrayRef<int64_t> tile_shape = tile_type.getShape();
-    const auto ptr_to_elem_type =
-        ttir::PointerType::get(state.elem_storage_type, kGlobalAddressSpace);
+    const auto ptr_to_elem_type = ttir::PointerType::get(
+        xtile::MemoryStorageType(state.elem_type), kGlobalAddressSpace);
     mlir::Value zero = arith::ConstantIndexOp::create(builder_, 0);
     // Load the 64-bit addresses from the 1D remote buffer table:
     // tensor<world_size x i64>
@@ -992,14 +943,15 @@ class AllReduceEmitter : public ReductionEmitter {
         operand.input_extract.getStrides(),
         /*reduced_dims=*/{},  // Not reducing for gather
         tile_shape);
-    // The final gather load tensor<tile_shape x elem_type>
-    return mlir::cast<xtile::TensorValue>(
+    auto gathered_tile = mlir::cast<xtile::TensorValue>(
         ttir::LoadOp::create(builder_,                 //
                              final_ptrs,               //
                              mask,                     //
                              /*other=*/mlir::Value(),  //
                              /*isVolatile=*/false)
             .getResult());
+    return xtile::UnpackFromMemoryStorage(builder_, builder_.getLoc(),
+                                          gathered_tile, state.elem_type);
   }
 
   mlir::LogicalResult EmitOneShot() {
@@ -1424,9 +1376,6 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
 
 // Per-operand state of an all-gather rewrite.
 struct AllGatherOperandContext {
-  // Tile of the local input that feeds the all-gather. For booleans this is
-  // the i8 -> i1 cast of `input_extract` (see i1_to_i8_workaround).
-  mlir::Value input_tile;
   xtile::ExtractTileOp input_extract;
   // Local input buffer read by `input_extract`.
   mlir::TypedValue<mlir::MemRefType> input_buffer;
@@ -1469,7 +1418,6 @@ absl::StatusOr<AllGatherOperandContext> BuildAllGatherOperandContext(
       ExtractCollectiveOperand(op.getOperand(operand_index), operand_index,
                                "AllGather", entry_func, remote_buffers));
   AllGatherOperandContext ctx;
-  ctx.input_tile = operand_info.input_tile;
   ctx.input_extract = operand_info.input_extract;
   ctx.input_buffer = operand_info.input_buffer;
   ctx.remote_buffers_arg = operand_info.remote_buffers_arg;
@@ -1648,14 +1596,7 @@ mlir::Value EmitPullTileFromPeer(mlir::ImplicitLocOpBuilder& b,
   mlir::IRMapping mapping;
   mapping.map(operand.input_buffer, own_scratch_slot);
   mlir::Operation* peer_extract = rewriter.clone(*input_extract, mapping);
-  if (operand.input_tile.getDefiningOp() == input_extract) {
-    return peer_extract->getResult(0);
-  }
-  // Workaround(i1_to_i8_workaround): re-apply the i8 -> i1 cast.
-  mapping.map(input_extract.getResult(), peer_extract->getResult(0));
-  mlir::Operation* peer_cast =
-      rewriter.clone(*operand.input_tile.getDefiningOp(), mapping);
-  return peer_cast->getResult(0);
+  return peer_extract->getResult(0);
 }
 
 struct AllToAllRewriteContext {
@@ -2342,9 +2283,6 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
   rewriter.replaceOp(op, peer_tiles);
   // The local tiles were only used by `op`.
   for (const AllGatherOperandContext& operand : ctx.operands) {
-    if (operand.input_tile.getDefiningOp() != operand.input_extract) {
-      rewriter.eraseOp(operand.input_tile.getDefiningOp());
-    }
     rewriter.eraseOp(operand.input_extract);
   }
 

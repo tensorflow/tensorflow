@@ -30,15 +30,14 @@ ENTRY main {
 }
 
 // CHECK:        xtile.entry_func @wrapped_fusion(
-// CHECK-SAME:     %[[ARG0:[^:]+]]: memref<i8>,
+// CHECK-SAME:     %[[ARG0:[^:]+]]: memref<i1>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<128x64xf32>,
 // CHECK-SAME:     %[[ARG2:[^:]+]]: memref<128x64xf32>,
 // CHECK-SAME:     %[[ARG3:[^:]+]]: memref<128x64xf32>,
 // CHECK-SAME:     %{{.*}}: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:        scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
-// CHECK:          %[[COND_I8:.*]] = xtile.extract %[[ARG0]][] [] [] : memref<i8> -> tensor<i8>
-// CHECK:          %[[COND_I1:.*]] = stablehlo.convert %[[COND_I8]] : (tensor<i8>) -> tensor<i1>
+// CHECK:          %[[COND_I1:.*]] = xtile.extract %[[ARG0]][] [] [] : memref<i1> -> tensor<i1>
 // CHECK:          %[[ON_TRUE:.*]] = xtile.extract %[[ARG1]][%{{.*}}, %{{.*}}] [4, 4] [1, 1] : memref<128x64xf32> -> tensor<4x4xf32>
 // CHECK:          %[[ON_FALSE:.*]] = xtile.extract %[[ARG2]][%{{.*}}, %{{.*}}] [4, 4] [1, 1] : memref<128x64xf32> -> tensor<4x4xf32>
 // CHECK:          %[[CMP:.*]] = stablehlo.compare NE, %[[COND_I1]], %{{.*}} : (tensor<i1>, tensor<i1>) -> tensor<i1>
