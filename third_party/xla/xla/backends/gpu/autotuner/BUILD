@@ -74,11 +74,13 @@ cc_library(
     tags = ["gpu"],
     deps = [
         ":gpu_codegen_backend",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:tma_utils",
+        "//xla/codegen/tiling:tiling_util",
         "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",

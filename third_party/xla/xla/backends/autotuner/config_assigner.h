@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_CONFIG_ASSIGNER_H_
 #define XLA_BACKENDS_AUTOTUNER_CONFIG_ASSIGNER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -64,6 +66,12 @@ class ConfigAssigner {
     // Single serialized config to override config of all instructions,
     // bypassing cache and autotuning.
     std::string force_config = "";
+    // When a config is picked without online autotuning, returns the backend
+    // whose supported configs are tried first; the configs of the other
+    // backends follow in registration order. Not consulted when online
+    // autotuning picks the config.
+    std::function<std::optional<autotuner::Backend>(const HloInstruction&)>
+        default_backend_fn;
 
     std::string ToString() const;
   };

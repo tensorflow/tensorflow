@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
 #include "xla/service/decision.h"
+#include "xla/service/gpu/autotuning/gpu_default_backend_policy.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -209,10 +211,9 @@ AutotuneDecision ShouldAssignConfigToTritonFusion(
 }
 
 AutotuneDecision ShouldAssignConfigToGenericFusion(
-    bool enable_fusion_autotuner, const HloInstruction& instruction) {
-  if (!enable_fusion_autotuner) {
-    return AutotuneDecision::Forbid("Fusion autotuner is disabled");
-  }
+    bool enable_fusion_autotuner,
+    const absl::flat_hash_set<autotuner::Backend>& enabled_backends,
+    const HloInstruction& instruction) {
   auto fusion = Cast<const HloFusionInstruction>(&instruction);
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return AutotuneDecision::Forbid(
@@ -222,7 +223,19 @@ AutotuneDecision ShouldAssignConfigToGenericFusion(
                      HloPredicateIsOp<HloOpcode::kScatter>)) {
     return AutotuneDecision::Forbid("Fusions with Scatter are not supported");
   }
-  return AutotuneDecision::Allow();
+  if (enable_fusion_autotuner) {
+    return AutotuneDecision::Allow();
+  }
+  // Without the fusion autotuner (autotune level 0 or deterministic ops),
+  // fusions whose default backend is enabled still get a config, picked
+  // without online autotuning. The others keep the native emitters.
+  std::optional<autotuner::Backend> default_backend =
+      GetDefaultBackend(instruction);
+  if (default_backend.has_value() &&
+      enabled_backends.contains(*default_backend)) {
+    return AutotuneDecision::Allow();
+  }
+  return AutotuneDecision::Forbid("Fusion autotuner is disabled");
 }
 
 AutotuneDecision ShouldAssignConfigToInstruction(
@@ -259,7 +272,7 @@ AutotuneDecision ShouldAssignConfigToInstruction(
     }
     // 4. Generic fusions.
     return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
-                                             instruction);
+                                             enabled_backends, instruction);
   }
   return AutotuneDecision::Forbid(
       "Instruction is neither custom call nor fusion");
@@ -480,15 +493,6 @@ std::vector<autotuner::Backend> GetEnabledBackendTypes(
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
   }
 
-  if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_deterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
-    disabled_autotune_backends.push_back(autotuner::Backend::NATIVE_EMITTER);
-    disabled_autotune_backends.push_back(
-        autotuner::Backend::BLOCK_LEVEL_EMITTER);
-  }
-
   if ((debug_options.xla_gpu_exclude_nondeterministic_ops() ||
        debug_options.xla_gpu_deterministic_ops()) &&
       debug_options.xla_gpu_experimental_deterministic_ops_triton() ==
@@ -559,6 +563,7 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
   bool is_deviceless = stream_executor == nullptr;
   ConfigAssigner::Options assigner_options =
       GetConfigAssignerOptions(debug_options, is_deviceless);
+  assigner_options.default_backend_fn = GetDefaultBackend;
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
   // Null in deterministic mode unless
