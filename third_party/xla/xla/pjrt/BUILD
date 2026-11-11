@@ -717,9 +717,16 @@ cc_library(
     name = "pjrt_build_stamp_writer",
     srcs = ["pjrt_build_stamp_writer.cc"],
     hdrs = ["pjrt_build_stamp_writer.h"],
-    # Restricted to compiler build stamp factories. Add a package here only if
-    # it registers a build stamp factory.
-    visibility = [":__pkg__"],
+    # Restricted to compiler build stamp factories and the helpers they use. Add
+    # Google-internal packages to `pjrt/google:build_stamp_factories`, which is
+    # not exported, rather than here.
+    visibility = internal_visibility(
+        [
+            ":__pkg__",
+            "//xla/pjrt/google:build_stamp_factories",
+        ],
+        or_else = [":__pkg__"],
+    ),
     deps = [
         ":pjrt_build_stamp",
         ":pjrt_common",
