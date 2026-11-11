@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/toco/args.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
+#include "base/raw_logging.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 
 namespace toco {
 namespace {
