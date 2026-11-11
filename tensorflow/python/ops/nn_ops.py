@@ -4836,6 +4836,9 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
   Each entry in `output` is the mean of the corresponding size `ksize`
   window in `value`.
 
+  When `ksize` or `strides` is a list of length 4, its first (batch)
+  entry must be 1.
+
   Args:
     input: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float16`, `bfloat16`, `float32`, or `float64`.
@@ -5281,18 +5284,21 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
 
   For more examples and detail, see `tf.nn.max_pool`.
 
+  When `ksize` or `strides` is a list of length 4, its first (batch)
+  entry must be 1.
+
   Args:
     input: A 4-D `Tensor` of the format specified by `data_format`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
       the window for each dimension of the input tensor. If only one integer is
-      specified, then we apply the same window for all 4 dims. If two are
-      provided then we use those for H, W dimensions and keep N, C dimension
-      window size = 1.
+      specified, then we apply the same window for both spatial dimensions. If
+      two are provided then we use those for H, W dimensions and keep N, C
+      dimension window size = 1.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor. If
-      only one integer is specified, we apply the same stride to all 4 dims. If
-      two are provided we use those for the H, W dimensions and keep N, C of
-      stride = 1.
+      only one integer is specified, we apply the same stride to both spatial
+      dimensions. If two are provided we use those for the H, W dimensions and
+      keep N, C of stride = 1.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
@@ -5406,6 +5412,9 @@ def max_pool_with_argmax_v2(
   is outside (either negative or too large).  This is a bug, but fixing it is
   difficult to do in a safe backwards compatible way, especially due to
   flattening.
+
+  When `ksize` or `strides` is a list of length 4, its first (batch)
+  entry must be 1.
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
