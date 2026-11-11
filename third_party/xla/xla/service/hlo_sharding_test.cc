@@ -1553,5 +1553,27 @@ TEST_F(HloShardingTest, CopyAndMoveWithNamedSharding) {
   EXPECT_EQ(move_assign_sharding.named_sharding(), named_sharding);
 }
 
+TEST_F(HloShardingTest, UnreducedLeafNumTilesFails) {
+  const HloSharding unreduced_v2 = HloSharding::Unreduced();
+  EXPECT_DEATH((void)unreduced_v2.NumTiles(), "!IsUnreducedLeaf\\(\\)");
+  EXPECT_DEATH((void)unreduced_v2.TotalNumTiles(), "!IsUnreducedLeaf\\(\\)");
+
+  const Mesh mesh({2, 2}, {"a", "b"});
+  const HloSharding unreduced_v3(NamedSharding::Unreduced(mesh));
+  EXPECT_DEATH((void)unreduced_v3.NumTiles(), "!IsUnreducedLeaf\\(\\)");
+  EXPECT_DEATH((void)unreduced_v3.TotalNumTiles(), "!IsUnreducedLeaf\\(\\)");
+
+  const HloSharding subgroup_v2 =
+      HloSharding::Subgroup(TileAssignment({2, 2}), {OpSharding::UNREDUCED});
+  EXPECT_EQ(subgroup_v2.NumTiles(), 2);
+  EXPECT_EQ(subgroup_v2.TotalNumTiles(), 4);
+
+  const HloSharding subgroup_v3(
+      test_utils::FromAxisNames(mesh, {{"a"}}, /*replicated_axes=*/{},
+                                /*unreduced_axes=*/{"b"}));
+  EXPECT_EQ(subgroup_v3.NumTiles(), 2);
+  EXPECT_EQ(subgroup_v3.TotalNumTiles(), 4);
+}
+
 }  // namespace
 }  // namespace xla

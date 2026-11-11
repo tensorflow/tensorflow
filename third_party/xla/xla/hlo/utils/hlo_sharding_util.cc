@@ -472,7 +472,8 @@ static bool IsLeafShardingMoreSpecific(const HloSharding& lhs,
   if (lhs.IsManualLeaf() && rhs.IsReplicatedOrSingleDeviceLeaf()) {
     return true;
   }
-  if (lhs.IsManualLeaf() || rhs.IsManualLeaf()) {
+  if (lhs.IsManualLeaf() || rhs.IsManualLeaf() || lhs.IsUnreducedLeaf() ||
+      rhs.IsUnreducedLeaf() || lhs.IsUnknownLeaf() || rhs.IsUnknownLeaf()) {
     return false;
   }
   if (!rhs.IsReplicatedOrSingleDeviceLeaf()) {
@@ -3150,8 +3151,7 @@ Shape UntileShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
-  if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual() ||
-      sharding.IsUnknown()) {
+  if (!sharding.IsTiled()) {
     return shape;
   }
   if (!shape.IsArray()) {
@@ -3186,8 +3186,7 @@ Shape TileShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
-  if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual() ||
-      sharding.IsUnknown() || sharding.IsUnreduced()) {
+  if (!sharding.IsTiled()) {
     return shape;
   }
   if (!shape.IsArray()) {
@@ -3391,8 +3390,9 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
     return from;
   }
-  // We don't want to propagate single device shardings.
-  if (from.IsSingleDevice()) {
+  // We don't want to propagate single device, unreduced, or unknown shardings.
+  if (from.IsSingleDevice() || from.IsUnreduced() ||
+      from.IsUnreducedSubgroup() || from.IsUnknown()) {
     return std::nullopt;
   }
   // Any sharding is better than no sharding.

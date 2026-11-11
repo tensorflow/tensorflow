@@ -12488,5 +12488,27 @@ ENTRY concat {
   }
 }
 
+TEST_F(ShardingPropagationTest, UnreducedOperandDoesNotCrashOrPropagate) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, num_partitions=2
+
+ENTRY e {
+  a = f32[8] parameter(0), sharding={unreduced}
+  b = f32[8] parameter(1), sharding={devices=[2]<=[2]}
+  add = f32[8] add(a, a)
+  mul = f32[8] multiply(a, b)
+  ROOT t = (f32[8], f32[8]) tuple(add, mul)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "add"), op::NoSharding());
+  EXPECT_THAT(FindInstruction(module.get(), "mul"),
+              op::Sharding("{devices=[2]<=[2]}"));
+}
+
 }  // namespace
 }  // namespace xla
