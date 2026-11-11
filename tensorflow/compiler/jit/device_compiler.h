@@ -361,11 +361,10 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   for (size_t i = 0; i < out_compilation_result->outputs.size(); ++i) {
     const auto& output = out_compilation_result->outputs[i];
     if (output.type == DT_VARIANT || output.is_tensor_list) {
-      cache_value.compilation_status = absl::UnimplementedError(
+      return absl::UnimplementedError(
           absl::StrCat("Support for TensorList crossing the XLA/TF boundary "
                        "is not implemented (output index ",
                        i, ")"));
-      return cache_value.compilation_status;
     }
   }
 
