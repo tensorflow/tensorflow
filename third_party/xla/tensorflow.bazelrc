@@ -289,6 +289,7 @@ common:asan_shared --linkopt=-shared-libasan
 common:rocm_base --repo_env=LLVM_VERSION=22
 common:rocm_base --@rules_ml_toolchain//common:stdlib=libstdc++
 common:rocm_base --@rules_ml_toolchain//common:static_libcxx=False
+common:rocm_base --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=false
 common:rocm_base --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
 common:rocm_base --@rules_ml_toolchain//common:enable_hermetic_libraries=True
 common:rocm_base --repo_env=SYSROOT_DIST=linux_glibc_2_35
@@ -326,6 +327,7 @@ common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 common:sycl --@rules_ml_toolchain//common:enable_sycl=True
 common:sycl --@rules_ml_toolchain//common:stdlib=libstdc++
 common:sycl --@rules_ml_toolchain//common:static_libcxx=False
+common:sycl --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=false
 common:sycl --repo_env=TF_NEED_SYCL=1
 common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -416,6 +418,7 @@ common:linux --repo_env=LLVM_VERSION=22
 common:linux --repo_env=SYSROOT_DIST=linux_glibc_2_27
 common:linux --@rules_ml_toolchain//common:stdlib=libc++
 common:linux --@rules_ml_toolchain//common:static_libcxx=true
+common:linux --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=true
 
 # By default, build TF in C++ 17 mode.
 common:linux --cxxopt=-std=c++20
