@@ -1882,7 +1882,7 @@ PjRtStreamExecutorRawClient::UpdateCompileOptions(
       build_options.debug_options().xla_gpu_shard_autotuning();
   if (!lookup_addressable_devices && !use_xla_gpu_shard_autotuning) {
     if (build_options.device_ordinal() < 0) {
-      build_options.set_device_ordinal(0);
+      build_options.set_device_ordinal(client()->default_device_ordinal());
     }
     return std::shared_ptr<DeviceAssignment>();
   }
