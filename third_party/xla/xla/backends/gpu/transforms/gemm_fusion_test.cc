@@ -2689,9 +2689,8 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionTest, FuseTransposeAboveBroadcastWithSwappedBatchDimensions) {
-  // The batch dimensions are swapped between the broadcast and the dot. Their
-  // order is lost when the tracker is reset at the broadcast, which is fine
-  // since batch dimensions are allowed to be swapped.
+  // The batch dimensions are swapped between the broadcast and the dot, which
+  // is fine since batch dimensions are allowed to be swapped.
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -2719,10 +2718,9 @@ ENTRY e {
 TEST_F(GemmFusionTest,
        DoNotFuseTransposeAboveBroadcastWithSwappedRhsNonContractingDimensions) {
   // The RHS non-contracting dimensions are swapped between the broadcast and
-  // the dot (allowed because the minor dimension is coalesced). Their order
-  // relative to the dot would be lost when the tracker is reset at the
-  // broadcast, so `s_t` must not be fused: relative to the dot, it keeps the
-  // non-contracting dimensions swapped and makes the batch dimension minor.
+  // the dot (allowed because the minor dimension is coalesced). Relative to
+  // the dot, `s_t` keeps the non-contracting dimensions swapped and makes the
+  // batch dimension minor, so `s_t` must not be fused.
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -2747,6 +2745,35 @@ ENTRY e {
   ASSERT_THAT(fusion, GmockMatch(m::Fusion()));
   EXPECT_THAT(fusion->operands(),
               Contains(GmockMatch(TransposeOrBitcastTranspose())));
+}
+
+TEST_F(GemmFusionTest,
+       FuseTransposeAboveBroadcastCancellingRhsNonContractingSwap) {
+  // `rhs` swaps the RHS non-contracting dimensions below the broadcast, and
+  // `s_t` swaps them back above the broadcast, so in `s` the RHS
+  // non-contracting dimensions are contiguous and in dot order.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  lhs = f32[2,64,128]{2,1,0} parameter(0)
+  s = f32[2,4,32]{2,1,0} parameter(1)
+  s_t = f32[2,32,4]{2,1,0} transpose(s), dimensions={0,2,1}
+  s_b = f32[2,128,32,4]{3,2,1,0} broadcast(s_t), dimensions={0,2,3}
+  w = f32[2,128,32,4]{3,2,1,0} parameter(2)
+  w_scaled = f32[2,128,32,4]{3,2,1,0} multiply(w, s_b)
+  rhs = f32[2,128,4,32]{3,2,1,0} transpose(w_scaled), dimensions={0,1,3,2}
+  ROOT dot = f32[2,64,4,32]{3,2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})"));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
 TEST_F(GemmFusionTest, HoistBitcastOverTypeConvertingBitcast) {

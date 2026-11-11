@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -791,8 +790,8 @@ bool IsBinaryElementwiseOfBroadcastParamOrConst(const HloInstruction& hlo) {
 struct TrackerInfo {
   // Tracker representing shape transformations from the instruction's output
   // to a reference shape. The reference shape is the dot operand shape, unless
-  // the tracker was reset (e.g. at a broadcast), in which case it is the shape
-  // at which it was reset.
+  // the tracker was reset (e.g. at a concatenate), in which case it is the
+  // shape at which it was reset.
   ShapeTracker tracker;
   // Indicates which dot operand (LHS/0 or RHS/1) the tracker is associated
   // with.
@@ -977,69 +976,11 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
   return FusionDecision::Forbid("Not obviously profitable to fuse as input.");
 }
 
-// Returns a new TrackerInfo starting at the operand of `broadcast`, given the
-// TrackerInfo of the broadcast's output. Since the broadcast does not preserve
-// the number of elements, the ShapeTracker cannot be propagated through it.
-// Instead, we start with a new identity tracker at the operand's shape, and
-// assign each operand dimension the dot dimension category of the output
-// dimension it is broadcast into. Returns nullopt if a category does not map
-// cleanly onto whole broadcast output dimensions, or if the order of the RHS
-// non-contracting dimensions would be lost.
-std::optional<TrackerInfo> ComputeBroadcastOperandTracker(
-    const HloInstruction* broadcast, const TrackerInfo& broadcast_info) {
-  // Maps the reference shape to the broadcast output shape.
-  absl::StatusOr<ShapeTracker> inverted = broadcast_info.tracker.GetInverted();
-  if (!inverted.ok()) {
-    return std::nullopt;
-  }
-  std::array<std::vector<int64_t>, 3> operand_dims;
-  for (DotOperandDims::Category category :
-       {DotOperandDims::kBatch, DotOperandDims::kNonContracting,
-        DotOperandDims::kContracting}) {
-    absl::Span<const int64_t> indices = broadcast_info.dims.Indices(category);
-    std::optional<std::vector<int64_t>> output_dims =
-        inverted->MapInputDimensionsToOutputUnordered(indices);
-    if (!output_dims.has_value()) {
-      return std::nullopt;
-    }
-    // The dimensions of each category are assigned to the new tracker in
-    // operand order, which loses their order relative to the dot if they are
-    // swapped between the reference shape and the broadcast output. This only
-    // matters for the RHS non-contracting dimensions: their order is checked
-    // in ShouldFuseTranspose, and a transpose swapping them can be fused below
-    // the broadcast if their minor dimension is coalesced. Batch dimensions
-    // are checked with `allow_swaps`, LHS non-contracting dimensions are not
-    // checked, and transposes swapping contracting dimensions are not fused.
-    if (broadcast_info.dot_operand_index == 1 &&
-        category == DotOperandDims::kNonContracting && !indices.empty()) {
-      absl::StatusOr<ShapeTracker> narrowed = inverted->Narrow(indices);
-      if (!narrowed.ok() ||
-          absl::c_any_of(narrowed->GetSteps(), [](const ShapeTracker::Step& s) {
-            return s.type == ShapeTracker::Step::Type::kTranspose;
-          })) {
-        return std::nullopt;
-      }
-    }
-    for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
-      if (absl::c_linear_search(*output_dims, broadcast->dimensions(i))) {
-        operand_dims[category].push_back(i);
-      }
-    }
-  }
-  const Shape& operand_shape = broadcast->operand(0)->shape();
-  return TrackerInfo{
-      ShapeTracker(operand_shape), broadcast_info.dot_operand_index,
-      DotOperandDims(operand_shape, operand_dims[DotOperandDims::kBatch],
-                     operand_dims[DotOperandDims::kNonContracting],
-                     operand_dims[DotOperandDims::kContracting])};
-}
-
 // Propagates shape tracking information from `user` to `candidate` (operand of
 // `user`). Returns the updated TrackerInfo if propagation is successful. If
 // propagation fails (e.g. at an unsupported shape-changing operation like
 // concat), but the current tracker has no prior steps (it is identity), returns
-// a new identity tracker starting at the candidate's shape. For broadcasts, a
-// new identity tracker is started at the broadcast operand. Returns nullopt if
+// a new identity tracker starting at the candidate's shape. Returns nullopt if
 // propagation fails and the tracker cannot be reset.
 std::optional<TrackerInfo> ComputeCandidateTracker(
     const HloInstruction* candidate, const HloInstruction* user,
@@ -1051,9 +992,6 @@ std::optional<TrackerInfo> ComputeCandidateTracker(
   if (user->IsElementwise()) {
     candidate_info.tracker.SetElementType(candidate->shape().element_type());
     return candidate_info;
-  }
-  if (user->opcode() == HloOpcode::kBroadcast) {
-    return ComputeBroadcastOperandTracker(user, user_info);
   }
   // If there have been no steps added to the tracker, then the memory has not
   // changed and we can start from the candidate's shape (for example, the
