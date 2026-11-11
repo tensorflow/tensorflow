@@ -173,11 +173,9 @@ struct EluGrad {
     // Propagate NaN if activations is NaN, preventing NaN from being silently
     // dropped and matching XLA and SeluGrad semantics.
     backprops.device(d) =
-        (activations.isnan())
-            .select(activations,
-                    (activations < static_cast<T>(0))
-                        .select((activations + static_cast<T>(1)) * gradients,
-                                gradients));
+        (activations > static_cast<T>(0))
+            .select(gradients,
+                    (activations + static_cast<T>(1)) * gradients);
   }
 };
 

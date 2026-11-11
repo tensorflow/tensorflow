@@ -265,7 +265,8 @@ class EluGradOpTest(test.TestCase):
             ],
             dtype=np_dtype,
         )
-        self.assertAllClose(expected, elu_grad, rtol=2e-2, atol=2e-2)
+        tol = 2e-2 if dtype in (dtypes.float16, dtypes.bfloat16) else 1e-6
+        self.assertAllClose(expected, elu_grad, rtol=tol, atol=tol)
 
 
 class SeluGradOpTest(test.TestCase):

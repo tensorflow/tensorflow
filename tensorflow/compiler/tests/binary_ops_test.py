@@ -181,7 +181,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
           leaky_relu_grad_fn,
           np.array([1, 2, 3, 4, 1], dtype=dtype),
           np.array([-2, 0, 3, 5, np.nan], dtype=dtype),
-          expected=np.array([0.2, 0.4, 3, 4, np.nan], dtype=dtype))
+          expected=np.array([0.2, 0.4, 3, 4, np.nan], dtype=dtype),
+          rtol=1e-8,
+          atol=1e-8)
 
       self._testBinary(
           gen_nn_ops.relu_grad,
