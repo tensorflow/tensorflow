@@ -67,7 +67,6 @@ cc_library_with_tflite(
 
 cc_library_with_tflite(
     name = "test_init_jni",
-    testonly = 1,
     srcs = [
         "test_init_jni.cc",
     ],
