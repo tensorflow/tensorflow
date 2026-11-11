@@ -77,8 +77,13 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(ttir::getPointerType(memref_type.getElementType()));
   }
-  mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
-  arg_types.append(opaque_args.begin(), opaque_args.end());
+  // The GPU runtime passes device rank as a 32-bit integer kernel argument.
+  if (entry_op.getHasRank()) {
+    arg_types.push_back(mlir::IntegerType::get(entry_op.getContext(), 32));
+  } else {
+    mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
+    arg_types.append(opaque_args.begin(), opaque_args.end());
+  }
   return arg_types;
 }
 
@@ -102,8 +107,14 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     builder.setInsertionPointToStart(module.getBody());
 
     const int64_t num_buffer_args = entry_op.getBufferArgs().size();
+    BlockArgument old_rank_arg = entry_op.getRank();
+    BlockArgument tile_id_arg = entry_op.getProgramId();
+    mlir::Attribute rank_range =
+        old_rank_arg
+            ? entry_op.getArgAttr(old_rank_arg.getArgNumber(), "xla.range")
+            : mlir::Attribute();
     mlir::Attribute tile_id_range =
-        entry_op.getArgAttr(entry_op.getNumArguments() - 1, "xla.range");
+        entry_op.getArgAttr(tile_id_arg.getArgNumber(), "xla.range");
     auto new_arg_types = GetTransformedArgTypes(entry_op);
     auto new_func_op =
         mlir::func::FuncOp::create(builder, entry_op.getName(),
@@ -121,8 +132,6 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
         new_arg_types,
         SmallVector<Location>(new_arg_types.size(), entry_op.getLoc())));
 
-    BlockArgument tile_id_arg = old_args.back();
-
     auto pid = ttir::GetProgramIdOp::create(builder, ttir::ProgramIDDim::X);
     auto pid_idx =
         ma::IndexCastOp::create(builder, builder.getIndexType(), pid);
@@ -131,10 +140,37 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     }
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
+    // Cast the i32 kernel rank back to index for XTile ops, keeping its
+    // [0, num_devices - 1] xla.range attribute for downstream bounds analysis.
+    if (old_rank_arg) {
+      if (!old_rank_arg.use_empty()) {
+        auto rank_idx = ma::IndexCastOp::create(builder, builder.getIndexType(),
+                                                new_args[num_buffer_args]);
+        if (rank_range) {
+          rank_idx->setAttr("xla.range", rank_range);
+        }
+        rewriter.replaceAllUsesWith(old_rank_arg, rank_idx);
+      }
+    } else {
+      // For opaque arguments, we can simply replace all uses with the new
+      // argument.
+      for (auto [old_arg, new_arg] :
+           llvm::zip(mlir::ValueRange(old_args)
+                         .drop_front(num_buffer_args)
+                         .drop_back(1),
+                     mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
+        rewriter.replaceAllUsesWith(old_arg, new_arg);
+      }
+    }
+
     // Handle memref arguments.
-    for (auto [old_arg, new_arg] :
-         llvm::zip(old_args,
-                   mlir::ValueRange(new_args).take_front(num_buffer_args))) {
+    for (auto [old_arg, new_arg] : llvm::zip_equal(
+             mlir::ValueRange(old_args).take_front(num_buffer_args),
+             mlir::ValueRange(new_args).take_front(num_buffer_args))) {
+      // Skip unused buffers (e.g. an unused scratch slot) to avoid dead casts.
+      if (old_arg.use_empty()) {
+        continue;
+      }
       mlir::MemRefType memref_type =
           mlir::cast<mlir::MemRefType>(old_arg.getType());
 
@@ -143,13 +179,6 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
 
       // Replace all uses of the old argument with the result of the cast.
       rewriter.replaceAllUsesWith(old_arg, memref_cast);
-    }
-    // For opaque arguments, we can simply replace all uses with the new
-    // argument.
-    for (auto [old_arg, new_arg] :
-         llvm::zip(mlir::ValueRange(old_args).drop_front(num_buffer_args),
-                   mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
-      rewriter.replaceAllUsesWith(old_arg, new_arg);
     }
 
     entry_block.eraseArguments(0, old_args.size());

@@ -210,7 +210,7 @@ TEST_F(HloHardwareIndependentTestBase, TritonCompile) {
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                        ParseMlirModuleString(R"(
 module {
-  xtile.entry_func @random_name(%arg0: memref<125x127xf32>, %arg1: memref<125x127xf32>, %arg2: index) attributes {num_opaque_args = 0 : i32} {
+  xtile.entry_func @random_name(%arg0: memref<125x127xf32>, %arg1: memref<125x127xf32>, %arg2: index) {
     %c0 = arith.constant 0 : index
     %0 = xla.apply_indexing #xla.indexing_map<"(pid_0) -> (pid_0 * 4), domain: pid_0 in [0, 31]">(%arg2)
     %1 = xtile.extract %arg0[%0, %c0] [4, 128] [1, 1] : memref<125x127xf32> -> tensor<4x128xf32>

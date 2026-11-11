@@ -3154,8 +3154,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   ABSL_ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
                    GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
   // Metadata arguments are opaque to the tiling infra.
-  llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
-      "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};
+  llvm::SmallVector<mlir::NamedAttribute> named_attributes;
+  if (!opaque_args_types.empty()) {
+    named_attributes.push_back(b.getNamedAttr(
+        "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size())));
+  }
 
   auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
                                        named_attributes, {});

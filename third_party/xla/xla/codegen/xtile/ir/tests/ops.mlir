@@ -60,6 +60,80 @@ xtile.entry_func @wrong_opaque_args(
 
 // -----
 
+xtile.entry_func @collective_signal_and_rank_only(
+  %input: memref<1024xf32>, %output: memref<2xi64>, %signal: memref<2xi64>,
+  %rank: index, %tile_id: index)
+  attributes {has_rank, has_signal_buffer} {
+  xtile.return
+}
+
+// -----
+
+xtile.entry_func @collective_scratch_signal_and_rank(
+  %input: memref<1024xf32>, %output: memref<1024xf32>,
+  %scratch: memref<2xi64>, %signal: memref<2xi64>,
+  %rank: index, %tile_id: index)
+  attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{signal buffer and rank must either both be present or both be absent}}
+xtile.entry_func @signal_without_rank(
+  %input: memref<1024xf32>, %signal: memref<2xi64>, %tile_id: index)
+  attributes {has_signal_buffer} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{signal buffer and rank must either both be present or both be absent}}
+xtile.entry_func @rank_without_signal(
+  %input: memref<1024xf32>, %rank: index, %tile_id: index)
+  attributes {has_rank} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{signal buffer and rank must either both be present or both be absent}}
+xtile.entry_func @scratch_with_only_rank(
+  %input: memref<1024xf32>, %scratch: memref<2xi64>, %rank: index, %tile_id: index)
+  attributes {has_rank, num_scratch_buffers = 1 : i32} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{scratch buffers require signal buffer and rank}}
+xtile.entry_func @scratch_without_signal_and_rank(
+  %input: memref<1024xf32>, %scratch: memref<2xi64>, %tile_id: index)
+  attributes {num_scratch_buffers = 1 : i32} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{signal buffer must be a static contiguous 1D i64 memref}}
+xtile.entry_func @invalid_signal_buffer_type(
+  %input: memref<1024xf32>, %signal: memref<2xf32>, %rank: index, %tile_id: index)
+  attributes {has_rank, has_signal_buffer} {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{scratch buffer must be a static contiguous 1D i64 memref matching signal buffer size}}
+xtile.entry_func @scratch_signal_world_size_mismatch(
+  %input: memref<1024xf32>, %scratch: memref<4xi64>, %signal: memref<2xi64>,
+  %rank: index, %tile_id: index)
+  attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32} {
+  xtile.return
+}
+
+// -----
+
 func.func @incorrect_full_shape_extract(%arg: memref<1024xf32>) -> tensor<10xf32> {
   %offset = arith.constant 0 : index
   // expected-error@+1 {{full tile shape size: 2 does not match rank of buffer: 1}}

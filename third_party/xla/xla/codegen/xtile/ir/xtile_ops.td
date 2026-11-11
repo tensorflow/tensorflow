@@ -92,6 +92,15 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     point for execution. It has a single-block region, takes a
     variadic list of memrefs and exactly one tile id index arguments,
     it has no return values.
+
+    Multi-GPU collective kernels can also take peer scratch buffers, a peer
+    signal buffer, and this device's rank right before `tile_id`:
+      `(io_buffers..., scratch_buffers..., signal_buffer, rank, tile_id)`
+    For example, on 2 GPUs with 1 input, 1 output, and 1 scratch table:
+      `(%in: memref<8xf32>, %out: memref<8xf32>, %scratch: memref<2xi64>, %signal: memref<2xi64>, %rank: index, %tile_id: index)`
+    Here `%scratch` and `%signal` are `memref<2xi64>` tables holding one
+    64-bit device address per GPU. `signal_buffer` and `rank` always come
+    together, and `scratch_buffers` are only allowed when both are present.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,
@@ -101,7 +110,13 @@ def EntryFuncOp : XTile_Op<"entry_func", [
                        // The number of arguments that are opaque to tiling
                        // infrastructure and hence do not correspond to a memref
                        // argument.
-                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args,
+                       DefaultValuedOptionalAttr<I32Attr, "0">:$num_opaque_args,
+                       // How many peer scratch pointer tables follow I/O buffers.
+                       OptionalAttr<I32Attr>:$num_scratch_buffers,
+                       // Whether a peer barrier signal table follows scratch buffers.
+                       UnitAttr:$has_signal_buffer,
+                       // Whether this device's rank is passed right before tile_id.
+                       UnitAttr:$has_rank,
                        OptionalAttr<StrAttr>:$sym_visibility
   );
 
@@ -110,27 +125,113 @@ def EntryFuncOp : XTile_Op<"entry_func", [
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<(ins
-    "mlir::StringRef":$name, "mlir::ArrayRef<mlir::Type>":$memref_arg_types,
-    CArg<"mlir::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
-    CArg<"mlir::ArrayRef<mlir::DictionaryAttr>", "{}">:$memref_arg_attrs)
-  >];
+  let builders = [
+    OpBuilder<(ins
+      "mlir::StringRef":$name, "mlir::ArrayRef<mlir::Type>":$memref_arg_types,
+      CArg<"mlir::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
+      CArg<"mlir::ArrayRef<mlir::DictionaryAttr>", "{}">:$memref_arg_attrs)>,
+    OpBuilder<(ins
+      "mlir::StringRef":$name,
+      "mlir::ArrayRef<mlir::Type>":$io_buffer_types,
+      "mlir::ArrayRef<mlir::Type>":$scratch_buffer_types,
+      "mlir::Type":$signal_buffer_type,
+      "mlir::ArrayRef<mlir::NamedAttribute>":$attrs,
+      "mlir::ArrayRef<mlir::DictionaryAttr>":$io_arg_attrs)>
+  ];
 
   let extraClassDeclaration = [{
+  private:
+    template <typename T>
+    mlir::ArrayRef<T> sliceBuffers(mlir::ArrayRef<T> items) {
+      return items.drop_back(getNumOpaqueArgs() + getNumTrailingIndexArgs());
+    }
+
+    template <typename T>
+    mlir::ArrayRef<T> sliceInputOutputBuffers(mlir::ArrayRef<T> items) {
+      return sliceBuffers(items).drop_back(
+          getScratchBufferCount() + (getHasSignalBuffer() ? 1 : 0));
+    }
+
+    template <typename T>
+    mlir::ArrayRef<T> sliceScratchBuffers(mlir::ArrayRef<T> items) {
+      return sliceBuffers(items)
+          .drop_back(getHasSignalBuffer() ? 1 : 0)
+          .take_back(getScratchBufferCount());
+    }
+
+  public:
     //===------------------------------------------------------------------===//
     // Helper Methods
     //===------------------------------------------------------------------===//
-    mlir::ValueRange getBufferArgs() {
-      // +1 for the tile id argument.
-      return getBody().getArguments().drop_back(getNumOpaqueArgs() + 1);
+    // Trailing index arguments after all memrefs: tile_id, plus rank if set.
+    int64_t getNumTrailingIndexArgs() {
+      return 1 + (getHasRank() ? 1 : 0);
     }
 
-    mlir::ValueRange getOpaqueArgs() {
-      return getBody().getArguments().take_back(getNumOpaqueArgs() + 1)
+    int32_t getScratchBufferCount() {
+      return getNumScratchBuffers().value_or(0);
+    }
+
+    int64_t getMinRequiredArgs() {
+      return getNumOpaqueArgs() + getScratchBufferCount() +
+             (getHasSignalBuffer() ? 1 : 0) + getNumTrailingIndexArgs();
+    }
+
+    // All memref arguments: I/O buffers, scratch buffers, and signal buffer.
+    mlir::ArrayRef<mlir::BlockArgument> getBufferArgs() {
+      return sliceBuffers<mlir::BlockArgument>(getBody().getArguments());
+    }
+
+    mlir::ArrayRef<mlir::BlockArgument> getOpaqueArgs() {
+      return mlir::ArrayRef<mlir::BlockArgument>(getBody().getArguments())
+          .take_back(getNumOpaqueArgs() + 1)
           .drop_back();
     }
 
-    mlir::Value getProgramId() {
+    // Regular HLO input and output buffers (excludes collective tables).
+    mlir::ArrayRef<mlir::BlockArgument> getInputOutputBuffers() {
+      return sliceInputOutputBuffers<mlir::BlockArgument>(
+          getBody().getArguments());
+    }
+    mlir::ArrayRef<mlir::Type> getInputOutputBufferTypes() {
+      return sliceInputOutputBuffers(getArgumentTypes());
+    }
+
+    // Peer scratch pointer tables (one memref<Nxi64> per scratch workspace).
+    mlir::ArrayRef<mlir::BlockArgument> getScratchBuffers() {
+      return sliceScratchBuffers<mlir::BlockArgument>(getBody().getArguments());
+    }
+    mlir::ArrayRef<mlir::Type> getScratchBufferTypes() {
+      return sliceScratchBuffers(getArgumentTypes());
+    }
+
+    // Peer signal pointer table (memref<Nxi64>) for cross-GPU barriers, or null.
+    mlir::TypedValue<mlir::MemRefType> getSignalBuffer() {
+      if (!getHasSignalBuffer()) {
+        return nullptr;
+      }
+      return mlir::cast<mlir::TypedValue<mlir::MemRefType>>(
+          getBufferArgs().back());
+    }
+    mlir::Type getSignalBufferType() {
+      return getHasSignalBuffer() ? sliceBuffers(getArgumentTypes()).back()
+                                  : mlir::Type();
+    }
+
+    // Trailing index argument types: (rank?, tile_id).
+    mlir::ArrayRef<mlir::Type> getTrailingArgTypes() {
+      return getArgumentTypes().take_back(getNumTrailingIndexArgs());
+    }
+
+    // This device's rank in the collective group, or null if absent.
+    mlir::BlockArgument getRank() {
+      if (!getHasRank()) {
+        return mlir::BlockArgument();
+      }
+      return getBody().getArgument(getBody().getNumArguments() - 2);
+    }
+
+    mlir::BlockArgument getProgramId() {
       return getBody().getArguments().back();
     }
 
