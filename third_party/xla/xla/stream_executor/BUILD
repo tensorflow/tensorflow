@@ -365,6 +365,7 @@ cc_library(
         ":stream",
         ":stream_executor_h",
         "//xla/service:device_assignment",
+        "//xla/stream_executor/gpu:locality_domain_memory",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -1095,24 +1095,30 @@ std::vector<HloComputation*> GetFusibleComputations(
   return result;
 }
 
-int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis) {
-  return ComputeLoopFusionConfig(analysis, analysis.first_result_shape());
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            bool unroll_small_inputs) {
+  return ComputeLoopFusionConfig(analysis, analysis.first_result_shape(),
+                                 unroll_small_inputs);
 }
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
-                            const Shape& element_shape) {
+                            const Shape& element_shape,
+                            bool unroll_small_inputs) {
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
   // thread has to produce multiple output elements.
   // Therefore for fusions with small outputs prefer to use one thread
-  // per output element = no unroll.
+  // per output element = no unroll, unless `unroll_small_inputs` opts in
+  // (e.g. for block specialized fusions where packing more work per thread
+  // reduces block count).
   // Call 'small' fusions that use less threads than the GPU has.
   int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
   if (!MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    if (num_elements >= n_threads_max) {
+    if ((unroll_small_inputs && num_elements > 0) ||
+        num_elements >= n_threads_max) {
       unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
     } else {
       int64_t max_reduce_input_elements =

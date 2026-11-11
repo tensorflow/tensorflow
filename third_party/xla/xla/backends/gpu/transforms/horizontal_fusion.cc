@@ -105,8 +105,11 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
+  // TODO(b/480040242): Consider unrolling small fusions in grid-bound
+  // horizontal fusions as well.
   std::unique_ptr<MlirKernelEmitter> emitter =
-      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(analysis);
+      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+          analysis, /*unroll_small_fusions=*/false);
   if (emitter == nullptr) {
     return std::nullopt;
   }

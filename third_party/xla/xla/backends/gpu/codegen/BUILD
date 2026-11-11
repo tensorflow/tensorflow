@@ -298,6 +298,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

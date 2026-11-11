@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -97,7 +98,10 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
     return false;
   }
 
-  LaunchDimensions dims = LoopFusion(analysis).launch_dimensions();
+  bool unroll_small_inputs =
+      device_info.cuda_compute_capability().IsAtLeastHopper();
+  LaunchDimensions dims =
+      LoopFusion(analysis, unroll_small_inputs).launch_dimensions();
   const se::BlockDim& blocks = dims.block_counts();
   const se::ThreadDim& threads = dims.thread_counts_per_block();
   return blocks.x > 0 &&

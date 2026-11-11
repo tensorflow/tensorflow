@@ -1761,6 +1761,44 @@ ENTRY main {
       8);
 }
 
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigSmallInputs) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  s8_neg = s8[2048] negate(s8[2048] parameter(0))
+  f16_neg = f16[2048] negate(f16[2048] parameter(1))
+  f32_neg = f32[2048] negate(f32[2048] parameter(2))
+  ROOT t = (s8[2048], f16[2048], f32[2048]) tuple(s8_neg, f16_neg, f32_neg)
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction& s8_op = *root->operand(0);
+  const HloInstruction& f16_op = *root->operand(1);
+  const HloInstruction& f32_op = *root->operand(2);
+  se::DeviceDescription b200 = B200WithCUDA129();
+  se::DeviceDescription h100 = TestGpuDeviceInfo::H100SXMDeviceInfo();
+
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(s8_op, b200)), 1);
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f16_op, b200)),
+            1);
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f32_op, b200)),
+            1);
+
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(s8_op, b200),
+                                    /*unroll_small_inputs=*/true),
+            32);
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f16_op, b200),
+                                    /*unroll_small_inputs=*/true),
+            16);
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f32_op, b200),
+                                    /*unroll_small_inputs=*/true),
+            8);
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(s8_op, h100),
+                                    /*unroll_small_inputs=*/true),
+            4);
+}
+
 TEST_F(GpuFusibleTest, FourBitTypeUnrolled16or32xOnBlackwell) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 e {

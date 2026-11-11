@@ -67,6 +67,8 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
     const HloFusionInstruction* fusion = nullptr;
     LaunchDimensions launch_dims;
     std::optional<se::ClusterDim> cluster_dim;
+    // Whether small leaf fusions should be unrolled/vectorized.
+    bool unroll_small_fusions = false;
     std::vector<int64_t> input_arg_indices;
     std::vector<int64_t> output_arg_indices;
     std::vector<NestedKernelSpec> children;
@@ -75,7 +77,7 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
   explicit ThreadBlockSpecializedFusion(const HloFusionAnalysis& analysis);
 
   static std::unique_ptr<MlirKernelEmitter> CreateNativeNestedEmitter(
-      const HloFusionAnalysis& nested_analysis);
+      const HloFusionAnalysis& nested_analysis, bool unroll_small_fusions);
 
   LaunchDimensions launch_dimensions() const override {
     return root_spec_.launch_dims;
