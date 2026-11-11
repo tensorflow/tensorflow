@@ -40,10 +40,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-/*
-xla::SVD compares entries against absolute thresholds (epsilon),  so tiny or huge inputs are mishandled. 
-SVD is homogeneous: normalize each matrix by its largest absolute entry, run the SVD, and rescale the singular values.
-*/ 
+// xla::SVD compares entries against absolute thresholds (epsilon), so tiny or
+// huge inputs are mishandled. SVD is homogeneous: normalize each matrix by its
+// largest absolute entry, run the SVD, and rescale the singular values.
 xla::SVDResult ScaleInvariantSVD(xla::XlaOp a, xla::PrimitiveType type,
                                  int rank, int32_t max_iter, float epsilon,
                                  xla::PrecisionConfig::Precision precision) {
@@ -58,6 +57,11 @@ xla::SVDResult ScaleInvariantSVD(xla::XlaOp a, xla::PrimitiveType type,
   xla::XlaOp scale =
       xla::Select(xla::And(xla::Gt(amax, zero), xla::IsFinite(amax)), amax,
                   zero + xla::ScalarLike(amax, 1.0));
+                  
+  // Prevent division by subnormal values which can trigger division-by-zero
+  // on platforms with Flush-to-Zero (FTZ) enabled.
+  scale = xla::Max(scale, xla::MinPositiveNormalValue(builder, type));
+  
   xla::SVDResult result =
       xla::SVD(xla::Div(a, scale, scale_dims), max_iter, epsilon, precision);
   result.d = xla::Mul(result.d, scale, scale_dims);
