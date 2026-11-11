@@ -121,4 +121,13 @@ absl::Status EmbedFileSystem::GetMatchingPaths(
   return absl::OkStatus();
 }
 
+absl::Status EmbedFileSystem::DeleteFile(const std::string& fname) {
+  absl::MutexLock ml(fs_lock_);
+  if (fs_.erase(fname) == 0) {
+    return absl::NotFoundError(absl::StrCat(fname, " does not exist."));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace tsl
