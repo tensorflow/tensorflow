@@ -279,10 +279,10 @@ TEST_F(HostResidentVarsEnabledTest, AcceleratorVariableIsRejected) {
 
 TEST_F(VariableInfoUtilTest,
        LockVariablesKeepsSharedLockForReadOnlyVariableByDefault) {
-  // Even when `tf_xla_use_device_api.IsEnabledForGpu()` is enabled globally by
+  // Even when `tf_xla_use_device_api.enabled_for_gpu_` is enabled globally by
   // default, `LockVariables` must keep shared reader locks for read-only
   // variables unless `upgrade_read_only_for_pjrt_tensor_buffer` is requested.
-  ASSERT_TRUE(GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu());
+  ASSERT_TRUE(GetXlaOpsCommonFlags()->tf_xla_use_device_api.enabled_for_gpu_);
 
   Tensor handle = CreateVariable(executing_device_, "v",
                                  test::AsTensor<float>({1.0f, 2.0f}));

@@ -15,24 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {
-using XlaDeviceCompiler =
-    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
 using PjRtDeviceCompiler =
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
@@ -53,41 +50,12 @@ inline void LogOptions(const XlaCompiler::Options& options) {
 }
 }  // namespace
 
-XlaCompiler::Options GenerateCompilerOptions(
-    const XlaDeviceCompiler& xla_device_compiler,
-    const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars) {
-  XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(xla_device_compiler.client());
-  if (stream != nullptr) {
-    options.device_ordinal = stream->parent()->device_ordinal();
-  }
-  options.device_type = xla_device_compiler.device_type();
-  options.flib_def = function_library.GetFunctionLibraryDefinition();
-  options.graph_def_version = function_library.graph_def_version();
-  options.allow_cpu_custom_calls =
-      (platform_info.platform_id() == se::host::kHostPlatformId);
-  options.device_allocator = GetAllocator(device, stream, platform_info);
-  if (platform_info.xla_device_metadata()) {
-    options.shape_determination_fns =
-        platform_info.xla_device_metadata()->default_shape_determination_fns();
-  }
-  // If reference variables are not present in the graph, we can safely alias
-  // passthrough parameters without performing a copy.
-  options.alias_passthrough_params =
-      !has_ref_vars && !platform_info.is_on_xla_device();
-
-  LogOptions(options);
-  return options;
-}
-
 XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
-    const XlaDeviceCompiler& xla_device_compiler,
+    const tsl::DeviceType& device_type,
     const FunctionLibraryRuntime& function_library) {
   XlaCompiler::Options options;
   // TODO(b/238830423): consider device_ordinal and shape_determination_fns.
-  options.device_type = xla_device_compiler.device_type();
+  options.device_type = device_type;
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls = false;
@@ -112,6 +80,10 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const XlaPlatformInfo& platform_info,
     const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
+  se::Stream* stream =
+      device_base->tensorflow_accelerator_device_info()
+          ? device_base->tensorflow_accelerator_device_info()->stream
+          : nullptr;
   absl::StatusOr<int> platform_device_id =
       tsl::GetPlatformDeviceIdFromDeviceParsedName(
           device_base->parsed_name(),
@@ -119,11 +91,17 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
               absl::down_cast<const Device*>(device_base)->device_type()));
   if (platform_device_id.ok()) {
     options.device_ordinal = *platform_device_id;
+  } else if (stream != nullptr) {
+    options.device_ordinal = stream->parent()->device_ordinal();
   } else {
     options.device_ordinal = device_base->parsed_name().id;
   }
   options.flib_def = function_library_def;
   options.graph_def_version = graph_def_version;
+  if (stream != nullptr) {
+    options.device_allocator = GetAllocator(
+        const_cast<DeviceBase*>(device_base), stream, platform_info);
+  }
   if (const auto* metadata = platform_info.xla_device_metadata();
       metadata != nullptr) {
     options.device_type = metadata->jit_device_type();
