@@ -3097,7 +3097,8 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   const HloComputation* computation = fusion.fused_instructions_computation();
   for (const auto& [root, result, arg] :
        llvm::zip(tiled_computation.roots(), results,
-                 fn.getArguments().drop_front(computation->num_parameters()))) {
+                 fn.getInputOutputBuffers().drop_front(
+                     computation->num_parameters()))) {
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to check converted types before storing if the type
@@ -3134,7 +3135,7 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::TiledHloComputation& tiled_computation,
-    MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types,
+    MLIRContext& mlir_context, const CollectiveEntrySpec& collective_spec,
     const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -3151,18 +3152,25 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToEnd(xtile_module->getBody());
 
   // Compute function argument types.
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
-                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
-  // Metadata arguments are opaque to the tiling infra.
-  llvm::SmallVector<mlir::NamedAttribute> named_attributes;
-  if (!opaque_args_types.empty()) {
-    named_attributes.push_back(b.getNamedAttr(
-        "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size())));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Type> io_buffer_types,
+                   GetFnArgTypes(b, fusion, gpu_cc));
+  SmallVector<Type> scratch_buffer_types;
+  Type signal_buffer_type;
+  if (collective_spec.has_signal_and_rank) {
+    signal_buffer_type =
+        mlir::MemRefType::get({collective_spec.world_size}, b.getI64Type());
+    scratch_buffer_types.assign(collective_spec.num_scratch_buffers,
+                                signal_buffer_type);
   }
 
-  auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
-                                       named_attributes, {});
+  auto fn = xtile::EntryFuncOp::create(b, fn_name, io_buffer_types,
+                                       scratch_buffer_types, signal_buffer_type,
+                                       {}, {});
   fn.addEntryBlock();
+  if (collective_spec.has_signal_and_rank && collective_spec.world_size > 0) {
+    fn.setArgAttr(fn.getRank().getArgNumber(), "xla.range",
+                  b.getIndexArrayAttr({0, collective_spec.world_size - 1}));
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto schedule,
                    GetSchedule(tiled_computation, num_tiles_per_pid));

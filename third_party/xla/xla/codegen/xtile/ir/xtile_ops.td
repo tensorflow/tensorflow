@@ -107,10 +107,6 @@ def EntryFuncOp : XTile_Op<"entry_func", [
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs,
-                       // The number of arguments that are opaque to tiling
-                       // infrastructure and hence do not correspond to a memref
-                       // argument.
-                       DefaultValuedOptionalAttr<I32Attr, "0">:$num_opaque_args,
                        // How many peer scratch pointer tables follow I/O buffers.
                        OptionalAttr<I32Attr>:$num_scratch_buffers,
                        // Whether a peer barrier signal table follows scratch buffers.
@@ -125,25 +121,20 @@ def EntryFuncOp : XTile_Op<"entry_func", [
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [
-    OpBuilder<(ins
-      "mlir::StringRef":$name, "mlir::ArrayRef<mlir::Type>":$memref_arg_types,
-      CArg<"mlir::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs,
-      CArg<"mlir::ArrayRef<mlir::DictionaryAttr>", "{}">:$memref_arg_attrs)>,
-    OpBuilder<(ins
-      "mlir::StringRef":$name,
-      "mlir::ArrayRef<mlir::Type>":$io_buffer_types,
-      "mlir::ArrayRef<mlir::Type>":$scratch_buffer_types,
-      "mlir::Type":$signal_buffer_type,
-      "mlir::ArrayRef<mlir::NamedAttribute>":$attrs,
-      "mlir::ArrayRef<mlir::DictionaryAttr>":$io_arg_attrs)>
-  ];
+  let builders = [OpBuilder<(ins
+    "mlir::StringRef":$name,
+    "mlir::ArrayRef<mlir::Type>":$io_buffer_types,
+    "mlir::ArrayRef<mlir::Type>":$scratch_buffer_types,
+    "mlir::Type":$signal_buffer_type,
+    "mlir::ArrayRef<mlir::NamedAttribute>":$attrs,
+    "mlir::ArrayRef<mlir::DictionaryAttr>":$io_arg_attrs)
+  >];
 
   let extraClassDeclaration = [{
   private:
     template <typename T>
     mlir::ArrayRef<T> sliceBuffers(mlir::ArrayRef<T> items) {
-      return items.drop_back(getNumOpaqueArgs() + getNumTrailingIndexArgs());
+      return items.drop_back(getNumTrailingIndexArgs());
     }
 
     template <typename T>
@@ -173,19 +164,13 @@ def EntryFuncOp : XTile_Op<"entry_func", [
     }
 
     int64_t getMinRequiredArgs() {
-      return getNumOpaqueArgs() + getScratchBufferCount() +
-             (getHasSignalBuffer() ? 1 : 0) + getNumTrailingIndexArgs();
+      return getScratchBufferCount() + (getHasSignalBuffer() ? 1 : 0) +
+             getNumTrailingIndexArgs();
     }
 
     // All memref arguments: I/O buffers, scratch buffers, and signal buffer.
     mlir::ArrayRef<mlir::BlockArgument> getBufferArgs() {
       return sliceBuffers<mlir::BlockArgument>(getBody().getArguments());
-    }
-
-    mlir::ArrayRef<mlir::BlockArgument> getOpaqueArgs() {
-      return mlir::ArrayRef<mlir::BlockArgument>(getBody().getArguments())
-          .take_back(getNumOpaqueArgs() + 1)
-          .drop_back();
     }
 
     // Regular HLO input and output buffers (excludes collective tables).

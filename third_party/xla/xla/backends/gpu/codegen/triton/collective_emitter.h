@@ -23,12 +23,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -74,17 +73,12 @@ absl::Status TrySetGpuBackendConfigForCollective(
     const GpuTopology& gpu_topology, HloFusionInstruction* fusion_instr,
     const DeviceAssignment* device_assignment = nullptr);
 
-// Adds the metadata arguments to the function's argument list.
-// For collective some extra metadata arguments are needed such as rank,
-// and pointers to remote GPU buffers.
-// The fn_arg_types is updated in place to add these.
-// Returns the number of metadata arguments added or error.
-absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
-    llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
-    const HloComputation* hlo_computation);
+// Builds the collective entry function signature spec for `fusion`.
+absl::StatusOr<xla::xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
+    const HloFusionInstruction& fusion);
 
-// Version of [AddCollectiveMetadataArguments] that does the same for
-// [emitters::KernelArgument] structure.
+// Returns the unmanaged kernel argument shapes (`[scratch..., signal, rank]`)
+// for a collective `fusion`.
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
     const HloFusionInstruction* fusion);
 

@@ -488,7 +488,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
   ABSL_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       xtile::EmitXTileModule(name, fusion, tiled_computation, context,
-                             /*opaque_args_types=*/{},
+                             /*collective_spec=*/{},
                              /*gpu_cc=*/std::nullopt,
                              /*num_tiles_per_pid=*/
                              CeilOfRatio(num_parallel_tiles, num_work_groups)));

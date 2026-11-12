@@ -71,11 +71,10 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
 // all-reduce:
 //   [0, N)      local input buffers (kInputBuffer, index i)
 //   [N, 2N)     output buffers (kOutputBuffer, index i)
-//   [2N]        runtime rank  (kRuntimeRank)
-//   [2N + 1]    invocation count (kInvocationCount)
-//   [2N + 2]    signal flags (kScratchBuffer, index 0)
-//   [2N + 3 + i] remote scratch buffer pointer table of operand i
+//   [2N + i]    remote scratch buffer pointer table of operand i
 //               (kScratchBuffer, index 1 + i)
+//   [3N]        signal flags (kScratchBuffer, index 0)
+//   [3N + 1]    runtime rank (kRuntimeRank)
 // `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,

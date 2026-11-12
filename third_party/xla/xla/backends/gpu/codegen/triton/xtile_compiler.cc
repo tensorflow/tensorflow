@@ -64,7 +64,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -291,7 +290,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    absl::Span<mlir::Type> opaque_args_types, mlir::MLIRContext& mlir_context,
+    const xtile::CollectiveEntrySpec& collective_spec,
+    mlir::MLIRContext& mlir_context,
     bool enable_same_shape_multi_output_fusion) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
@@ -325,8 +325,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
   }
   VLOG(4) << "tiled computation: " << tiled_computation.ToString();
   return xtile::EmitXTileModule(
-      fn_name, fusion, tiled_computation, mlir_context,
-      absl::MakeSpan(opaque_args_types),
+      fn_name, fusion, tiled_computation, mlir_context, collective_spec,
       std::make_optional(device_info.gpu_compute_capability()),
       block_level_parameters.num_tiles_per_pid);
 }
@@ -375,28 +374,18 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
-  llvm::SmallVector<mlir::Type> opaque_args_types;
-  // Add metadata arguments for collectives.
-  // This is done after the input and output arguments but before the tile
-  // index.
-  int32_t num_metadata_arguments = 0;
+  xtile::CollectiveEntrySpec collective_spec;
   if (fusion_kind == kTritonCollectiveFusionKind) {
-    auto loc = mlir::NameLoc::get(
-        mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
-    mlir::ImplicitLocOpBuilder b(loc, &mlir_context);
-
-    ABSL_ASSIGN_OR_RETURN(
-        num_metadata_arguments,
-        AddCollectiveMetadataArguments(opaque_args_types, b, hlo_computation));
+    ABSL_ASSIGN_OR_RETURN(collective_spec, BuildCollectiveEntrySpec(fusion));
   }
 
   ABSL_RETURN_IF_ERROR(ValidateComplexUseInTritonFusion(*hlo_computation));
   ABSL_RETURN_IF_ERROR(ValidateF4UseInTritonFusion(*hlo_computation));
-  ABSL_ASSIGN_OR_RETURN(auto triton_module,
-                   TileAndEmitXTileModule(
-                       fn_name, fusion, device_info, block_level_parameters,
-                       absl::MakeSpan(opaque_args_types), mlir_context,
-                       enable_same_shape_multi_output_fusion));
+  ABSL_ASSIGN_OR_RETURN(
+      auto triton_module,
+      TileAndEmitXTileModule(
+          fn_name, fusion, device_info, block_level_parameters, collective_spec,
+          mlir_context, enable_same_shape_multi_output_fusion));
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {

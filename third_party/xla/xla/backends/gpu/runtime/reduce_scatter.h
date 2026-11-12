@@ -67,10 +67,10 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
 // layout is:
 //   [0, N)       input buffers  (kInputBuffer, index k)
 //   [N, 2N)      output buffers (kOutputBuffer, index k)
-//   [2N]         runtime rank   (kRuntimeRank)
-//   [2N + 1]     signal flags   (kScratchBuffer, index 0)
-//   [2N + 2 + k] remote input buffer pointer table of operand k
-//                (kScratchBuffer, index 1 + k)
+//   [2N + k]    remote input buffer pointer table of operand k
+//               (kScratchBuffer, index 1 + k)
+//   [3N]        signal flags   (kScratchBuffer, index 0)
+//   [3N + 1]    runtime rank   (kRuntimeRank)
 // `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,

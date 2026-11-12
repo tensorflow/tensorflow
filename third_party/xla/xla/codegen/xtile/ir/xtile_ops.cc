@@ -100,41 +100,6 @@ static bool IsPeerTableMemRef(mlir::Type type) {
          memref_type.getLayout().isIdentity();
 }
 
-// This is lifted from the func::FuncOp builder, modified to make the tile
-// index implicit.
-void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
-                        mlir::StringRef name,
-                        mlir::ArrayRef<mlir::Type> memref_arg_types,
-                        mlir::ArrayRef<mlir::NamedAttribute> attrs,
-                        mlir::ArrayRef<mlir::DictionaryAttr> memref_arg_attrs) {
-  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
-  mlir::SmallVector<mlir::Type> arg_types(memref_arg_types.begin(),
-                                          memref_arg_types.end());
-  // Append the tile id index type.
-  arg_types.push_back(builder.getIndexType());
-  mlir::FunctionType function_type = builder.getFunctionType(arg_types,
-                                                             /*results=*/{});
-  state.addAttribute(getFunctionTypeAttrName(state.name),
-                     mlir::TypeAttr::get(function_type));
-  state.attributes.append(attrs.begin(), attrs.end());
-  state.addRegion();
-
-  if (memref_arg_attrs.empty()) {
-    return;
-  }
-
-  assert(memref_arg_types.size() == memref_arg_attrs.size());
-  // As the arg attrs passed relate to the memref arg types we need to also
-  // append a tile id attr.
-  llvm::SmallVector<mlir::DictionaryAttr> arg_attrs_with_tile_id(
-      memref_arg_attrs.begin(), memref_arg_attrs.end());
-  arg_attrs_with_tile_id.push_back(
-      mlir::DictionaryAttr::get(builder.getContext(), {}));
-  mlir::call_interface_impl::addArgAndResultAttrs(
-      builder, state, arg_attrs_with_tile_id, /*resultAttrs=*/{},
-      getArgAttrsAttrName(state.name), getResAttrsAttrName(state.name));
-}
-
 // Builds an entry_func with optional collective arguments laid out as:
 //   (io_buffers..., scratch_buffers..., signal_buffer?, rank?, tile_id)
 void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
@@ -216,11 +181,6 @@ mlir::LogicalResult EntryFuncOp::verify() {
   const int32_t num_scratch_buffers = getScratchBufferCount();
   if (num_scratch_buffers < 0) {
     return emitOpError() << "num_scratch_buffers must be non-negative";
-  }
-  if (getNumOpaqueArgs() > 0 &&
-      (getHasSignalBuffer() || getHasRank() || num_scratch_buffers > 0)) {
-    return emitOpError()
-           << "num_opaque_args cannot be combined with collective arguments";
   }
   if (getHasSignalBuffer() != getHasRank()) {
     return emitOpError() << "signal buffer and rank must either both be "

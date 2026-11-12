@@ -414,13 +414,11 @@ TEST_P(CollectiveKernelsAotTest, AllReduceInWhileLoop) {
   }
 }
 
-// Kernels with and without the host-provided invocation count argument in one
-// executable, each launched once per loop iteration. The all-reduce (one-shot
-// and two-shot), all-gather and all-to-all kernels still take the argument and
-// ignore it; the reduce-scatter kernel does not take it. All of them read their
-// barrier signal value from device memory (`device_sync_count` in
-// CollectiveCodegenConfig), so it must advance on every launch. Once newer
-// kernels drop the argument, this golden still holds kernels that expect it.
+// Collective kernels launched once per loop iteration, reading their barrier
+// signal value from device memory (`device_sync_count` in
+// CollectiveCodegenConfig) so it advances on every launch. Live kernels omit
+// `kInvocationCount`, while earlier `v1`–`v3` AOT goldens still contain legacy
+// kernels that expect the host-provided invocation count argument.
 TEST_P(CollectiveKernelsAotTest, InvocationCountArgument) {
   constexpr absl::string_view kHlo = R"hlo(
     HloModule test

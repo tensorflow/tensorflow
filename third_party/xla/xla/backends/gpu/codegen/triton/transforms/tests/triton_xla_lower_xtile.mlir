@@ -68,17 +68,19 @@ xtile.entry_func @scalar_insert_extract(%input: !memref_type,
 // -----
 
 !memref_type = memref<32xf64, #nvvm.memory_space<global>>
-// CHECK:func.func @insert_extract_with_opaque_arg(
-// CHECK-SAME: %[[ARG0:.*]]: !tt.ptr<f64>, %[[ARG1:.*]]: !tt.ptr<f64>, %[[ARG2:.*]]: i32) {
-xtile.entry_func @insert_extract_with_opaque_arg(%input: !memref_type,
-                                                 %output: !memref_type,
-                                                 %opaque_arg: i32,
-                                                 %tile_id: index) attributes {
-                                                   num_opaque_args = 1: i32} {
-  // CHECK: %[[SCALAR_VALUE:.*]] = tt.load %[[ARG0]] : !tt.ptr<f64>
-  %tile = xtile.extract %input[%tile_id][1][1] : !memref_type -> tensor<f64>
-  // CHECK: tt.store %[[ARG1]], %[[SCALAR_VALUE]] : !tt.ptr<f64>
-  xtile.insert %tile into %output[%tile_id][1][1] : tensor<f64> -> !memref_type
+// CHECK-LABEL: func.func @collective_entry_signal_and_rank_only(
+// CHECK-SAME: %[[ARG0:.*]]: !tt.ptr<f64>, %[[ARG1:.*]]: !tt.ptr<f64>, %[[SIG:.*]]: !tt.ptr<i64>, %[[RANK:.*]]: i32) {
+xtile.entry_func @collective_entry_signal_and_rank_only(
+    %input: !memref_type,
+    %output: !memref_type,
+    %signal_buffers: memref<2xi64>,
+    %rank: index {xla.range = [0 : index, 1 : index]},
+    %tile_id: index) attributes {has_rank, has_signal_buffer} {
+  // CHECK: %[[RANK_IDX:.*]] = arith.index_cast %[[RANK]] {xla.range = [0 : index, 1 : index]} : i32 to index
+  // CHECK: %[[TILE:.*]] = triton_xla.extract from %[[ARG0]] as memref<32xf64, #xtile.layout<[0]>> [%[[RANK_IDX]]] [1] [1] : tensor<1xf64>
+  %tile = xtile.extract %input[%rank][1][1] : !memref_type -> tensor<1xf64>
+  // CHECK: triton_xla.insert %[[TILE]] into %[[ARG1]]
+  xtile.insert %tile into %output[%tile_id][1][1] : tensor<1xf64> -> !memref_type
   xtile.return
 }
 
@@ -167,14 +169,6 @@ func.func @select_buffer_with_offset_test(%src: memref<2xi64>, %replica_id: inde
 
 // -----
 
-func.func @unlowered_xtile_op_fails(%arg0: memref<16xf32>) -> memref<16xi32> {
-  // expected-error@+1 {{'xtile.memref_bitcast' op unlowered xtile op}}
-  %0 = xtile.memref_bitcast %arg0 : memref<16xf32> -> memref<16xi32>
-  return %0 : memref<16xi32>
-}
-
-// -----
-
 // CHECK-LABEL: func.func @collective_entry_with_scratch_signal_and_rank(
 // CHECK-SAME:    %[[IN:[^:]+]]: !tt.ptr<f32>, %[[OUT:[^:]+]]: !tt.ptr<f32>,
 // CHECK-SAME:    %[[REMOTE_USED:[^:]+]]: !tt.ptr<i64>, %{{[^:]+}}: !tt.ptr<i64>,
@@ -185,10 +179,10 @@ xtile.entry_func @collective_entry_with_scratch_signal_and_rank(
     %remote_used: memref<2xi64>,
     %remote_unused: memref<2xi64>,
     %signal_buffers: memref<2xi64>,
-    %rank: index {xla.range = [0 : index, 1 : index]},
+    %rank: index,
     %tile_id: index) attributes {
       has_rank, has_signal_buffer, num_scratch_buffers = 2 : i32} {
-  // CHECK: %[[RANK_IDX:.*]] = arith.index_cast %[[RANK]] {xla.range = [0 : index, 1 : index]} : i32 to index
+  // CHECK: %[[RANK_IDX:.*]] = arith.index_cast %[[RANK]] : i32 to index
   // CHECK-NOT: triton_xla.ptr_to_memref
   // CHECK: %[[RANK_I64:.*]] = arith.index_cast %[[RANK_IDX]] : index to i64
   // CHECK: %[[ADDPTR:.*]] = tt.addptr %[[REMOTE_USED]], %[[RANK_I64]] : !tt.ptr<i64>, i64
@@ -206,4 +200,12 @@ xtile.entry_func @collective_entry_with_scratch_signal_and_rank(
   %sig_ptr = triton_xla.memref_to_ptr %signal_buffers from memref<2xi64> to !tt.ptr<i64>
   tt.store %sig_ptr, %c0_i64 : !tt.ptr<i64>
   xtile.return
+}
+
+// -----
+
+func.func @unlowered_xtile_op_fails(%arg0: memref<16xf32>) -> memref<16xi32> {
+  // expected-error@+1 {{'xtile.memref_bitcast' op unlowered xtile op}}
+  %0 = xtile.memref_bitcast %arg0 : memref<16xf32> -> memref<16xi32>
+  return %0 : memref<16xi32>
 }

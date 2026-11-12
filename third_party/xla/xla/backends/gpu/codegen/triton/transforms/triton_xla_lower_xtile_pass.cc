@@ -80,9 +80,6 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
   // The GPU runtime passes device rank as a 32-bit integer kernel argument.
   if (entry_op.getHasRank()) {
     arg_types.push_back(mlir::IntegerType::get(entry_op.getContext(), 32));
-  } else {
-    mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
-    arg_types.append(opaque_args.begin(), opaque_args.end());
   }
   return arg_types;
 }
@@ -150,16 +147,6 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
           rank_idx->setAttr("xla.range", rank_range);
         }
         rewriter.replaceAllUsesWith(old_rank_arg, rank_idx);
-      }
-    } else {
-      // For opaque arguments, we can simply replace all uses with the new
-      // argument.
-      for (auto [old_arg, new_arg] :
-           llvm::zip(mlir::ValueRange(old_args)
-                         .drop_front(num_buffer_args)
-                         .drop_back(1),
-                     mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
-        rewriter.replaceAllUsesWith(old_arg, new_arg);
       }
     }
 

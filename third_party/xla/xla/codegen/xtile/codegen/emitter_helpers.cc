@@ -1152,7 +1152,6 @@ absl::StatusOr<Type> GetMlirType(
 
 absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
-    absl::Span<mlir::Type> opaque_args_types,
     const std::optional<GpuComputeCapability>& gpu_cc) {
   SmallVector<Type> fn_arg_types;
 
@@ -1173,12 +1172,6 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
                      GetMemRefType(shape, ir_type));
     fn_arg_types.push_back(memref_type);
-  }
-
-  // Add opaque arguments.
-  fn_arg_types.reserve(fn_arg_types.size() + opaque_args_types.size());
-  for (const auto& type : opaque_args_types) {
-    fn_arg_types.push_back(type);
   }
   return fn_arg_types;
 }

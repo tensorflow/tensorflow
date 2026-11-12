@@ -368,16 +368,9 @@ TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
-  ASSERT_EQ(unmanaged_arguments.size(), 4);
-  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
-  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
-  // num_devices x input_shape
-  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);  // num_devices
-
-  ASSERT_EQ(unmanaged_arguments[3].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[3].dimensions()[0], 2);      // num_devices
-  EXPECT_EQ(unmanaged_arguments[3].dimensions()[1], 65536);  // input_shape[0]
+  EXPECT_THAT(unmanaged_arguments, ElementsAre(ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(S32, {})));
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
@@ -582,16 +575,9 @@ TEST_F(CollectiveEmitterTest, AllGatherGetCollectiveUnmanagedKernelArguments) {
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
-  ASSERT_EQ(unmanaged_arguments.size(), 4);
-  // [0]: rank (S32[])
-  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
-  // [1]: signal_value (S32[])
-  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
-  // [2]: signal_buffers (S32[num_devices, kMaxBlocksPerGrid])
-  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);
-  // [3]: remote buffers of param_0 (F32[num_devices, 32768])
-  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 32768));
+  EXPECT_THAT(unmanaged_arguments, ElementsAre(ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(S32, {})));
 }
 
 TEST_F(CollectiveBlockLevelConfigTest,
@@ -666,16 +652,9 @@ TEST_F(CollectiveEmitterTest, AllToAllGetCollectiveUnmanagedKernelArguments) {
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
-  ASSERT_EQ(unmanaged_arguments.size(), 4);
-  // [0]: rank (S32[])
-  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
-  // [1]: signal_value (S32[])
-  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
-  // [2]: signal_buffers (S32[num_devices, kMaxBlocksPerGrid])
-  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);
-  // [3]: remote buffers of param_0 (F32[num_devices, 65536])
-  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 65536));
+  EXPECT_THAT(unmanaged_arguments, ElementsAre(ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(S32, {})));
 }
 
 TEST_F(CollectiveBlockLevelConfigTest,
@@ -761,11 +740,9 @@ TEST_F(CollectiveEmitterTest,
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
-  ASSERT_EQ(unmanaged_arguments.size(), 3);
-  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
-  ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
-  EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 65536));
+  EXPECT_THAT(unmanaged_arguments, ElementsAre(ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(S32, {})));
 }
 
 constexpr absl::string_view kVariadicReduceScatterModuleStr = R"(
@@ -972,12 +949,10 @@ TEST_F(CollectiveEmitterTest,
   ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
-  ASSERT_EQ(unmanaged_arguments.size(), 4);
-  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
-  ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
-  EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
-  EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 4, 16));
-  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 4, 2));
+  EXPECT_THAT(unmanaged_arguments, ElementsAre(ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(U64, {2}),
+                                               ShapeUtil::MakeShape(S32, {})));
 }
 
 GpuTopology MakeGpuTopology(int32_t num_partitions,
