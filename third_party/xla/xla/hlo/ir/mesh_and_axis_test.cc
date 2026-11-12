@@ -302,6 +302,13 @@ TEST(MeshAndAxisTest, ValidateAxisForMesh) {
       "Axis index: 3, Number of axes: 3");
 
   EXPECT_DEATH(
+      { CHECK_OK(AxisRef(-1).Validate(mesh)); },
+      "Axis index must be non-negative.*Axis index: -1");
+  EXPECT_DEATH(
+      { CHECK_OK(AxisRef(-1, {1, 2}).Validate(mesh)); },
+      "Axis index must be non-negative.*Axis index: -1");
+
+  EXPECT_DEATH(
       { CHECK_OK(AxisRef(0, {5, 19}).Validate(mesh)); },
       "Sub-axis next_pre_size must divide the full axis size.*"
       "Next pre-size: 95, Axis size: 14");
