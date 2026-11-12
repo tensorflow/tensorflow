@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -1129,6 +1130,8 @@ TEST(StreamExecutorGpuClientTest,
     GTEST_SKIP() << "This test requires at least a Hopper GPU (SM 9.0).";
   }
 
+  // The VMM allocator is disabled outside of open source builds.
+  ScopedAllowVmmAllocatorForTesting allow_vmm_allocator;
   GpuClientOptions options = GetTestGpuClientOptions(2);
   options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));

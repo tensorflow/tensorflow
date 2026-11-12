@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_cross_host_transfer.pb.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
@@ -1460,6 +1461,11 @@ GetStreamExecutorGpuDeviceAllocator(
     LOG(WARNING) << "xla_gpu_command_buffer_update_mode requires the "
                     "VMM allocator. Overriding allocator kind to kVmm.";
     effective_kind = GpuAllocatorConfig::Kind::kVmm;
+  }
+  if (effective_kind == GpuAllocatorConfig::Kind::kVmm &&
+      !IsVmmAllocatorAllowed()) {
+    return absl::FailedPreconditionError(
+        "The VMM allocator is in an experimental mode.");
   }
 
   // Set when a single preallocated BFC allocator serves both default and
