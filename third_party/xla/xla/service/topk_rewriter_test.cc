@@ -1118,5 +1118,83 @@ ENTRY cluster {
   }
 }
 
+TEST_F(TopkRewriterTest, RewriteStableSortExpandedComparator) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p.0.lhs = f32[] parameter(0)
+  %p.0.rhs = f32[] parameter(1)
+  %p.1.lhs = s32[] parameter(2)
+  %p.1.rhs = s32[] parameter(3)
+  %gt.01 = pred[] compare(%p.0.lhs, %p.0.rhs), direction=GT, order=TOTAL
+  %gt.10 = pred[] compare(%p.0.rhs, %p.0.lhs), direction=GT, order=TOTAL
+  %same = pred[] compare(%gt.01, %gt.10), direction=EQ
+  %tie_breaker = pred[] compare(%p.1.lhs, %p.1.rhs), direction=LT
+  ROOT %select = pred[] select(%same, %tie_breaker, %gt.01)
+}
+ENTRY cluster {
+  %arg = f32[3,8,1024] parameter(0)
+  %iota = s32[3,8,1024] iota(), iota_dimension=2
+  %sort = (f32[3,8,1024], s32[3,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=false, to_apply=%compare
+  %gte.0 = f32[3,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[3,8,5] slice(%gte.0), slice={[0:3], [0:8], [0:5]}
+  %gte.1 = s32[3,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[3,8,5] slice(%gte.1), slice={[0:3], [0:8], [0:5]}
+  ROOT %tuple = (f32[3,8,5], s32[3,8,5]) tuple(%slice.0, %slice.1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+  EXPECT_EQ(cc->raw_backend_config_string(),
+            "{is_stable = true, order = \"TOTAL\"}");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteInvalidStableSortExpandedComparator) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p.0.lhs = f32[] parameter(0)
+  %p.0.rhs = f32[] parameter(1)
+  %p.1.lhs = s32[] parameter(2)
+  %p.1.rhs = s32[] parameter(3)
+  %gt.01 = pred[] compare(%p.0.lhs, %p.0.rhs), direction=GT, order=TOTAL
+  %false_const = pred[] constant(false)
+  %not_gt = pred[] compare(%gt.01, %false_const), direction=EQ
+  %tie_breaker = pred[] compare(%p.1.lhs, %p.1.rhs), direction=LT
+  ROOT %select = pred[] select(%not_gt, %tie_breaker, %gt.01)
+}
+ENTRY cluster {
+  %arg = f32[3,8,1024] parameter(0)
+  %iota = s32[3,8,1024] iota(), iota_dimension=2
+  %sort = (f32[3,8,1024], s32[3,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=false, to_apply=%compare
+  %gte.0 = f32[3,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[3,8,5] slice(%gte.0), slice={[0:3], [0:8], [0:5]}
+  %gte.1 = s32[3,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[3,8,5] slice(%gte.1), slice={[0:3], [0:8], [0:5]}
+  ROOT %tuple = (f32[3,8,5], s32[3,8,5]) tuple(%slice.0, %slice.1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

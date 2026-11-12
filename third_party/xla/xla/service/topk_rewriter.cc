@@ -58,7 +58,12 @@ limitations under the License.
 
 namespace xla {
 
-static std::optional<ComparisonOrder> MatchNanSafeGt(HloComputation* comp) {
+struct NanSafeGtMatch {
+  ComparisonOrder order;
+  bool is_stable_expanded;
+};
+
+static std::optional<NanSafeGtMatch> MatchNanSafeGt(HloComputation* comp) {
   namespace m = match;
   auto match_bitcast_f32 = [](int64_t parameter_number) {
     auto param = m::Parameter(parameter_number)
@@ -167,64 +172,94 @@ static std::optional<ComparisonOrder> MatchNanSafeGt(HloComputation* comp) {
   };
 
   HloInstruction* cmp = nullptr;
-  auto match_compare = [&](PrimitiveType type) {
-    auto param0 = m::Parameter(0).WithShape(m::Shape().WithElementType(type));
-    auto param1 = m::Parameter(1).WithShape(m::Shape().WithElementType(type));
+  auto match_compare = [&](PrimitiveType type, int64_t lhs_param,
+                           int64_t rhs_param) {
+    auto param0 =
+        m::Parameter(lhs_param).WithShape(m::Shape().WithElementType(type));
+    auto param1 =
+        m::Parameter(rhs_param).WithShape(m::Shape().WithElementType(type));
     return m::Gt(&cmp, param0, param1).WithPredicate(not_weak_order);
   };
 
-  auto match_default_compare = [&](PrimitiveType type) {
-    auto params_with_type = [&](int i, PrimitiveType t) {
+  auto match_default_compare = [&](PrimitiveType type, int64_t lhs_param,
+                                   int64_t rhs_param) {
+    auto params_with_type = [&](int64_t i, PrimitiveType t) {
       return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
     };
-    auto params =
-        std::vector({// Values
-                     params_with_type(0, type), params_with_type(1, type),
-                     // Indices
-                     params_with_type(2, S32), params_with_type(3, S32)});
+    auto params = std::vector(
+        {// Values
+         params_with_type(lhs_param, type), params_with_type(rhs_param, type),
+         // Indices
+         params_with_type(2, S32), params_with_type(3, S32)});
     auto const_true = m::Broadcast(m::Constant());
     auto values_gt =
         m::Gt(&cmp, params[0], params[1]).WithPredicate(not_weak_order);
     return m::Select(const_true, values_gt, const_true);
   };
 
-  auto match_all_types = [](HloInstruction* root, auto callback) {
+  auto match_key_compare =
+      [&](HloInstruction* key_root, int64_t lhs_param,
+          int64_t rhs_param) -> std::optional<ComparisonOrder> {
+    if (Match(key_root, m::Gt(match_generic_iec559(lhs_param, F32, S32),
+                              match_generic_iec559(rhs_param, F32, S32))) ||
+        Match(key_root, m::Gt(match_generic_iec559(lhs_param, BF16, S16),
+                              match_generic_iec559(rhs_param, BF16, S16))) ||
+        Match(key_root, m::Gt(match_generic_iec559_with_convert(lhs_param, BF16,
+                                                                F32, S32),
+                              match_generic_iec559_with_convert(rhs_param, BF16,
+                                                                F32, S32))) ||
+        Match(key_root, m::Gt(match_bitcast_f32(lhs_param),
+                              match_bitcast_f32(rhs_param))) ||
+        Match(key_root, m::Gt(match_bitcast_bf16(lhs_param),
+                              match_bitcast_bf16(rhs_param))) ||
+        Match(key_root, m::Gt(match_bitcast_f32_with_convert(lhs_param),
+                              match_bitcast_f32_with_convert(rhs_param))) ||
+        Match(key_root, m::Gt(match_bitcast_bf16_with_convert(lhs_param),
+                              match_bitcast_bf16_with_convert(rhs_param))) ||
+        Match(key_root, m::Gt(match_s32(lhs_param), match_s32(rhs_param)))) {
+      return ComparisonOrder::kTotal;
+    }
+    cmp = nullptr;
     for (auto type : {BF16, F32, S32, U32}) {
-      if (Match(root, callback(type))) {
-        return true;
+      if (Match(key_root, match_compare(type, lhs_param, rhs_param)) ||
+          Match(key_root, match_default_compare(type, lhs_param, rhs_param))) {
+        if (cmp != nullptr) {
+          return cmp->comparison_order();
+        }
       }
     }
-    return false;
+    return std::nullopt;
   };
 
-  if (Match(comp->root_instruction(),
-            m::Gt(match_generic_iec559(0, F32, S32),
-                  match_generic_iec559(1, F32, S32))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_generic_iec559(0, BF16, S16),
-                  match_generic_iec559(1, BF16, S16))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_generic_iec559_with_convert(0, BF16, F32, S32),
-                  match_generic_iec559_with_convert(1, BF16, F32, S32))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_bitcast_bf16(0), match_bitcast_bf16(1))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_bitcast_f32_with_convert(0),
-                  match_bitcast_f32_with_convert(1))) ||
-      Match(comp->root_instruction(),
-            m::Gt(match_bitcast_bf16_with_convert(0),
-                  match_bitcast_bf16_with_convert(1))) ||
-      Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)))) {
-    return ComparisonOrder::kTotal;
+  HloInstruction* root = comp->root_instruction();
+  // If the sort comparator was expanded by StableSortExpander, the root is
+  // Select(Eq(old_root, cloned_root), Lt(Parameter(2), Parameter(3)),
+  // old_root), where cloned_root computes the same key comparison with swapped
+  // parameters (1, 0).
+  HloInstruction* eq = nullptr;
+  HloInstruction* old_root = nullptr;
+  if (Match(root, m::Select(m::Eq(&eq, m::Op(), m::Op()),
+                            m::Lt(m::Parameter(2), m::Parameter(3)),
+                            m::Op(&old_root))) &&
+      (eq->operand(0) == old_root || eq->operand(1) == old_root)) {
+    HloInstruction* cloned_root = eq->operand(0) == old_root
+                                      ? eq->mutable_operand(1)
+                                      : eq->mutable_operand(0);
+    std::optional<ComparisonOrder> lhs_order =
+        match_key_compare(old_root, 0, 1);
+    std::optional<ComparisonOrder> rhs_order =
+        match_key_compare(cloned_root, 1, 0);
+    if (lhs_order.has_value() && lhs_order == rhs_order) {
+      return NanSafeGtMatch{*lhs_order, /*is_stable_expanded=*/true};
+    }
+    return std::nullopt;
   }
-  if ((match_all_types(comp->root_instruction(), match_compare) ||
-       match_all_types(comp->root_instruction(), match_default_compare)) &&
-      cmp != nullptr) {
-    return cmp->comparison_order();
+
+  std::optional<ComparisonOrder> order = match_key_compare(root, 0, 1);
+  if (!order.has_value()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return NanSafeGtMatch{*order, /*is_stable_expanded=*/false};
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
@@ -261,13 +296,12 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst,
   if (sort->operand_count() == 2 && !HasIota(sort, data)) {
     return std::nullopt;
   }
-  std::optional<ComparisonOrder> matched_order =
-      MatchNanSafeGt(sort->to_apply());
-  if (!matched_order.has_value()) {
+  std::optional<NanSafeGtMatch> matched = MatchNanSafeGt(sort->to_apply());
+  if (!matched.has_value()) {
     return std::nullopt;
   }
   if (order != nullptr) {
-    *order = *matched_order;
+    *order = matched->order;
   }
   const int64_t sort_dim = sort->sort_dimension();
 
@@ -374,8 +408,11 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k,
                                        ShapeUtil::MakeShape(S32, {k})});
   HloInstruction* topk = sort->AddInstruction(HloInstruction::CreateCustomCall(
       topk_shape, {input}, sort->to_apply(), "TopK"));
+  std::optional<NanSafeGtMatch> matched = MatchNanSafeGt(sort->to_apply());
+  const bool is_stable =
+      sort->is_stable() || (matched.has_value() && matched->is_stable_expanded);
   topk->set_raw_backend_config_string(absl::StrFormat(
-      "{is_stable = %s, order = \"%s\"}", sort->is_stable() ? "true" : "false",
+      "{is_stable = %s, order = \"%s\"}", is_stable ? "true" : "false",
       ComparisonOrderToShortString(order)));
   HloInstruction* value_gte =
       sort->AddInstruction(HloInstruction::CreateGetTupleElement(
