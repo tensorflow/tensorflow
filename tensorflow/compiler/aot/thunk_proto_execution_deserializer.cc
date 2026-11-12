@@ -417,7 +417,7 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
   absl::string_view rng_thunk_invocation_format = R"(
      // Rng Thunk
      {
-         rng_states[{{RNG_STATE_INDEX}}]->GetAndUpdateState({{RNG_STATE_PTR}});
+         rng_state.GetAndUpdateState({{RNG_STATE_PTR}}, {{RNG_DELTA}});
      })";
 
   if (rng_thunk.state_buffer().size() != sizeof(absl::int128)) {
@@ -429,7 +429,7 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
 
   return absl::StrReplaceAll(
       rng_thunk_invocation_format,
-      {{"{{RNG_STATE_INDEX}}", absl::StrCat(rng_state_index_++)},
+      {{"{{RNG_DELTA}}", absl::StrCat(rng_thunk.delta())},
        {"{{RNG_STATE_PTR}}",
         absl::StrCat("reinterpret_cast<uint64_t*>(",
                      GetBufferAllocationString(rng_thunk.state_buffer()),
