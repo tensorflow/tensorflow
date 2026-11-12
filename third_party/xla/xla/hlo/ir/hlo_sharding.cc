@@ -1184,6 +1184,11 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
   };
   if (!subgroup_types.empty()) {
     TF_RET_CHECK(!proto.replicate_on_last_tile_dim());
+    TF_RET_CHECK(subgroup_types.size() <=
+                 proto.tile_assignment_dimensions().size())
+        << "last_tile_dims has " << subgroup_types.size()
+        << " entries, but the tile assignment only has "
+        << proto.tile_assignment_dimensions().size() << " dimensions.";
     return std::move(
         Subgroup(create_tile_assignment(), subgroup_types, metadata)
             .SetShardGroupFromProto(proto));

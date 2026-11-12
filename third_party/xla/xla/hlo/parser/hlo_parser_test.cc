@@ -3616,6 +3616,17 @@ ENTRY e {
                         "product"));
 }
 
+TEST_F(HloParserTest, ShardingLastTileDimsExceedsTileAssignmentRank) {
+  for (const char* sharding :
+       {"{devices=[2]0,1 last_tile_dims={manual, replicated}}",
+        "{devices=[2]<=[2] last_tile_dims={manual, replicated}}"}) {
+    auto result = ParseSharding(sharding);
+    EXPECT_FALSE(result.ok()) << sharding;
+    EXPECT_THAT(result.status().message(),
+                HasSubstr("but the tile assignment only has 1 dimensions"));
+  }
+}
+
 TEST_F(HloParserTest, CollectiveDeviceListIotaSizeMismatch) {
   const std::string original = R"(HloModule m
 ENTRY e {

@@ -215,6 +215,30 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
+TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 2
+    tile_assignment_devices: 0
+    tile_assignment_devices: 1
+    last_tile_dims: MANUAL
+    last_tile_dims: REPLICATED
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto).status().message(),
+              ::testing::HasSubstr("last_tile_dims has 2 entries"));
+
+  proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 2
+    iota_reshape_dims: 2
+    iota_transpose_perm: 0
+    last_tile_dims: MANUAL
+    last_tile_dims: REPLICATED
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto).status().message(),
+              ::testing::HasSubstr("last_tile_dims has 2 entries"));
+}
+
 using TileTest = HloShardingTest;
 TEST_F(TileTest, FailsWithDuplicateDeviceInTileAssignment) {
   HloSharding sharding =
