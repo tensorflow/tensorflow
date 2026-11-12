@@ -141,8 +141,11 @@ absl::StatusOr<PjRtChunk> CommonHostMemoryForDeviceManager::ToDeviceLayout(
   ABSL_ASSIGN_OR_RETURN(size_t staging_size, client_->GetDmaByteCount(device_shape));
   tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer;
   if (client_->linearize_throttler() != nullptr) {
-    staging_buffer = client_->linearize_throttler()->AllocateStagingDest(
-        /*sync=*/true, staging_size, /*reused_buffer=*/{});
+    ABSL_ASSIGN_OR_RETURN(staging_buffer,
+                     client_->linearize_throttler()
+                         ->AllocateStagingDest(
+                             /*sync=*/true, staging_size, /*reused_buffer=*/{})
+                         .Allocate());
   } else {
     auto vec = std::make_unique<std::vector<uint8_t>>(staging_size);
     absl::Span<uint8_t> span = absl::MakeSpan(*vec);
@@ -426,25 +429,37 @@ void RunPipelinedChunkedTransfer(
           ? total_device_bytes
           : num_stages * slot_bytes;
 
-  tsl::AsyncValueRef<PjRtStagingBuffer> staging_buf;
+  LinearizeThrottler::StagingReservation staging;
   if (is_h2d) {
-    absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> staging =
+    absl::StatusOr<LinearizeThrottler::StagingReservation> reservation =
         client->AllocateLinearizeDest(sync, staging_bytes, raw_buffer);
-    staging_buf = staging.ok() ? *std::move(staging)
-                               : tsl::MakeErrorAsyncValueRef(staging.status());
+    staging = reservation.ok()
+                  ? *std::move(reservation)
+                  : LinearizeThrottler::StagingReservation(
+                        tsl::MakeErrorAsyncValueRef(reservation.status()));
   } else {
-    staging_buf = client->AllocateForDelinearizationAsync(
-        staging_bytes, raw_buffer->memory_space());
+    staging = LinearizeThrottler::StagingReservation(
+        client->AllocateForDelinearizationAsync(staging_bytes,
+                                                raw_buffer->memory_space()));
   }
 
-  tsl::RCReference<tsl::AsyncValue> staging_ready = staging_buf.CopyRCRef();
-  auto transfer = std::make_shared<PipelinedChunkedTransfer>(
-      client, std::move(plan), host_ptr, total_chunks, num_stages, slot_bytes,
-      context_id, std::move(staging_buf), std::move(raw_buffer),
-      std::move(dma_promise), std::move(on_host_done));
+  tsl::RCReference<tsl::AsyncValue> staging_ready = staging.CopyRCRef();
   client->async_work_runner()->ExecuteWhenReady(
       {std::move(staging_ready)},
-      [transfer = std::move(transfer), num_stages]() {
+      [client, plan = std::move(plan), host_ptr, total_chunks, num_stages,
+       slot_bytes, context_id, staging = std::move(staging),
+       raw_buffer = std::move(raw_buffer), dma_promise = std::move(dma_promise),
+       on_host_done = std::move(on_host_done)]() mutable {
+        absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> staging_buf =
+            std::move(staging).Allocate();
+        auto transfer = std::make_shared<PipelinedChunkedTransfer>(
+            client, std::move(plan), host_ptr, total_chunks, num_stages,
+            slot_bytes, context_id,
+            staging_buf.ok()
+                ? *std::move(staging_buf)
+                : tsl::MakeErrorAsyncValueRef(staging_buf.status()),
+            std::move(raw_buffer), std::move(dma_promise),
+            std::move(on_host_done));
         transfer->Start(transfer, num_stages);
       });
 }
@@ -611,14 +626,14 @@ CommonPjRtClient::CreateStagingForZeroCopyLinearize(
   return PjRtStagingBuffer::Create(span, std::move(on_done_with_host_buffer));
 }
 
-absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+absl::StatusOr<LinearizeThrottler::StagingReservation>
 CommonPjRtClient::AllocateLinearizeDest(bool sync, size_t size,
                                         PjRtRawBufferRef dest_buffer) {
   if (dest_buffer->GetHostPointer() != nullptr) {
     absl::Span<uint8_t> span(
         static_cast<uint8_t*>(dest_buffer->GetHostPointer()), size);
-    return PjRtStagingBuffer::Create(
-        span, [dest_buffer = std::move(dest_buffer)]() {});
+    return LinearizeThrottler::StagingReservation(PjRtStagingBuffer::Create(
+        span, [dest_buffer = std::move(dest_buffer)]() {}));
   }
   PjRtMemorySpace* memory_space = dest_buffer->memory_space();
   CHECK_EQ(memory_space->devices().size(), 1);
@@ -646,15 +661,16 @@ CommonPjRtClient::AllocateLinearizeDest(bool sync, size_t size,
           size);
     }
     absl::Span<uint8_t> span(staging_buffer.get(), size);
-    return PjRtStagingBuffer::Create(
-        span, [staging_buffer = std::move(staging_buffer)]() {});
+    return LinearizeThrottler::StagingReservation(PjRtStagingBuffer::Create(
+        span, [staging_buffer = std::move(staging_buffer)]() {}));
   }
   auto vec = std::make_unique<std::vector<uint8_t>>(size);
   absl::Span<uint8_t> span = absl::MakeSpan(*vec);
-  return PjRtStagingBuffer::Create(span, [vec = std::move(vec)]() {});
+  return LinearizeThrottler::StagingReservation(
+      PjRtStagingBuffer::Create(span, [vec = std::move(vec)]() {}));
 }
 
-absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
+absl::StatusOr<LinearizeThrottler::StagingReservation>
 CommonPjRtClient::AllocateLinearizeDest(bool sync,
                                         const xla::Shape& device_shape,
                                         absl::Span<const int64_t> byte_strides,
@@ -1385,7 +1401,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
     return copy_event;
   } else {
     ABSL_ASSIGN_OR_RETURN(
-        linearized,
+        LinearizeThrottler::StagingReservation reservation,
         AllocateLinearizeDest(
             /*sync=*/host_buffer_semantics ==
                 HostBufferSemantics::kImmutableOnlyDuringCall,
@@ -1401,13 +1417,11 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
         memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId ||
         (on_device_bytes > 0 &&
          on_device_bytes <= kMaxInlineAsyncLinearizeBytes &&
-         linearized.IsAvailable() && !linearized.IsError())) {
-      if (!linearized.IsAvailable()) {
-        tsl::BlockUntilReady(linearized.GetAsyncValue());
+         reservation.IsAvailable() && !reservation.IsError())) {
+      if (!reservation.IsAvailable()) {
+        tsl::BlockUntilReady(reservation.GetAsyncValue());
       }
-      if (auto* error = linearized.GetAsyncValue()->GetErrorIfPresent()) {
-        return *error;
-      }
+      ABSL_ASSIGN_OR_RETURN(linearized, std::move(reservation).Allocate());
       ABSL_RETURN_IF_ERROR(
           Linearize(linearized->data(), data,
                     byte_strides.value_or(absl::Span<const int64_t>()),
@@ -1425,13 +1439,14 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
 
       // Evaluate the dependency before the call: C++ argument evaluation
       // order is unspecified, and when the lambda argument (which moves
-      // `linearized`) is evaluated before the dependency-list argument,
-      // `linearized.CopyRCRef()` inline in the argument list would produce a
+      // `reservation`) is evaluated before the dependency-list argument,
+      // `reservation.CopyRCRef()` inline in the argument list would produce a
       // null reference and crash in RunWhenReady.
-      tsl::RCReference<tsl::AsyncValue> linearized_dep = linearized.CopyRCRef();
+      tsl::RCReference<tsl::AsyncValue> reservation_dep =
+          reservation.CopyRCRef();
       async_work_runner()->ExecuteWhenReady(
-          {std::move(linearized_dep)},
-          [this, linearized = std::move(linearized), copy_event_promise,
+          {std::move(reservation_dep)},
+          [this, reservation = std::move(reservation), copy_event_promise,
            raw_buffer = std::move(raw_buffer), data,
            byte_strides = byte_strides.has_value()
                               ? absl::InlinedVector<int64_t, 4>(
@@ -1444,12 +1459,11 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                std::move(on_done_with_host_buffer)]() mutable {
             tsl::profiler::TraceMeConsumer consumer(
                 "H2D Dispatch", tsl::profiler::ContextType::kPjRt, context_id);
-            absl::Span<uint8_t> staging_data = linearized->data();
-            auto status = [&]() -> absl::Status {
-              if (auto* error =
-                      linearized.GetAsyncValue()->GetErrorIfPresent()) {
-                return *error;
-              }
+            tsl::AsyncValueRef<PjRtStagingBuffer> linearized;
+            absl::Span<uint8_t> staging_data;
+            absl::Status status = [&]() -> absl::Status {
+              ABSL_ASSIGN_OR_RETURN(linearized, std::move(reservation).Allocate());
+              staging_data = linearized->data();
               return Linearize(staging_data, data, byte_strides, device_shape,
                                dynamic_sizes, memory_space);
             }();
@@ -1458,6 +1472,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
               on_done_with_host_buffer = nullptr;
             }
             if (!status.ok()) {
+              linearized.reset();
               copy_event_promise.SetError(std::move(status));
               return;
             }
@@ -1470,6 +1485,7 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
             auto event = raw_buffer->CopyRawHostToDeviceAndReturnEvent(
                 staging_data.data(), 0, staging_data.size());
             if (!event.ok()) {
+              linearized.reset();
               copy_event_promise.SetError(event.status());
               return;
             }
@@ -4907,18 +4923,22 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
           }
           if (allocation_event) {
             allocation_event.SetStateConcrete();
+            allocation_event.reset();
           }
           std::unique_ptr<MutableLiteralBase> literal =
               std::make_unique<MutableBorrowingLiteral>(
                   reinterpret_cast<char*>(base_ptr), src_shape);
           auto* dst_memory_space = dst_raw_buffer->memory_space();
-          auto status_or_h2d_transfer_event = dst_client->LinearizeInto(
-              *literal, *device_shape,
-              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-              std::move(dst_raw_buffer));
-          CHECK_OK(status_or_h2d_transfer_event);
-          auto h2d_transfer_event = *std::move(status_or_h2d_transfer_event);
-          h2d_transfer_event.AndThen(
+          absl::StatusOr<PjRtDeviceEventRef> h2d_transfer_event =
+              dst_client->LinearizeInto(*literal, *device_shape,
+                                        PjRtClient::HostBufferSemantics::
+                                            kImmutableUntilTransferCompletes,
+                                        std::move(dst_raw_buffer));
+          if (!h2d_transfer_event.ok()) {
+            set_error(h2d_transfer_event.status());
+            return;
+          }
+          h2d_transfer_event->AndThen(
               [src_raw_buffer = std::move(src_raw_buffer),
                literal = std::move(literal),
                src_usage_event_promise = std::move(src_usage_event_promise)]() {
@@ -4926,10 +4946,10 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
               });
           if (dst_client->event_tracking_enabled()) {
             dst_client->AppendDescriptionToEvent(
-                dst_memory_space, h2d_transfer_event.ptr(),
+                dst_memory_space, h2d_transfer_event->ptr(),
                 " TransferToDevice ", {definition_event_promise.event()});
           }
-          definition_event_promise.Set(std::move(h2d_transfer_event));
+          definition_event_promise.Set(*std::move(h2d_transfer_event));
         });
   }
   return dst_buffer;
@@ -5077,14 +5097,17 @@ CommonPjRtBufferImpl::CopyToMemorySpaceFallbackThroughLiteral(
           manager->SetBufferError(0, status);
           return;
         }
-        auto* raw_manager = manager.get();
-        auto* raw_literal = literal.get();
-        CHECK_OK(raw_manager->TransferLiteralToBuffer(
-            0, *raw_literal,
-            [literal = std::move(literal), manager = std::move(manager)]() {
-              // Keep `literal` and `manager` alive until the H2D transfer is
-              // complete.
-            }));
+        std::shared_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+            shared_manager = std::move(manager);
+        Literal* raw_literal = literal.get();
+        absl::Status transfer_status = shared_manager->TransferLiteralToBuffer(
+            0, *raw_literal, [literal = std::move(literal), shared_manager]() {
+              // Keep `literal` and `shared_manager` alive until the H2D
+              // transfer is complete.
+            });
+        if (!transfer_status.ok()) {
+          shared_manager->SetBufferError(0, transfer_status);
+        }
       });
 
   return dst_buffer;

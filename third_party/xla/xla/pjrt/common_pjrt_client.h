@@ -338,11 +338,11 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer);
 
-  // Allocates a destination buffer for linearizing into.
-  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+  // Reserves a destination staging buffer for linearizing into.
+  absl::StatusOr<LinearizeThrottler::StagingReservation> AllocateLinearizeDest(
       bool sync, size_t size, PjRtRawBufferRef dest_buffer);
 
-  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+  absl::StatusOr<LinearizeThrottler::StagingReservation> AllocateLinearizeDest(
       bool sync, const xla::Shape& device_shape,
       absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer);
 
