@@ -473,6 +473,30 @@ class SegmentProdGradientTest(test.TestCase):
     segment_ids = constant_op.constant([0, 0, 2], dtype=dtypes.int64)
     self._run_gradient_check(data, segment_ids)
 
+  def testSegmentProdGradientComplex(self):
+    # The last segment has a single zero, which takes the zero-handling path.
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      data = constant_op.constant(
+          [1 + 2j, -0.5 + 1j, 2 - 1j, 0.5j, 0, 1.5 - 0.5j], dtype=dtype)
+      segment_ids = constant_op.constant([0, 0, 1, 1, 2, 2],
+                                         dtype=dtypes.int64)
+      self._run_gradient_check(data, segment_ids)
+
+  def testUnsortedSegmentProdGradientComplex(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      data = constant_op.constant(
+          [1 + 2j, -0.5 + 1j, 2 - 1j, 0.5j, 0, 1.5 - 0.5j], dtype=dtype)
+      segment_ids = constant_op.constant([0, 2, 1, 0, 2, -1],
+                                         dtype=dtypes.int64)
+
+      def _unsorted_segment_prod(x, segment_ids=segment_ids):
+        return math_ops.unsorted_segment_prod(x, segment_ids, 3)
+
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(_unsorted_segment_prod,
+                                                [data]))
+      self.assertLess(err, 2e-4)
+
 
 class FloorModGradientTest(test.TestCase):
 
@@ -540,6 +564,14 @@ class MulNoNanGradientTest(test.TestCase):
       self.assertAllClose(dx, np.zeros(x.shape.as_list()))
       self.assertAllClose(dy, x_vals)
 
+  def testComplexGradient(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1 + 2j, -0.5 + 1j, 2 - 1j], dtype=dtype)
+      y = constant_op.constant([0.5 - 1j, 1.5 + 0.5j, -1 - 2j], dtype=dtype)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(math_ops.mul_no_nan, [x, y]))
+      self.assertLess(err, 1e-3)
+
 
 class XlogyTest(test.TestCase):
 
@@ -592,6 +624,15 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(-np.inf, xlogy_xgrad)
       zero = self.evaluate(x)
       self.assertAllClose(zero, xlogy_ygrad)
+
+
+  def testComplexGrad(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1 + 2j, -0.5 + 1j, 2 - 1j], dtype=dtype)
+      y = constant_op.constant([0.5 - 1j, 1.5 + 0.5j, -1 - 2j], dtype=dtype)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(math_ops.xlogy, [x, y]))
+      self.assertLess(err, 1e-3)
 
 
 class Xlog1pyTest(test.TestCase):
@@ -647,6 +688,15 @@ class Xlog1pyTest(test.TestCase):
       self.assertAllClose(-np.inf, xlog1py_xgrad)
       zero = self.evaluate(x)
       self.assertAllClose(zero, xlog1py_ygrad)
+
+
+  def testComplexGrad(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1 + 2j, -0.5 + 1j, 2 - 1j], dtype=dtype)
+      y = constant_op.constant([0.5 - 1j, 1.5 + 0.5j, -1 - 2j], dtype=dtype)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(math_ops.xlog1py, [x, y]))
+      self.assertLess(err, 1e-3)
 
 
 class XdivyTest(test.TestCase):
@@ -709,6 +759,14 @@ class XdivyTest(test.TestCase):
       z = math_ops.xdivy(x, y)
     grad = tape.gradient(z, x)
     self.assertAllClose(0.5, self.evaluate(grad))
+
+  def testComplexGrad(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1 + 2j, -0.5 + 1j, 2 - 1j], dtype=dtype)
+      y = constant_op.constant([0.5 - 1j, 1.5 + 0.5j, -1 - 2j], dtype=dtype)
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(math_ops.xdivy, [x, y]))
+      self.assertLess(err, 1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -812,6 +870,22 @@ class CumprodGradTest(test.TestCase):
             expected,
             self._cumprod_grad(values, exclusive=exclusive, reverse=reverse),
         )
+
+
+  def testCumprodGradientComplex(self):
+    # Includes a zero so that the zero-handling path is checked as well.
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1 + 2j, -0.5 + 1j, 0, 2 - 1j], dtype=dtype)
+      for exclusive in [False, True]:
+        for reverse in [False, True]:
+          with self.subTest(dtype=dtype, exclusive=exclusive, reverse=reverse):
+
+            def _cumprod(x, exclusive=exclusive, reverse=reverse):
+              return math_ops.cumprod(x, exclusive=exclusive, reverse=reverse)
+
+            err = gradient_checker_v2.max_error(
+                *gradient_checker_v2.compute_gradient(_cumprod, [x]))
+            self.assertLess(err, 1e-4)
 
 
 @test_util.run_all_in_graph_and_eager_modes
