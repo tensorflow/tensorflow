@@ -1721,6 +1721,21 @@ absl::Status CuptiTracer::EnableActivityTracing() {
   }
   PrepareActivityStart();
   if (!option_->activities_selected.empty()) {
+    bool multi_subscriber_graph_trace_enabled = false;
+    absl::Cleanup reset_multi_subscriber_graph_trace = [&] {
+      if (multi_subscriber_graph_trace_enabled &&
+          !cupti_interface_->Disabled()) {
+        uint8_t enable_graph_trace = 0;
+        size_t value_size = sizeof(enable_graph_trace);
+        if (cupti_interface_->ActivitySetAttributeV2(
+                /*subscriber=*/nullptr,
+                kCuptiActivityAttrEnableMultiSubscriberGraphTrace, &value_size,
+                &enable_graph_trace) != CUPTI_SUCCESS) {
+          LOG(WARNING) << "Failed to reset CUPTI multi-subscriber graph "
+                          "level trace attribute.";
+        }
+      }
+    };
     if (using_v2_subscriber_api_) {
       // V2 mode uses subscriber-scoped activity APIs.
       if (cupti_interface_->ActivityUseSystemThreadIdV2(subscriber_) !=
@@ -1737,6 +1752,24 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                "attribute (expected and harmless if another subscriber "
                "already set it or tracing is already active); cupti "
                "trace overhead may be big.";
+      }
+      if (absl::c_contains(option_->activities_selected,
+                           CUPTI_ACTIVITY_KIND_GRAPH_TRACE)) {
+        // In V2 multi-subscriber mode, CUPTI requires the global
+        // CUPTI_ACTIVITY_ATTR_ENABLE_MULTI_SUBSCRIBER_GRAPH_TRACE attribute to
+        // be set before enabling any activity kind when graph-level tracing
+        // (CUPTI_ACTIVITY_KIND_GRAPH_TRACE) is requested.
+        uint8_t enable_graph_trace = 1;
+        size_t value_size = sizeof(enable_graph_trace);
+        if (cupti_interface_->ActivitySetAttributeV2(
+                /*subscriber=*/nullptr,
+                kCuptiActivityAttrEnableMultiSubscriberGraphTrace, &value_size,
+                &enable_graph_trace) == CUPTI_SUCCESS) {
+          multi_subscriber_graph_trace_enabled = true;
+        } else {
+          LOG(WARNING) << "Failed to enable CUPTI multi-subscriber graph "
+                          "level trace attribute.";
+        }
       }
     } else {
       if (cupti_interface_->SetThreadIdType(
@@ -1784,6 +1817,7 @@ absl::Status CuptiTracer::EnableActivityTracing() {
         RETURN_IF_CUPTI_ERROR(ActivityEnable(activity));
       }
     }
+    std::move(reset_multi_subscriber_graph_trace).Cancel();
   }
   activity_tracing_enabled_ = true;
   return absl::OkStatus();
@@ -1791,6 +1825,23 @@ absl::Status CuptiTracer::EnableActivityTracing() {
 
 absl::Status CuptiTracer::DisableActivityTracing() {
   if (activity_tracing_enabled_) {
+    const bool reset_multi_subscriber_graph_trace =
+        using_v2_subscriber_api_ &&
+        absl::c_contains(option_->activities_selected,
+                         CUPTI_ACTIVITY_KIND_GRAPH_TRACE);
+    absl::Cleanup reset_graph_trace_cleanup = [&] {
+      if (reset_multi_subscriber_graph_trace && !cupti_interface_->Disabled()) {
+        uint8_t enable_graph_trace = 0;
+        size_t value_size = sizeof(enable_graph_trace);
+        if (cupti_interface_->ActivitySetAttributeV2(
+                /*subscriber=*/nullptr,
+                kCuptiActivityAttrEnableMultiSubscriberGraphTrace, &value_size,
+                &enable_graph_trace) != CUPTI_SUCCESS) {
+          LOG(WARNING) << "Failed to reset CUPTI multi-subscriber graph "
+                          "level trace attribute.";
+        }
+      }
+    };
     VLOG(1) << "Disabling activity tracing for "
             << option_->activities_selected.size() << " activities";
     for (auto activity : option_->activities_selected) {
