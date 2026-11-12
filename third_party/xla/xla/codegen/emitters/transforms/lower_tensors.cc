@@ -845,7 +845,7 @@ struct RewriteCopySlice : mlir::OpRewritePattern<CopySliceOp> {
       Value byte_count = ml::ConstantOp::create(
           b, b.getI64Type(), num_elements * element_size_bytes);
       ml::MemcpyOp::create(b, dst_gep, src_gep, byte_count,
-                           /*isVolatile=*/false,
+                           /*isVolatile=*/false, /*tbaa_struct=*/nullptr,
                            /*access_groups=*/nullptr, /*alias_scopes=*/nullptr,
                            /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr,
                            arg_attrs, /*res_attrs=*/nullptr);
