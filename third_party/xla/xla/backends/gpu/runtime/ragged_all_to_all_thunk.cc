@@ -805,6 +805,17 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
         *state = RaggedAllToAllStreamState(executor->device_ordinal(),
                                            rank.value(), std::move(clique_key));
 
+        // The GXL communicator runs the whole op, so none of the kernel or
+        // fallback state below is needed; kernel_strategy stays kNone.
+        if (config_.enable_gxl) {
+          ABSL_ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
+                                           state->clique_key, state->rank));
+          if (absl::down_cast<GpuCommunicator*>(comm)->gxl_communicator() !=
+              nullptr) {
+            return absl::OkStatus();
+          }
+        }
+
         // Allocate buffers only if fallback to NCCL is allowed. The fallback
         // should not be enabled, unless explicitly requested by the user.
         if (config_.allow_fallback_to_nccl) {
@@ -954,6 +965,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
   RaggedAllToAllStreamState* state = per_device_states_.Find(device_ordinal);
   TF_RET_CHECK(state != nullptr)
       << "RaggedAllToAllThunk::Record: Initialize must be called first";
+
+  if (config_.enable_gxl) {
+    ABSL_ASSIGN_OR_RETURN(
+        Communicator * comm,
+        execute_params.collective_cliques->GetComm(clique_key, rank));
+    if (absl::down_cast<GpuCommunicator*>(comm)->gxl_communicator() !=
+        nullptr) {
+      // Traces RunCollective, which dispatches to the GXL communicator.
+      return CollectiveThunk::Record(execute_params, record_params,
+                                     record_action, command_buffer);
+    }
+  }
 
   if (state->kernel_strategy ==
       RaggedAllToAllKernelStrategy::kSymmetricMemory) {

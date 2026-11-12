@@ -2073,6 +2073,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   HloInstruction* new_while_loop =
       loop_computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, new_while_condition, new_while_body, new_init));
+  new_while_loop->set_frontend_attributes(while_loop->frontend_attributes());
   ABSL_RETURN_IF_ERROR(while_loop->ReplaceAllUsesWithDifferentShape(new_while_loop));
   ABSL_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
@@ -2984,6 +2985,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
   HloInstruction* new_while =
       loop_computation->AddInstruction(HloInstruction::CreateWhile(
           new_init->shape(), cloned_cond, cloned_body, new_init));
+  new_while->set_frontend_attributes(while_loop->frontend_attributes());
   // Create the new tuple with the original while tuple size.
   std::vector<HloInstruction*> new_output_tuple;
   new_output_tuple.resize(operands_indices_count, nullptr);
@@ -3402,6 +3404,7 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
       while_loop->parent()->AddInstruction(HloInstruction::CreateWhile(
           new_while_body->root_instruction()->shape(), new_while_condition,
           new_while_body, new_loop_init));
+  new_while_loop->set_frontend_attributes(while_loop->frontend_attributes());
   // Clone the loop body in the parent computation of the loop. This is the
   // peeled computation that happens after the loop happened to handle the
   // computation that we peeled away.
