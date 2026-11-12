@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep.
@@ -537,12 +536,7 @@ DotDimensionNumbersAttr defaultDimensionNumbers(Builder& builder,
 }
 
 const ::llvm::fltSemantics& Float8EXMYType::getFloatSemantics() const {
-  if (mlir::isa<Float6E3M2FNType>(getUnderlyingType())) {
-    return llvm::APFloat::Float6E3M2FN();
-  } else if (mlir::isa<Float6E2M3FNType>(getUnderlyingType())) {
-    return llvm::APFloat::Float6E2M3FN();
-  }
-  return cast<FloatType>(getUnderlyingType()).getFloatSemantics();
+  return getUnderlyingType().getFloatSemantics();
 }
 
 namespace {
