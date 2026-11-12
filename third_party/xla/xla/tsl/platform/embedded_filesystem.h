@@ -72,6 +72,8 @@ class EmbedFileSystem : public tsl::FileSystem {
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 std::vector<std::string>* results) override;
 
+  absl::Status DeleteFile(const std::string& fname) override;
+
   // Unimplemented operations below here.
   absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result) override {
@@ -101,21 +103,16 @@ class EmbedFileSystem : public tsl::FileSystem {
     return absl::UnimplementedError("EmbedFileSystem does not support stat.");
   }
 
-  absl::Status DeleteFile(const std::string& fname) override {
-    return absl::UnimplementedError(
-        "EmbedFileSystem does not support deletion.");
-  }
-
   absl::Status DeleteDir(const std::string& dir) override {
     return absl::UnimplementedError(
-        "EmbedFileSystem does not support deletion (or directories).");
+        "EmbedFileSystem does not support directories.");
   }
 
   absl::Status DeleteRecursively(const std::string& dir,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override {
     return absl::UnimplementedError(
-        "EmbedFileSystem does not support deletion.");
+        "EmbedFileSystem does not support recursive deletion.");
   }
 
   absl::Status CreateDir(const std::string& dir) override {

@@ -81,16 +81,8 @@ struct PjRtLoadedExecutableDispatchInfo {
 // Helper for extracting parameter shapes from GetParameterShapes.
 std::vector<Shape> GetParameterShapes(const ComputationLayout& layout);
 
-// Clears `dynamic_shape_metadata_prefix_bytes` on the canonicalized TPU entry
-// `parameter_shapes` (from
-// `GetParameterShapes(hlo_module.entry_computation_layout())`) for dynamic
-// entry parameter arrays feeding `PadRealToStatic` custom calls. Traces values
-// via `HloDataflowAnalysis` through bitcasts, tuple packing / unpacking, and
-// subcomputation calls (`kCall` and `kAsyncStart` / `kAsyncUpdate` /
-// `kAsyncDone` chains). Returns InvalidArgument if a dynamic `PadRealToStatic`
-// operand is not backed solely by entry parameters, has any other reader
-// (including dynamic array `kCopy`), escapes as a computation root, or is
-// aliased to an output.
+// Clears the prefix of `parameter_shapes` that a `PadRealToStatic` in the entry
+// computation reads; fails unless that pad is the parameter's only reader.
 absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
     const HloModule& hlo_module, absl::Span<Shape> parameter_shapes);
 

@@ -484,7 +484,7 @@ ENTRY main {
   GpuTopology gpu_topology =
       GpuTopology(/*platform_version=*/"", 1, 1, 1, gpu_target_config());
   EXPECT_OK(compiler.RunPostSchedulingPipelines(
-      module.get(), 100000, gpu_topology, alias_info.get(), &mlir_context_));
+      module.get(), 100000, gpu_topology, alias_info.get()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

@@ -360,8 +360,8 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   const absl::flat_hash_set<absl::string_view> execution_threads = {
       HloInstruction::kMainExecutionThread,
       HloInstruction::kParallelExecutionThread};
-  CuDnnFusionCompiler fusion_compiler(stream_exec, gpu_device_info,
-                                      *dnn_compiled_graphs);
+  CuDnnFusionCompiler fusion_compiler(
+      stream_exec, gpu_device_info, *dnn_compiled_graphs, &cudnn_graph_cache_);
   ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
   CuDnnCustomCallCompiler call_compiler(stream_exec, gpu_device_info,
                                         *dnn_compiled_graphs);

@@ -1241,6 +1241,16 @@ cc_library(
 )
 
 cc_library(
+    name = "latency_estimator",
+    srcs = ["latency_estimator.cc"],
+    hdrs = ["latency_estimator.h"],
+    deps = [
+        "//xla:frontend_attributes",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "latency_hiding_scheduler",
     srcs = ["latency_hiding_scheduler.cc"],
     hdrs = ["latency_hiding_scheduler.h"],
@@ -1251,8 +1261,8 @@ cc_library(
         ":hlo_buffer",
         ":hlo_cost_analysis",
         ":hlo_value",
+        ":latency_estimator",
         ":scheduling_annotations_util",
-        "//xla:frontend_attributes",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:status_macros",
@@ -1316,6 +1326,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -2776,7 +2787,9 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -2803,6 +2816,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3018,10 +3032,12 @@ xla_cc_test(
     srcs = ["async_compute_on_rewriter_test.cc"],
     deps = [
         ":async_compute_on_rewriter",
+        ":call_inliner",
         ":hlo_verifier",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
@@ -5003,6 +5019,8 @@ xla_test(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -5942,7 +5960,11 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=true",
+    # TODO(b/568668570): Enable conv fusion once deviceless cuDNN conv fusions are fixed.
+    xla_flags = " ".join([
+        "--xla_gpu_use_new_autotune_cache_format=true",
+        "--xla_gpu_experimental_enable_conv_fusion=false",
+    ]),
 )
 
 xla_aot_compile_gpu(
@@ -5953,7 +5975,10 @@ xla_aot_compile_gpu(
         "b200",
     ],
     module = "xla_aot_compile_test_convolution.mlir",
-    xla_flags = "--xla_gpu_use_new_autotune_cache_format=false",
+    xla_flags = " ".join([
+        "--xla_gpu_use_new_autotune_cache_format=false",
+        "--xla_gpu_experimental_enable_conv_fusion=false",
+    ]),
 )
 
 xla_aot_compile_gpu(
@@ -6328,6 +6353,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
@@ -6428,6 +6454,7 @@ cc_library(
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

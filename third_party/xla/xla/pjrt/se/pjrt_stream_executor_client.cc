@@ -224,11 +224,21 @@ void PjRtStreamExecutorRawClient::SetEventAsError(
 
 PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
     int id, PjRtDevice* device, absl::string_view kind, int kind_id)
-    : id_(id), device_(device), kind_(kind), kind_id_(kind_id) {
+    : id_(id),
+      device_(device),
+      kind_(kind),
+      kind_id_(kind_id),
+      capi_delegator_(this, device, kind_id) {
   to_string_ = absl::StrFormat("MEMORY_SPACE_%i", id_);
   debug_string_ = absl::StrFormat("PjRtStreamExecutorMemory(id=%i, device=%s)",
                                   id_, device_->DebugString());
 }
+
+const int PjRtStreamExecutorMemorySpace::kDefaultKindId = []() {
+  uint32_t kind_id =
+      tsl::Fingerprint32(PjRtStreamExecutorMemorySpace::kDefaultKind);
+  return static_cast<int>(kind_id);
+}();
 
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
@@ -371,25 +381,25 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 }  // namespace
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-    bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
+    PJRT_Memory* memory_space, size_t on_device_bytes_count, bool retry_on_oom,
+    tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
-  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
-    return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count);
+  if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
+                                       async_work_runner());
   }
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
-  PjRtMemorySpace* default_memory_space =
-      device->default_memory_space().value_or(nullptr);
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto layout_memory_space = Layout::kDefaultMemorySpace;
-  if (memory_space->kind() == PinnedHostMemorySpace::kKind) {
+  if (memory_space->memory_kind_id == PinnedHostMemorySpace::kKindId) {
     layout_memory_space = Layout::kHostMemorySpace;
-  } else if (memory_space != default_memory_space) {
+  } else if (memory_space->memory_kind_id !=
+             PjRtStreamExecutorMemorySpace::kDefaultKindId) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Buffer allocation: invalid memory space: ",
-                     memory_space->DebugString()));
+        absl::StrCat("Buffer allocation: invalid memory space kind_id: ",
+                     memory_space->memory_kind_id));
   }
   if (allocator_ == nullptr) {
     return absl::InternalError(
@@ -433,11 +443,11 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
 
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::AllocateRawBufferForExecute(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+    PJRT_Memory* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto mem = RawSEDeviceMemory::CreateDelayedMemory();
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device, std::move(mem), on_device_bytes_count);
@@ -446,11 +456,11 @@ PjRtStreamExecutorRawClient::AllocateRawBufferForExecute(
 absl::StatusOr<std::pair<PjRtRawBufferRef,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
 PjRtStreamExecutorRawClient::CreateRawBufferChannel(
-    PjRtMemorySpace* memory_space, size_t on_device_bytes_count) {
+    PJRT_Memory* memory_space, size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
-  PjRtDevice* device = memory_space->devices()[0];
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
   auto raw_buffer = tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device,
       tsl::AsyncValueRef<RawSEDeviceMemory>(buffer_promise),
@@ -463,11 +473,10 @@ PjRtStreamExecutorRawClient::CreateRawBufferChannel(
       buffer_promise->SetError(raw_buffer.status());
       return raw_buffer.status();
     }
-    if (memory_space != (*raw_buffer)->memory_space()) {
+    if (memory_space != (*raw_buffer)->c_memory_space()) {
       auto status = absl::InvalidArgumentError(absl::StrFormat(
-          "Memory space mismatch when forarding raw buffers: %s vs %s",
-          memory_space->DebugString(),
-          (*raw_buffer)->memory_space()->DebugString()));
+          "Memory space mismatch when forarding raw buffers: %p vs %p",
+          memory_space, (*raw_buffer)->c_memory_space()));
       buffer_promise->SetError(status);
       return status;
     }
@@ -517,9 +526,9 @@ void PjRtStreamExecutorRawClient::MaterializeAllocationEvent(
   }
 }
 
-bool PjRtStreamExecutorRawClient::IsOnCpu(PjRtMemorySpace* memory_space) {
-  return memory_space->kind() == PinnedHostMemorySpace::kKind ||
-         memory_space->kind() == UnpinnedHostMemorySpace::kKind;
+bool PjRtStreamExecutorRawClient::IsOnCpu(const PJRT_Memory* memory_space) {
+  return memory_space->memory_kind_id == PinnedHostMemorySpace::kKindId ||
+         memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId;
 }
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -620,17 +629,16 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
 
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
-    PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+    PJRT_Memory* memory_space, void* device_ptr, size_t size,
     absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
-  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
-    return CpuRawBuffer::ImportForeignMemory(device_ptr,
-                                             std::move(on_delete_callback),
-                                             size, memory_space, is_mutable);
+  if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
+    return CpuRawBuffer::ImportForeignMemory(
+        device_ptr, std::move(on_delete_callback), size, memory_space,
+        is_mutable, async_work_runner());
   }
-  CHECK_EQ(memory_space->devices().size(), 1);
-  auto* device = memory_space->devices().front();
-  ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+  ABSL_ASSIGN_OR_RETURN(
+      LocalDeviceState * local_device,
+      GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
 
   auto buffer = RawSEDeviceMemory::CreateForeign(
       se::DeviceAddressBase(device_ptr, size), std::move(on_delete_callback));

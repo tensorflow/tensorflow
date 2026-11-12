@@ -80,7 +80,6 @@ using ::testing::Field;
 using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::Not;
-using ::testing::SizeIs;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
@@ -741,19 +740,25 @@ ENTRY main {
                        BlockLevelParameters{/*output_tile_sizes=*/{{32, 32}},
                                             /*num_warps=*/32}));
 
-  int64_t num_blocks = 8;
+  constexpr int64_t kNumBlocks = 8;
+  // Profiled clock cycles for F32 exponential in HloOpProfiles
+  // (hlo_op_profiles_data.h).
+  constexpr int64_t kExpFlopsPerElement = 86;
+  constexpr int64_t kExpPaddedTileSize = 32 * 64;
+  constexpr int64_t kKLoopIterations = CeilOfRatio(257, 64);
 
   // The flops contribution for a single instruction is calculated as:
   // flops_per_element * padded_tile_size * num_blocks_cur_hlo
   EXPECT_EQ(result.flops,
-            514 * 1024 * num_blocks                                // ==> %dot
-                + 86 * 2048 * (num_blocks * CeilOfRatio(257, 64))  // ==> %exp
+            514 * 1024 * kNumBlocks  // ==> %dot
+                + kExpFlopsPerElement * kExpPaddedTileSize *
+                      (kNumBlocks * kKLoopIterations)  // ==> %exp
   );
   // The bytes read contribution for a single instruction is calculated as:
   // element_type_size * tile_size * num_blocks_cur_hlo * in_bound_read_fraction
   EXPECT_EQ(result.bytes_read,
-            4 * (257 * 32) * num_blocks        // ==> %p1
-                + 4 * (257 * 32) * num_blocks  // ==> %p0
+            4 * (257 * 32) * kNumBlocks        // ==> %p1
+                + 4 * (257 * 32) * kNumBlocks  // ==> %p0
   );
   EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
   const HloDotInstruction* dot = Cast<HloDotInstruction>(
@@ -763,13 +768,32 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
               absl::ToDoubleNanoseconds(expected_hbm.read_time), 1.0);
   EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
-              absl::ToDoubleNanoseconds(expected_hbm.write_time), 15.0);
+              absl::ToDoubleNanoseconds(expected_hbm.write_time), 1.0);
   // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
   EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
   // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state
   // overhead, staying below one 32-register allocation block.
   EXPECT_GT(result.registers_per_thread, 1);
   EXPECT_LT(result.registers_per_thread, 32);
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/32, /*k=*/64, /*b=*/1},
+          device_info_));
+  EstimateRunTimeData expected_roofline_estimates = result;
+  // Utilization uses wave-quantized dot FLOPs plus non-dot (%exp) FLOPs.
+  expected_roofline_estimates.flops = dot_compute.flops_with_wave_quant +
+                                      kExpFlopsPerElement * kExpPaddedTileSize *
+                                          (kNumBlocks * kKLoopIterations);
+  expected_roofline_estimates.bytes_read = expected_hbm.bytes_read;
+  EXPECT_DOUBLE_EQ(
+      result.compute_utilization,
+      dot_model::CalculateComputeUtilization(expected_roofline_estimates,
+                                             device_info_, PrimitiveType::F32));
+  EXPECT_DOUBLE_EQ(result.memory_utilization,
+                   dot_model::CalculateMemoryUtilization(
+                       expected_roofline_estimates, device_info_));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -838,6 +862,180 @@ ENTRY main {
           device_info_));
   EXPECT_EQ(result.compute_time,
             dot0_compute.compute_time + dot1_compute.compute_time);
+  // 6 K-loop iterations in total: 64 / 16 = 4 (dot0) + 128 / 64 = 2 (dot1).
+  EXPECT_EQ(result.exec_time, result.read_time + result.write_time +
+                                  result.compute_time +
+                                  6 * dot_model::kLoopLatencyTax);
+  constexpr int64_t kParam0SizeBytes = 128 * 64 * 4;
+  constexpr int64_t kParam1SizeBytes = 64 * 128 * 4;
+  constexpr int64_t kParam2SizeBytes = 128 * 32 * 4;
+  EstimateRunTimeData expected_roofline_estimates = result;
+  expected_roofline_estimates.flops =
+      dot0_compute.flops_with_wave_quant + dot1_compute.flops_with_wave_quant;
+  expected_roofline_estimates.bytes_read =
+      kParam0SizeBytes + kParam1SizeBytes + kParam2SizeBytes;
+  EXPECT_DOUBLE_EQ(
+      result.compute_utilization,
+      dot_model::CalculateComputeUtilization(expected_roofline_estimates,
+                                             device_info_, PrimitiveType::F32));
+  EXPECT_DOUBLE_EQ(result.memory_utilization,
+                   dot_model::CalculateMemoryUtilization(
+                       expected_roofline_estimates, device_info_));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotPipeliningAndL2) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  auto estimate = [&](int num_stages) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                                       /*num_warps=*/4,
+                                       /*num_ctas=*/1,
+                                       /*num_stages=*/num_stages});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage1_result,
+                       estimate(/*num_stages=*/1));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage4_result,
+                       estimate(/*num_stages=*/4));
+
+  EXPECT_EQ(stage4_result.shared_memory_per_block_bytes,
+            4 * stage1_result.shared_memory_per_block_bytes);
+  // Pipelining reduces exec_time for the same FLOPs and HBM bytes, increasing
+  // utilization.
+  EXPECT_GT(stage4_result.compute_utilization,
+            stage1_result.compute_utilization);
+  EXPECT_GT(stage4_result.memory_utilization, stage1_result.memory_utilization);
+  // Software pipelining (num_stages = 4) overlaps HBM reads with compute,
+  // dropping mainloop time below L2 time.
+  EXPECT_EQ(stage4_result.compute_time, stage1_result.compute_time);
+  EXPECT_EQ(stage4_result.read_time, stage1_result.read_time);
+  EXPECT_LT(stage4_result.exec_time, stage1_result.exec_time);
+  EXPECT_EQ(stage4_result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/32, device_info_,
+                                       stage4_result.l2_bytes_read,
+                                       /*is_tma_allowed=*/false));
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_DotHbmCapIsMinOfCoalescingAndTransferSize) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/1}));
+  constexpr int64_t kNetBytesRead = 2 * (512 * 2048 + 2048 * 512);
+  constexpr int64_t kBytesWritten = 2 * 512 * 512;
+  float expected_hbm_bw = dot_model::GetEffectiveHbmBandwidth(
+      kNetBytesRead + kBytesWritten, device_info_);
+  // `p1` and output tiles read 32 contiguous bytes (coalescing 0.5), but for
+  // 4.5 MiB of traffic the transfer-size fraction is lower, so `std::min` picks
+  // it for every access.
+  ASSERT_LT(expected_hbm_bw, 0.5 * device_info_.memory_bandwidth());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kNetBytesRead / expected_hbm_bw)),
+              1.0);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kBytesWritten / expected_hbm_bw)),
+              1.0);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_BatchedDotWideningPrologueL2Traffic) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  cvt = bf16[2, 2048, 4096] convert(p0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT dot = bf16[2, 2048, 2048] dot(cvt, p1), lhs_batch_dims={0},
+    rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT fusion = bf16[2, 2048, 2048] fusion(p0, p1), kind=kCustom,
+    calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/3}));
+  // 2 * 64 * 128 = 16384 blocks, each with batch tile 1. Per block the K loop
+  // reads 32 * 4096 (p0) + 4096 * 16 (p1) elements: 2 GiB (p0: s8) + 2 GiB
+  // (p1: bf16) in total. At the dot's operand types `cvt` is bf16, so the floor
+  // is 4 + 2 = 6 GiB.
+  // TODO(b/581269931): Expect 4 GiB L2 traffic plus in-register convert compute
+  // once prologue convert cost is modeled directly.
+  EXPECT_EQ(result.l2_bytes_read, int64_t{4} << 30);
+  EXPECT_EQ(result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/64, device_info_,
+                                       /*l2_bytes=*/int64_t{6} << 30,
+                                       /*is_tma_allowed=*/false));
+
+  // p0 and the output are 16 MiB, p1 is 32 MiB. `p0` tiles read 64 contiguous
+  // bytes (fully coalesced), so the transfer-size fraction caps them. `p1` and
+  // output tiles read 32 contiguous bytes (coalescing 0.5), below that
+  // fraction.
+  constexpr int64_t kMiB = int64_t{1} << 20;
+  double peak_bw = device_info_.memory_bandwidth();
+  double transfer_fraction =
+      dot_model::GetEffectiveHbmBandwidth(64 * kMiB, device_info_) / peak_bw;
+  ASSERT_GT(transfer_fraction, 0.5);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(16 * kMiB / (transfer_fraction * peak_bw) +
+                                32 * kMiB / (0.5 * peak_bw))),
+              1.0);
+  EXPECT_NEAR(
+      absl::ToDoubleNanoseconds(result.write_time),
+      absl::ToDoubleNanoseconds(absl::Seconds(16 * kMiB / (0.5 * peak_bw))),
+      1.0);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -899,56 +1097,6 @@ ENTRY main {
                 + 4 * 1 * num_root_tile_executions    // ==> %init
   );
   EXPECT_EQ(result.bytes_written, 4 * 64 * 1024);
-}
-
-TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTriton_ScanFusionWithoutBlockLevelConfig) {
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-add {
-  p0 = f32[64] parameter(0)
-  p1 = f32[64] parameter(1)
-  add = f32[64] add(p0, p1)
-  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
-}
-
-scan_fusion {
-  p0 = f32[64,131072] parameter(0)
-  init = f32[64] parameter(1)
-  scan = (f32[64,131072], f32[64]) scan(p0, init), dimensions={1},
-    num_carries=1, is_associative=true, to_apply=add
-  ROOT gte = f32[64,131072] get-tuple-element(scan), index=0
-}
-
-ENTRY main {
-  p0 = f32[64,131072] parameter(0)
-  init = f32[64] parameter(1)
-  ROOT fusion = f32[64,131072] fusion(p0, init), kind=kCustom, calls=scan_fusion,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  // Estimated with the tiling that FusionBlockLevelRewriter would pick.
-  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime,
-                       indexing_cost_model_.EstimateRunTimeForTriton(root));
-  EXPECT_FALSE(runtime.IsInfinite());
-
-  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
-                       indexing_cost_model_
-                           .TryFindBestTilingForFusionAsync(
-                               *HloFusionAdaptor::ForInstruction(root))
-                           .Await());
-  ASSERT_TRUE(
-      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
-  const TiledRunTimeData& tiled_runtime_data =
-      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
-  EXPECT_EQ(runtime.exec_time, tiled_runtime_data.runtime_data.exec_time);
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes,
-              ElementsAre(SizeIs(1)));
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
-              SizeIs(1));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -1037,6 +1185,79 @@ ENTRY main {
       std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
               IsEmpty());
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithEpilogue) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  p2 = bf16[512, 512] parameter(2)
+  dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+  exp = bf16[512, 512] exponential(dot)
+  ROOT add = bf16[512, 512] add(dot, p2)
+})"));
+  const HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  const HloInstruction* exp =
+      module->entry_computation()->GetInstructionWithName("exp");
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  BlockLevelParameters stage4_params{/*output_tile_sizes=*/{{64, 64}},
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*num_stages=*/4};
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData dot_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(dot), stage4_params));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData compute_only_epilogue_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForProducerConsumer(dot, exp), stage4_params));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData epilogue_with_memory_read_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForProducerConsumer(dot, add), stage4_params));
+  EXPECT_GT(compute_only_epilogue_result.flops, dot_result.flops);
+  EXPECT_EQ(compute_only_epilogue_result.bytes_read, dot_result.bytes_read);
+  EXPECT_EQ(compute_only_epilogue_result.exec_time, dot_result.exec_time);
+  EXPECT_EQ(epilogue_with_memory_read_result.bytes_read,
+            dot_result.bytes_read + 512 * 512 * 2);
+  EXPECT_EQ(epilogue_with_memory_read_result.l2_bytes_read,
+            dot_result.l2_bytes_read);
+  EXPECT_GT(epilogue_with_memory_read_result.read_time,
+            compute_only_epilogue_result.read_time);
+  EXPECT_GT(epilogue_with_memory_read_result.exec_time,
+            compute_only_epilogue_result.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_UnsupportedDotReadsOperands) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = bf16[2, 512, 512] parameter(0)
+  p1 = bf16[512, 2048] parameter(1)
+  ROOT d = bf16[2, 512, 2048] dot(p0, p1), lhs_contracting_dims={2},
+    rhs_contracting_dims={0}, backend_config={sizes:[32]}
+})"));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 64, 128}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/3}));
+  // Multiple non-contracting dimensions are unsupported by BuildDotEstimates,
+  // so the !has_dot fallback must still charge the dot's operand reads.
+  constexpr int64_t kOperandBytes = (2 * 512 * 512 + 512 * 2048) * 2;
+  EXPECT_GE(result.read_time, absl::Seconds(static_cast<double>(kOperandBytes) /
+                                            device_info_.memory_bandwidth()));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -1736,6 +1957,38 @@ ENTRY entry_computation {
   ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
 }
 )");
+}
+
+TEST_F(FlopsPerElementTest, Concatenate_UsesDeviceWarpSize) {
+  // A boundary at 32 splits a wave64 wavefront but not a warp of 32.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 32] parameter(0)
+  p1 = f32[32, 32] parameter(1)
+  ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
+}
+)"));
+  const HloInstruction* concat =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(concat), 6);
+
+  const se::DeviceDescription wave64_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  HloFusionAnalysisCache wave64_fusion_analysis_cache(wave64_device_info);
+  GpuPerformanceModelWithIndexingAnalysis wave64_indexing_cost_model(
+      &wave64_device_info, &wave64_fusion_analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+  EXPECT_EQ(wave64_indexing_cost_model.FlopsPerElement(concat), 400);
+
+  GpuHloCostAnalysis wave64_cost_analysis(
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      wave64_device_info);
+  ASSERT_OK(module->entry_computation()->Accept(&wave64_cost_analysis));
+  EXPECT_EQ(wave64_cost_analysis.flop_count(*concat),
+            400 * ShapeUtil::ElementsIn(concat->shape()));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {

@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/fusions.h"
-#include "xla/backends/gpu/codegen/phased_block_cluster.h"
+#include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -66,11 +67,6 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
                      const se::DeviceDescription& device_info) {
   if (!instr->shape().IsArray() || instr->IsDead() || instr->HasSideEffect() ||
       instr->HasControlDependencies()) {
-    return false;
-  }
-  if (absl::c_any_of(instr->operands(), [](const HloInstruction* op) {
-        return op->shape().IsTuple();
-      })) {
     return false;
   }
   if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
@@ -97,11 +93,14 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
     return false;
   }
 
-  LaunchDimensions dims = LoopFusion(analysis).launch_dimensions();
+  bool unroll_small_inputs =
+      device_info.cuda_compute_capability().IsAtLeastHopper();
+  LaunchDimensions dims =
+      LoopFusion(analysis, unroll_small_inputs).launch_dimensions();
   const se::BlockDim& blocks = dims.block_counts();
   const se::ThreadDim& threads = dims.thread_counts_per_block();
   return blocks.x > 0 &&
-         blocks.x <= PhasedBlockClusterFusion::kMaxBlocksPerCluster &&
+         blocks.x <= ThreadBlockSpecializedFusion::kMaxBlocksPerCluster &&
          blocks.y == 1 && blocks.z == 1 && threads.y == 1 && threads.z == 1;
 }
 

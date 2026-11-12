@@ -1071,6 +1071,33 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
+TEST_F(SupportTest, ParameterOnlyReducerFailsGracefullyWithTriton) {
+  const std::string kHloTestTemplate = R"(
+take_last {
+  p0 = f32[] parameter(0)
+  ROOT p1 = f32[] parameter(1)
+}
+
+ENTRY triton_computation {
+  p0 = f32[4, 8] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT reduce = f32[4] reduce(p0, p1), dimensions={1}, to_apply=take_last
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
+                                                      HloOpcode::kReduce));
+  const se::GpuComputeCapability cc = DefaultDeviceForTesting();
+  CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
+  EXPECT_FALSE(decision);
+  EXPECT_THAT(decision.Explain(),
+              ::testing::HasSubstr(
+                  "Reduction computation that just returns a parameter is not "
+                  "supported"));
+  // The emitter has to reject the computation as well: a padded tile must not
+  // silently reduce to the init value.
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
 constexpr std::array kTestedOpsReduction = {HloOpcode::kReduce};
 
 INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,

@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,11 +30,13 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/one_hot_gather_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_context.h"
@@ -40,13 +45,16 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier_options.pb.h"
+#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -54,6 +62,233 @@ namespace xla::gpu {
 namespace m = ::xla::match;
 
 namespace {
+
+constexpr int64_t kMaxReduceSinkPassthroughDepth = 4;
+constexpr int64_t kMaxReduceSinkLeaves = 16;
+
+struct SliceRange {
+  std::vector<int64_t> starts;
+  std::vector<int64_t> limits;
+};
+
+bool IsUnaryElementwise(const HloInstruction* instr) {
+  return instr->IsElementwise() && instr->operand_count() == 1 &&
+         !instr->HasSideEffect() &&
+         HloPredicateIsNotOp<HloOpcode::kFusion, HloOpcode::kCopy,
+                             HloOpcode::kBitcastConvert>(instr) &&
+         ShapeUtil::SameDimensions(instr->shape(), instr->operand(0)->shape());
+}
+
+bool HasNonReplicatedSharding(const HloInstruction* instr) {
+  return instr->has_sharding() &&
+         !instr->sharding().IsReplicatedOrSingleDevice();
+}
+
+bool IsPassthroughUnary(const HloInstruction* instr, bool is_layout_sensitive) {
+  return IsUnaryElementwise(instr) && !instr->HasControlDependencies() &&
+         !HasNonReplicatedSharding(instr) &&
+         (!is_layout_sensitive ||
+          LayoutUtil::Equal(instr->shape().layout(),
+                            instr->operand(0)->shape().layout()));
+}
+
+bool IsPassthroughBitcastOrReshape(const HloInstruction* instr,
+                                   bool is_layout_sensitive) {
+  if ((instr->opcode() != HloOpcode::kBitcast &&
+       instr->opcode() != HloOpcode::kReshape) ||
+      instr->HasControlDependencies() || HasNonReplicatedSharding(instr)) {
+    return false;
+  }
+  const Shape& src = instr->operand(0)->shape();
+  const Shape& dst = instr->shape();
+  if (!src.is_static() || !dst.is_static() || !LayoutUtil::IsDenseArray(src) ||
+      !LayoutUtil::IsDenseArray(dst) || !ShapeUtil::SameElementType(src, dst) ||
+      ShapeUtil::IsZeroElementArray(src) ||
+      ShapeUtil::ElementsIn(src) != ShapeUtil::ElementsIn(dst)) {
+    return false;
+  }
+  if (!is_layout_sensitive) {
+    return instr->opcode() == HloOpcode::kReshape;
+  }
+  return src.has_layout() && dst.has_layout() && src.layout().tiles().empty() &&
+         dst.layout().tiles().empty() &&
+         src.layout().element_size_in_bits() ==
+             dst.layout().element_size_in_bits() &&
+         src.layout().memory_space() == dst.layout().memory_space() &&
+         (instr->opcode() == HloOpcode::kBitcast ||
+          ShapeUtil::ReshapeIsBitcast(src, dst));
+}
+
+bool IsPassthroughOp(const HloInstruction* instr, const HloInstruction* root,
+                     bool is_layout_sensitive) {
+  return instr != root &&
+         (IsPassthroughUnary(instr, is_layout_sensitive) ||
+          IsPassthroughBitcastOrReshape(instr, is_layout_sensitive));
+}
+
+// Returns logical dimension indices ordered from physical major to physical
+// minor (or logical 0..rank-1 when layout-insensitive).
+std::vector<int64_t> MajorToMinorDims(const Shape& shape,
+                                      bool is_layout_sensitive) {
+  const int64_t rank = shape.dimensions().size();
+  std::vector<int64_t> dims(rank);
+  if (is_layout_sensitive) {
+    const auto& minor_to_major = shape.layout().minor_to_major();
+    for (int64_t i = 0; i < rank; ++i) {
+      dims[i] = minor_to_major[rank - 1 - i];
+    }
+  } else {
+    std::iota(dims.begin(), dims.end(), int64_t{0});
+  }
+  return dims;
+}
+
+Shape ShapeWithSliceRange(const Shape& base, const SliceRange& range) {
+  Shape out = base;
+  for (int64_t d = 0; d < static_cast<int64_t>(range.starts.size()); ++d) {
+    out.set_dimensions(d, range.limits[d] - range.starts[d]);
+  }
+  return out;
+}
+
+// Maps an unstrided slice `dst_range` on `dst_shape` backwards across a
+// bitcast or reshape `src_shape -> dst_shape` to an equivalent unstrided slice
+// on `src_shape`, or returns `std::nullopt` if the slice is not contiguous
+// along dimension boundaries of `src_shape`.
+std::optional<SliceRange> MapSliceThroughBitcastOrReshape(
+    const Shape& src_shape, const Shape& dst_shape, const SliceRange& dst_range,
+    bool is_layout_sensitive, HloOpcode opcode) {
+  if (ShapeUtil::ElementsIn(src_shape) != ShapeUtil::ElementsIn(dst_shape)) {
+    return std::nullopt;
+  }
+  const std::vector<int64_t> src_phys_dims =
+      MajorToMinorDims(src_shape, is_layout_sensitive);
+  const std::vector<int64_t> dst_phys_dims =
+      MajorToMinorDims(dst_shape, is_layout_sensitive);
+
+  std::vector<int64_t> src_phys_sizes(src_phys_dims.size());
+  for (size_t i = 0; i < src_phys_dims.size(); ++i) {
+    src_phys_sizes[i] = src_shape.dimensions(src_phys_dims[i]);
+  }
+  std::vector<int64_t> dst_phys_sizes(dst_phys_dims.size());
+  for (size_t i = 0; i < dst_phys_dims.size(); ++i) {
+    dst_phys_sizes[i] = dst_shape.dimensions(dst_phys_dims[i]);
+  }
+
+  const auto factors = CommonFactors(src_phys_sizes, dst_phys_sizes);
+  SliceRange src_range{std::vector<int64_t>(src_shape.dimensions().size(), 0),
+                       std::vector<int64_t>(src_shape.dimensions().begin(),
+                                            src_shape.dimensions().end())};
+
+  for (size_t k = 0; k + 1 < factors.size(); ++k) {
+    const int64_t s_begin = factors[k].first;
+    const int64_t s_end = factors[k + 1].first;
+    const int64_t d_begin = factors[k].second;
+    const int64_t d_end = factors[k + 1].second;
+
+    bool group_sliced = false;
+    for (int64_t q = d_begin; q < d_end; ++q) {
+      const int64_t d_dim = dst_phys_dims[q];
+      if (dst_range.starts[d_dim] != 0 ||
+          dst_range.limits[d_dim] != dst_phys_sizes[q]) {
+        group_sliced = true;
+        break;
+      }
+    }
+    if (!group_sliced) {
+      continue;
+    }
+
+    int64_t linear_start = 0;
+    int64_t linear_len = 1;
+    bool seen_extent_gt_1 = false;
+    for (int64_t q = d_begin; q < d_end; ++q) {
+      const int64_t d_dim = dst_phys_dims[q];
+      const int64_t dim_size = dst_phys_sizes[q];
+      const int64_t start = dst_range.starts[d_dim];
+      const int64_t limit = dst_range.limits[d_dim];
+      const int64_t len = limit - start;
+      if (len <= 0) {
+        return std::nullopt;
+      }
+      if (seen_extent_gt_1 && (start != 0 || limit != dim_size)) {
+        return std::nullopt;
+      }
+      linear_start = linear_start * dim_size + start;
+      linear_len *= len;
+      if (len > 1) {
+        seen_extent_gt_1 = true;
+      }
+    }
+
+    int64_t rem_offset = linear_start;
+    int64_t rem_len = linear_len;
+    for (int64_t p = s_end - 1; p >= s_begin; --p) {
+      const int64_t s_dim = src_phys_dims[p];
+      const int64_t dim_size = src_phys_sizes[p];
+      if (rem_len >= dim_size) {
+        if (dim_size <= 0 || rem_len % dim_size != 0 ||
+            rem_offset % dim_size != 0) {
+          return std::nullopt;
+        }
+        src_range.starts[s_dim] = 0;
+        src_range.limits[s_dim] = dim_size;
+        rem_len /= dim_size;
+        rem_offset /= dim_size;
+      } else {
+        const int64_t start_in_dim = rem_offset % dim_size;
+        if (start_in_dim + rem_len > dim_size) {
+          return std::nullopt;
+        }
+        src_range.starts[s_dim] = start_in_dim;
+        src_range.limits[s_dim] = start_in_dim + rem_len;
+        rem_offset /= dim_size;
+        rem_len = 1;
+      }
+    }
+    if (rem_offset != 0 || rem_len != 1) {
+      return std::nullopt;
+    }
+  }
+
+  if (is_layout_sensitive && opcode == HloOpcode::kReshape &&
+      !ShapeUtil::ReshapeIsBitcast(ShapeWithSliceRange(src_shape, src_range),
+                                   ShapeWithSliceRange(dst_shape, dst_range))) {
+    return std::nullopt;
+  }
+  return src_range;
+}
+
+// Maps `leaf_slice` backwards across `chain` (`chain[0]` is a user of `reduce`
+// and `chain.back()` is `leaf_slice->operand(0)`), returning the `SliceRange`
+// at each stage from `reduce` (`ranges[0]`) to `leaf_slice` (`ranges.back()`).
+std::optional<std::vector<SliceRange>> MapLeafSliceToReduce(
+    const HloInstruction* leaf_slice,
+    absl::Span<const HloInstruction* const> chain, bool is_layout_sensitive) {
+  std::vector<SliceRange> rev_ranges;
+  rev_ranges.reserve(chain.size() + 1);
+  rev_ranges.push_back(
+      SliceRange{std::vector<int64_t>(leaf_slice->slice_starts().begin(),
+                                      leaf_slice->slice_starts().end()),
+                 std::vector<int64_t>(leaf_slice->slice_limits().begin(),
+                                      leaf_slice->slice_limits().end())});
+  for (int64_t i = static_cast<int64_t>(chain.size()) - 1; i >= 0; --i) {
+    const HloInstruction* op = chain[i];
+    if (IsUnaryElementwise(op)) {
+      rev_ranges.push_back(rev_ranges.back());
+    } else {
+      std::optional<SliceRange> mapped = MapSliceThroughBitcastOrReshape(
+          op->operand(0)->shape(), op->shape(), rev_ranges.back(),
+          is_layout_sensitive, op->opcode());
+      if (!mapped.has_value()) {
+        return std::nullopt;
+      }
+      rev_ranges.push_back(*std::move(mapped));
+    }
+  }
+  absl::c_reverse(rev_ranges);
+  return rev_ranges;
+}
 
 bool IsScalarConstantZero(const HloInstruction* hlo) {
   if (!hlo->IsConstant() || !ShapeUtil::IsScalar(hlo->shape())) {
@@ -318,6 +553,175 @@ absl::Status GpuAlgebraicSimplifierVisitor::HandleReduce(
   }
 
   return AlgebraicSimplifierVisitor::HandleReduce(reduce);
+}
+
+bool GpuAlgebraicSimplifierVisitor::IsFusibleUnstridedSlice(
+    const HloInstruction* slice, const HloInstruction* operand) const {
+  return hlo_instruction_utils::IsUnstridedSlice(slice) && !slice->IsDead() &&
+         slice->shape().is_static() &&
+         !ShapeUtil::IsZeroElementArray(slice->shape()) &&
+         !ShapeUtil::SameDimensions(slice->shape(),
+                                    slice->operand(0)->shape()) &&
+         !slice->HasControlDependencies() && !HasNonReplicatedSharding(slice) &&
+         (!options_.is_layout_sensitive() ||
+          LayoutUtil::Equal(slice->shape().layout(),
+                            operand->shape().layout()));
+}
+
+absl::StatusOr<bool> GpuAlgebraicSimplifierVisitor::TryToSinkReduceThroughSlice(
+    HloInstruction* slice) {
+  if (!IsFusibleUnstridedSlice(slice, slice->operand(0))) {
+    return false;
+  }
+
+  const bool is_layout_sensitive = options_.is_layout_sensitive();
+  const HloInstruction* root = slice->parent()->root_instruction();
+
+  std::vector<const HloInstruction*> slice_chain;
+  HloInstruction* curr = slice->mutable_operand(0);
+  while (curr->opcode() != HloOpcode::kReduce) {
+    if (static_cast<int64_t>(slice_chain.size()) >=
+            kMaxReduceSinkPassthroughDepth ||
+        !IsPassthroughOp(curr, root, is_layout_sensitive)) {
+      return false;
+    }
+    slice_chain.push_back(curr);
+    curr = curr->mutable_operand(0);
+  }
+  absl::c_reverse(slice_chain);
+  HloInstruction* reduce = curr;
+
+  if (!reduce->shape().IsArray() || ShapeUtil::IsScalar(reduce->shape()) ||
+      reduce->HasControlDependencies() || HasNonReplicatedSharding(reduce) ||
+      reduce == root) {
+    return false;
+  }
+  HloInstruction* reduce_input = reduce->mutable_operand(0);
+  if (!reduce_input->shape().is_static()) {
+    return false;
+  }
+
+  std::vector<const HloInstruction*> active_chain;
+  int64_t remaining_elements = ShapeUtil::ElementsIn(reduce->shape());
+  int64_t live_leaf_count = 0;
+  auto collect_and_validate_leaves = [&](auto& self,
+                                         const HloInstruction* node) -> bool {
+    for (const HloInstruction* user : node->users()) {
+      if (user->IsDead()) {
+        return false;
+      }
+      if (IsFusibleUnstridedSlice(user, node)) {
+        const int64_t leaf_elements = ShapeUtil::ElementsIn(user->shape());
+        if (live_leaf_count >= kMaxReduceSinkLeaves ||
+            leaf_elements > remaining_elements ||
+            !MapLeafSliceToReduce(user, active_chain, is_layout_sensitive)
+                 .has_value()) {
+          return false;
+        }
+        remaining_elements -= leaf_elements;
+        ++live_leaf_count;
+      } else if (static_cast<int64_t>(active_chain.size()) <
+                     kMaxReduceSinkPassthroughDepth &&
+                 IsPassthroughOp(user, root, is_layout_sensitive)) {
+        active_chain.push_back(user);
+        const bool ok = self(self, user);
+        active_chain.pop_back();
+        if (!ok) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!collect_and_validate_leaves(collect_and_validate_leaves, reduce) ||
+      live_leaf_count == 0) {
+    return false;
+  }
+
+  std::optional<std::vector<SliceRange>> slice_ranges =
+      MapLeafSliceToReduce(slice, slice_chain, is_layout_sensitive);
+  TF_RET_CHECK(slice_ranges.has_value());
+  const SliceRange& reduce_slice_range = (*slice_ranges)[0];
+
+  const int64_t input_rank = reduce_input->shape().dimensions().size();
+  std::vector<int64_t> new_starts;
+  std::vector<int64_t> new_limits;
+  std::vector<int64_t> new_strides;
+  new_starts.reserve(input_rank);
+  new_limits.reserve(input_rank);
+  new_strides.reserve(input_rank);
+
+  Shape new_slice_shape = reduce_input->shape();
+  int64_t out_dim = 0;
+  for (int64_t in_dim = 0; in_dim < input_rank; ++in_dim) {
+    if (absl::c_linear_search(reduce->dimensions(), in_dim)) {
+      new_starts.push_back(0);
+      new_limits.push_back(reduce_input->shape().dimensions(in_dim));
+      new_strides.push_back(1);
+    } else {
+      const int64_t start = reduce_slice_range.starts[out_dim];
+      const int64_t limit = reduce_slice_range.limits[out_dim];
+      new_starts.push_back(start);
+      new_limits.push_back(limit);
+      new_strides.push_back(1);
+      new_slice_shape.set_dimensions(in_dim, limit - start);
+      ++out_dim;
+    }
+  }
+  TF_RET_CHECK(out_dim ==
+               static_cast<int64_t>(reduce->shape().dimensions().size()));
+
+  HloComputation* computation = slice->parent();
+  HloInstruction* new_slice =
+      computation->AddInstruction(HloInstruction::CreateSlice(
+          new_slice_shape, reduce_input, new_starts, new_limits, new_strides));
+  slice->SetupDerivedInstruction(new_slice);
+
+  Shape new_reduce_shape =
+      slice_chain.empty()
+          ? slice->shape()
+          : ShapeWithSliceRange(reduce->shape(), reduce_slice_range);
+  HloInstruction* replacement =
+      computation->AddInstruction(HloInstruction::CreateReduce(
+          new_reduce_shape, new_slice, reduce->mutable_operand(1),
+          reduce->dimensions(), reduce->to_apply()));
+  reduce->SetupDerivedInstruction(replacement);
+
+  for (size_t k = 0; k < slice_chain.size(); ++k) {
+    const HloInstruction* op = slice_chain[k];
+    Shape next_shape =
+        (k + 1 == slice_chain.size())
+            ? slice->shape()
+            : ShapeWithSliceRange(op->shape(), (*slice_ranges)[k + 1]);
+    if (IsUnaryElementwise(op)) {
+      replacement = computation->AddInstruction(
+          op->CloneWithNewOperands(next_shape, {replacement}));
+    } else if (op->opcode() == HloOpcode::kBitcast) {
+      HloInstruction* new_bitcast = computation->AddInstruction(
+          HloInstruction::CreateBitcast(next_shape, replacement));
+      op->SetupDerivedInstruction(new_bitcast);
+      replacement = new_bitcast;
+    } else {
+      TF_RET_CHECK(op->opcode() == HloOpcode::kReshape);
+      HloInstruction* new_reshape = computation->AddInstruction(
+          HloInstruction::CreateReshape(next_shape, replacement));
+      op->SetupDerivedInstruction(new_reshape);
+      replacement = new_reshape;
+    }
+  }
+  ABSL_RETURN_IF_ERROR(ReplaceInstruction(slice, replacement));
+  return true;
+}
+
+absl::Status GpuAlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
+  ABSL_ASSIGN_OR_RETURN(bool replaced, TryToSinkReduceThroughSlice(slice));
+  if (replaced) {
+    return absl::OkStatus();
+  }
+
+  return AlgebraicSimplifierVisitor::HandleSlice(slice);
 }
 
 bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(

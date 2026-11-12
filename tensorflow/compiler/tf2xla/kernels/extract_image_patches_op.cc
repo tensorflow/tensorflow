@@ -14,20 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
-#include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -114,74 +110,78 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
     xla::XlaBuilder* builder = ctx->builder();
 
-    // The following code is equivalent to:
-    // eye = np.eye(kH * kW * D).reshape([kH, kW, D, kH * kW * kD])
     int64_t kernel_size = 1;
-    std::vector<int64_t> kernel_shape(num_dims, 1);
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      kernel_shape[i] = ksizes_[input_dim];
       kernel_size *= ksizes_[input_dim];
     }
-    kernel_shape[num_spatial_dims] = 1;
-    kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
-    xla::Shape iota_kernel_shape =
-        xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
-    xla::XlaOp pred_intermediate = xla::Eq(xla::Iota(builder, iota_kernel_shape,
-                                                     /* iota_dimension= */ 0),
-                                           xla::Iota(builder, iota_kernel_shape,
-                                                     /* iota_dimension= */ 2));
-    // In some cases TPU implementations give different results than CPU and GPU
-    // when doing the conversion directly from pred to the final type. Add an
-    // extra conversion to S32 here solves this.
-    xla::XlaOp int_intermediate =
-        xla::ConvertElementType(pred_intermediate, xla::S32);
-    xla::XlaOp filter = xla::Reshape(
-        xla::ConvertElementType(int_intermediate, type), kernel_shape);
 
-    xla::ConvolutionDimensionNumbers dims;
-    std::vector<int64_t> window_strides(num_spatial_dims);
-    std::vector<int64_t> lhs_dilation(num_spatial_dims, 1);
-    std::vector<int64_t> rhs_dilation(num_spatial_dims);
-    std::vector<std::pair<int64_t, int64_t>> padding(num_spatial_dims);
-
-    dims.set_input_batch_dimension(batch_dim);
-    dims.set_output_batch_dimension(batch_dim);
-    dims.set_input_feature_dimension(feature_dim);
-    dims.set_output_feature_dimension(feature_dim);
-    dims.set_kernel_input_feature_dimension(num_spatial_dims);
-    dims.set_kernel_output_feature_dimension(num_spatial_dims + 1);
+    xla::PaddingConfig padding_config = xla::MakeNoPaddingConfig(num_dims);
+    bool has_padding = false;
+    std::vector<int64_t> output_sizes(num_spatial_dims);
 
     for (int i = 0; i < num_spatial_dims; ++i) {
       const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      dims.add_input_spatial_dimensions(dim);
-      dims.add_kernel_spatial_dimensions(i);
-      dims.add_output_spatial_dimensions(dim);
-      window_strides[i] = strides_.at(dim);
-      rhs_dilation[i] = dilations_.at(dim);
-
-      int64_t unused_output_size;
-      OP_REQUIRES_OK(
-          ctx, GetWindowedOutputSizeVerbose(
-                   input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
-                   window_strides[i], padding_, &unused_output_size,
-                   &padding[i].first, &padding[i].second));
+      int64_t pad_low = 0;
+      int64_t pad_high = 0;
+      OP_REQUIRES_OK(ctx, GetWindowedOutputSizeVerbose(
+                              input_shape.dim_size(dim), ksizes_[dim],
+                              dilations_[dim], strides_[dim], padding_,
+                              &output_sizes[i], &pad_low, &pad_high));
+      if (pad_low != 0 || pad_high != 0) {
+        has_padding = true;
+        padding_config.mutable_dimensions(dim)->set_edge_padding_low(pad_low);
+        padding_config.mutable_dimensions(dim)->set_edge_padding_high(pad_high);
+      }
     }
 
-    xla::XlaOp conv =
-        xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
-                                lhs_dilation, rhs_dilation, dims, depth);
-    // Feature group convolution, will end up with the kernel_size change more
-    // rapidly than the depth. Reshape, transpose and reshape to reorder them.
-    std::vector<int64_t> conv_dims =
-        xla::SpanToVector(builder->GetShape(conv).value().dimensions());
-    conv_dims.back() = depth;
-    conv_dims.push_back(kernel_size);
-    conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
-    conv_dims.pop_back();
-    conv_dims.back() *= kernel_size;
-    conv = xla::Reshape(conv, conv_dims);
-    ctx->SetOutput(0, conv);
+    xla::XlaOp padded_input = ctx->Input(0);
+    if (has_padding) {
+      padded_input =
+          xla::Pad(padded_input, xla::Zero(builder, type), padding_config);
+    }
+
+    std::vector<xla::XlaOp> slices;
+    slices.reserve(kernel_size);
+
+    std::vector<int64_t> start_indices(num_dims, 0);
+    std::vector<int64_t> limit_indices(num_dims, 0);
+    std::vector<int64_t> slice_strides(num_dims, 1);
+    limit_indices[batch_dim] = input_shape.dim_size(batch_dim);
+    limit_indices[feature_dim] = depth;
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      slice_strides[dim] = strides_[dim];
+    }
+
+    for (int64_t patch_idx = 0; patch_idx < kernel_size; ++patch_idx) {
+      int64_t temp = patch_idx;
+      for (int i = num_spatial_dims - 1; i >= 0; --i) {
+        const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+        const int64_t ksize = ksizes_[dim];
+        const int64_t patch_offset = temp % ksize;
+        temp /= ksize;
+
+        if (output_sizes[i] > 0) {
+          const int64_t start = patch_offset * dilations_[dim];
+          start_indices[dim] = start;
+          limit_indices[dim] =
+              start + (output_sizes[i] - 1) * strides_[dim] + 1;
+        } else {
+          start_indices[dim] = 0;
+          limit_indices[dim] = 0;
+        }
+      }
+
+      slices.push_back(xla::Slice(padded_input, start_indices, limit_indices,
+                                  slice_strides));
+    }
+
+    if (slices.size() == 1) {
+      ctx->SetOutput(0, slices[0]);
+    } else {
+      ctx->SetOutput(0, xla::ConcatInDim(builder, slices, feature_dim));
+    }
   }
 
  protected:
@@ -195,9 +195,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   void operator=(const ExtractImagePatchesOp&) = delete;
 };
 
-// We don't support integers for the convolution for GPU used in the
-// implementation of this op, so we limit the supported types.
-REGISTER_XLA_CONV_OP(Name("ExtractImagePatches"), ExtractImagePatchesOp);
+REGISTER_XLA_OP(Name("ExtractImagePatches"), ExtractImagePatchesOp);
 
 }  // namespace
 }  // namespace tensorflow

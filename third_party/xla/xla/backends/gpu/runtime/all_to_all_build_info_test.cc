@@ -224,19 +224,19 @@ TEST_F(BuildAllToAllInfoTest,
             SymmetricMemoryType::kNone);
   EXPECT_EQ(spec.codegen_config.sync_count_increment, 1u);
   ASSERT_EQ(spec.scratch_buffers.size(), 2);
-  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 5);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,
             KernelArgType::kInputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[1].type,
             KernelArgType::kOutputBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
-            KernelArgType::kRuntimeRank);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].index, 1);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
-            KernelArgType::kInvocationCount);
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].index, 0);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
-            KernelArgType::kScratchBuffer);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
-            KernelArgType::kScratchBuffer);
+            KernelArgType::kRuntimeRank);
 }
 
 TEST_F(BuildAllToAllInfoTest,
@@ -266,9 +266,10 @@ TEST_F(BuildAllToAllInfoTest,
   EXPECT_EQ(spec.codegen_config.sync_count_increment, 2u);
   ASSERT_EQ(spec.scratch_buffers.size(), 2);
   EXPECT_FALSE(spec.scratch_buffers[1].should_double_buffer);
-  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
-  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 5);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
             KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].index, 1);
 }
 
 }  // namespace

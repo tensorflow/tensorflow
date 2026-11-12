@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -489,13 +490,16 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
   if (profile.has_value()) {
     std::unique_ptr<LatencyEstimator> base_estimator;
     if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
-      auto cost_analysis =
-          std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+      // Default op profile, device warp size.
+      auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+          GpuHloCostAnalysis::Options{
               ShapeSizeBytesFunction(pointer_size),
               /*per_second_rates=*/{},
               /*min_latencies_seconds=*/{},
               /*count_multiple_input_accesses=*/true,
-          });
+          },
+          HloOpProfiles::Singleton().GetDefaultProfile(),
+          gpu_device_info.threads_per_warp());
       if (absl::Status status =
               module.entry_computation()->Accept(cost_analysis.get());
           status.ok()) {
@@ -536,13 +540,16 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
     VLOG(1) << "Using unified latency estimator";
-    auto cost_analysis =
-        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+    // Default op profile, device warp size.
+    auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+        GpuHloCostAnalysis::Options{
             ShapeSizeBytesFunction(pointer_size),
             /*per_second_rates=*/{},
             /*min_latencies_seconds=*/{},
             /*count_multiple_input_accesses=*/true,
-        });
+        },
+        HloOpProfiles::Singleton().GetDefaultProfile(),
+        gpu_device_info.threads_per_warp());
     if (absl::Status status =
             module.entry_computation()->Accept(cost_analysis.get());
         !status.ok()) {

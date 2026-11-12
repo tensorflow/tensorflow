@@ -32,8 +32,8 @@ namespace xla {
 
 absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
 PjRtRawClient::AllocateRawBuffersForExecute(
-    PjRtMemorySpace* memory_space,
-    absl::Span<const size_t> on_device_bytes_counts, bool retry_on_oom) {
+    PJRT_Memory* memory_space, absl::Span<const size_t> on_device_bytes_counts,
+    bool retry_on_oom) {
   const tsl::profiler::MemoryDebugAnnotation outer_anno =
       tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
   absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
@@ -60,7 +60,7 @@ void PjRtRawClient::ScheduleRemoteSend(
     PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
-    PjRtBuffer::RemoteSendCallback on_done) {
+    PjRtRawBufferInterface::RemoteSendCallback on_done) {
   auto error = absl::UnimplementedError(
       absl::StrCat("ScheduleRemoteSend is not implemented for device ",
                    local_device_id.value(), " kind ", memory_kind_id));

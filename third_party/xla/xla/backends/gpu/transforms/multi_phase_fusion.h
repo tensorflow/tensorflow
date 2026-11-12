@@ -27,7 +27,7 @@ namespace xla::gpu {
 
 // Fuses small fusions with producer-consumer dependencies into nested fusions.
 // Nested fusions are lowered as a sequence of phases of a phased block-cluster
-// kernel by `PhasedBlockClusterFusion`. Phases are separated by cluster
+// kernel by `ThreadBlockSpecializedFusion`. Phases are separated by cluster
 // barriers and exchange data via DRAM and caches. Execution as sequential
 // phases of a single kernel pays that launch overhead only once.
 //

@@ -34,8 +34,8 @@ namespace xla {
 class HloInstruction;
 
 // Helper class to track and simplify chains of shape transformations
-// (reshapes, transposes, and bitcasts). It tries to canonicalize and
-// minimize operations by folding them when possible.
+// (reshapes, transposes, bitcasts, broadcasts, and abstract reductions). It
+// tries to canonicalize and minimize operations by folding them when possible.
 // The tracker ignores the layout of the shape (i.e. intended to run pre-layout
 // assignment).
 //
@@ -51,9 +51,10 @@ class HloInstruction;
 // the resulting chain may not always be minimal as it may insert reshapes to
 // remove or add degenerate dimensions during simplification.
 //
-// Internally, the tracker represents the view as a sequence of transpositions
-// (projections). There's also reshape before and after the entire sequence to
-// remove/introduce degenerate dimensions.
+// Internally, the tracker represents the view as a sequence of projections,
+// each decomposing into Reshape -> Reduce -> Transpose -> Broadcast, with
+// reshapes before and after the sequence to remove or introduce degenerate
+// dimensions.
 class ShapeTracker {
  public:
   // Constructs a ShapeTracker with the given initial shape.
@@ -70,6 +71,7 @@ class ShapeTracker {
   // transformations chains can result in the same input/output elements
   // mapping. In this case, this operator will return false.
   bool operator==(const ShapeTracker& other) const;
+  bool operator!=(const ShapeTracker& other) const { return !(*this == other); }
 
   // Sets the element type of input/output shapes.
   void SetElementType(PrimitiveType element_type);
@@ -99,13 +101,19 @@ class ShapeTracker {
   // reshapes+transposes.
   absl::Status AppendBitcast(const xla::Shape& src_shape,
                              const xla::Shape& dst_shape);
+  // Broadcasts the current output shape to `dimensions`, where each existing
+  // dimension `i` maps to output dimension `broadcast_dimensions[i]`.
+  absl::Status AppendBroadcast(absl::Span<const int64_t> dimensions,
+                               absl::Span<const int64_t> broadcast_dimensions);
+  // Collapses the specified output dimensions (formal inverse of broadcast).
+  absl::Status AppendReduce(absl::Span<const int64_t> dimensions_to_reduce);
 
   // Appends operation represented by the HLO instruction.
-  // Supports transpose, reshape, and bitcast.
+  // Supports transpose, reshape, bitcast, and broadcast.
   absl::Status AppendInstruction(const HloInstruction* inst);
 
   // Prepends operation represented by the HLO instruction.
-  // Supports transpose, reshape, and bitcast.
+  // Supports transpose, reshape, bitcast, and broadcast.
   absl::Status PrependInstruction(const HloInstruction* inst);
 
   // Prepends operations to the tracker.
@@ -113,6 +121,14 @@ class ShapeTracker {
   absl::Status PrependReshape(absl::Span<const int64_t> dimensions);
   absl::Status PrependBitcast(const xla::Shape& src_shape,
                               const xla::Shape& dst_shape);
+  // Prepends a broadcast whose output matches the current `input_shape()`,
+  // where `broadcast_dimensions` lists the dimensions of `input_shape()` that
+  // originate from the pre-broadcast operand.
+  absl::Status PrependBroadcast(absl::Span<const int64_t> broadcast_dimensions);
+  // Prepends a reduction from `dimensions` (collapsing `dimensions_to_reduce`)
+  // whose result matches the current `input_shape()`.
+  absl::Status PrependReduce(absl::Span<const int64_t> dimensions,
+                             absl::Span<const int64_t> dimensions_to_reduce);
 
   // Concatenates another ShapeTracker to this one.
   absl::Status ConcatenateFrom(const ShapeTracker& other);
@@ -165,9 +181,16 @@ class ShapeTracker {
       HloInstruction* inst, bool avoid_combining_reshapes = true) const;
 
   struct Step {
-    enum class Type { kReshape, kTranspose };
+    enum class Type { kReshape, kTranspose, kBroadcast, kReduce };
     Type type;
+    // For kReshape: target shape dimensions.
+    // For kTranspose: permutation of dimensions.
+    // For kBroadcast: target shape dimensions.
+    // For kReduce: sorted dimension indices to collapse.
     std::vector<int64_t> dimensions;
+    // For kBroadcast: maps each operand dimension to its index in `dimensions`
+    // (matching HloBroadcastInstruction::dimensions()). Empty for other steps.
+    std::vector<int64_t> broadcast_dimensions = {};
   };
 
   // Returns the sequence of simplified steps represented by this tracker.
@@ -179,6 +202,12 @@ class ShapeTracker {
   class BufferView;
 
  private:
+  struct SlicePropagationResult;
+
+  absl::StatusOr<std::vector<BufferView>> UnflattenOutputDimensions();
+  static void TryFoldProjections(std::vector<BufferView>& projections);
+  static absl::StatusOr<SlicePropagationResult> SliceProjectionChain(
+      absl::Span<const BufferView> projections, const BufferView& slice);
   static std::vector<Step> OptimizeSteps(const std::vector<Step>& steps,
                                          const xla::Shape& input_shape,
                                          const xla::Shape& output_shape);
@@ -217,7 +246,12 @@ class ShapeTracker::BufferView {
 
   struct Transformation {
     llvm::SmallVector<int64_t, 6> input_reshape;
+    llvm::SmallVector<int64_t, 6> reduced_dims;
     llvm::SmallVector<int64_t, 6> transpose;
+    llvm::SmallVector<int64_t, 6> broadcast_dims;
+    llvm::SmallVector<int64_t, 6> output_dims;
+
+    bool IsTrivial() const;
   };
   Transformation AsTransformation() const;
 
@@ -256,19 +290,38 @@ class ShapeTracker::BufferView {
 
   bool IsEmpty() const { return strides_.empty(); }
   int64_t ElementsIn() const;
+  int64_t InputElementsIn() const;
+  bool IsTrivialOneElement() const {
+    return strides_.size() == 1 && strides_[0] == 1 && extents_[0] == 1 &&
+           collapsed_strides_.empty();
+  }
   bool operator==(const BufferView& other) const {
-    return strides_ == other.strides_ && extents_ == other.extents_;
+    return strides_ == other.strides_ && extents_ == other.extents_ &&
+           collapsed_strides_ == other.collapsed_strides_ &&
+           collapsed_extents_ == other.collapsed_extents_;
   }
   bool operator!=(const BufferView& other) const { return !(*this == other); }
   absl::Span<const int64_t> strides() const { return strides_; }
   absl::Span<const int64_t> extents() const { return extents_; }
+  absl::Span<const int64_t> collapsed_strides() const {
+    return collapsed_strides_;
+  }
+  absl::Span<const int64_t> collapsed_extents() const {
+    return collapsed_extents_;
+  }
 
  private:
   friend class ShapeTracker;
   BufferView() = default;
 
+  static BufferView FromBroadcastedExtent(int64_t extent);
+  void SetSubviews(absl::Span<const BufferView> sub_views);
+  void AppendCollapsedSegments(const BufferView& reduced_view);
+
   llvm::SmallVector<int64_t, 6> strides_;
   llvm::SmallVector<int64_t, 6> extents_;
+  llvm::SmallVector<int64_t, 6> collapsed_strides_;
+  llvm::SmallVector<int64_t, 6> collapsed_extents_;
 };
 
 }  // namespace xla

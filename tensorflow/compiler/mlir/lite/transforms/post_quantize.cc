@@ -53,8 +53,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -193,7 +193,7 @@ std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+  auto const_type = mlir::TFL::GetTypeFromTFLiteShape(
       shape, rewriter.getIntegerType(sizeof(T) * 8));
   auto const_attr = DenseElementsAttr::get(const_type, vec);
 
@@ -223,7 +223,7 @@ std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
   }
 
   auto const_type =
-      tensorflow::GetTypeFromTFTensorShape(shape, rewriter.getF32Type());
+      mlir::TFL::GetTypeFromTFLiteShape(shape, rewriter.getF32Type());
   auto const_attr =
       DenseElementsAttr::get(const_type, llvm::ArrayRef<float>(float_vec));
 
@@ -248,7 +248,7 @@ std::optional<mlir::Value> ConvertDequantizeOp(
   std::optional<mlir::Value> zp_val;
   if (zeropoint.size() == 1) {
     auto const_type =
-        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+        mlir::TFL::GetTypeFromTFLiteShape({}, rewriter.getF32Type());
     auto const_attr =
         DenseElementsAttr::get(const_type, static_cast<float>(zeropoint[0]));
 
@@ -265,7 +265,7 @@ std::optional<mlir::Value> ConvertDequantizeOp(
   std::optional<mlir::Value> scale_val;
   if (scale.size() == 1) {
     auto const_type =
-        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+        mlir::TFL::GetTypeFromTFLiteShape({}, rewriter.getF32Type());
     auto const_attr =
         DenseElementsAttr::get(const_type, static_cast<float>(scale[0]));
 
@@ -357,7 +357,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
 
       auto output_type = mlir::cast<mlir::ShapedType>(op.getOutput().getType());
 
-      auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      auto const_type = mlir::TFL::GetTypeFromTFLiteShape(
           output_type.getShape(), qtype.getStorageType());
       auto const_op = arith::ConstantOp::create(
           rewriter, op->getLoc(), const_type, qconst_op.getValue());

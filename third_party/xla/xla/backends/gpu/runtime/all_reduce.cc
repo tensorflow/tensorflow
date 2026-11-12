@@ -284,10 +284,9 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
             /*index=*/0},  // buffers[0].source_buffer
            {KernelArgType::kOutputBuffer,
             /*index=*/0},  // buffers[0].dst_buffer
-           {KernelArgType::kRuntimeRank},
-           {KernelArgType::kInvocationCount},
-           {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
-           {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
+           {KernelArgType::kScratchBuffer, /*index=*/1},  // scratch buffers
+           {KernelArgType::kScratchBuffer, /*index=*/0},  // signal buffers
+           {KernelArgType::kRuntimeRank}},
           /* .sync_count_increment = */ 1 +
               static_cast<uint32_t>(all_reduce_info.all_reduce_strategy)},
       /* .scratch_buffers= */

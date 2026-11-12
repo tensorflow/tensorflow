@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/slim_model_importer.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <fstream>
 #include <ios>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -351,6 +356,83 @@ TEST_F(SlimModelImporterTest, WeightOffsetOutOfBounds) {
 
   auto result = LoadSlimModel(dir, &context_);
   EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(SlimModelImporterTest, LargeWeightTensorUsesDenseResourceAndFadvise) {
+  std::string dir = JoinPath(testing::TempDir(), "large_weight_slim_model");
+  ASSERT_TRUE(tsl::Env::Default()->RecursivelyCreateDir(dir).ok());
+
+  // Place a 4-byte small tensor at offset 0 and a 1 MiB (262144 x f32) tensor
+  // at non-page-aligned offset 64 to exercise both DenseResourceElementsAttr
+  // (num_elements > 64) and posix_fadvise (count >= 1 MiB).
+  std::string metadata_json = R"({
+    "signatures": {
+      "serve": [
+        {"arg_index": 1, "offset": 0},
+        {"arg_index": 2, "offset": 64}
+      ]
+    },
+    "signature_inputs": {
+      "serve": ["x"]
+    },
+    "signature_outputs": {
+      "serve": ["y"]
+    }
+  })";
+  WriteFile(JoinPath(dir, "weights_metadata.json"), metadata_json);
+
+  constexpr size_t kLargeElements = 262144;
+  constexpr size_t kLargeOffset = 64;
+  std::string params_data(kLargeOffset + kLargeElements * sizeof(float), '\0');
+  float small_val = 2.5f;
+  std::copy_n(reinterpret_cast<const char*>(&small_val), sizeof(float),
+              params_data.data());
+  std::vector<float> large_vals(kLargeElements);
+  for (size_t i = 0; i < kLargeElements; ++i) {
+    large_vals[i] = static_cast<float>(i % 1024) * 0.25f;
+  }
+  std::copy_n(reinterpret_cast<const char*>(large_vals.data()),
+              kLargeElements * sizeof(float),
+              params_data.data() + kLargeOffset);
+  WriteFile(JoinPath(dir, "params.bin"), params_data);
+
+  std::string mlir_content = R"(
+    module {
+      func.func @main(%arg0: tensor<262144xf32>, %arg1: tensor<1xf32>, %arg2: tensor<262144xf32>) -> tensor<262144xf32> {
+        %0 = "stablehlo.add"(%arg0, %arg2) : (tensor<262144xf32>, tensor<262144xf32>) -> tensor<262144xf32>
+        return %0 : tensor<262144xf32>
+      }
+    }
+  )";
+  WriteFile(JoinPath(dir, "serve.mlirbc"), mlir_content);
+
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_status =
+      LoadSlimModel(dir, &context_);
+  ASSERT_TRUE(module_status.ok()) << module_status.status();
+
+  mlir::OwningOpRef<mlir::ModuleOp> module = *std::move(module_status);
+  mlir::func::FuncOp serve_func =
+      module->lookupSymbol<mlir::func::FuncOp>("serve");
+  ASSERT_NE(serve_func, nullptr);
+  EXPECT_EQ(serve_func.getNumArguments(), 1);
+
+  int resource_const_count = 0;
+  serve_func.walk([&](mlir::stablehlo::ConstantOp const_op) {
+    if (auto resource_attr = mlir::dyn_cast<mlir::DenseResourceElementsAttr>(
+            const_op.getValue())) {
+      ++resource_const_count;
+      mlir::AsmResourceBlob* blob = resource_attr.getRawHandle().getBlob();
+      ASSERT_NE(blob, nullptr);
+      llvm::ArrayRef<char> data = blob->getData();
+      ASSERT_EQ(data.size(), kLargeElements * sizeof(float));
+      const float* float_data = reinterpret_cast<const float*>(data.data());
+      EXPECT_FLOAT_EQ(float_data[0], large_vals[0]);
+      EXPECT_FLOAT_EQ(float_data[12345], large_vals[12345]);
+      EXPECT_FLOAT_EQ(float_data[kLargeElements - 1],
+                      large_vals[kLargeElements - 1]);
+    }
+  });
+  EXPECT_EQ(resource_const_count, 1);
 }
 
 }  // namespace

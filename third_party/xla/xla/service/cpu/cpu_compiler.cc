@@ -81,7 +81,9 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/embedded_while_loop_unroller.h"
+#include "xla/backends/cpu/transforms/fusion_wrapper.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
+#include "xla/backends/cpu/transforms/small_while_loop_hoisting_pass.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -175,10 +177,8 @@ limitations under the License.
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/export_hlo.h"
-#include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
-#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -212,7 +212,7 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
-#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -503,8 +503,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<ShardingPropagation>(
           /*is_spmd=*/true, /*propagate_metadata=*/false);
     }
-    spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
-        num_partitions, module->config().replica_count());
+    spmd::SpmdPartitionerOptions spmd_options;
+    spmd_options.threshold_for_windowed_einsum_mib = 100000;
+    spmd_pipeline.AddPass<spmd::SpmdPartitioner>(
+        num_partitions, module->config().replica_count(), spmd_options);
     spmd_pipeline.AddPass<ControlDepRewriter>();
     spmd_pipeline.AddPass<NullaryFunctionWrapInliner>();
     if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {

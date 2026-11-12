@@ -27,7 +27,6 @@ load(
     "//xla/tests:build_defs.bzl",
     "ALL_HARDWARE_BACKENDS",
     "generate_backend_suites",
-    "get_sc_offload_backend_args",
     "xla_test",
 )
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
@@ -1066,6 +1065,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_test_backend_predicates",
@@ -1352,8 +1352,6 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    # TODO(b/577281374): The SparseCore mismatch detector fails on SparseCore scatter offloads.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",

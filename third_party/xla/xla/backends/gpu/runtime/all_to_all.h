@@ -63,10 +63,9 @@ absl::StatusOr<AllToAllInfo> BuildAllToAllInfo(
 // Triton all-to-all kernel. The kernel argument layout matches all-gather:
 //   [0] local input buffer (kInputBuffer, index 0)
 //   [1] output buffer (kOutputBuffer, index 0)
-//   [2] runtime rank  (kRuntimeRank)
-//   [3] invocation count (kInvocationCount)
-//   [4] signal flags (kScratchBuffer, index 0)
-//   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
+//   [2] remote scratch buffer pointer table (kScratchBuffer, index 1)
+//   [3] signal flags (kScratchBuffer, index 0)
+//   [4] runtime rank (kRuntimeRank)
 // `scratch_memory_type` is used for both scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllToAllKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,

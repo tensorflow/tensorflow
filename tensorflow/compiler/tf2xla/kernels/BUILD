@@ -3369,7 +3369,6 @@ tf_kernel_library(
     name = "extract_image_patches_op",
     srcs = ["extract_image_patches_op.cc"],
     deps = [
-        ":conv_op_helpers",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3382,12 +3381,10 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@xla//xla:shape_util",
         "@xla//xla:util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
-        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 

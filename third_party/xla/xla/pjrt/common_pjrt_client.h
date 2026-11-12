@@ -96,6 +96,8 @@ class CommonPjRtClient : public PjRtClient {
       std::optional<TiledLinearizer::ParallelismOptions>
           tiled_linearizer_options = std::nullopt);
 
+  ~CommonPjRtClient() override;
+
   // TODO(parkers): Devices should be constructed inside the constructor
   // once the device types are unified.
   void AttachDevices(
@@ -166,7 +168,7 @@ class CommonPjRtClient : public PjRtClient {
     return raw_client_->async_work_runner();
   }
 
-  virtual PjRtRawClient* raw_client() const { return raw_client_.get(); }
+  PjRtRawClient* raw_client() const { return raw_client_.get(); }
 
   LinearizeThrottler* linearize_throttler() const {
     return linearize_throttler_.get();
@@ -285,8 +287,9 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
-    return raw_client()->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                           retry_on_oom, allocate_after);
+    return raw_client()->AllocateRawBuffer(memory_space->ToCApiPtr(),
+                                           on_device_bytes_count, retry_on_oom,
+                                           std::move(allocate_after));
   }
 
   HostMemoryAllocator* GetHostMemoryAllocator() const override;
@@ -303,7 +306,7 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) {
     return raw_client()->AllocateRawBufferForExecute(
-        memory_space, on_device_bytes_count, retry_on_oom);
+        memory_space->ToCApiPtr(), on_device_bytes_count, retry_on_oom);
   }
 
   // Imports foreign memory as a raw buffer.
@@ -312,7 +315,7 @@ class CommonPjRtClient : public PjRtClient {
       size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
       bool is_mutable) {
     return raw_client()->ImportForeignMemory(
-        memory_space, device_ptr, on_device_bytes_count,
+        memory_space->ToCApiPtr(), device_ptr, on_device_bytes_count,
         std::move(on_delete_callback), is_mutable);
   }
 
@@ -335,11 +338,11 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer);
 
-  // Allocates a destination buffer for linearizing into.
-  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+  // Reserves a destination staging buffer for linearizing into.
+  absl::StatusOr<LinearizeThrottler::StagingReservation> AllocateLinearizeDest(
       bool sync, size_t size, PjRtRawBufferRef dest_buffer);
 
-  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
+  absl::StatusOr<LinearizeThrottler::StagingReservation> AllocateLinearizeDest(
       bool sync, const xla::Shape& device_shape,
       absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer);
 
@@ -402,7 +405,8 @@ class CommonPjRtClient : public PjRtClient {
   void TrackFuture(PjRtMemorySpace* memory_space, absl::string_view debug_info,
                    const Future<>& future) {
     if (event_tracker()) {
-      event_tracker()->TrackFuture(memory_space, debug_info, future);
+      event_tracker()->TrackFuture(memory_space->ToCApiPtr(), debug_info,
+                                   future);
     }
   }
 
@@ -458,7 +462,8 @@ class CommonPjRtClient : public PjRtClient {
       tsl::AsyncValueRef<bool> result =
           tsl::MakeConstructedAsyncValueRef<bool>();
       if (event_tracker()) {
-        event_tracker()->TrackAllocationEvent(memory_space, result, debug_info);
+        event_tracker()->TrackAllocationEvent(memory_space->ToCApiPtr(), result,
+                                              debug_info);
       }
       return result;
     }
@@ -515,7 +520,7 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
   CreateRawBufferChannel(PjRtMemorySpace* memory_space,
                          size_t on_device_bytes_count) {
-    return raw_client()->CreateRawBufferChannel(memory_space,
+    return raw_client()->CreateRawBufferChannel(memory_space->ToCApiPtr(),
                                                 on_device_bytes_count);
   }
 
@@ -655,8 +660,8 @@ class CommonPjRtClient : public PjRtClient {
                                 absl::string_view description,
                                 absl::Span<const PjRtDeviceEventPtr> waiters) {
     if (event_tracker()) {
-      event_tracker()->AppendDescriptionToEvent(memory_space, device_event,
-                                                description, waiters);
+      event_tracker()->AppendDescriptionToEvent(
+          memory_space->ToCApiPtr(), device_event, description, waiters);
     }
   }
 
@@ -664,16 +669,16 @@ class CommonPjRtClient : public PjRtClient {
                             PjRtDeviceEventPtr device_event,
                             absl::Span<const PjRtDeviceEventRef> dependencies) {
     if (event_tracker()) {
-      event_tracker()->AddEventDependencies(memory_space, device_event,
-                                            dependencies);
+      event_tracker()->AddEventDependencies(memory_space->ToCApiPtr(),
+                                            device_event, dependencies);
     }
   }
   void AddEventDependencies(PjRtMemorySpace* memory_space,
                             PjRtDeviceEventPtr device_event,
                             PjRtDeviceEventSpan dependencies) {
     if (event_tracker()) {
-      event_tracker()->AddEventDependencies(memory_space, device_event,
-                                            dependencies);
+      event_tracker()->AddEventDependencies(memory_space->ToCApiPtr(),
+                                            device_event, dependencies);
     }
   }
 
@@ -681,8 +686,8 @@ class CommonPjRtClient : public PjRtClient {
                                 PjRtDeviceEventPtr device_event,
                                 absl::string_view description) {
     if (event_tracker()) {
-      event_tracker()->RegisterClientThreadWait(memory_space, device_event,
-                                                description);
+      event_tracker()->RegisterClientThreadWait(memory_space->ToCApiPtr(),
+                                                device_event, description);
     }
   }
 
@@ -723,9 +728,7 @@ class CommonPjRtClient : public PjRtClient {
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
-  // TODO(parkers): Remove the need for this temporary function once more
-  // backend differences are resolved.
-  virtual absl::Status ResolveAddressableDevices(
+  absl::Status ResolveAddressableDevices(
       PjRtExecutable* executable, CompileOptions* compile_options,
       std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
           addressable_device_logical_ids,

@@ -203,7 +203,7 @@ cc_library(
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/cpu:parallel_task_assignment",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:logging",

@@ -2676,8 +2676,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   } else {
     // When add_output is false, instruction_to_append is necessarily an
     // operand of the callable instruction. After appending this will no
-    // longer be the case. Remove the operand from the operand list and remove
-    // its corresponding called computation parameter instruction.
+    // longer be the case. Remove every operand slot holding it and the
+    // matching called computation parameters.
     bool in_operand_list =
         absl::c_linear_search(operands(), instruction_to_append);
     CHECK(add_output || in_operand_list);
@@ -2690,22 +2690,20 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       clone = called_computation()->AddInstruction(
           instruction_to_append->Clone(/*suffix=*/""));
     }
-    const auto& called_computation_parameters =
-        called_computation()->parameter_instructions();
-    for (int64_t operand_num = 0; operand_num < operand_count();
-         ++operand_num) {
+    // Iterate in reverse so removing a slot only shifts slots already visited.
+    for (int64_t operand_num = operand_count() - 1; operand_num >= 0;
+         --operand_num) {
       if (instruction_to_append == operand(operand_num)) {
         // Replace the called computation parameter instruction's uses with
         // the clone.
         HloInstruction* called_computation_parameter =
-            called_computation_parameters[operand_num];
+            called_computation()->parameter_instruction(operand_num);
         CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding called computation parameter and operand
         // from their respective vectors.
         CHECK_OK(called_computation()->RemoveParameter(operand_num));
         RemoveOperandAt(operand_num);
-        break;
       }
     }
     // We've cloned instruction_to_append into this callable instruction, so

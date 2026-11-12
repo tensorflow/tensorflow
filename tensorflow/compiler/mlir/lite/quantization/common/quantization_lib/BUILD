@@ -79,7 +79,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/tools/optimize:quantization_utils",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

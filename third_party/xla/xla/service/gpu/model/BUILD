@@ -314,6 +314,8 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -543,12 +545,26 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "ici_bandwidth",
+    hdrs = ["ici_bandwidth.h"],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_collective_performance_model",
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
+        ":ici_bandwidth",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
@@ -1052,6 +1068,7 @@ cc_library(
     hdrs = ["sol_gpu_cost_model_stats_collection.h"],
     deps = [
         ":gpu_hlo_cost_analysis",
+        ":hlo_op_profiles",
         ":sol_latency_estimator",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",

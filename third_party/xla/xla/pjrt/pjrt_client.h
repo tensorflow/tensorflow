@@ -125,7 +125,11 @@ class PjRtMemorySpace {
 // Helper for building a PJRT_Memory from a PjRtMemorySpace.
 class PjRtMemorySpaceCApiDelegator {
  public:
-  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner);
+  explicit PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner,
+                                        int32_t local_device_id = -1,
+                                        int32_t memory_kind_id = 0);
+  PjRtMemorySpaceCApiDelegator(PjRtMemorySpace* owner, const PjRtDevice* device,
+                               int32_t memory_kind_id);
   ~PjRtMemorySpaceCApiDelegator();
 
   PJRT_Memory* ToCApiPtr() { return &c_memory_; }
@@ -147,6 +151,24 @@ class PjRtMemorySpaceCApiDelegator {
   absl::flat_hash_map<const void*, UserData> user_data_;
 };
 
+// Associates `context` with `key` on `memory_space`. Idempotent if
+// `memory_space` already maps `key` to `context`; fails with
+// `FailedPreconditionError` if `memory_space` has no FFI context map or
+// `AlreadyExistsError` if a different live entry is registered for `key`.
+absl::Status SetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                           std::weak_ptr<void> context);
+
+// Removes the entry for `key` on `memory_space`. If `expected_context !=
+// nullptr`, only removes the entry when it is expired or points to
+// `expected_context`.
+void UnsetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                     const void* expected_context = nullptr);
+
+// Looks up and locks the context registered under `key` on `memory_space`,
+// returning nullptr if unregistered or expired.
+std::shared_ptr<void> GetFfiContext(const PjRtMemorySpace* memory_space,
+                                    const void* key);
+
 class PjRtDevice {
  public:
   virtual ~PjRtDevice() = default;
@@ -161,12 +183,6 @@ class PjRtDevice {
     LOG(FATAL) << "PjRtDeviceDescription not available (must override "
                   "PjRtDevice::description).";
   }
-
-  // The ID of this device. IDs are unique among devices of this type
-  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
-  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  ABSL_DEPRECATED("Use global_device_id() instead")
-  virtual int id() const { return global_device_id().value(); }
 
   // There are several different IDs for a PJRT device.
   //
@@ -184,7 +200,6 @@ class PjRtDevice {
   // identifying which physical device when interacting with non-JAX code. In
   // general, not guaranteed to be dense, and -1 if undefined.
 
-  // TODO(b/314368788): Remove `id()` and replace it with this function.
   virtual GlobalDeviceId global_device_id() const {
     return GlobalDeviceId(description().id());
   }
@@ -586,7 +601,7 @@ class PjRtClient {
   // Return only addressable devices. The devices are in no particular order.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
-  // Lookup any PjRtDevice for a given PjRtDevice::id().
+  // Lookup any PjRtDevice for a given PjRtDevice::global_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupDevice(
       GlobalDeviceId global_device_id) const {
     return absl::UnimplementedError("LookupDevice is not supported.");

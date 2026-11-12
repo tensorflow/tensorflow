@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -68,11 +69,13 @@ class HostMemoryAllocator {
 
   virtual ~HostMemoryAllocator() = default;
 
-  // Allocates `size` bytes of memory. The returned pointer is guaranteed to be
-  // aligned to `options_.alignment`.
-  virtual OwnedPtr Allocate(size_t size, const AllocateOptions& options) = 0;
+  // Allocates `size` bytes of memory. Returns `nullptr` if `size == 0` or if
+  // the allocation fails. If non-null, the returned pointer is guaranteed to be
+  // aligned to `Options::alignment`.
+  virtual absl_nullable OwnedPtr Allocate(size_t size,
+                                          const AllocateOptions& options) = 0;
 
-  OwnedPtr Allocate(size_t size) { return Allocate(size, {}); }
+  absl_nullable OwnedPtr Allocate(size_t size) { return Allocate(size, {}); }
 };
 
 // `HostMemoryAllocator` implementation that uses a `tsl::Allocator` to back
@@ -83,7 +86,8 @@ class BasicHostMemoryAllocator : public HostMemoryAllocator {
       std::unique_ptr<tsl::Allocator> allocator,
       size_t alignment = tsl::Allocator::kAllocatorAlignment);
 
-  OwnedPtr Allocate(size_t size, const AllocateOptions& options) override;
+  absl_nullable OwnedPtr Allocate(size_t size,
+                                  const AllocateOptions& options) override;
 
  private:
   const std::unique_ptr<tsl::Allocator> allocator_;

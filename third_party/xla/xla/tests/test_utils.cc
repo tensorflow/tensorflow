@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 

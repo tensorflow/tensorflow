@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/python/nb_absl_span.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"

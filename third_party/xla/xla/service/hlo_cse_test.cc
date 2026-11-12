@@ -241,6 +241,46 @@ TEST_F(HloCseTest, CseSafeZeroOperandAttrIsRespected) {
   EXPECT_EQ(root->operand(0), root->operand(1));
 }
 
+TEST_F(HloCseTest, RemovedDuplicateIotaOperandIsNotReused) {
+  // `iota_b` is removed when the operands of `add` are deduplicated, so
+  // `iota_c` must not be replaced with it.
+  const char* const hlo_string = R"(
+    HloModule m
+    ENTRY entry {
+      iota_a = s32[8] iota(), iota_dimension=0
+      iota_b = s32[8] iota(), iota_dimension=0, frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      add = s32[8] add(iota_a, iota_b)
+      iota_c = s32[8] iota(), iota_dimension=0, frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      ROOT root = (s32[8], s32[8]) tuple(add, iota_c)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  HloComputation* entry = m->entry_computation();
+  EXPECT_EQ(entry->root_instruction()->operand(1)->parent(), entry);
+}
+
+TEST_F(HloCseTest, RemovedUnusedIotaOperandIsNotReused) {
+  // `iota_b` is removed together with `neg_b` when `neg_b` is replaced with
+  // `neg_a`, so `iota_c` must not be replaced with it.
+  const char* const hlo_string = R"(
+    HloModule m
+    ENTRY entry {
+      iota_a = s32[8] iota(), iota_dimension=0
+      neg_a = s32[8] negate(iota_a)
+      iota_b = s32[8] iota(), iota_dimension=0, frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      neg_b = s32[8] negate(iota_b)
+      add = s32[8] add(neg_a, neg_b)
+      iota_c = s32[8] iota(), iota_dimension=0, frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      ROOT root = (s32[8], s32[8]) tuple(add, iota_c)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  HloComputation* entry = m->entry_computation();
+  EXPECT_EQ(entry->root_instruction()->operand(1)->parent(), entry);
+}
+
 // Test two identical while loops with same inputs
 TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesSameInput) {
   const char* const hlo_string = R"(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/config_aware_cse.h"
 #include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/sort_iota_fusion.h"
 #include "xla/backends/gpu/transforms/variadic_op_splitter.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/shape.h"
@@ -105,15 +104,17 @@ HloPassPipeline FusionPipeline(
 
   // Running CSE affects how many users an op has. This plays a role in what
   // we detect as a tiled transpose fusion.
-  fusion.AddPass<HloCSE>(
-      /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
-      /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
+  // TODO(b/538986250): ConfigAwareCSE is a workaround that keeps the positional
+  // `sequential_tile_sizes` of Triton fusions consistent across CSE. Once the
+  // new generic config is available, remove it and call HloCSE directly again
+  // (here and below).
+  fusion.AddPass<ConfigAwareCSE>(mlir_context);
   fusion.AddPass<HloDCE>();
   fusion.AddPass<MultiOutputFusion>(gpu_device_info, alias_info,
                                     shape_size_bytes_function);
-  fusion.AddPass<HloCSE>(
-      /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
-      /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
+  // TODO(b/538986250): Replace with HloCSE once the new generic config is
+  // available (see above).
+  fusion.AddPass<ConfigAwareCSE>(mlir_context);
   fusion.AddPass<HloDCE>();
 
   const se::CudaComputeCapability* cuda_cc =

@@ -49,12 +49,14 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
 #include "xla/shape.h"
@@ -11788,6 +11790,92 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, IndexPassthroughScatterWithIotaIndices) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,128] parameter(0),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %indices = s32[2,1] constant({ {0}, {1} }),
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  %updates = f32[2,128] parameter(1),
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  ROOT %scatter = f32[2,128] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      indices_are_sorted=true,
+      unique_indices=true,
+      sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PartitionComputation(kHloString, /*num_devices=*/4, options));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto in_group_partition_id =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto masked_operand =
+      op::Select(op::Broadcast(op::Convert(in_group_partition_id)),
+                 op::Broadcast(op::Constant()), op::Parameter(0));
+  auto adjusted_indices = op::Subtract(op::DynamicSlice(), op::Broadcast());
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Scatter(masked_operand, adjusted_indices,
+                                              op::Parameter(1))),
+                    op::Shape("f32[1,128]")));
+}
+
+TEST_P(SpmdPartitioningTest,
+       IndexPassthroughScatterWithConcatenatedIotaIndices) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[4,16] parameter(0), sharding={replicated}
+  %batch_iota = s32[4,1] iota(), iota_dimension=0, sharding={devices=[2,1]<=[2]}
+  %col_indices = s32[4,1] parameter(1), sharding={devices=[2,1]<=[2]}
+  %indices = s32[4,2] concatenate(%batch_iota, %col_indices), dimensions={1},
+      sharding={devices=[2,1]<=[2]}
+  %updates = f32[4] parameter(2), sharding={devices=[2]<=[2]}
+  ROOT %scatter = f32[4,16] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      sharding={replicated}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PartitionComputation(kHloString, /*num_devices=*/2, options));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto masked_operand =
+      op::Select(op::Broadcast(op::Convert(op::PartitionId())),
+                 op::Broadcast(op::Constant()), op::Parameter(0));
+  EXPECT_THAT(
+      root,
+      AllOf(op::AllReduce(op::Scatter(masked_operand, _, op::Parameter(2))),
+            op::Shape("f32[4,16]")));
+}
+
 TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -21930,6 +22018,66 @@ ENTRY entry {
               AllOf(op::Copy(op::AllGather(op::Copy(
                         AllOf(op::Parameter(0), op::Shape("f32[4,2]"))))),
                     op::Shape("f32[4,4]")));
+}
+
+TEST_P(SpmdPartitioningTest, RngExpandedReplicatedConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[50,100] parameter(0), sharding={replicated}
+  %mu = f32[] constant(0)
+  %sigma = f32[] constant(1)
+  %rng = f32[50,100] rng(f32[] %mu, f32[] %sigma), distribution=rng_uniform
+  ROOT %add = f32[50,100] add(%rng, %p0), sharding={replicated}
+})";
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
+  config.set_use_spmd_partitioning(true);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  HloPassPipeline pass("partitioning");
+  pass.AddPass<RngExpander>();
+  pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+  pass.AddPass<SpmdPartitioner>(/*num_partitions=*/2, /*num_replicas=*/1,
+                                SpmdPartitionerOptions{});
+  pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false);
+  ASSERT_OK(pass.Run(module.get()).status());
+  for (const HloComputation* computation : module->computations()) {
+    EXPECT_EQ(NumOfInstructions(computation, HloOpcode::kAllReduce), 0);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, RngExpandedPartitionedConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[50,100] parameter(0), sharding={replicated}
+  %mu = f32[] constant(0)
+  %sigma = f32[] constant(1)
+  %rng = f32[50,100] rng(f32[] %mu, f32[] %sigma), distribution=rng_uniform
+  ROOT %add = f32[50,100] add(%rng, %p0), sharding={devices=[2,1]0,1}
+})";
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/2);
+  config.set_use_spmd_partitioning(true);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  HloPassPipeline pass("partitioning");
+  pass.AddPass<RngExpander>();
+  pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+  pass.AddPass<SpmdPartitioner>(/*num_partitions=*/2, /*num_replicas=*/1,
+                                SpmdPartitionerOptions{});
+  pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                            /*allow_mixed_precision=*/false);
+  ASSERT_OK(pass.Run(module.get()).status());
+  for (const HloComputation* computation : module->computations()) {
+    EXPECT_EQ(NumOfInstructions(computation, HloOpcode::kAllReduce), 0);
+  }
 }
 
 TEST_P(SpmdPartitioningTest, RngGetAndUpdateState) {

@@ -35,6 +35,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LibraryOptionsContext.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -84,8 +85,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     return nullptr;
   }
 
-  llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
+  llvm::TargetOptions target_options = llvm::codegen::getTargetOptions(
+      llvm::cl::LibraryOptionsContext(), llvm::Triple());
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
       triple, "generic", "", target_options, llvm::Reloc::Model::PIC_));
 }

@@ -227,6 +227,12 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
+  // Whether a D2D copy waits on the host for events from other devices instead
+  // of making its stream wait on them.
+  bool host_wait_cross_device_copies() const {
+    return host_wait_cross_device_copies_;
+  }
+
   absl::Status AllocateAndRecordEvent(
       BufferSequencingEventRef event, se::Stream* stream,
       absl::string_view tag = "AllocateAndRecordEvent",
@@ -310,6 +316,7 @@ class LocalDeviceState {
   std::unique_ptr<WorkerThread> cleanup_thread_;
 
   bool allow_delete_before_fulfill_ = true;
+  bool host_wait_cross_device_copies_ = false;
 
   std::atomic<size_t> next_compute_stream_sync_point_{0};
   size_t base_compute_event_sequence_id_ ABSL_GUARDED_BY(mu_) = 0;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -2268,6 +2269,182 @@ TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridUint8WeightsWithZeroPoint) {
       GetRegistration(), /*units=*/3, /*batches=*/1, /*input_size=*/4,
       /*weights=*/
       {TensorType_UINT8, {3, 4}, 0, 0, /*scale=*/0.1f, /*zero_point=*/3});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A hybrid fully connected op (float input and output) with blockwise quantized
+// weights. The weights are constant if `packed_weights` isn't empty.
+class BlockwiseFullyConnectedOpModel : public SingleOpModel {
+ public:
+  BlockwiseFullyConnectedOpModel(
+      TfLiteRegistration* registration, int units, int batches, int input_size,
+      int block_size, TensorType weights_type, const std::vector<float>& scales,
+      const std::vector<int64_t>& zero_points,
+      const std::vector<uint8_t>& packed_weights,
+      ActivationFunctionType activation = ActivationFunctionType_NONE) {
+    input_ = AddInput({TensorType_FLOAT32, {batches, input_size}});
+    TensorData weights(weights_type, {units, input_size});
+    weights.per_channel_quantization_scales = scales;
+    weights.per_channel_quantization_offsets = zero_points;
+    weights.per_block_quantization = block_size;
+    if (packed_weights.empty()) {
+      weights_ = AddInput(weights);
+    } else {
+      weights_ =
+          AddConstInput(weights, packed_weights.data(), packed_weights.size());
+    }
+    bias_ = AddInput({TensorType_FLOAT32, {units}});
+    output_ = AddOutput({TensorType_FLOAT32});
+    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
+                 BuiltinOptions_FullyConnectedOptions,
+                 CreateFullyConnectedOptions(builder_, activation).Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(input_, data);
+  }
+  void SetBias(const std::vector<float>& data) { PopulateTensor(bias_, data); }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ private:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+};
+
+// Packs int4 values two per byte, the first in the low nibble.
+std::vector<uint8_t> PackInt4(const std::vector<int8_t>& values) {
+  std::vector<uint8_t> packed((values.size() + 1) / 2, 0);
+  for (size_t i = 0; i < values.size(); ++i) {
+    const uint8_t nibble = static_cast<uint8_t>(values[i]) & 0x0F;
+    packed[i / 2] |= (i % 2 == 0) ? nibble : static_cast<uint8_t>(nibble << 4);
+  }
+  return packed;
+}
+
+constexpr int kBlockwiseTestUnits = 4;
+constexpr int kBlockwiseTestInputSize = 64;
+constexpr int kBlockwiseTestBlockSize = 32;
+
+// Int4 weights in [-8, 7], one row per output channel.
+std::vector<int8_t> BlockwiseTestWeights() {
+  std::vector<int8_t> weights(kBlockwiseTestUnits * kBlockwiseTestInputSize);
+  for (size_t i = 0; i < weights.size(); ++i) {
+    weights[i] = static_cast<int8_t>((i * 7 + i / 5) % 16) - 8;
+  }
+  return weights;
+}
+
+// One scale per block of 32 weights, exactly representable in fp16.
+const std::vector<float>& BlockwiseTestScales() {
+  static const auto* const scales = new std::vector<float>(
+      {0.5f, 0.25f, 0.125f, 1.0f, 0.75f, 0.5f, 0.25f, 0.375f});
+  return *scales;
+}
+
+// The float reference of the fused activations.
+float ApplyReferenceActivation(ActivationFunctionType activation, float x) {
+  switch (activation) {
+    case ActivationFunctionType_NONE:
+      return x;
+    case ActivationFunctionType_RELU:
+      return std::max(x, 0.0f);
+    case ActivationFunctionType_RELU_N1_TO_1:
+      return std::clamp(x, -1.0f, 1.0f);
+    case ActivationFunctionType_RELU6:
+      return std::clamp(x, 0.0f, 6.0f);
+    case ActivationFunctionType_TANH:
+      return std::tanh(x);
+    case ActivationFunctionType_SIGN_BIT:
+      return std::signbit(x);
+  }
+  ADD_FAILURE() << "Unknown activation " << activation;
+  return x;
+}
+
+class BlockwiseFullyConnectedActivationTest
+    : public ::testing::TestWithParam<ActivationFunctionType> {};
+
+// Checks the blockwise kernel against a float reference that dequantizes the
+// weights block by block.
+TEST_P(BlockwiseFullyConnectedActivationTest, MatchesFloatWithZeroZeroPoints) {
+  const ActivationFunctionType activation = GetParam();
+  const std::vector<int8_t> weights = BlockwiseTestWeights();
+  const std::vector<float>& scales = BlockwiseTestScales();
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, scales,
+      /*zero_points=*/std::vector<int64_t>(scales.size(), 0), PackInt4(weights),
+      activation);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input(kBlockwiseTestInputSize);
+  for (int k = 0; k < kBlockwiseTestInputSize; ++k) {
+    input[k] = 0.1f * (k % 9) - 0.3f;
+  }
+  const std::vector<float> bias = {1.0f, -2.0f, 0.5f, 0.0f};
+  m.SetInput(input);
+  m.SetBias(bias);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // The kernel quantizes the input to int8 with a step of at most
+  // max(|x|) / 127.
+  float max_abs_input = 0.0f;
+  for (float x : input) {
+    max_abs_input = std::max(max_abs_input, std::abs(x));
+  }
+  const int blocks_per_row = kBlockwiseTestInputSize / kBlockwiseTestBlockSize;
+  const std::vector<float> output = m.GetOutput();
+  ASSERT_EQ(output.size(), static_cast<size_t>(kBlockwiseTestUnits));
+  for (int n = 0; n < kBlockwiseTestUnits; ++n) {
+    float expected = bias[n];
+    float sum_abs_weights = 0.0f;
+    for (int k = 0; k < kBlockwiseTestInputSize; ++k) {
+      const float scale =
+          scales[n * blocks_per_row + k / kBlockwiseTestBlockSize];
+      const float w = scale * weights[n * kBlockwiseTestInputSize + k];
+      expected += w * input[k];
+      sum_abs_weights += std::abs(w);
+    }
+    EXPECT_NEAR(output[n], ApplyReferenceActivation(activation, expected),
+                sum_abs_weights * max_abs_input / 127.0f + 1e-4f)
+        << "output " << n;
+  }
+}
+
+// The outputs before the activation are about 8.25, 1.1, -6.05 and -4.575, so
+// every activation changes some of them.
+INSTANTIATE_TEST_SUITE_P(
+    BlockwiseFullyConnectedActivationTest,
+    BlockwiseFullyConnectedActivationTest,
+    ::testing::Values(ActivationFunctionType_NONE, ActivationFunctionType_RELU,
+                      ActivationFunctionType_RELU_N1_TO_1,
+                      ActivationFunctionType_RELU6, ActivationFunctionType_TANH,
+                      ActivationFunctionType_SIGN_BIT),
+    [](const ::testing::TestParamInfo<ActivationFunctionType>& info) {
+      return std::string(EnumNameActivationFunctionType(info.param));
+    });
+
+TEST(BlockwiseFullyConnectedOpTest, RejectsNonZeroZeroPoints) {
+  // The blockwise kernel doesn't apply zero points, so it would silently
+  // ignore them.
+  const std::vector<float>& scales = BlockwiseTestScales();
+  std::vector<int64_t> zero_points(scales.size(), 0);
+  zero_points[1] = 3;
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, scales, zero_points, PackInt4(BlockwiseTestWeights()));
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 

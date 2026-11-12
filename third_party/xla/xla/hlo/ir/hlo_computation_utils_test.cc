@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -28,6 +29,12 @@ namespace xla::hlo_computation_utils {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+
+bool HasSpecialDeviceAttr(const HloInstruction* instr) {
+  const auto& map = instr->frontend_attributes().map();
+  auto it = map.find("device");
+  return it != map.end() && it->second == "special";
+}
 
 class HloComputationUtilsTest : public HloHardwareIndependentTestBase {};
 
@@ -188,6 +195,250 @@ TEST_F(HloComputationUtilsTest, CloneScheduledComputationInScheduledModule) {
     // CHECK-NEXT: sum.1
   )"),
               IsOkAndHolds(true));
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsNoSharedCallsReturnsFalse) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    ordinary_callee {
+      ROOT p0 = s32[32] parameter(0)
+    }
+
+    special_callee {
+      p0 = s32[32] parameter(0)
+      ROOT neg = s32[32] negate(p0)
+    }
+
+    ENTRY main {
+      p0 = s32[32] parameter(0)
+      c0 = s32[32] call(p0), to_apply=ordinary_callee
+      c1 = s32[32] call(p0), to_apply=special_callee,
+          frontend_attributes={device="special"}
+      ROOT sum = s32[32] add(c0, c1)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_FALSE(SpecializeComputations(module.get(), HasSpecialDeviceAttr));
+  EXPECT_EQ(module->computation_count(), 3);
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsDirectSharedCallDefaultSuffix) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    // CHECK-LABEL: %foo.clone (
+    // CHECK-NEXT: %foo_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul.1 = s32[32]{0} multiply(%foo_p.1, %foo_p.1)
+
+    // CHECK-LABEL: %foo (
+    // CHECK-NEXT: %foo_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul = s32[32]{0} multiply(%foo_p, %foo_p)
+    foo {
+      foo_p = s32[32] parameter(0)
+      ROOT mul = s32[32] multiply(foo_p, foo_p)
+    }
+
+    // CHECK-LABEL: ENTRY %main (
+    // CHECK-NEXT: %main_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: %special_call = s32[32]{0} call(%main_p), to_apply=%foo.clone
+    // CHECK-NEXT: %ordinary_call = s32[32]{0} call(%main_p), to_apply=%foo{{$}}
+    // CHECK-NEXT: ROOT %sum = s32[32]{0} add(%special_call, %ordinary_call)
+    ENTRY main {
+      main_p = s32[32] parameter(0)
+      special_call = s32[32] call(main_p), to_apply=foo,
+          frontend_attributes={device="special"}
+      ordinary_call = s32[32] call(main_p), to_apply=foo
+      ROOT sum = s32[32] add(special_call, ordinary_call)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(SpecializeComputations(module.get(), HasSpecialDeviceAttr));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsSharedOuterAndNestedCallsCustomSuffix) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    // CHECK-LABEL: %bar.sp (
+    // CHECK-NEXT: %bar_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul.1 = s32[32]{0} multiply(%bar_p.1, %bar_p.1)
+
+    // CHECK-LABEL: %foo.sp (
+    // CHECK-NEXT: %foo_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %bar_call.1 = s32[32]{0} call(%foo_p.1), to_apply=%bar.sp
+
+    // CHECK-LABEL: %bar (
+    // CHECK-NEXT: %bar_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul = s32[32]{0} multiply(%bar_p, %bar_p)
+    bar {
+      bar_p = s32[32] parameter(0)
+      ROOT mul = s32[32] multiply(bar_p, bar_p)
+    }
+
+    // CHECK-LABEL: %foo (
+    // CHECK-NEXT: %foo_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %bar_call = s32[32]{0} call(%foo_p), to_apply=%bar{{$}}
+    foo {
+      foo_p = s32[32] parameter(0)
+      ROOT bar_call = s32[32] call(foo_p), to_apply=bar
+    }
+
+    // CHECK-LABEL: ENTRY %main (
+    // CHECK-NEXT: %main_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: %special_call = s32[32]{0} call(%main_p), to_apply=%foo.sp
+    // CHECK-NEXT: %ordinary_call = s32[32]{0} call(%main_p), to_apply=%foo{{$}}
+    // CHECK-NEXT: ROOT %sum = s32[32]{0} add(%special_call, %ordinary_call)
+    ENTRY main {
+      main_p = s32[32] parameter(0)
+      special_call = s32[32] call(main_p), to_apply=foo,
+          frontend_attributes={device="special"}
+      ordinary_call = s32[32] call(main_p), to_apply=foo
+      ROOT sum = s32[32] add(special_call, ordinary_call)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(SpecializeComputations(module.get(), HasSpecialDeviceAttr,
+                                     /*suffix=*/"sp"));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsMultiLevelSharedCallsMinimallyClones) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    // CHECK-LABEL: %leaf (
+    // CHECK-NEXT: %leaf_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul = s32[32]{0} multiply(%leaf_p, %leaf_p)
+    leaf {
+      leaf_p = s32[32] parameter(0)
+      ROOT mul = s32[32] multiply(leaf_p, leaf_p)
+    }
+
+    // CHECK-LABEL: %mid (
+    // CHECK-NEXT: %mid_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %leaf_call = s32[32]{0} call(%mid_p), to_apply=%leaf{{$}}
+    mid {
+      mid_p = s32[32] parameter(0)
+      ROOT leaf_call = s32[32] call(mid_p), to_apply=leaf
+    }
+
+    // CHECK-LABEL: %leaf.sp (
+    // CHECK-NEXT: %leaf_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul.1 = s32[32]{0} multiply(%leaf_p.1, %leaf_p.1)
+
+    // CHECK-LABEL: %mid.sp (
+    // CHECK-NEXT: %mid_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %leaf_call.1 = s32[32]{0} call(%mid_p.1), to_apply=%leaf.sp
+
+    // CHECK-LABEL: %special_outer (
+    // CHECK-NEXT: %outer_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mid_call = s32[32]{0} call(%outer_p), to_apply=%mid.sp
+    special_outer {
+      outer_p = s32[32] parameter(0)
+      ROOT mid_call = s32[32] call(outer_p), to_apply=mid
+    }
+
+    // CHECK-NOT: %special_outer.sp
+    // CHECK-NOT: %leaf.sp.
+    // CHECK-NOT: %mid.sp.
+
+    // CHECK-LABEL: ENTRY %main (
+    // CHECK-NEXT: %main_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: %ord_0 = s32[32]{0} call(%main_p), to_apply=%mid{{$}}
+    // CHECK-NEXT: %ord_1 = s32[32]{0} call(%ord_0), to_apply=%mid{{$}}
+    // CHECK-NEXT: %sp_0 = s32[32]{0} call(%ord_1), to_apply=%mid.sp
+    // CHECK-NEXT: %sp_1 = s32[32]{0} call(%ord_1), to_apply=%special_outer
+    // CHECK-NEXT: ROOT %sum = s32[32]{0} add(%sp_0, %sp_1)
+    ENTRY main {
+      main_p = s32[32] parameter(0)
+      ord_0 = s32[32] call(main_p), to_apply=mid
+      ord_1 = s32[32] call(ord_0), to_apply=mid
+      sp_0 = s32[32] call(ord_1), to_apply=mid,
+          frontend_attributes={device="special"}
+      sp_1 = s32[32] call(ord_1), to_apply=special_outer,
+          frontend_attributes={device="special"}
+      ROOT sum = s32[32] add(sp_0, sp_1)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(SpecializeComputations(module.get(), HasSpecialDeviceAttr,
+                                     /*suffix=*/"sp"));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsSpecialCallInsideOrdinaryFunction) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    // CHECK-LABEL: %shared_leaf.clone (
+    // CHECK-NEXT: %leaf_p.1 = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul.1 = s32[32]{0} multiply(%leaf_p.1, %leaf_p.1)
+
+    // CHECK-LABEL: %ordinary_wrapper (
+    // CHECK-NEXT: %wrap_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %special_call = s32[32]{0} call(%wrap_p), to_apply=%shared_leaf.clone
+
+    // CHECK-LABEL: %shared_leaf (
+    // CHECK-NEXT: %leaf_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: ROOT %mul = s32[32]{0} multiply(%leaf_p, %leaf_p)
+    shared_leaf {
+      leaf_p = s32[32] parameter(0)
+      ROOT mul = s32[32] multiply(leaf_p, leaf_p)
+    }
+
+    ordinary_wrapper {
+      wrap_p = s32[32] parameter(0)
+      ROOT special_call = s32[32] call(wrap_p), to_apply=shared_leaf,
+          frontend_attributes={device="special"}
+    }
+
+    // CHECK-LABEL: ENTRY %main (
+    // CHECK-NEXT: %main_p = s32[32]{0} parameter(0)
+    // CHECK-NEXT: %a = s32[32]{0} call(%main_p), to_apply=%ordinary_wrapper{{$}}
+    // CHECK-NEXT: %b = s32[32]{0} call(%main_p), to_apply=%shared_leaf{{$}}
+    // CHECK-NEXT: ROOT %sum = s32[32]{0} add(%a, %b)
+    ENTRY main {
+      main_p = s32[32] parameter(0)
+      a = s32[32] call(main_p), to_apply=ordinary_wrapper
+      b = s32[32] call(main_p), to_apply=shared_leaf
+      ROOT sum = s32[32] add(a, b)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(SpecializeComputations(module.get(), HasSpecialDeviceAttr));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloComputationUtilsTest,
+       SpecializeComputationsIgnoresUnreachableComputation) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule test
+
+    shared_leaf {
+      ROOT p0 = s32[32] parameter(0)
+    }
+
+    dead_caller {
+      p0 = s32[32] parameter(0)
+      ROOT dead_special = s32[32] call(p0), to_apply=shared_leaf,
+          frontend_attributes={device="special"}
+    }
+
+    ENTRY main {
+      p0 = s32[32] parameter(0)
+      ROOT live_ordinary = s32[32] call(p0), to_apply=shared_leaf
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_FALSE(SpecializeComputations(module.get(), HasSpecialDeviceAttr));
+  EXPECT_EQ(module->computation_count(), 3);
 }
 
 }  // namespace

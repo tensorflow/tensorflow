@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/float8.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -2023,6 +2024,59 @@ TEST(Tensor, TensorDataCordKeepsBufferAlive) {
   EXPECT_EQ(std::string(cord), expected);
 }
 
+TEST(Tensor, AsProtoFieldArenaAndReuse) {
+  protobuf::Arena arena;
+  auto* arena_proto = protobuf::Arena::Create<TensorProto>(&arena);
+  ASSERT_EQ(arena_proto->GetArena(), &arena);
+
+  Tensor f =
+      MkTensor<float>(DT_FLOAT, TensorShape({4}), {1.5f, -2.5f, 0.0f, 4.25f});
+  ASSERT_TRUE(f.AsProtoField(arena_proto));
+  EXPECT_EQ(arena_proto->float_val_size(), 4);
+  Tensor decoded;
+  ASSERT_TRUE(decoded.FromProto(*arena_proto));
+  test::ExpectEqual(f, decoded);
+
+  arena_proto->add_int_val(99);
+  arena_proto->add_int_val(98);
+  arena_proto->add_int_val(97);
+  Tensor i32 = MkTensor<int32_t>(DT_INT32, TensorShape({2}), {10, -20});
+  ASSERT_TRUE(i32.AsProtoField(arena_proto));
+  EXPECT_EQ(arena_proto->float_val_size(), 0);
+  EXPECT_EQ(arena_proto->int_val_size(), 2);
+  ASSERT_TRUE(decoded.FromProto(*arena_proto));
+  test::ExpectEqual(i32, decoded);
+
+  Tensor s = MkTensor<tstring>(
+      DT_STRING, TensorShape({3}),
+      {"alpha", "", "long_string_exceeding_inline_sso_capacity_0123456789"});
+  ASSERT_TRUE(s.AsProtoField(arena_proto));
+  ASSERT_TRUE(decoded.FromProto(*arena_proto));
+  test::ExpectEqual(s, decoded);
+
+  TensorProto reused;
+  for (int i = 0; i < 5; ++i) {
+    reused.add_string_val("stale");
+  }
+  ASSERT_TRUE(s.AsProtoField(&reused));
+  EXPECT_EQ(reused.string_val_size(), 3);
+  ASSERT_TRUE(decoded.FromProto(reused));
+  test::ExpectEqual(s, decoded);
+
+  Tensor q8 = MkTensor<qint8>(DT_QINT8, TensorShape({3}),
+                              {qint8(-5), qint8(0), qint8(127)});
+  ASSERT_TRUE(q8.AsProtoField(arena_proto));
+  EXPECT_EQ(arena_proto->string_val_size(), 0);
+  EXPECT_EQ(arena_proto->int_val_size(), 3);
+  ASSERT_TRUE(decoded.FromProto(*arena_proto));
+  test::ExpectEqual(q8, decoded);
+
+  reused.add_float_val(7.0f);
+  Tensor empty_slice = f.Slice(2, 2);
+  ASSERT_TRUE(empty_slice.AsProtoField(&reused));
+  EXPECT_EQ(reused.float_val_size(), 0);
+}
+
 // Benchmark create and destroy a tensor, with an allocated buffer.
 void BM_CreateAndDestroyWithBuf(::testing::benchmark::State& state) {
   TensorShape shape({10, 20});
@@ -2091,6 +2145,34 @@ void BM_AsProtoField_Bfloat16(::testing::benchmark::State& state) {
   }
 }
 BENCHMARK(BM_AsProtoField_Bfloat16);
+
+void BM_AsProtoField_Float_Arena(::testing::benchmark::State& state) {
+  Tensor t(DT_FLOAT, TensorShape({state.range(0)}));
+  std::fill_n(t.flat<float>().data(), state.range(0), 1.0f);
+  std::vector<char> block(64 << 10);
+  protobuf::Arena arena(block.data(), block.size());
+  for (auto s : state) {
+    auto* proto = protobuf::Arena::Create<TensorProto>(&arena);
+    t.AsProtoField(proto);
+    testing::DoNotOptimize(proto);
+    arena.Reset();
+  }
+}
+BENCHMARK(BM_AsProtoField_Float_Arena)->Arg(64)->Arg(1024)->Arg(8192);
+
+void BM_AsProtoField_String_Arena(::testing::benchmark::State& state) {
+  Tensor t(DT_STRING, TensorShape({state.range(0)}));
+  std::fill_n(t.flat<tstring>().data(), state.range(0), "tensor_value_payload");
+  std::vector<char> block(64 << 10);
+  protobuf::Arena arena(block.data(), block.size());
+  for (auto s : state) {
+    auto* proto = protobuf::Arena::Create<TensorProto>(&arena);
+    t.AsProtoField(proto);
+    testing::DoNotOptimize(proto);
+    arena.Reset();
+  }
+}
+BENCHMARK(BM_AsProtoField_String_Arena)->Arg(16)->Arg(256);
 
 void BM_FromProto(::testing::benchmark::State& state) {
   const int size = state.range(0);

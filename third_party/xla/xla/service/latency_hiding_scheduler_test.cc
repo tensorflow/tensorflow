@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -63,6 +64,9 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 constexpr int kMaxConcurrentAsyncCollectivePermutes = 5;
 
@@ -3245,6 +3249,53 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp3d"));
 }
 
+// The resources used inside an async op (here by an async copy fused into the
+// fusion wrapped by the async op) are accounted for as recursive resources of
+// its start, update and done alike, not only of its start.
+TEST_F(LatencyHidingSchedulerTest,
+       RecursiveResourcesOfAsyncOpAreTheSameAtStartAndDone) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, is_scheduled=true
+
+%fused_copy (p: f32[128]) -> f32[128] {
+  %p = f32[128]{0} parameter(0)
+  ROOT %copy = f32[128]{0} copy(%p)
+}, execution_thread="parallel_thread"
+
+%fused_computation (fp: f32[128]) -> f32[128] {
+  %fp = f32[128]{0} parameter(0)
+  %fused_copy_start = ((f32[128]{0}), f32[128]{0}, u32[]) async-start(%fp), calls=%fused_copy
+  %fused_copy_done = f32[128]{0} async-done(%fused_copy_start)
+  ROOT %negate = f32[128]{0} negate(%fused_copy_done)
+}, execution_thread="parallel_thread"
+
+%async_computation (ap: f32[128]) -> f32[128] {
+  %ap = f32[128]{0} parameter(0)
+  ROOT %fusion = f32[128]{0} fusion(%ap), kind=kCustom, calls=%fused_computation
+}, execution_thread="parallel_thread"
+
+ENTRY %entry (p0: f32[128]) -> f32[128] {
+  %p0 = f32[128]{0} parameter(0)
+  %fusion_start = ((f32[128]{0}), f32[128]{0}, u32[]) async-start(%p0), async_execution_thread="parallel_thread", calls=%async_computation
+  %fusion_update = ((f32[128]{0}), f32[128]{0}, u32[]) async-update(%fusion_start)
+  ROOT %fusion_done = f32[128]{0} async-done(%fusion_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(kHlo));
+  AsyncTracker tracker(GetDefaultSchedConfig());
+  const int64_t copy = ResourceTypeToIndex(ResourceType::kCopy);
+  for (absl::string_view name :
+       {"fusion_start", "fusion_update", "fusion_done"}) {
+    const HloInstruction* instr = FindInstruction(hlo_module.get(), name);
+    EXPECT_THAT(tracker.GetResourcesFromInstruction(*instr),
+                ::testing::IsEmpty())
+        << name;
+    EXPECT_THAT(tracker.GetNumResourcesPerInstruction(*instr),
+                ::testing::ElementsAre(::testing::Pair(copy, 1)))
+        << name;
+  }
+}
+
 TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
   // Extend AsyncTracker for a fake target with one target-defined resource
   class AsyncTrackerForMyTarget : public AsyncTracker {
@@ -4894,6 +4945,35 @@ TEST_F(LatencyHidingSchedulerTest, ResourceLimitWithinAnnotationGroup) {
   auto agd0 = GetIndex(new_instruction_sequence, "agd0");
   auto agd1 = GetIndex(new_instruction_sequence, "agd1");
   EXPECT_TRUE(agd0 < ags1 || agd1 < ags0);
+}
+
+// Check that the scheduler reports an error, instead of reading past the end
+// of the annotation ready queue, when the resource limit is exhausted while
+// instructions of the annotation group are still waiting to be scheduled.
+TEST_F(LatencyHidingSchedulerTest, AnnotationGroupExhaustsResourceLimit) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[16]{0} parameter(0)
+    after-all = token[] after-all()
+    send0 = (f32[16]{0}, u32[], token[]) send(p0, after-all), channel_id=1
+    send1 = (f32[16]{0}, u32[], token[]) send(p0, after-all), channel_id=2
+    send2 = (f32[16]{0}, u32[], token[]) send(p0, after-all), channel_id=3
+    send-done0 = token[] send-done(send0), channel_id=1, frontend_attributes={_scheduling_group_id="0"}
+    send-done1 = token[] send-done(send1), channel_id=2, frontend_attributes={_scheduling_group_id="0"}
+    send-done2 = token[] send-done(send2), channel_id=3, frontend_attributes={_scheduling_group_id="0"}
+    ROOT tuple = (token[], token[], token[]) tuple(send-done0, send-done1, send-done2)
+  }
+)";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.schedule_send_recvs = true;
+  sched_config.send_recv_overlap_limit = 2;
+  EXPECT_THAT(
+      RunScheduler(hlo_module.get(), sched_config),
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("Couldn't find an annotated node to schedule")));
 }
 
 TEST_F(LatencyHidingSchedulerTest, AnnotatedProducerOpNotReady) {

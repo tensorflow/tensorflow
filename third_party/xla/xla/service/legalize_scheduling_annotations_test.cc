@@ -22,11 +22,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -1589,6 +1592,69 @@ ENTRY %main.1 {
   EXPECT_TRUE(annotation1.has_value());
   ASSERT_OK_AND_ASSIGN(auto annotation2, GetSchedulingAnnotation(add2));
   EXPECT_TRUE(annotation2.has_value());
+}
+
+// A producer and its consumer in the same scheduling group. `$0` is extra
+// frontend attributes of the consumer.
+constexpr absl::string_view kDependentGroupHlo = R"(
+HloModule module
+
+ENTRY %main {
+  %p0 = f32[8,128]{1,0} parameter(0)
+  %producer = f32[8,128]{1,0} add(%p0, %p0), frontend_attributes={_scheduling_group_id="0"}
+  ROOT %consumer = f32[8,128]{1,0} multiply(%producer, %producer), frontend_attributes={_scheduling_group_id="0"$0}
+}
+)";
+
+TEST_F(LegalizeSchedulingAnnotationsTest,
+       NoDataDependencyCheckRejectsDependencyInGroup) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(absl::Substitute(kDependentGroupHlo, "")));
+  EXPECT_FALSE(CheckNoDataDependencyInSchedulingAnnotations()
+                   .Run(hlo_module.get())
+                   .ok());
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest,
+       NoDataDependencyCheckAllowsDependencyInDeepPipelineGroup) {
+  // The mode is set on one member only; it applies to the whole group.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(absl::Substitute(
+          kDependentGroupHlo,
+          absl::StrCat(",", kXlaSchedulingGroupDeepPipelineAttr,
+                       "=\"true\""))));
+  EXPECT_THAT(
+      CheckNoDataDependencyInSchedulingAnnotations().Run(hlo_module.get()),
+      IsOkAndHolds(false));
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, GetDeepPipelineSchedulingGroupIds) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY %main {
+  %p0 = f32[8,128]{1,0} parameter(0)
+  %a = f32[8,128]{1,0} add(%p0, %p0), frontend_attributes={_scheduling_group_id="1", _scheduling_group_deep_pipeline="true"}
+  %b = f32[8,128]{1,0} add(%a, %a), frontend_attributes={_scheduling_group_id="1"}
+  %c = f32[8,128]{1,0} add(%b, %b), frontend_attributes={_scheduling_group_id="2"}
+  %d = f32[8,128]{1,0} add(%c, %c), frontend_attributes={_scheduling_group_id="3", _scheduling_group_deep_pipeline="false"}
+  ROOT %e = f32[8,128]{1,0} add(%d, %d), frontend_attributes={_scheduling_group_deep_pipeline="true"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(
+      HasDeepPipelineSchedulingMode(FindInstruction(hlo_module.get(), "a")));
+  EXPECT_FALSE(
+      HasDeepPipelineSchedulingMode(FindInstruction(hlo_module.get(), "b")));
+  EXPECT_FALSE(
+      HasDeepPipelineSchedulingMode(FindInstruction(hlo_module.get(), "d")));
+  ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<AnnotationGroupId> groups,
+                       GetDeepPipelineSchedulingGroupIds(*hlo_module));
+  // Only group 1 has a member in deep pipelining mode; %e has no group.
+  EXPECT_THAT(groups, ::testing::UnorderedElementsAre(1));
 }
 }  // namespace
 }  // namespace xla

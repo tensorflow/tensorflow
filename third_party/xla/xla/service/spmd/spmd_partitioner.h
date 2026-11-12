@@ -82,7 +82,7 @@ struct SpmdPartitionerOptions {
   bool bidirectional_windowed_einsum = false;
 
   // Whether the entry computations' signature could change after partitioning.
-  bool allow_module_signature_change = false;
+  bool allow_module_signature_change = true;
 
   // Whether the entry computations' layout signature could change after
   // partitioning.

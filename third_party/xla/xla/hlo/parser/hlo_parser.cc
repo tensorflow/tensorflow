@@ -5042,6 +5042,12 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
       CHECK(subgroup_types.empty());
       subgroup_types.push_back(OpSharding::REPLICATED);
     }
+    if (subgroup_types.size() > tile_assignment_dimensions.size()) {
+      return Error(
+          loc, absl::StrCat("last_tile_dims has ", subgroup_types.size(),
+                            " entries, but the tile assignment only has ",
+                            tile_assignment_dimensions.size(), " dimensions"));
+    }
     if (!iota_reshape_dims.empty()) {
       CHECK(devices.empty());
       if (Product(tile_assignment_dimensions) != Product(iota_reshape_dims)) {

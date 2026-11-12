@@ -648,6 +648,12 @@ message DebugOptions {
   // this field.
   optional float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
+  // If true, the GPU autotuner flushes the L2 cache before every timed run of
+  // a candidate, so that candidates read their operands from device memory as
+  // they do in production, where large operands such as weights are usually not
+  // cached. Default: true.
+  optional bool xla_gpu_autotune_flush_l2_cache = 570;
+
   // Relative precision for comparing different GEMM solutions
   optional float xla_gpu_autotune_gemm_rtol = 316;
 
@@ -665,6 +671,10 @@ message DebugOptions {
   // This might be useful if underlying math library returns too many GEMM
   // solutions.
   optional int64 xla_gpu_autotune_max_solutions = 288 [deprecated = true];
+
+  // Number of timed runs of each candidate during GPU autotuning. The mean run
+  // time is used to rank the candidates. Default: 3.
+  optional int32 xla_gpu_autotune_num_timed_runs = 571;
 
   // Maximum number of BLAS library algorithms to evaluate during autotuning.
   // Setting this to a lower value (e.g., 16 or 32) speeds up compilation at the
@@ -2017,7 +2027,15 @@ message DebugOptions {
   // (color 0).
   optional bool xla_gpu_temp_buffer_use_collective_color = 568;
 
-  // Next id: 569
+  // Weight applied to the (hbm_bw / fabric_bw) ratio when the
+  // ragged-all-to-all device kernel scores remote-peer copies for per-CTA
+  // work assignment (0.0-1.0). Higher value => remote writes score higher
+  // cost => more CTAs are routed to remote work. Default 0.22 was fitted
+  // empirically on GB200; values outside (0, 1] fall back to the default.
+  optional float xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight =
+      569;
+
+  // Next id: 572
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

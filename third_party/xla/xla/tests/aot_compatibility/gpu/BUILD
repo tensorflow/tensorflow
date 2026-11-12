@@ -355,6 +355,71 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "dynamic_slice_fusion_aot_test",
+    srcs = ["dynamic_slice_fusion_aot_test.cc"],
+    backends = _GPU_TARGETS,
+    data = glob(["executables/dynamic_slice_fusion_aot_test_*/**/*.pbtxt"]),
+    disabled_backends = _DISABLED_GPU_TARGETS,
+    tags = ["no_oss"],
+    deps = [
+        ":gpu_aot_test_params",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tests/aot_compatibility:test_lib",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "host_offload_copy_aot_test",
+    srcs = ["host_offload_copy_aot_test.cc"],
+    backends = _GPU_TARGETS,
+    data = glob(["executables/host_offload_copy_aot_test_*/**/*.pbtxt"]),
+    disabled_backends = _DISABLED_GPU_TARGETS,
+    tags = ["no_oss"],
+    deps = [
+        ":gpu_aot_test_params",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tests/aot_compatibility:test_lib",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "norm_aot_test",
+    srcs = ["norm_aot_test.cc"],
+    # CudnnNormRewriter only emits the cuDNN norm custom call on Ampere and
+    # Hopper, so no Blackwell executable can contain a NormThunk.
+    backends = ["h100"],
+    data = glob(["executables/norm_aot_test_*/**/*.pbtxt"]),
+    tags = ["no_oss"],
+    deps = [
+        ":gpu_aot_test_params",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tests/aot_compatibility:test_lib",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 # LEGACY: the original collective target, kept only for its v1-v3 goldens from
 # older compilers. Do not add test cases to it; it is scheduled for deletion
 # (see the TODO in collective_ops_aot_test.cc).

@@ -59,10 +59,12 @@ cc_library(
     deps = [
         ":device_event",
         ":pjrt_client",
+        ":pjrt_device_dimensions",
         ":pjrt_executable",
         ":raw_buffer",
         "//xla:executable_run_options",
         "//xla:future",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/runtime:device_id",
@@ -159,9 +161,10 @@ xla_cc_test(
     deps = [
         ":semaphore",
         "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -565,6 +568,7 @@ cc_library(
     srcs = ["pjrt_client_test.cc"],
     hdrs = ["pjrt_client_test.h"],
     deps = [
+        ":async_work_runner",
         ":common_pjrt_client",
         ":pjrt_client",
         ":pjrt_compiler",
@@ -579,6 +583,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/tests:literal_test_util",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/core:status_test_util",
@@ -750,9 +755,16 @@ cc_library(
     name = "pjrt_build_stamp_writer",
     srcs = ["pjrt_build_stamp_writer.cc"],
     hdrs = ["pjrt_build_stamp_writer.h"],
-    # Restricted to compiler build stamp factories. Add a package here only if
-    # it registers a build stamp factory.
-    visibility = [":__pkg__"],
+    # Restricted to compiler build stamp factories and the helpers they use. Add
+    # Google-internal packages to `pjrt/google:build_stamp_factories`, which is
+    # not exported, rather than here.
+    visibility = internal_visibility(
+        [
+            ":__pkg__",
+            "//xla/pjrt/google:build_stamp_factories",
+        ],
+        or_else = [":__pkg__"],
+    ),
     deps = [
         ":pjrt_build_stamp",
         ":pjrt_common",
@@ -1538,6 +1550,7 @@ cc_library(
         ":staging_buffer",
         "//xla/runtime:device_id",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:chunked_queue",
         "@com_google_absl//absl/container:inlined_vector",
@@ -1546,6 +1559,8 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:context",
@@ -1576,6 +1591,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1588,10 +1604,17 @@ xla_cc_test(
     name = "raw_buffer_test",
     srcs = ["raw_buffer_test.cc"],
     deps = [
+        ":device_event",
         ":raw_buffer",
+        "//xla:future",
+        "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_raw_buffer_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -1795,6 +1818,7 @@ cc_library(
     deps = [
         "//xla/runtime:device_id",
         "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

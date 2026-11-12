@@ -789,6 +789,39 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest,
   ASSERT_FALSE(indices_spec.has_value());
 }
 
+TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, TableIndexOutOfBounds) {
+  // Partition ids 2 and 3 index past the end of the two-element table.
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param = f32[1,1,1024] parameter(0)
+      ag = f32[4,1,1024] all-gather(param), replica_groups={{0,1,2,3}},
+        dimensions={0}
+      const = s32[2]{0} constant({0, 2})
+      pid = u32[] partition-id()
+      ds_offset = s32[] dynamic-slice(const, pid), dynamic_slice_sizes={1}
+      ROOT ds = f32[1,1,1024] dynamic-slice(ag, ds_offset, s32[] constant(0),
+        s32[] constant(0)), dynamic_slice_sizes={1,1,1024}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  ASSERT_NE(ag, nullptr);
+  HloInstruction* ds_offset =
+      module->entry_computation()->GetInstructionWithName("ds_offset");
+  ASSERT_NE(ds_offset, nullptr);
+  auto map_id = [](const HloInstruction* hlo, int64_t id) {
+    return (hlo->opcode() == HloOpcode::kPartitionId) ? id : -1;
+  };
+  std::optional<PartitionOffsetSpec> indices_spec =
+      GetIndicesSpecForDynamicSliceWithMultiply(
+          Cast<HloAllGatherInstruction>(ag), ds_offset, map_id,
+          /*split_dim_size=*/1);
+  EXPECT_FALSE(indices_spec.has_value());
+}
+
 class MatchPermutedSliceAndPartitionOffsetTest
     : public HloHardwareIndependentTestBase {};
 
@@ -1035,6 +1068,130 @@ TEST_F(MatchWithDynamicSliceClampReshapeTest, ClampWithNonConstantBounds) {
       HloPredicateIsOp<HloOpcode::kReplicaId>,
       /*is_constrain_layout=*/false, /*use_global_device_ids=*/false,
       /*is_cross_module=*/false, /*allow_intervening_bitcast=*/false,
+      /*allow_multiple_users=*/false);
+
+  EXPECT_FALSE(spec.has_value());
+}
+
+using MatchWithDynamicSliceTableLookupTest = HloHardwareIndependentTestBase;
+
+TEST_F(MatchWithDynamicSliceTableLookupTest, OuterTableIndexOutOfBounds) {
+  // For replica 1 the inner table yields 2, which is past the end of the
+  // two-element outer table.
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f32[16,10] parameter(0)
+      ag = f32[32,10] all-gather(param), dimensions={0},
+        replica_groups={{0,1}}
+      rid = u32[] replica-id()
+      inner_table = s32[2] constant({0, 2})
+      inner_lookup = s32[1] dynamic-slice(inner_table, rid),
+        dynamic_slice_sizes={1}
+      inner_index = s32[] reshape(inner_lookup)
+      outer_table = s32[2] constant({0, 16})
+      outer_lookup = s32[1] dynamic-slice(outer_table, inner_index),
+        dynamic_slice_sizes={1}
+      offset = s32[] reshape(outer_lookup)
+      zero = s32[] constant(0)
+      ROOT ds = f32[16,10] dynamic-slice(ag, offset, zero),
+        dynamic_slice_sizes={16,10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  const HloChannelInstruction* ag_instr = Cast<HloChannelInstruction>(ag);
+
+  std::optional<ReduceScatterSpec> spec = MatchWithDynamicSlice(
+      ag_instr, /*num_partitions=*/1, /*num_replicas=*/2,
+      /*allow_multiple_split_dims=*/false,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/0,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>,
+      /*is_constrain_layout=*/false, /*use_global_device_ids=*/false,
+      /*is_cross_module=*/false, /*allow_intervening_bitcast=*/false,
+      /*allow_multiple_users=*/false);
+
+  EXPECT_FALSE(spec.has_value());
+}
+
+TEST_F(MatchWithDynamicSliceTableLookupTest, InnerTableIndexOutOfBounds) {
+  // Replica 1 indexes past the end of the one-element inner table.
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f32[16,10] parameter(0)
+      ag = f32[32,10] all-gather(param), dimensions={0},
+        replica_groups={{0,1}}
+      rid = u32[] replica-id()
+      inner_table = s32[1] constant({0})
+      inner_lookup = s32[1] dynamic-slice(inner_table, rid),
+        dynamic_slice_sizes={1}
+      inner_index = s32[] reshape(inner_lookup)
+      outer_table = s32[2] constant({0, 16})
+      outer_lookup = s32[1] dynamic-slice(outer_table, inner_index),
+        dynamic_slice_sizes={1}
+      offset = s32[] reshape(outer_lookup)
+      zero = s32[] constant(0)
+      ROOT ds = f32[16,10] dynamic-slice(ag, offset, zero),
+        dynamic_slice_sizes={16,10}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  const HloChannelInstruction* ag_instr = Cast<HloChannelInstruction>(ag);
+
+  std::optional<ReduceScatterSpec> spec = MatchWithDynamicSlice(
+      ag_instr, /*num_partitions=*/1, /*num_replicas=*/2,
+      /*allow_multiple_split_dims=*/false,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/0,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>,
+      /*is_constrain_layout=*/false, /*use_global_device_ids=*/false,
+      /*is_cross_module=*/false, /*allow_intervening_bitcast=*/false,
+      /*allow_multiple_users=*/false);
+
+  EXPECT_FALSE(spec.has_value());
+}
+
+TEST_F(MatchWithDynamicSliceTableLookupTest,
+       MultipleSplitDimsTableIndexOutOfBounds) {
+  // Partition ids 1, 2 and 3 index past the end of the one-element table.
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      param = f32[2,8] parameter(0)
+      ag = f32[8,8] all-gather(param), dimensions={0},
+        replica_groups={{0,1,2,3}}, channel_id=1, use_global_device_ids=true
+      pid = u32[] partition-id()
+      table = s32[1] constant({0})
+      lookup = s32[1] dynamic-slice(table, pid), dynamic_slice_sizes={1}
+      offset = s32[] reshape(lookup)
+      ROOT ds = f32[4,4] dynamic-slice(ag, offset, offset),
+        dynamic_slice_sizes={4,4}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  const HloChannelInstruction* ag_instr = Cast<HloChannelInstruction>(ag);
+
+  std::optional<ReduceScatterSpec> spec = MatchWithDynamicSlice(
+      ag_instr, /*num_partitions=*/4, /*num_replicas=*/1,
+      /*allow_multiple_split_dims=*/true,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/0,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>,
+      /*is_constrain_layout=*/false, /*use_global_device_ids=*/true,
+      /*is_cross_module=*/true, /*allow_intervening_bitcast=*/false,
       /*allow_multiple_users=*/false);
 
   EXPECT_FALSE(spec.has_value());

@@ -190,6 +190,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<ThunkSequence> EmitPadToStaticThunk(
+      const HloInstruction* instruction);
+
   absl::StatusOr<ThunkSequence> EmitSliceToDynamicThunk(
       const HloInstruction* instruction);
 

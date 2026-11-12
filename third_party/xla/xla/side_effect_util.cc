@@ -88,6 +88,9 @@ const char kXlaSchedulingGroupIdAttr[] = "_scheduling_group_id";
 
 const char kXlaNoOpSchedulingGroup[] = "noop";
 
+const char kXlaSchedulingGroupDeepPipelineAttr[] =
+    "_scheduling_group_deep_pipeline";
+
 const char kMustFuseAttr[] = "MUST_FUSE";
 
 const char kFuseLimitAttr[] = "FUSE_LIMIT";

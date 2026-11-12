@@ -156,10 +156,8 @@ cc_library(
         ":dot_op_emitter",
         ":executable_proto_cc",
         ":export_hlo",
-        ":fusion_wrapper",
         ":metrics",
         ":parallel_task_assignment",
-        ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
         "//xla:comparison_util",
         "//xla:literal_pool",
@@ -186,7 +184,9 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk_proto_cc_impl",  # buildcleaner: keep (registers thunk serializers used by Export)
         "//xla/backends/cpu/runtime:thunk_proto_serdes",  # buildcleaner: keep (registers thunk serializers used by Export)
         "//xla/backends/cpu/transforms:embedded_while_loop_unroller",
+        "//xla/backends/cpu/transforms:fusion_wrapper",
         "//xla/backends/cpu/transforms:library_rewriter",
+        "//xla/backends/cpu/transforms:small_while_loop_hoisting_pass",
         "//xla/backends/cpu/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
@@ -297,7 +297,7 @@ cc_library(
         "//xla/service:xla_transform",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
@@ -584,11 +584,12 @@ cc_library(
         "//xla/backends/cpu/codegen:fusion_emitter",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
-        "//xla/backends/cpu/codegen:slice_to_dynamic_kernel_emitter",
         "//xla/backends/cpu/codegen:symbol_name_util",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen:thunk_sequence_kernel_emitter",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
+        "//xla/backends/cpu/codegen/emitters:pad_to_static_kernel_emitter",
+        "//xla/backends/cpu/codegen/emitters:slice_to_dynamic_kernel_emitter",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
         "//xla/backends/cpu/runtime:all_to_all_thunk",
@@ -790,38 +791,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "fusion_wrapper",
-    srcs = ["fusion_wrapper.cc"],
-    hdrs = ["fusion_wrapper.h"],
-    deps = [
-        ":ir_emission_utils",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/backends/cpu/codegen/tiled:tiled_fusion_emitter",
-        "//xla/codegen/emitters:fusion_wrapper_base",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "fusion_wrapper_test",
-    srcs = ["fusion_wrapper_test.cc"],
-    deps = [
-        ":fusion_wrapper",
-        ":target_machine_features_stub",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1354,33 +1323,6 @@ cc_library(
 )
 
 cc_library(
-    name = "small_while_loop_hoisting_pass",
-    srcs = ["small_while_loop_hoisting_pass.cc"],
-    hdrs = ["small_while_loop_hoisting_pass.h"],
-    deps = [
-        ":cpu_executable",
-        ":dot_op_emitter",
-        ":ir_emission_utils",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:hlo_cost_analysis",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-cc_library(
     name = "parallel_fusion_emitter",
     srcs = ["parallel_fusion_emitter.cc"],
     hdrs = ["parallel_fusion_emitter.h"],
@@ -1455,27 +1397,6 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "small_while_loop_hoisting_pass_test",
-    srcs = ["small_while_loop_hoisting_pass_test.cc"],
-    deps = [
-        ":backend_config_proto_cc",
-        ":dot_op_emitter",
-        ":small_while_loop_hoisting_pass",
-        ":target_machine_features_stub",
-        "//xla:xla_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/service:hlo_module_config",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

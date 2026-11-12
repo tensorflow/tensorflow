@@ -105,9 +105,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #if GOOGLE_CUDA
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #elif TENSORFLOW_USE_ROCM
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"
 #endif  // GOOGLE_CUDA
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
@@ -3698,6 +3700,37 @@ TEST(ScopedXlaFlagsTest, RestoresUnsetAndEmptyFlags) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, VmmAllocatorIsRejectedInNonOpenSource) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "The VMM allocator is in an experimental mode.";
+  }
+  ScopedXlaFlags flags("--xla_gpu_command_buffer_update_mode=ALWAYS_UPDATE");
+
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+  EXPECT_THAT(GetStreamExecutorGpuClient(options),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("The VMM allocator is in an experimental "
+                                 "mode.")));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CommandBufferUpdateModeOverrideToVmmIsRejectedInNonOpenSource) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "The VMM allocator is in an experimental mode.";
+  }
+  ScopedXlaFlags flags("--xla_gpu_command_buffer_update_mode=SKIP_TEMP");
+
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allowed_devices = {0};
+  EXPECT_THAT(GetStreamExecutorGpuClient(options),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("The VMM allocator is in an experimental "
+                                 "mode.")));
+}
+
 // Choose a representable fraction whose byte conversion does not undershoot
 // the requested cap. This avoids losing a granule to division/multiplication
 // round-off while leaving the allocator's strict downward rounding unchanged.
@@ -4030,6 +4063,11 @@ class VmmTest : public ::testing::Test {
     }
 #endif
   }
+
+ private:
+  // The VMM allocator is disabled outside of open source builds; allow it so
+  // these tests keep covering it there.
+  ScopedAllowVmmAllocatorForTesting allow_vmm_allocator_;
 };
 
 TEST_F(VmmTest, VmmAllocatorCanBeSet) {

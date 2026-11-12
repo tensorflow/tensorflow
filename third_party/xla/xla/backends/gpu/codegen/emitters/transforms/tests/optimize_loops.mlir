@@ -14,6 +14,7 @@
 // ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
 // RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops="max_unroll_factor=16" | FileCheck %s --check-prefix=CHECK-MAX16
+// RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops="only_inner_loops=true" | FileCheck %s --check-prefix=CHECK-INNER
 
 #map = #xla.indexing_map<"(d0) -> (d0 floordiv 8), domain: d0 in [0, 31]">
 #map1 = #xla.indexing_map<"(d0) -> (d0 mod 8), domain: d0 in [0, 31]">
@@ -78,6 +79,10 @@ module {
 
 // CHECK-LABEL: @fully_unroll
 // CHECK-NOT: scf.for
+// CHECK-INNER-LABEL: @fully_unroll
+// CHECK-INNER: scf.for
+// CHECK-INNER-NOT: scf.for
+// CHECK-INNER: return
 
 // -----
 
@@ -99,6 +104,9 @@ module {
 // CHECK-LABEL: @unroll_by_factor
 // CHECK: %[[C8:.*]] = arith.constant 8 : index
 // CHECK: scf.for {{.*}} step %[[C8]]
+// CHECK-INNER-LABEL: @unroll_by_factor
+// CHECK-INNER: %[[C1_INNER:.*]] = arith.constant 1 : index
+// CHECK-INNER: scf.for {{.*}} step %[[C1_INNER]]
 
 // -----
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"

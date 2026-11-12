@@ -20,14 +20,12 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -38,17 +36,15 @@ namespace xla::xtile {
 // fusion: The fusion instruction to emit.
 // tiled_computation: The tiled computation to emit.
 // mlir_context: The MLIR context to use.
-// opaque_args_types: The types of the opaque arguments to the function, e.x.
-// arguments for collectives in XLA:GPU.
+// collective_spec: Collective scratch/signal/rank entry arguments, if any.
 // gpu_cc: When set, used check for supported data types (e.g. FNUZ on ROCm),
 // Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::TiledHloComputation& tiled_computation,
-    mlir::MLIRContext& mlir_context,
-    absl::Span<mlir::Type> opaque_args_types = {},
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {},
-    int num_tiles_per_pid = 1);
+    mlir::MLIRContext& mlir_context, const CollectiveEntrySpec& collective_spec,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc,
+    int num_tiles_per_pid);
 
 }  // namespace xla::xtile
 

@@ -82,12 +82,12 @@ absl::Status OutputSparse(const BatchedMap<T>& per_batch_counts,
   if (is_1d) {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({1}), &dense_shape));
-    dense_shape->flat<int64_t>().data()[0] = num_values;
+    dense_shape->flat<int64_t>()(0) = num_values;
   } else {
     TF_RETURN_IF_ERROR(
         context->allocate_output(2, TensorShape({2}), &dense_shape));
-    dense_shape->flat<int64_t>().data()[0] = num_batches;
-    dense_shape->flat<int64_t>().data()[1] = num_values;
+    dense_shape->flat<int64_t>()(0) = num_batches;
+    dense_shape->flat<int64_t>()(1) = num_values;
   }
 
   return absl::OkStatus();

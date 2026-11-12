@@ -15,12 +15,14 @@
 """Tests for build module."""
 
 from collections.abc import Sequence
+import os
 import subprocess
 from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
 
+from build_tools.ci import bep_annotations
 from build_tools.ci import build
 
 
@@ -90,6 +92,10 @@ class BuildTest(parameterized.TestCase):
       self.assertEqual(
           target_build.options.get("experimental_remote_grpc_log"),
           "bazel_remote_grpc.log",
+      )
+      self.assertEqual(
+          target_build.options.get("build_event_json_file"),
+          "build_events.json",
       )
 
   def test_xla_github_actions_ci_builds_enable_bazel_diff(self) -> None:
@@ -277,6 +283,86 @@ class BuildTest(parameterized.TestCase):
     )
     self.assertIn("--build_tag_filters=-manual", empty_tag_cmd)
     self.assertIn("--test_tag_filters=-manual", empty_tag_cmd)
+
+  @mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False)
+  @mock.patch.object(
+      bep_annotations, "emit_github_annotations", autospec=True, spec_set=True
+  )
+  @mock.patch.object(build, "sh", autospec=True, spec_set=True)
+  def test_execute_build_commands_emits_bep_annotations_on_failure(
+      self, mock_sh: mock.MagicMock, mock_emit: mock.MagicMock
+  ) -> None:
+    mock_sh.return_value = subprocess.CompletedProcess(
+        args=["bazel"], returncode=3
+    )
+    target_build = build.Build.all_builds()[
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS
+    ]
+    with self.assertRaisesRegex(SystemExit, "^3$"):
+      build.execute_build_commands(target_build)
+    mock_emit.assert_called_once_with(
+        ["build_events.json"],
+        label="XLA_LINUX_X86_CPU_GITHUB_ACTIONS",
+        exit_code=3,
+    )
+
+  @mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False)
+  @mock.patch.object(
+      bep_annotations, "emit_github_annotations", autospec=True, spec_set=True
+  )
+  @mock.patch.object(build, "sh", autospec=True, spec_set=True)
+  def test_execute_build_commands_skips_annotations_for_non_bazel_commands(
+      self, mock_sh: mock.MagicMock, mock_emit: mock.MagicMock
+  ) -> None:
+    mock_sh.return_value = subprocess.CompletedProcess(
+        args=["echo"], returncode=1
+    )
+    target_build = build.Build.all_builds()[
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS
+    ]
+    with mock.patch.object(
+        build.Build, "commands", return_value=[["echo", "setup"]]
+    ):
+      with self.assertRaisesRegex(SystemExit, "^1$"):
+        build.execute_build_commands(target_build)
+    mock_emit.assert_not_called()
+
+  @mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False)
+  @mock.patch.object(
+      bep_annotations, "emit_github_annotations", autospec=True, spec_set=True
+  )
+  @mock.patch.object(build, "sh", autospec=True, spec_set=True)
+  def test_execute_build_commands_does_not_emit_annotations_on_success(
+      self, mock_sh: mock.MagicMock, mock_emit: mock.MagicMock
+  ) -> None:
+    mock_sh.return_value = subprocess.CompletedProcess(
+        args=["bazel"], returncode=0
+    )
+    target_build = build.Build.all_builds()[
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS
+    ]
+    build.execute_build_commands(target_build)
+    mock_emit.assert_not_called()
+
+  @mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False)
+  @mock.patch.object(
+      bep_annotations, "emit_github_annotations", autospec=True, spec_set=True
+  )
+  @mock.patch.object(build, "sh", autospec=True, spec_set=True)
+  def test_execute_build_commands_emits_bep_annotations_on_interrupt(
+      self, mock_sh: mock.MagicMock, mock_emit: mock.MagicMock
+  ) -> None:
+    mock_sh.side_effect = KeyboardInterrupt()
+    target_build = build.Build.all_builds()[
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS
+    ]
+    with self.assertRaises(KeyboardInterrupt):
+      build.execute_build_commands(target_build)
+    mock_emit.assert_called_once_with(
+        ["build_events.json"],
+        label="XLA_LINUX_X86_CPU_GITHUB_ACTIONS",
+        exit_code=130,
+    )
 
 
 if __name__ == "__main__":

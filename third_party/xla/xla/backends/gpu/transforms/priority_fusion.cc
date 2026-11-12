@@ -1751,14 +1751,13 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
-    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
     case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
     case HloFusionAnalysis::EmitterFusionKind::kSort:
     case HloFusionAnalysis::EmitterFusionKind::kTensorIr:
-    case HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster:
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kCustom;
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:

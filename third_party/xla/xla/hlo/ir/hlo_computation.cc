@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -2571,6 +2572,25 @@ bool HloComputation::CanExpandIntoSingleInstruction() const {
       instructions(), [root = root_instruction()](const HloInstruction* instr) {
         return root == instr || instr->opcode() == HloOpcode::kParameter;
       });
+}
+
+namespace {
+
+bool IsCollectivesGroupComputation(const HloComputation* computation) {
+  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
+  if (!maybe_caller.has_value()) {
+    return false;
+  }
+  return (*maybe_caller)
+      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
+      .has_value();
+}
+
+}  // namespace
+
+bool HloComputation::IsRestrictedAsyncComputation() const {
+  return IsAsyncComputation() && IsMainThread() &&
+         !IsCollectivesGroupComputation(this);
 }
 
 bool HloComputation::IsFusionComputation() const {

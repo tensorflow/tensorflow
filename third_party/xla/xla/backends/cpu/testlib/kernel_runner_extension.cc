@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
+#include "xla/backends/cpu/transforms/fusion_wrapper.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {

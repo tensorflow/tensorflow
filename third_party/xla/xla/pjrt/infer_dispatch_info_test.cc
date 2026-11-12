@@ -86,15 +86,12 @@ ENTRY main {
   p2 = s32[<=16,32]{1,0} parameter(2)
   d0 = s32[] parameter(3)
   d1 = s32[] parameter(4)
-  tok = token[] after-all()
   bitcast_p2 = s32[<=16,32]{1,0} bitcast(p2)
-  barrier_p2 = s32[<=16,32]{1,0} opt-barrier(bitcast_p2)
-  dep_p2 = s32[<=16,32]{1,0} add-dependency(barrier_p2, tok)
   pad_real_0 = bf16[16,32]{1,0} custom-call(p0, d0, d1),
       custom_call_target="PadRealToStatic"
   pad_std_1 = (f32[16,32]{1,0}, s32[], s32[]) custom-call(p1),
       custom_call_target="PadToStatic"
-  pad_real_2 = s32[16,32]{1,0} custom-call(dep_p2, d0, d1),
+  pad_real_2 = s32[16,32]{1,0} custom-call(bitcast_p2, d0, d1),
       custom_call_target="PadRealToStatic"
   gte_1 = f32[16,32]{1,0} get-tuple-element(pad_std_1), index=0
   ROOT out = (bf16[16,32]{1,0}, f32[16,32]{1,0}, s32[16,32]{1,0})
@@ -117,8 +114,7 @@ ENTRY main {
 
 TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
      ClearsWideParametersReadByPlaneCustomCalls) {
-  // After the TPU X64/complex rewriters, 64-bit and 128-bit `PadRealToStatic`
-  // inputs are read directly by one 32-bit `PadRealToStatic` per plane.
+  // `pad_real_to_static_plane_index` picks one 32-bit plane of a wide input.
   constexpr absl::string_view kHlo = R"hlo(
 HloModule wide_pad_real_to_static
 
@@ -170,76 +166,51 @@ ENTRY main {
 }
 
 TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
-     ClearsThroughAsyncStartAndAsyncUpdateChain) {
-  // Offloaded pads live in async-wrapped computations whose data operands are
-  // bound by `async-update`; dataflow forwards the entry parameter through the
-  // chain and the inner `call`.
+     LeavesPrefixUntouchedWhenPadRealToStaticIsOffloaded) {
   constexpr absl::string_view kHlo = R"hlo(
-HloModule async_offload_pad_real_to_static
+HloModule offloaded_pad_real_to_static
 
-%leaf_lo (leaf_p0: s64[<=16,32], leaf_d0: s32[], leaf_d1: s32[]) -> u32[16,32] {
-  %leaf_p0 = s64[<=16,32]{1,0} parameter(0)
-  %leaf_d0 = s32[] parameter(1)
-  %leaf_d1 = s32[] parameter(2)
-  ROOT %pad = u32[16,32]{1,0} custom-call(%leaf_p0, %leaf_d0, %leaf_d1),
-      custom_call_target="PadRealToStatic",
-      backend_config={"pad_real_to_static_plane_index":0}
+%called_computation.2 (param_0.6: f32[<=256], param_1.8: s32[]) -> f32[256] {
+  %param_0.6 = f32[<=256]{0} parameter(0)
+  %param_1.8 = s32[] parameter(1)
+  ROOT %pad_real_to_static.6 = f32[256]{0} custom-call(%param_0.6, %param_1.8),
+      custom_call_target="PadRealToStatic"
 }, execution_thread="sparsecore"
 
-%leaf_hi (leaf_p0: s64[<=16,32], leaf_d0: s32[], leaf_d1: s32[]) -> u32[16,32] {
-  %leaf_p0 = s64[<=16,32]{1,0} parameter(0)
-  %leaf_d0 = s32[] parameter(1)
-  %leaf_d1 = s32[] parameter(2)
-  ROOT %pad = u32[16,32]{1,0} custom-call(%leaf_p0, %leaf_d0, %leaf_d1),
-      custom_call_target="PadRealToStatic",
-      backend_config={"pad_real_to_static_plane_index":1}
+%async_computation.2 (param_0.7: f32[<=256], param_1.9: s32[]) -> f32[256] {
+  %param_0.7 = f32[<=256]{0} parameter(0)
+  %param_1.9 = s32[] parameter(1)
+  ROOT %call = f32[256]{0} call(%param_0.7, %param_1.9),
+      to_apply=%called_computation.2
 }, execution_thread="sparsecore"
 
-%outer_async_lo (out_p0: s64[<=16,32], out_d0: s32[], out_d1: s32[]) -> u32[16,32] {
-  %out_p0 = s64[<=16,32]{1,0} parameter(0)
-  %out_d0 = s32[] parameter(1)
-  %out_d1 = s32[] parameter(2)
-  ROOT %call = u32[16,32]{1,0} call(%out_p0, %out_d0, %out_d1),
-      to_apply=%leaf_lo
+%called_computation.3 (param_0.8: f32[<=256], param_1.10: s32[]) -> f32[256] {
+  %param_0.8 = f32[<=256]{0} parameter(0)
+  %param_1.10 = s32[] parameter(1)
+  %tuple.2 = (f32[<=256]{0}, s32[]) tuple(%param_0.8, %param_1.10)
+  %call-start = ((f32[<=256]{0}, s32[]), f32[256]{0}, u32[])
+      async-start(%tuple.2#0, %tuple.2#1),
+      async_execution_thread="sparsecore", calls=%async_computation.2
+  ROOT %call-done = f32[256]{0} async-done(%call-start)
 }, execution_thread="sparsecore"
 
-%outer_async_hi (out_p0: s64[<=16,32], out_d0: s32[], out_d1: s32[]) -> u32[16,32] {
-  %out_p0 = s64[<=16,32]{1,0} parameter(0)
-  %out_d0 = s32[] parameter(1)
-  %out_d1 = s32[] parameter(2)
-  ROOT %call = u32[16,32]{1,0} call(%out_p0, %out_d0, %out_d1),
-      to_apply=%leaf_hi
+%async_computation (param_0.5: f32[<=256], param_1.7: s32[]) -> f32[256] {
+  %param_0.5 = f32[<=256]{0} parameter(0)
+  %param_1.7 = s32[] parameter(1)
+  ROOT %custom-call = f32[256]{0} custom-call(%param_0.5, %param_1.7),
+      custom_call_target="SparseCoreCaller",
+      called_computations={%called_computation.3}
 }, execution_thread="sparsecore"
 
-ENTRY %main (p0: s64[<=16,32], p1: s64[<=16,32], d0: s32[], d1: s32[]) -> (u32[16,32], u32[16,32], u32[16,32]) {
-  %p0 = s64[<=16,32]{1,0} parameter(0)
-  %p1 = s64[<=16,32]{1,0} parameter(1)
-  %d0 = s32[] parameter(2)
-  %d1 = s32[] parameter(3)
-  %start_lo = ((), (), u32[]) async-start(),
-      async_execution_thread="sparsecore", calls=%outer_async_lo
-  %update_lo = ((s64[<=16,32]{1,0}, s32[], s32[]), u32[16,32]{1,0}, u32[])
-      async-update(%start_lo, %p0, %d0, %d1),
-      async_execution_thread="sparsecore"
-  %done_lo = u32[16,32]{1,0} async-done(%update_lo),
-      async_execution_thread="sparsecore"
-
-  %start_hi = ((), (), u32[]) async-start(),
-      async_execution_thread="sparsecore", calls=%outer_async_hi
-  %update_hi = ((s64[<=16,32]{1,0}, s32[], s32[]), u32[16,32]{1,0}, u32[])
-      async-update(%start_hi, %p0, %d0, %d1),
-      async_execution_thread="sparsecore"
-  %done_hi = u32[16,32]{1,0} async-done(%update_hi),
-      async_execution_thread="sparsecore"
-
-  %std_lo = u32[<=16,32]{1,0} custom-call(%p1),
-      custom_call_target="X64SplitLow"
-  %pad_std = (u32[16,32]{1,0}, s32[], s32[]) custom-call(%std_lo),
-      custom_call_target="PadToStatic"
-  %std_data = u32[16,32]{1,0} get-tuple-element(%pad_std), index=0
-
-  ROOT %out = (u32[16,32]{1,0}, u32[16,32]{1,0}, u32[16,32]{1,0})
-      tuple(%done_lo, %done_hi, %std_data)
+ENTRY %main (param: f32[<=256]) -> f32[256] {
+  %param = f32[<=256]{0} parameter(0)
+  %size0 = s32[] constant(1)
+  %offload_start = ((), (), (s32[12]{0})) async-start(),
+      async_execution_thread="sparsecore", calls=%async_computation
+  %offload_update = ((f32[<=256]{0}, s32[]), f32[256]{0}, (s32[12]{0}))
+      async-update(%offload_start, %param, %size0),
+      output_to_operand_aliasing={{2,0}: (0, {2,0})}
+  ROOT %offload_done = f32[256]{0} async-done(%offload_update)
 }
 )hlo";
 
@@ -250,16 +221,13 @@ ENTRY %main (p0: s64[<=16,32], p1: s64[<=16,32], d0: s32[], d1: s32[]) -> (u32[1
   ASSERT_OK(ClearPadRealToStaticParameterMetadataPrefixes(
       *module, absl::MakeSpan(param_shapes)));
 
-  EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(), 0);
-  EXPECT_EQ(param_shapes[1].layout().dynamic_shape_metadata_prefix_bytes(),
+  EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
             1024);
 }
 
 TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
      ClearsTupledEntryParameterElement) {
-  // A single 1-level tuple entry parameter is flattened by `GetParameterShapes`
-  // into one non-tuple shape per top-level element; shallow tuple copies and
-  // nested tuple repacking inside the body are transparent to dataflow.
+  // `GetParameterShapes` flattens a single tuple parameter into its elements.
   constexpr absl::string_view kHlo = R"hlo(
 HloModule tupled_entry_pad_real_to_static
 
@@ -373,6 +341,35 @@ ENTRY main {
 }
 
 TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
+     RejectsReturnedParameter) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule returned_pad_real_to_static_parameter
+
+ENTRY main {
+  p0 = f32[<=16,32]{1,0} parameter(0)
+  d0 = s32[] parameter(1)
+  d1 = s32[] parameter(2)
+  pad = f32[16,32]{1,0} custom-call(p0, d0, d1),
+      custom_call_target="PadRealToStatic"
+  ROOT out = (f32[16,32]{1,0}, f32[<=16,32]{1,0}) tuple(pad, p0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  std::vector<Shape> param_shapes =
+      MakeCanonicalDynamicParameterShapes(*module);
+  EXPECT_THAT(
+      ClearPadRealToStaticParameterMetadataPrefixes(
+          *module, absl::MakeSpan(param_shapes)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               AllOf(HasSubstr("Entry parameter 0"),
+                     HasSubstr("returned as a result of computation main"))));
+  EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
+            1024);
+}
+
+TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
      RejectsAliasedPadRealToStaticParameter) {
   constexpr absl::string_view kDirectAliasHlo = R"hlo(
 HloModule aliased_pad_real_to_static,
@@ -471,12 +468,13 @@ ENTRY main {
                        ParseAndReturnUnverifiedModule(kHlo));
   std::vector<Shape> param_shapes =
       MakeCanonicalDynamicParameterShapes(*module);
-  EXPECT_THAT(ClearPadRealToStaticParameterMetadataPrefixes(
-                  *module, absl::MakeSpan(param_shapes)),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       AllOf(HasSubstr("PadRealToStatic"),
-                             HasSubstr("entry computation parameter"),
-                             HasSubstr("copy_p0"))));
+  EXPECT_THAT(
+      ClearPadRealToStaticParameterMetadataPrefixes(
+          *module, absl::MakeSpan(param_shapes)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               AllOf(HasSubstr("PadRealToStatic"),
+                     HasSubstr("entry computation parameter"),
+                     HasSubstr("copy_p0"), HasSubstr("in computation main"))));
   EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
             1024);
 }
@@ -530,19 +528,14 @@ ENTRY main {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        AllOf(HasSubstr("PadRealToStatic"),
                              HasSubstr("entry computation parameter"),
-                             HasSubstr("ag"))));
+                             HasSubstr("all-gather"))));
   EXPECT_EQ(ag_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(), 1024);
 }
 
 TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
-     RejectsCustomCallWithCalledComputationSharingParameter) {
+     RejectsOtherCustomCallReadingParameter) {
   constexpr absl::string_view kHlo = R"hlo(
-HloModule embedded_custom_call_sharing_parameter
-
-%unused_param_comp (sub_p0: s64[<=16,32]) -> s32[] {
-  %sub_p0 = s64[<=16,32]{1,0} parameter(0)
-  ROOT %c = s32[] constant(0)
-}
+HloModule other_custom_call_reading_parameter
 
 ENTRY main {
   p0 = s64[<=16,32]{1,0} parameter(0)
@@ -550,9 +543,7 @@ ENTRY main {
   d1 = s32[] parameter(2)
   pad = u32[16,32]{1,0} custom-call(p0, d0, d1),
       custom_call_target="PadRealToStatic"
-  other_cc = s32[] custom-call(p0),
-      custom_call_target="OtherTarget",
-      called_computations={%unused_param_comp}
+  other_cc = s32[] custom-call(p0), custom_call_target="OtherTarget"
   ROOT out = (u32[16,32]{1,0}, s32[]) tuple(pad, other_cc)
 }
 )hlo";
@@ -568,85 +559,6 @@ ENTRY main {
                AllOf(HasSubstr("Entry parameter 0"), HasSubstr("other_cc"))));
   EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
             1024);
-}
-
-TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
-     RejectsOffloadedSubcomputationReturningParameter) {
-  constexpr absl::string_view kHlo = R"hlo(
-HloModule offloaded_subcomputation_escaping_parameter
-
-%leaf_comp (leaf_p0: s64[<=16,32], leaf_d0: s32[], leaf_d1: s32[]) -> (u32[16,32], s64[<=16,32]) {
-  %leaf_p0 = s64[<=16,32]{1,0} parameter(0)
-  %leaf_d0 = s32[] parameter(1)
-  %leaf_d1 = s32[] parameter(2)
-  %pad = u32[16,32]{1,0} custom-call(%leaf_p0, %leaf_d0, %leaf_d1),
-      custom_call_target="PadRealToStatic"
-  ROOT %escaped = (u32[16,32]{1,0}, s64[<=16,32]{1,0}) tuple(%pad, %leaf_p0)
-}
-
-ENTRY main {
-  p0 = s64[<=16,32]{1,0} parameter(0)
-  d0 = s32[] parameter(1)
-  d1 = s32[] parameter(2)
-  ROOT res = (u32[16,32]{1,0}, s64[<=16,32]{1,0}) call(p0, d0, d1),
-      to_apply=%leaf_comp
-}
-)hlo";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnUnverifiedModule(kHlo));
-  std::vector<Shape> param_shapes =
-      MakeCanonicalDynamicParameterShapes(*module);
-  EXPECT_THAT(
-      ClearPadRealToStaticParameterMetadataPrefixes(
-          *module, absl::MakeSpan(param_shapes)),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("Entry parameter 0"),
-                     HasSubstr("returned as a result of computation"))));
-  EXPECT_EQ(param_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
-            1024);
-}
-
-TEST(ClearPadRealToStaticParameterMetadataPrefixesTest,
-     RejectsAliasedAsyncStartOperand) {
-  constexpr absl::string_view kAliasedAsyncStartHlo = R"hlo(
-HloModule aliased_async_start_pad_real_to_static
-
-%async_pad (ap0: s32[<=16,32], ad0: s32[], ad1: s32[]) -> s32[16,32] {
-  %ap0 = s32[<=16,32]{1,0} parameter(0)
-  %ad0 = s32[] parameter(1)
-  %ad1 = s32[] parameter(2)
-  ROOT %pad = s32[16,32]{1,0} custom-call(%ap0, %ad0, %ad1),
-      custom_call_target="PadRealToStatic"
-}, execution_thread="sparsecore"
-
-ENTRY %main (p0: s32[<=16,32], d0: s32[], d1: s32[]) -> s32[16,32] {
-  %p0 = s32[<=16,32]{1,0} parameter(0)
-  %d0 = s32[] parameter(1)
-  %d1 = s32[] parameter(2)
-  %start = ((s32[<=16,32]{1,0}, s32[], s32[]), s32[16,32]{1,0})
-      async-start(%p0, %d0, %d1),
-      async_execution_thread="sparsecore",
-      output_to_operand_aliasing={{1}: (0, {})},
-      calls=%async_pad
-  ROOT %done = s32[16,32]{1,0} async-done(%start),
-      async_execution_thread="sparsecore"
-}
-)hlo";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> aliased_async_module,
-                       ParseAndReturnUnverifiedModule(kAliasedAsyncStartHlo));
-  std::vector<Shape> aliased_async_shapes =
-      MakeCanonicalDynamicParameterShapes(*aliased_async_module);
-  EXPECT_THAT(
-      ClearPadRealToStaticParameterMetadataPrefixes(
-          *aliased_async_module, absl::MakeSpan(aliased_async_shapes)),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("Entry parameter 0"), HasSubstr("%start"),
-                     HasSubstr("output_to_operand_aliasing"))));
-  EXPECT_EQ(
-      aliased_async_shapes[0].layout().dynamic_shape_metadata_prefix_bytes(),
-      1024);
 }
 
 class FakeDynamicPrefixTopology : public PjRtTopologyDescription {

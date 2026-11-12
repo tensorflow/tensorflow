@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
@@ -51,10 +52,13 @@ using ::tsl::thread::ThreadPool;
 
 TEST(TrackedCpuDeviceBufferTest, Basic) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
-  ASSERT_OK_AND_ASSIGN(auto buffer,
-                       CpuRawBuffer::Allocate(memory_space, expected.size()));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer, CpuRawBuffer::Allocate(memory_space->ToCApiPtr(),
+                                          expected.size(), async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -84,8 +88,12 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
 
 TEST(TrackedCpuDeviceBufferTest, BasicError) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      CpuRawBuffer::Allocate(memory_space->ToCApiPtr(), 64, async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -109,8 +117,12 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 
 TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFastPathSuccess) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      CpuRawBuffer::Allocate(memory_space->ToCApiPtr(), 64, async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
   definition_event.SetStateConcrete();
@@ -130,8 +142,12 @@ TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFastPathSuccess) {
 
 TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFastPathError) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      CpuRawBuffer::Allocate(memory_space->ToCApiPtr(), 64, async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
   definition_event.SetError(absl::InternalError("test fast path error"));
@@ -153,8 +169,12 @@ TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFastPathError) {
 
 TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFallbackPathSuccess) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      CpuRawBuffer::Allocate(memory_space->ToCApiPtr(), 64, async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -176,8 +196,12 @@ TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFallbackPathSuccess) {
 
 TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFallbackPathError) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      CpuRawBuffer::Allocate(memory_space->ToCApiPtr(), 64, async_work_runner));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -201,6 +225,8 @@ TEST(TrackedCpuDeviceBufferTest, GetReadyFutureFallbackPathError) {
 
 TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  AsyncWorkRunner* async_work_runner =
+      absl::down_cast<CommonPjRtClient*>(client.get())->async_work_runner();
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
 
@@ -214,9 +240,10 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
   definition_events.push_back(PjRtDeviceEventRef(definition_event));
 
-  auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(memory_space, buffer,
-                                               /*buffer_size=*/expected.size(),
-                                               /*is_mutable=*/true);
+  auto raw_buffer =
+      tsl::MakeRef<CpuRawBuffer>(memory_space->ToCApiPtr(), buffer,
+                                 /*buffer_size=*/expected.size(),
+                                 /*is_mutable=*/true, async_work_runner);
   AbstractTrackedDeviceBuffer tracked_buffer(
       raw_buffer, std::move(definition_events), true);
   auto result = raw_buffer->buffer();

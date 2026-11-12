@@ -69,7 +69,9 @@ namespace xla {
 namespace {
 
 bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
-  return hlo->has_sharding() && !hlo->sharding().IsSingleDevice();
+  return hlo->has_sharding() && !hlo->sharding().IsSingleDevice() &&
+         !hlo->sharding().IsUnreduced() &&
+         !hlo->sharding().IsUnreducedSubgroup() && !hlo->sharding().IsUnknown();
 }
 
 // Returning the improved sharding of an instruction from some other sharding.
@@ -294,7 +296,7 @@ const HloInstruction* PickRepresentativeOperand(
       // so we find the operand with the most specific sharding.
       const HloInstruction* best_operand = nullptr;
       for (const HloInstruction* operand : instruction->operands()) {
-        if (operand->has_sharding() &&
+        if (IsSpatiallyPartitioned(operand) &&
             (best_operand == nullptr ||
              hlo_sharding_util::IsShardingMoreSpecific(
                  operand->sharding(), best_operand->sharding()))) {

@@ -785,5 +785,34 @@ ENTRY computation {
   EXPECT_TRUE(root->block_scaling_config().has_lhs());
 }
 
+// Every window position along the split dimension of the backprop filter conv
+// reads high padding and there is no low padding. Used to crash on an empty
+// chunk list.
+TEST_F(SpaceToBatchConverterTest, BackpropFilterConvWithOnlyHighPaddedWindows) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = f32[1,56,756,2] parameter(0)
+  %p1 = f32[1,16,192,4] parameter(1)
+  %p2 = f32[3,3,4,4] parameter(2)
+  %grad = f32[1,14,190,4] convolution(%p1, %p2), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  ROOT %backprop_filter = f32[5,5,2,4] convolution(%p0, %grad),
+    window={size=14x190 pad=0_1x0_5 rhs_dilate=4x4}, dim_labels=f01b_i01o->01bf
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root,
+              op::Reshape(op::Convolution(op::Concatenate(), op::Reshape())));
+  // One chunk of original activations and four high padding slices.
+  EXPECT_EQ(root->operand(0)->operand(0)->operand_count(), 5);
+}
+
 }  // namespace
 }  // namespace xla

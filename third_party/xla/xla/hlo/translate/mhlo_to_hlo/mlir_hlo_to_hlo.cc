@@ -128,6 +128,10 @@ using ::int64_t;
 constexpr char kAggregateToTopk[] = "aggregate_to_topk";
 constexpr char kApiVersion[] = "api_version";
 constexpr char kApproxTopK[] = "ApproxTopK";
+constexpr char kAsyncDynamicUpdateSliceDone[] =
+    "xla.async_dynamic_update_slice_done";
+constexpr char kAsyncDynamicUpdateSliceStart[] =
+    "xla.async_dynamic_update_slice_start";
 constexpr char kSparseActivationsUnstack[] = "SparseActivationsUnstack";
 constexpr char kSparseActivationsUnstackInterleaved[] =
     "SparseActivationsUnstackInterleaved";
@@ -2662,11 +2666,126 @@ LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
   return failure();
 }
 
+// Converts the `xla.async_dynamic_update_slice_start` and
+// `xla.async_dynamic_update_slice_done` custom calls into an HLO `kAsyncStart`
+// / `kAsyncDone` pair wrapping a `dynamic-update-slice` computation.
+//
+// Why custom calls: `stablehlo.async_start` accepts a `dynamic_update_slice`
+// body, but `ExportXlaOp(AsyncStartOp)` below only exports collective bodies,
+// and frontends such as JAX emit their async collectives through paired custom
+// calls rather than `stablehlo.async_start`. These custom calls follow that
+// convention.
+//
+// Lowering:
+// - `xla.async_dynamic_update_slice_start(operand, update, idx_0, ...)` becomes
+//   a `kAsyncStart` whose result is the bundle
+//   `((operand, update, idx_0, ...), output, s32[])`. Element `{1}` (the
+//   updated array) is aliased to operand 0 via
+//   `output_to_operand_aliasing={{1}: (0, {})}` so the update happens in place.
+// - `xla.async_dynamic_update_slice_done(bundle)` becomes the matching
+//   `kAsyncDone`, which returns the updated array.
+
+// Builds the `DynamicUpdateSlice` computation wrapped by the `kAsyncStart`.
+// Parameter 0 is the array being updated, parameter 1 is the update slice, and
+// parameters 2..N-1 are the scalar start indices, one per dimension.
+absl::StatusOr<xla::XlaComputationId>
+BuildAsyncDynamicUpdateSliceSubComputation(
+    xla::XlaBuilder* builder, absl::Span<const xla::Shape> operand_shapes) {
+  std::unique_ptr<xla::XlaBuilder> sub_builder =
+      builder->CreateSubBuilder("async_dynamic_update_slice");
+  xla::XlaOp p0 = xla::Parameter(sub_builder.get(), 0, operand_shapes[0], "p0");
+  xla::XlaOp p1 = xla::Parameter(sub_builder.get(), 1, operand_shapes[1], "p1");
+  std::vector<xla::XlaOp> p_indices;
+  p_indices.reserve(operand_shapes.size() - 2);
+  for (size_t i = 2; i < operand_shapes.size(); ++i) {
+    p_indices.push_back(
+        xla::Parameter(sub_builder.get(), static_cast<int64_t>(i),
+                       operand_shapes[i], absl::StrCat("idx_", i - 2)));
+  }
+  xla::XlaOp dus_root = xla::DynamicUpdateSlice(p0, p1, p_indices);
+  return sub_builder->BuildSubComputation(dus_root);
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSliceStart(
+    CustomCallOpTy op, OpLoweringContext ctx, llvm::ArrayRef<xla::XlaOp> args) {
+  if (args.size() < 3 || op.getInputs().size() < 3 || op.getNumResults() != 1) {
+    return op.emitOpError() << kAsyncDynamicUpdateSliceStart
+                            << " requires at least 3 operands "
+                               "(operand, update, and start_indices); got "
+                            << args.size();
+  }
+
+  std::vector<xla::Shape> operand_shapes;
+  operand_shapes.reserve(op.getInputs().size());
+  for (auto operand_val : op.getInputs()) {
+    operand_shapes.push_back(xla::TypeToShape(operand_val.getType()));
+  }
+
+  auto computation_id_or =
+      BuildAsyncDynamicUpdateSliceSubComputation(ctx.builder, operand_shapes);
+  if (!computation_id_or.ok()) {
+    return op.emitOpError() << "failed to build async DUS subcomputation: "
+                            << computation_id_or.status().message();
+  }
+  xla::XlaComputationId computation = *computation_id_or;
+
+  // Async bundle: ((operand, update, idx_0, ...), output, s32[] context).
+  xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(operand_shapes);
+  xla::Shape output_shape = operand_shapes[0];
+  xla::Shape start_shape = xla::ShapeUtil::MakeTupleShape(
+      {input_shape, output_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
+
+  // Alias the output (bundle element {1}) to operand 0 so the update is done
+  // in place.
+  std::vector<std::pair<xla::ShapeIndex, std::pair<int64_t, xla::ShapeIndex>>>
+      aliasing = {{{1}, {0, {}}}};
+
+  auto& value_map = *ctx.values;
+  value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildAsyncStart(
+      ctx.builder, absl::Span<const xla::XlaOp>(args.data(), args.size()),
+      xla::HloInstruction::kMainExecutionThread, computation, start_shape,
+      aliasing);
+  return success();
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSliceDone(
+    CustomCallOpTy op, OpLoweringContext ctx, llvm::ArrayRef<xla::XlaOp> args) {
+  if (args.empty() || op.getNumResults() != 1) {
+    return op.emitOpError()
+           << kAsyncDynamicUpdateSliceDone << " requires at least 1 operand";
+  }
+  auto& value_map = *ctx.values;
+  xla::Shape out_shape = xla::TypeToShape(op.getResult(0).getType());
+  value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+      ctx.builder, args[0], out_shape);
+  return success();
+}
+
+template <typename CustomCallOpTy>
+LogicalResult ExportAsyncDynamicUpdateSlice(CustomCallOpTy op,
+                                            OpLoweringContext ctx,
+                                            llvm::ArrayRef<xla::XlaOp> args) {
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart) {
+    return ExportAsyncDynamicUpdateSliceStart(op, ctx, args);
+  }
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return ExportAsyncDynamicUpdateSliceDone(op, ctx, args);
+  }
+  return failure();
+}
+
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) {
     return failure();
+  }
+
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart ||
+      op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return ExportAsyncDynamicUpdateSlice(op, ctx, args);
   }
 
   // Specially handle custom_calls from StableHLO that need stability guarantees
@@ -4219,6 +4338,11 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) {
     return failure();
+  }
+
+  if (op.getCallTargetName() == kAsyncDynamicUpdateSliceStart ||
+      op.getCallTargetName() == kAsyncDynamicUpdateSliceDone) {
+    return stablehlo::ExportAsyncDynamicUpdateSlice(op, ctx, args);
   }
 
   // Specially handle custom_calls from StableHLO that need stability guarantees

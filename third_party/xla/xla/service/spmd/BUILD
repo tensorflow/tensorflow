@@ -136,10 +136,12 @@ xla_cc_test(
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/expanders:rng_expander",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
+        "//xla/service:sharding_propagation",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
@@ -305,38 +307,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stateful_rng_spmd_partitioner",
-    hdrs = ["stateful_rng_spmd_partitioner.h"],
-    deps = [
-        ":spmd_partitioner",
-        "@com_google_absl//absl/log",
-    ],
-)
-
-xla_cc_test(
-    name = "stateful_rng_spmd_partitioner_test",
-    srcs = ["stateful_rng_spmd_partitioner_test.cc"],
-    deps = [
-        ":stateful_rng_spmd_partitioner",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/transforms/expanders:rng_expander",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_verifier",
-        "//xla/service:sharding_propagation",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "collective_permute_motion",
     srcs = ["collective_permute_motion.cc"],
     hdrs = ["collective_permute_motion.h"],
@@ -480,7 +450,7 @@ xla_cc_test(
     srcs = ["dot_handler_test.cc"],
     deps = [
         ":sharding_format_picker",
-        ":stateful_rng_spmd_partitioner",
+        ":spmd_partitioner",
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",

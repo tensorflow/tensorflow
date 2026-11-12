@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <utility>
 
@@ -138,8 +139,6 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
         "Metadata does not contain sufficient dimension bytes.");
   }
 
-  const int32_t* runtime_sizes =
-      reinterpret_cast<const int32_t*>(metadata.data());
   xla::Shape output_shape = shape;
 
   // Metadata slot i is only meaningful if dimension i is dynamic. Producers
@@ -147,7 +146,10 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
   // dimensions, so static dimensions keep their static extent.
   for (int i = 0; i < shape.dimensions().size(); ++i) {
     if (shape.is_dynamic_dimension(i)) {
-      output_shape.set_dimensions(i, runtime_sizes[i]);
+      int32_t runtime_size = 0;
+      std::memcpy(&runtime_size, metadata.data() + i * sizeof(int32_t),
+                  sizeof(runtime_size));
+      output_shape.set_dimensions(i, runtime_size);
     }
   }
 

@@ -776,8 +776,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     EvaluationState* state_;
   };
 
+  // `operand_type` is the element type that `populate` reads the operand as.
   absl::Status RunElementwiseUnaryOp(
-      const HloInstruction* instruction,
+      const HloInstruction* instruction, PrimitiveType operand_type,
       absl::FunctionRef<absl::Status(
           Literal& result, const Literal& operand_literal, bool same_layout)>
           populate);
@@ -803,7 +804,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     static_assert(std::is_invocable_r_v<ReturnT, UnaryOp, NativeT>,
                   "Invalid UnaryOp signature");
     return RunElementwiseUnaryOp(
-        instruction,
+        instruction, primitive_util::NativeToPrimitiveType<NativeT>(),
         [&](Literal& result, const Literal& operand_literal,
             bool same_layout) -> absl::Status {
           if (same_layout) {

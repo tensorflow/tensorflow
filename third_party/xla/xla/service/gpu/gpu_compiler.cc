@@ -124,7 +124,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
 #include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
-#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/horizontal_fusion.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
@@ -224,7 +223,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
-#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -283,7 +281,6 @@ limitations under the License.
 #include "xla/service/gpu/early_exit_compilation_result.h"
 #include "xla/service/gpu/export_hlo.h"
 #include "xla/service/gpu/flag_utils.h"
-#include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_aot_compilation_result.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -760,7 +757,7 @@ absl::Status ClearBackendConfigDeviceType(HloInstruction* instr) {
   return instr->set_backend_config(backend_config);
 }
 
-bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
+bool BackendConfigDeviceTypeIsHost(const HloInstruction* instr) {
   if (!instr->has_backend_config()) {
     return false;
   }
@@ -769,13 +766,6 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
     return false;
   }
   return backend_config->device_type() == DEVICE_TYPE_HOST;
-}
-
-// Mirrors the backend filtering in ConfigAssignerPass::GetEnabledBackends.
-bool IsAutotuneBackendAllowed(const DebugOptions& debug_options,
-                              autotuner::Backend backend) {
-  const auto& backends = debug_options.xla_gpu_experimental_autotune_backends();
-  return backends.empty() || absl::c_linear_search(backends, backend);
 }
 
 Decision IsTritonScaledDotSupported(
@@ -791,13 +781,9 @@ Decision IsTritonScaledDotSupported(
   if (gpu_version.IsRocm()) {
     return IsTritonSupportedInstruction(scaled_dot, gpu_version);
   }
-  if (!IsAutotuneBackendAllowed(debug_options, autotuner::Backend::TRITON)) {
-    return Decision::Forbid("TRITON backend is excluded by autotune_backends.");
-  }
-  if (RequireDeterminism(scaled_dot.GetModule()->config()) &&
-      debug_options.xla_gpu_experimental_deterministic_ops_triton() ==
-          DebugOptions::DETERMINISTIC_OPS_TRITON_MODE_OFF) {
-    return Decision::Forbid("Triton is disabled in deterministic mode.");
+  if (!absl::c_linear_search(GetEnabledBackendTypes(debug_options, gpu_version),
+                             autotuner::Backend::TRITON)) {
+    return Decision::Forbid("TRITON backend is disabled for autotuning.");
   }
   return IsTritonSupportedInstruction(scaled_dot, gpu_version);
 }
@@ -806,13 +792,13 @@ Decision IsCudnnScaledDotSupported(const HloScaledDotInstruction& scaled_dot,
                                    const DebugOptions& debug_options,
                                    const GpuTargetConfig& gpu_target_config,
                                    bool is_deviceless) {
-  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    return Decision::Forbid("Binary libraries are disabled.");
-  }
-  if (!IsAutotuneBackendAllowed(debug_options,
-                                autotuner::Backend::CUDNN_FISSION)) {
+  if (!absl::c_linear_search(
+          GetEnabledBackendTypes(
+              debug_options,
+              gpu_target_config.device_description.gpu_compute_capability()),
+          autotuner::Backend::CUDNN_FISSION)) {
     return Decision::Forbid(
-        "CUDNN_FISSION backend is excluded by autotune_backends.");
+        "CUDNN_FISSION backend is disabled for autotuning.");
   }
   if (is_deviceless) {
     Decision deviceless(
@@ -2223,14 +2209,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
-          /*normalize_noncontracting_dimensions=*/!debug_options
-              .xla_gpu_experimental_gemm_fusion_v2());
-      if (!debug_options.xla_gpu_experimental_gemm_fusion_v2()) {
-        pipeline.AddPass<GemvRewriter>();
-      }
+          /*normalize_noncontracting_dimensions=*/false);
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
       pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
-      pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
     }
 
@@ -2802,9 +2783,9 @@ GpuCompiler::CompileToBackendResult(
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
-  ABSL_RETURN_IF_ERROR(RunPostSchedulingPipelines(
-      module, schedule_metadata.scheduler_mem_limit, gpu_topology,
-      alias_info.get(), mlir_context, thread_pool.get_mutable()));
+  ABSL_RETURN_IF_ERROR(
+      RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
+                                 gpu_topology, alias_info.get()));
 
   absl::Mutex module_stats_m_;
   ModuleStats module_stats;
@@ -2838,7 +2819,7 @@ GpuCompiler::CompileToBackendResult(
         std::move(llvm_compiler),
         gpu_topology.gpu_target_config().device_description,
         module->config().debug_options(), gpu_topology,
-        thread_pool.get_mutable());
+        llvm::Triple(target_triple_), data_layout_, thread_pool.get_mutable());
     kernel_compiler.SetPreOptimizationHook([&](const llvm::Module& module) {
       CallUserPreOptimizationHook(module);
     });
@@ -3267,8 +3248,7 @@ HloRematerialization::Options CreateRematOpts(
 
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
-    const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
-    mlir::MLIRContext* mlir_context, tsl::thread::ThreadPool* thread_pool) {
+    const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
   ABSL_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
   {
@@ -3324,14 +3304,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>(gpu_device_info);
-  }
-
-  if (IsTritonEnabled(gpu_device_info.gpu_compute_capability())) {
-    // This needs to run after every pass affecting fusions. The last passes
-    // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
-    main_pipeline.AddPass<HloPassPipeline>(
-        FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction(),
-                               mlir_context, thread_pool, &mlir_context_pool_));
   }
 
   if (module->config()
@@ -3462,18 +3434,18 @@ absl::Status GpuCompiler::AddConfigAssignerPass(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   auto get_backends_fn =
       [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
-    return ConfigAssignerPass::GetEnabledBackends(
-        stream_exec, options.device_allocator, target_config, alias_info,
-        debug_options, mlir_context, shape_size_fn, this, PlatformId(),
-        thread_pool, &mlir_context_pool_);
+    return ConfigAssignerPass::CreateBackends(
+        GetEnabledBackendTypes(debug_options, gpu_version), stream_exec,
+        options.device_allocator, target_config, alias_info, debug_options,
+        mlir_context, shape_size_fn, this, PlatformId(), thread_pool,
+        &mlir_context_pool_);
   };
 
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<ConfigAssignerPass> config_assigner_pass,
-      ConfigAssignerPass::Create(get_backends_fn, debug_options, gpu_version,
-                                 stream_exec, thread_pool, target_config,
-                                 alias_info, mlir_context, shape_size_fn,
-                                 options.device_allocator, key_value_store));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConfigAssignerPass> config_assigner_pass,
+                   ConfigAssignerPass::Create(
+                       get_backends_fn, debug_options, stream_exec, thread_pool,
+                       target_config, alias_info, mlir_context, shape_size_fn,
+                       options.device_allocator, key_value_store));
   pipeline->AddPass(std::move(config_assigner_pass));
   // Post autotuning transformations needed after autotuning happens.
   pipeline->AddPass<ConvertTritonGemmConfig>(target_config->device_description,

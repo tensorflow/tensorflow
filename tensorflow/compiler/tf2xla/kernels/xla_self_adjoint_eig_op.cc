@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/self_adjoint_eig.h"
@@ -37,7 +38,9 @@ class XlaSelfAdjointEigOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     auto result =
         xla::SelfAdjointEig(ctx->Input(0), lower_, max_iter_, epsilon_);
-    ctx->SetOutput(0, result.w);
+    // XLA returns real eigenvalues, but this output has the input's type.
+    ctx->SetOutput(
+        0, XlaHelpers::ConvertElementType(result.w, ctx->input_type(0)));
     ctx->SetOutput(1, result.v);
   }
 
@@ -58,7 +61,9 @@ class SelfAdjointEigV2Op : public XlaOpKernel {
     // epsilon should be used to determine exit condition.
     int max_iter = 2 * tensorflow::Log2Ceiling(n);
     auto result = xla::SelfAdjointEig(ctx->Input(0), true, max_iter, 1e-6);
-    ctx->SetOutput(0, result.w);
+    // XLA returns real eigenvalues, but this output has the input's type.
+    ctx->SetOutput(
+        0, XlaHelpers::ConvertElementType(result.w, ctx->input_type(0)));
     ctx->SetOutput(1, result.v);
   }
 };

@@ -151,15 +151,26 @@ jobs:
             --repo_env=ROCM_DISTRO_URL="${ROCM_DISTRO_URL}" \
             --repo_env=ROCM_DISTRO_HASH="${ROCM_DISTRO_HASH}" \
             --repo_env=TF_ROCM_AMDGPU_TARGETS="${ROCM_AMD_GPU_TARGETS}" \
-            --repo_env=SYSROOT_DIST=linux_glibc_2_31 \
+            --cxxopt=-std=c++20 \
+            --host_cxxopt=-std=c++20 \
+            --repo_env=SYSROOT_DIST=linux_glibc_2_35 \
             --bes_keywords=jax \
             --bes_keywords=upstream \
             --bes_keywords=gpu \
             --bes_keywords=pull_request \
             --build_event_json_file=jax_build_events.json
 
+      - name: Annotate JAX BEP Failures
+        if: ${{ (failure() || cancelled()) && needs.rocm-config.outputs.skip-jax != 'true' }}
+        continue-on-error: true
+        run: |
+          python3 -m build_tools.ci.bep_annotations \
+            --label="${GITHUB_JOB}" \
+            jax/jax_build_events.json
+
       - name: Upload JAX BEP File
         if: ${{ always() && needs.rocm-config.outputs.skip-jax != 'true' }}
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jax-bep
@@ -257,8 +268,18 @@ jobs:
             -- \
             //xla/...
 
+      - name: Annotate XLA BEP Failures
+        if: ${{ (failure() || cancelled()) && needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
+        continue-on-error: true
+        run: |
+          python3 -m build_tools.ci.bep_annotations \
+            --label="${GITHUB_JOB}" \
+            xla_single_gpu_build_events.json \
+            xla_rocm_cpu_build_events.json
+
       - name: Upload XLA BEP Files
         if: ${{ always() && needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: xla-bep

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable_serdes.h"
@@ -37,23 +38,36 @@ namespace ifrt {
 
 // Wraps compilation options for an XLA computation.
 //
+// If an entrypoint_relocatable is provided, then compilation is skipped
+// and just the linker is executed to link the relocatables together. If
+// dependent_relocatables is provided, entrypoint_relocatable must be non-null.
+//
 // TODO(hyeontaek): Move this class out of pjrt_ifrt.
 //
 // TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
 // because compilation (without loading) should not take them.
 struct XlaCompileOptions : RTTIExtends<XlaCompileOptions, CompileOptions> {
   XlaCompileOptions() = default;
-  explicit XlaCompileOptions(xla::CompileOptions compile_options,
-                             DeviceListRef devices,
-                             std::vector<tsl::RCReference<LoadedHostCallback>>
-                                 loaded_host_callbacks = {})
+  explicit XlaCompileOptions(
+      xla::CompileOptions compile_options, DeviceListRef devices,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
+          {},
+      std::shared_ptr<const xla::PjRtRelocatable> entrypoint_relocatable =
+          nullptr,
+      std::vector<std::shared_ptr<const xla::PjRtRelocatable>>
+          dependent_relocatables = {})
       : compile_options(std::move(compile_options)),
         devices(std::move(devices)),
-        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
+        loaded_host_callbacks(std::move(loaded_host_callbacks)),
+        entrypoint_relocatable(std::move(entrypoint_relocatable)),
+        dependent_relocatables(std::move(dependent_relocatables)) {}
 
   xla::CompileOptions compile_options;
   DeviceListRef devices;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
+  std::shared_ptr<const xla::PjRtRelocatable> entrypoint_relocatable;
+  std::vector<std::shared_ptr<const xla::PjRtRelocatable>>
+      dependent_relocatables;
 
   // CompileOptions implementation.
 

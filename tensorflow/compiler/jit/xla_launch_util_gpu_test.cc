@@ -319,7 +319,7 @@ TEST_F(PjRtExecutionUtilGpuTest,
   Tensor* host_tensor =
       CreateHostTensor<int32_t>(TensorShape({1, 3}), {7, 8, 9});
   se::Stream* stream = device_->tensorflow_accelerator_device_info()->stream;
-  se::DeviceMemoryBase dst_mem(
+  stream_executor::DeviceAddressBase dst_mem(
       const_cast<char*>(raw_gpu_tensor.tensor_data().data()),
       raw_gpu_tensor.TotalBytes());
   TF_ASSERT_OK(stream->Memcpy(&dst_mem, host_tensor->tensor_data().data(),

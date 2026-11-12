@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_SELECT_K_EXEC_RAFT_IMPL_H_
 #define XLA_BACKENDS_GPU_RUNTIME_SELECT_K_EXEC_RAFT_IMPL_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 
 #include "absl/cleanup/cleanup.h"
@@ -49,8 +51,10 @@ using raft::matrix::SelectAlgo;
 namespace raft_internal {
 
 // Custom RMM memory resource backed by a fixed pre-allocated device buffer.
-// Employs a monotonic bump allocator without dynamic allocations or
-// deallocations.
+// Uses a bump allocator that unwinds LIFO deallocations and resets to offset 0
+// when all live allocations are freed. This is stream-safe because all RAFT
+// operations in select_k_exec execute sequentially on a single bound CUDA
+// stream.
 class FixedBufferDeviceMemoryResource : public rmm::mr::device_memory_resource {
  public:
   FixedBufferDeviceMemoryResource() = default;
@@ -59,22 +63,40 @@ class FixedBufferDeviceMemoryResource : public rmm::mr::device_memory_resource {
     base_ptr_ = static_cast<char*>(base_ptr);
     capacity_ = capacity;
     offset_ = 0;
+    peak_offset_ = 0;
+    live_allocations_ = 0;
+    last_error_ = absl::OkStatus();
     VLOG(3) << "FixedBufferDeviceMemoryResource: reset with capacity "
             << capacity_;
   }
 
   size_t capacity() const { return capacity_; }
   size_t allocated_bytes() const { return offset_; }
+  size_t peak_allocated_bytes() const { return peak_offset_; }
+  size_t live_allocations() const { return live_allocations_; }
+  const absl::Status& last_error() const { return last_error_; }
 
  protected:
   void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override {
-    // Ensure 256-byte alignment for CUDA / CUB operations.
-    constexpr size_t kAlignment = 256;
-    size_t current_addr = reinterpret_cast<size_t>(base_ptr_ + offset_);
+    if (bytes == 0) {
+      return nullptr;
+    }
+    if (base_ptr_ == nullptr || bytes > ~(kAlignment - 1)) {
+      ThrowScratchCapacityExceeded(absl::StrCat(
+          "FixedBufferDeviceMemoryResource: scratch capacity exceeded! "
+          "Requested: ",
+          bytes, ", remaining: ",
+          base_ptr_ != nullptr && capacity_ >= offset_ ? capacity_ - offset_
+                                                       : 0,
+          ", total capacity: ", capacity_));
+    }
+    std::uintptr_t current_addr =
+        reinterpret_cast<std::uintptr_t>(base_ptr_ + offset_);
     size_t padding = (kAlignment - (current_addr % kAlignment)) % kAlignment;
-    size_t aligned_bytes = (bytes + kAlignment - 1) & ~(kAlignment - 1);
-    if (offset_ + padding + aligned_bytes > capacity_) {
-      throw rmm::bad_alloc(absl::StrCat(
+    size_t aligned_bytes = AlignBytes(bytes);
+    if (offset_ > capacity_ || padding > capacity_ - offset_ ||
+        aligned_bytes > capacity_ - offset_ - padding) {
+      ThrowScratchCapacityExceeded(absl::StrCat(
           "FixedBufferDeviceMemoryResource: scratch capacity exceeded! "
           "Requested: ",
           bytes, " (aligned: ", aligned_bytes,
@@ -82,27 +104,69 @@ class FixedBufferDeviceMemoryResource : public rmm::mr::device_memory_resource {
           ", total capacity: ", capacity_));
     }
     offset_ += padding;
-    void* ptr = base_ptr_ + offset_;
+    size_t alloc_offset = offset_;
+    void* ptr = base_ptr_ + alloc_offset;
     offset_ += aligned_bytes;
-    VLOG(3) << "FixedBufferDeviceMemoryResource: allocated " << aligned_bytes
-            << " bytes at offset " << offset_ - aligned_bytes;
+    peak_offset_ = std::max(peak_offset_, offset_);
+    ++live_allocations_;
+    VLOG(3) << "FixedBufferDeviceMemoryResource: allocate " << bytes
+            << " (aligned: " << aligned_bytes << ") at offset " << alloc_offset
+            << " (used: " << offset_ << ", peak: " << peak_offset_
+            << ", live: " << live_allocations_ << ")";
     return ptr;
   }
 
   void do_deallocate(void* ptr, std::size_t bytes,
                      rmm::cuda_stream_view stream) noexcept override {
-    // Intentional NO-OP: Memory lifetime is managed externally by XLA
-    // BufferAssignment.
+    if (ptr == nullptr || bytes == 0 || base_ptr_ == nullptr ||
+        live_allocations_ == 0 || bytes > ~(kAlignment - 1)) {
+      return;
+    }
+    std::uintptr_t ptr_addr = reinterpret_cast<std::uintptr_t>(ptr);
+    std::uintptr_t base_addr = reinterpret_cast<std::uintptr_t>(base_ptr_);
+    if (ptr_addr < base_addr || ptr_addr % kAlignment != 0) {
+      return;
+    }
+    size_t aligned_bytes = AlignBytes(bytes);
+    size_t ptr_offset = ptr_addr - base_addr;
+    if (ptr_offset > offset_ || aligned_bytes > offset_ - ptr_offset) {
+      return;
+    }
+    if (--live_allocations_ == 0) {
+      offset_ = 0;
+    } else if (offset_ - ptr_offset == aligned_bytes) {
+      offset_ = ptr_offset;
+    }
     VLOG(3) << "FixedBufferDeviceMemoryResource: deallocate " << bytes
-            << " bytes at offset "
-            << (reinterpret_cast<size_t>(ptr) -
-                reinterpret_cast<size_t>(base_ptr_));
+            << " (aligned: " << aligned_bytes << ") at offset " << ptr_offset
+            << " (used: " << offset_ << ", peak: " << peak_offset_
+            << ", live: " << live_allocations_ << ")";
   }
 
  private:
+  // Ensure 256-byte alignment for CUDA / CUB operations.
+  static constexpr size_t kAlignment = 256;
+
+  static constexpr size_t AlignBytes(size_t bytes) {
+    return (bytes + kAlignment - 1) & ~(kAlignment - 1);
+  }
+
+  // Records the allocation error as an absl::Status before throwing so XLA can
+  // recover the exact diagnostic even when cross-DSO RTTI in static-libc++
+  // builds lands in `catch (...)`.
+  [[noreturn]] void ThrowScratchCapacityExceeded(const std::string& msg) {
+    if (last_error_.ok()) {
+      last_error_ = absl::InternalError(absl::StrCat("select_k failed: ", msg));
+    }
+    throw rmm::bad_alloc(msg);
+  }
+
   char* base_ptr_ = nullptr;
   size_t capacity_ = 0;
   size_t offset_ = 0;
+  size_t peak_offset_ = 0;
+  size_t live_allocations_ = 0;
+  absl::Status last_error_;
 };
 
 // RAII wrapper for RAFT resources bound to a CUDA stream
@@ -224,9 +288,20 @@ absl::Status select_k_exec(int device_ordinal,
         /*algo=*/algo);
 
     return absl::OkStatus();
+  } catch (const rmm::bad_alloc& e) {
+    if (!resContainer->fixed_buffer_mr->last_error().ok()) {
+      return resContainer->fixed_buffer_mr->last_error();
+    }
+    return absl::InternalError(absl::StrCat("select_k failed: ", e.what()));
   } catch (const std::exception& e) {
+    if (!resContainer->fixed_buffer_mr->last_error().ok()) {
+      return resContainer->fixed_buffer_mr->last_error();
+    }
     return absl::InternalError(absl::StrCat("select_k failed: ", e.what()));
   } catch (...) {
+    if (!resContainer->fixed_buffer_mr->last_error().ok()) {
+      return resContainer->fixed_buffer_mr->last_error();
+    }
     return absl::InternalError("select_k failed with unknown exception");
   }
 }

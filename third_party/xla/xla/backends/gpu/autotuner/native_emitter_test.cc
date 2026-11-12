@@ -49,6 +49,7 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::HasSubstr;
+using ::testing::IsSupersetOf;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::xtile::BlockLevelFusionConfig;
@@ -231,6 +232,56 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
           EqualsProto(absl::Substitute(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
                                             unroll_factor: $0)pb",
                                        max_unroll_factor))));
+}
+
+TEST_F(NativeEmitterBackendTest,
+       GetSupportedConfigsForLoopReduceFusionWithSmallOutput) {
+  debug_options_.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+%add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(%lhs, %rhs)
+}
+
+%fused_reduce_slice (p0: f32[16,256,512]) -> f32[128,512] {
+  %p0 = f32[16,256,512]{2,1,0} parameter(0)
+  %c0 = f32[] constant(0)
+  %reduce = f32[256,512]{1,0} reduce(%p0, %c0), dimensions={0}, to_apply=%add
+  ROOT %slice = f32[128,512]{1,0} slice(%reduce), slice={[0:128], [0:512]}
+}
+
+ENTRY %entry_computation (p0: f32[16,256,512]) -> f32[128,512] {
+  %p0 = f32[16,256,512]{2,1,0} parameter(0)
+  ROOT %loop_fusion = f32[128,512]{1,0} fusion(%p0), kind=kLoop,
+    calls=%fused_reduce_slice
+})"));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*fusion));
+  std::vector<NativeEmitterBackendConfig> native_configs;
+  for (const std::unique_ptr<BackendConfig>& config : configs) {
+    ASSERT_TRUE(config->has_native_emitter());
+    native_configs.push_back(config->native_emitter());
+  }
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(*fusion, target_config_.device_description);
+  int64_t max_unroll_factor = MaxUnrollFactor(&analysis);
+  ASSERT_GT(max_unroll_factor, 1);
+  EXPECT_THAT(
+      native_configs,
+      IsSupersetOf({
+          EqualsProto(absl::Substitute(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: $0)pb",
+                                       max_unroll_factor / 2)),
+          EqualsProto(absl::Substitute(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: $0)pb",
+                                       max_unroll_factor)),
+      }));
 }
 
 TEST_F(NativeEmitterBackendTest,

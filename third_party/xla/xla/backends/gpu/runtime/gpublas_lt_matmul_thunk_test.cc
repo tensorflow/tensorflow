@@ -1100,6 +1100,38 @@ TEST_F(CublasLtMatmulThunkCmdBufTest, BufferUses) {
                 ShapeUtil::MakeShape(U8, {1024, 1024})));
 }
 
+// Command buffers decide whether a recorded command is stale based on the
+// allocations reported by buffer_uses(), so it must list every buffer that
+// ExecuteOnStream reads, including the group sizes of a grouped matmul.
+TEST(CublasLtGroupedMatmulThunkTest, BufferUsesIncludeGroupSizes) {
+  BufferAllocation alloc_a(/*index=*/0, /*size=*/32, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, /*size=*/48, /*color=*/0);
+  BufferAllocation alloc_d(/*index=*/2, /*size=*/48, /*color=*/0);
+  BufferAllocation alloc_group_sizes(/*index=*/3, /*size=*/8, /*color=*/0);
+
+  ShapedSlice a{BufferAllocation::Slice(&alloc_a, 0, 32),
+                ShapeUtil::MakeShape(F32, {4, 2})};
+  ShapedSlice b{BufferAllocation::Slice(&alloc_b, 0, 48),
+                ShapeUtil::MakeShape(F32, {2, 2, 3})};
+  ShapedSlice d{BufferAllocation::Slice(&alloc_d, 0, 48),
+                ShapeUtil::MakeShape(F32, {4, 3})};
+  ShapedSlice group_sizes{BufferAllocation::Slice(&alloc_group_sizes, 0, 8),
+                          ShapeUtil::MakeShape(S32, {2})};
+
+  CublasLtMatmulThunk thunk(
+      Thunk::ThunkInfo(), /*canonical_hlo=*/"", se::gpu::GroupedGemmConfig{},
+      se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
+      /*autotune_workspace_size=*/0, a, b, /*c=*/d, d, group_sizes,
+      /*bias=*/std::nullopt, /*aux=*/std::nullopt, /*a_scale=*/std::nullopt,
+      /*b_scale=*/std::nullopt, /*c_scale=*/std::nullopt,
+      /*d_scale=*/std::nullopt, /*d_amax=*/std::nullopt,
+      /*workspace=*/std::nullopt);
+
+  ASSERT_TRUE(thunk.is_grouped());
+  EXPECT_THAT(thunk.buffer_uses(), ::testing::Contains(BufferUse::Read(
+                                       group_sizes.slice, group_sizes.shape)));
+}
+
 TEST_F(CublasLtMatmulThunkCmdBufTest,
        ExecuteOnStreamRequireExactAlgorithmAndFallback) {
   ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, thunk_->ToProto());

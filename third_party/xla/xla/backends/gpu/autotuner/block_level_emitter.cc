@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
+#include "xla/codegen/tiling/tiling_util.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/concurrency/executor.h"
@@ -263,12 +265,20 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
     // taken care of it.
     return false;
   }
+  // The same-shape multi-output fusion flag sends these fusions to the
+  // block-level emitter, so it must support them.
+  const bool is_enabled_same_shape_multi_output_fusion =
+      instr.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion() &&
+      IsSameShapeMultiOutputFusion(*fusion, Shape::Equal().IgnoreElementType());
   if (!xla_gpu_experimental_all_fusions_with_triton_ &&
-      !IsTritonFusion(instr) &&
+      !is_enabled_same_shape_multi_output_fusion && !IsTritonFusion(instr) &&
       !absl::c_any_of(
           fusion->fused_instructions_computation()->instructions(),
           HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose,
-                           HloOpcode::kConcatenate>)) {
+                           HloOpcode::kConcatenate, HloOpcode::kScan>)) {
     return false;
   }
   const HloComputation* fusion_computation =

@@ -48,13 +48,14 @@ namespace {
 
 // Long chain of GEMMs with cosine and add operations to ensure a large number
 // of temporary buffers.
-std::string BuildChainedGemmHlo() {
+std::string BuildChainedGemmHlo(int64_t num_replicas) {
   constexpr int kNumRepeats = 500;
-  std::string hlo = R"(
-HloModule temp_buffer_shift_repro, replica_count=2, input_output_alias={ {}: (0, {}, must-alias) }
+  std::string hlo = absl::StrFormat(R"(
+HloModule temp_buffer_shift_repro, replica_count=%d, input_output_alias={ {}: (0, {}, must-alias) }
 ENTRY main {
   p0 = f32[64,64] parameter(0)
-)";
+)",
+                                    num_replicas);
   std::string cur = "p0";
   for (int i = 0; i < kNumRepeats; ++i) {
     absl::StrAppendFormat(
@@ -114,17 +115,20 @@ class CommandBufferTempBufferShiftTest : public CollectiveOpsE2ETestBase {
 };
 
 TEST_F(CommandBufferTempBufferShiftTest,
-       TempBufferShiftOnBfcAllocatorCausesGraphUpdateOverheadOn2Gpus) {
-  constexpr int64_t kNumReplicas = 2;
-  if (device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " GPUs";
+       TempBufferShiftOnBfcAllocatorCausesGraphUpdateOverheadOnAllGpus) {
+  // Temp buffers only go to the collective memory space when the module is
+  // fully sharded, i.e. it spans every visible device. Use all of them so the
+  // test behaves the same on 2-GPU and 8-GPU hosts.
+  const int64_t num_replicas = device_count();
+  if (num_replicas < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
 
   HloModuleConfig config = GetModuleConfigForTest(
-      /*replica_count=*/kNumReplicas, /*num_partitions=*/1);
+      /*replica_count=*/num_replicas, /*num_partitions=*/1);
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
-      ParseAndReturnVerifiedModule(BuildChainedGemmHlo(), config));
+      ParseAndReturnVerifiedModule(BuildChainedGemmHlo(num_replicas), config));
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));

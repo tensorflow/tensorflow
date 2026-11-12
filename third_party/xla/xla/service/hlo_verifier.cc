@@ -1375,12 +1375,12 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
   }
 
   // Verify the sort_dimension.
-  if (sort->sort_dimension() >=
-      static_cast<int64_t>(sort->operand(0)->shape().dimensions().size())) {
+  const int64_t rank = sort->operand(0)->shape().dimensions().size();
+  if (sort->sort_dimension() < 0 || sort->sort_dimension() >= rank) {
     return Internal(
-        "Expected the sort_dimension %d of sort to be smaller than the rank %d "
-        "of the operand(s).",
-        sort->sort_dimension(), sort->shape().dimensions().size());
+        "Expected the sort_dimension %d of sort to be non-negative and smaller "
+        "than the rank %d of the operand(s).",
+        sort->sort_dimension(), rank);
   }
 
   return CheckVariadicShape(sort);
@@ -4096,17 +4096,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
   return absl::OkStatus();
 }
 
-bool IsCollectivesGroupComputation(HloComputation* computation) {
-  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
-  if (!maybe_caller.has_value()) {
-    return false;
-  }
-  return (*maybe_caller)
-      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
-      .has_value();
-}
-
-bool IsAsyncBarrierComputation(HloComputation* computation) {
+bool IsAsyncBarrierComputation(const HloComputation* computation) {
   return absl::c_all_of(
       computation->instructions(),
       [root = computation->root_instruction()](const HloInstruction* instr) {
@@ -5090,10 +5080,7 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
       ABSL_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
       // Verify that async computations contain a single instruction unless
       // they are explicitly marked as a collectives group or async barrier.
-      if (computation->IsAsyncComputation() &&
-          computation->execution_thread() ==
-              HloInstruction::kMainExecutionThread &&
-          !IsCollectivesGroupComputation(computation) &&
+      if (computation->IsRestrictedAsyncComputation() &&
           !IsAsyncBarrierComputation(computation)) {
         ABSL_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }

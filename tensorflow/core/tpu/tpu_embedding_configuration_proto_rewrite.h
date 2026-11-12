@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_PROTO_REWRITE_H_
 
 #include "absl/status/status.h"
+#include "xla/tpu/protobuf/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {

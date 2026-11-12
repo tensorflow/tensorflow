@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -486,6 +487,57 @@ TEST_F(CudnnFusionCompilerConstTest,
                   stream_executor()->AsDnn(),
                   stream_executor()->GetDeviceDescription(), *fusion),
               StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(CudnnFusionCompilerConstTest, ReusesGraphsFromCache) {
+  constexpr absl::string_view kHlo = R"(
+  fusion1 {
+    p0 = f16[4,48,48,64] parameter(0)
+    p1 = f16[64,3,3,64] parameter(1)
+    conv = f16[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    zero = f16[] constant(0)
+    zeros = f16[4,48,48,64] broadcast(zero), dimensions={}
+    ROOT relu = f16[4,48,48,64] maximum(conv, zeros)
+  }
+
+  ENTRY e {
+    p0 = f16[4,48,48,64] parameter(0)
+    p1 = f16[64,3,3,64] parameter(1)
+    ROOT _ = f16[4,48,48,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {"kind": "__cudnn$fusion"}}
+  })";
+  CompiledCudnnGraphCache cache;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> first_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BinaryMap first_results;
+  ASSERT_OK(CuDnnFusionCompiler(stream_executor(),
+                                stream_executor()->GetDeviceDescription(),
+                                first_results, &cache)
+                .Run(first_module.get())
+                .status());
+
+  // Without a stream executor and with deviceless compilation disabled, the
+  // graph cannot be built, so it has to come from the cache.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> second_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  second_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_cudnn_deviceless_compilation_mode(
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED);
+  BinaryMap second_results;
+  ASSERT_OK(CuDnnFusionCompiler(/*stream_exec=*/nullptr,
+                                stream_executor()->GetDeviceDescription(),
+                                second_results, &cache)
+                .Run(second_module.get())
+                .status());
+
+  EXPECT_EQ(first_results, second_results);
+  EXPECT_EQ(first_module->entry_computation()->ToString(),
+            second_module->entry_computation()->ToString());
 }
 
 }  // namespace

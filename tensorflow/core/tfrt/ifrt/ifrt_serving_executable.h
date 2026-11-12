@@ -208,32 +208,30 @@ class IfrtServingExecutable {
     }
   };
 
-  struct CachedExecutableBundle {
+  // Everything compilation produces for one set of input shapes. Immutable
+  // once built.
+  struct CompiledExecutable {
+    xla::ifrt::LoadedExecutableRef ifrt_executable;
+    tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+    std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+
+    // Per-argument information. The index `i` in these vectors corresponds to
+    // the i-th argument in the executable.
     std::vector<xla::ifrt::DType> ifrt_input_dtypes;
     // If populated, these are the input shapes and layouts that the
     // executable was compiled with. `xla_input_shapes` and `xla_input_layouts`
     // are either both populated or both empty and they will have the same size.
-    // The index `i` in these vectors corresponds to the i-th argument in the
-    // executable.
     std::vector<std::shared_ptr<const xla::Shape>> xla_input_shapes;
     std::vector<absl::InlinedVector<int64_t, 4>> byte_strides;
     std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
-    xla::ifrt::LoadedExecutableRef ifrt_executable;
+    // Input tensor shapes that matches the Tf2Hlo compiled shapes.
+    std::vector<tensorflow::TensorShape> reshaped_input_tensors;
     // True for inputs the compiled program may donate (input/output aliasing
     // or buffer donors). Empty when donation info could not be determined.
     // Callers must treat a missing entry as "may be donated" and leave the
     // input's buffers donatable.
     std::vector<bool> input_may_be_donated;
-    tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
-    std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
-
-    using LoadedVariableList =
-        std::vector<IfrtLoadedVariableRegistry::LoadedVariable>;
-    using DeviceLoadedVariableListMap =
-        absl::flat_hash_map<xla::ifrt::DeviceId, LoadedVariableList>;
-    std::variant<LoadedVariableList, DeviceLoadedVariableListMap>
-        variable_arrays;
     std::vector<xla::HloSharding> arg_hlo_shardings;
     std::vector<xla::ifrt::ShardingRef> arg_ifrt_shardings;
     // Only populated when portable execution is used, currently only single
@@ -241,18 +239,29 @@ class IfrtServingExecutable {
     absl::flat_hash_map<xla::ifrt::DeviceId,
                         std::shared_ptr<xla::ifrt::SingleDeviceSharding>>
         portable_single_device_shardings;
+
     std::vector<xla::HloSharding> retval_hlo_shardings;
 
-    // Input tensor shapes that matches the Tf2Hlo compiled shapes.
-    std::vector<tensorflow::TensorShape> reshaped_input_tensors;
-
-    CachedExecutableBundle() = default;
+    CompiledExecutable() = default;
     // Move only
-    CachedExecutableBundle(CachedExecutableBundle&& other) = default;
-    CachedExecutableBundle& operator=(CachedExecutableBundle&& other) = default;
-    CachedExecutableBundle(const CachedExecutableBundle& other) = delete;
-    CachedExecutableBundle& operator=(const CachedExecutableBundle& other) =
-        delete;
+    CompiledExecutable(CompiledExecutable&& other) = default;
+    CompiledExecutable& operator=(CompiledExecutable&& other) = default;
+    CompiledExecutable(const CompiledExecutable& other) = delete;
+    CompiledExecutable& operator=(const CompiledExecutable& other) = delete;
+  };
+
+  // What this executable needs to run for one set of input shapes: the
+  // compiled program and the variables bound by this executable's call site,
+  // loaded on the device(s).
+  struct CachedExecutableBundle {
+    std::shared_ptr<const CompiledExecutable> compiled;
+
+    using LoadedVariableList =
+        std::vector<IfrtLoadedVariableRegistry::LoadedVariable>;
+    using DeviceLoadedVariableListMap =
+        absl::flat_hash_map<xla::ifrt::DeviceId, LoadedVariableList>;
+    std::variant<LoadedVariableList, DeviceLoadedVariableListMap>
+        variable_arrays;
   };
 
   IfrtServingExecutable(
@@ -384,11 +393,10 @@ class IfrtServingExecutable {
       absl::Span<const int> variable_arg_indices,
       const xla::ifrt::DeviceListRef& device_list,
       CachedExecutableBundle* executable_bundle);
-  absl::Status AsyncLoadIfrtArray(
-      absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices,
-      const CachedExecutableBundle& executable_bundle,
-      const xla::ifrt::DeviceListRef& devices);
+  absl::Status AsyncLoadIfrtArray(absl::Span<const tensorflow::Tensor> inputs,
+                                  absl::Span<const int> variable_arg_indices,
+                                  const CompiledExecutable& compiled,
+                                  const xla::ifrt::DeviceListRef& devices);
 
   // Returns the cached executable bundle future if it exists, otherwise creates
   // a new one by calling xla compiler. When compilation happens, it also calls
@@ -407,7 +415,7 @@ class IfrtServingExecutable {
       absl::Span<const int> variable_arg_indices);
 
   // Creates an executable by calling tf2xla and xla compiler
-  absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
+  absl::StatusOr<std::shared_ptr<const CompiledExecutable>>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
@@ -418,15 +426,14 @@ class IfrtServingExecutable {
       const Tf2HloResult& tf2hlo_result,
       xla::ifrt::LoadedExecutableRef ifrt_executable,
       std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
-      const xla::ifrt::Topology* topology,
-      CachedExecutableBundle& executable_bundle);
+      const xla::ifrt::Topology* topology, CompiledExecutable& compiled);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,
       const xla::ifrt::Shape& sharded_shapes);
 
-  std::vector<xla::ifrt::Shape> GetArgShape(
-      int arg_index, const CachedExecutableBundle& entry);
+  std::vector<xla::ifrt::Shape> GetArgShape(int arg_index,
+                                            const CompiledExecutable& compiled);
 
   bool UsePortableExecution();
 };

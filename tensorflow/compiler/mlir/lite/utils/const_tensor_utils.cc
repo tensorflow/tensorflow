@@ -47,9 +47,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tsl/platform/statusor.h"
@@ -217,7 +217,7 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
         llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
                                          nested_tensor->shape.end());
         tensor_types.push_back(
-            tensorflow::GetTypeFromTFTensorShape(shape, nested_elem_type));
+            mlir::TFL::GetTypeFromTFLiteShape(shape, nested_elem_type));
       } else {
         tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
       }
@@ -247,13 +247,13 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
   if (!tensor.shape_signature.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
                                         tensor.shape_signature.end());
-    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
+    return mlir::TFL::GetTypeFromTFLiteShape(shape, elem_type);
   }
 
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());
-    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
+    return mlir::TFL::GetTypeFromTFLiteShape(shape, elem_type);
   }
 
   return UnrankedTensorType::get(elem_type);
@@ -346,7 +346,7 @@ mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
         type, builder.getFloatAttr(element_ty, unique_index));
 
   if (auto qtype = mlir::dyn_cast<QuantizedType>(element_ty)) {
-    mlir::RankedTensorType new_type = tensorflow::GetTypeFromTFTensorShape(
+    mlir::RankedTensorType new_type = mlir::TFL::GetTypeFromTFLiteShape(
         type.getShape(), qtype.getStorageType());
     return DenseElementsAttr::get(
         new_type, builder.getIntegerAttr(qtype.getStorageType(), unique_index));
@@ -367,8 +367,8 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
                  mlir::dyn_cast<mlir::quant::QuantizedType>(elem_type)) {
     bit_width = qtype.getStorageTypeIntegralWidth();
     is_signed = qtype.isSigned();
-    shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
-                                                       qtype.getStorageType());
+    shaped_type = mlir::TFL::GetTypeFromTFLiteShape(shaped_type.getShape(),
+                                                    qtype.getStorageType());
   } else {
     return absl::InvalidArgumentError("unsupported integer constant type");
   }
@@ -437,7 +437,7 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     auto ety = mlir::IntegerType::get(shaped_type.getContext(),
                                       values[0].getBitWidth(), sign);
     shaped_type =
-        tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(), ety);
+        mlir::TFL::GetTypeFromTFLiteShape(shaped_type.getShape(), ety);
   }
 
   return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));

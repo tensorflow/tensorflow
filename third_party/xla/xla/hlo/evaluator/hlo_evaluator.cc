@@ -5608,7 +5608,7 @@ Shape HloEvaluator::GetShapeWithLayout(const Shape& shape) {
 }
 
 absl::Status HloEvaluator::RunElementwiseUnaryOp(
-    const HloInstruction* instruction,
+    const HloInstruction* instruction, PrimitiveType operand_type,
     absl::FunctionRef<absl::Status(
         Literal& result, const Literal& operand_literal, bool same_layout)>
         populate) {
@@ -5617,6 +5617,9 @@ absl::Status HloEvaluator::RunElementwiseUnaryOp(
   TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
   const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  // `populate` reads the operand as `operand_type`.
+  TF_RET_CHECK(operand_literal.shape().element_type() == operand_type)
+      << "operand element type mismatch: " << instruction->ToString();
   Literal result(shape);
   bool same_layout =
       LayoutUtil::Equal(operand->shape().layout(), shape.layout());
@@ -5639,6 +5642,10 @@ absl::Status HloEvaluator::RunElementwiseBinaryOp(
 
   const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
+  // `populate` reads both operands as the element type of the result.
+  TF_RET_CHECK(lhs_literal.shape().element_type() == shape.element_type() &&
+               rhs_literal.shape().element_type() == shape.element_type())
+      << "operand element type mismatch: " << instruction->ToString();
 
   Literal result(shape);
 
@@ -5672,6 +5679,11 @@ absl::Status HloEvaluator::RunElementwiseTernaryOp(
   const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
   const Literal& ehs_literal = GetEvaluatedLiteralFor(ehs);
+  // `populate` reads all operands as the element type of the result.
+  TF_RET_CHECK(lhs_literal.shape().element_type() == shape.element_type() &&
+               rhs_literal.shape().element_type() == shape.element_type() &&
+               ehs_literal.shape().element_type() == shape.element_type())
+      << "operand element type mismatch: " << instruction->ToString();
 
   Literal result(shape);
 

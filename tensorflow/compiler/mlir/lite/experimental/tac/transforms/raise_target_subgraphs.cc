@@ -191,7 +191,6 @@ bool AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
 bool RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
     Block& block, OpBuilder& builder, ModuleOp module, bool skip_cpu,
     int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info) {
-  llvm::SetVector<Operation*> partition_ops;
 
   auto device_is = [&](InferenceDeviceType t, llvm::StringRef device) -> bool {
     return t.hardware == device;

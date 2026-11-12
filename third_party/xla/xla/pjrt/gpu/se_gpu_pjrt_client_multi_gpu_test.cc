@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -75,6 +78,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
+#include "xla/pjrt/se/event_pool.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/runtime/device_id.h"
@@ -91,6 +95,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -1125,6 +1130,8 @@ TEST(StreamExecutorGpuClientTest,
     GTEST_SKIP() << "This test requires at least a Hopper GPU (SM 9.0).";
   }
 
+  // The VMM allocator is disabled outside of open source builds.
+  ScopedAllowVmmAllocatorForTesting allow_vmm_allocator;
   GpuClientOptions options = GetTestGpuClientOptions(2);
   options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
@@ -1380,6 +1387,139 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
                        kv_store->Get("gpu_fatal_error", absl::Seconds(5)));
   EXPECT_THAT(kv_error, HasSubstr("Fatal GPU device error on node 0 device 0"));
   EXPECT_THAT(kv_error, HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS"));
+}
+
+// Holds `stream` until the returned notification is notified.
+std::shared_ptr<absl::Notification> HoldStream(se::Stream* stream) {
+  auto release = std::make_shared<absl::Notification>();
+  CHECK_OK(
+      stream->DoHostCallback([release] { release->WaitForNotification(); }));
+  return release;
+}
+
+class CrossDeviceCopyTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    setenv("XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES", "true", 1);
+    ASSERT_OK_AND_ASSIGN(
+        client_, GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+    common_client_ = absl::down_cast<CommonPjRtClient*>(client_.get());
+    raw_client_ = absl::down_cast<PjRtStreamExecutorRawClient*>(
+        common_client_->raw_client());
+    PjRtDevice* dev1 = client_->addressable_devices()[1];
+    ASSERT_OK_AND_ASSIGN(
+        d1_, raw_client_->GetLocalDeviceState(dev1->local_device_id()));
+    ASSERT_OK_AND_ASSIGN(d1_memory_, dev1->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(
+        PjRtMemorySpace * d0_memory,
+        client_->addressable_devices()[0]->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(src_,
+                         client_->BufferFromHostLiteral(literal_, d0_memory));
+    ASSERT_OK(src_->GetReadyFuture().Await());
+    ASSERT_OK_AND_ASSIGN(dst_shape_,
+                         common_client_->MakeDefaultShapeForMemorySpace(
+                             d1_memory_, literal_.shape(), /*layout=*/nullptr));
+  }
+
+  void TearDown() override {
+    unsetenv("XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES");
+  }
+
+  // Schedules a copy of `src_` into `dst`, populating `dst_` and `def_event_`.
+  absl::Status ScheduleCopy(PjRtRawBufferRef dst,
+                            PjRtDeviceEventRefVector dependencies) {
+    ABSL_ASSIGN_OR_RETURN(PjRtRawBufferRef src,
+                     PjRtRawBuffer::CreateRawAliasOfBuffer(src_.get()));
+    ABSL_ASSIGN_OR_RETURN(auto def,
+                     common_client_->CreateLinkedEventPromise(d1_memory_, ""));
+    ABSL_ASSIGN_OR_RETURN(auto usage, common_client_->CreateLinkedEventPromise(
+                                     src->memory_space(), ""));
+    src->ScheduleCopyTo(std::move(dependencies), dst, std::move(def.first),
+                        std::move(usage.first), /*allocation_event=*/nullptr);
+    def_event_ = std::move(def.second);
+    ABSL_ASSIGN_OR_RETURN(
+        dst_, common_client_->DefineBuffer(dst_shape_, d1_memory_,
+                                           std::move(dst), {def_event_}));
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<BufferSequencingEventRef> ScheduleCopyWithPeerDependency() {
+    ABSL_ASSIGN_OR_RETURN(PjRtRawBufferRef dst, AllocateOnD1());
+    raw_client_->MaterializeAllocationEvent(*dst);
+    TF_RET_CHECK(d1_->executor()->SynchronizeAllActivity());
+    auto d1_event =
+        BufferSequencingEvent::Create(raw_client_->async_work_runner());
+    ABSL_RETURN_IF_ERROR(
+        ScheduleCopy(std::move(dst), {PjRtDeviceEventRef(d1_event.CopyRef())}));
+    return d1_event;
+  }
+
+  // True if the copy defining `def_event_` is enqueued within 500ms.
+  bool RecordedSoon() const {
+    auto recorded = std::make_shared<absl::Notification>();
+    def_event_.down_cast<BufferSequencingEvent>()->event().AndThen(
+        [recorded] { recorded->Notify(); });
+    return recorded->WaitForNotificationWithTimeout(absl::Milliseconds(500));
+  }
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateOnD1() {
+    ABSL_ASSIGN_OR_RETURN(int64_t size, common_client_->GetOnDeviceBytesCount(
+                                       d1_memory_, dst_shape_));
+    return common_client_->AllocateRawBuffer(d1_memory_, size,
+                                             /*retry_on_oom=*/true,
+                                             /*allocate_after=*/{});
+  }
+
+  void ExpectCopied() {
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result,
+                         dst_->ToLiteral().Await());
+    EXPECT_EQ(literal_.data<float>(),
+              result->Relayout(literal_.shape().layout()).data<float>());
+  }
+
+  Literal literal_ = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  std::unique_ptr<PjRtClient> client_;
+  CommonPjRtClient* common_client_ = nullptr;
+  PjRtStreamExecutorRawClient* raw_client_ = nullptr;
+  LocalDeviceState* d1_ = nullptr;
+  PjRtMemorySpace* d1_memory_ = nullptr;
+  Shape dst_shape_;
+  std::unique_ptr<PjRtBuffer> src_;
+  std::unique_ptr<PjRtBuffer> dst_;
+  PjRtDeviceEventRef def_event_;
+};
+
+TEST_F(CrossDeviceCopyTest, WaitsOnHostForPeerDstAllocation) {
+  auto release = HoldStream(d1_->compute_stream());
+  ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef dst, AllocateOnD1());
+  ASSERT_OK(ScheduleCopy(std::move(dst), {}));
+  EXPECT_FALSE(RecordedSoon());
+  release->Notify();
+  ExpectCopied();
+}
+
+TEST_F(CrossDeviceCopyTest, WaitsOnHostForPeerDependency) {
+  ASSERT_OK_AND_ASSIGN(BufferSequencingEventRef d1_event,
+                       ScheduleCopyWithPeerDependency());
+  auto release = HoldStream(d1_->compute_stream());
+  // Record after scheduling, so the copy first waits for the record.
+  ASSERT_OK(raw_client_->AllocateAndRecordEvent(d1_event, d1_,
+                                                d1_->compute_stream()));
+  EXPECT_FALSE(RecordedSoon());
+  release->Notify();
+  ExpectCopied();
+}
+
+TEST_F(CrossDeviceCopyTest, PropagatesPeerDependencyError) {
+  ASSERT_OK_AND_ASSIGN(BufferSequencingEventRef d1_event,
+                       ScheduleCopyWithPeerDependency());
+  ASSERT_OK_AND_ASSIGN(
+      EventPool::Handle handle,
+      d1_->event_pool().ThenAllocateAndRecordEvent(d1_->compute_stream()));
+  d1_event->SetSequencingEvent(std::move(handle), d1_->compute_stream());
+  d1_event.SetError(absl::InternalError("peer error"));
+  EXPECT_THAT(dst_->ToLiteral().Await(),
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("peer error")));
 }
 
 }  // namespace

@@ -185,3 +185,35 @@ func.func @copy_slice_negative_count(
       : tensor<4xf32> into tensor<8xf32>
   func.return %out : tensor<8xf32>
 }
+
+// -----
+
+func.func @linear_extract_rank0(%src: tensor<f32>, %idx: index) -> f32 {
+  // expected-error @+1 {{tensor must have rank at least 1}}
+  %out = xla.linear_extract %src[%idx] : tensor<f32>
+  func.return %out : f32
+}
+
+// -----
+
+func.func @linear_insert_rank0(%val: f32, %dst: tensor<f32>, %idx: index) -> tensor<f32> {
+  // expected-error @+1 {{tensor must have rank at least 1}}
+  %out = xla.linear_insert %val into %dst[%idx] : tensor<f32>
+  func.return %out : tensor<f32>
+}
+
+// -----
+
+func.func @get_dynamic_dim_size_negative_dim(%src: tensor<4xf32>) -> i32 {
+  // expected-error @+1 {{dim must be non-negative}}
+  %out = xla.get_dynamic_dim_size %src -1 : tensor<4xf32>
+  func.return %out : i32
+}
+
+// -----
+
+func.func @set_dynamic_dim_size_negative_dim(%dst: tensor<4xf32>, %size: i32) -> tensor<4xf32> {
+  // expected-error @+1 {{dim must be non-negative}}
+  %out = xla.set_dynamic_dim_size %size into %dst[-1] : tensor<4xf32>
+  func.return %out : tensor<4xf32>
+}

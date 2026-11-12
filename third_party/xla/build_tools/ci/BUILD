@@ -68,10 +68,25 @@ py_test(
 )
 
 pytype_strict_library(
+    name = "bep_annotations",
+    srcs = ["bep_annotations.py"],
+)
+
+py_test(
+    name = "bep_annotations_test",
+    srcs = ["bep_annotations_test.py"],
+    deps = [
+        ":bep_annotations",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+pytype_strict_library(
     name = "build_lib",
     srcs = ["build.py"],
     deps = [
         ":bazel_diff",
+        ":bep_annotations",
         ":change_detector",
     ],
 )
@@ -81,6 +96,7 @@ pytype_strict_binary(
     srcs = ["build.py"],
     deps = [
         ":bazel_diff",
+        ":bep_annotations",
         ":change_detector",
     ],
 )
@@ -89,6 +105,7 @@ py_test(
     name = "build_test",
     srcs = ["build_test.py"],
     deps = [
+        ":bep_annotations",
         ":build_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",

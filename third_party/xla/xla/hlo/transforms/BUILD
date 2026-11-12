@@ -414,6 +414,7 @@ xla_cc_test(
     deps = [
         ":host_offloading_prepare",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:memory_annotations_hdr",
         "//xla/tsl/lib/core:status_test_util",

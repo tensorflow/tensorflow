@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/time/time.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
@@ -193,6 +194,43 @@ class CuptiTracerTest : public ::testing::Test {
         .WillOnce(Return(CUPTI_SUCCESS));
     EXPECT_CALL(*mock_, ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED))
         .WillOnce(Return(CUPTI_SUCCESS));
+  }
+
+  void RunCrossContextSubscribeDeadlockTest(
+      CrossContextWorkloadMode workload_mode) {
+    CuptiTracer* real_tracer = CuptiTracer::GetCuptiTracerSingleton();
+    absl::Status last_session_status = absl::OkStatus();
+    absl::Status workload_status =
+        ExecuteCrossContextWorkloadDuringProfilerSubscribe(
+            /*max_profiler_sessions=*/30, /*session_timeout=*/absl::Seconds(4),
+            workload_mode, [&]() { cupti_wrapper_->Finalize(); },
+            [&]() {
+              CuptiTracerOptions options;
+              options.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
+              options.prefer_cupti_v2 = true;
+              options.cupti_finalize = false;
+
+              last_session_status =
+                  real_tracer->PrepareForProfilerStart(options);
+              if (!last_session_status.ok()) {
+                return false;
+              }
+              last_session_status =
+                  real_tracer->Enable(options, cupti_collector_.get());
+              if (!last_session_status.ok()) {
+                real_tracer->Disable();
+                return false;
+              }
+              real_tracer->Disable();
+              tensorflow::profiler::XSpace space;
+              cupti_collector_->Export(&space, CuptiTracer::GetTimestamp());
+              return true;
+            });
+    if (absl::IsCancelled(workload_status)) {
+      GTEST_SKIP() << workload_status.message();
+    }
+    EXPECT_THAT(last_session_status, IsOk());
+    EXPECT_THAT(workload_status, IsOk());
   }
 
   StrictMock<MockCupti>* mock_;
@@ -970,6 +1008,36 @@ TEST_F(CuptiTracerTest,
       << "Concurrent conditional graph update/launch failed during "
          "cuptiFinalize() with error "
       << static_cast<int>(worker_err);
+}
+
+// Reproduces the CUPTI AB-BA deadlock during PrepareForProfilerStart
+// (cuptiSubscribe / cuptiSubscribe_v2) when another thread concurrently
+// dispatches CUDA stream capture + graph launch on a peer CUcontext to satisfy
+// an in-flight kernel on the first CUcontext: CUPTI's internal context
+// initialization blocks on the first CUcontext while holding CUPTI's temporary
+// process-wide CUPTI_API_ENTER condition-variable barrier across all
+// CUcontexts, parking the peer thread before it can signal completion.
+// Disabled by default because it deadlocks CUPTI; run manually with
+// --test_arg=--gunit_also_run_disabled_tests (or
+// --test_arg=--gtest_also_run_disabled_tests in OSS).
+TEST_F(CuptiTracerTest,
+       DISABLED_ConcurrentCrossContextStreamCaptureDuringSubscribeDeadlocks) {
+  RunCrossContextSubscribeDeadlockTest(
+      CrossContextWorkloadMode::kStreamCaptureAndGraphLaunch);
+}
+
+// Reproduces the same CUPTI cuptiSubscribe / cuptiSubscribe_v2 CUPTI_API_ENTER
+// barrier deadlock when the worker thread only launches pre-instantiated CUDA
+// graphs (cuCtxSetCurrent + cuGraphLaunch) with zero stream capture during
+// steady-state execution (modeling
+// --xla_enable_command_buffers_during_profiling=true).
+// Disabled by default because it deadlocks CUPTI; run manually with
+// --test_arg=--gunit_also_run_disabled_tests (or
+// --test_arg=--gtest_also_run_disabled_tests in OSS).
+TEST_F(CuptiTracerTest,
+       DISABLED_ConcurrentCrossContextGraphLaunchDuringSubscribeDeadlocks) {
+  RunCrossContextSubscribeDeadlockTest(
+      CrossContextWorkloadMode::kPreinstantiatedGraphLaunchOnly);
 }
 
 }  // namespace

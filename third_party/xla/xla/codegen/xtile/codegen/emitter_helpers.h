@@ -530,10 +530,17 @@ absl::StatusOr<mlir::Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
-// Function to get the MLIR types from a HloFusionInstruction.
+// Collective signature configuration for `xtile::EntryFuncOp`.
+struct CollectiveEntrySpec {
+  int32_t num_scratch_buffers = 0;
+  bool has_signal_and_rank = false;
+  int64_t world_size = 0;
+};
+
+// Returns the I/O memref argument types (`[inputs..., outputs...]`) for
+// `fusion`.
 absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
-    absl::Span<mlir::Type> opaque_args_types,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
 // Function to check if the operands of a concatenation are valid for tiling.

@@ -2810,6 +2810,57 @@ TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
   EXPECT_THAT(status.message(), HasSubstr("got PRED"));
 }
 
+TEST_F(HloVerifierTest, SortNegativeDimension) {
+  const char* const hlo_string = R"(
+  HloModule SortNegativeDimension
+
+  compare {
+    p.0.lhs = f32[] parameter(0)
+    p.0.rhs = f32[] parameter(1)
+    ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  ENTRY main {
+    x = f32[4,8] parameter(0)
+    ROOT sorted = f32[4,8] sort(x), dimensions={-1}, to_apply=compare
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected the sort_dimension -1 of sort to be "
+                                 "non-negative and smaller than the rank 2")));
+}
+
+TEST_F(HloVerifierTest, SortKeyValueDimensionOutOfRange) {
+  const char* const hlo_string = R"(
+  HloModule SortKeyValueDimensionOutOfRange
+
+  compare {
+    p.0.lhs = f32[] parameter(0)
+    p.0.rhs = f32[] parameter(1)
+    p.1.lhs = s32[] parameter(2)
+    p.1.rhs = s32[] parameter(3)
+    ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  ENTRY main {
+    keys = f32[4,8] parameter(0)
+    values = s32[4,8] parameter(1)
+    ROOT sorted = (f32[4,8], s32[4,8]) sort(keys, values), dimensions={2}, to_apply=compare
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected the sort_dimension 2 of sort to be "
+                                 "non-negative and smaller than the rank 2")));
+}
+
 static const char* const kMapOperandComputationMismatchHlo = R"(
   HloModule MapOperandComputationMismatch
 

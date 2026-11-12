@@ -85,6 +85,20 @@ std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
   return constant->literal().GetIntegralAsS64(multi_index);
 }
 
+// Returns the entry at `index` of `table`, the constant or iota operand of a
+// table lookup. Returns nullopt if `index` is out of bounds of a constant
+// table.
+std::optional<int64_t> GetTableEntry(const HloInstruction* table,
+                                     int64_t index) {
+  if (table->opcode() == HloOpcode::kIota) {
+    return index;
+  }
+  if (index < 0 || index >= table->shape().dimensions(0)) {
+    return std::nullopt;
+  }
+  return table->literal().GetIntegralAsS64({index});
+}
+
 // Computes an index into a lookup table for a given device
 // ID (partition-id/replica-id/flattened-id) recursively.
 // This function resolves an index value that may be computed directly from a
@@ -110,12 +124,8 @@ int64_t GetIndexForId(const HloInstruction* index, int64_t id,
     VLOG(2) << "Failed to get inner index.";
     return -1;
   }
-  if (index->operand(0)->opcode() == HloOpcode::kIota) {
-    return inner_index;
-  }
   // A table lookup.
-  const auto& table = index->operand(0)->literal();
-  return *table.GetIntegralAsS64({inner_index});
+  return GetTableEntry(index->operand(0), inner_index).value_or(-1);
 }
 
 bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
@@ -154,15 +164,13 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
           return false;
         }
 
-        int64_t table_entry;
-        if (scalar_offset->operand(0)->opcode() == HloOpcode::kIota) {
-          table_entry = table_index;
-        } else {
-          table_entry = *scalar_offset->operand(0)->literal().GetIntegralAsS64(
-              {table_index});
+        std::optional<int64_t> table_entry =
+            GetTableEntry(scalar_offset->operand(0), table_index);
+        if (!table_entry) {
+          return false;
         }
         slice_group_size /= slice_group_sizes[dim];
-        final_table_entry += table_entry * slice_group_size;
+        final_table_entry += *table_entry * slice_group_size;
       }
       if (final_table_entry != shard_size * j) {
         return false;
@@ -349,10 +357,7 @@ std::optional<int64_t> EvaluateOffset(
     if (table_index < 0) {
       return std::nullopt;
     }
-    if (expr->operand(0)->opcode() == HloOpcode::kIota) {
-      return table_index;
-    }
-    return expr->operand(0)->literal().GetIntegralAsS64({table_index});
+    return GetTableEntry(expr->operand(0), table_index);
   }
 
   // Direct ID: the offset is the mapped id itself.
@@ -1305,13 +1310,13 @@ std::optional<PartitionOffsetSpec> GetIndicesSpecForDynamicSlice(
         return std::nullopt;
       }
 
-      int64_t slice_offset;
-      if (offset_hlo->operand(0)->opcode() == HloOpcode::kIota) {
-        slice_offset = table_index;
-      } else {
-        slice_offset =
-            *offset_hlo->operand(0)->literal().GetIntegralAsS64({table_index});
+      std::optional<int64_t> table_entry =
+          GetTableEntry(offset_hlo->operand(0), table_index);
+      if (!table_entry) {
+        VLOG(2) << "table_index " << table_index << " is out of bounds.";
+        return std::nullopt;
       }
+      int64_t slice_offset = *table_entry;
       VLOG(2) << "slice_offset: " << slice_offset;
       if (!indices_spec.per_replica_group_offsets[group_idx]
                .try_emplace(slice_offset, partition_id)

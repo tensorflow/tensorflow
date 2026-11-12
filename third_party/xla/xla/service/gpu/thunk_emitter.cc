@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk_emitter.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -40,9 +41,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
@@ -62,7 +71,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
-#include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
+#include "xla/backends/gpu/codegen/pad_to_static.h"
+#include "xla/backends/gpu/codegen/rng_get_and_update_state.h"
+#include "xla/backends/gpu/codegen/slice_to_dynamic.h"
 #include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
@@ -185,6 +196,61 @@ namespace xla::gpu {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
+
+void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
+                          int64_t bytes_per_element,
+                          absl::string_view symbol_name,
+                          const DenseDataIntermediate& content,
+                          bool emit_initializer) {
+  llvm::IRBuilder<> b(module->getContext());
+  // Ptxas has issues if the constant allocation is smaller than 64 bytes.
+  // TODO(b/253259975): Remove when fixed ptxas version is submitted.
+  constexpr int64_t kMinConstAllocationInBytes = 64;
+  bool needs_padding =
+      num_elements * bytes_per_element < kMinConstAllocationInBytes;
+
+  llvm::ArrayType* global_type = llvm::ArrayType::get(
+      b.getInt8Ty(),
+      std::max(num_elements * bytes_per_element, kMinConstAllocationInBytes));
+
+  llvm::Constant* initializer = [&]() -> llvm::Constant* {
+    if (!emit_initializer) {
+      // Content is filled by GpuExecutable during initialization.
+      return llvm::ConstantAggregateZero::get(global_type);
+    }
+
+    if (!needs_padding) {
+      return llvm::ConstantDataArray::get<uint8_t>(
+          module->getContext(), llvm::ArrayRef<uint8_t>(content.span().data(),
+                                                        content.span().size()));
+    }
+    std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
+    absl::c_copy(content.span(), padded.begin());
+    return llvm::ConstantDataArray::get<uint8_t>(
+        module->getContext(), llvm::ArrayRef<uint8_t>(padded));
+  }();
+
+  // Explicitly set global addrspace for SPIR-V backend.
+  int addrspace =
+      llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 1 : 0;
+  // These globals will be looked up by name by GpuExecutable so we need to
+  // give them an external linkage.  Not all of their uses are visible in
+  // the LLVM IR so we can't give then a linkage that merely preserves their
+  // names (like available_externally), we also need to ensure that they stick
+  // around even if they're "unused".
+  //
+  // We may have to be more clever here in the future if we notice that we're
+  // keeping around too many globals because of their linkage.
+  auto* global_for_const =
+      new llvm::GlobalVariable(global_type, /*isConstant=*/emit_initializer,
+                               llvm::GlobalValue::ExternalLinkage,
+                               /*Initializer=*/initializer, symbol_name,
+                               /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+                               /*AddressSpace=*/addrspace,
+                               /*isExternallyInitialized=*/false);
+  global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+  module->insertGlobalVariable(global_for_const);
+}
 
 absl::StatusOr<TritonKernelSource> EmitTritonFrom(
     const TritonCall& call, const std::string& kernel_name,
@@ -559,7 +625,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
       primitive_util::ByteWidth(instr->literal().shape().element_type());
   TF_RET_CHECK(content.span().size() % element_bytes == 0);
   // Treat packed constants as a byte constant.
-  int num_elements = content.span().size() / element_bytes;
+  int64_t num_elements = content.span().size() / element_bytes;
 
   std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
   ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -571,8 +637,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
   // is loaded.
   bool should_emit_initializer = num_elements <= 1;
   AppendGlobalConstant(constants_module_.get(), num_elements, element_bytes,
-                       global_name, slice.index(), content,
-                       should_emit_initializer);
+                       global_name, content, should_emit_initializer);
 
   GpuExecutable::ConstantInfo info;
   info.symbol_name.assign(global_name);
@@ -613,39 +678,14 @@ Future<ThunkSequence> ThunkEmitter::EmitConditional(
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Future<ThunkSequence> ThunkEmitter::EmitPadToStatic(
     const HloCustomCallInstruction* instr) {
-  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-
-  ABSL_ASSIGN_OR_RETURN(
-      (KernelDefinition<LlvmKernelSource, GpuKernelSpec> kernel_def),
-      EmitPadToStaticLLVMIR(instr, ir_emitter_context_, kernel_arguments));
-
-  return ir_emitter_context_->kernel_compiler()
-      ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
-                    instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def))
-      .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
+  return gpu::EmitPadToStatic(instr, ir_emitter_context_);
 }
 
-// Input = {dynamic array(with dynamic dimension meta data at the end)}
-// Output = {static array, dynamic_dim0, dynamic_dim1}
+// Input = {static array, dynamic_dim0, dynamic_dim1}
+// Output = {dynamic array (with dynamic dimension meta data at the end)}
 Future<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
     const HloCustomCallInstruction* instr) {
-  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-  ABSL_ASSIGN_OR_RETURN(
-      (KernelDefinition<LlvmKernelSource, GpuKernelSpec> kernel_def),
-      EmitSliceToDynamicLLVMIR(instr, ir_emitter_context_, kernel_arguments));
-
-  return ir_emitter_context_->kernel_compiler()
-      ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
-                    instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def))
-      .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
+  return gpu::EmitSliceToDynamic(instr, ir_emitter_context_);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolution(
@@ -2065,20 +2105,7 @@ Future<ThunkSequence> ThunkEmitter::EmitCall(const HloInstruction* instr) {
 
 Future<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
     const HloRngGetAndUpdateStateInstruction* instr) {
-  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-
-  ABSL_ASSIGN_OR_RETURN(GpuKernelDefinition kernel_def,
-                   EmitRngGetAndUpdateStateLLVMIR(instr, ir_emitter_context_,
-                                                  kernel_arguments));
-
-  return ir_emitter_context_->kernel_compiler()
-      ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
-                    instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def))
-      .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
+  return gpu::EmitRngGetAndUpdateState(instr, ir_emitter_context_);
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitSort(const HloSortInstruction* sort) {

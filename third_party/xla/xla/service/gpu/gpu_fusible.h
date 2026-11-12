@@ -311,10 +311,12 @@ bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion);
 // Returns the max loop unroll factor.
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis = nullptr);
 
-int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            bool unroll_small_inputs = false);
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
-                            const Shape& shape);
+                            const Shape& shape,
+                            bool unroll_small_inputs = false);
 
 // Returns whether the instruction is a scan or, in the case of a fusion,
 // contains a scan operation.
@@ -332,6 +334,11 @@ bool ContainsSignificantReduce(const HloInstruction& instr,
 std::optional<int64_t> GetMinReduceInputElements(
     const HloInstruction& instr,
     FusionInfoCache* absl_nullable cache = nullptr);
+
+// Returns the maximum input element count among all `kReduce` instructions in
+// `fusion`, or `std::nullopt` if `fusion` contains no `kReduce` instructions.
+std::optional<int64_t> GetMaxReduceInputElements(
+    const HloFusionAdaptor& fusion);
 
 }  // namespace gpu
 }  // namespace xla

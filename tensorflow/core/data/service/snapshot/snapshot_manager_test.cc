@@ -51,7 +51,7 @@ using ::tsl::testing::StatusIs;
 
 template <class T>
 T GetValue(const Tensor& tensor) {
-  return tensor.unaligned_flat<T>().data()[0];
+  return tensor.unaligned_flat<T>()(0);
 }
 
 TEST(SnapshotManagerTest, CreateStreamAssignment) {

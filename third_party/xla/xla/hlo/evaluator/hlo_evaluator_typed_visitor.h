@@ -1069,6 +1069,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleRng(const HloInstruction* random) override {
     RandomDistribution distribution = random->random_distribution();
     Shape result_shape = GetShapeWithLayout(random->shape());
+    // The operands are read as the element type of the result.
+    for (const HloInstruction* operand : random->operands()) {
+      TF_RET_CHECK(
+          parent_->GetEvaluatedLiteralFor(operand).shape().element_type() ==
+          result_shape.element_type())
+          << "operand element type mismatch: " << random->ToString();
+    }
     Literal result(result_shape);
 
     if constexpr (std::is_floating_point_v<ElementwiseT>) {

@@ -1,4 +1,4 @@
-"""Experimental Bzlmod support for TensorFlow"""
+"""Bzlmod module definition for TensorFlow."""
 
 module(
     name = "tensorflow",
@@ -28,6 +28,7 @@ single_version_override(
     patches = [
         "//third_party/py:rules_python_freethreaded.patch",
         "//third_party/py:rules_python_scope.patch",
+        "//third_party/py:rules_python_local_wheel.patch",
     ],
     version = "2.4.5",
 )
@@ -54,11 +55,18 @@ single_version_override(
 )
 
 bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")
+single_version_override(
+    module_name = "google_cloud_cpp",
+    patch_strip = 1,
+    patches = ["//third_party:google_cloud_cpp.patch"],
+    version = "3.0.0-rc1",
+)
+
 bazel_dep(name = "crc32c", version = "1.1.0", repo_name = "com_github_google_crc32c")
 bazel_dep(name = "brotli", version = "1.1.0", repo_name = "org_brotli")
 bazel_dep(name = "rules_cc", version = "0.2.25")
 bazel_dep(name = "curl", version = "8.22.0")
-bazel_dep(name = "rules_webtesting", version = "0.4.1", repo_name = "io_bazel_rules_webtesting")
+bazel_dep(name = "rules_webtesting", version = "0.4.1", dev_dependency = True, repo_name = "io_bazel_rules_webtesting")
 bazel_dep(name = "rules_closure", version = "0.15.0", repo_name = "io_bazel_rules_closure")
 bazel_dep(name = "grpc", version = "1.81.0")
 single_version_override(
@@ -74,17 +82,38 @@ bazel_dep(name = "google_benchmark", version = "1.9.4", repo_name = "com_google_
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "zstd", version = "1.5.7", repo_name = "net_zstd")
-bazel_dep(name = "pybind11_bazel", version = "2.13.6")
+bazel_dep(name = "pybind11_bazel", version = "3.0.0")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
+single_version_override(
+    module_name = "pybind11_abseil",
+    patch_strip = 1,
+    patches = ["//third_party:pybind11_abseil.patch"],
+    version = "202402.0",
+)
+
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "re2", version = "2025-11-05.bcr.1", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
+single_version_override(
+    module_name = "rules_android",
+    patch_strip = 1,
+    patches = ["//third_party:rules_android.patch"],
+    version = "0.6.6",
+)
+
 bazel_dep(name = "rules_android_ndk", version = "0.1.3")
-bazel_dep(name = "apple_support", version = "1.23.1", repo_name = "build_bazel_apple_support")
-bazel_dep(name = "rules_swift", version = "2.4.0")
-bazel_dep(name = "googletest", version = "1.17.0.bcr.1", repo_name = "com_google_googletest")
-bazel_dep(name = "fuzztest", version = "20250805.0", repo_name = "com_google_fuzztest")
+bazel_dep(name = "apple_support", version = "2.8.0", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "rules_swift", version = "2.9.0")
+bazel_dep(name = "googletest", version = "1.18.0", repo_name = "com_google_googletest")
+single_version_override(
+    module_name = "googletest",
+    patch_strip = 1,
+    patches = ["//third_party/googletest:remove_alwayslink.patch"],
+    version = "1.18.0",
+)
+
+bazel_dep(name = "fuzztest", version = "20250805.0", dev_dependency = True, repo_name = "com_google_fuzztest")
 bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.3")
 bazel_dep(name = "zlib", version = "1.3.2")
@@ -97,9 +126,17 @@ single_version_override(
     patches = [
         "//third_party/com_google_highway:build.patch",
     ],
+    version = "1.4.0",
 )
 
-bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobuf_mutator")
+bazel_dep(name = "libprotobuf-mutator", version = "1.3", dev_dependency = True, repo_name = "libprotobuf_mutator")
+
+# Only for compatibility, not directly used
+bazel_dep(name = "c-ares", version = "1.34.6.bcr.3", repo_name = None)
+bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = None)
+bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = None)
+bazel_dep(name = "libpfm", version = "4.13.0", repo_name = None)
+
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
     module_name = "rules_ml_toolchain",
@@ -128,6 +165,7 @@ use_repo(
     "XNNPACK",
     "compute_library",
     "cpuinfo",
+    "cuda_tile",
     "cudnn_frontend_archive",
     "cutlass_archive",
     "dlpack",
@@ -135,6 +173,7 @@ use_repo(
     "eigen_archive",
     "farmhash_archive",
     "farmhash_gpu_archive",
+    "fmt",
     "gemmlowp",
     "gloo",
     "highwayhash",
@@ -147,17 +186,24 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nasm",
+    "nccl_archive",
     "nvshmem",
+    "nvtx_archive",
     "onednn",
     "onednn_async",
     "onednn_async_aarch64",
     "pthreadpool",
     "raft",
+    "rapids_logger",
     "riegeli",
+    "rmm",
+    "robin_map",
     "rocm_device_libs",
     "shardy",
     "slinky",
+    "spdlog",
     "stablehlo",
+    "tensor_ir",
     "tensorrt_oss_archive",
     "triton",
 )
@@ -167,7 +213,10 @@ use_repo(
     tf_third_party,
     "arm_neon_2_x86_sse",
     "com_github_googlecloudplatform_tensorflow_gcp_tools",
+    "com_google_code_findbugs_jsr305",
+    "com_google_errorprone_error_prone_annotations",
     "com_google_googleapis",
+    "com_google_guava",
     "com_google_pprof",
     "com_google_testing_compile",
     "com_google_truth",
@@ -188,8 +237,6 @@ use_repo(
     "linenoise",
     "mobile_multibox",
     "mobile_ssd",
-    "nccl_archive",
-    "nvtx_archive",
     "opencl_headers",
     "org_checkerframework_qual",
     "org_hamcrest_core",
@@ -214,11 +261,30 @@ use_repo(
     "xctestrunner",
 )
 
-# TODO: Remove this injection once xprof is updated.
+# TODO: Remove this injection once xprof and tensorflow_gcp_tools are updated.
 inject_repo(
     tf_third_party,
+    com_github_grpc_grpc = "grpc",
     com_github_nlohmann_json = "nlohmann_json_lib",
 )
+
+googleapis_ext = use_extension("//third_party/googleapis:repository_rules.bzl", "googleapis_ext")
+use_repo(googleapis_ext, "com_google_googleapis_imports")
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    artifacts = [
+        "androidx.annotation:annotation:1.1.0",
+    ],
+    fetch_sources = True,
+    repositories = [
+        "https://maven.google.com",
+        "https://dl.google.com/dl/android/maven2",
+        "https://repo1.maven.org/maven2",
+    ],
+    version_conflict_policy = "pinned",
+)
+use_repo(maven, "maven")
 
 pybind11_internal_configure = use_extension(
     "@pybind11_bazel//:internal_configure.bzl",
@@ -237,6 +303,7 @@ python.toolchain(python_version = "3.11")
 python.toolchain(python_version = "3.12")
 python.toolchain(python_version = "3.13")
 python.toolchain(python_version = "3.14")
+use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 
@@ -245,8 +312,26 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
         "numpy": ["numpy_headers"],
     },
     hub_name = "tf_pypi",
+    local_wheels = {
+        "tensorflow": "dist/tensorflow-*.whl",
+        "tensorflow-cpu": "dist/tensorflow_cpu-*.whl",
+        "tensorflow-cuda13": "dist/tensorflow_cuda13-*.whl",
+        "tf-nightly": "dist/tf_nightly-*.whl",
+        "tf-nightly-cpu": "dist/tf_nightly_cpu-*.whl",
+        "tf-nightly-cuda13": "dist/tf_nightly_cuda13-*.whl",
+    },
     python_version = python_version,
+    requirements_by_platform = {
+        "//:requirements_lock_3_14_freethreaded.txt": "linux_x86_64_freethreaded,windows_x86_64_freethreaded,linux_aarch64_freethreaded,osx_aarch64_freethreaded",
+    } if python_version == "3.14" else {},
     requirements_lock = "//:requirements_lock_{}.txt".format(python_version.replace(".", "_")),
+    target_platforms = [
+        "{os}_x86_64",
+        "{os}_aarch64",
+    ] + ([
+        "{os}_x86_64_freethreaded",
+        "{os}_aarch64_freethreaded",
+    ] if python_version == "3.14" else []),
     whl_modifications = {
         "@pypi_mods//:numpy.json": "numpy",  # @pypi_mods is defined in XLA's MODULE.bazel
     },
@@ -263,10 +348,12 @@ use_repo(pip, "pypi_mods", pypi = "tf_pypi")
 override_repo(
     pip,
     rules_ml_toolchain_pypi = "pypi",
+    xla_pypi = "pypi",
 )
 
-python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
-use_repo(python_version_ext, "python_version_repo")
+python_version_repo = use_repo_rule("//third_party/extensions:python_version.bzl", "python_version_repo")
+
+python_version_repo(name = "python_version_repo")
 
 git_configure = use_repo_rule("//third_party/git:git_configure.bzl", "git_configure")
 
@@ -285,16 +372,27 @@ syslibs_configure = use_repo_rule("//third_party/systemlibs:syslibs_configure.bz
 
 syslibs_configure(name = "local_config_syslibs")
 
-# register_toolchains("@local_config_python//:py_toolchain")
-
 cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
 use_repo(cuda_configure, "local_config_cuda")
 
 nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
+inject_repo(nccl_configure, "nccl_archive")
+
+nccl_redist = use_extension("@rules_ml_toolchain//extensions:nccl_redist.bzl", "nccl_redist_ext")
+nccl_redist_patched = use_extension("//third_party/nccl:workspace.bzl", "nccl_redist_ext")
+use_repo(nccl_redist_patched, "cuda_nccl")
+
+override_repo(
+    nccl_redist,
+    cuda_nccl = "cuda_nccl",
+)
 
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
-use_repo(sycl_configure, "local_config_sycl")
+use_repo(sycl_configure, "level_zero", "local_config_sycl", "oneapi", "zero_loader")
+
+local_sysroot = use_extension("@rules_ml_toolchain//extensions:local_sysroot_configure.bzl", "local_sysroot_ext")
+use_repo(local_sysroot, "local_sysroot_config")
 
 local_clang_configure = use_extension("@rules_ml_toolchain//extensions:local_clang_configure.bzl", "local_clang_configure_ext")
 use_repo(local_clang_configure, "local_config_clang")
@@ -302,7 +400,6 @@ use_repo(local_clang_configure, "local_config_clang")
 cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(
     cuda_redist_init_ext,
-    "cuda_cccl",
     "cuda_cublas",
     "cuda_cudart",
     "cuda_cudnn",
@@ -313,15 +410,36 @@ use_repo(
     "cuda_cusparse",
     "cuda_driver",
     "cuda_nvcc",
+    "cuda_nvdisasm",
     "cuda_nvjitlink",
     "cuda_nvml",
     "cuda_nvrtc",
     "cuda_nvtx",
+    "cuda_nvvm",
 )
+
+# Override cuda_cccl to use a newer version defined in the cccl_extension.
+cccl_extension = use_extension("@xla//third_party/cccl:cccl_extension.bzl", "cccl_extension")
+use_repo(cccl_extension, "cuda_cccl")
+
+override_repo(
+    cuda_redist_init_ext,
+    cuda_cccl = "cuda_cccl",
+)
+
+nvshmem_redist = use_extension("@rules_ml_toolchain//extensions:nvshmem_redist.bzl", "nvshmem_redist_ext")
+use_repo(nvshmem_redist, "nvidia_nvshmem")
+
+toolchain_ext = use_extension("@rules_ml_toolchain//extensions:toolchain.bzl", "toolchain_ext")
+use_repo(toolchain_ext, "llvm18_linux_x86_64", "llvm_linux_aarch64", "llvm_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_sycl")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_rocm")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_aarch64")
 
@@ -363,3 +481,7 @@ python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
 def_file_filter_configure = use_repo_rule("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 
 def_file_filter_configure(name = "local_config_def_file_filter")
+
+### libdrm (dedicated extension to avoid Bzlmod merging issues)
+libdrm_ext = use_extension("@xla//third_party/libdrm:extension.bzl", "libdrm_ext")
+use_repo(libdrm_ext, "libdrm")

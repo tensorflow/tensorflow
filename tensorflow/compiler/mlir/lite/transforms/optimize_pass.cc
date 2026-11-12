@@ -65,12 +65,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/resource_constant_fold_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir::TFL {
 
@@ -1519,8 +1518,8 @@ struct Convert2DUpscalingToResizeNearestNeighor
 
     auto reshape_op = TFL::ReshapeOp::create(
         rewriter, gather_nd_first->getLoc(),
-        tensorflow::GetTypeFromTFTensorShape(reshape_shape_in_int64,
-                                             result_type.getElementType()),
+        mlir::TFL::GetTypeFromTFLiteShape(reshape_shape_in_int64,
+                                          result_type.getElementType()),
         params_value, reshape_shape_const_op.getResult());
 
     // Add TFL::resize_nearest_neighor op for 2x upscaling.

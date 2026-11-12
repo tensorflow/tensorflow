@@ -14,6 +14,10 @@
 # ==============================================================================
 
 load("//xla:xla.default.bzl", "xla_cc_test")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -224,6 +228,16 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "kernel_arguments_proto",
+    srcs = ["kernel_arguments.proto"],
+    deps = [
+        "//xla:shape_util_proto",
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "kernel_arguments",
     srcs = ["kernel_arguments.cc"],
@@ -233,6 +247,7 @@ cc_library(
         "//xla:native_custom_call_handler_allowlist",
     ],
     deps = [
+        ":kernel_arguments_proto_cc",
         "//xla:frontend_attributes",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -257,6 +272,7 @@ xla_cc_test(
     deps = [
         ":computation_fingerprint",
         ":kernel_arguments",
+        ":kernel_arguments_proto_cc",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:alias_info",
@@ -269,6 +285,8 @@ xla_cc_test(
         "//xla/service:logical_buffer",
         "//xla/service/gpu:gpu_constants",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",

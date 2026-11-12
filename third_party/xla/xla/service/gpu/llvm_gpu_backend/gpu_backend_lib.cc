@@ -54,6 +54,7 @@ limitations under the License.
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/LibraryOptionsContext.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
@@ -109,8 +110,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     return nullptr;
   }
 
-  llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
+  llvm::TargetOptions target_options = llvm::codegen::getTargetOptions(
+      llvm::cl::LibraryOptionsContext(), llvm::Triple());
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;

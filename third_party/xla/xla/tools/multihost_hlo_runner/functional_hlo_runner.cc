@@ -998,7 +998,7 @@ CopyArgumentsToDevice(PjRtClient& client,
         return InvalidArgument(
             "The provided argument map does not contain arguments "
             "for device: %d",
-            curr_device->id());
+            curr_device->global_device_id().value());
       }
       per_device_arguments[i] = &it->second;
     }
@@ -1008,7 +1008,7 @@ CopyArgumentsToDevice(PjRtClient& client,
       if (per_device_arguments[i]->size() != num_args) {
         return InvalidArgument(
             "Argument count mismatch on device %d: expected %v, got %v.",
-            addressable_devices[i]->id(), num_args,
+            addressable_devices[i]->global_device_id().value(), num_args,
             per_device_arguments[i]->size());
       }
       argument_buffers[i].resize(num_args);
@@ -1026,7 +1026,7 @@ CopyArgumentsToDevice(PjRtClient& client,
         PjRtDevice* curr_device = addressable_devices[i];
         const Literal& literal = (*per_device_arguments[i])[arg_i];
         if (log_input) {
-          LOG(INFO) << "device_id=" << curr_device->id()
+          LOG(INFO) << "device_id=" << curr_device->global_device_id().value()
                     << ", input = " << literal.ToString();
         }
         std::unique_ptr<PjRtBuffer> argument_buffer;

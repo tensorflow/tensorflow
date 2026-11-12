@@ -105,19 +105,20 @@ PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future) {
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
-CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
+CpuRawBuffer::Allocate(PJRT_Memory* memory_space, size_t size_bytes,
+                       AsyncWorkRunner* async_work_runner,
                        const CpuDeviceMemory::Allocator& allocator) {
   ABSL_ASSIGN_OR_RETURN(auto memory,
                    CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory), size_bytes,
-                                    /*is_mutable=*/true);
+                                    /*is_mutable=*/true, async_work_runner);
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::ImportForeignMemory(
     void* data, absl::AnyInvocable<void() &&> on_delete_callback,
-    size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
-    bool is_mutable) {
+    size_t on_device_bytes_count, PJRT_Memory* memory_space, bool is_mutable,
+    AsyncWorkRunner* async_work_runner) {
   if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return InvalidArgument(
         "Can't create a view of buffer with unaligned data, ptr: %#x is not "
@@ -128,7 +129,7 @@ CpuRawBuffer::ImportForeignMemory(
       memory_space,
       CpuDeviceMemory::CreateForeignMemory(data, on_device_bytes_count,
                                            std::move(on_delete_callback)),
-      on_device_bytes_count, is_mutable);
+      on_device_bytes_count, is_mutable, async_work_runner);
 }
 
 size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const { return buffer_size_; }
@@ -152,7 +153,8 @@ absl::StatusOr<PjRtRawBufferRef> CpuRawBuffer::Slice(int64_t offset,
   auto sliced_memory =
       CpuDeviceMemory::CreateSlicedMemory(buffer_, offset, slice_size);
   return tsl::MakeRef<CpuRawBuffer>(memory_space_, std::move(sliced_memory),
-                                    slice_size, is_mutable_);
+                                    slice_size, is_mutable_,
+                                    async_work_runner_);
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
@@ -181,9 +183,7 @@ CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     event.SetStateConcrete();
   };
 
-  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
-  ExecuteWhenReady(dependencies, client->async_work_runner(),
-                   std::move(run_copy));
+  ExecuteWhenReady(dependencies, async_work_runner_, std::move(run_copy));
 
   return PjRtDeviceEventRef(std::move(event));
 }
@@ -214,9 +214,7 @@ CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     event.SetStateConcrete();
   };
 
-  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
-  ExecuteWhenReady(dependencies, client->async_work_runner(),
-                   std::move(run_copy));
+  ExecuteWhenReady(dependencies, async_work_runner_, std::move(run_copy));
 
   return PjRtDeviceEventRef(std::move(event));
 }

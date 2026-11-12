@@ -3939,6 +3939,96 @@ TEST_F(CanShareOperandBufferWithUserTest, MultioutputScatterCanShare) {
       updates1_param, {}, scatter, {1}, &alias_info_));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest,
+       MultioutputScatterSameShapeOperandsMatchOutputIndex) {
+  const char* hlo_text = R"(
+    HloModule MultioutputScatterSameShape
+
+    update {
+      lhs0 = s32[] parameter(0)
+      lhs1 = s32[] parameter(1)
+      rhs0 = s32[] parameter(2)
+      rhs1 = s32[] parameter(3)
+      ROOT tuple = tuple(rhs0, rhs1)
+    }
+
+    ENTRY main {
+      operand0 = s32[3,3] parameter(0)
+      operand1 = s32[3,3] parameter(1)
+      indices = s32[3] parameter(2)
+      updates0 = s32[3,3] parameter(3)
+      updates1 = s32[3,3] parameter(4)
+      scatter = (s32[3,3], s32[3,3])
+          scatter(operand0, operand1, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      scatter_dup = (s32[3,3], s32[3,3])
+          scatter(operand0, operand0, indices, updates0, updates1),
+          to_apply=update,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT out = tuple(scatter, scatter_dup)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto computation = module->entry_computation();
+
+  HloInstruction* operand0_param = computation->parameter_instruction(0);
+  HloInstruction* operand1_param = computation->parameter_instruction(1);
+  HloInstruction* updates0_param = computation->parameter_instruction(3);
+  HloInstruction* updates1_param = computation->parameter_instruction(4);
+  HloInstruction* scatter = FindInstruction(module.get(), "scatter");
+  HloInstruction* scatter_dup = FindInstruction(module.get(), "scatter_dup");
+
+  auto check_sharing = [&](HloDataflowAnalysis& analysis,
+                           const AliasInfo& alias_info) {
+    EXPECT_TRUE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand1_param, {}, scatter, {0}, &alias_info));
+    EXPECT_TRUE(analysis.CanShareOperandBufferWithUser(
+        operand1_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates0_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates0_param, {}, scatter, {1}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates1_param, {}, scatter, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        updates1_param, {}, scatter, {1}, &alias_info));
+
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter_dup, {0}, &alias_info));
+    EXPECT_FALSE(analysis.CanShareOperandBufferWithUser(
+        operand0_param, {}, scatter_dup, {1}, &alias_info));
+  };
+
+  auto dataflow_analysis = RunAnalysis(*module);
+  check_sharing(*dataflow_analysis, alias_info_);
+
+  class NoInPlaceScatterAliasInfo : public AliasInfo {
+   protected:
+    std::optional<std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
+    GetNonDefaultInPlaceInputOutputPairs(
+        const HloInstruction* user) const override {
+      if (user->opcode() == HloOpcode::kScatter) {
+        return std::vector<std::pair<HloOperandIndex, ShapeIndex>>{};
+      }
+      return std::nullopt;
+    }
+  };
+  NoInPlaceScatterAliasInfo no_in_place_alias_info;
+  auto no_in_place_dataflow_analysis = RunAnalysis(*module);
+  check_sharing(*no_in_place_dataflow_analysis, no_in_place_alias_info);
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
   const char* hlo_text = R"(
     HloModule TensorFlowTriangularSolve

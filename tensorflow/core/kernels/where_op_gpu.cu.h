@@ -202,7 +202,11 @@ class WhereOutputIterator {
   typedef void pointer;
   typedef int64_t& reference;
 
-#if (THRUST_VERSION >= 100700)
+#if (THRUST_VERSION >= 300200)
+  typedef thrust::detail::iterator_facade_category_t<
+      thrust::device_system_tag, thrust::random_access_traversal_tag>
+      iterator_category;  ///< The iterator category
+#elif (THRUST_VERSION >= 100700)
   // Use Thrust's iterator categories so we can use these iterators in Thrust
   // 1.7 (or newer) methods
   typedef typename thrust::detail::iterator_facade_category<

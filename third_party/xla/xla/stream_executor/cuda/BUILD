@@ -818,21 +818,23 @@ xla_test(
     ],
 )
 
-cc_library(
+embeddable_cuda_library(
     name = "command_buffer_kernels",
     srcs = [
-        "command_buffer_kernels.cc",
+        "command_buffer_kernels.cu.cc",
     ],
     hdrs = ["command_buffer_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    register_with_cudart = False,
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
+        ":cudart_kernel_registry",
         "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -1249,6 +1251,7 @@ cc_library(
     ],
     deps = [
         ":cuda_status",
+        ":locality_domain",
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
@@ -1260,9 +1263,11 @@ cc_library(
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
@@ -1277,18 +1282,23 @@ xla_test(
     deps = [
         ":cuda_device_allocator",
         ":cuda_platform",
+        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -2267,6 +2277,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":command_buffer_kernels",
         ":cuda_command_buffer",
         ":cuda_compute_capability",
         ":cudnn_plugin",
@@ -2277,6 +2288,7 @@ xla_test(
         "//xla/stream_executor:engine_options",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -3619,10 +3631,7 @@ cc_library(
     name = "cudart_kernel_registry",
     srcs = ["cudart_kernel_registry.cc"],
     hdrs = ["cudart_kernel_registry.h"],
-    linkopts = [
-        "-Wl,--wrap=__cudaRegisterFatBinary",
-        "-Wl,--wrap=__cudaRegisterFunction",
-    ],
+    linkstatic = 1,
     tags = [
         "cuda-only",
         "gpu",
@@ -3714,6 +3723,28 @@ embeddable_cuda_library(
     alwayslink = 1,
 )
 
+embeddable_cuda_library(
+    name = "simple_kernel_no_cudart_cuda",
+    testonly = 1,
+    srcs = ["simple_kernel_no_cudart_cuda.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    register_with_cudart = False,
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        ":simple_kernel_cuda",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/cuda:cudart",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+)
+
 xla_test(
     name = "cudart_kernel_registry_test",
     srcs = ["cudart_kernel_registry_test.cc"],
@@ -3727,6 +3758,7 @@ xla_test(
         ":cuda_platform",
         ":cudart_kernel_registry",
         ":simple_kernel_cuda",
+        ":simple_kernel_no_cudart_cuda",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel",
@@ -3738,6 +3770,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",

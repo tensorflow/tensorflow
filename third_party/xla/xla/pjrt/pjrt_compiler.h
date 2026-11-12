@@ -673,6 +673,14 @@ class PjRtCompiler {
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler);
 
+// Returns an unowned pointer to the compiler for `topology`, respecting
+// `topology.compiler()` if present and falling back to the global compiler
+// registry otherwise. The returned PjRtCompiler pointer is owned by topology,
+// and therefore must not outlive it.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    const PjRtTopologyDescription& topology,
+    std::optional<PjRtCompilerVariant> variant = std::nullopt);
+
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.

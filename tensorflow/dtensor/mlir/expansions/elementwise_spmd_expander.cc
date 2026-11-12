@@ -70,8 +70,6 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
     // For scalar operands, splitting is not needed.
     if (operand_layout->rank() == 0) continue;
 
-    llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
-
     // Note that due to broacasting, inputs and output tensors are aligned to
     // the right. Therefore, we truncate the output layout.
     const int rank_offset = output_layout->rank() - operand_layout->rank();

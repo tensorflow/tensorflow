@@ -782,8 +782,8 @@ LogicalResult MemRefBitcastOp::verify() {
 mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
     const MemRefType input_type, const Type result_elem_type,
     function_ref<InFlightDiagnostic()> emit_error) {
-  const int8_t input_bitwidth = getElementTypeBitwidth(input_type);
-  const int8_t result_bitwidth = getTypeBitwidth(result_elem_type);
+  const unsigned input_bitwidth = getElementTypeBitwidth(input_type);
+  const unsigned result_bitwidth = getTypeBitwidth(result_elem_type);
   if (input_bitwidth == result_bitwidth) {
     return MemRefType(
         MemRefType::Builder(input_type).setElementType(result_elem_type));

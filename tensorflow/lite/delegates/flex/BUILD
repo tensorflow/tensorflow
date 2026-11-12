@@ -226,7 +226,6 @@ tf_cc_test(
         ":delegate",
         ":test_util",
         "//tensorflow/lite:shared_library",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -298,5 +298,83 @@ ENTRY main {
   EXPECT_THAT(RunHloPass(&pass, module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(MultiPhaseFusionTest,
+       VectorizesSmallF32LoopStagesOnHopperAndBlackwellOnly) {
+  // Without small-input vectorization, `f32[4096]` requires 32 blocks,
+  // exceeding the 8-block cluster limit on pre-Hopper (`A100SXMDeviceInfo`). On
+  // Hopper (`H100SXMDeviceInfo`) and Blackwell (`B200SXMDeviceInfo`), 4x
+  // unrolling shrinks `f32[4096]` to 8 blocks.
+  constexpr absl::string_view kF32ChainHlo = R"hlo(
+phase_0 { ROOT neg = f32[4096] negate(f32[4096] parameter(0)) }
+phase_1 { ROOT exp = f32[4096] exponential(f32[4096] parameter(0)) }
+
+ENTRY main {
+  p0 = f32[4096] parameter(0)
+  f0 = f32[4096] fusion(p0), kind=kLoop, calls=phase_0
+  ROOT f1 = f32[4096] fusion(f0), kind=kLoop, calls=phase_1
+}
+)hlo";
+  MultiPhaseFusion a100_pass(TestGpuDeviceInfo::A100SXMDeviceInfo());
+  MultiPhaseFusion h100_pass(TestGpuDeviceInfo::H100SXMDeviceInfo());
+  MultiPhaseFusion b200_pass(TestGpuDeviceInfo::B200SXMDeviceInfo());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> f32_a100_module,
+                       ParseAndReturnVerifiedModule(kF32ChainHlo));
+  EXPECT_THAT(RunHloPass(&a100_pass, f32_a100_module.get()),
+              IsOkAndHolds(false));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> f32_h100_module,
+                       ParseAndReturnVerifiedModule(kF32ChainHlo));
+  EXPECT_THAT(RunHloPass(&h100_pass, f32_h100_module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      f32_h100_module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::Fusion().WithPredicate(IsPhasedBlockClusterFusion).WithOneUse(),
+          1)));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> f32_b200_module,
+                       ParseAndReturnVerifiedModule(kF32ChainHlo));
+  EXPECT_THAT(RunHloPass(&b200_pass, f32_b200_module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      f32_b200_module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::Fusion().WithPredicate(IsPhasedBlockClusterFusion).WithOneUse(),
+          1)));
+}
+
+TEST_F(MultiPhaseFusionTest, VectorizesSmallS8LoopStagesOnBlackwellOnly) {
+  // On Blackwell (`B200SXMDeviceInfo`), narrow-type unrolling
+  // (`unroll_factor = 16`) shrinks `s8[16384]` to 8 blocks, whereas Hopper
+  // (`H100SXMDeviceInfo`, `unroll_factor = 4`) still requires 32 blocks.
+  constexpr absl::string_view kS8ChainHlo = R"hlo(
+phase_0 { ROOT neg = s8[16384] negate(s8[16384] parameter(0)) }
+phase_1 { ROOT add = s8[16384] add(s8[16384] parameter(0), s8[16384] parameter(1)) }
+
+ENTRY main {
+  p0 = s8[16384] parameter(0)
+  f0 = s8[16384] fusion(p0), kind=kLoop, calls=phase_0
+  ROOT f1 = s8[16384] fusion(f0, p0), kind=kLoop, calls=phase_1
+}
+)hlo";
+  MultiPhaseFusion h100_pass(TestGpuDeviceInfo::H100SXMDeviceInfo());
+  MultiPhaseFusion b200_pass(TestGpuDeviceInfo::B200SXMDeviceInfo());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> s8_h100_module,
+                       ParseAndReturnVerifiedModule(kS8ChainHlo));
+  EXPECT_THAT(RunHloPass(&h100_pass, s8_h100_module.get()),
+              IsOkAndHolds(false));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> s8_b200_module,
+                       ParseAndReturnVerifiedModule(kS8ChainHlo));
+  EXPECT_THAT(RunHloPass(&b200_pass, s8_b200_module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      s8_b200_module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::Fusion().WithPredicate(IsPhasedBlockClusterFusion).WithOneUse(),
+          1)));
+}
+
 }  // namespace
 }  // namespace xla::gpu

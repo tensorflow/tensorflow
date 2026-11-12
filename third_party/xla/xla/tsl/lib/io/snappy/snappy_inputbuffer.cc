@@ -48,6 +48,10 @@ SnappyInputBuffer::SnappyInputBuffer(
 
 absl::Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read,
                                            tstring* result) {
+  if (bytes_to_read < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't read a negative number of bytes: ", bytes_to_read));
+  }
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 

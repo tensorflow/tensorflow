@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -104,7 +103,6 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
-#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/frontend_attributes.h"
@@ -377,42 +375,6 @@ absl::Status AnnotateMlirKernelLlvmModule(
                                         kernel_func, module);
 }
 
-xla::Future<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
-MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
-                                 const std::string& kernel_name,
-                                 const emitters::KernelArguments& args,
-                                 IrEmitterContext& parent_context) const {
-  return CreateLLVMModule(parent_context.gpu_device_info(), fusion, kernel_name,
-                          &parent_context.buffer_assignment(),
-                          parent_context.kernel_compiler(),
-                          parent_context.BorrowMlirContext())
-      .Map([args, target_triple = parent_context.target_triple(),
-            &gpu_device_info = parent_context.gpu_device_info(), kernel_name,
-            launch_dims = launch_dimensions(),
-            data_layout = parent_context.data_layout(),
-            fusion = &fusion](LlvmKernelSource source) mutable
-               -> absl::StatusOr<
-                   KernelDefinition<LlvmKernelSource, GpuKernelSpec>> {
-        llvm::orc::ThreadSafeModule safe_module =
-            std::move(source).thread_safe_module();
-        llvm::Module* module = safe_module.getModuleUnlocked();
-
-        ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
-            gpu_device_info, launch_dims, kernel_name, data_layout,
-            target_triple, module));
-
-        bool use_pdl =
-            IsPdlEnabled(fusion->GetModule()->config().debug_options(),
-                         gpu_device_info.gpu_compute_capability());
-
-        return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
-            GpuKernelSpec{std::move(kernel_name), std::move(launch_dims),
-                          std::move(args), /*scratch_bytes=*/std::nullopt,
-                          use_pdl},
-            LlvmKernelSource{std::move(safe_module)});
-      });
-}
-
 AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
@@ -427,27 +389,32 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
             std::string(fusion.name()));
-        return EmitLlvmModule(fusion, kernel_name, args, ir_emitter_context)
-            .Map([kernel_compiler = ir_emitter_context.kernel_compiler()](
-                     KernelDefinition<LlvmKernelSource, GpuKernelSpec>
-                         kernel_def) mutable
-                     -> xla::Future<KernelReuseCache::Entry> {
-              GpuKernelSpec spec = kernel_def.spec();
-
-              return kernel_compiler
-                  ->CompileToTargetBinary(std::move(kernel_def).TakeSource(),
-                                          spec)
-                  .Map([spec = std::move(spec)](
-                           const std::vector<uint8_t>& cubin) mutable {
-                    KernelReuseCache::Entry entry{
-                        std::string{spec.name()}, spec.launch_dimensions(),
-                        /*cluster_dim=*/std::nullopt,
-                        /*shmem_bytes=*/0,
-                        std::make_shared<const std::vector<uint8_t>>(cubin)};
-
-                    entry.use_pdl = spec.use_pdl();
-                    return entry;
-                  });
+        BorrowedMlirContext borrowed_context =
+            ir_emitter_context.BorrowMlirContext();
+        ABSL_ASSIGN_OR_RETURN(
+            MlirKernelSource source,
+            EmitMlirSource(ir_emitter_context.gpu_device_info(), fusion,
+                           kernel_name, &ir_emitter_context.buffer_assignment(),
+                           **borrowed_context));
+        bool use_pdl =
+            IsPdlEnabled(fusion.GetModule()->config().debug_options(),
+                         ir_emitter_context.gpu_compute_capability());
+        GpuKernelSpec spec(kernel_name, launch_dimensions(), args,
+                           /*scratch_bytes=*/std::nullopt, use_pdl);
+        MlirKernelDefinition kernel_def(spec, std::move(source));
+        return ir_emitter_context.kernel_compiler()
+            ->CompileToTargetBinary(
+                std::move(kernel_def), std::move(borrowed_context),
+                *fusion.GetModule(), emitter_->unroll_factor())
+            .Map([spec = std::move(spec)](std::vector<uint8_t> cubin) mutable {
+              KernelReuseCache::Entry entry{
+                  std::string{spec.name()}, spec.launch_dimensions(),
+                  /*cluster_dim=*/std::nullopt,
+                  /*shmem_bytes=*/0,
+                  std::make_shared<const std::vector<uint8_t>>(
+                      std::move(cubin))};
+              entry.use_pdl = spec.use_pdl();
+              return entry;
             });
       });
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
@@ -522,32 +489,27 @@ absl::Status CheckSupportedGpuFmaOps(const HloComputation& computation,
 
 }  // namespace
 
-xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
+absl::StatusOr<MlirKernelSource> MlirKernelFusion::EmitMlirSource(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment, KernelCompiler* kernel_compiler,
-    BorrowedMlirContext borrowed_context) const {
+    const BufferAssignment* buffer_assignment,
+    mlir::MLIRContext& mlir_context) const {
   ABSL_RETURN_IF_ERROR(
       CheckSupportedGpuFmaOps(*fusion.fused_instructions_computation(),
                               device.gpu_compute_capability()));
-  mlir::MLIRContext* mlir_context = borrowed_context->get();
 
-  mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
-  mlir_context->loadAllAvailableDialects();
+  mlir_context.appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
+  mlir_context.loadAllAvailableDialects();
 
   ABSL_ASSIGN_OR_RETURN(MlirKernelSource source,
-                   emitter_->Emit(mlir_context, fusion, entry_function_name,
-                                  buffer_assignment));
+                        emitter_->Emit(&mlir_context, fusion,
+                                       entry_function_name, buffer_assignment));
 
   if (frontend::DoesPdlLaunch(fusion)) {
     source.module()->setAttr(frontend::kXlaPdlLaunch,
-                             mlir::UnitAttr::get(mlir_context));
+                             mlir::UnitAttr::get(&mlir_context));
   }
-
-  return kernel_compiler->CompileMlirToLlvm(
-      device, *fusion.GetModule(), entry_function_name,
-      emitter_->unroll_factor(), std::move(source),
-      std::move(borrowed_context));
+  return source;
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -682,6 +644,18 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
+  // Unroll inner loops (such as small reduction loops in kLoop fusions) first
+  // so that any outer unroll loop becomes the innermost loop, exposing
+  // unit-stride accesses for a second vectorization pass before unrolling
+  // remaining outer loops.
+  OptimizeLoopsPassOptions inner_optimize_loops_options;
+  inner_optimize_loops_options.max_unroll_factor_ = max_unroll_factor;
+  inner_optimize_loops_options.only_inner_loops_ = true;
+  pm.addNestedPass<FuncOp>(
+      createOptimizeLoopsPass(inner_optimize_loops_options));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(emitters::createVectorizeLoadsAndStoresPass(device));
   OptimizeLoopsPassOptions optimize_loops_options;
   optimize_loops_options.max_unroll_factor_ = max_unroll_factor;

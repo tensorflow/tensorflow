@@ -4284,5 +4284,206 @@ ENTRY %main (x: f32[1024,32], y: f32[1024,32], v: f32[1024]) -> (f32[1024,96], f
   ExpectLayoutIs(add->operand(1)->shape(), {0, 1});
 }
 
+TEST_F(LayoutAssignmentTest,
+       BroadcastOutputLayoutUpdatesHigherPriorityOperandConstraint) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+HloModule BroadcastOutputLayoutUpdatesHigherPriorityOperandConstraint
+
+%callee (p: f32[3,64,17]) -> f32[3,64,17] {
+  %p = f32[3,64,17] parameter(0)
+  ROOT %hint = f32[3,64,17]{1,0,2} custom-call(%p), custom_call_target="Hint",
+    operand_layout_constraints={f32[3,64,17]{1,0,2}}
+}
+
+%reduce_add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(%lhs, %rhs)
+}
+
+%callee2 (p2: f32[3,64,17]) -> f32[] {
+  %p2 = f32[3,64,17] parameter(0)
+  %bcast = f32[3,64,17,2] broadcast(%p2), dimensions={0,1,2}
+  %zero = f32[] constant(0)
+  ROOT %red = f32[] reduce(%bcast, %zero), dimensions={0,1,2,3},
+    to_apply=%reduce_add
+}
+
+ENTRY %main (x: f32[3,64,17]) -> (f32[], f32[3,64,17]) {
+  %x = f32[3,64,17]{2,1,0} parameter(0)
+  %call = f32[3,64,17] call(%x), to_apply=%callee
+  %call2 = f32[] call(%call), to_apply=%callee2
+  ROOT %out = (f32[], f32[3,64,17]) tuple(%call2, %call)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/true);
+
+  LayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* bcast = FindInstruction(m.get(), "bcast");
+  ASSERT_NE(bcast, nullptr);
+  ExpectLayoutIs(bcast->shape(), {3, 2, 1, 0});
+  ExpectLayoutIs(bcast->operand(0)->shape(), {2, 1, 0});
+}
+
+class MandatoryTransposeLayoutAssignment : public LayoutAssignment {
+ public:
+  explicit MandatoryTransposeLayoutAssignment(
+      ComputationLayout* entry_computation_layout)
+      : LayoutAssignment(entry_computation_layout) {}
+
+  bool OutputLayoutAlwaysPropagateToOperands(
+      const HloInstruction* user) override {
+    if (user->opcode() == HloOpcode::kTranspose) {
+      return true;
+    }
+    return LayoutAssignment::OutputLayoutAlwaysPropagateToOperands(user);
+  }
+
+  bool NegotiateLayout(const HloInstruction* instruction,
+                       const Layout& new_layout, const Layout& existing_layout,
+                       const HloInstruction* user,
+                       const HloInstruction* from_user) override {
+    if (instruction->opcode() == HloOpcode::kCall &&
+        Layout::Equal().MinorToMajorOnly()(new_layout,
+                                           LayoutUtil::MakeLayout({0, 1}))) {
+      return true;
+    }
+    if (instruction->opcode() == HloOpcode::kTranspose &&
+        Layout::Equal().MinorToMajorOnly()(new_layout,
+                                           LayoutUtil::MakeLayout({1, 0}))) {
+      return true;
+    }
+    return false;
+  }
+};
+
+TEST_F(LayoutAssignmentTest,
+       MandatoryOutputLayoutPropagationUpdatesHigherPriorityOperandConstraint) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+HloModule MandatoryOutputLayoutPropagationUpdatesHigherPriorityOperandConstraint
+
+%producer (u: f32[8,128]) -> f32[8,128] {
+  %u = f32[8,128] parameter(0)
+  ROOT %pinned = f32[8,128]{1,0} custom-call(%u), custom_call_target="Pinned",
+    operand_layout_constraints={f32[8,128]{1,0}}
+}
+
+ENTRY %main (x: f32[8,128], v: f32[128]) -> (f32[128,24], f32[8,128], f32[128,8]) {
+  %x = f32[8,128]{1,0} parameter(0)
+  %v = f32[128]{0} parameter(1)
+  %p = f32[8,128] call(%x), to_apply=%producer
+  %hint_p = f32[8,128]{0,1} custom-call(%p), custom_call_target="HintP",
+    operand_layout_constraints={f32[8,128]{0,1}}
+  %t = f32[128,8] transpose(%p), dimensions={1,0}
+  %hint_t = f32[128,8]{0,1} custom-call(%t), custom_call_target="HintT",
+    operand_layout_constraints={f32[128,8]{0,1}}
+  %big = f32[128,16] broadcast(%v), dimensions={0}
+  %concat = f32[128,24] concatenate(%t, %big), dimensions={1}
+  ROOT %out = (f32[128,24], f32[8,128], f32[128,8]) tuple(%concat, %hint_p, %hint_t)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/true);
+  computation_layout.mutable_result_layout()->Clear();
+
+  MandatoryTransposeLayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* t = FindInstruction(m.get(), "t");
+  ASSERT_NE(t, nullptr);
+  ExpectLayoutIs(t->shape(), {1, 0});
+  ExpectLayoutIs(t->operand(0)->shape(), {0, 1});
+  EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(t->operand(0)->shape(), t->shape(),
+                                            {1, 0}));
+}
+
+TEST_F(LayoutAssignmentTest, BroadcastDoesNotLaunderNonMandatoryHintPriority) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+HloModule BroadcastDoesNotLaunderNonMandatoryHintPriority
+
+ENTRY %main (x: f32[4,8]) -> (f32[4,8,2], f32[4,8]) {
+  %x = f32[4,8]{0,1} parameter(0)
+  %def = f32[4,8] exponential(%x)
+  %bcast = f32[4,8,2] broadcast(%def), dimensions={0,1}
+  ROOT %out = (f32[4,8,2], f32[4,8]) tuple(%bcast, %def)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
+  computation_layout.mutable_result_layout()->Clear();
+
+  MandatoryTransposeLayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* def = FindInstruction(m.get(), "def");
+  const HloInstruction* bcast = FindInstruction(m.get(), "bcast");
+  ASSERT_NE(def, nullptr);
+  ASSERT_NE(bcast, nullptr);
+  ExpectLayoutIs(def->shape(), {0, 1});
+  ExpectLayoutIs(bcast->shape(), {2, 1, 0});
+  ExpectLayoutIs(bcast->operand(0)->shape(), {1, 0});
+  EXPECT_EQ(bcast->operand(0)->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertUpdatesHigherPriorityMandatoryOperandConstraint) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+HloModule BitcastConvertUpdatesHigherPriorityMandatoryOperandConstraint
+
+%callee (p: u32[3,64,17]) -> u32[3,64,17] {
+  %p = u32[3,64,17] parameter(0)
+  ROOT %hint = u32[3,64,17]{1,0,2} custom-call(%p), custom_call_target="Hint",
+    operand_layout_constraints={u32[3,64,17]{1,0,2}}
+}
+
+%callee2 (p2: u32[3,64,17]) -> s16[3,64,17,2] {
+  %p2 = u32[3,64,17] parameter(0)
+  %bc = s16[3,64,17,2] bitcast-convert(%p2)
+  ROOT %pin = s16[3,64,17,2]{1,3,2,0} custom-call(%bc),
+    custom_call_target="Pinned",
+    operand_layout_constraints={s16[3,64,17,2]{1,3,2,0}}
+}
+
+ENTRY %main (x: u32[3,64,17]) -> (s16[3,64,17,2], u32[3,64,17]) {
+  %x = u32[3,64,17]{2,1,0} parameter(0)
+  %call = u32[3,64,17] call(%x), to_apply=%callee
+  %call2 = s16[3,64,17,2] call(%call), to_apply=%callee2
+  ROOT %out = (s16[3,64,17,2], u32[3,64,17]) tuple(%call2, %call)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/true);
+  computation_layout.mutable_result_layout()->Clear();
+
+  LayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_THAT(
+      layout_assignment.Run(m.get(), {HloInstruction::kMainExecutionThread}),
+      absl_testing::IsOk());
+  const HloInstruction* bc = FindInstruction(m.get(), "bc");
+  ASSERT_NE(bc, nullptr);
+  ExpectLayoutIs(bc->shape(), {1, 3, 2, 0});
+  ExpectLayoutIs(bc->operand(0)->shape(), {1, 2, 0});
+}
+
 }  // namespace
 }  // namespace xla

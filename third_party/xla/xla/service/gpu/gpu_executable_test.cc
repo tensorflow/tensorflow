@@ -702,6 +702,52 @@ TEST_F(GpuExecutableTest, ThunkChecksumPassAddsAllocation) {
             allocations_without_pass + 1);
 }
 
+TEST(GpuExecutableTupleOutputTest, DebugPassesAcceptTupleModuleOutputs) {
+  // GetOutputInfo records the tuple index and each array leaf. The debug
+  // passes reject tuple slices, so GetModuleOutputSlices must pass only the
+  // leaves through.
+  Shape leaf = ShapeUtil::MakeShape(F32, {4});
+  GpuExecutable::Params params;
+  params.module_name = "tuple_result";
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  HloComputation::Builder builder("tuple_result");
+  HloInstruction* left = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({1, 2, 3, 4})));
+  HloInstruction* right = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({5, 6, 7, 8})));
+  HloInstruction* root =
+      builder.AddInstruction(HloInstruction::CreateTuple({left, right}));
+  params.debug_module =
+      std::make_unique<HloModule>("tuple_result", HloModuleConfig());
+  params.debug_module->AddEntryComputation(builder.Build(root));
+  *params.program_shape.mutable_result() =
+      ShapeUtil::MakeTupleShape({leaf, leaf});
+  params.allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/16, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/16, /*color=*/0)};
+  params.output_info[ShapeIndex{}] =
+      GpuExecutable::OutputInfo{/*allocation_index=*/0};
+  params.output_info[ShapeIndex{0}] =
+      GpuExecutable::OutputInfo{/*allocation_index=*/0};
+  params.output_info[ShapeIndex{1}] =
+      GpuExecutable::OutputInfo{/*allocation_index=*/1};
+  params.debug_options.set_xla_gpu_detect_nan(
+      DebugOptions::DETECTION_MODE_WARNING);
+  params.debug_options.set_xla_gpu_detect_inf(
+      DebugOptions::DETECTION_MODE_WARNING);
+  params.debug_options.set_xla_gpu_log_minmax(true);
+  params.debug_options
+      .set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(true);
+  params.debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(
+      true);
+  params.debug_options
+      .set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(true);
+  params.debug_options.set_xla_dump_to("/tmp");
+  SetDummyBufferAssignment(params);
+
+  EXPECT_THAT(GpuExecutable::Create(std::move(params)), absl_testing::IsOk());
+}
+
 TEST_F(GpuExecutableTest, DumpsMetadataListProto) {
   ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_dir,

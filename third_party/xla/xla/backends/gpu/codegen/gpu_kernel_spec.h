@@ -19,9 +19,13 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -61,6 +65,11 @@ class GpuKernelSpec final : public KernelSpec {
   }
 
   size_t shmem_bytes() const { return scratch_bytes().value_or(0); }
+
+  static absl::StatusOr<GpuKernelSpec> FromProto(
+      const GpuKernelSpecProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+  absl::StatusOr<GpuKernelSpecProto> ToProto() const;
 
  private:
   LaunchDimensions launch_dimensions_;

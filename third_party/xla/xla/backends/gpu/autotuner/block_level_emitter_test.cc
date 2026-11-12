@@ -393,6 +393,33 @@ TEST_F(TritonBlockLevelFusionEmitterBackendTest,
             4);
 }
 
+TEST_F(TritonBlockLevelFusionEmitterBackendTest,
+       IsSupportedHonorsSameShapeMultiOutputFusionFlag) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+f {
+  p0 = f32[16,16]{1,0} parameter(0)
+  p1 = f32[16,16]{1,0} parameter(1)
+  add = f32[16,16]{1,0} add(p0, p1)
+  sub = f32[16,16]{1,0} subtract(p0, p1)
+  ROOT t = (f32[16,16]{1,0}, f32[16,16]{1,0}) tuple(add, sub)
+}
+
+ENTRY main {
+  p0 = f32[16,16]{1,0} parameter(0)
+  p1 = f32[16,16]{1,0} parameter(1)
+  ROOT fusion = (f32[16,16]{1,0}, f32[16,16]{1,0}) fusion(p0, p1),
+    kind=kLoop, calls=f
+})"));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  EXPECT_FALSE(backend_.IsSupported(fusion));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
+  EXPECT_TRUE(backend_.IsSupported(fusion));
+}
+
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, Version) {
   EXPECT_NE(backend_.version(), "");
 }

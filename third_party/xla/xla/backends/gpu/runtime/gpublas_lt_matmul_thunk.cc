@@ -192,6 +192,9 @@ Thunk::BufferUses CublasLtMatmulThunk::buffer_uses() const {
       BufferUse::Read(c_.slice, c_.shape),
       BufferUse::Write(d_.slice, d_.shape),
   };
+  if (group_sizes_.has_value()) {
+    res.push_back(BufferUse::Read(group_sizes_->slice, group_sizes_->shape));
+  }
   if (bias_.has_value()) {
     res.push_back(BufferUse::Read(bias_->slice, bias_->shape));
   }

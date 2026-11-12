@@ -50,7 +50,9 @@ class KernelRegistryBase {
       : api_(api), extension_(extension) {}
 
   // Registers a device kernel (PTX or CUBIN) for the current device and returns
-  // an opaque `XLA_FFI_Kernel*` handle owned by the executable.
+  // an opaque `XLA_FFI_Kernel*` handle owned by the executable. Pass a
+  // previously returned `cached_kernel` from the same executable to ensure it
+  // is loaded on the current device without rehashing `data`.
   // Enabled only in `ExecutionStage::kPrepare` and
   // `ExecutionStage::kInitialize`.
   template <ExecutionStage s = stage,
@@ -59,6 +61,16 @@ class KernelRegistryBase {
   StatusOr<const XLA_FFI_Kernel*> Register(std::string_view name,
                                            const void* data, size_t size,
                                            SourceFormat format, bool uses_pdl) {
+    return Register(name, data, size, format, uses_pdl,
+                    /*cached_kernel=*/nullptr);
+  }
+
+  template <ExecutionStage s = stage,
+            std::enable_if_t<s == ExecutionStage::kPrepare ||
+                             s == ExecutionStage::kInitialize>* = nullptr>
+  StatusOr<const XLA_FFI_Kernel*> Register(
+      std::string_view name, const void* data, size_t size, SourceFormat format,
+      bool uses_pdl, const XLA_FFI_Kernel* cached_kernel) {
     if (data == nullptr) {
       return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_INVALID_ARGUMENT,
@@ -79,13 +91,12 @@ class KernelRegistryBase {
         size,
         static_cast<XLA_FFI_SourceFormat>(format),
     };
-    XLA_FFI_KernelRegistry_Register_Args args;
+    XLA_FFI_KernelRegistry_Register_Args args{};
     args.struct_size = XLA_FFI_KernelRegistry_Register_Args_STRUCT_SIZE;
-    args.extension_start = nullptr;
     args.state = extension_->state;
     args.kernel_spec = &kernel_spec;
     args.uses_pdl = static_cast<int32_t>(uses_pdl);
-    args.kernel = nullptr;
+    args.cached_kernel = cached_kernel;
 
     if (XLA_FFI_Error* err = extension_->api->register_kernel(&args)) {
       return ErrorPolicy::TakeError(api_, err);
@@ -131,9 +142,8 @@ class KernelRegistryBase {
         &ffi_args,
     };
 
-    XLA_FFI_KernelRegistry_Launch_Args launch_args;
+    XLA_FFI_KernelRegistry_Launch_Args launch_args{};
     launch_args.struct_size = XLA_FFI_KernelRegistry_Launch_Args_STRUCT_SIZE;
-    launch_args.extension_start = nullptr;
     launch_args.state = extension_->state;
     launch_args.kernel = kernel;
     launch_args.launch_params = &launch_params;

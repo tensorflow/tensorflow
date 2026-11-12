@@ -514,17 +514,24 @@ absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapForward(
   TF_RET_CHECK(tracker.input_shape().dimensions() == shape_.dimensions());
   DotOperandDims dims = *this;
   for (const ShapeTracker::Step& step : tracker.GetSteps()) {
-    if (step.type == ShapeTracker::Step::Type::kTranspose) {
-      dims.ApplyPermutation(step.dimensions);
-      continue;
+    switch (step.type) {
+      case ShapeTracker::Step::Type::kTranspose:
+        dims.ApplyPermutation(step.dimensions);
+        break;
+      case ShapeTracker::Step::Type::kReshape: {
+        ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> reshaped,
+                         dims.Reshape(ShapeUtil::MakeShape(
+                             shape_.element_type(), step.dimensions)));
+        if (!reshaped.has_value()) {
+          return std::nullopt;
+        }
+        dims = *std::move(reshaped);
+        break;
+      }
+      case ShapeTracker::Step::Type::kBroadcast:
+      case ShapeTracker::Step::Type::kReduce:
+        return std::nullopt;
     }
-    ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> reshaped,
-                     dims.Reshape(ShapeUtil::MakeShape(shape_.element_type(),
-                                                       step.dimensions)));
-    if (!reshaped.has_value()) {
-      return std::nullopt;
-    }
-    dims = *std::move(reshaped);
   }
   ABSL_RETURN_IF_ERROR(dims.SetShape(tracker.output_shape()));
   return dims;

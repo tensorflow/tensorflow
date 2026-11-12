@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/IR/ArithAttributes.h"
@@ -37,9 +38,11 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Inliner.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -73,8 +77,10 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(ttir::getPointerType(memref_type.getElementType()));
   }
-  mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
-  arg_types.append(opaque_args.begin(), opaque_args.end());
+  // The GPU runtime passes device rank as a 32-bit integer kernel argument.
+  if (entry_op.getHasRank()) {
+    arg_types.push_back(mlir::IntegerType::get(entry_op.getContext(), 32));
+  }
   return arg_types;
 }
 
@@ -98,8 +104,14 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     builder.setInsertionPointToStart(module.getBody());
 
     const int64_t num_buffer_args = entry_op.getBufferArgs().size();
+    BlockArgument old_rank_arg = entry_op.getRank();
+    BlockArgument tile_id_arg = entry_op.getProgramId();
+    mlir::Attribute rank_range =
+        old_rank_arg
+            ? entry_op.getArgAttr(old_rank_arg.getArgNumber(), "xla.range")
+            : mlir::Attribute();
     mlir::Attribute tile_id_range =
-        entry_op.getArgAttr(entry_op.getNumArguments() - 1, "xla.range");
+        entry_op.getArgAttr(tile_id_arg.getArgNumber(), "xla.range");
     auto new_arg_types = GetTransformedArgTypes(entry_op);
     auto new_func_op =
         mlir::func::FuncOp::create(builder, entry_op.getName(),
@@ -117,8 +129,6 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
         new_arg_types,
         SmallVector<Location>(new_arg_types.size(), entry_op.getLoc())));
 
-    BlockArgument tile_id_arg = old_args.back();
-
     auto pid = ttir::GetProgramIdOp::create(builder, ttir::ProgramIDDim::X);
     auto pid_idx =
         ma::IndexCastOp::create(builder, builder.getIndexType(), pid);
@@ -127,10 +137,27 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     }
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
+    // Cast the i32 kernel rank back to index for XTile ops, keeping its
+    // [0, num_devices - 1] xla.range attribute for downstream bounds analysis.
+    if (old_rank_arg) {
+      if (!old_rank_arg.use_empty()) {
+        auto rank_idx = ma::IndexCastOp::create(builder, builder.getIndexType(),
+                                                new_args[num_buffer_args]);
+        if (rank_range) {
+          rank_idx->setAttr("xla.range", rank_range);
+        }
+        rewriter.replaceAllUsesWith(old_rank_arg, rank_idx);
+      }
+    }
+
     // Handle memref arguments.
-    for (auto [old_arg, new_arg] :
-         llvm::zip(old_args,
-                   mlir::ValueRange(new_args).take_front(num_buffer_args))) {
+    for (auto [old_arg, new_arg] : llvm::zip_equal(
+             mlir::ValueRange(old_args).take_front(num_buffer_args),
+             mlir::ValueRange(new_args).take_front(num_buffer_args))) {
+      // Skip unused buffers (e.g. an unused scratch slot) to avoid dead casts.
+      if (old_arg.use_empty()) {
+        continue;
+      }
       mlir::MemRefType memref_type =
           mlir::cast<mlir::MemRefType>(old_arg.getType());
 
@@ -139,13 +166,6 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
 
       // Replace all uses of the old argument with the result of the cast.
       rewriter.replaceAllUsesWith(old_arg, memref_cast);
-    }
-    // For opaque arguments, we can simply replace all uses with the new
-    // argument.
-    for (auto [old_arg, new_arg] :
-         llvm::zip(mlir::ValueRange(old_args).drop_front(num_buffer_args),
-                   mlir::ValueRange(new_args).drop_front(num_buffer_args))) {
-      rewriter.replaceAllUsesWith(old_arg, new_arg);
     }
 
     entry_block.eraseArguments(0, old_args.size());
@@ -182,17 +202,18 @@ class XTileSelectBufferToTriton
     // Dereference the outer pointer.
     auto addr_i64 = mlir::triton::LoadOp::create(b, ptr_addr.getResult(),
                                                  /*isVolatile=*/false);
-    auto result_memref_type = mlir::cast<mlir::MemRefType>(op.getType());
-    mlir::Type target_ptr_type =
-        ttir::getPointerType(result_memref_type.getElementType());
-    mlir::NamedAttribute divisibility_attr = xtile::GetDivisibilityAttr(b);
-    // The ptr ->i64 -> memref dance.
+    // Turn the 64-bit address into a typed Triton pointer (e.g. !tt.ptr<f32>).
     mlir::Value final_ptr = mlir::triton::IntToPtrOp::create(
-        b, target_ptr_type, addr_i64.getResult(),
-        llvm::ArrayRef<mlir::NamedAttribute>{divisibility_attr});
-    mlir::Value ptr_to_memref =
-        PtrToMemrefOp::create(b, op.getType(), final_ptr);
-    rewriter.replaceOp(op, ptr_to_memref);
+        b, ttir::getPointerType(op.getType().getElementType()),
+        addr_i64.getResult(), {xtile::GetDivisibilityAttr(b)});
+    // Shift forward by `offset` elements if requested.
+    if (mlir::Value offset = op.getOffset()) {
+      mlir::Value offset_i64 =
+          mlir::arith::IndexCastOp::create(b, b.getI64Type(), offset);
+      final_ptr = mlir::triton::AddPtrOp::create(b, final_ptr.getType(),
+                                                 final_ptr, offset_i64);
+    }
+    rewriter.replaceOpWithNewOp<PtrToMemrefOp>(op, op.getType(), final_ptr);
     return mlir::success();
   }
 };
@@ -213,9 +234,9 @@ class XTileExtractToTriton
         CreateMemrefToPtr(rewriter, extract_op.getSource());
 
     if (result_type.getRank() == 0) {
-      mlir::Value scalar_value = ttir::LoadOp::create(
-          rewriter, extract_op->getLoc(), memref_to_ptr,
-          /*isVolatile=*/false);
+      mlir::Value scalar_value =
+          ttir::LoadOp::create(rewriter, extract_op->getLoc(), memref_to_ptr,
+                               /*isVolatile=*/false);
 
       rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
           extract_op, result_type, scalar_value);
@@ -361,6 +382,19 @@ class TritonXLALowerXTilePass
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;
+    }
+
+    // Fail early if any xtile op was left unlowered by the patterns above.
+    if (module
+            .walk<mlir::WalkOrder::PreOrder>([](mlir::Operation* op) {
+              if (llvm::isa<xtile::XTileDialect>(op->getDialect())) {
+                op->emitOpError("unlowered xtile op");
+                return mlir::WalkResult::interrupt();
+              }
+              return mlir::WalkResult::advance();
+            })
+            .wasInterrupted()) {
+      signalPassFailure();
     }
   }
 };

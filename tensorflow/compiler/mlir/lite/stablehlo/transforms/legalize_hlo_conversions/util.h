@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -54,13 +53,8 @@ PermutationAndShape GetPermutationAndTransposedShape(
     llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
     ConversionPatternRewriter& rewriter);
 
-// Create a single const integer.
-Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
-                      ConversionPatternRewriter& rewriter, int64_t const_value,
-                      Type type);
-
 // Create a const integer vector tensor (1-dim).
-template <typename ConstOpT = TF::ConstOp>
+template <typename ConstOpT>
 Value BuildIntArrayConstOp(ImplicitLocOpBuilder& builder,
                            ConversionPatternRewriter& rewriter,
                            ArrayRef<int64_t> const_value, Type type) {

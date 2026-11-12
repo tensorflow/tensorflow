@@ -111,6 +111,14 @@ class MultiSliceConfig {
   // Returns a serialized proto representing MultiSliceConfig.
   virtual std::string Serialize() const = 0;
 
+  // Translates a multi-slice device ID from a DeviceAssignment into a
+  // slice-local GlobalDeviceId if the device is on `SliceId()`, or
+  // `std::nullopt` if the device is on a non-local slice.
+  virtual absl::StatusOr<std::optional<GlobalDeviceId>> GetSliceLocalDeviceId(
+      int64_t multi_slice_device_id) const {
+    return absl::UnimplementedError("GetSliceLocalDeviceId is not supported.");
+  }
+
  private:
   mutable std::atomic<uint32_t> ref_count_{1};
 };

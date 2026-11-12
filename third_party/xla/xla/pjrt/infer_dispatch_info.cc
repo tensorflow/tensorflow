@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/infer_dispatch_info.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -50,12 +49,9 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -104,161 +100,28 @@ bool IsPadRealToStaticOp(mlir::Operation* op) {
   return attr != nullptr && attr.getValue() == "PadRealToStatic";
 }
 
-bool ShapeIndexOverlaps(const ShapeIndex& a, const ShapeIndex& b) {
-  const size_t min_size = std::min(a.size(), b.size());
-  for (size_t i = 0; i < min_size; ++i) {
-    if (a[i] != b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool HasOutputToOperandAlias(const HloInstruction* instruction,
-                             int64_t operand_number,
-                             const ShapeIndex& operand_index) {
-  return absl::c_any_of(
-      instruction->output_operand_aliasing(), [&](const auto& alias) {
-        return alias.second.first == operand_number &&
-               ShapeIndexOverlaps(alias.second.second, operand_index);
-      });
-}
-
-// Maps a data operand `(async_user, operand_number)` on a `kAsyncStart` or
-// `kAsyncUpdate` instruction to the bound parameter index in
-// `async_user->async_wrapped_computation()`, or `std::nullopt` if the chain is
-// incomplete or `operand_number` is not a bound data operand.
-std::optional<int64_t> GetAsyncBoundParameterNumber(
-    const HloInstruction* async_user, int64_t operand_number) {
-  if (async_user->opcode() != HloOpcode::kAsyncStart &&
-      async_user->opcode() != HloOpcode::kAsyncUpdate) {
-    return std::nullopt;
-  }
-  const int64_t user_start_idx =
-      async_user->opcode() == HloOpcode::kAsyncStart ? 0 : 1;
-  if (operand_number < user_start_idx ||
-      operand_number >= async_user->operand_count()) {
-    return std::nullopt;
-  }
-  const HloInstruction* start = async_user->async_chain_start();
-  const HloInstruction* done = async_user->async_chain_done();
-  const HloComputation* wrapped = async_user->async_wrapped_computation();
-  const HloAsyncInstruction* done_async =
-      done != nullptr ? DynCast<HloAsyncInstruction>(done) : nullptr;
-  const HloAsyncStartInstruction* start_async =
-      start != nullptr ? DynCast<HloAsyncStartInstruction>(start) : nullptr;
-  if (start_async == nullptr || done_async == nullptr || wrapped == nullptr) {
-    return std::nullopt;
-  }
-  const std::vector<const HloInstruction*> bound_operands =
-      hlo_instruction_utils::async::GetAsyncBoundOperands(done_async);
-  if (bound_operands.size() != static_cast<size_t>(wrapped->num_parameters())) {
-    return std::nullopt;
-  }
-  int64_t offset = 0;
-  for (const HloInstruction* instr : start_async->GetAsyncChain()) {
-    const int64_t start_idx = instr->opcode() == HloOpcode::kAsyncStart ? 0 : 1;
-    if (instr == async_user) {
-      const int64_t param_no = offset + (operand_number - user_start_idx);
-      if (param_no < 0 || param_no >= wrapped->num_parameters()) {
-        return std::nullopt;
-      }
-      return param_no;
-    }
-    if (instr == done) {
-      break;
-    }
-    if (instr->operand_count() > start_idx) {
-      offset += instr->operand_count() - start_idx;
-    }
-  }
-  return std::nullopt;
-}
-
-// Returns true if `use` of the entry parameter `value` is compatible with the
-// zero-prefix compact buffer that `PadRealToStatic` reads: the pad itself
-// (operand 0), prefix-agnostic forwarding (`kBitcast`, `kOptimizationBarrier`,
-// `kAddDependency`), or a positional subcomputation boundary (`kCall`,
-// `kAsyncStart` / `kAsyncUpdate` / `kAsyncDone`) through which
-// `HloDataflowAnalysis` forwards `value` unchanged, so that every reader of
-// the forwarded value is itself verified by the caller's use walk.
-bool IsAllowedPadRealToStaticUse(const HloDataflowAnalysis& dataflow,
-                                 const HloValue& value, const HloUse& use) {
+// Returns true if `use` is the pad itself or a bitcast of the buffer.
+bool IsAllowedPadRealToStaticUse(const HloUse& use) {
   const HloInstruction* user = use.instruction;
   switch (user->opcode()) {
     case HloOpcode::kCustomCall:
       return user->IsCustomCall("PadRealToStatic") && use.operand_number == 0 &&
              use.operand_index.empty();
     case HloOpcode::kBitcast:
-    case HloOpcode::kOptimizationBarrier:
       return true;
-    case HloOpcode::kAddDependency:
-      return use.operand_number == 0;
-    case HloOpcode::kCall: {
-      const HloComputation* callee = user->to_apply();
-      if (callee == nullptr || use.operand_number >= callee->num_parameters() ||
-          HasOutputToOperandAlias(user, use.operand_number,
-                                  use.operand_index)) {
-        return false;
-      }
-      const HloInstruction* param =
-          callee->parameter_instruction(use.operand_number);
-      if (!ShapeUtil::IndexIsValid(param->shape(), use.operand_index)) {
-        return false;
-      }
-      return absl::c_linear_search(
-          dataflow.GetValueSet(param, use.operand_index).values(), &value);
-    }
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate: {
-      if (user->async_chain_start() == nullptr ||
-          user->async_chain_done() == nullptr ||
-          user->async_wrapped_computation() == nullptr) {
-        return false;
-      }
-      if (user->opcode() == HloOpcode::kAsyncUpdate &&
-          use.operand_number == 0) {
-        return !use.operand_index.empty() && use.operand_index.front() == 0 &&
-               !HasOutputToOperandAlias(user, 0, use.operand_index);
-      }
-      const std::optional<int64_t> param_no =
-          GetAsyncBoundParameterNumber(user, use.operand_number);
-      if (!param_no.has_value() ||
-          HasOutputToOperandAlias(user, use.operand_number,
-                                  use.operand_index) ||
-          HasOutputToOperandAlias(user->async_chain_start(), *param_no,
-                                  use.operand_index)) {
-        return false;
-      }
-      const HloInstruction* param =
-          user->async_wrapped_computation()->parameter_instruction(*param_no);
-      if (!ShapeUtil::IndexIsValid(param->shape(), use.operand_index)) {
-        return false;
-      }
-      return absl::c_linear_search(
-          dataflow.GetValueSet(param, use.operand_index).values(), &value);
-    }
-    case HloOpcode::kAsyncDone:
-      // Not on the parameter -> pad path: dataflow keeps the bound inputs in
-      // element {0} of the async context tuple until `async-done` consumes it.
-      return user->async_chain_start() != nullptr && use.operand_number == 0 &&
-             !use.operand_index.empty() && use.operand_index.front() == 0;
     default:
       return false;
   }
 }
 
-absl::Status VerifyOnlyPadRealToStaticReadsValue(
-    const HloDataflowAnalysis& dataflow, const HloValue& value,
-    const HloValue& entry_parameter_value) {
-  const HloInstruction* parameter =
-      entry_parameter_value.defining_instruction();
-  const ShapeIndex& leaf_index = entry_parameter_value.defining_index();
+absl::Status VerifyOnlyPadRealToStaticReadsValue(const HloValue& value) {
+  const HloInstruction* parameter = value.defining_instruction();
+  const ShapeIndex& leaf_index = value.defining_index();
   auto format_error = [&](absl::string_view detail,
                           absl::string_view via_name) {
     return InvalidArgument(
-        "Entry parameter %d%s of %s feeds PadRealToStatic and is also %s "
-        "(through %s). A dynamic parameter consumed by PadRealToStatic is "
+        "Entry parameter %d%s of module %s feeds PadRealToStatic and is also "
+        "%s (through %s). A dynamic parameter consumed by PadRealToStatic is "
         "passed as a compact buffer without dynamic-shape metadata, which no "
         "other instruction can read, so it must have no other users.",
         parameter->parameter_number(),
@@ -274,10 +137,12 @@ absl::Status VerifyOnlyPadRealToStaticReadsValue(
     }
   }
   for (const HloUse& use : value.GetUses()) {
-    if (!IsAllowedPadRealToStaticUse(dataflow, value, use)) {
+    if (!IsAllowedPadRealToStaticUse(use)) {
       const HloInstruction* via = use.instruction->operand(use.operand_number);
-      return format_error(absl::StrCat("used by ", use.instruction->ToString()),
-                          via->name());
+      return format_error(
+          absl::StrCat("used by ", use.instruction->ToString(),
+                       " in computation ", use.instruction->parent()->name()),
+          via->name());
     }
   }
   return absl::OkStatus();
@@ -288,21 +153,15 @@ absl::Status VerifyOnlyPadRealToStaticReadsValue(
 absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
     const HloModule& hlo_module, absl::Span<Shape> parameter_shapes) {
   const HloComputation* entry_comp = hlo_module.entry_computation();
-  if (entry_comp == nullptr) {
-    return absl::OkStatus();
-  }
 
-  // Zero-allocation fast path: only modules with a dynamic `PadRealToStatic`
-  // operand pay for the dataflow analysis. Offloaded pads live in non-entry
-  // computations, so scan every computation.
+  // Only pads in the entry computation are handled; offloaded pads live in
+  // other computations, are not traced here and keep the prefix.
   std::vector<const HloInstruction*> pad_calls;
-  for (const HloComputation* comp : hlo_module.computations()) {
-    for (const HloInstruction* instruction : comp->instructions()) {
-      if (instruction->IsCustomCall("PadRealToStatic") &&
-          instruction->operand_count() > 0 &&
-          instruction->operand(0)->shape().is_dynamic()) {
-        pad_calls.push_back(instruction);
-      }
+  for (const HloInstruction* instruction : entry_comp->instructions()) {
+    if (instruction->IsCustomCall("PadRealToStatic") &&
+        instruction->operand_count() > 0 &&
+        instruction->operand(0)->shape().is_dynamic()) {
+      pad_calls.push_back(instruction);
     }
   }
   if (pad_calls.empty()) {
@@ -312,14 +171,12 @@ absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
                    HloDataflowAnalysis::Run(hlo_module));
 
-  const auto& layout = hlo_module.entry_computation_layout();
+  const ComputationLayout& layout = hlo_module.entry_computation_layout();
   const bool flattened_tuple_parameter =
       layout.parameter_count() == 1 && layout.parameter_shape(0).IsTuple();
 
-  // Dataflow forwards entry parameter values unchanged through tuples,
-  // `kCall`, and async chains, so every value a pad reads must be defined by an
-  // entry parameter; anything else (array copies, reshards, dynamic producers)
-  // would carry the 1024-byte metadata prefix the pad does not expect.
+  // Anything but an entry parameter (array copy, reshard, dynamic producer)
+  // would hand the pad a buffer that starts with the metadata prefix.
   absl::flat_hash_set<HloValue::Id> seen_entry_values;
   std::vector<const HloValue*> entry_parameter_values;
   for (const HloInstruction* pad : pad_calls) {
@@ -327,20 +184,21 @@ absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
         dataflow->GetValueSet(pad->operand(0), {}).values();
     if (values.empty()) {
       return InvalidArgument(
-          "Dynamic operand of PadRealToStatic (%s) in %s does not resolve to "
-          "an entry computation parameter.",
+          "Dynamic operand of PadRealToStatic (%s) in module %s does not "
+          "resolve to an entry computation parameter.",
           pad->ToString(), hlo_module.name());
     }
     for (const HloValue* value : values) {
       const HloInstruction* def = value->defining_instruction();
-      if (def->opcode() != HloOpcode::kParameter ||
-          def->parent() != entry_comp) {
+      if (def->opcode() != HloOpcode::kParameter) {
         return InvalidArgument(
-            "Dynamic operand of PadRealToStatic (%s) in %s must read an entry "
-            "computation parameter directly without intermediate copies or "
-            "reshards, but resolves to %s.",
-            pad->ToString(), hlo_module.name(), def->ToString());
+            "Dynamic operand of PadRealToStatic (%s) in module %s must come "
+            "from an entry computation parameter without being copied or "
+            "recomputed, but its value is defined by %s in computation %s.",
+            pad->ToString(), hlo_module.name(), def->ToString(),
+            def->parent()->name());
       }
+      CHECK_EQ(def->parent(), entry_comp);
       if (seen_entry_values.insert(value->id()).second) {
         entry_parameter_values.push_back(value);
       }
@@ -356,17 +214,17 @@ absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
     if (!leaf_shape.IsArray() || !leaf_shape.is_dynamic()) {
       continue;
     }
-    ABSL_RETURN_IF_ERROR(
-        VerifyOnlyPadRealToStaticReadsValue(*dataflow, *value, *value));
+    ABSL_RETURN_IF_ERROR(VerifyOnlyPadRealToStaticReadsValue(*value));
     if (std::optional<ShapeIndex> aliased_output =
             hlo_module.input_output_alias_config().GetAliasedOutput(
                 def->parameter_number(), value->defining_index());
         aliased_output.has_value()) {
       return InvalidArgument(
-          "Entry parameter %d%s of %s feeds PadRealToStatic and is aliased "
-          "to output %s. A dynamic parameter consumed by PadRealToStatic is "
-          "passed as a compact runtime-sized buffer without dynamic-shape "
-          "metadata, so it cannot back an aliased or donated output.",
+          "Entry parameter %d%s of module %s feeds PadRealToStatic and is "
+          "aliased to output %s. A dynamic parameter consumed by "
+          "PadRealToStatic is passed as a compact runtime-sized buffer without "
+          "dynamic-shape metadata, so it cannot back an aliased or donated "
+          "output.",
           def->parameter_number(),
           value->defining_index().empty()
               ? ""
@@ -572,16 +430,11 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
                      get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
 
-    // Inputs feeding PadRealToStatic custom calls are bounded dynamic tensors
-    // supplied without the TPU hardware dynamic metadata prefix (0 bytes).
-    // On the async-compile path, CommonPjRtClient::CompileAndLoad builds
-    // DispatchInfo directly from this MLIR pass without calling LoadInternal,
-    // whereas sync/loaded executables validate and clear prefixes post-compile
-    // in ClearPadRealToStaticParameterMetadataPrefixes.
+    // `PadRealToStatic` inputs carry no metadata prefix. Async compilation
+    // never reaches the HLO-based clearing, so mirror its checks here.
     if (shape.is_dynamic()) {
       mlir::BlockArgument arg = main.getArgument(i);
-      // Operand 0 of PadRealToStatic is the unpadded data tensor; operands
-      // 1..rank are the `s32` runtime dimension sizes.
+      // Operand 0 is the data tensor; the other operands are the sizes.
       const bool is_pad_real_to_static_input =
           llvm::any_of(arg.getUses(), [](mlir::OpOperand& use) {
             return use.getOperandNumber() == 0 &&
