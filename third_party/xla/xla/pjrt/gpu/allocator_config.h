@@ -77,6 +77,10 @@ MemFraction MemFractionFromFraction(double fraction);
 // FlexMemFraction::start.
 double MemFractionStart(const MemFraction& fraction);
 
+// Fraction of device memory that a pool preallocated with `fraction` leaves
+// for other pools: 1 - MemFractionStart(fraction), but at least 0.
+double MemFractionLeft(const MemFraction& fraction);
+
 // Canonical spelling accepted by ParseMemFraction.
 std::string MemFractionToString(const MemFraction& fraction);
 

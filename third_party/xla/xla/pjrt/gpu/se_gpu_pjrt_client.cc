@@ -1636,12 +1636,11 @@ GetStreamExecutorGpuDeviceAllocator(
   // pool.
   if (!shared_collective_pool) {
     for (const auto& ordinal_and_device : addressable_devices) {
-      ABSL_ASSIGN_OR_RETURN(
-          auto collective_bfc_allocator,
-          CreateCollectiveBFCAllocator(
-              ordinal_and_device.second->executor(),
-              /*memory_fraction=*/1.0 - MemFractionStart(memory_fraction),
-              allocator_config.collective_memory_size));
+      ABSL_ASSIGN_OR_RETURN(auto collective_bfc_allocator,
+                       CreateCollectiveBFCAllocator(
+                           ordinal_and_device.second->executor(),
+                           /*memory_fraction=*/MemFractionLeft(memory_fraction),
+                           allocator_config.collective_memory_size));
       allocators.push_back(
           {std::move(collective_bfc_allocator),
            ordinal_and_device.second->compute_stream(),
@@ -1670,6 +1669,29 @@ GetStreamExecutorGpuDeviceAllocator(
           {std::move(async_allocator),
            ordinal_and_device.second->compute_stream(),
            /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer});
+    }
+  }
+#elif TENSORFLOW_USE_ROCM
+  if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
+    // Only temp buffers may use this pool; that keeps their address the same
+    // across executions. Next to a preallocated default pool, its limit is the
+    // device memory the default pool leaves. Without spatial partitioning, the
+    // separate collective pool above gets the same limit (unless
+    // collective_memory_size preallocates it) and both pools take from that
+    // same memory: together they get it once, not once each.
+    for (const auto& ordinal_and_device : addressable_devices) {
+      ABSL_ASSIGN_OR_RETURN(auto temp_bfc_allocator,
+                       CreateTempBufferBFCAllocator(
+                           ordinal_and_device.second->executor(),
+                           memory_fraction, allocator_config.preallocate,
+                           allocator_config.gpu_system_memory_size,
+                           allocator_config.sub_allocator_alloc_visitors,
+                           allocator_config.sub_allocator_free_visitors));
+      allocators.push_back(
+          {std::move(temp_bfc_allocator),
+           ordinal_and_device.second->compute_stream(),
+           /*memory_space=*/
+           static_cast<int>(xla::gpu::MemorySpaceColor::kTempBuffer)});
     }
   }
 #endif

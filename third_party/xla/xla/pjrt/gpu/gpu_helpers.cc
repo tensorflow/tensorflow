@@ -143,7 +143,7 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     bool preallocate, std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
-    bool enable_spatial_partitioning) {
+    bool enable_spatial_partitioning, absl::string_view name_prefix) {
   if (enable_spatial_partitioning && !preallocate) {
     return InvalidArgument(
         "Spatial partitioning of the BFC allocator requires preallocate=true.");
@@ -187,6 +187,8 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   }
 
   int device_ordinal = executor->device_ordinal();
+  const std::string name =
+      absl::StrCat(name_prefix, "_", device_ordinal, "_bfc");
   std::unique_ptr<tsl::SubAllocator> sub_allocator;
 
   int64_t free_memory;
@@ -256,10 +258,12 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory_str
-              << " on device " << device_ordinal << " for BFCAllocator.";
+              << " on device " << device_ordinal << " for BFCAllocator " << name
+              << ".";
   } else {
     LOG(INFO) << "XLA backend will use up to " << allocator_memory_str
-              << " on device " << device_ordinal << " for BFCAllocator.";
+              << " on device " << device_ordinal << " for BFCAllocator " << name
+              << ".";
   }
 
   tsl::BFCAllocator::Options opts;
@@ -311,9 +315,8 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
               << MemFractionToString(memory_fraction) << ") on device "
               << device_ordinal;
   }
-  return std::make_shared<tsl::BFCAllocator>(
-      std::move(sub_allocator), allocator_memory,
-      absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
+  return std::make_shared<tsl::BFCAllocator>(std::move(sub_allocator),
+                                             allocator_memory, name, opts);
 }
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
@@ -355,6 +358,33 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
   return std::make_unique<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_collectivememory_", device_ordinal, "_bfc"), opts);
+}
+
+absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateTempBufferBFCAllocator(
+    se::StreamExecutor* executor, const MemFraction& memory_fraction,
+    bool preallocate, std::optional<int64_t> gpu_system_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
+    const std::vector<tsl::SubAllocator::Visitor>&
+        sub_allocator_free_visitors) {
+  ABSL_ASSIGN_OR_RETURN(
+      std::shared_ptr<tsl::BFCAllocator> allocator,
+      CreateBFCAllocator(
+          executor,
+          preallocate
+              ? MemFractionFromFraction(MemFractionLeft(memory_fraction))
+              : memory_fraction,
+          /*preallocate=*/false,
+          preallocate ? std::nullopt : gpu_system_memory_size,
+          sub_allocator_alloc_visitors, sub_allocator_free_visitors,
+          /*enable_spatial_partitioning=*/false,
+          /*name_prefix=*/"GPU_tempbuffer"));
+  if (allocator->GetStats()->bytes_limit == 0) {
+    return InvalidArgument(
+        "Memory fraction %s leaves no device memory for the temp buffer pool "
+        "of --xla_gpu_temp_buffer_use_separate_color; lower the fraction.",
+        MemFractionToString(memory_fraction));
+  }
+  return allocator;
 }
 
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(

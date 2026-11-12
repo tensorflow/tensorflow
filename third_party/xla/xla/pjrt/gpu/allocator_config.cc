@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/allocator_config.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -101,6 +102,10 @@ double MemFractionStart(const MemFraction& fraction) {
     return fixed->fraction;
   }
   return std::get<FlexMemFraction>(fraction).start;
+}
+
+double MemFractionLeft(const MemFraction& fraction) {
+  return std::max(0.0, 1.0 - MemFractionStart(fraction));
 }
 
 std::string MemFractionToString(const MemFraction& fraction) {

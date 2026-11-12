@@ -2513,8 +2513,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_temp_buffer_use_separate_color),
       debug_options->xla_gpu_temp_buffer_use_separate_color(),
       "Enables temp User Buffer Registration. Enable this flag will use a "
-      "separate cuda async memory allocator to allocate temp buffer, this will "
-      "allocate temp buffer to the fixed address on every iteration"));
+      "separate memory allocator (a CUDA async pool on CUDA, a BFC pool on "
+      "ROCm) to allocate temp buffer, this will allocate temp buffer to the "
+      "fixed address on every iteration. Temp buffers then do not come from "
+      "the default pool: next to a preallocated default pool they must fit in "
+      "the device memory its memory fraction leaves, which they share with the "
+      "collective memory pool unless "
+      "--xla_gpu_enable_allocator_spatial_partitioning puts collective memory "
+      "in the default pool."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_collective_color",
