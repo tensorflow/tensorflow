@@ -200,10 +200,10 @@ func.func @main(%a: tensor<i32>, %b: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @main()
 // CHECK: [[PROMISES:%.*]]:3, [[FUTURES:%.*]]:3 = "mlrt.allocate_control_futures"
-// CHECK: mlrt.async([[PROMISES]]#2) {callee = @main_stream_4
-// CHECK: mlrt.async([[FUTURES]]#2, [[PROMISES]]#1) {callee = @main_stream_3
-// CHECK: mlrt.async([[FUTURES]]#1, [[PROMISES]]#0) {callee = @main_stream_2
-// CHECK: mlrt.async([[FUTURES]]#0) {callee = @main_stream_1
+// CHECK: mlrt.async([[PROMISES]]#2) <callee = @main_stream_4
+// CHECK: mlrt.async([[FUTURES]]#2, [[PROMISES]]#1) <callee = @main_stream_3
+// CHECK: mlrt.async([[FUTURES]]#1, [[PROMISES]]#0) <callee = @main_stream_2
+// CHECK: mlrt.async([[FUTURES]]#0) <callee = @main_stream_1
 // CHECK: mlrt.await_handle
 // CHECK: mlrt.await_handle
 // CHECK: mlrt.await_handle

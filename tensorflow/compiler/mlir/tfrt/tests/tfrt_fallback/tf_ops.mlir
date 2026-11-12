@@ -83,7 +83,7 @@ func.func @test_parse_example_v2() -> !tfrt.chain {
   %ch4, %one = tfrt_fallback_async.executeop.seq(%ch2) key(7) cost(100) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<1> : tensor<i64>} : 1
 
   %serialized, %names, %dense_keys = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th, %names_th, %dense_keys_th
-    {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+    <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
   %dense_values:7 = tfrt_fallback_async.executeop key(8) cost(100) device("CPU:0")
         "tf.ParseExampleV2"(%serialized, %names, %names, %dense_keys, %names, %zero, %one, %zero, %one, %zero, %one, %zero)
         {Tdense = [i64, i64, i64, i64, i64, i64, i64], dense_shapes = [#corert.shape<>, #corert.shape<>, #corert.shape<>, #corert.shape<>, #corert.shape<>, #corert.shape<>, #corert.shape<>], num_sparse = 0 : i64, ragged_split_types = [], ragged_value_types = [], sparse_types = []} : 7
@@ -120,7 +120,7 @@ func.func @test_tile() -> !tfrt.chain {
   %input_th = corert.const_string_tensor {shape = [1, 2], value = ["", ""]}
   %multiples_th = corert.const_dense_tensor dense<[7,3]> : tensor<2xi32>
 
-  %input, %multiples = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %input_th, %multiples_th {_tfrt_cost = 1 : i64, device = "CPU:0"}
+  %input, %multiples = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %input_th, %multiples_th <device = "CPU:0"> {_tfrt_cost = 1 : i64}
     : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   %ch0 = tfrt_fallback_async.createop(%ch) key(9) device("CPU:0") "tf.Tile"() {T = !corert.string, Tmultiples = i32} num_args(2)
