@@ -313,7 +313,19 @@ absl::Status SessionMgr::CreateSession(
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
+  mutex_lock l(mu_);
+  if (worker_cache == default_worker_cache_.get()) {
+    return;
+  }
+  if (default_worker_cache_ != nullptr) {
+    retired_default_worker_caches_.push_back(std::move(default_worker_cache_));
+  }
   default_worker_cache_.reset(worker_cache);
+}
+
+WorkerCacheInterface* SessionMgr::DefaultWorkerCache() {
+  mutex_lock l(mu_);
+  return default_worker_cache_.get();
 }
 
 absl::Status SessionMgr::UpdateSession(

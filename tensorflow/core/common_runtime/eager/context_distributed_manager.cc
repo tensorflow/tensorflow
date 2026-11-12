@@ -1159,9 +1159,27 @@ absl::Status EagerContextDistributedManager::EnableCollectiveOps(
 absl::Status EagerContextDistributedManager::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {
   *is_alive = false;
-  WorkerInterface* wi =
-      context_->GetServer()->master_env()->worker_cache->GetOrCreateWorker(
-          remote_task_name);
+  ServerInterface* server = context_->GetServer();
+  if (server == nullptr) {
+    return absl::FailedPreconditionError(
+        "CheckRemoteAlive requires a server; call SetServerDef first.");
+  }
+  WorkerEnv* worker_env = server->worker_env();
+  SessionMgr* session_mgr =
+      worker_env != nullptr ? worker_env->session_mgr : nullptr;
+  // Read under SessionMgr::mu_ so a concurrent UpdateServerDef cannot race
+  // with this load. Servers without a SessionMgr fall back to MasterEnv.
+  WorkerCacheInterface* worker_cache = nullptr;
+  if (session_mgr != nullptr) {
+    worker_cache = session_mgr->DefaultWorkerCache();
+  } else if (MasterEnv* master_env = server->master_env();
+             master_env != nullptr) {
+    worker_cache = master_env->worker_cache;
+  }
+  if (worker_cache == nullptr) {
+    return absl::FailedPreconditionError("Worker cache is not initialized.");
+  }
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(remote_task_name);
   if (wi == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("Unable to find worker interface corresponding to task ",
@@ -1178,6 +1196,7 @@ absl::Status EagerContextDistributedManager::CheckRemoteAlive(
                        done.Notify();
                      });
   done.WaitForNotification();
+  worker_cache->ReleaseWorker(remote_task_name, wi);
 
   if (remote_status.ok()) {
     *is_alive = true;

@@ -15,13 +15,26 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 
+#include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/test_utils.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_partial.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 
@@ -270,6 +283,158 @@ TEST_F(SessionMgrTest, WorkerNameFromServerDef) {
 
 TEST_F(SessionMgrTest, DeleteLegacySession) {
   TF_EXPECT_OK(mgr_.DeleteSession(""));
+}
+
+namespace {
+class TrackingWorkerCache : public TestWorkerCache {
+ public:
+  explicit TrackingWorkerCache(bool* destroyed) : destroyed_(destroyed) {}
+  ~TrackingWorkerCache() override { *destroyed_ = true; }
+
+ private:
+  bool* destroyed_;
+};
+}  // namespace
+
+TEST_F(SessionMgrTest, ResetDefaultWorkerCacheRetainsRetiredCache) {
+  bool first_destroyed = false;
+  bool second_destroyed = false;
+  {
+    auto first_cache = std::make_unique<TrackingWorkerCache>(&first_destroyed);
+    TestWorkerInterface fake_worker;
+    first_cache->AddWorker("/job:mnist/replica:0/task:0", &fake_worker);
+    WorkerCacheInterface* raw_first_cache = first_cache.get();
+
+    SessionMgr mgr(&env_, "/job:mnist/replica:0/task:0", std::move(first_cache),
+                   factory_,
+                   /*coordination_handler=*/nullptr);
+
+    auto second_cache =
+        std::make_unique<TrackingWorkerCache>(&second_destroyed);
+    WorkerCacheInterface* raw_second_cache = second_cache.get();
+    mgr.ResetDefaultWorkerCache(second_cache.release());
+    EXPECT_EQ(mgr.DefaultWorkerCache(), raw_second_cache);
+
+    // Self-reset with the current default worker cache is a no-op and must not
+    // move the active cache into retired_default_worker_caches_.
+    mgr.ResetDefaultWorkerCache(raw_second_cache);
+    EXPECT_FALSE(second_destroyed);
+    EXPECT_EQ(mgr.DefaultWorkerCache(), raw_second_cache);
+
+    // The retired default worker cache must remain alive for the lifetime of
+    // SessionMgr so concurrent callers or legacy_session_ wrappers (which
+    // intentionally retain the initial default worker cache) do not invoke
+    // methods on a freed WorkerCacheInterface.
+    EXPECT_FALSE(first_destroyed);
+    EXPECT_EQ(raw_first_cache->GetOrCreateWorker("/job:mnist/replica:0/task:0"),
+              &fake_worker);
+    EXPECT_EQ(mgr.LegacySession()->worker_cache()->GetOrCreateWorker(
+                  "/job:mnist/replica:0/task:0"),
+              &fake_worker);
+  }
+  EXPECT_TRUE(first_destroyed);
+  EXPECT_TRUE(second_destroyed);
+}
+
+namespace {
+class StatusWorker : public TestWorkerInterface {
+ public:
+  StatusWorker(const std::string& device_name, int bus_id,
+               absl::Notification* allow_finish, int* release_count)
+      : device_name_(device_name),
+        bus_id_(bus_id),
+        allow_finish_(allow_finish),
+        release_count_(release_count) {}
+
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
+                      GetStatusResponse* response, bool fail_fast,
+                      StatusCallback done) override {
+    allow_finish_->WaitForNotification();
+    DeviceAttributes* attr = response->add_device_attributes();
+    attr->set_name(device_name_);
+    attr->mutable_locality()->set_bus_id(bus_id_);
+    done(absl::OkStatus());
+  }
+
+  void RecordRelease() { ++(*release_count_); }
+
+ private:
+  std::string device_name_;
+  int bus_id_;
+  absl::Notification* allow_finish_;
+  int* release_count_;
+};
+
+class FakeWorkerCachePartial : public WorkerCachePartial {
+ public:
+  void AddStatusWorker(const std::string& target, StatusWorker* worker) {
+    workers_[target] = worker;
+  }
+
+  void ListWorkers(std::vector<std::string>* workers) const override {
+    workers->clear();
+    for (const auto& kv : workers_) {
+      workers->push_back(kv.first);
+    }
+  }
+
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
+    ListWorkers(workers);
+  }
+
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
+    auto it = workers_.find(target);
+    return it != workers_.end() ? it->second : nullptr;
+  }
+
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {
+    auto it = workers_.find(target);
+    if (it != workers_.end() && it->second == worker) {
+      it->second->RecordRelease();
+    }
+  }
+
+  absl::Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return absl::UnimplementedError("Unimplemented.");
+  }
+
+  absl::Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
+    return absl::UnimplementedError("Unimplemented.");
+  }
+
+ private:
+  std::unordered_map<std::string, StatusWorker*> workers_;
+};
+}  // namespace
+
+TEST(WorkerCachePartialTest, GetDeviceLocalityAsyncTemporaryName) {
+  int release_count = 0;
+  absl::Notification allow_finish;
+  StatusWorker worker("/job:worker/replica:0/task:0/device:CPU:0",
+                      /*bus_id=*/7, &allow_finish, &release_count);
+  FakeWorkerCachePartial cache;
+  cache.AddStatusWorker("/job:worker/replica:0/task:0", &worker);
+
+  DeviceLocality locality;
+  absl::Notification done;
+  absl::Status status;
+  // Pass a temporary std::string so any by-reference capture of device_name in
+  // SchedClosure would dangle once GetDeviceLocalityAsync returns.
+  cache.GetDeviceLocalityAsync(
+      std::string("/job:worker/replica:0/task:0") + "/device:CPU:0", &locality,
+      [&done, &status](const absl::Status& s) {
+        status = s;
+        done.Notify();
+      });
+  allow_finish.Notify();
+  done.WaitForNotification();
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(locality.bus_id(), 7);
+  EXPECT_EQ(release_count, 1);
 }
 
 }  // namespace tensorflow
