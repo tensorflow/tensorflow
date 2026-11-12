@@ -105,17 +105,11 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
           static_data.embedded_constant_buffers_.size());
   }
 
-  // Setup rng states
-  {
-    rng_states_.reserve(static_data.rng_state_deltas_.size());
-    for (int64_t delta : static_data.rng_state_deltas_) {
-      rng_states_.emplace_back(std::make_unique<xla::cpu::RngState>(delta));
-    }
-  }
+  rng_state_ = std::make_unique<xla::cpu::RngState>();
 }
 
 bool XlaCompiledCpuFunction::Run() {
-  return thunk_run_impl_(buffer_table_, &run_options_, rng_states_);
+  return thunk_run_impl_(buffer_table_, &run_options_, *rng_state_);
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {

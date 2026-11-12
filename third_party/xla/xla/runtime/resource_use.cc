@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "xla/xla_data.pb.h"
@@ -28,6 +29,12 @@ limitations under the License.
 namespace xla {
 
 std::shared_ptr<Resource> Resource::Create(Kind kind) {
+  // A kRngState resource must also carry the counter (see the backend specific
+  // `RngStateResource`). A plain `Resource` with that kind would pass ordering
+  // checks but fail any code that relies on the dynamic type.
+  CHECK(kind != Kind::kRngState)
+      << "Resource::Create does not support kRngState; construct the backend "
+         "RngStateResource subclass instead";
   return absl::WrapUnique(new Resource(kind));
 }
 

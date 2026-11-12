@@ -19,24 +19,28 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/numeric/int128.h"
 #include "absl/synchronization/mutex.h"
 
 namespace xla::cpu {
 
+// Executable scoped 128 bit RNG counter. All `rng-get-and-update-state` ops
+// executed for one device advance one shared counter, and each device has its
+// own counter so concurrent replicas stay deterministic. Counters are keyed by
+// the run time device ordinal, which on PjRt CPU is a global device id (not a
+// dense local index), so they are created lazily. Negative ordinals (no device
+// set) share the counter of ordinal 0.
 class RngState {
  public:
-  explicit RngState(int64_t delta);
+  RngState() = default;
 
-  void GetAndUpdateState(uint64_t* data);
-
-  int64_t delta() const { return delta_; }
+  void GetAndUpdateState(uint64_t* data, int64_t delta,
+                         int64_t device_ordinal = 0);
 
  private:
-  int64_t delta_;
-
   absl::Mutex mu_;
-  absl::int128 state_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, absl::int128> states_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla::cpu
