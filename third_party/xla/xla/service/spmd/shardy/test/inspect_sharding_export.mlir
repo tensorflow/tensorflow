@@ -77,3 +77,21 @@ func.func @inspect_sharding_preserves_other_custom_call(
   } : (tensor<8x4xf32>) -> tensor<8x4xf32>
   return %1 : tensor<8x4xf32>
 }
+
+// Strips stale global `xla_shape` when a result is sharded, while preserving
+// `xla_shape` on fully replicated custom calls.
+// CHECK-LABEL: func.func @custom_call_strips_xla_shape_when_sharded(
+// CHECK-SAME:      %arg0: tensor<4x4x4xf32>
+// CHECK-SAME:      %arg1: tensor<8x4x4xf32>)
+func.func @custom_call_strips_xla_shape_when_sharded(%arg0: tensor<8x4x4xf32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"x"}, {}, {}]>}, %arg1: tensor<8x4x4xf32>) -> (tensor<8x4x4xf32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{"x"}, {}, {}]>}, tensor<8x4x4xf32>) {
+  // CHECK: %[[SHARDED:.*]] = stablehlo.custom_call @CompactWyHelper(%arg0)
+  // CHECK-NOT: xla_shape
+  // CHECK-SAME: : (tensor<4x4x4xf32>) -> tensor<4x4x4xf32>
+  // CHECK-NEXT: %[[REPL:.*]] = stablehlo.custom_call @CompactWyHelper(%arg1)
+  // CHECK-SAME: xla_shape = "f32[8,4,4]{2,1,0}"
+  // CHECK-SAME: : (tensor<8x4x4xf32>) -> tensor<8x4x4xf32>
+  // CHECK-NEXT: return %[[SHARDED]], %[[REPL]] : tensor<4x4x4xf32>, tensor<8x4x4xf32>
+  %0 = stablehlo.custom_call @CompactWyHelper(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xy, [{"x"}, {}, {}]>]>, xla_shape = "f32[8,4,4]{2,1,0}"} : (tensor<8x4x4xf32>) -> tensor<8x4x4xf32>
+  %1 = stablehlo.custom_call @CompactWyHelper(%arg1) {xla_shape = "f32[8,4,4]{2,1,0}"} : (tensor<8x4x4xf32>) -> tensor<8x4x4xf32>
+  return %0, %1 : tensor<8x4x4xf32>, tensor<8x4x4xf32>
+}
