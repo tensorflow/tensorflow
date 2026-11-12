@@ -1916,6 +1916,8 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
           normalized_axes.append(norm_ax)
         else:
           if ax in normalized_axes:
+        else:
+          if ax in normalized_axes:
             raise ValueError(f"duplicate value in 'axis': {ax}")
           normalized_axes.append(ax)
       axis = tuple(normalized_axes)
