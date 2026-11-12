@@ -1030,6 +1030,34 @@ TEST(HybridBatchMatMulOpTest, FailsForRhsWithoutQuantizationParameters) {
   EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(HybridBatchMatMulOpTest, RejectsRhsWithPerTensorZeroPoint) {
+  // The hybrid kernel doesn't implement zero points for the right-hand side,
+  // so it would silently ignore them.
+  BatchMatMulOpModel<float> m(
+      /*lhs=*/{TensorType_FLOAT32, {1, 2}},
+      /*rhs=*/{TensorType_INT8, {2, 3}, 0, 0, /*scale=*/0.5f, /*zero_point=*/3},
+      /*adj_x=*/false, /*adj_y=*/false, /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(HybridBatchMatMulOpTest, RejectsRhsWithPerChannelZeroPoints) {
+  BatchMatMulOpModel<float> m(
+      /*lhs=*/{TensorType_FLOAT32, {1, 2}},
+      /*rhs=*/
+      {TensorType_INT8,
+       {2, 3},
+       /*min=*/0.0f,
+       /*max=*/0.0f,
+       /*scale=*/0.0f,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.5f, 0.5f, 0.5f},
+       /*per_channel_quantization_offsets=*/{0, 1, 0},
+       /*channel_index=*/1},
+      /*adj_x=*/false, /*adj_y=*/false, /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 class QuantizedBatchMatMulOpModel : public SingleOpModel {
  public:
   QuantizedBatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
