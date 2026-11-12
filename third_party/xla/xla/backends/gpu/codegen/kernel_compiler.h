@@ -72,7 +72,7 @@ class KernelCompiler {
   virtual xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
       BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-      int unroll_factor = 0) = 0;
+      int unroll_factor) = 0;
 
   // Compiles the given Triton kernel source to LLVM IR asynchronously.
   virtual xla::Future<TritonWrapperResult> CompileTritonToLlvm(
@@ -85,7 +85,7 @@ class KernelCompiler {
 
   virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
-      const HloModule& hlo_module, int unroll_factor = 0) = 0;
+      const HloModule& hlo_module, int unroll_factor) = 0;
 
   virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source,
