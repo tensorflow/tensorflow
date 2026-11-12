@@ -568,6 +568,7 @@ cc_library(
     srcs = ["pjrt_client_test.cc"],
     hdrs = ["pjrt_client_test.h"],
     deps = [
+        ":async_work_runner",
         ":common_pjrt_client",
         ":pjrt_client",
         ":pjrt_compiler",
@@ -582,6 +583,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/tests:literal_test_util",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/core:status_test_util",

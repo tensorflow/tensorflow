@@ -44,6 +44,8 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -1461,6 +1463,122 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
           &unaligned_sublane.layout()));
   EXPECT_TRUE(LiteralTestUtil::Equal(src_literal, *dst_literal));
+}
+
+class DelegatingTestMemorySpace : public PjRtMemorySpace {
+ public:
+  explicit DelegatingTestMemorySpace(PjRtMemorySpace* underlying)
+      : underlying_(underlying) {}
+
+  PJRT_Memory* ToCApiPtr() override { return underlying_->ToCApiPtr(); }
+  PjRtClient* client() const override { return underlying_->client(); }
+  absl::Span<PjRtDevice* const> devices() const override {
+    return underlying_->devices();
+  }
+  int id() const override { return underlying_->id(); }
+  absl::string_view kind() const override { return underlying_->kind(); }
+  int kind_id() const override { return underlying_->kind_id(); }
+  absl::string_view DebugString() const override {
+    return underlying_->DebugString();
+  }
+  absl::string_view ToString() const override {
+    return underlying_->ToString();
+  }
+
+ private:
+  PjRtMemorySpace* underlying_;
+};
+
+TEST(PjRtClientTest, MemorySpaceFfiContext) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  ASSERT_FALSE(client->memory_spaces().empty());
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  static constexpr char kKeyA = 0;
+  static constexpr char kKeyB = 0;
+  auto ctx1 = std::make_shared<int>(123);
+  auto ctx2 = std::make_shared<int>(456);
+
+  EXPECT_EQ(SetFfiContext(memory_space, nullptr, ctx1).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(GetFfiContext(nullptr, &kKeyA), nullptr);
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA), nullptr);
+
+  // Registering under kKeyA succeeds, is idempotent for the same object, and
+  // does not collide with kKeyB.
+  TF_ASSERT_OK(SetFfiContext(memory_space, &kKeyA, ctx1));
+  TF_ASSERT_OK(SetFfiContext(memory_space, &kKeyA, ctx1));
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), ctx1.get());
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyB), nullptr);
+
+  TF_ASSERT_OK(SetFfiContext(memory_space, &kKeyB, ctx2));
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), ctx1.get());
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyB).get(), ctx2.get());
+
+  // Conflicting registration while ctx1 is alive fails with AlreadyExistsError.
+  EXPECT_EQ(SetFfiContext(memory_space, &kKeyA, ctx2).code(),
+            absl::StatusCode::kAlreadyExists);
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), ctx1.get());
+
+  // Conditional UnsetFfiContext ignores non-matching expected_context and
+  // unregisters when expected_context matches.
+  UnsetFfiContext(memory_space, &kKeyA, /*expected_context=*/ctx2.get());
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), ctx1.get());
+  UnsetFfiContext(memory_space, &kKeyA, /*expected_context=*/ctx1.get());
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA), nullptr);
+
+  // Automatic expiration when the shared_ptr owner is destroyed (including
+  // when a custom deleter re-entrantly calls UnsetFfiContext).
+  {
+    std::shared_ptr<int> transient(new int(789), [memory_space](int* p) {
+      UnsetFfiContext(memory_space, &kKeyA, p);
+      delete p;
+    });
+    TF_ASSERT_OK(SetFfiContext(memory_space, &kKeyA, transient));
+    EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), transient.get());
+  }
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA), nullptr);
+
+  // C-API wrapper PjRtMemorySpace shares the underlying PJRT_Memory* user_data.
+  DelegatingTestMemorySpace wrapper(memory_space);
+  TF_ASSERT_OK(SetFfiContext(&wrapper, &kKeyA, ctx1));
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA).get(), ctx1.get());
+  EXPECT_EQ(GetFfiContext(&wrapper, &kKeyA).get(), ctx1.get());
+  UnsetFfiContext(&wrapper, &kKeyA, ctx1.get());
+  EXPECT_EQ(GetFfiContext(memory_space, &kKeyA), nullptr);
+
+  // Concurrent multi-thread reader/writer stress across independent keys.
+  auto* common_client = dynamic_cast<CommonPjRtClient*>(client.get());
+  if (common_client != nullptr) {
+    constexpr int kNumThreads = 4;
+    constexpr int kIterations = 200;
+    absl::BlockingCounter done(kNumThreads);
+    for (int t = 0; t < kNumThreads; ++t) {
+      common_client->async_work_runner()->Execute([&, t]() {
+        for (int i = 0; i < kIterations; ++i) {
+          if (t == 0) {
+            auto loop_ctx = std::make_shared<int>(i);
+            CHECK_OK(SetFfiContext(memory_space, &kKeyA, loop_ctx));
+            std::shared_ptr<void> locked = GetFfiContext(memory_space, &kKeyA);
+            CHECK_EQ(locked.get(), loop_ctx.get());
+            UnsetFfiContext(memory_space, &kKeyA, loop_ctx.get());
+          } else {
+            std::shared_ptr<void> locked_b =
+                GetFfiContext(memory_space, &kKeyB);
+            CHECK_EQ(locked_b.get(), ctx2.get());
+            std::shared_ptr<void> locked_a =
+                GetFfiContext(memory_space, &kKeyA);
+            if (locked_a != nullptr) {
+              CHECK_GE(*static_cast<int*>(locked_a.get()), 0);
+            }
+          }
+        }
+        done.DecrementCount();
+      });
+    }
+    done.Wait();
+  }
+  UnsetFfiContext(memory_space, &kKeyB, ctx2.get());
 }
 
 }  // namespace

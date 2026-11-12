@@ -151,6 +151,24 @@ class PjRtMemorySpaceCApiDelegator {
   absl::flat_hash_map<const void*, UserData> user_data_;
 };
 
+// Associates `context` with `key` on `memory_space`. Idempotent if
+// `memory_space` already maps `key` to `context`; fails with
+// `FailedPreconditionError` if `memory_space` has no FFI context map or
+// `AlreadyExistsError` if a different live entry is registered for `key`.
+absl::Status SetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                           std::weak_ptr<void> context);
+
+// Removes the entry for `key` on `memory_space`. If `expected_context !=
+// nullptr`, only removes the entry when it is expired or points to
+// `expected_context`.
+void UnsetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                     const void* expected_context = nullptr);
+
+// Looks up and locks the context registered under `key` on `memory_space`,
+// returning nullptr if unregistered or expired.
+std::shared_ptr<void> GetFfiContext(const PjRtMemorySpace* memory_space,
+                                    const void* key);
+
 class PjRtDevice {
  public:
   virtual ~PjRtDevice() = default;
