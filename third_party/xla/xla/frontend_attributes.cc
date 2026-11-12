@@ -49,11 +49,10 @@ bool HasDisjointReadWriteRegionsAttr(const HloInstruction* instruction) {
   if (instruction == nullptr || !instruction->has_frontend_attributes()) {
     return false;
   }
-  const auto& map = instruction->frontend_attributes().map();
   for (absl::string_view key :
        {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
-    auto it = map.find(key);
-    if (it != map.end() && IsTrueVal(it->second)) {
+    if (auto val = instruction->get_frontend_attribute(key);
+        val.has_value() && IsTrueVal(*val)) {
       return true;
     }
   }
@@ -65,11 +64,10 @@ bool HasDisableWhileLoopCopiesAttr(const HloInstruction* instruction) {
     return false;
   }
   if (instruction->has_frontend_attributes()) {
-    const auto& map = instruction->frontend_attributes().map();
     for (absl::string_view key :
          {kXlaDisableWhileLoopCopies, "xla.disable_while_loop_copies"}) {
-      auto it = map.find(key);
-      if (it != map.end() && IsTrueVal(it->second)) {
+      if (auto val = instruction->get_frontend_attribute(key);
+          val.has_value() && IsTrueVal(*val)) {
         return true;
       }
     }
@@ -95,12 +93,11 @@ bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction) {
     return false;
   }
   if (instruction->has_frontend_attributes()) {
-    const auto& map = instruction->frontend_attributes().map();
     for (absl::string_view key :
          {kXlaDisableWhileLoopDce, "xla.disable_while_loop_dce",
           kXlaPreserveTupleIndices, "xla.preserve_tuple_indices"}) {
-      auto it = map.find(key);
-      if (it != map.end() && IsTrueVal(it->second)) {
+      if (auto val = instruction->get_frontend_attribute(key);
+          val.has_value() && IsTrueVal(*val)) {
         return true;
       }
     }
@@ -123,21 +120,16 @@ bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction) {
 }
 
 bool DoesPdlLaunch(const HloInstruction& instruction) {
-  return instruction.has_frontend_attributes() &&
-         instruction.frontend_attributes().map().contains(kXlaPdlLaunch);
+  return instruction.has_frontend_attribute(kXlaPdlLaunch);
 }
 
 absl::flat_hash_set<int> NonInvariantOperands(
     const HloInstruction& instruction) {
   absl::flat_hash_set<int> no_invariant_operands;
-  if (instruction.has_frontend_attributes()) {
-    auto it =
-        instruction.frontend_attributes().map().find(kXlaNoInvariantOperands);
-    if (it != instruction.frontend_attributes().map().end()) {
-      for (absl::string_view s : absl::StrSplit(it->second, ',')) {
-        if (int idx; absl::SimpleAtoi(s, &idx)) {
-          no_invariant_operands.insert(idx);
-        }
+  if (auto val = instruction.get_frontend_attribute(kXlaNoInvariantOperands)) {
+    for (absl::string_view s : absl::StrSplit(*val, ',')) {
+      if (int idx; absl::SimpleAtoi(s, &idx)) {
+        no_invariant_operands.insert(idx);
       }
     }
   }
