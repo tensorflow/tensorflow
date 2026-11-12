@@ -1625,6 +1625,35 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "raft_select_k_utils",
+    srcs = ["raft_select_k_utils.cc"],
+    hdrs = ["raft_select_k_utils.h"],
+    deps = [
+        "//xla:util",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "raft_select_k_utils_test",
+    srcs = ["raft_select_k_utils_test.cc"],
+    deps = [
+        ":raft_select_k_utils",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cuda_library(
     name = "select_k_exec_raft_impl",
     hdrs = [
@@ -1661,10 +1690,12 @@ cuda_library(
     ],
     tags = ["cuda-only"],
     deps = [
+        ":raft_select_k_utils",
         ":select_k_exec_raft_impl",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
     ],
 )
