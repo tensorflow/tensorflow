@@ -96,6 +96,10 @@ class ThunkProtoExecutionDeserializer {
       xla::PrimitiveType xla_type);
 
  private:
+  // The index of the next rng state to use when deserializing the rng state
+  // from the ThunkProto.
+  int64_t rng_state_index_ = 0;
+
   bool xla_cpu_multi_thread_eigen_;
 };
 

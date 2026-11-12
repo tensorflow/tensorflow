@@ -19,24 +19,26 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/rng_state_resource.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-// Reads and advances the executable wide RNG state resource by `delta`, writing
-// the previous 128 bit value into `state_buffer`.
+// Keeps rng state as a "global" variable (global for the parent cpu
+// executable) and adds a delta value to it and returns the old value on every
+// call to execute.
 class RngGetAndUpdateStateThunk final : public Thunk {
  public:
   static absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>> Create(
-      Info info, BufferAllocation::Slice state_buffer, int64_t delta,
-      std::shared_ptr<RngStateResource> rng_state);
+      Info info, BufferAllocation::Slice state_buffer, int64_t delta);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -44,26 +46,16 @@ class RngGetAndUpdateStateThunk final : public Thunk {
     return {BufferUse::Write(state_buffer_, ShapeUtil::MakeShape(U64, {2}))};
   }
 
-  ResourceUses resource_uses() const final {
-    return {ResourceUse::Write(rng_state_)};
-  }
-
-  int64_t delta() const { return delta_; }
+  int64_t delta() const { return rng_state_.delta(); }
 
   const BufferAllocation::Slice& state_buffer() const { return state_buffer_; }
 
-  const std::shared_ptr<RngStateResource>& rng_state() const {
-    return rng_state_;
-  }
-
  private:
   RngGetAndUpdateStateThunk(Info info, BufferAllocation::Slice state_buffer,
-                            int64_t delta,
-                            std::shared_ptr<RngStateResource> rng_state);
+                            int64_t delta);
 
   BufferAllocation::Slice state_buffer_;
-  int64_t delta_;
-  std::shared_ptr<RngStateResource> rng_state_;
+  RngState rng_state_;
 };
 
 }  // namespace xla::cpu

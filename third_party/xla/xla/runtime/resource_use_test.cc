@@ -33,11 +33,6 @@ TEST(ResourceUseTest, Equality) {
   EXPECT_EQ(use0, use2);
 }
 
-TEST(ResourceUseDeathTest, CreateRejectsRngState) {
-  EXPECT_DEATH(Resource::Create(Resource::kRngState),
-               "does not support kRngState");
-}
-
 TEST(ResourceUseTest, ReadWriteSet) {
   ResourceUse::ReadWriteSet rwset;
 
