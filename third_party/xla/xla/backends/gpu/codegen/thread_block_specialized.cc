@@ -73,6 +73,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/nested_kernel_utils.h"
+#include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -304,6 +307,18 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
   NestedKernelSpec spec;
   spec.input_arg_indices = std::move(input_arg_indices);
   spec.output_arg_indices = std::move(output_arg_indices);
+
+  if (analysis.emitter_fusion_kind() ==
+      HloFusionAnalysis::EmitterFusionKind::kTriton) {
+    std::optional<TritonFusion::LaunchConfig> launch_config =
+        TritonFusion::GetLaunchConfig(&analysis);
+    CHECK(launch_config.has_value())
+        << "Failed to get launch config for nested Triton fusion: "
+        << analysis.fusion().ToString();
+    spec.launch_dims = launch_config->launch_dimensions;
+    spec.kind = NestedKernelSpec::Kind::kLeaf;
+    return spec;
+  }
 
   if (std::unique_ptr<MlirKernelEmitter> emitter =
           ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
@@ -630,22 +645,44 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
 
     HloFusionAnalysis nested_analysis =
         HloFusionAnalysis::Create(*leaf_spec.fusion, device_info_);
-    std::unique_ptr<MlirKernelEmitter> nested_emitter =
-        CreateNativeNestedEmitter(
-            nested_analysis,
-            /*unroll_small_fusions=*/leaf_spec.unroll_small_fusions);
-    TF_RET_CHECK(nested_emitter != nullptr);
-    ABSL_ASSIGN_OR_RETURN(
-        MlirKernelSource nested_source,
-        nested_emitter->Emit(&mlir_context, *leaf_spec.fusion, nested_fn_name,
-                             /*buffer_assignment=*/nullptr));
-    ABSL_ASSIGN_OR_RETURN(nested_source,
-                     CompileMlirToLlvmDialect(
-                         device_info_, *fusion.GetModule(), nested_fn_name,
-                         nested_emitter->unroll_factor(), mlir_context,
-                         std::move(nested_source)));
-    mlir::OwningOpRef<mlir::ModuleOp> nested_module =
-        std::move(nested_source).TakeModule();
+    mlir::OwningOpRef<mlir::ModuleOp> nested_module;
+
+    if (nested_analysis.emitter_fusion_kind() ==
+        HloFusionAnalysis::EmitterFusionKind::kTriton) {
+      std::optional<TritonFusion::LaunchConfig> launch_config =
+          TritonFusion::GetLaunchConfig(&nested_analysis);
+      TF_RET_CHECK(launch_config.has_value());
+
+      ABSL_ASSIGN_OR_RETURN(
+          TritonKernelSource triton_source,
+          CreateTritonModule(nested_fn_name, *leaf_spec.fusion, device_info_,
+                             launch_config->block_level_parameters,
+                             mlir_context));
+      ABSL_ASSIGN_OR_RETURN(
+          triton_source,
+          LowerTritonToLlvmDialect(
+              nested_fn_name, *fusion.GetModule(), device_info_,
+              launch_config->block_level_parameters, std::move(triton_source),
+              mlir_context, /*is_xla_fusion=*/true));
+      nested_module = std::move(triton_source).TakeModule();
+    } else {
+      std::unique_ptr<MlirKernelEmitter> nested_emitter =
+          CreateNativeNestedEmitter(
+              nested_analysis,
+              /*unroll_small_fusions=*/leaf_spec.unroll_small_fusions);
+      TF_RET_CHECK(nested_emitter != nullptr);
+      ABSL_ASSIGN_OR_RETURN(
+          MlirKernelSource nested_source,
+          nested_emitter->Emit(&mlir_context, *leaf_spec.fusion, nested_fn_name,
+                               /*buffer_assignment=*/nullptr));
+      ABSL_ASSIGN_OR_RETURN(nested_source,
+                       CompileMlirToLlvmDialect(
+                           device_info_, *fusion.GetModule(), nested_fn_name,
+                           nested_emitter->unroll_factor(), mlir_context,
+                           std::move(nested_source)));
+
+      nested_module = std::move(nested_source).TakeModule();
+    }
 
     VirtualizeSubKernelPassOptions virtualize_options;
     virtualize_options.entry_function_name_ = nested_fn_name;

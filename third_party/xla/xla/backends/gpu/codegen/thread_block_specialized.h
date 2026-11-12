@@ -46,11 +46,11 @@ namespace xla::gpu {
 // (`__thread_block_specialized`) and phased (`__phased_block_cluster`) fusions.
 //
 // Each leaf fusion (`kLoop`, `kReduction`, `kTranspose`, `kScatter`,
-// `kConcatenate`) is lowered by its native emitter, virtualized once via
-// `VirtualizeSubKernelPass`, and spliced as an `alwaysinline` internal function
-// into a unified `@launcher` kernel. Horizontal nodes partition `block_id`
-// across children, while phased nodes sequence children with block barriers
-// between consecutive single-block phases and cluster barriers across
+// `kConcatenate`, `kTriton`) is lowered by its native emitter, virtualized once
+// via `VirtualizeSubKernelPass`, and spliced as an `alwaysinline` internal
+// function into a unified `@launcher` kernel. Horizontal nodes partition
+// `block_id` across children, while phased nodes sequence children with block
+// barriers between consecutive single-block phases and cluster barriers across
 // multi-block boundaries.
 class ThreadBlockSpecializedFusion : public KernelFusionInterface {
  public:

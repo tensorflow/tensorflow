@@ -62,6 +62,12 @@ class ThreadBlockSpecializedFusionTest
     return cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
   }
 
+  bool IsAtLeastAmpere() const {
+    const auto* cuda_cc =
+        device_description().gpu_compute_capability().cuda_compute_capability();
+    return cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
+  }
+
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitMlirModule(
       absl::string_view hlo) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
@@ -1630,6 +1636,226 @@ ENTRY main {
 
   if (HasHopperClusterSupport()) {
     EXPECT_TRUE(RunAndCompareNoHloPasses(kPhasedHlo, ErrorSpec{0, 0}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest, TritonPlusLoop) {
+  if (!IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
+                    "pre-Ampere NVIDIA GPUs.";
+  }
+
+  absl::string_view kHlo = R"hlo(
+HloModule m
+
+nested_triton {
+  p0 = f32[128,64]{1,0} parameter(0)
+  ROOT abs = f32[128,64]{1,0} abs(p0)
+}
+
+nested_loop {
+  p0 = f32[2048]{0} parameter(0)
+  ROOT exp = f32[2048]{0} exponential(p0)
+}
+
+horizontal_comp {
+  p0 = f32[128,64]{1,0} parameter(0)
+  p1 = f32[2048]{0} parameter(1)
+  f0 = f32[128,64]{1,0} fusion(p0), kind=kCustom, calls=nested_triton,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["16","64"]}],
+                                   "num_warps":"4",
+                                   "num_ctas":"1",
+                                   "num_stages":"1"}}}
+  f1 = f32[2048]{0} fusion(p1), kind=kLoop, calls=nested_loop
+  ROOT t = (f32[128,64]{1,0}, f32[2048]{0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[128,64]{1,0} parameter(0)
+  p1 = f32[2048]{0} parameter(1)
+  ROOT fusion = (f32[128,64]{1,0}, f32[2048]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized);
+
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  // nested_triton uses ceil(128 / 16) = 8 blocks x 128 threads; nested_loop
+  // uses 16 blocks x 128 threads -> 24 blocks total.
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 24);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                              /*buffer_assignment=*/nullptr));
+  std::string mlir_str;
+  llvm::raw_string_ostream mlir_os(mlir_str);
+  mlir_os << *mlir_module;
+
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    %[[ARG0:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG3:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
+    // CHECK-DAG:     %[[C24:.*]] = llvm.mlir.constant(24 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
+    // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
+    // CHECK:       ^[[THEN0]]:
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:       ^[[ELSE0]]:
+    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C24]] : i32
+    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
+    // CHECK:       ^[[THEN1]]:
+    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
+    // CHECK:         llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:       llvm.func internal @fusion_nested_0(%{{.*}}: !llvm.ptr{{.*}}, %{{.*}}: !llvm.ptr{{.*}}, %{{.*}}: i32) attributes {{{.*}}passthrough = ["alwaysinline"]}
+    // CHECK:       llvm.func internal @fusion_nested_1(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {{{.*}}passthrough = ["alwaysinline"]}
+  )"));
+  EXPECT_TRUE(mlir_check);
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TritonDotPlusTransposeSharedMemoryAndThreadGuard) {
+  if (!IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
+                    "pre-Ampere NVIDIA GPUs.";
+  }
+
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+nested_triton_dot {
+  lhs = f32[64,64]{1,0} parameter(0)
+  rhs = f32[64,64]{1,0} parameter(1)
+  ROOT dot = f32[64,64]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+nested_tr {
+  p0 = f32[64,64]{1,0} parameter(0)
+  ROOT tr = f32[64,64]{1,0} transpose(p0), dimensions={1,0}
+}
+
+horizontal_comp {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  p2 = f32[64,64]{1,0} parameter(2)
+  f0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=nested_triton_dot,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}],
+                                   "num_warps":"2",
+                                   "num_ctas":"1",
+                                   "num_stages":"1"}}}
+  f1 = f32[64,64]{1,0} fusion(p2), kind=kInput, calls=nested_tr
+  ROOT t = (f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  p2 = f32[64,64]{1,0} parameter(2)
+  ROOT fusion = (f32[64,64]{1,0}, f32[64,64]{1,0}) fusion(p0, p1, p2),
+    kind=kCustom, calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  // nested_triton_dot uses 4 blocks x 64 threads; nested_tr uses 4 blocks x 128
+  // threads -> 8 blocks x 128 threads.
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 8);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      fusion_emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                                      /*buffer_assignment=*/nullptr,
+                                      *mlir_context_));
+  EXPECT_GT(llvm_source_wrapper.max_shmem_bytes, 0);
+
+  std::string llvm_str;
+  llvm::raw_string_ostream llvm_os(llvm_str);
+  llvm_os << *llvm_source_wrapper.source.module();
+
+  ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
+    // CHECK: @global_smem = external addrspace(3) global [0 x i8], align 16
+    // CHECK-NOT: addrspace(3) global [
+    // CHECK: define void @fusion(
+    // CHECK: icmp ult i32 %{{.*}}, 64
+    // CHECK: call void @fusion_nested_0(
+    // CHECK: call void @fusion_nested_1(
+    // CHECK: define internal void @fusion_nested_0(ptr {{.*}}%{{.*}}, ptr {{.*}}%{{.*}}, ptr {{.*}}%{{.*}}, i32 %{{.*}})
+    // CHECK: call void @llvm.nvvm.barrier{{.*}}(i32 0, i32 64)
+    // CHECK: define internal void @fusion_nested_1(ptr %{{.*}}, ptr %{{.*}}, i32 %{{.*}})
+  )"));
+  EXPECT_TRUE(llvm_check);
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-2, 1e-2}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TritonProducerPhaseFollowedByLoopConsumerPhaseInCluster) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+triton_phase_0 {
+  p0 = f32[64,8]{1,0} parameter(0)
+  ROOT exp = f32[64,8]{1,0} exponential(p0)
+}
+
+loop_phase_1 {
+  p0 = f32[64,8]{1,0} parameter(0)
+  rev = f32[512]{0} reverse(f32[512]{0} reshape(p0)), dimensions={0}
+  ROOT neg = f32[512]{0} negate(rev)
+}
+
+phased_comp {
+  p0 = f32[64,8]{1,0} parameter(0)
+  f0 = f32[64,8]{1,0} fusion(p0), kind=kCustom, calls=triton_phase_0,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["16","8"]}],
+                                   "num_warps":"2",
+                                   "num_ctas":"1",
+                                   "num_stages":"1"}}}
+  f1 = f32[512]{0} fusion(f0), kind=kLoop, calls=loop_phase_1
+  ROOT t = (f32[64,8]{1,0}, f32[512]{0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[64,8]{1,0} parameter(0)
+  ROOT fusion = (f32[64,8]{1,0}, f32[512]{0}) fusion(p0),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
   }
 }
 

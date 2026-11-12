@@ -448,18 +448,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
                              /*is_xla_fusion=*/true);
 }
 
-absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+absl::StatusOr<TritonKernelSource> LowerTritonToLlvmDialect(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    const llvm::Triple& target_triple, const std::string& data_layout,
     TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
     bool is_xla_fusion) {
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-
   const se::GpuComputeCapability& gpu_cc = device_info.gpu_compute_capability();
   ABSL_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
-  std::string arch_name = gpu_cc.ToString();
 
   const HloModuleConfig& hlo_config = hlo_module.config();
 
@@ -520,18 +516,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         "Failed to compile Triton kernel. Context: [%s]", error_ctx));
   }
 
-  const int shared_mem_bytes =
+  const int64_t shared_mem_bytes =
       triton_source.module()
           ->getAttrOfType<mlir::IntegerAttr>("ttg.shared")
           .getInt();
-  int64_t global_scratch_memory_size = 0;
-  if (auto attr = triton_source.module()->getAttrOfType<mlir::IntegerAttr>(
-          "ttg.global_scratch_memory_size")) {
-    global_scratch_memory_size = attr.getInt();
-  }
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  VLOG(2) << "Global scratch memory usage: " << global_scratch_memory_size
-          << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     std::string error_ctx = error_ctx_provider ? error_ctx_provider() : "";
     return absl::ResourceExhaustedError(absl::StrFormat(
@@ -558,6 +547,46 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
           tensor_mem_columns, kTensorMemoryColumns));
     }
   }
+
+  return triton_source;
+}
+
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    absl::string_view kernel_name, const HloModule& hlo_module,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
+    bool is_xla_fusion) {
+  ABSL_ASSIGN_OR_RETURN(
+      triton_source,
+      LowerTritonToLlvmDialect(kernel_name, hlo_module, device_info,
+                               block_level_parameters, std::move(triton_source),
+                               mlir_context, is_xla_fusion));
+
+  const int shared_mem_bytes =
+      triton_source.module()
+          ->getAttrOfType<mlir::IntegerAttr>("ttg.shared")
+          .getInt();
+
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  const se::GpuComputeCapability& gpu_cc = device_info.gpu_compute_capability();
+  const HloModuleConfig& hlo_config = hlo_module.config();
+
+  bool should_verify =
+      (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
+  if constexpr (tsl::kIsDebugBuild) {
+    should_verify = true;
+  }
+  const bool enable_pdl = IsPdlEnabled(hlo_config.debug_options(), gpu_cc);
+
+  int64_t global_scratch_memory_size = 0;
+  if (auto attr = triton_source.module()->getAttrOfType<mlir::IntegerAttr>(
+          "ttg.global_scratch_memory_size")) {
+    global_scratch_memory_size = attr.getInt();
+  }
+  VLOG(2) << "Global scratch memory usage: " << global_scratch_memory_size
+          << " B";
 
   std::vector<llvm::Metadata*> captured_nvvm_annotations;
   std::unique_ptr<llvm::Module> ll_triton_module;
