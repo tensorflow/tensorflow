@@ -182,4 +182,9 @@ tf_wheel = rule(
 )
 
 def tf_wheel_dep():
+    # Under Bzlmod, external repository canonical names contain "+" (e.g.,
+    # "+_repo_rules+python_version_repo"), whereas under WORKSPACE the canonical
+    # repo name is "python_version_repo".
+    if "+" in Label("@python_version_repo//:py_version.bzl").repo_name:
+        return "@local_tf_wheel//:whl"
     return "@pypi//{}:whl".format(WHEEL_NAME)

@@ -100,7 +100,7 @@ cc_library(
     srcs = ["preserve_regions.cc"],
     hdrs = ["preserve_regions.h"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -141,20 +141,21 @@ cc_library(
         ":conversion_failure_reporter",
         ":preserve_regions",
         "//tensorflow/compiler/mlir/lite:cast_bf16_ops_to_f32",
-        "//tensorflow/compiler/mlir/lite:cleanup_optimization_barrier",  # build_cleaner: keep (pass declared in passes.h)
+        "//tensorflow/compiler/mlir/lite:cleanup_optimization_barrier",  # build_cleaner: keep (pass declared in tfl_passes.h)
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:downcast_x64",
         "//tensorflow/compiler/mlir/lite:large_constant_fold",
-        "//tensorflow/compiler/mlir/lite:legalize_jax_random",  # build_cleaner: keep (pass declared in passes.h)
+        "//tensorflow/compiler/mlir/lite:legalize_jax_random",  # build_cleaner: keep (pass declared in tfl_passes.h)
         "//tensorflow/compiler/mlir/lite:optimize_broadcast_like_pass",
         "//tensorflow/compiler/mlir/lite:optimize_broadcast_like_pass_options",
         "//tensorflow/compiler/mlir/lite:pass_registry_utils",
-        "//tensorflow/compiler/mlir/lite:strict_qdq_quantize_passes",  # build_cleaner: keep (pass declared in passes.h)
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",  # build_cleaner: keep (pass declared in passes.h)
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize_batch_matmul",  # build_cleaner: keep (pass declared in passes.h)
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_push_transpose_through_ewise_pass",  # build_cleaner: keep (pass declared in passes.h)
+        "//tensorflow/compiler/mlir/lite:strict_qdq_quantize_passes",  # build_cleaner: keep (pass declared in tfl_passes.h)
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",  # build_cleaner: keep (pass declared in tfl_passes.h)
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize_batch_matmul",  # build_cleaner: keep (pass declared in tfl_passes.h)
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_push_transpose_through_ewise_pass",  # build_cleaner: keep (pass declared in tfl_passes.h)
+        "//tensorflow/compiler/mlir/lite:tfl_passes",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/export",
@@ -209,7 +210,7 @@ cc_library(
         ":stablehlo_tfl_pipeline",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

@@ -1985,36 +1985,51 @@ class HloInstruction {
     backend_config_ = other->backend_config_;
   }
 
-  // Replaces the frontend attributes with the provided argument.
-  void set_frontend_attributes(FrontendAttributes frontend_attributes);
+  // Frontend attributes are string key/value pairs attached to an
+  // instruction. Storage is allocated lazily: an instruction without
+  // attributes behaves as if it had an empty map. Callers never need to
+  // create or initialize the map first; the single-key methods below can be
+  // used directly on any instruction.
 
-  // Adds attributes only if they not already present in the HloInstruction.
-  // Skips all atributes already present in the HloInstruction.
-  void add_frontend_attributes(FrontendAttributes frontend_attributes);
+  // Returns all frontend attributes. Empty if the instruction has none.
+  // Prefer the single-key accessors below to looking up keys in the map.
+  const FrontendAttributes& frontend_attributes() const;
 
-  // Adds a single attribute only if it not already present in the
-  // HloInstruction. Returns false if the attribute was already present.
-  bool add_frontend_attribute(absl::string_view key, absl::string_view value);
+  // Returns true if the instruction has at least one frontend attribute.
+  bool has_frontend_attributes() const;
 
-  size_t erase_frontend_attribute(absl::string_view key) {
-    return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
-  }
+  // Returns true if the instruction has the frontend attribute `key`.
+  bool has_frontend_attribute(absl::string_view key) const;
 
-  // Adds or overrides a single attribute in the HloInstruction.
-  void set_frontend_attribute(absl::string_view key, absl::string_view value) {
-    (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
-  }
+  // Returns true if the instruction has any of the frontend attributes `keys`.
+  bool has_any_frontend_attribute(
+      absl::Span<const absl::string_view> keys) const;
 
-  bool has_frontend_attributes() const {
-    return has_rare() && !rare()->frontend_attributes.map().empty();
-  }
-
-  const FrontendAttributes& frontend_attributes() const {
-    return rare()->frontend_attributes;
-  }
-
+  // Returns the value of the frontend attribute `key`, or std::nullopt if the
+  // instruction does not have it.
   std::optional<std::string> get_frontend_attribute(
       absl::string_view key) const;
+
+  // Replaces all frontend attributes with `frontend_attributes`.
+  void set_frontend_attributes(FrontendAttributes frontend_attributes);
+
+  // Sets the frontend attribute `key` to `value`, overwriting any existing
+  // value.
+  void set_frontend_attribute(absl::string_view key, absl::string_view value);
+
+  // Adds the entries of `frontend_attributes` whose keys are not yet present.
+  // Existing attributes keep their values. Returns the number of attributes
+  // added.
+  size_t add_frontend_attributes(FrontendAttributes frontend_attributes);
+
+  // Adds the frontend attribute `key` with `value` only if `key` is not yet
+  // present. Returns true if the attribute was added, false if it already
+  // existed (its value is left unchanged).
+  bool add_frontend_attribute(absl::string_view key, absl::string_view value);
+
+  // Removes the frontend attribute `key`. Returns true if the attribute was
+  // removed, false if it was not present.
+  bool erase_frontend_attribute(absl::string_view key);
 
   void set_is_composite(bool is_composite) {
     if (!has_rare() && !is_composite) {

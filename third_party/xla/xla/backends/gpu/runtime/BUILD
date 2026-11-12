@@ -683,6 +683,7 @@ xla_test(
         ":while_thunk",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
@@ -1624,6 +1625,35 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "raft_select_k_utils",
+    srcs = ["raft_select_k_utils.cc"],
+    hdrs = ["raft_select_k_utils.h"],
+    deps = [
+        "//xla:util",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "raft_select_k_utils_test",
+    srcs = ["raft_select_k_utils_test.cc"],
+    deps = [
+        ":raft_select_k_utils",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cuda_library(
     name = "select_k_exec_raft_impl",
     hdrs = [
@@ -1660,10 +1690,12 @@ cuda_library(
     ],
     tags = ["cuda-only"],
     deps = [
+        ":raft_select_k_utils",
         ":select_k_exec_raft_impl",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
     ],
 )
@@ -4716,9 +4748,13 @@ cc_library(
     compatible_with = [],
     tags = ["gpu"],
     deps = [
+        "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:kernel_args_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
@@ -5872,6 +5908,7 @@ xla_test(
         ":thunk_proto_cc",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",
         "//xla/codegen/emitters:kernel_arguments",
@@ -5881,6 +5918,7 @@ xla_test(
         "//xla/service:service_executable_run_options",
         "//xla/service:shaped_slice",
         "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_spec",

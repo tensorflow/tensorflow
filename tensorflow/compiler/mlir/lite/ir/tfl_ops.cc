@@ -84,13 +84,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 // TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
@@ -105,14 +105,14 @@ namespace mlir {
 namespace TFL {
 
 // go/keep-sorted start
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
 // go/keep-sorted end
 
 namespace {

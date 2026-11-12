@@ -4678,8 +4678,7 @@ void HloInstruction::PrintExtraAttributes(
       sharding().Print(printer, options.print_metadata());
     });
   }
-  if (options.print_frontend_attributes() &&
-      !frontend_attributes().map().empty()) {
+  if (options.print_frontend_attributes() && has_frontend_attributes()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "frontend_attributes=",
                 FrontendAttributesToString(frontend_attributes()));
@@ -6139,6 +6138,44 @@ void HloInstruction::set_raw_backend_config_string(std::string config_str) {
       std::make_shared<BackendConfigWrapper>(std::move(config_str));
 }
 
+const FrontendAttributes& HloInstruction::frontend_attributes() const {
+  return rare()->frontend_attributes;
+}
+
+bool HloInstruction::has_frontend_attributes() const {
+  return has_rare() && !rare()->frontend_attributes.map().empty();
+}
+
+bool HloInstruction::has_frontend_attribute(absl::string_view key) const {
+  if (!has_frontend_attributes()) {
+    return false;
+  }
+  return frontend_attributes().map().contains(key);
+}
+
+bool HloInstruction::has_any_frontend_attribute(
+    absl::Span<const absl::string_view> keys) const {
+  if (!has_frontend_attributes()) {
+    return false;
+  }
+  const auto& map = frontend_attributes().map();
+  return absl::c_any_of(
+      keys, [&map](absl::string_view key) { return map.contains(key); });
+}
+
+std::optional<std::string> HloInstruction::get_frontend_attribute(
+    absl::string_view key) const {
+  if (!has_frontend_attributes()) {
+    return std::nullopt;
+  }
+  const auto& map = frontend_attributes().map();
+  auto it = map.find(key);
+  if (it == map.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
 void HloInstruction::set_frontend_attributes(
     FrontendAttributes frontend_attributes) {
   if (!has_rare() && frontend_attributes.map().empty()) {
@@ -6147,12 +6184,21 @@ void HloInstruction::set_frontend_attributes(
   mutable_rare()->frontend_attributes = std::move(frontend_attributes);
 }
 
-void HloInstruction::add_frontend_attributes(
+void HloInstruction::set_frontend_attribute(absl::string_view key,
+                                            absl::string_view value) {
+  (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
+}
+
+size_t HloInstruction::add_frontend_attributes(
     FrontendAttributes frontend_attributes) {
-  if (!frontend_attributes.map().empty()) {
-    mutable_rare()->frontend_attributes.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  if (frontend_attributes.map().empty()) {
+    return 0;
   }
+  auto* map = mutable_rare()->frontend_attributes.mutable_map();
+  const size_t size_before = map->size();
+  map->insert(frontend_attributes.map().begin(),
+              frontend_attributes.map().end());
+  return map->size() - size_before;
 }
 
 bool HloInstruction::add_frontend_attribute(absl::string_view key,
@@ -6162,13 +6208,11 @@ bool HloInstruction::add_frontend_attribute(absl::string_view key,
   return it.second;
 }
 
-std::optional<std::string> HloInstruction::get_frontend_attribute(
-    absl::string_view key) const {
-  auto it = rare()->frontend_attributes.map().find(key);
-  if (it == rare()->frontend_attributes.map().end()) {
-    return std::nullopt;
+bool HloInstruction::erase_frontend_attribute(absl::string_view key) {
+  if (!has_frontend_attributes()) {
+    return false;
   }
-  return it->second;
+  return mutable_rare()->frontend_attributes.mutable_map()->erase(key) > 0;
 }
 
 void HloInstruction::set_metadata(const OpMetadata& metadata) {

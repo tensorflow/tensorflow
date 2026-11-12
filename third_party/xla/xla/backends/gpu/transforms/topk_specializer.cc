@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -53,8 +56,9 @@ namespace xla::gpu {
 
 namespace {
 
-// Scratch memory allocated for RAFT select_k temporary buffers (32 MB).
-constexpr size_t kRaftScratchSize = 32 * 1024 * 1024;
+// Fallback scratch memory (32 MB) for non-F32 RAFT select_k types (BF16, U64)
+// until their scratch-size formulas are integrated.
+constexpr int64_t kDefaultRaftScratchSize = 32 * 1024 * 1024;
 
 // Broadcast a 32-bit scalar to a target shape.
 HloInstruction* BroadcastU32(HloComputation* comp, const Shape& target_shape,
@@ -287,8 +291,14 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
     return false;
   }
 
-  // The PARTIAL-order U64 adapter packs the reversed index into 31 bits.
-  if (order == ComparisonOrder::kPartial && n > (size_t{1} << 31)) {
+  // XLA TopK indices are signed S32 and RAFT uses 32-bit signed int in launch
+  // calculations, so batch and n must fit in int32_t (which also ensures all
+  // indices fit in the 31-bit PARTIAL-order U64 key field).
+  constexpr size_t kMaxInt32 =
+      static_cast<size_t>(std::numeric_limits<int32_t>::max());
+  if (batch > kMaxInt32 || n > kMaxInt32 ||
+      uint64_t{batch} * uint64_t{k} >
+          static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
     return false;
   }
 
@@ -325,7 +335,7 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
   Shape k_shape =
       ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
   Shape idx_shape = topk->shape().tuple_shapes(1);
-  Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {kDefaultRaftScratchSize});
   Shape new_cc_shape =
       ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
@@ -363,7 +373,7 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 }
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
-    HloCustomCallInstruction* topk, bool is_cuda) {
+    HloCustomCallInstruction* topk, bool is_cuda, int sm_count) {
   ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
   if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
     return InvalidArgument(
@@ -386,12 +396,16 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   bool has_batch = data_shape.dimensions().size() == 2;
   size_t max_k = 16;  // CustomCall TopK requires k <= 16 and n >= 1024
   size_t min_n = 1024;
-  size_t batch = 0;
-  if (has_batch) {
-    batch = data_shape.dimensions(0);
-  }
+  size_t batch = has_batch ? data_shape.dimensions(0) : 1;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
+  constexpr size_t kMaxInt32 =
+      static_cast<size_t>(std::numeric_limits<int32_t>::max());
+  if (batch > kMaxInt32 || n > kMaxInt32 || k > kMaxInt32) {
+    return InvalidArgument(
+        "TopK dimensions exceed int32 limits (batch=%zu, n=%zu, k=%zu)", batch,
+        n, k);
+  }
   double ratio = static_cast<double>(k) / n;
   if (ratio >= 0.85) {
     return InvalidArgument(
@@ -414,7 +428,24 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   }
   Shape cc_shape = topk->shape();
   if (is_cuda && use_raft) {
-    Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+    if (uint64_t{batch} * uint64_t{k} >
+        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+      return InvalidArgument(
+          "TopK batch * k exceeds RAFT uint32 limit (batch=%zu, k=%zu)", batch,
+          k);
+    }
+    int64_t scratch_bytes = kDefaultRaftScratchSize;
+    if (dtype == F32) {
+      // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
+      // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
+      // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
+      ABSL_ASSIGN_OR_RETURN(scratch_bytes,
+                       EstimateRaftSelectKScratchBytesFloat(
+                           static_cast<uint32_t>(batch),
+                           static_cast<uint32_t>(n), static_cast<uint32_t>(k),
+                           sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+    }
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_bytes});
     cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
                                           topk->shape().tuple_shapes(1),
                                           scratch_shape});
@@ -430,8 +461,10 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
 
 class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit SpecializeTopkVisitor(se::GpuComputeCapability compute_capability)
-      : compute_capability_(std::move(compute_capability)) {}
+  SpecializeTopkVisitor(se::GpuComputeCapability compute_capability,
+                        int sm_count)
+      : compute_capability_(std::move(compute_capability)),
+        sm_count_(sm_count) {}
 
   absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
@@ -455,7 +488,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
       return ReplaceInstruction(topk, new_topk);
     }
 
-    if (auto small_topk = SmallBufferOptimization(topk, is_cuda);
+    if (auto small_topk = SmallBufferOptimization(topk, is_cuda, sm_count_);
         small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
     } else {  // NOLINT(readability-else-after-return)
@@ -468,6 +501,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
  private:
   se::GpuComputeCapability compute_capability_;
+  int sm_count_;
 };
 
 }  // namespace
@@ -475,7 +509,12 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> TopkSpecializer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return SpecializeTopkVisitor(compute_capability_)
+  int raft_sm_count = sm_count_;
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability_.cuda_compute_capability()) {
+    raft_sm_count = GetRaftSelectKMaxSmCount(*cuda_cc, sm_count_);
+  }
+  return SpecializeTopkVisitor(compute_capability_, raft_sm_count)
       .RunOnModule(module, execution_threads);
 }
 

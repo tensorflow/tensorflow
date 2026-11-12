@@ -880,7 +880,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<WindowedEinsumHandler>();
   }
   pipeline.AddPass<TopKSplitter>();
-  pipeline.AddPass<TopkSpecializer>(gpu_version);
+  pipeline.AddPass<TopkSpecializer>(gpu_target_config.device_description);
   pipeline.AddPass<TopkDecomposer>();
 
   pipeline.AddPass<DotOperandConverter>(gpu_version);
