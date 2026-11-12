@@ -421,8 +421,9 @@ static absl::Status RunThunkPasses(
   return absl::OkStatus();
 }
 
-// Returns the ShapedSlices for the output buffers, indexed by the order in
-// which they appear in the output shape (DFS order).
+// Returns the ShapedSlices for the array output buffers, in the order they
+// appear in the output shape (DFS order). Tuple subshapes are skipped:
+// ThunkBufferDebugPass rejects tuple slices.
 static absl::StatusOr<std::vector<ShapedSlice>> GetModuleOutputSlices(
     const ProgramShape& program_shape,
     const absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>&
@@ -437,6 +438,9 @@ static absl::StatusOr<std::vector<ShapedSlice>> GetModuleOutputSlices(
   ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       program_shape.result(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        if (!subshape.IsArray()) {
+          return absl::OkStatus();
+        }
         auto it = output_info.find(index);
         if (it == output_info.end()) {
           return absl::InternalError("No output info for index");
