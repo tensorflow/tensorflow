@@ -15,22 +15,67 @@ limitations under the License.
 
 #include "tensorflow/lite/profiling/profiler_based_calibration/tfl_calibration_utils.h"
 
+#include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/absl_check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/profiling/memory_info.h"
+#include "tensorflow/lite/stateful_error_reporter.h"
 
 namespace odml {
 namespace {
+
+using ::testing::HasSubstr;
+
+// Stub error reporter returning a fixed message for error-propagation tests.
+class FakeErrorReporter : public tflite::StatefulErrorReporter {
+ public:
+  int Report(const char*, va_list) override { return 0; }
+  std::string message() override { return "custom error message"; }
+};
 
 class TflCalibrationUtilsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     interpreter_ = std::make_unique<tflite::Interpreter>();
+  }
+
+  // Adds a read-write tensor to `interpreter_` and returns its tensor index.
+  int AddTensor(const char* name, TfLiteType type,
+                const std::vector<int>& dims) {
+    int index = 0;
+    ABSL_CHECK_EQ(interpreter_->AddTensors(1, &index), kTfLiteOk);
+    ABSL_CHECK_EQ(interpreter_->SetTensorParametersReadWrite(
+                      index, type, name, dims, TfLiteQuantization()),
+                  kTfLiteOk);
+    return index;
+  }
+
+  // Copies `data` into the allocated buffer of tensor `index`.
+  template <typename T, size_t N>
+  void PopulateTensor(int index, const T (&data)[N]) {
+    std::memcpy(interpreter_->tensor(index)->data.raw, data, sizeof(data));
+  }
+
+  // Appends a no-op node consuming `inputs` with no outputs.
+  void AddNoOpNode(const std::vector<int>& inputs) {
+    static TfLiteRegistration reg = {
+        .invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }};
+    ABSL_CHECK_EQ(interpreter_->AddNodeWithParameters(
+                      inputs, /*outputs=*/{}, /*init_data=*/nullptr,
+                      /*init_data_size=*/0, /*builtin_data=*/nullptr, &reg),
+                  kTfLiteOk);
   }
 
   std::unique_ptr<tflite::Interpreter> interpreter_;
@@ -120,6 +165,62 @@ TEST_F(TflCalibrationUtilsTest, InvokeWithCalibrationInt32) {
   EXPECT_TRUE(stats.count("input_i32"));
   EXPECT_EQ(stats["input_i32"].min, -10.0f);
   EXPECT_EQ(stats["input_i32"].max, 20.0f);
+}
+
+TEST_F(TflCalibrationUtilsTest, SkipsConstantTensors) {
+  const int input_idx = AddTensor("input", kTfLiteFloat32, {1, 2});
+  int const_idx = 0;
+  ASSERT_EQ(interpreter_->AddTensors(1, &const_idx), kTfLiteOk);
+  const float weights[] = {-10.0f, 10.0f};
+  ASSERT_EQ(interpreter_->SetTensorParametersReadOnly(
+                const_idx, kTfLiteFloat32, "const_weights", {1, 2},
+                TfLiteQuantization(), reinterpret_cast<const char*>(weights),
+                sizeof(weights)),
+            kTfLiteOk);
+  // Include `const_idx` in subgraph inputs so `TensorStatsProfiler` visits it.
+  interpreter_->SetInputs({input_idx, const_idx});
+  AddNoOpNode({input_idx, const_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  const float in[] = {-1.0f, 3.0f};
+  PopulateTensor(input_idx, in);
+
+  auto status_or_stats = InvokeWithCalibration(interpreter_.get(), 0);
+  ASSERT_TRUE(status_or_stats.ok());
+  EXPECT_EQ(status_or_stats->count("const_weights"), 0);
+  ASSERT_EQ(status_or_stats->count("input"), 1);
+  EXPECT_FLOAT_EQ(status_or_stats->at("input").min, -1.0f);
+  EXPECT_FLOAT_EQ(status_or_stats->at("input").max, 3.0f);
+}
+
+TEST_F(TflCalibrationUtilsTest, ReportsInvokeError) {
+  const int input_idx = AddTensor("input", kTfLiteFloat32, {1, 2});
+  interpreter_->SetInputs({input_idx});
+  static TfLiteRegistration fail_reg = {
+      .invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteError; }};
+  ASSERT_EQ(interpreter_->AddNodeWithParameters(
+                /*inputs=*/{input_idx}, /*outputs=*/{}, /*init_data=*/nullptr,
+                /*init_data_size=*/0, /*builtin_data=*/nullptr, &fail_reg),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  const float in[] = {0.0f, 0.0f};
+  PopulateTensor(input_idx, in);
+
+  auto status_without_reporter = InvokeWithCalibration(interpreter_.get(), 0);
+  ASSERT_FALSE(status_without_reporter.ok());
+  EXPECT_EQ(status_without_reporter.status().code(),
+            absl::StatusCode::kInternal);
+  EXPECT_EQ(status_without_reporter.status().message(),
+            "InvokeWithCalibration failed");
+
+  FakeErrorReporter reporter;
+  auto status_with_reporter =
+      InvokeWithCalibration(interpreter_.get(), 0, &reporter);
+  ASSERT_FALSE(status_with_reporter.ok());
+  EXPECT_EQ(status_with_reporter.status().code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(std::string(status_with_reporter.status().message()),
+              HasSubstr("InvokeWithCalibration failed: custom error message"));
 }
 
 TEST_F(TflCalibrationUtilsTest, GetMemoryUsage) {
