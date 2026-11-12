@@ -43,6 +43,9 @@ HASH_TAG = "hash"
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
+# Collapses runs of "/" in node names and input references. b/429335661
+_MULTI_SLASH_RE = re.compile(r"//+")
+
 
 def _glob(glob_pattern):
   if platform.system() == "Windows":
@@ -788,9 +791,11 @@ class DebugDumpDir:
       # Normalize all node names and their input references directly in the
       # GraphDef protobuf before any other processing. b/429335661
       for node in partition_graph.node:
-        node.name = re.sub(r"/+", "/", node.name)
+        if "//" in node.name:
+          node.name = _MULTI_SLASH_RE.sub("/", node.name)
         for i, inp in enumerate(node.input):
-          node.input[i] = re.sub(r"/+", "/", inp)
+          if "//" in inp:
+            node.input[i] = _MULTI_SLASH_RE.sub("/", inp)
       debug_graph = debug_graphs.DebugGraph(partition_graph,
                                             device_name=maybe_device_name)
       self._debug_graphs[debug_graph.device_name] = debug_graph
