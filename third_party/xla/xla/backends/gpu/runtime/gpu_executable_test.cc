@@ -1248,6 +1248,166 @@ TEST_F(GpuExecutableTest, RuntimeMetadataFromProtoWithoutModuleConfig) {
                   .xla_gpu_enable_highest_priority_async_stream());
 }
 
+// A module with input/output aliasing of both kinds, a buffer donor, and an
+// entry computation layout that differs from the layout of the parameters.
+constexpr absl::string_view kModuleWithAliasingHlo = R"(
+  HloModule test_module, input_output_alias={ {0}: (0, {}, must-alias), {1}: (1, {1}, may-alias) }, buffer_donor={ (2, {}) }, entry_computation_layout={(f32[4]{0:S(1)}, (f32[4]{0}, f32[4]{0}), s32[2]{0})->(f32[4]{0}, f32[4]{0}, f32[4]{0})}
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    p1 = (f32[4], f32[4]) parameter(1)
+    p2 = s32[2] parameter(2)
+    p1_1 = f32[4] get-tuple-element(p1), index=1
+    add = f32[4] add(p0, p1_1)
+    ROOT result = (f32[4], f32[4], f32[4]) tuple(add, add, p0)
+  })";
+
+// Returns params for an executable that has the module above. The output info
+// gets the aliasing from the module like in `GpuCompiler`.
+absl::StatusOr<GpuExecutable::Params> MakeParamsWithAliasing() {
+  GpuExecutable::Params params;
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  params.device_description = MakeVoltaDeviceDescription();
+  params.enable_debug_info_manager = false;
+  params.debug_options = GetDebugOptionsFromFlags();
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnUnverifiedModule(kModuleWithAliasingHlo));
+  params.module_name = module->name();
+  params.program_shape =
+      module->compute_computation_layout().ComputeProgramShape();
+  params.allocations = {BufferAllocation(0, 16, 0)};
+  ShapeUtil::ForEachSubshape(
+      params.program_shape.result(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        GpuExecutable::OutputInfo& info = params.output_info[index];
+        info.allocation_index = 0;
+        info.alias_config =
+            module->input_output_alias_config().GetAliasedParameter(index);
+      });
+  params.debug_module = std::move(module);
+  SetDummyBufferAssignment(params);
+  return params;
+}
+
+void ExpectSameAliasingAsModule(const Executable& executable,
+                                const HloModule& module) {
+  // Make sure that we don't compare empty configs.
+  ASSERT_TRUE(module.input_output_alias_config().OutputHasAlias({0}));
+  ASSERT_TRUE(module.input_output_alias_config().OutputHasAlias({1}));
+  ASSERT_EQ(module.buffer_donor_config().buffer_donor().size(), 1);
+
+  EXPECT_THAT(executable.input_output_alias_config().ToProto(),
+              EqualsProto(module.input_output_alias_config().ToProto()));
+  EXPECT_THAT(executable.buffer_donor_config().ToProto(),
+              EqualsProto(module.buffer_donor_config().ToProto()));
+}
+
+void ExpectSameEntryLayoutAsModule(const Executable& executable,
+                                   const HloModule& module) {
+  const ComputationLayout& module_layout =
+      module.config().entry_computation_layout();
+  // Make sure that the test would notice if the compute layout was returned.
+  ASSERT_NE(module_layout.ToString(),
+            module.compute_computation_layout().ToString());
+
+  EXPECT_EQ(executable.module_config().entry_computation_layout().ToString(),
+            module_layout.ToString());
+}
+
+TEST_F(GpuExecutableTest, ModuleMetadataFromModule) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutable::Params params, MakeParamsWithAliasing());
+  std::shared_ptr<HloModule> module = params.debug_module;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+
+  // The executable keeps the module itself, and the base class sees it.
+  const Executable& base = *executable;
+  EXPECT_EQ(base.shared_module(), module);
+  EXPECT_TRUE(base.has_module());
+  EXPECT_EQ(&base.module(), module.get());
+
+  // The metadata is the module's, not a copy of it.
+  EXPECT_EQ(&base.module_config(), &module->config());
+  EXPECT_EQ(&base.input_output_alias_config(),
+            &module->input_output_alias_config());
+  EXPECT_EQ(&base.buffer_donor_config(), &module->buffer_donor_config());
+  ExpectSameAliasingAsModule(base, *module);
+  ExpectSameEntryLayoutAsModule(base, *module);
+}
+
+TEST_F(GpuExecutableTest, ModuleMetadataSurvivesProtoRoundTrip) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutable::Params params, MakeParamsWithAliasing());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
+                       GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
+                       reference_executable->ToProto());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> loaded_executable,
+      GpuExecutable::FromProto(proto, MakeVoltaDeviceDescription(),
+                               "TEST_PLATFORM", GetDebugOptionsFromFlags()));
+  ASSERT_TRUE(loaded_executable->has_module());
+
+  ExpectSameAliasingAsModule(*loaded_executable, loaded_executable->module());
+  ExpectSameAliasingAsModule(*loaded_executable,
+                             reference_executable->module());
+  ExpectSameEntryLayoutAsModule(*loaded_executable,
+                                loaded_executable->module());
+  ExpectSameEntryLayoutAsModule(*loaded_executable,
+                                reference_executable->module());
+}
+
+TEST_F(GpuExecutableTest, ModuleMetadataFromProtoWithoutModule) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutable::Params params, MakeParamsWithAliasing());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
+                       GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
+                       reference_executable->ToProto());
+  // That's what executables compiled with `embed_hlo_module=false` look like.
+  proto.clear_hlo_module_with_config();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> loaded_executable,
+      GpuExecutable::FromProto(proto, MakeVoltaDeviceDescription(),
+                               "TEST_PLATFORM", GetDebugOptionsFromFlags()));
+  const Executable& base = *loaded_executable;
+  EXPECT_EQ(base.shared_module(), nullptr);
+  EXPECT_FALSE(base.has_module());
+
+  // The aliasing is rebuilt from the output info.
+  EXPECT_THAT(base.input_output_alias_config().ToProto(),
+              EqualsProto(reference_executable->module()
+                              .input_output_alias_config()
+                              .ToProto()));
+  // The buffer donors are only stored in the module.
+  EXPECT_TRUE(base.buffer_donor_config().buffer_donor().empty());
+}
+
+TEST_F(GpuExecutableTest, ModuleMetadataWithoutModuleComesFromParams) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutable::Params params, MakeParamsWithAliasing());
+  // This is what `GpuCompiler` does with `embed_hlo_module=false`.
+  std::shared_ptr<HloModule> module = std::move(params.debug_module);
+  params.debug_module = nullptr;
+  HloModuleConfig config = module->config();
+  const DeviceAssignment device_assignment =
+      MakeConfigWithRuntimeMetadata().static_device_assignment();
+  config.set_static_device_assignment(device_assignment);
+  params.module_config = config;
+  params.buffer_donor_config = module->buffer_donor_config();
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+  const Executable& base = *executable;
+  EXPECT_EQ(base.shared_module(), nullptr);
+  EXPECT_FALSE(base.has_module());
+
+  ExpectSameAliasingAsModule(base, *module);
+  ExpectSameEntryLayoutAsModule(base, *module);
+  ASSERT_TRUE(base.module_config().has_static_device_assignment());
+  EXPECT_EQ(base.module_config().static_device_assignment().ToString(),
+            device_assignment.ToString());
+}
+
 TEST_F(GpuExecutableTest, ToProtoFailsWithoutGpuTopology) {
   se::DeviceDescription device_description;
   device_description.set_gpu_compute_capability(
