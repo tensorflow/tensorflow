@@ -1345,6 +1345,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cudnn_norm_rewriter",
         "//xla:error_spec",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
@@ -1352,6 +1353,7 @@ xla_test(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
