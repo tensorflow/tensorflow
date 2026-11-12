@@ -1375,12 +1375,12 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
   }
 
   // Verify the sort_dimension.
-  if (sort->sort_dimension() >=
-      static_cast<int64_t>(sort->operand(0)->shape().dimensions().size())) {
+  const int64_t rank = sort->operand(0)->shape().dimensions().size();
+  if (sort->sort_dimension() < 0 || sort->sort_dimension() >= rank) {
     return Internal(
-        "Expected the sort_dimension %d of sort to be smaller than the rank %d "
-        "of the operand(s).",
-        sort->sort_dimension(), sort->shape().dimensions().size());
+        "Expected the sort_dimension %d of sort to be non-negative and smaller "
+        "than the rank %d of the operand(s).",
+        sort->sort_dimension(), rank);
   }
 
   return CheckVariadicShape(sort);

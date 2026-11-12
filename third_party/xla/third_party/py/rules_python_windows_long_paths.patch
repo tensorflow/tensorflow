@@ -1,0 +1,111 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# Patch for rules_python 2.4.5 on Windows:
+# 1. Always add the extended-length prefix to Windows C extension origins in
+#    site_init_template.py because runfiles symlink targets, dependent DLLs, and
+#    Windows SxS manifest probes (.manifest / .2.manifest) can exceed MAX_PATH
+#    even when the lexical spec.origin path is shorter than 260 characters.
+# 2. Fix stage2_bootstrap_template.py get_windows_path_with_unc_prefix (which
+#    referenced an undefined unicode_prefix variable and gated on OS build
+#    number rather than path length) so main script paths reaching MAX_PATH
+#    receive the extended-length prefix while shorter paths stay unchanged.
+# 3. Normalize with os.path.abspath before checking for extended-length or
+#    device prefixes in both helpers.
+# This patch can be dropped once upstream rules_python incorporates these fixes.
+diff --git a/python/private/site_init_template.py b/python/private/site_init_template.py
+--- a/python/private/site_init_template.py
++++ b/python/private/site_init_template.py
+@@ -104,18 +104,18 @@
+     # Implicit long-path support is not universal across the Win32 API. For
+     # example, DLL loading still requires an explicit extended-length prefix.
+     extended_path_prefix = "\\\\?\\"
+-    if path.startswith(extended_path_prefix):
+-        return path
+-
+     # os.path.abspath returns a normalized absolute path
+     path = os.path.abspath(path)
++    if path.startswith((extended_path_prefix, "\\\\.\\")):
++        return path
++
+     if path.startswith("\\\\"):
+         return extended_path_prefix + "UNC\\" + path[2:]
+     return extended_path_prefix + path
+ 
+ 
+ def _install_windows_extension_finder():
+-    """Use extended-length paths when loading long Windows extension paths."""
++    """Use extended-length paths when loading Windows extension modules."""
+     if not _is_windows() or sys.version_info[0] < 3:
+         return
+ 
+@@ -133,7 +133,6 @@
+             if (
+                 spec is None
+                 or not isinstance(spec.loader, importlib.machinery.ExtensionFileLoader)
+-                or len(os.path.abspath(spec.origin)) < 260
+             ):
+                 return spec
+ 
+diff --git a/python/private/stage2_bootstrap_template.py b/python/private/stage2_bootstrap_template.py
+--- a/python/private/stage2_bootstrap_template.py
++++ b/python/private/stage2_bootstrap_template.py
+@@ -113,34 +113,26 @@
+     if not IS_WINDOWS or sys.version_info[0] < 3:
+         return path
+ 
+-    # Starting in Windows 10, version 1607(OS build 14393), MAX_PATH limitations have been
+-    # removed from common Win32 file and directory functions.
+-    # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
+-    import platform
+-
+-    win32_version = None
+-    # Windows 2022 with Python 3.12.8 gives flakey errors, so try a couple times.
+-    for _ in range(3):
+-        try:
+-            win32_version = platform.win32_ver()[1]
+-            break
+-        except (ValueError, KeyError):
+-            pass
+-    if win32_version and win32_version >= "10.0.14393":
+-        return path
+-
+     # import sysconfig only now to maintain python 2.6 compatibility
+     import sysconfig
+ 
+     if sysconfig.get_platform() == "mingw":
+         return path
+ 
+-    # Lets start the unicode fun
+-    if path.startswith(unicode_prefix):  # noqa: F821
++    # The OS build number does not show whether LongPathsEnabled is set.
++    # Prefix only paths that reach MAX_PATH. The prefix turns off "/", "."
++    # and ".." handling, so short paths that callers derive from __file__
++    # stay unchanged.
++    extended_path_prefix = "\\\\?\\"
++    # os.path.abspath returns a normalized absolute path
++    abs_path = os.path.abspath(path)
++    if abs_path.startswith((extended_path_prefix, "\\\\.\\")):
++        return abs_path
++    if len(abs_path) < 260:
+         return path
+-
+-    # os.path.abspath returns a normalized absolute path
+-    return unicode_prefix + os.path.abspath(path)  # noqa: F821
++    if abs_path.startswith("\\\\"):
++        return extended_path_prefix + "UNC\\" + abs_path[2:]
++    return extended_path_prefix + abs_path
+ 
+ 
+ def print_verbose(*args, mapping=None, values=None):

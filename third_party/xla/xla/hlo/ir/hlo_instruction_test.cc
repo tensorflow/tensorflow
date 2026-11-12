@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/frontend_attributes.h"
@@ -1311,6 +1312,52 @@ TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
       static_cast<const HloCompareInstruction*>(clone.get());
   EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
   EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloInstructionTest, CreateFromProtoRejectsInvalidOriginalValueIndex) {
+  constexpr absl::string_view kHloString = R"(
+HloModule OriginalValueShapeIndex
+
+ENTRY %main (p0: f32[], p1: f32[]) -> (f32[], f32[]) {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %tuple = (f32[], f32[]) tuple(%p0, %p1), origin={({"p0"}, {"p1"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  HloModuleProto proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> roundtrip_module,
+                       HloModule::CreateFromProto(proto, module->config()));
+  EXPECT_NE(roundtrip_module->entry_computation()
+                ->root_instruction()
+                ->original_value(),
+            nullptr);
+
+  OriginalValueElementProto* element = nullptr;
+  for (HloInstructionProto& instruction :
+       *proto.mutable_computations(0)->mutable_instructions()) {
+    if (instruction.has_original_value()) {
+      element = instruction.mutable_original_value()->mutable_elements(0);
+    }
+  }
+  ASSERT_NE(element, nullptr);
+  ASSERT_EQ(element->shape_index_size(), 1);
+
+  // The tuple has only two elements.
+  element->set_shape_index(0, 2);
+  EXPECT_THAT(
+      HloModule::CreateFromProto(proto, module->config()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("has shape index {2} that is invalid")));
+
+  // The elements of the tuple are not tuples.
+  element->set_shape_index(0, 0);
+  element->add_shape_index(0);
+  EXPECT_THAT(HloModule::CreateFromProto(proto, module->config()),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("has shape index {0,0} that is invalid")));
 }
 
 TEST_F(HloInstructionTest,

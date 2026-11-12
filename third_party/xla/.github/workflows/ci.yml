@@ -167,4 +167,5 @@ jobs:
           path: |
             ${{ matrix.job_info.repo }}/profile.json.gz
             ${{ matrix.job_info.repo }}/bazel_remote_grpc.log
+            ${{ matrix.job_info.repo }}/build_events.json
           if-no-files-found: ignore

@@ -160,6 +160,14 @@ jobs:
             --bes_keywords=pull_request \
             --build_event_json_file=jax_build_events.json
 
+      - name: Annotate JAX BEP Failures
+        if: ${{ (failure() || cancelled()) && needs.rocm-config.outputs.skip-jax != 'true' }}
+        continue-on-error: true
+        run: |
+          python3 -m build_tools.ci.bep_annotations \
+            --label="${GITHUB_JOB}" \
+            jax/jax_build_events.json
+
       - name: Upload JAX BEP File
         if: ${{ always() && needs.rocm-config.outputs.skip-jax != 'true' }}
         continue-on-error: true
@@ -259,6 +267,15 @@ jobs:
             ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             -- \
             //xla/...
+
+      - name: Annotate XLA BEP Failures
+        if: ${{ (failure() || cancelled()) && needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}
+        continue-on-error: true
+        run: |
+          python3 -m build_tools.ci.bep_annotations \
+            --label="${GITHUB_JOB}" \
+            xla_single_gpu_build_events.json \
+            xla_rocm_cpu_build_events.json
 
       - name: Upload XLA BEP Files
         if: ${{ always() && needs.rocm-config.outputs.skip-xla != 'true' && steps.bazel_diff.outputs.should_skip != 'true' }}

@@ -29,6 +29,7 @@ single_version_override(
         "//third_party/py:rules_python_freethreaded.patch",
         "//third_party/py:rules_python_scope.patch",
         "//third_party/py:rules_python_local_wheel.patch",
+        "//third_party/py:rules_python_windows_long_paths.patch",
     ],
     version = "2.4.5",
 )
