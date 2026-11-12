@@ -105,6 +105,13 @@ class NormOpTest(test_lib.TestCase):
       linalg_ops.norm(matrix, axis=(np.int64(0), np.int64(0)), ord='fro')
     with self.assertRaisesRegex(ValueError, "must be None, an integer"):
       linalg_ops.norm(matrix, axis=np.array([0, 1]))
+    # A non-integer entry next to a NumPy integer is still rejected rather than
+    # silently truncated by int(), e.g. (np.int64(1), 2.5) must not become
+    # (1, 2).
+    with self.assertRaisesRegex(ValueError, "tuple of 2 unique integers"):
+      linalg_ops.norm(matrix, axis=(np.int64(0), 1.5), ord='fro')
+    with self.assertRaisesRegex(ValueError, "tuple of 2 unique integers"):
+      linalg_ops.norm(matrix, axis=(0.5, np.int64(1)), ord='fro')
 
   @test_util.run_in_graph_and_eager_modes
   def testEmptyInputIsZero(self):
