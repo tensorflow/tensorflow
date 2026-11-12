@@ -935,6 +935,7 @@ py_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
