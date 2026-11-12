@@ -457,6 +457,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareCpu(z, compute_f32(self._rsqrt), math_ops.rsqrt)
+    self._compareBoth(x, compute_f32(self._sigmoid), math_ops.sigmoid)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
@@ -504,6 +505,43 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
+
+  def testBFloat16SigmoidCorrectlyRoundedAndMonotonic(self):
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    def reference(v):
+      # Exact sigmoid in float64, rounded once to bfloat16.
+      with np.errstate(over="ignore"):
+        return np.array(1.0 / (1.0 + np.exp(-np.float64(v))), dtype=bfloat16)
+
+    test_values = [
+        5.5, 5.75, 6.0, 6.25,  # From the issue.
+        -6.0, -1.0, 0.0, 1.0,
+        100.0, -100.0,
+        float("inf"), float("-inf"),
+    ]
+
+    with ops.device("/cpu:0"):
+      for val in test_values:
+        expected = reference(val)
+        for length in (1, 7, 8, 9, 15, 16, 17, 32):
+          x = np.full([length], val, dtype=bfloat16)
+          y = self.evaluate(math_ops.sigmoid(x))
+          self.assertAllEqual(
+              y,
+              np.full([length], expected, dtype=bfloat16),
+              msg=f"value={val}, length={length}",
+          )
+
+      x = np.full([9], np.nan, dtype=bfloat16)
+      y = self.evaluate(math_ops.sigmoid(x)).astype(np.float32)
+      self.assertTrue(np.all(np.isnan(y)), msg=f"sigmoid(nan) = {y}")
+
+      x = np.unique(np.linspace(-20.0, 20.0, 4001).astype(bfloat16))
+      y = self.evaluate(math_ops.sigmoid(x)).astype(np.float32)
+      self.assertTrue(
+          np.all(np.diff(y) >= 0),
+          msg=f"non-monotonic at x={x[1:][np.diff(y) < 0]}",
+      )
 
   def testUInt8Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint8)
