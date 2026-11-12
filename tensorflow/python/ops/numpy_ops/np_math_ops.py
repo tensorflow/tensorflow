@@ -1941,7 +1941,9 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
           rank = array_ops.rank(a)
           axes_tensor = array_ops.stack(
               [ax + rank if ax < 0 else ax for ax in axis]
-          )
+        else:
+          rank = array_ops.rank(a)
+          axes_tensor = array_ops.stack([ax + rank if ax < 0 else ax for ax in axis])
           weights_sum = math_ops.reduce_prod(
               array_ops.gather(array_ops.shape(a), axes_tensor)
           )
