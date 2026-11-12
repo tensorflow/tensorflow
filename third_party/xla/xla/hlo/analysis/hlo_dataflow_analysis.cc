@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
-#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo.pb.h"
@@ -160,62 +158,6 @@ bool HasExtraRelevantUse(const HloInstruction* inst, const ShapeIndex& idx,
     if (u != expected_user) {
       return true;
     }
-  }
-  return false;
-}
-
-bool IsMatchingInPlaceDusReadSlice(const HloInstruction* slice,
-                                   const HloInstruction* base_inst,
-                                   const HloInstruction* dus) {
-  if (dus->opcode() != HloOpcode::kDynamicUpdateSlice ||
-      slice->operand_count() == 0 || slice->operand(0) != base_inst ||
-      slice->OperandIndices(base_inst).size() != 1 ||
-      !ShapeUtil::EqualIgnoringElementType(base_inst->shape(),
-                                           dus->operand(0)->shape()) ||
-      !ShapeUtil::EqualIgnoringElementType(slice->shape(),
-                                           dus->operand(1)->shape())) {
-    return false;
-  }
-  if (slice->opcode() == HloOpcode::kDynamicSlice) {
-    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
-      return true;
-    }
-    for (int64_t i = 1; i < slice->operand_count(); ++i) {
-      if (slice->operand(i) != dus->operand(i + 1)) {
-        return false;
-      }
-    }
-    return true;
-  }
-  if (slice->opcode() == HloOpcode::kSlice) {
-    for (int64_t stride : slice->slice_strides()) {
-      if (stride != 1) {
-        return false;
-      }
-    }
-    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
-      return true;
-    }
-    const int64_t rank = slice->shape().dimensions().size();
-    for (int64_t d = 0; d < rank; ++d) {
-      const HloInstruction* dus_idx = dus->operand(d + 2);
-      if (dus_idx->opcode() != HloOpcode::kConstant ||
-          !ShapeUtil::IsEffectiveScalar(dus_idx->shape())) {
-        return false;
-      }
-      std::optional<int64_t> idx_val = dus_idx->literal().GetFirstInteger();
-      if (!idx_val.has_value()) {
-        return false;
-      }
-      const int64_t clamped_start =
-          std::clamp(*idx_val, int64_t{0},
-                     dus->operand(0)->shape().dimensions(d) -
-                         dus->operand(1)->shape().dimensions(d));
-      if (clamped_start != slice->slice_starts(d)) {
-        return false;
-      }
-    }
-    return true;
   }
   return false;
 }
