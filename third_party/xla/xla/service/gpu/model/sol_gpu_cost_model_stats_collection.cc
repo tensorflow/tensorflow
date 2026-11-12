@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/tsl/platform/statusor.h"
@@ -86,13 +87,16 @@ bool RecordReificationCost(HloInstruction& instr,
 absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto cost_analysis =
-      std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+  // Default op profile, device warp size.
+  auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+      GpuHloCostAnalysis::Options{
           shape_size_in_bytes_fn_,
           /*per_second_rates=*/{},
           /*min_latencies_seconds=*/{},
           /*count_multiple_input_accesses=*/true,
-      });
+      },
+      HloOpProfiles::Singleton().GetDefaultProfile(),
+      device_info_.threads_per_warp());
   CHECK_OK(module->entry_computation()->Accept(cost_analysis.get()));
   uint64_t memory_limit =
       GetSchedulerMemoryLimit(*module, device_info_, pointer_size_);

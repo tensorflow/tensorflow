@@ -1959,6 +1959,38 @@ ENTRY entry_computation {
 )");
 }
 
+TEST_F(FlopsPerElementTest, Concatenate_UsesDeviceWarpSize) {
+  // A boundary at 32 splits a wave64 wavefront but not a warp of 32.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 32] parameter(0)
+  p1 = f32[32, 32] parameter(1)
+  ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
+}
+)"));
+  const HloInstruction* concat =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(concat), 6);
+
+  const se::DeviceDescription wave64_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  HloFusionAnalysisCache wave64_fusion_analysis_cache(wave64_device_info);
+  GpuPerformanceModelWithIndexingAnalysis wave64_indexing_cost_model(
+      &wave64_device_info, &wave64_fusion_analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+  EXPECT_EQ(wave64_indexing_cost_model.FlopsPerElement(concat), 400);
+
+  GpuHloCostAnalysis wave64_cost_analysis(
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      wave64_device_info);
+  ASSERT_OK(module->entry_computation()->Accept(&wave64_cost_analysis));
+  EXPECT_EQ(wave64_cost_analysis.flop_count(*concat),
+            400 * ShapeUtil::ElementsIn(concat->shape()));
+}
+
 TEST_F(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

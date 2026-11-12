@@ -2998,6 +2998,7 @@ cc_library(
         "//xla/service:scheduler_memory_fencing",
         "//xla/service/gpu/model:analytical_latency_estimator",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/service/gpu/model:sol_latency_estimator",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",

@@ -314,6 +314,8 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -1066,6 +1068,7 @@ cc_library(
     hdrs = ["sol_gpu_cost_model_stats_collection.h"],
     deps = [
         ":gpu_hlo_cost_analysis",
+        ":hlo_op_profiles",
         ":sol_latency_estimator",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
