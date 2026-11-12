@@ -69,11 +69,6 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
       instr->HasControlDependencies()) {
     return false;
   }
-  if (absl::c_any_of(instr->operands(), [](const HloInstruction* op) {
-        return op->shape().IsTuple();
-      })) {
-    return false;
-  }
   if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
     if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop ||
         !fusion->output_to_operand_aliasing().empty()) {
