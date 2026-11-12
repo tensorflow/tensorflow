@@ -52,6 +52,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
@@ -244,18 +247,28 @@ absl::Status CompileTensorflowForIfrtServing(
   // compiled modules identifies host-needed variables for
   // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
   // only complete if every signature is compiled before Freeze() is called.
-  if (!ifrt_model_context.IsFrozen()) {
+  tensorflow::DeviceMgr* device_mgr = ifrt_model_context.GetDeviceMgr();
+  tensorflow::Device* host = device_mgr ? device_mgr->HostCPU() : nullptr;
+  if (!ifrt_model_context.IsFrozen() && host != nullptr) {
     if (auto modified = module->getAttrOfType<mlir::ArrayAttr>(
             "tf_ifrt.modified_variable_names")) {
-      for (mlir::Attribute attr : modified) {
-        if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
-          // Ignore NOT_FOUND errors: some modified variables may be host-only
-          // variables managed directly in ResourceManager and not present in
-          // the checkpoint restore registry.
-          ifrt_model_context.GetRestoreTensorRegistry()
-              .SetUsedByHost(name.str())
-              .IgnoreError();
+      for (auto entry : modified.getAsRange<mlir::ArrayAttr>()) {
+        // The runtime name of the variable, as `GetRuntimeNameFromVarHandle`
+        // returns it for the handle that `tf.VarHandleOp` creates on the host:
+        // an empty container means the resource manager's default container.
+        absl::string_view container =
+            mlir::cast<mlir::StringAttr>(entry[0]).getValue();
+        absl::string_view shared_name =
+            mlir::cast<mlir::StringAttr>(entry[1]).getValue();
+        if (container.empty()) {
+          container = host->resource_manager()->default_container();
         }
+        // Ignore NOT_FOUND errors: some modified variables may be host-only
+        // variables managed directly in ResourceManager and not present in
+        // the checkpoint restore registry.
+        ifrt_model_context.GetRestoreTensorRegistry()
+            .SetUsedByHost(absl::StrCat(container, "__", shared_name))
+            .IgnoreError();
       }
     }
   }

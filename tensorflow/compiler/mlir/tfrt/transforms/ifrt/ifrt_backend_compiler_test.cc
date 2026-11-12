@@ -40,20 +40,31 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
+#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -347,6 +358,69 @@ TEST_F(IfrtBackendCompilerTest,
       compiler_.CompileTensorflow(runtime_context_, non_variable_module.get()),
       absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              HasSubstr("different variable_arg_indices")));
+}
+
+// Variables written by a host `tf.AssignVariableOp` are marked as used by host
+// at compile time, under the runtime names the restore registry uses.
+TEST_F(IfrtBackendCompilerTest, MarksAssignedVariablesAsUsedByHost) {
+  constexpr absl::string_view kModule = R"mlir(
+module attributes {tf.versions = {producer = 888 : i32}} {
+  func.func @main(%arg0: tensor<1x3xf32>) {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "assigned"}>
+        : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+    "tf.AssignVariableOp"(%0, %arg0)
+        : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<1x3xf32>) -> ()
+    %1 = "tf.VarHandleOp"() <{container = "c", shared_name = "assigned"}>
+        : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+    "tf.AssignVariableOp"(%1, %arg0)
+        : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<1x3xf32>) -> ()
+    return
+  }
+}
+)mlir";
+
+  // A model context with a device manager, as in serving.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::DynamicDeviceMgr> device_mgr,
+      CreateTfDynamicDeviceMgr());
+  tensorflow::Device* host = device_mgr->HostCPU();
+  tfrt::ResourceContext resource_context;
+  tensorflow::tfrt_stub::ModelRuntimeContext runtime_context(
+      &graph_execution_options_, /*export_dir=*/"", &resource_context);
+  TfToHloCompiler tf_to_hlo_compiler;
+  IfrtModelContext* ifrt_model_context =
+      resource_context.CreateResource<IfrtModelContext>(
+          "IfrtModelContext", client_, core_selector_.get(), &GetThreadPool(),
+          device_mgr.get(), tensorflow::IdentityShapeRepresentationFn(),
+          /*compilation_env_or_overrides=*/nullptr, /*topology=*/nullptr,
+          &tf_to_hlo_compiler, h2d_transfer_executor_factory_.get());
+
+  // The runtime names of the handles the two `tf.VarHandleOp`s produce on the
+  // host device.
+  const std::string default_container_name = GetRuntimeNameFromVarHandle(
+      MakeResourceHandle(host->resource_manager()->default_container(),
+                         "assigned", *host, TypeIndex::Make<int>()));
+  const std::string named_container_name = GetRuntimeNameFromVarHandle(
+      MakeResourceHandle("c", "assigned", *host, TypeIndex::Make<int>()));
+  for (const std::string& name :
+       {default_container_name, named_container_name}) {
+    TF_ASSERT_OK(ifrt_model_context->GetRestoreTensorRegistry().TryRegister(
+        name, IfrtRestoreTensorRegistry::RestoredTensorInfo{
+                  .dtype_and_shape = tsl::Future<DtypeAndShape>(
+                      DtypeAndShape{.dtype = tensorflow::DT_FLOAT,
+                                    .shape = tensorflow::TensorShape({1, 3})}),
+                  .tensor_future =
+                      tsl::Future<tensorflow::Tensor>(tensorflow::Tensor())}));
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(kModule, &context_);
+  ASSERT_TRUE(module);
+  TF_ASSERT_OK(compiler_.CompileTensorflow(runtime_context, module.get()));
+
+  EXPECT_THAT(ifrt_model_context->GetUsedByHostVariableNames(),
+              ::testing::UnorderedElementsAre(default_container_name,
+                                              named_container_name));
 }
 
 }  // namespace
