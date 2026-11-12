@@ -45,6 +45,7 @@ from tensorflow.python.util import compat
 
 # Prefix to be added to unbound input names so they are easily identifiable.
 _UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
+_UNBOUND_INPUT_PREFIX_RE = re.compile(r"([\^]|^)(.*)")
 
 # List of collections that didn't register proto functions, as a result in
 # a previously exported meta_graph the items are of a different data type.
@@ -72,9 +73,8 @@ def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
         not node_def.input[i].lstrip("^").startswith(export_scope)):
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
       # identifiable.
-      node_def.input[i] = re.sub(r"([\^]|^)(.*)",
-                                 r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
-                                 compat.as_str(v))
+      node_def.input[i] = _UNBOUND_INPUT_PREFIX_RE.sub(
+          r"\1" + _UNBOUND_INPUT_PREFIX + r"\2", compat.as_str(v))
       unbound_inputs.append(node_def.input[i])
     else:
       node_def.input[i] = ops.strip_name_scope(v, export_scope)
