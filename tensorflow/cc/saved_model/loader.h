@@ -18,9 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_LOADER_H_
 #define TENSORFLOW_CC_SAVED_MODEL_LOADER_H_
 
+#include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -106,7 +109,7 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
 // which provides an already initialized Metagraph, Session, and DebugInfo.
 absl::Status RestoreSession(const RunOptions& run_options,
                             const MetaGraphDef& meta_graph,
-                            const std::string& export_dir,
+                            absl::string_view export_dir,
                             std::unique_ptr<Session>* session);
 
 // Initialize a session which wraps this metagraph.
@@ -124,7 +127,7 @@ absl::Status LoadMetagraphIntoSession(const SessionOptions& session_options,
 /// NOTE: Prefer the overload that takes a SavedModelBundleLite* in new code.
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const std::string& export_dir,
+                            absl::string_view export_dir,
                             const std::unordered_set<std::string>& tags,
                             SavedModelBundle* bundle);
 
@@ -137,7 +140,7 @@ absl::Status LoadSavedModel(const SessionOptions& session_options,
 /// an equivalent SavedModelBundle.
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const std::string& export_dir,
+                            absl::string_view export_dir,
                             const std::unordered_set<std::string>& tags,
                             SavedModelBundleLite* bundle);
 
