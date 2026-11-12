@@ -1935,6 +1935,86 @@ class TensorArrayTest(test.TestCase):
     ):
       self.evaluate(func())
 
+  def testDynamicSizeCoercedToBool(self):
+    ta_int = tensor_array_ops.TensorArray(
+        dtypes.float32, size=1, dynamic_size=2, infer_shape=1
+    )
+    self.assertIs(ta_int.dynamic_size, True)
+    self.assertIsInstance(ta_int.dynamic_size, bool)
+
+    ta_zero = tensor_array_ops.TensorArray(
+        dtypes.float32, size=1, dynamic_size=0, infer_shape=0
+    )
+    self.assertIs(ta_zero.dynamic_size, False)
+    self.assertIsInstance(ta_zero.dynamic_size, bool)
+
+    ta_np = tensor_array_ops.TensorArray(
+        dtypes.float32, size=1, dynamic_size=np.bool_(True)
+    )
+    self.assertIs(ta_np.dynamic_size, True)
+    self.assertIsInstance(ta_np.dynamic_size, bool)
+
+  def testDynamicSizeNonBoolWriteAndStack(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=1, dynamic_size=2
+    )
+    ta = ta.write(0, 10.0)
+    ta = ta.write(1, 20.0)
+    ta = ta.write(2, 30.0)
+    self.assertAllClose([10.0, 20.0, 30.0], self.evaluate(ta.stack()))
+
+  def testDynamicSizeWithXLACompilation(self):
+    @def_function.function(jit_compile=True)
+    def func():
+      ta = tensor_array_ops.TensorArray(
+          dtypes.float32, size=2, dynamic_size=2
+      )
+      ta = ta.write(0, 1.0)
+      ta = ta.write(1, 2.0)
+      return ta.stack()
+
+    self.assertAllClose([1.0, 2.0], self.evaluate(func()))
+
+  def testDynamicSizeWhileLoopWithXLACompilation(self):
+    @def_function.function(jit_compile=True)
+    def func():
+      ta = tensor_array_ops.TensorArray(
+          dtypes.float32, size=3, dynamic_size=2
+      )
+      def body(i, ta_acc):
+        elem = math_ops.cast(i, dtypes.float32) * 5.0
+        ta_acc = ta_acc.write(i, elem)
+        return (i + 1, ta_acc)
+      _, ta_final = while_loop.while_loop(
+          cond=lambda i, _: i < 3, body=body, loop_vars=[0, ta]
+      )
+      return ta_final.stack()
+
+    self.assertAllClose([0.0, 5.0, 10.0], self.evaluate(func()))
+
+  def testTensorArraySpecTypeCoercion(self):
+    spec = tensor_array_ops.TensorArraySpec(
+        element_shape=[None],
+        dtype=dtypes.float32,
+        dynamic_size=2,
+        infer_shape=1,
+    )
+    self.assertIs(spec._dynamic_size, True)
+    self.assertIsInstance(spec._dynamic_size, bool)
+    self.assertIs(spec._infer_shape, True)
+    self.assertIsInstance(spec._infer_shape, bool)
+
+    spec_false = tensor_array_ops.TensorArraySpec(
+        element_shape=[None],
+        dtype=dtypes.float32,
+        dynamic_size=0,
+        infer_shape=0,
+    )
+    self.assertIs(spec_false._dynamic_size, False)
+    self.assertIsInstance(spec_false._dynamic_size, bool)
+    self.assertIs(spec_false._infer_shape, False)
+    self.assertIsInstance(spec_false._infer_shape, bool)
+
 
 class TensorArrayBenchmark(test.Benchmark):
 

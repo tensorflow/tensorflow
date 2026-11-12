@@ -176,11 +176,16 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       flat_ret.append(tensor_lib.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
       # We sneaked the dynamic_size and infer_shape into the legacy shape.
+      dim0 = tensor_shape.dimension_value(flat_shape[0])
+      dim1 = tensor_shape.dimension_value(flat_shape[1])
       flat_ret.append(
           tensor_array_ops.TensorArraySpec(
-              flat_shape[2:], flat_type,
-              dynamic_size=tensor_shape.dimension_value(flat_shape[0]),
-              infer_shape=tensor_shape.dimension_value(flat_shape[1])))
+              flat_shape[2:],
+              flat_type,
+              dynamic_size=bool(dim0),
+              infer_shape=bool(dim1) if dim1 is not None else True,
+          )
+      )
     else:
       # NOTE(mrry): Since legacy structures produced by iterators only
       # comprise Tensors, SparseTensors, and nests, we do not need to

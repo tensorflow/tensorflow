@@ -128,14 +128,19 @@ class _GraphTensorArray:
 
     if clear_after_read is None:
       clear_after_read = True
-    self._dynamic_size = dynamic_size or False
+    self._clear_after_read = bool(clear_after_read)
+    self._dynamic_size = bool(dynamic_size)
     self._dtype = dtypes.as_dtype(dtype).base_dtype
 
     # Used to keep track of what tensors the TensorArray should be
     # colocated with.  We choose to colocate the TensorArray with the
     # first tensor written to it.
-    self._colocate_with_first_write_call = colocate_with_first_write_call
-    if colocate_with_first_write_call:
+    self._colocate_with_first_write_call = (
+        bool(colocate_with_first_write_call)
+        if colocate_with_first_write_call is not None
+        else True
+    )
+    if self._colocate_with_first_write_call:
       self._colocate_with = []
     else:
       self._colocate_with = None
@@ -145,7 +150,7 @@ class _GraphTensorArray:
     # of the first write. If `infer_shape` is true, all writes checks for
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
-    self._infer_shape = infer_shape
+    self._infer_shape = bool(infer_shape) if infer_shape is not None else True
     self._size = size
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
@@ -468,7 +473,7 @@ class _GraphTensorArrayV2:
     del tensor_array_name
     del colocate_with_first_write_call
 
-    self._dynamic_size = dynamic_size
+    self._dynamic_size = bool(dynamic_size)
     self._size = size
 
     if flow is not None and (
@@ -499,7 +504,7 @@ class _GraphTensorArrayV2:
     # of the first write. If `infer_shape` is true, all writes checks for
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
-    self._infer_shape = infer_shape
+    self._infer_shape = bool(infer_shape) if infer_shape is not None else True
     with ops.name_scope(name, "TensorArrayV2", [size, flow]) as scope:
       if flow is None:
         self._flow = list_ops.tensor_list_reserve(
@@ -774,14 +779,19 @@ class _EagerTensorArray:
     # we assign a dummy value to _flow in case other code assumes it to be
     # a Tensor
     self._flow = constant_op.constant(0, dtype=dtypes.int32)
-    self._infer_shape = infer_shape
+    self._infer_shape = bool(infer_shape) if infer_shape is not None else True
     self._element_shape = tensor_shape.as_shape(element_shape)
-    self._colocate_with_first_write_call = colocate_with_first_write_call
+    self._colocate_with_first_write_call = (
+        bool(colocate_with_first_write_call)
+        if colocate_with_first_write_call is not None
+        else True
+    )
 
     self._dtype = dtypes.as_dtype(dtype).base_dtype
-    self._dynamic_size = dynamic_size or False
-    self._clear_after_read = (True
-                              if clear_after_read is None else clear_after_read)
+    self._dynamic_size = bool(dynamic_size)
+    self._clear_after_read = (
+        True if clear_after_read is None else bool(clear_after_read)
+    )
     self._previously_read_indices = []
 
     if isinstance(size, ops.EagerTensor):
@@ -1189,6 +1199,15 @@ class TensorArray:
       implementation = _GraphTensorArrayV2
     else:
       implementation = _GraphTensorArray
+    if dynamic_size is not None:
+      dynamic_size = bool(dynamic_size)
+    if clear_after_read is not None:
+      clear_after_read = bool(clear_after_read)
+    if infer_shape is not None:
+      infer_shape = bool(infer_shape)
+    if colocate_with_first_write_call is not None:
+      colocate_with_first_write_call = bool(colocate_with_first_write_call)
+
     self._implementation = implementation(
         dtype,
         size=size,
@@ -1433,7 +1452,7 @@ def build_ta_with_new_flow(old_ta, flow):
       infer_shape=impl._infer_shape,
       colocate_with_first_write_call=impl._colocate_with_first_write_call)
   new_impl = new_ta._implementation
-  new_impl._dynamic_size = impl._dynamic_size
+  new_impl._dynamic_size = bool(impl._dynamic_size)
   new_impl._size = impl._size
   new_impl._colocate_with = impl._colocate_with
   new_impl._element_shape = impl._element_shape  # Share _element_shape.
@@ -1476,8 +1495,8 @@ class TensorArraySpec(type_spec.TypeSpec):
     """
     self._element_shape = tensor_shape.as_shape(element_shape)
     self._dtype = dtypes.as_dtype(dtype)
-    self._dynamic_size = dynamic_size
-    self._infer_shape = infer_shape
+    self._dynamic_size = bool(dynamic_size)
+    self._infer_shape = bool(infer_shape) if infer_shape is not None else True
 
   def is_subtype_of(self, other):
     # pylint: disable=protected-access
