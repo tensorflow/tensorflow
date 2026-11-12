@@ -2298,9 +2298,9 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, TFL_Quint8]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, TFL_Quint8]>:$y);
 
   let extraClassDeclaration = [{
   // FixedOutputRangeInterface:

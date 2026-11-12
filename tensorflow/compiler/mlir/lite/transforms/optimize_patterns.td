@@ -1753,20 +1753,51 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
    (AllValuesAreZero $zeros_2)
   ]>;
 
+// 1 / (1 + exp(-x)) -> logistic(x), in float32 or float16.
 def FuseSigmoid : Pat<
-  (TFL_DivOp
-   (Arith_ConstantOp F32ElementsAttr:$ones),
+  (TFL_DivOp:$div_out
+   (Arith_ConstantOp FloatElementsAttr:$ones),
    (TFL_AddOp:$add_out
     (TFL_ExpOp:$exp_out
-     (TFL_NegOp:$neg_out $arg)),
-    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+     (TFL_NegOp:$neg_out TensorOf<[F32, F16]>:$arg)),
+    (Arith_ConstantOp FloatElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
   (TFL_LogisticOp $arg),
   [(FloatValueEquals<"1"> $ones_1),
    (FloatValueEquals<"1"> $ones),
+   (HasSameType $arg, $div_out),
    (HasOneUse $neg_out),
    (HasOneUse $add_out),
    (HasOneUse $exp_out),
   ]>;
+
+// The overflow-free sigmoid that JAX lowers `jax.nn.sigmoid` to for float16
+// (and for float32 on GPU or with `accuracy=HIGHEST`):
+//   e = exp(-|x|); select(x >= 0, 1, e) / (1 + e) -> logistic(x).
+foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
+  def FuseNumericallyStableSigmoid#SelectOp : Pat<
+    (TFL_DivOp:$div_out
+     (SelectOp:$select_out
+      (TFL_GreaterEqualOp $arg, (Arith_ConstantOp FloatElementsAttr:$zero)),
+      (Arith_ConstantOp FloatElementsAttr:$ones),
+      (TFL_ExpOp:$exp_out
+       (TFL_NegOp:$neg_out
+        (TFL_AbsOp:$abs_out TensorOf<[F32, F16]>:$arg)))),
+     (TFL_AddOp:$add_out
+      $add_lhs, (Arith_ConstantOp FloatElementsAttr:$ones_1), TFL_AF_None),
+     TFL_AF_None),
+    (TFL_LogisticOp $arg),
+    [(FloatValueEquals<"0"> $zero),
+     (FloatValueEquals<"1"> $ones),
+     (FloatValueEquals<"1"> $ones_1),
+     (IsSame $exp_out, $add_lhs),
+     (HasSameType $arg, $div_out),
+     (HasOneUse $abs_out),
+     (HasOneUse $neg_out),
+     (HasTwoUse $exp_out),
+     (HasOneUse $select_out),
+     (HasOneUse $add_out),
+    ]>;
+}
 
 def FuseEluConst : Pat<
   (TFL_SelectOp
