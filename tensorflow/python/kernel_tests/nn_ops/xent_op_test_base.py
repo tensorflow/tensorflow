@@ -272,6 +272,25 @@ class XentOpTestBase(test.TestCase):
 
     self.assertLess(err, 5e-8)
 
+  @test_util.run_deprecated_v1
+  def testSecondGradientWithLabelsDependingOnInput(self):
+    # When the labels are computed from the same input as the logits, the
+    # second derivative also has a term flowing back through the labels.
+    with self.cached_session():
+      x = constant_op.constant(
+          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+          shape=[3, 4],
+          dtype=dtypes.float64,
+          name="x")
+      labels = nn_ops.softmax(2.0 * x)
+      x_ent = nn_ops.softmax_cross_entropy_with_logits_v2(
+          labels=labels, logits=x, name="xent")
+      gradients = gradients_impl.gradients(math_ops.reduce_sum(x_ent), [x])[0]
+      err = gradient_checker.compute_gradient_error(x, [3, 4], gradients,
+                                                    [3, 4])
+
+    self.assertLess(err, 5e-6)
+
   def test3D(self):
     labels = np.array([[[0., 0., 0., 1.], [0., 1., 0., 0.]],
                        [[0., 0.5, 0.5, 0.], [0.5, 0.5, 0., 0.]],
