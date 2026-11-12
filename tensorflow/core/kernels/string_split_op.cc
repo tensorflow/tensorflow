@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -68,7 +69,7 @@ std::vector<absl::string_view> SplitOnCharSet(const tstring& str,
   for (size_t i = 0; i < text.size() + 1; i++) {
     if ((i == text.size()) ||
         (delims.find(text[i]) != absl::string_view::npos)) {
-      absl::string_view token(text.data() + token_start, i - token_start);
+      absl::string_view token = text.substr(token_start, i - token_start);
       if (p(token)) {
         result.emplace_back(token);
       }
@@ -92,7 +93,7 @@ std::vector<absl::string_view> Split(const tstring& str,
     std::vector<absl::string_view> result;
     result.resize(str.size());
     for (size_t i = 0; i < str.size(); ++i) {
-      result[i] = absl::string_view(str.data() + i, 1);
+      result[i] = absl::string_view(str.data(), str.size()).substr(i, 1);
     }
     return result;
   }
