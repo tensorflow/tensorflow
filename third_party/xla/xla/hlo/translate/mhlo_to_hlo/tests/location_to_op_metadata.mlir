@@ -234,3 +234,76 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 
 // CHECK: after-all
 // CHECK-SAME: metadata={op_type="add" op_name="add" stack_frame_id=3}
+
+// -----
+
+// MLIR uniques locations, so nested locations can share sub-locations. Each
+// alias below uses the previous one four times: 41 locations that expand to
+// 4^20 op names. The export must not visit all of them.
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token loc(#callsite20)) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#callsite20)
+  func.return %0 : !mhlo.token
+}
+#callsite0 = loc("x")
+#callsite1 = loc(callsite(callsite(#callsite0 at #callsite0) at callsite(#callsite0 at #callsite0)))
+#callsite2 = loc(callsite(callsite(#callsite1 at #callsite1) at callsite(#callsite1 at #callsite1)))
+#callsite3 = loc(callsite(callsite(#callsite2 at #callsite2) at callsite(#callsite2 at #callsite2)))
+#callsite4 = loc(callsite(callsite(#callsite3 at #callsite3) at callsite(#callsite3 at #callsite3)))
+#callsite5 = loc(callsite(callsite(#callsite4 at #callsite4) at callsite(#callsite4 at #callsite4)))
+#callsite6 = loc(callsite(callsite(#callsite5 at #callsite5) at callsite(#callsite5 at #callsite5)))
+#callsite7 = loc(callsite(callsite(#callsite6 at #callsite6) at callsite(#callsite6 at #callsite6)))
+#callsite8 = loc(callsite(callsite(#callsite7 at #callsite7) at callsite(#callsite7 at #callsite7)))
+#callsite9 = loc(callsite(callsite(#callsite8 at #callsite8) at callsite(#callsite8 at #callsite8)))
+#callsite10 = loc(callsite(callsite(#callsite9 at #callsite9) at callsite(#callsite9 at #callsite9)))
+#callsite11 = loc(callsite(callsite(#callsite10 at #callsite10) at callsite(#callsite10 at #callsite10)))
+#callsite12 = loc(callsite(callsite(#callsite11 at #callsite11) at callsite(#callsite11 at #callsite11)))
+#callsite13 = loc(callsite(callsite(#callsite12 at #callsite12) at callsite(#callsite12 at #callsite12)))
+#callsite14 = loc(callsite(callsite(#callsite13 at #callsite13) at callsite(#callsite13 at #callsite13)))
+#callsite15 = loc(callsite(callsite(#callsite14 at #callsite14) at callsite(#callsite14 at #callsite14)))
+#callsite16 = loc(callsite(callsite(#callsite15 at #callsite15) at callsite(#callsite15 at #callsite15)))
+#callsite17 = loc(callsite(callsite(#callsite16 at #callsite16) at callsite(#callsite16 at #callsite16)))
+#callsite18 = loc(callsite(callsite(#callsite17 at #callsite17) at callsite(#callsite17 at #callsite17)))
+#callsite19 = loc(callsite(callsite(#callsite18 at #callsite18) at callsite(#callsite18 at #callsite18)))
+#callsite20 = loc(callsite(callsite(#callsite19 at #callsite19) at callsite(#callsite19 at #callsite19)))
+
+// CHECK: parameter(0)
+// CHECK-SAME: metadata={op_name="x/{{[x/]*}}x"}
+// CHECK: after-all
+// CHECK-SAME: metadata={op_name="x/{{[x/]*}}x"}
+
+// -----
+
+// Same as above with FusedLoc: 101 locations that expand to 4^20 source
+// locations, none of which holds an op name or a stack frame.
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#fused20)
+  func.return %0 : !mhlo.token
+}
+#fused0 = loc("source.txt":42:5)
+#fused1 = loc(fused[fused<"a">[#fused0], fused<"b">[#fused0], fused<"c">[#fused0], fused<"d">[#fused0]])
+#fused2 = loc(fused[fused<"a">[#fused1], fused<"b">[#fused1], fused<"c">[#fused1], fused<"d">[#fused1]])
+#fused3 = loc(fused[fused<"a">[#fused2], fused<"b">[#fused2], fused<"c">[#fused2], fused<"d">[#fused2]])
+#fused4 = loc(fused[fused<"a">[#fused3], fused<"b">[#fused3], fused<"c">[#fused3], fused<"d">[#fused3]])
+#fused5 = loc(fused[fused<"a">[#fused4], fused<"b">[#fused4], fused<"c">[#fused4], fused<"d">[#fused4]])
+#fused6 = loc(fused[fused<"a">[#fused5], fused<"b">[#fused5], fused<"c">[#fused5], fused<"d">[#fused5]])
+#fused7 = loc(fused[fused<"a">[#fused6], fused<"b">[#fused6], fused<"c">[#fused6], fused<"d">[#fused6]])
+#fused8 = loc(fused[fused<"a">[#fused7], fused<"b">[#fused7], fused<"c">[#fused7], fused<"d">[#fused7]])
+#fused9 = loc(fused[fused<"a">[#fused8], fused<"b">[#fused8], fused<"c">[#fused8], fused<"d">[#fused8]])
+#fused10 = loc(fused[fused<"a">[#fused9], fused<"b">[#fused9], fused<"c">[#fused9], fused<"d">[#fused9]])
+#fused11 = loc(fused[fused<"a">[#fused10], fused<"b">[#fused10], fused<"c">[#fused10], fused<"d">[#fused10]])
+#fused12 = loc(fused[fused<"a">[#fused11], fused<"b">[#fused11], fused<"c">[#fused11], fused<"d">[#fused11]])
+#fused13 = loc(fused[fused<"a">[#fused12], fused<"b">[#fused12], fused<"c">[#fused12], fused<"d">[#fused12]])
+#fused14 = loc(fused[fused<"a">[#fused13], fused<"b">[#fused13], fused<"c">[#fused13], fused<"d">[#fused13]])
+#fused15 = loc(fused[fused<"a">[#fused14], fused<"b">[#fused14], fused<"c">[#fused14], fused<"d">[#fused14]])
+#fused16 = loc(fused[fused<"a">[#fused15], fused<"b">[#fused15], fused<"c">[#fused15], fused<"d">[#fused15]])
+#fused17 = loc(fused[fused<"a">[#fused16], fused<"b">[#fused16], fused<"c">[#fused16], fused<"d">[#fused16]])
+#fused18 = loc(fused[fused<"a">[#fused17], fused<"b">[#fused17], fused<"c">[#fused17], fused<"d">[#fused17]])
+#fused19 = loc(fused[fused<"a">[#fused18], fused<"b">[#fused18], fused<"c">[#fused18], fused<"d">[#fused18]])
+#fused20 = loc(fused[fused<"a">[#fused19], fused<"b">[#fused19], fused<"c">[#fused19], fused<"d">[#fused19]])
+
+// CHECK: after-all
+// CHECK-SAME: metadata={source_file="source.txt" source_line=42 source_end_line=42 source_column=5 source_end_column=5}

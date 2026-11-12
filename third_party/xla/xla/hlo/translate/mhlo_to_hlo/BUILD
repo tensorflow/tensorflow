@@ -169,10 +169,21 @@ cc_library(
     deps = [
         ":stack_frame_index_builder",
         "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "location_exporter_test",
+    srcs = ["location_exporter_test.cc"],
+    deps = [
+        ":location_exporter",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -201,6 +212,7 @@ cc_library(
     deps = [
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

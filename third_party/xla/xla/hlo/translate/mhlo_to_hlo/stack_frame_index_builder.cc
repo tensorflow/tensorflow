@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 
+#include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
@@ -107,40 +111,75 @@ bool IsFrameNameLocation(mlir::Location location) {
          isa<mlir::FileLineColLoc>(cast<mlir::NameLoc>(location).getChildLoc());
 }
 
-// Appends the frames of the call stack encoded in `loc` to `frames`, from the
-// innermost (callee) frame to the outermost (caller) frame. Returns whether
-// `loc` holds a call stack.
-bool CollectFrames(mlir::Location loc, std::vector<mlir::NameLoc>& frames) {
-  // Based on JAX's `jaxlib/mlir/_mlir_libs/traceback_to_location.cc`, and on
-  // `stackLocations` in `mlir/lib/Transforms/Utils/InliningUtils.cpp`.
-  if (auto call_site = dyn_cast<mlir::CallSiteLoc>(loc)) {
-    bool callee_has_frames = CollectFrames(call_site.getCallee(), frames);
-    bool caller_has_frames = CollectFrames(call_site.getCaller(), frames);
-    return callee_has_frames || caller_has_frames;
-  }
-  // Also `jaxlib/mlir/_mlir_libs/traceback_to_location.cc`, which emits one
-  // `NameLoc(<function name>, FileLineColRange)` per Python frame.
-  if (IsFrameNameLocation(loc)) {
-    frames.push_back(cast<mlir::NameLoc>(loc));
-    return true;
-  }
-  // Based on `source_info_to_location` in JAX's
-  // `jax/_src/interpreters/mlir.py`, and on
-  // `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`.
-  if (auto name_loc = dyn_cast<mlir::NameLoc>(loc)) {
-    return CollectFrames(name_loc.getChildLoc(), frames);
-  }
-  // Based on `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`. The
-  // sub-locations are unrelated ops, so keep the first stack instead of
-  // concatenating them.
-  if (auto fused_loc = dyn_cast<mlir::FusedLoc>(loc)) {
-    for (mlir::Location sub_loc : fused_loc.getLocations()) {
-      if (CollectFrames(sub_loc, frames)) {
-        return true;
+// MLIR uniques locations, so nested locations can share sub-locations and form
+// a DAG whose expansion into a tree is exponentially larger than the module
+// that encodes it. `CollectFrames` expands the location it is given, so it
+// visits at most this many (not necessarily distinct) locations and ignores
+// the rest. Call stacks emitted by frontends are far smaller.
+constexpr int kMaxVisitedLocations = 4096;
+
+// Appends the frames of the call stack encoded in `root_loc` to `frames`, from
+// the innermost (callee) frame to the outermost (caller) frame.
+void CollectFrames(mlir::Location root_loc,
+                   std::vector<mlir::NameLoc>& frames) {
+  // A location whose sub-locations are being visited.
+  struct Item {
+    mlir::Location loc;
+    // Number of sub-locations of `loc` visited so far.
+    size_t num_visited;
+    // Size of `frames` before the sub-locations of `loc` were visited.
+    size_t num_frames;
+  };
+  llvm::SmallVector<Item, 8> worklist;
+  int budget = kMaxVisitedLocations;
+
+  // Appends `loc` if it is a frame, or queues it to visit its sub-locations.
+  auto visit = [&](mlir::Location loc) {
+    --budget;
+    // `jaxlib/mlir/_mlir_libs/traceback_to_location.cc` emits one
+    // `NameLoc(<function name>, FileLineColRange)` per Python frame.
+    if (IsFrameNameLocation(loc)) {
+      frames.push_back(cast<mlir::NameLoc>(loc));
+    } else {
+      worklist.push_back(Item{loc, 0, frames.size()});
+    }
+  };
+
+  visit(root_loc);
+  while (!worklist.empty() && budget > 0) {
+    Item& item = worklist.back();
+    std::optional<mlir::Location> sub_loc;
+    if (auto call_site = dyn_cast<mlir::CallSiteLoc>(item.loc)) {
+      // Based on JAX's `jaxlib/mlir/_mlir_libs/traceback_to_location.cc`, and
+      // on `stackLocations` in `mlir/lib/Transforms/Utils/InliningUtils.cpp`.
+      if (item.num_visited == 0) {
+        sub_loc = call_site.getCallee();
+      } else if (item.num_visited == 1) {
+        sub_loc = call_site.getCaller();
+      }
+    } else if (auto name_loc = dyn_cast<mlir::NameLoc>(item.loc)) {
+      // Based on `source_info_to_location` in JAX's
+      // `jax/_src/interpreters/mlir.py`, and on
+      // `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`.
+      if (item.num_visited == 0) {
+        sub_loc = name_loc.getChildLoc();
+      }
+    } else if (auto fused_loc = dyn_cast<mlir::FusedLoc>(item.loc)) {
+      // Based on `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`. The
+      // sub-locations are unrelated ops, so keep the first stack instead of
+      // concatenating them.
+      llvm::ArrayRef<mlir::Location> locs = fused_loc.getLocations();
+      if (item.num_visited < locs.size() && frames.size() == item.num_frames) {
+        sub_loc = locs[item.num_visited];
       }
     }
+    if (!sub_loc) {
+      worklist.pop_back();
+      continue;
+    }
+    ++item.num_visited;
+    visit(*sub_loc);
   }
-  return false;
 }
 
 }  // namespace

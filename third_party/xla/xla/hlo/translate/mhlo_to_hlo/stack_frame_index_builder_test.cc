@@ -173,5 +173,68 @@ TEST(StackFrameIndexBuilderTest, FusedLocSkipsSubLocationsWithoutFrames) {
   EXPECT_EQ(names, expected);
 }
 
+TEST(StackFrameIndexBuilderTest, SharedSubLocationExpansionIsBounded) {
+  MLIRContext ctx;
+  // Locations are uniqued, so every CallSiteLoc below shares its callee and its
+  // caller: 64 nested locations that expand to a call stack of 2^64 frames.
+  Location loc = MakeFrameLoc(&ctx, "A", "a.py", 1);
+  for (int i = 0; i < 64; ++i) {
+    loc = CallSiteLoc::get(loc, loc);
+  }
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(loc);
+  auto proto = builder.Build();
+
+  EXPECT_NE(result.last_frame_id, StackFrameIndexBuilder::kInvalidIndex);
+  EXPECT_GT(proto.stack_frames_size(), 1);
+  EXPECT_LE(proto.stack_frames_size(), 4096);
+}
+
+TEST(StackFrameIndexBuilderTest, SharedFramelessSubLocationTraversalIsBounded) {
+  MLIRContext ctx;
+  // Same as above, but no location holds a frame.
+  Location loc = FileLineColLoc::get(StringAttr::get(&ctx, "a.py"), 1, 0);
+  for (int i = 0; i < 64; ++i) {
+    loc = CallSiteLoc::get(loc, loc);
+  }
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(loc);
+
+  EXPECT_EQ(result.last_frame_id, StackFrameIndexBuilder::kInvalidIndex);
+}
+
+TEST(StackFrameIndexBuilderTest,
+     DeepLinearCallSiteChainIsBoundedWithoutRecursion) {
+  MLIRContext ctx;
+  // Right-leaning chain (callee is a leaf frame, caller is a 10,000-deep
+  // chain): visits frames immediately while staying in O(1) C++ stack space.
+  Location right_chain = MakeFrameLoc(&ctx, "root", "a.py", 0);
+  for (int i = 1; i <= 10000; ++i) {
+    right_chain =
+        CallSiteLoc::get(MakeFrameLoc(&ctx, "frame", "a.py", i), right_chain);
+  }
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(right_chain);
+  auto proto = builder.Build();
+
+  EXPECT_NE(result.last_frame_id, StackFrameIndexBuilder::kInvalidIndex);
+  EXPECT_GT(proto.stack_frames_size(), 1);
+  EXPECT_LE(proto.stack_frames_size(), 4096);
+
+  // Left-leaning chain (callee is a 10,000-deep chain): exhausts the 4096-node
+  // visit budget before reaching a leaf, without recursing on the C++ stack.
+  Location left_chain = MakeFrameLoc(&ctx, "leaf", "a.py", 1);
+  for (int i = 0; i < 10000; ++i) {
+    left_chain =
+        CallSiteLoc::get(left_chain, MakeFrameLoc(&ctx, "caller", "a.py", 2));
+  }
+  StackFrameIndexBuilder left_builder;
+  auto left_result = left_builder.AddCallStackAndGetFirstFrameId(left_chain);
+  EXPECT_EQ(left_result.last_frame_id, StackFrameIndexBuilder::kInvalidIndex);
+}
+
 }  // namespace
 }  // namespace mlir
