@@ -219,13 +219,15 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
       return llvm::ConstantAggregateZero::get(global_type);
     }
 
+    if (!needs_padding) {
+      return llvm::ConstantDataArray::get<uint8_t>(
+          module->getContext(), llvm::ArrayRef<uint8_t>(content.span().data(),
+                                                        content.span().size()));
+    }
     std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
     absl::c_copy(content.span(), padded.begin());
     return llvm::ConstantDataArray::get<uint8_t>(
-        module->getContext(),
-        needs_padding ? llvm::ArrayRef<uint8_t>(padded)
-                      : llvm::ArrayRef<uint8_t>(content.span().data(),
-                                                content.span().size()));
+        module->getContext(), llvm::ArrayRef<uint8_t>(padded));
   }();
 
   // Explicitly set global addrspace for SPIR-V backend.
@@ -623,7 +625,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
       primitive_util::ByteWidth(instr->literal().shape().element_type());
   TF_RET_CHECK(content.span().size() % element_bytes == 0);
   // Treat packed constants as a byte constant.
-  int num_elements = content.span().size() / element_bytes;
+  int64_t num_elements = content.span().size() / element_bytes;
 
   std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
   ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
