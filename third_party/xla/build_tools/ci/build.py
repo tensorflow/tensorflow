@@ -42,6 +42,7 @@ if _XLA_SRC_ROOT not in sys.path:
 
 # pylint: disable=g-import-not-at-top
 from build_tools.ci import bazel_diff
+from build_tools.ci import bep_annotations
 from build_tools.ci import change_detector
 # pylint: enable=g-import-not-at-top
 
@@ -60,6 +61,7 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     show_timestamps=True,
     show_progress_rate_limit=5,
     experimental_remote_grpc_log="bazel_remote_grpc.log",
+    build_event_json_file="build_events.json",
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -909,18 +911,44 @@ def get_xla_dir(build: Build) -> str:
   return "."
 
 
+def _emit_bep_annotations_best_effort(build: Build, returncode: int) -> None:
+  """Emits GitHub ::error annotations from Bazel's BEP file on failure."""
+  if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
+    return
+  bep_file = build.options.get("build_event_json_file")
+  if not isinstance(bep_file, str) or not bep_file:
+    return
+  bep_annotations.emit_github_annotations(
+      [bep_file],
+      label=build.type_.name,
+      exit_code=returncode,
+  )
+
+
 def execute_build_commands(
     build: Build, target_pattern_file: str | None = None
 ) -> None:
   """Executes commands for a build, retrying failed Bazel commands if configured."""
+  bep_file = build.options.get("build_event_json_file")
   for command in build.commands(target_pattern_file=target_pattern_file):
+    is_bazel = bool(command and command[0] == "bazel")
     max_retries = (
-        build.command_retries
-        if command and command[0] == "bazel" and build.command_retries > 0
-        else 0
+        build.command_retries if is_bazel and build.command_retries > 0 else 0
     )
     for attempt in range(max_retries + 1):
-      result = sh(command, check=False)
+      if is_bazel and isinstance(bep_file, str) and bep_file:
+        try:
+          os.remove(bep_file)
+        except FileNotFoundError:
+          pass
+        except OSError as e:
+          logging.warning("Failed to remove stale BEP file %s: %s", bep_file, e)
+      try:
+        result = sh(command, check=False)
+      except KeyboardInterrupt:
+        if is_bazel:
+          _emit_bep_annotations_best_effort(build, 130)
+        raise
       if result.returncode == 0:
         break
       if result.returncode == 4 and target_pattern_file:
@@ -937,6 +965,8 @@ def execute_build_commands(
             max_retries + 1,
         )
         continue
+      if is_bazel:
+        _emit_bep_annotations_best_effort(build, result.returncode)
       sys.exit(result.returncode)
 
 
