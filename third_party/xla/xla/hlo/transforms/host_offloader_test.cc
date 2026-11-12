@@ -777,6 +777,62 @@ ENTRY main {
   TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, SendDoneTokenReturnedFromEntryNoCrash) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule my_module
+
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  tok = token[] after-all()
+  send = (f32[2048], u32[], token[]) send(offload_custom_call, tok), channel_id=2, frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1}}"}
+  send-done = token[] send-done(send), channel_id=2
+  ROOT out_tuple = (token[]) tuple(send-done)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(const bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // The token returned from the entry computation is not an offloaded buffer;
+  // the send still reads the data from a copy in host memory.
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::SendDone(m::Send(
+          m::Copy(&copy_to_host, m::Parameter(&param, 0)), m::AfterAll())))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, SendResultReturnedFromEntryNoCrash) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule my_module
+
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  tok = token[] after-all()
+  ROOT send = (f32[2048], u32[], token[]) send(offload_custom_call, tok), channel_id=2, frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1}}"}
+  send-done = token[] send-done(send), channel_id=2
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  // The offloaded data is returned in an output that is not in host memory.
+  // This must be a clean error, not a CHECK failure on the token leaf.
+  const absl::StatusOr<bool> result = RunHostOffloader(module.get());
+  EXPECT_FALSE(result.ok());
+}
+
 TEST_F(HostOffloaderTest, NoCopyThroughTuple) {
   const std::string& hlo_string = R"(
 HloModule my_module

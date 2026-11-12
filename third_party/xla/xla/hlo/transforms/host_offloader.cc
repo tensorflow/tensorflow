@@ -348,6 +348,10 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       bool output_in_host_memory = true;
       ShapeUtil::ForEachLeafShape(
           output_shape, [&](const Shape& leaf, const ShapeIndex&) {
+            if (!leaf.IsArray()) {
+              // Tokens (e.g. in a send result) have no layout and no data.
+              return;
+            }
             CHECK(leaf.has_layout())
                 << "Expecting output shape of entry computation to have a "
                    "layout.";
@@ -380,6 +384,10 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       }
       const Shape& successor_shape = ShapeUtil::GetSubshape(
           successor.instruction->shape(), successor.shape_index);
+      if (successor_shape.IsToken()) {
+        // A token (e.g. the result of send-done) carries no data to offload.
+        continue;
+      }
       if (successor_shape.has_layout() &&
           successor_shape.layout().memory_space() == Layout::kHostMemorySpace) {
         // When a successor shape already has host memory space, we know that
