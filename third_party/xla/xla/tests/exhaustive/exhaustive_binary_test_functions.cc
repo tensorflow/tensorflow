@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>    // IWYU pragma: keep, exhaustive_binary_test_ops.inc
 #include <complex>  // IWYU pragma: keep, exhaustive_binary_test_ops.inc
 #include <limits>
@@ -196,10 +197,11 @@ BINARY_TEST(Div, {
 // `<= |std::numeric_limits::<float>::min()|`.
 template <typename NativeT>
 double MaxMinCpuAbsErr(NativeT left, NativeT right) {
-  // Subnormals are treated as 0 and max returns the first if all are
-  // 0-equivalent.
-  if (IsSubnormal(left) && (right == 0.0 || IsSubnormal(right))) {
-    return std::abs(left);
+  // Subnormals are treated as 0 and max/min may return either operand if all
+  // are 0-equivalent.
+  if ((left == 0.0 || IsSubnormal(left)) &&
+      (right == 0.0 || IsSubnormal(right))) {
+    return std::max(std::abs(left), std::abs(right));
   }
   return 0.0;
 }
