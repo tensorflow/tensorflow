@@ -532,6 +532,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "ir/tfl_ops_in_place_transpose.h",
+        "ir/tfl_traits.h",
     ],
     deps = [
         ":attribute_utils",
@@ -546,8 +547,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
