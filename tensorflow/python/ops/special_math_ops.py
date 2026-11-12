@@ -935,6 +935,9 @@ def _einsum_v1(equation, *inputs, **kwargs):
     return _transpose_if_necessary(temp, perm)
 
 
+_EINSUM_V1_EQUATION_RE = re.compile('^([a-zA-Z,.]+)(->[a-zA-Z.]*)?$')
+
+
 def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
   """Helper for einsum() that splits/resolves inputs & outputs.
 
@@ -955,7 +958,7 @@ def _einsum_v1_parse_and_resolve_equation(equation, input_shapes):
       inputs given or broadcast axes "..." or output axes could not be resolved.
   """
   equation = equation.replace(' ', '')
-  match = re.match('^([a-zA-Z,.]+)(->[a-zA-Z.]*)?$', equation)
+  match = _EINSUM_V1_EQUATION_RE.match(equation)
   if not match:
     raise ValueError(f'Indices have incorrect format. Received: {equation}.')
 
