@@ -452,5 +452,24 @@ TEST(SnappyBuffers, UncompressedBlockExceedsOutputBuffer) {
                                       GetRecord().size(), " bytes."))));
 }
 
+TEST(SnappyBuffers, InputStreamRejectsNegativeBytesToRead) {
+  if (!SnappyCompressionSupported()) {
+    GTEST_SKIP() << "Snappy compression is unavailable";
+  }
+  Env* env = Env::Default();
+  std::string data;
+  std::string fname;
+  TestTellWriteFile(10000, 10000, 10000, 10000, 2, fname, data);
+
+  std::unique_ptr<RandomAccessFile> file_reader;
+  ASSERT_THAT(env->NewRandomAccessFile(fname, &file_reader), IsOk());
+  io::RandomAccessInputStream random_input_stream(file_reader.get(), false);
+  io::SnappyInputStream in(&random_input_stream, 10000);
+
+  tstring bytes;
+  EXPECT_THAT(in.ReadNBytes(-1, &bytes),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace tsl
