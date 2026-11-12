@@ -183,7 +183,7 @@ class InitializableLookupTable : public LookupInterface {
   // Same as DoPrepare() but derived implementations might choose to skip
   // calling get_expected_num_elements if size is not needed for DoPrepare.
   virtual absl::Status DoLazyPrepare(
-      std::function<int64_t(void)> get_expected_num_elements) {
+      std::function<int64_t()> get_expected_num_elements) {
     int64_t expected_num_elements = get_expected_num_elements();
     if (expected_num_elements < 0) {
       return absl::FailedPreconditionError(

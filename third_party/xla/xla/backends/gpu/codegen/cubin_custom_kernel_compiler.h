@@ -79,11 +79,11 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
   xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
       BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-      int unroll_factor = 0) override;
+      int unroll_factor) override;
 
   xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
-      const HloModule& hlo_module, int unroll_factor = 0) override;
+      const HloModule& hlo_module, int unroll_factor) override;
 
   xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
       LlvmKernelSource kernel_source,

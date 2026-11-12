@@ -131,7 +131,8 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
                          GpuKernelSpec(kernel_name, dimensions,
                                        kernel_arguments, std::nullopt, use_pdl),
                          MlirKernelSource(nullptr, std::move(mlir_module))},
-                     std::move(borrowed_context), hlo_module)
+                     std::move(borrowed_context), hlo_module,
+                     /*unroll_factor=*/0)
             .Await());
     const auto* custom_kernel_thunk =
         dynamic_cast<const CustomKernelThunk*>(thunk.get());

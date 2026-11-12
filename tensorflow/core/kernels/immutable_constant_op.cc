@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 
+#include <memory>
 #include <unordered_set>
 
 #include "tensorflow/core/framework/types.pb.h"
@@ -96,8 +97,8 @@ ImmutableConstantOp::ImmutableConstantOp(OpKernelConstruction* context)
 }
 
 void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
-  std::unique_ptr<MemmappedTensorAllocator> allocator(
-      new MemmappedTensorAllocator());
+  std::unique_ptr<MemmappedTensorAllocator> allocator =
+      std::make_unique<MemmappedTensorAllocator>();
 
   OP_REQUIRES_OK(ctx,
                  allocator->InitializeFromRegion(region_name_, ctx->env()));

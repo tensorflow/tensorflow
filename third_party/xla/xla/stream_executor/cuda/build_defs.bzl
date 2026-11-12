@@ -196,7 +196,17 @@ def embeddable_cuda_library(name, register_with_cudart = True, **kwargs):
     kwargs["deps"] = link_deps
 
     copts = kwargs.pop("copts", [])
-    no_compress_opts = if_oss(["-no-compress", "-Xcuda-fatbinary=--compress=false"])
+    no_compress_opts = if_oss(select({
+        "@local_config_cuda//:is_cuda_compiler_clang": [
+            "-Xcuda-fatbinary",
+            "--compress=false",
+        ],
+        "@local_config_cuda//:is_cuda_compiler_nvcc": [
+            "-no-compress",
+            "-Xcuda-fatbinary=--compress=false",
+        ],
+        "//conditions:default": [],
+    }))
     kwargs["copts"] = copts + no_compress_opts
     kwargs.update(if_google({"cuda_compress": False}, {}))
 

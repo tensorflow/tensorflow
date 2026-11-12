@@ -188,7 +188,8 @@ AsyncThunkSequence EmitRngGetAndUpdateState(
       std::move(spec), MlirKernelSource(nullptr, std::move(mlir_module)));
   return ir_emitter_context->kernel_compiler()
       ->Compile(std::move(thunk_info), std::move(kernel_def),
-                std::move(borrowed_context), *instr->GetModule())
+                std::move(borrowed_context), *instr->GetModule(),
+                /*unroll_factor=*/0)
       .Map([](std::unique_ptr<Thunk> thunk) {
         return ThunkSequence::Of(std::move(thunk));
       });
