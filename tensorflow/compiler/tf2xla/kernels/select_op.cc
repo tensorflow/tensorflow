@@ -115,15 +115,21 @@ class SelectOpV2 : public XlaOpKernel {
       return;
     }
 
-    auto bcasted_cond = BroadcastTo(ctx->Input(0), bcast.output_shape());
+    auto bcasted_cond = BroadcastTo(
+        BroadcastDynamicDimensions(ctx->Input(0), bcast.output_shape()),
+        bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_cond.status());
     auto cond_handle = bcasted_cond.value();
 
-    auto bcasted_then = BroadcastTo(ctx->Input(1), bcast.output_shape());
+    auto bcasted_then = BroadcastTo(
+        BroadcastDynamicDimensions(ctx->Input(1), bcast.output_shape()),
+        bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_then.status());
     auto then_handle = bcasted_then.value();
 
-    auto bcasted_else = BroadcastTo(ctx->Input(2), bcast.output_shape());
+    auto bcasted_else = BroadcastTo(
+        BroadcastDynamicDimensions(ctx->Input(2), bcast.output_shape()),
+        bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_else.status());
     auto else_handle = bcasted_else.value();
 
