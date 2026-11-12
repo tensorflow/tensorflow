@@ -2448,6 +2448,49 @@ TEST(BlockwiseFullyConnectedOpTest, RejectsNonZeroZeroPoints) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(BlockwiseFullyConnectedOpTest, RejectsInt8Weights) {
+  // Only int4 blockwise weights are implemented. The other paths would use the
+  // per-tensor scale, which is 0 for blockwise quantization.
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT8, BlockwiseTestScales(), /*zero_points=*/{},
+      /*packed_weights=*/{});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(BlockwiseFullyConnectedOpTest, RejectsNonConstantWeights) {
+  // The blockwise kernel only runs constant weights.
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, BlockwiseTestScales(), /*zero_points=*/{},
+      /*packed_weights=*/{});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(BlockwiseFullyConnectedOpTest, RejectsReferenceKernel) {
+  // The blockwise kernel only runs in the optimized kernel.
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_REF(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, BlockwiseTestScales(), /*zero_points=*/{},
+      PackInt4(BlockwiseTestWeights()));
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(BlockwiseFullyConnectedOpTest,
+     RejectsBlockSizeThatDoesNotDivideInputSize) {
+  // The blockwise kernel would ignore the input channels after the last whole
+  // block.
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, /*block_size=*/24,
+      TensorType_INT4, BlockwiseTestScales(), /*zero_points=*/{},
+      PackInt4(BlockwiseTestWeights()));
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
@@ -3692,7 +3735,11 @@ class MultiAxisFullyConnectedOpModel : public SingleOpModel {
         CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
             .Union());
 
-    BuildInterpreter({{batches, in_channels}, {out_channels, in_channels}});
+    // The CPU kernel rejects multi-axis quantization, so the tests apply the
+    // delegates and allocate the tensors themselves.
+    BuildInterpreter({{batches, in_channels}, {out_channels, in_channels}},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
   }
 
   void SetInput(const std::vector<float>& data) {
@@ -3728,10 +3775,19 @@ TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultBlockwise) {
       /*batches=*/2, /*in_channels=*/32, /*out_channels=*/2,
       /*block_size=*/16, scales, weights);
 
-  if (m.GetNumberOfAppliedDelegates() == 0 ||
-      m.CountOpsExecutedByCpuKernel() > 0) {
-    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  // Applying a delegate that doesn't support dynamic tensors prepares the graph
+  // with the CPU kernel first, which rejects multi-axis quantization. Report
+  // that as an incompatibility between the model and the delegate.
+  if (m.ApplyDelegate() != kTfLiteOk) {
+    m.SetDelegateApplicationStatus(kTfLiteApplicationError);
+    GTEST_SKIP() << "The delegate can't be applied to the multi-axis quantized "
+                    "graph.";
   }
+  if (m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "No delegate runs the multi-axis quantized op, which the "
+                    "CPU kernel rejects.";
+  }
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
 
   // Batch 0: all 1.0f.
   // Batch 1: all 0.5f.
@@ -3764,10 +3820,19 @@ TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultPerChannel) {
       /*batches=*/2, /*in_channels=*/16, /*out_channels=*/2,
       /*block_size=*/0, scales, weights);
 
-  if (m.GetNumberOfAppliedDelegates() == 0 ||
-      m.CountOpsExecutedByCpuKernel() > 0) {
-    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  // Applying a delegate that doesn't support dynamic tensors prepares the graph
+  // with the CPU kernel first, which rejects multi-axis quantization. Report
+  // that as an incompatibility between the model and the delegate.
+  if (m.ApplyDelegate() != kTfLiteOk) {
+    m.SetDelegateApplicationStatus(kTfLiteApplicationError);
+    GTEST_SKIP() << "The delegate can't be applied to the multi-axis quantized "
+                    "graph.";
   }
+  if (m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "No delegate runs the multi-axis quantized op, which the "
+                    "CPU kernel rejects.";
+  }
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
 
   // Batch 0: all 1.0f.
   // Batch 1: all 2.0f.

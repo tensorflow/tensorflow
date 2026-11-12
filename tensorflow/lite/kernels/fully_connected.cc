@@ -244,6 +244,34 @@ TfLiteStatus CheckBlockwiseZeroPointsAreZero(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+// Fails unless the block size of the blockwise quantized `filter` divides its
+// input size and it has one fp16 scale per block, which `EvalBlockwise4Bit`
+// relies on.
+TfLiteStatus CheckBlockwiseBlocks(TfLiteContext* context,
+                                  const TfLiteTensor* filter) {
+  const auto* params = reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+      filter->quantization.params);
+  TF_LITE_ENSURE(context, params != nullptr);
+  const CheckedInt<int64_t> output_channels = SizeOfDimension(filter, 0);
+  const CheckedInt<int64_t> input_channels = SizeOfDimension(filter, 1);
+  TF_LITE_ENSURE_MSG(
+      context,
+      params->blocksize > 0 && input_channels.Value() % params->blocksize == 0,
+      "FullyConnected requires the block size of blockwise quantized filters "
+      "to divide their input size.");
+  TF_LITE_ENSURE(
+      context, params->scale >= 0 &&
+                   static_cast<size_t>(params->scale) < context->tensors_size);
+  const TfLiteTensor& scales = context->tensors[params->scale];
+  TF_LITE_ENSURE_TYPES_EQ(context, scales.type, kTfLiteFloat16);
+  const CheckedInt<int64_t> expected_elements =
+      output_channels * (input_channels / params->blocksize);
+  TF_LITE_ENSURE_EQ(context, expected_elements.Overflow(), false);
+  TF_LITE_ENSURE(context, scales.dims != nullptr);
+  TF_LITE_ENSURE_EQ(context, NumElements(scales.dims), expected_elements);
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 TfLiteStatus ValidateInt16FilterInt16Indexing(
@@ -669,6 +697,37 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
         filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
+  // The optimized 4-bit kernels, `EvalHybridDense4Bit` and `EvalBlockwise4Bit`,
+  // run constant int4 filters with float input.
+  const bool use_optimized_4bit =
+      is_hybrid && filter->type == kTfLiteInt4 &&
+      kernel_type == kGenericOptimized && IsConstantTensor(filter) &&
+      batch_size && ((input_size / batch_size) % 2 == 0) &&
+      num_units >= optimized_4bit::FilterWidth &&
+      (input_size / batch_size) >= optimized_4bit::FilterDepth;
+  // Only `EvalBlockwise4Bit` implements blockwise quantization. The other paths
+  // read the legacy per-tensor scale, which is 0 for blockwise quantization,
+  // and would silently compute zeros. No path implements other non-affine
+  // quantization schemes.
+  const TfLiteQuantizationType filter_quantization = filter->quantization.type;
+  if (filter_quantization == kTfLiteBlockwiseQuantization) {
+    TF_LITE_ENSURE_MSG(context, filter->type == kTfLiteInt4,
+                       "FullyConnected only supports blockwise quantization "
+                       "for int4 filters.");
+    TF_LITE_ENSURE_MSG(
+        context, use_optimized_4bit,
+        "FullyConnected only supports blockwise quantized int4 filters that "
+        "are constant, with float input, in the optimized kernel, with at "
+        "least 4 output channels and an even input size of at least 32.");
+    TF_LITE_ENSURE_OK(context, CheckBlockwiseBlocks(context, filter));
+  } else if (filter_quantization != kTfLiteNoQuantization &&
+             filter_quantization != kTfLiteAffineQuantization) {
+    TF_LITE_KERNEL_LOG(context,
+                       "FullyConnected does not support quantization type %d "
+                       "of its filter.",
+                       filter_quantization);
+    return kTfLiteError;
+  }
   if (is_hybrid) {
     if (filter->quantization.type == kTfLiteAffineQuantization) {
       const auto* affine_quantization =
@@ -681,11 +740,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
       }
     }
     // Use optimized implementation for 4bit
-    if (filter->type == kTfLiteInt4 && kernel_type == kGenericOptimized &&
-        IsConstantTensor(filter) && batch_size &&
-        ((input_size / batch_size) % 2 == 0) &&
-        num_units >= optimized_4bit::FilterWidth &&
-        (input_size / batch_size) >= optimized_4bit::FilterDepth) {
+    if (use_optimized_4bit) {
       const int cols = input_size / batch_size;
       if (!data->op_data_4bit) {
         data->op_data_4bit = std::make_unique<optimized_4bit::OpData4Bit>();
