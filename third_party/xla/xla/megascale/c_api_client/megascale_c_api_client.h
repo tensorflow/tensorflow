@@ -60,14 +60,13 @@ struct ProcessesInfo {
 
 // Returns AoT config for megascale multi slice compilation.
 // REQUIRES: num_slices > 1.
-absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
+absl::StatusOr<xla::MultiSliceConfigRef> CreateAoTMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices);
 
 absl::StatusOr<std::shared_ptr<CApiMegascaleErrorAggregator>>
 CreateMegascaleErrorAggregator(absl::string_view app_type);
 
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
-CreateMultiSliceMegascaleConfig(
+absl::StatusOr<xla::MultiSliceConfigRef> CreateMultiSliceMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices,
     int32_t local_slice_id, int32_t local_host_id,
     const xla::megascale::runtime::EndpointAddresses& endpoint_addresses,

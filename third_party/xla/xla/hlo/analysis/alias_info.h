@@ -138,6 +138,17 @@ inline bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
          opcode == HloOpcode::kScatter || opcode == HloOpcode::kAllReduceStart;
 }
 
+// Returns true if `slice` (a kSlice or kDynamicSlice reading `base_inst` once
+// at operand 0) reads the exact slice region that `dus`
+// (a kDynamicUpdateSlice) overwrites, so evaluating `dus` in place on the base
+// buffer does not overwrite elements before `slice` reads them. When
+// `ignore_layout` is true, layout differences on the base and slice shapes
+// (such as tiling from nested change tiling copy fusions) are ignored.
+bool IsMatchingInPlaceDusReadSlice(const HloInstruction* slice,
+                                   const HloInstruction* base_inst,
+                                   const HloInstruction* dus,
+                                   bool ignore_layout = false);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_ALIAS_INFO_H_

@@ -87,9 +87,13 @@ struct Relu6Grad {
     // make sure not to propagate the associated gradient
     // value. This allows "features" to be either the input or the output of
     // the relu6.
-    backprops.device(d) = gradients * ((features > static_cast<T>(0)) *
-                                       (features < static_cast<T>(6)))
-                                          .template cast<T>();
+    // Explicitly propagate NaN if features is NaN, consistent with Relu6
+    // forward op which propagates NaNs via Eigen::PropagateNaN.
+    backprops.device(d) =
+        (features.isnan())
+            .select(features, gradients * ((features > static_cast<T>(0)) *
+                                           (features < static_cast<T>(6)))
+                                              .template cast<T>());
   }
 };
 
@@ -130,8 +134,11 @@ struct LeakyReluGrad {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
                   typename TTypes<T>::ConstTensor features, T alpha,
                   typename TTypes<T>::Tensor backprops) {
+    // Propagate NaN if features is NaN, matching IEEE-754 and SeluGrad.
     backprops.device(d) =
-        (features > static_cast<T>(0)).select(gradients, gradients * alpha);
+        (features.isnan())
+            .select(features, (features > static_cast<T>(0))
+                                  .select(gradients, gradients * alpha));
   }
 };
 
@@ -161,9 +168,11 @@ struct EluGrad {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor gradients,
                   typename TTypes<T>::ConstTensor activations,
                   typename TTypes<T>::Tensor backprops) {
+    // Propagate NaN if activations is NaN, preventing NaN from being silently
+    // dropped and matching XLA and SeluGrad semantics.
     backprops.device(d) =
-        (activations < static_cast<T>(0))
-            .select((activations + static_cast<T>(1)) * gradients, gradients);
+        (activations > static_cast<T>(0))
+            .select(gradients, (activations + static_cast<T>(1)) * gradients);
   }
 };
 
