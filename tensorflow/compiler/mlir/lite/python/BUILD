@@ -106,6 +106,40 @@ cc_library(
 )
 
 cc_library(
+    name = "preserve_regions",
+    srcs = ["preserve_regions.cc"],
+    hdrs = ["preserve_regions.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "preserve_regions_test",
+    srcs = ["preserve_regions_test.cc"],
+    deps = [
+        ":preserve_regions",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "stablehlo_tfl_pipeline",
     srcs = [
         "stablehlo_tfl_pipeline.cc",
@@ -115,6 +149,7 @@ cc_library(
     ],
     deps = [
         ":conversion_failure_reporter",
+        ":preserve_regions",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:downcast_x64",
@@ -134,12 +169,17 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_composite_to_tfl_custom",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_vhlo_quant_custom_calls",
+        "//tensorflow/compiler/mlir/lite/stablehlo:optimize",
+        "//tensorflow/compiler/mlir/lite/stablehlo:optimize_layout",
         "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
+        "//tensorflow/compiler/mlir/lite/stablehlo:stablehlo_fuse_convolution_pass",
+        "//tensorflow/compiler/mlir/lite/stablehlo:stablehlo_unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_chlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
         "//tensorflow/compiler/mlir/lite/stablehlo:unfold_splat_constant_pass",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -159,6 +199,7 @@ cc_library(
         "@xla//xla/mlir_hlo:mhlo_passes",
         "@xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -172,6 +213,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

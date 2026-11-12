@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/stablehlo_tfl_pipeline.h"
 
+#include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -22,8 +24,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -43,14 +47,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 
 namespace mlir::TFL {
 namespace {
 
 using ::testing::Contains;
 using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
 class StableHloTflPipelineTest : public ::testing::Test {
@@ -451,6 +459,367 @@ TEST_F(StableHloTflPipelineTest, PreservesIrLocationsWithoutMutation) {
       mlir::dyn_cast_or_null<mlir::StringAttr>(dict_attr.get("outputs"));
   ASSERT_TRUE(static_cast<bool>(outputs_attr));
   EXPECT_EQ(outputs_attr.getValue().str(), "main_output");
+}
+
+// End-to-end tests for preserve regions (`odml.preserve_region` composites).
+class PreserveRegionPipelineTest : public ::testing::Test {
+ protected:
+  PreserveRegionPipelineTest() {
+    context_.loadDialect<func::FuncDialect, stablehlo::StablehloDialect,
+                         TFL::TensorFlowLiteDialect>();
+  }
+
+  // Converts `ir` and returns the flatbuffer, or an empty buffer on failure.
+  llvm::SmallString<0> Convert(llvm::StringRef ir, bool enable_x64 = true) {
+    llvm::SmallString<0> buffer;
+    OwningOpRef<ModuleOp> module = parseSourceString<ModuleOp>(ir, &context_);
+    EXPECT_TRUE(module);
+    if (!module) return buffer;
+
+    tflite::ConverterFlags converter_flags;
+    converter_flags.set_enable_x64(enable_x64);
+    PassConfig pass_config{QuantizationSpecs()};
+    llvm::raw_svector_ostream stream(buffer);
+    absl::Status status =
+        ConvertStableHloToTFLite(*module, converter_flags, pass_config, stream);
+    EXPECT_TRUE(status.ok()) << status;
+    if (!status.ok()) buffer.clear();
+    return buffer;
+  }
+
+  // Returns the builtin operators of the main subgraph, in order.
+  static std::vector<tflite::BuiltinOperator> Ops(const tflite::Model* model) {
+    std::vector<tflite::BuiltinOperator> ops;
+    for (const tflite::Operator* op :
+         *model->subgraphs()->Get(0)->operators()) {
+      ops.push_back(tflite::GetBuiltinCode(
+          model->operator_codes()->Get(op->opcode_index())));
+    }
+    return ops;
+  }
+
+  static const tflite::Operator* FindOp(const tflite::Model* model,
+                                        tflite::BuiltinOperator code) {
+    for (const tflite::Operator* op :
+         *model->subgraphs()->Get(0)->operators()) {
+      if (tflite::GetBuiltinCode(
+              model->operator_codes()->Get(op->opcode_index())) == code) {
+        return op;
+      }
+    }
+    return nullptr;
+  }
+
+  static const tflite::Tensor* Input(const tflite::Model* model,
+                                     const tflite::Operator* op, int index) {
+    return model->subgraphs()->Get(0)->tensors()->Get(op->inputs()->Get(index));
+  }
+
+  // Returns the contents of `tensor`'s buffer, inline or at an offset.
+  static std::vector<uint8_t> BufferData(llvm::StringRef flatbuffer,
+                                         const tflite::Model* model,
+                                         const tflite::Tensor* tensor) {
+    const tflite::Buffer* buffer = model->buffers()->Get(tensor->buffer());
+    if (buffer->data() != nullptr && !buffer->data()->empty()) {
+      return {buffer->data()->begin(), buffer->data()->end()};
+    }
+    if (buffer->offset() > 1 &&
+        buffer->offset() + buffer->size() <= flatbuffer.size()) {
+      const auto* begin = reinterpret_cast<const uint8_t*>(flatbuffer.data()) +
+                          buffer->offset();
+      return {begin, begin + buffer->size()};
+    }
+    return {};
+  }
+
+  MLIRContext context_;
+};
+
+// The same authored `tfl.reshape(tfl.reshape(x))` chain inside and outside a
+// preserve region. The TFL optimization pipeline folds the one outside into a
+// single reshape; the one inside is kept as authored.
+TEST_F(PreserveRegionPipelineTest, AuthoredOpsInPreserveRegionAreKept) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>) -> (tensor<24xf32>, tensor<24xf32>) {
+    %s0 = stablehlo.constant dense<[6, 4]> : tensor<2xi32>
+    %s1 = stablehlo.constant dense<24> : tensor<1xi32>
+    %0 = stablehlo.custom_call @tfl.reshape(%arg0, %s0) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<2xi32>) -> tensor<6x4xf32>
+    %1 = stablehlo.custom_call @tfl.reshape(%0, %s1) {backend_config = "{}"} : (tensor<6x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    %2 = stablehlo.composite "odml.preserve_region" %arg1, %s0, %s1 {
+      decomposition = @region
+    } : (tensor<2x3x4xf32>, tensor<2xi32>, tensor<1xi32>) -> tensor<24xf32>
+    return %1, %2 : tensor<24xf32>, tensor<24xf32>
+  }
+  func.func private @region(%x: tensor<2x3x4xf32>, %a: tensor<2xi32>, %b: tensor<1xi32>) -> tensor<24xf32> {
+    %0 = stablehlo.custom_call @tfl.reshape(%x, %a) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<2xi32>) -> tensor<6x4xf32>
+    %1 = stablehlo.custom_call @tfl.reshape(%0, %b) {backend_config = "{}"} : (tensor<6x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %1 : tensor<24xf32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  ASSERT_EQ(model->subgraphs()->size(), 1);
+  EXPECT_THAT(Ops(model), SizeIs(3));
+  EXPECT_THAT(Ops(model), Each(Eq(tflite::BuiltinOperator_RESHAPE)));
+}
+
+// A resource-backed i64 constant used only inside a region, with
+// `enable_x64=false`. Both pipelines narrow 64-bit types, so the boundary
+// still matches, and the narrowed constant, which only the region body
+// references while the main module is optimized, must keep its data.
+TEST_F(PreserveRegionPipelineTest, RegionResourceConstantsSurvive) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<4xi64>) -> tensor<4xi64> {
+    %w = stablehlo.constant dense_resource<region_weights> : tensor<4xi64>
+    %0 = stablehlo.composite "odml.preserve_region" %arg0, %w {
+      decomposition = @region
+    } : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi64>
+    return %0 : tensor<4xi64>
+  }
+  func.func private @region(%x: tensor<4xi64>, %w: tensor<4xi64>) -> tensor<4xi64> {
+    %0 = stablehlo.custom_call @tfl.add(%x, %w) {backend_config = "{fused_activation_function = \"NONE\"}"} : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi64>
+    return %0 : tensor<4xi64>
+  }
+}
+{-#
+  dialect_resources: {
+    builtin: {
+      region_weights: "0x080000000100000000000000020000000000000003000000000000000400000000000000"
+    }
+  }
+#-}
+)mlir",
+                                            /*enable_x64=*/false);
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_ADD));
+
+  const tflite::Operator* add = FindOp(model, tflite::BuiltinOperator_ADD);
+  ASSERT_NE(add, nullptr);
+  const tflite::Tensor* weights = Input(model, add, 1);
+  EXPECT_EQ(weights->type(), tflite::TensorType_INT32);
+  std::vector<uint8_t> data = BufferData(flatbuffer, model, weights);
+  ASSERT_EQ(data.size(), 4 * sizeof(int32_t));
+  int32_t values[4];
+  std::memcpy(values, data.data(), sizeof(values));
+  EXPECT_THAT(values, ElementsAre(1, 2, 3, 4));
+}
+
+// Authored Q/DQ ops inside a region still fuse into a quantized kernel: the
+// region pipeline runs quantization even though it skips optimization.
+TEST_F(PreserveRegionPipelineTest, AuthoredQdqInPreserveRegionIsFused) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x3x4xf32>) -> tensor<24xf32> {
+    %s = stablehlo.constant dense<24> : tensor<1xi32>
+    %0 = stablehlo.composite "odml.preserve_region" %arg0, %s {
+      decomposition = @region
+    } : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %0 : tensor<24xf32>
+  }
+  func.func private @region(%x: tensor<2x3x4xf32>, %s: tensor<1xi32>) -> tensor<24xf32> {
+    %q = stablehlo.custom_call @tfl.quantize(%x) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %dq = stablehlo.custom_call @tfl.dequantize(%q) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %r = stablehlo.custom_call @tfl.reshape(%dq, %s) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    %q2 = stablehlo.custom_call @tfl.quantize(%r) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<24xf32>) -> tensor<24xf32>
+    %dq2 = stablehlo.custom_call @tfl.dequantize(%q2) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<24xf32>) -> tensor<24xf32>
+    return %dq2 : tensor<24xf32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_QUANTIZE,
+                                      tflite::BuiltinOperator_RESHAPE,
+                                      tflite::BuiltinOperator_DEQUANTIZE));
+  const tflite::Operator* reshape =
+      FindOp(model, tflite::BuiltinOperator_RESHAPE);
+  ASSERT_NE(reshape, nullptr);
+  EXPECT_EQ(Input(model, reshape, 0)->type(), tflite::TensorType_INT8);
+}
+
+// The main pipeline propagates quantization parameters, so a float reshape
+// fed by a dequantize gets quantized there. Inside a region the reshape stays
+// float, as authored: the region pipeline does not run PropagateQParams.
+constexpr char kFloatReshapeAfterDq[] = R"mlir(
+    %q = stablehlo.custom_call @tfl.quantize(%x) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %dq = stablehlo.custom_call @tfl.dequantize(%q) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %r = stablehlo.custom_call @tfl.reshape(%dq, %s) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+)mlir";
+
+TEST_F(PreserveRegionPipelineTest,
+       FloatReshapeAfterDqIsQuantizedOutsideRegion) {
+  llvm::SmallString<0> flatbuffer = Convert(absl::StrCat(R"mlir(
+module {
+  func.func @main(%x: tensor<2x3x4xf32>) -> tensor<24xf32> {
+    %s = stablehlo.constant dense<24> : tensor<1xi32>
+)mlir",
+                                                         kFloatReshapeAfterDq,
+                                                         R"mlir(
+    return %r : tensor<24xf32>
+  }
+}
+)mlir"));
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  const tflite::Operator* reshape =
+      FindOp(model, tflite::BuiltinOperator_RESHAPE);
+  ASSERT_NE(reshape, nullptr);
+  EXPECT_EQ(Input(model, reshape, 0)->type(), tflite::TensorType_INT8);
+}
+
+TEST_F(PreserveRegionPipelineTest,
+       FloatReshapeAfterDqStaysFloatInPreserveRegion) {
+  llvm::SmallString<0> flatbuffer = Convert(absl::StrCat(R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x3x4xf32>) -> tensor<24xf32> {
+    %s = stablehlo.constant dense<24> : tensor<1xi32>
+    %0 = stablehlo.composite "odml.preserve_region" %arg0, %s {
+      decomposition = @region
+    } : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %0 : tensor<24xf32>
+  }
+  func.func private @region(%x: tensor<2x3x4xf32>, %s: tensor<1xi32>) -> tensor<24xf32> {
+)mlir",
+                                                         kFloatReshapeAfterDq,
+                                                         R"mlir(
+    return %r : tensor<24xf32>
+  }
+}
+)mlir"));
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_QUANTIZE,
+                                      tflite::BuiltinOperator_DEQUANTIZE,
+                                      tflite::BuiltinOperator_RESHAPE));
+  const tflite::Operator* reshape =
+      FindOp(model, tflite::BuiltinOperator_RESHAPE);
+  ASSERT_NE(reshape, nullptr);
+  EXPECT_EQ(Input(model, reshape, 0)->type(), tflite::TensorType_FLOAT32);
+}
+
+// An op whose input and weights the author quantized gets an int32 bias in a
+// region, so it still fuses into a valid quantized kernel.
+TEST_F(PreserveRegionPipelineTest,
+       AuthoredQuantizedFcInPreserveRegionGetsInt32Bias) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<1x4xf32>) -> tensor<1x2xf32> {
+    %0 = stablehlo.composite "odml.preserve_region" %arg0 {
+      decomposition = @region
+    } : (tensor<1x4xf32>) -> tensor<1x2xf32>
+    return %0 : tensor<1x2xf32>
+  }
+  func.func private @region(%x: tensor<1x4xf32>) -> tensor<1x2xf32> {
+    %w = stablehlo.constant dense<0.5> : tensor<2x4xf32>
+    %b = stablehlo.constant dense<1.0> : tensor<2xf32>
+    %qx = stablehlo.custom_call @tfl.quantize(%x) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<1x4xf32>) -> tensor<1x4xf32>
+    %dqx = stablehlo.custom_call @tfl.dequantize(%qx) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<1x4xf32>) -> tensor<1x4xf32>
+    %qw = stablehlo.custom_call @tfl.quantize(%w) {backend_config = "{scale = 0.01 : f32, zero_point = 0 : i64}"} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %dqw = stablehlo.custom_call @tfl.dequantize(%qw) {backend_config = "{scale = 0.01 : f32, zero_point = 0 : i64}"} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %fc = stablehlo.custom_call @tfl.fully_connected(%dqx, %dqw, %b) {backend_config = "{fused_activation_function = \"NONE\", keep_num_dims = false, weights_format = \"DEFAULT\"}"} : (tensor<1x4xf32>, tensor<2x4xf32>, tensor<2xf32>) -> tensor<1x2xf32>
+    %qy = stablehlo.custom_call @tfl.quantize(%fc) {backend_config = "{scale = 0.2 : f32, zero_point = 0 : i64}"} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+    %dqy = stablehlo.custom_call @tfl.dequantize(%qy) {backend_config = "{scale = 0.2 : f32, zero_point = 0 : i64}"} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+    return %dqy : tensor<1x2xf32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  const tflite::Operator* fc =
+      FindOp(model, tflite::BuiltinOperator_FULLY_CONNECTED);
+  ASSERT_NE(fc, nullptr);
+  EXPECT_EQ(Input(model, fc, 0)->type(), tflite::TensorType_INT8);
+  EXPECT_EQ(Input(model, fc, 1)->type(), tflite::TensorType_INT8);
+  EXPECT_EQ(Input(model, fc, 2)->type(), tflite::TensorType_INT32);
+}
+
+// A quantized value cannot cross the region boundary: legalizing the quantize
+// in main gives the composite operand a quantized type that no longer matches
+// the float signature of its decomposition, which fails verification. Q/DQ
+// pairs must be authored on one side of the boundary.
+TEST_F(PreserveRegionPipelineTest, QuantizedValueCrossingRegionBoundaryFails) {
+  OwningOpRef<ModuleOp> module = parseSourceString<ModuleOp>(R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x3x4xf32>) -> tensor<24xf32> {
+    %s = stablehlo.constant dense<24> : tensor<1xi32>
+    %q = stablehlo.custom_call @tfl.quantize(%arg0) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %0 = stablehlo.composite "odml.preserve_region" %q, %s {
+      decomposition = @region
+    } : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %0 : tensor<24xf32>
+  }
+  func.func private @region(%x: tensor<2x3x4xf32>, %s: tensor<1xi32>) -> tensor<24xf32> {
+    %dq = stablehlo.custom_call @tfl.dequantize(%x) {backend_config = "{scale = 0.1 : f32, zero_point = 0 : i64}"} : (tensor<2x3x4xf32>) -> tensor<2x3x4xf32>
+    %r = stablehlo.custom_call @tfl.reshape(%dq, %s) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %r : tensor<24xf32>
+  }
+}
+)mlir",
+                                                             &context_);
+  ASSERT_TRUE(module);
+  tflite::ConverterFlags converter_flags;
+  PassConfig pass_config{QuantizationSpecs()};
+  llvm::SmallString<0> buffer;
+  llvm::raw_svector_ostream stream(buffer);
+  absl::Status status =
+      ConvertStableHloToTFLite(*module, converter_flags, pass_config, stream);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("but decomposition has type"));
+}
+
+// bf16 at the region boundary: both pipelines leave the composite and function
+// signatures in bf16 and legalize inside, so stitching succeeds and the region
+// computes in f32.
+TEST_F(PreserveRegionPipelineTest, Bf16PreserveRegionBoundary) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<4xbf16>) -> tensor<4xbf16> {
+    %0 = stablehlo.composite "odml.preserve_region" %arg0 {
+      decomposition = @region
+    } : (tensor<4xbf16>) -> tensor<4xbf16>
+    return %0 : tensor<4xbf16>
+  }
+  func.func private @region(%x: tensor<4xbf16>) -> tensor<4xbf16> {
+    %0 = stablehlo.custom_call @tfl.add(%x, %x) {backend_config = "{fused_activation_function = \"NONE\"}"} : (tensor<4xbf16>, tensor<4xbf16>) -> tensor<4xbf16>
+    return %0 : tensor<4xbf16>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  const tflite::Operator* add = FindOp(model, tflite::BuiltinOperator_ADD);
+  ASSERT_NE(add, nullptr);
+  EXPECT_EQ(Input(model, add, 0)->type(), tflite::TensorType_FLOAT32);
+}
+
+// Pins what preserve regions do not protect against: the quantization passes
+// in the region pipeline run op folders, so an identity reshape still folds.
+// The non-identity reshape is kept.
+TEST_F(PreserveRegionPipelineTest, IdentityOpsInPreserveRegionStillFold) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x3x4xf32>) -> tensor<24xf32> {
+    %s0 = stablehlo.constant dense<[2, 3, 4]> : tensor<3xi32>
+    %s1 = stablehlo.constant dense<24> : tensor<1xi32>
+    %0 = stablehlo.composite "odml.preserve_region" %arg0, %s0, %s1 {
+      decomposition = @region
+    } : (tensor<2x3x4xf32>, tensor<3xi32>, tensor<1xi32>) -> tensor<24xf32>
+    return %0 : tensor<24xf32>
+  }
+  func.func private @region(%x: tensor<2x3x4xf32>, %a: tensor<3xi32>, %b: tensor<1xi32>) -> tensor<24xf32> {
+    %0 = stablehlo.custom_call @tfl.reshape(%x, %a) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<3xi32>) -> tensor<2x3x4xf32>
+    %1 = stablehlo.custom_call @tfl.reshape(%0, %b) {backend_config = "{}"} : (tensor<2x3x4xf32>, tensor<1xi32>) -> tensor<24xf32>
+    return %1 : tensor<24xf32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_RESHAPE));
 }
 
 }  // namespace

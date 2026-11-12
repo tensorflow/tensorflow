@@ -20,11 +20,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -56,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/python/conversion_failure_reporter.h"
 #include "tensorflow/compiler/mlir/lite/python/pass_debug_instrumentation.h"
+#include "tensorflow/compiler/mlir/lite/python/preserve_regions.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cast_bf16_ops_to_f32_pass.h"
@@ -70,15 +73,33 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace mlir::TFL {
 namespace {
+
+// Adds the keys of the resource blobs `module` references to `keys`, including
+// resources nested in array or dictionary attributes (e.g. composite
+// attributes).
+void CollectResourceKeys(mlir::ModuleOp module, llvm::StringSet<>& keys) {
+  module.walk([&](mlir::Operation* op) {
+    op->getAttrDictionary().walk([&](mlir::DenseResourceElementsAttr attr) {
+      keys.insert(attr.getRawHandle().getKey());
+    });
+  });
+}
 
 class PruneDeadResourcesPass
     : public mlir::PassWrapper<PruneDeadResourcesPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PruneDeadResourcesPass)
+
+  // `extra_live_keys` are kept in addition to the keys the module references,
+  // for blobs that other modules in the same context still use.
+  explicit PruneDeadResourcesPass(
+      std::shared_ptr<const llvm::StringSet<>> extra_live_keys = nullptr)
+      : extra_live_keys_(std::move(extra_live_keys)) {}
 
   llvm::StringRef getArgument() const final {
     return "tfl-prune-dead-resources";
@@ -100,23 +121,12 @@ class PruneDeadResourcesPass
     if (!interface) return;
 
     // Collect all referenced resource keys in the module.
-    llvm::DenseSet<llvm::StringRef> live_resource_keys;
-    module.walk([&](mlir::Operation* op) {
-      for (const auto& named_attr : op->getAttrs()) {
-        mlir::Attribute attr = named_attr.getValue();
-        if (auto res_attr =
-                mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-          live_resource_keys.insert(res_attr.getRawHandle().getKey());
-        } else if (auto array_attr = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
-          for (mlir::Attribute elem : array_attr) {
-            if (auto sub_res =
-                    mlir::dyn_cast<mlir::DenseResourceElementsAttr>(elem)) {
-              live_resource_keys.insert(sub_res.getRawHandle().getKey());
-            }
-          }
-        }
-      }
-    });
+    llvm::StringSet<> live_resource_keys;
+    CollectResourceKeys(module, live_resource_keys);
+    auto is_live = [&](llvm::StringRef key) {
+      return live_resource_keys.contains(key) ||
+             (extra_live_keys_ && extra_live_keys_->contains(key));
+    };
 
     // Prune unreferenced entries from the blob manager.
     mlir::DialectResourceBlobManager& blob_mgr = interface->getBlobManager();
@@ -124,7 +134,7 @@ class PruneDeadResourcesPass
         [&](const llvm::StringMap<mlir::DialectResourceBlobManager::BlobEntry>&
                 map) {
           for (auto& entry_pair : map) {
-            if (!live_resource_keys.contains(entry_pair.first())) {
+            if (!is_live(entry_pair.first())) {
               const_cast<mlir::DialectResourceBlobManager::BlobEntry&>(
                   entry_pair.second)
                   .setBlob(mlir::AsmResourceBlob());
@@ -132,17 +142,18 @@ class PruneDeadResourcesPass
           }
         });
   }
+
+ private:
+  std::shared_ptr<const llvm::StringSet<>> extra_live_keys_;
 };
 
-std::unique_ptr<mlir::Pass> CreatePruneDeadResourcesPass() {
-  return std::make_unique<PruneDeadResourcesPass>();
+std::unique_ptr<mlir::Pass> CreatePruneDeadResourcesPass(
+    std::shared_ptr<const llvm::StringSet<>> extra_live_keys = nullptr) {
+  return std::make_unique<PruneDeadResourcesPass>(std::move(extra_live_keys));
 }
 
-}  // namespace
-
-void AddPipelinePasses(mlir::OpPassManager& pass_manager,
-                       const mlir::TFL::PassConfig& pass_config,
-                       const tflite::ConverterFlags& converter_flags) {
+// Adds the passes that lower the input module to TFL (stages 1-3).
+void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   // =========================================================================
   // 1. Skip-to-TFLite & Pre-Lowering Passes
   // =========================================================================
@@ -256,7 +267,19 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createLegalizeCompositeToCustomOpPass());
+}
 
+// Adds the TFL optimization and quantization passes (stage 4), up to but not
+// including `AddFinalizePasses`.
+//
+// Pruning only sees the module it runs on; `extra_live_resource_keys` names
+// the blobs that other modules in the same context (the preserve-region
+// bodies) still reference, so that they are not released.
+void AddOptimizationPasses(mlir::OpPassManager& pass_manager,
+                           const mlir::TFL::PassConfig& pass_config,
+                           const tflite::ConverterFlags& converter_flags,
+                           std::shared_ptr<const llvm::StringSet<>>
+                               extra_live_resource_keys = nullptr) {
   // =========================================================================
   // 4. TFLite Optimization & Quantization Passes
   // =========================================================================
@@ -297,7 +320,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
       mlir::TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
-  pass_manager.addPass(CreatePruneDeadResourcesPass());
+  pass_manager.addPass(CreatePruneDeadResourcesPass(extra_live_resource_keys));
 
   // Some optimizations need to happen on the quantized graph.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -313,7 +336,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
-  pass_manager.addPass(CreatePruneDeadResourcesPass());
+  pass_manager.addPass(CreatePruneDeadResourcesPass(extra_live_resource_keys));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateFuseA4W2DRQFullyConnectedPass());
   // Blockwise dequantizes of constants that no fusion above claimed (e.g.
@@ -335,10 +358,64 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::createCanonicalizerPass());
   }
+}
+
+// Adds the fixed pipeline run on preserve-region bodies in place of
+// `AddOptimizationPasses`.
+//
+// It legalizes what the flatbuffer cannot represent otherwise and fuses
+// authored Q/DQ ops into quantized kernels, without propagating quantization
+// parameters to ops the author left in float. It has no
+// canonicalizer, CSE, constant folding pass or TFL optimization patterns,
+// which would rewrite authored ops (e.g. merge adjacent reshapes or fuse
+// activations). The quantization passes do run op folders through their greedy
+// drivers, so identity ops and ops whose operands are all constants can still
+// fold. Fusions that the main pipeline runs after quantization (e.g.
+// FuseA4W2DRQFullyConnected, FoldFp16CastsIntoFullyConnected) do not apply in
+// regions.
+//
+// The region boundary must end up with the same types on both sides when the
+// bodies are stitched back. That holds because `CastBf16OpsToF32` leaves
+// `stablehlo.composite` ops and function signatures alone in both pipelines,
+// and `DowncastX64` narrows both function signatures and all op results,
+// composites included, in both pipelines.
+void AddPreserveRegionPasses(mlir::OpPassManager& pass_manager,
+                             const tflite::ConverterFlags& converter_flags) {
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateCastBf16OpsToF32Pass());
+
+  // Quantization, so that authored Q/DQ ops fuse into quantized kernels.
+  // `PropagateQParams` is left out on purpose: it would wrap float ops next
+  // to a quantized value in new Q/DQ pairs and rewrite authored Q/DQ chains
+  // into requantize ops, so it would quantize more than the author did. Only
+  // ops whose operands and results the author quantized are fused.
+  // `BiasQuantizer` only fires on ops whose non-bias operands the author
+  // already quantized, and gives them the int32 bias their kernel needs.
+  pass_manager.addPass(mlir::TFL::CreateBiasQuantizerPass());
+  pass_manager.addPass(mlir::TFL::CreateFuseQDQPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateLowerBlockwiseDequantizePass());
+
+  pass_manager.addPass(mlir::TFL::CreateCleanupOptimizationBarrierPass());
+  if (!converter_flags.enable_x64()) {
+    // Unlike the main pipeline this is not followed by a canonicalizer, so a
+    // 64-bit float constant in a region keeps the `tfl.cast` this inserts.
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateDowncastX64Pass());
+  }
+}
+
+// Adds the passes that run on the whole module right before export, after the
+// preserve-region bodies have been stitched back.
+void AddFinalizePasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
   pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
   pass_manager.addPass(CreatePruneDeadResourcesPass());
 }
+
+}  // namespace
 
 static absl::Status VerifyInputModule(mlir::ModuleOp module,
                                       absl::string_view debug_dir,
@@ -433,12 +510,18 @@ absl::Status ConvertStableHloToTFLite(
     timing_session = CreatePassTimingSession(debug_dir);
   }
 
-  bool pass_failed = false;
-  absl::Status pass_status;
   PipelineFailureCoordinator failure_coordinator(debug_dir, enable_debug,
                                                  elide_elements_larger_than);
 
-  {
+  // Runs the passes `add_passes` adds on `target`, with the converter's
+  // instrumentation. The pipeline runs in several pieces so that preserve
+  // regions can be split off after lowering; each piece gets the same setup.
+  // Debug artifacts are therefore per piece: IR dump step numbers restart and
+  // `ir_dump_dir` gets one timestamped directory per pass manager.
+  auto run_passes =
+      [&](mlir::ModuleOp target,
+          absl::FunctionRef<void(mlir::OpPassManager&)> add_passes)
+      -> absl::Status {
     mlir::PassManager pm(context);
 
     if (enable_debug) {
@@ -454,13 +537,61 @@ absl::Status ConvertStableHloToTFLite(
       tensorflow::InitPassManager(pm, converter_flags.debug_options());
     }
 
-    AddPipelinePasses(pm, pass_config, converter_flags);
+    add_passes(pm);
 
     mlir::StatusScopedDiagnosticHandler status_handler(context,
                                                        /*propagate=*/false);
-    pass_failed = mlir::failed(pm.run(module));
-    pass_status = status_handler.ConsumeStatus();
-  }
+    if (mlir::succeeded(pm.run(target))) return absl::OkStatus();
+    return failure_coordinator.ReportFailure(target,
+                                             status_handler.ConsumeStatus());
+  };
+
+  // Runs a step outside of a pass manager, turning its diagnostics into the
+  // returned status.
+  auto run_step =
+      [&](absl::FunctionRef<mlir::LogicalResult()> step) -> absl::Status {
+    mlir::StatusScopedDiagnosticHandler status_handler(context,
+                                                       /*propagate=*/false);
+    if (mlir::succeeded(step())) return absl::OkStatus();
+    return failure_coordinator.ReportFailure(module,
+                                             status_handler.ConsumeStatus());
+  };
+
+  auto run_pipeline = [&]() -> absl::Status {
+    TF_RETURN_IF_ERROR(run_passes(module, AddLoweringPasses));
+
+    if (!HasPreserveRegions(module)) {
+      return run_passes(module, [&](mlir::OpPassManager& pm) {
+        AddOptimizationPasses(pm, pass_config, converter_flags);
+        AddFinalizePasses(pm);
+      });
+    }
+
+    // Preserve regions: optimize the main module and the region bodies with
+    // different pipelines, in separate modules, then stitch them back.
+    mlir::OwningOpRef<mlir::ModuleOp> regions;
+    TF_RETURN_IF_ERROR(run_step([&]() -> mlir::LogicalResult {
+      auto split = SplitPreserveRegions(module);
+      if (mlir::failed(split)) return mlir::failure();
+      regions = std::move(*split);
+      return mlir::success();
+    }));
+    TF_RETURN_IF_ERROR(run_passes(*regions, [&](mlir::OpPassManager& pm) {
+      AddPreserveRegionPasses(pm, converter_flags);
+    }));
+    // The region bodies are final now. The blobs they reference must survive
+    // the main module's pruning until the bodies are stitched back.
+    auto region_resource_keys = std::make_shared<llvm::StringSet<>>();
+    CollectResourceKeys(*regions, *region_resource_keys);
+    TF_RETURN_IF_ERROR(run_passes(module, [&](mlir::OpPassManager& pm) {
+      AddOptimizationPasses(pm, pass_config, converter_flags,
+                            region_resource_keys);
+    }));
+    TF_RETURN_IF_ERROR(
+        run_step([&] { return StitchPreserveRegions(module, *regions); }));
+    return run_passes(module, AddFinalizePasses);
+  };
+  absl::Status pipeline_status = run_pipeline();
 
   if (timing_session.timing_stream) {
     timing_session.timing_stream->flush();
@@ -474,8 +605,8 @@ absl::Status ConvertStableHloToTFLite(
     }
   }
 
-  if (pass_failed) {
-    return failure_coordinator.ReportFailure(module, pass_status);
+  if (!pipeline_status.ok()) {
+    return pipeline_status;
   }
 
   std::string diag_errors;
