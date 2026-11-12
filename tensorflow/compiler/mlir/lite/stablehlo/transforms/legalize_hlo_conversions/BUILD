@@ -111,8 +111,8 @@ cc_library(
         "custom_call.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:strict_qdq_quantize_passes",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite:tfl_carrier",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

@@ -68,7 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
@@ -422,9 +422,8 @@ static absl::Status VerifyInputModule(mlir::ModuleOp module,
                                       bool enable_debug,
                                       int64_t elide_elements_larger_than = 8) {
   mlir::MLIRContext* context = module->getContext();
-  mlir::StatusScopedDiagnosticHandler initial_status_handler(
-      context,
-      /*propagate=*/false);
+  mlir::BaseScopedDiagnosticHandler initial_status_handler(context,
+                                                           /*propagate=*/false);
   bool verification_failed = mlir::failed(module.verify());
   absl::Status initial_status = initial_status_handler.ConsumeStatus();
   if (verification_failed) {
@@ -539,8 +538,8 @@ absl::Status ConvertStableHloToTFLite(
 
     add_passes(pm);
 
-    mlir::StatusScopedDiagnosticHandler status_handler(context,
-                                                       /*propagate=*/false);
+    mlir::BaseScopedDiagnosticHandler status_handler(context,
+                                                     /*propagate=*/false);
     if (mlir::succeeded(pm.run(target))) return absl::OkStatus();
     return failure_coordinator.ReportFailure(target,
                                              status_handler.ConsumeStatus());
@@ -550,8 +549,8 @@ absl::Status ConvertStableHloToTFLite(
   // returned status.
   auto run_step =
       [&](absl::FunctionRef<mlir::LogicalResult()> step) -> absl::Status {
-    mlir::StatusScopedDiagnosticHandler status_handler(context,
-                                                       /*propagate=*/false);
+    mlir::BaseScopedDiagnosticHandler status_handler(context,
+                                                     /*propagate=*/false);
     if (mlir::succeeded(step())) return absl::OkStatus();
     return failure_coordinator.ReportFailure(module,
                                              status_handler.ConsumeStatus());

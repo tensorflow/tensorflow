@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/compiler/mlir/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/mlir_bytecode_to_tflite.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
