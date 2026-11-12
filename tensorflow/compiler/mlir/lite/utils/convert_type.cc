@@ -28,13 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
 
 namespace tflite {
 
 using absl::StatusOr;
-
-namespace errors = tensorflow::errors;
 
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
   if (type.isF16()) {

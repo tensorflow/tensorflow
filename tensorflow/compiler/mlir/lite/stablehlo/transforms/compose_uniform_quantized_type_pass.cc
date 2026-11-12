@@ -36,8 +36,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/quant_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "stablehlo-compose-uniform-quantized-type"
@@ -48,7 +48,6 @@ namespace {
 
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
-using ::mlir::quant::TryCast;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 

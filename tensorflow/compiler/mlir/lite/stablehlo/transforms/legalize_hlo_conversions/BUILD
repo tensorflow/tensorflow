@@ -74,7 +74,6 @@ cc_library(
         ":util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo:hlo_matchers",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -163,7 +162,6 @@ cc_library(
     hdrs = ["conv_util.h"],
     deps = [
         ":op_util_common",
-        "//tensorflow/core/lib/math:math_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -315,7 +313,6 @@ cc_library(
     deps = [
         ":op_util_common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -377,8 +374,8 @@ cc_library(
     srcs = ["fft.cc"],
     hdrs = ["fft.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite:shape_and_size_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",

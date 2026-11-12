@@ -47,7 +47,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/quant_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "uniform-quantized-stablehlo-to-tfl"
@@ -56,16 +56,11 @@ namespace mlir {
 namespace odml {
 namespace {
 
-using ::mlir::quant::CastI64ArrayToI32;
-using ::mlir::quant::CastI64ToI32;
 using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI32F32UniformQuantizedType;
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
-using ::mlir::quant::FindOperandOfType;
-using ::mlir::quant::FindUserOfType;
 using ::mlir::quant::GetElementType;
-using ::mlir::quant::IsDotGeneralFullyConnected;
 using ::mlir::quant::IsI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::IsI32F32UniformQuantizedType;
 using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
@@ -2044,7 +2039,7 @@ class RewriteQuantizedDynamicSliceOp
                                 PatternRewriter& rewriter) const override {
     if (!IsQuantizedTensorType(op.getOperand().getType()) ||
         !IsQuantizedTensorType(op.getResult().getType()) ||
-        !quant::HasStaticShape(op.getOperand())) {
+        !HasStaticShape(op.getOperand())) {
       return failure();
     }
 
@@ -2186,7 +2181,7 @@ class RewriteHybridQuantizedDotGeneralOp
     Type lhs_element_type =
         llvm::cast<TensorType>(op.getLhs().getType()).getElementType();
     Type dequantized_rhs_type =
-        quant::CloneTypeWithNewElementType(rhs.getType(), lhs_element_type);
+        CloneTypeWithNewElementType(rhs.getType(), lhs_element_type);
     auto dq = TFL::DequantizeOp::create(rewriter, op->getLoc(),
                                         /*output=*/dequantized_rhs_type,
                                         /*input=*/rhs);
@@ -2242,8 +2237,8 @@ class RewriteHybridQuantizedConvolutionOp
 
     Type lhs_element_type =
         llvm::cast<TensorType>(op.getOperand(0).getType()).getElementType();
-    Type dequantized_rhs_type = quant::CloneTypeWithNewElementType(
-        new_filter.getType(), lhs_element_type);
+    Type dequantized_rhs_type =
+        CloneTypeWithNewElementType(new_filter.getType(), lhs_element_type);
     auto dq = TFL::DequantizeOp::create(rewriter, op->getLoc(),
                                         /*output=*/dequantized_rhs_type,
                                         /*input=*/new_filter);

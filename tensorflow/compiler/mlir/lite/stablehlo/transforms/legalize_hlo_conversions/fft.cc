@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 
 namespace mlir::odml {
 namespace {
@@ -125,7 +125,7 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<stablehlo::FftOp> {
                                                    input_shape.end() - 1};
       expanded_input_shape.push_back(1);
       expanded_input_shape.push_back(input_shape.back());
-      auto expanded_input_type = tensorflow::GetTypeFromTFTensorShape(
+      auto expanded_input_type = mlir::TFL::GetTypeFromTFLiteShape(
           expanded_input_shape,
           input_type ? input_type.getElementType()
                      : mlir::cast<ShapedType>(fft_op.getOperand().getType())

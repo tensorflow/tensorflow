@@ -290,13 +290,28 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "quant_attrs_and_constraints",
+    srcs = ["transforms/quant_attrs_and_constraints.cc"],
+    hdrs = ["transforms/quant_attrs_and_constraints.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "compose_uniform_quantized_type_pass",
     srcs = ["transforms/compose_uniform_quantized_type_pass.cc"],
     hdrs = ["transforms/stablehlo_passes.h"],
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        ":quant_attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
@@ -350,8 +365,8 @@ cc_library(
     ],
     deps = [
         ":passes_inc_gen",
+        ":quant_attrs_and_constraints",
         "//tensorflow/compiler/mlir/lite:validators",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
@@ -575,8 +590,8 @@ cc_library(
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
+        ":quant_attrs_and_constraints",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
