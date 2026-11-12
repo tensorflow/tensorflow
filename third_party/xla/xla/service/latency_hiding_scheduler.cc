@@ -2594,6 +2594,11 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
       chosen_it = ready_node_it;
     }
   }
+  if (chosen_it == annotation_ready.end()) {
+    // Every ready node crosses the overlap limit. Leave the annotation ready
+    // set untouched and let the caller report the failure.
+    return nullptr;
+  }
   // Delete the node from the annotation ready set.
   std::swap(*chosen_it, annotation_ready.back());
   annotation_ready.pop_back();

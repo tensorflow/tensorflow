@@ -1477,8 +1477,24 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
 
   if (proto.has_original_value()) {
-    instruction->set_original_value(
-        OriginalValue::FromProto(proto.original_value()));
+    const OriginalValueProto& original_value = proto.original_value();
+    // Reject shape indices that do not exist in the instruction's shape, as
+    // the size of the original value's tuple tree is otherwise unbounded. The
+    // elements of a synthetic call are ignored.
+    if (!original_value.is_synthetic_call()) {
+      for (const OriginalValueElementProto& element :
+           original_value.elements()) {
+        if (!ShapeUtil::IndexIsValid(instruction->shape(),
+                                     element.shape_index())) {
+          return InvalidArgument(
+              "Original value of instruction %s has shape index {%s} that is "
+              "invalid for shape %s",
+              proto.name(), absl::StrJoin(element.shape_index(), ","),
+              ShapeUtil::HumanString(instruction->shape()));
+        }
+      }
+    }
+    instruction->set_original_value(OriginalValue::FromProto(original_value));
   }
 
   return instruction;
