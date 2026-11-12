@@ -62,7 +62,7 @@ _llvm_zstd_compat = repository_rule(
     implementation = _llvm_zstd_compat_impl,
 )
 
-def _llvm_extension_impl(mctx):  # @unused
+def _llvm_extension_impl(mctx):
     _llvm_zlib_compat(name = "llvm_zlib")
     _llvm_zstd_compat(name = "llvm_zstd")
     xz()
@@ -90,6 +90,7 @@ def _llvm_extension_impl(mctx):  # @unused
             "SPIRV",
         ],
     )
+    return mctx.extension_metadata(reproducible = True)
 
 llvm_extension = module_extension(
     implementation = _llvm_extension_impl,

@@ -17,6 +17,10 @@
 
 load("//third_party:repo.bzl", "tf_vendored")
 
+def _tsl_extension_impl(mctx):
+    tf_vendored(name = "tsl", path = "third_party/tsl")
+    return mctx.extension_metadata(reproducible = True)
+
 tsl_extension = module_extension(
-    implementation = lambda mctx: tf_vendored(name = "tsl", path = "third_party/tsl"),
+    implementation = _tsl_extension_impl,
 )

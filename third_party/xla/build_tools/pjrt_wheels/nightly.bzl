@@ -39,10 +39,11 @@ nightly_timestamp_repo = repository_rule(
 )
 
 # bzlmod implementation
-def _nightly_timestamp_ext_impl(mctx):  # @unused
+def _nightly_timestamp_ext_impl(mctx):
     nightly_timestamp_repo(
         name = "nightly_timestamp",
     )
+    return mctx.extension_metadata(reproducible = True)
 
 nightly_timestamp_repo_bzlmod = module_extension(
     implementation = _nightly_timestamp_ext_impl,
