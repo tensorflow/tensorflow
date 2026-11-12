@@ -66,11 +66,13 @@ tsl_cc_test(
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",
+        "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/profiler/utils:traceme_global_flags",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
