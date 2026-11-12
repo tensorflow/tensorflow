@@ -152,21 +152,49 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       self._testBinary(
           gen_nn_ops.elu_grad,
-          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
-          np.array([-.6, -.4, -.2, 0, .2, .4], dtype=dtype),
-          expected=np.array([0.4, 1.2, 2.4, 4, 5, 6], dtype=dtype))
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-0.6, -0.4, -0.2, 0, 0.2, 0.4, np.nan], dtype=dtype),
+          expected=np.array([0.4, 1.2, 2.4, 4, 5, 6, np.nan], dtype=dtype),
+      )
 
       self._testBinary(
           gen_nn_ops.selu_grad,
-          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
-          np.array([-.6, -.4, -.2, .2, .4, .6], dtype=dtype),
-          expected=np.array([
-              1.158099340847, 2.7161986816948, 4.67429802254, 4.202803949422,
-              5.2535049367774, 6.30420592413
-          ],
-                            dtype=dtype),
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-0.6, -0.4, -0.2, 0.2, 0.4, 0.6, np.nan], dtype=dtype),
+          expected=np.array(
+              [
+                  1.158099340847,
+                  2.7161986816948,
+                  4.67429802254,
+                  4.202803949422,
+                  5.2535049367774,
+                  6.30420592413,
+                  np.nan,
+              ],
+              dtype=dtype,
+          ),
           rtol=1e-10,
-          atol=1e-10)
+          atol=1e-10,
+      )
+
+      self._testBinary(
+          gen_nn_ops.relu6_grad,
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-1, 0, 2, 5, 6, 8, np.nan], dtype=dtype),
+          expected=np.array([0, 0, 3, 4, 0, 0, np.nan], dtype=dtype),
+      )
+
+      def leaky_relu_grad_fn(grad, feat):
+        return gen_nn_ops.leaky_relu_grad(grad, feat, alpha=0.2)
+
+      self._testBinary(
+          leaky_relu_grad_fn,
+          np.array([1, 2, 3, 4, 1], dtype=dtype),
+          np.array([-2, 0, 3, 5, np.nan], dtype=dtype),
+          expected=np.array([0.2, 0.4, 3, 4, np.nan], dtype=dtype),
+          rtol=1e-8,
+          atol=1e-8,
+      )
 
       self._testBinary(
           gen_nn_ops.relu_grad,

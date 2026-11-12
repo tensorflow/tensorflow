@@ -2085,8 +2085,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     if (bandwidth.ok()) {
       desc.set_pcie_bandwidth(*bandwidth);
     } else {
-      LOG(ERROR) << "Unable to determine PCIe bandwidth: "
-                 << bandwidth.status().message();
+      VLOG(1) << "Unable to determine PCIe bandwidth: "
+              << bandwidth.status().message();
     }
 
     absl::StatusOr<int64_t> p2p_link_count =
@@ -2097,7 +2097,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
           << "p2p_link_count: " << *p2p_link_count;
       info.active_links = *p2p_link_count;
     } else {
-      LOG(ERROR) << p2p_link_count;
+      VLOG(1) << p2p_link_count;
     }
     // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
     if (desc.kernel_mode_driver_version().major_version() >= 545) {  // NOLINT

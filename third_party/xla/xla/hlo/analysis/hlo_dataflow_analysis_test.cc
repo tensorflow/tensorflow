@@ -5375,5 +5375,72 @@ ENTRY main {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, LateBoundAsyncStartWrappingDynamicUpdateSlice) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule late_bound_async_dus
+
+dus_wrapped {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT updated = f32[2,4]{1,0} dynamic-update-slice(dst, upd, idx, idx)
+}
+
+ENTRY main {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  start = ((), (), (f32[2,4]{1,0})) async-start(), calls=dus_wrapped
+  update = ((f32[2,4]{1,0}, f32[1,4]{1,0}, s32[]), f32[2,4]{1,0}, (f32[2,4]{1,0})) async-update(start, dst, upd, c0)
+  ROOT done = f32[2,4]{1,0} async-done(update)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+  const HloInstruction* start = FindInstruction(module_.get(), "start");
+  const HloInstruction* updated = FindInstruction(module_.get(), "updated");
+  const HloInstruction* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{1}),
+              ElementsAre(&analysis.GetValueDefinedAt(start, /*index=*/{1})));
+  EXPECT_THAT(HloValuesAt(root),
+              ElementsAre(&analysis.GetValueDefinedAt(updated)));
+}
+
+// An async-start wrapping dynamic-update-slice writes into its destination in
+// place, so its output {1} holds the destination operand rather than the
+// wrapped root. Otherwise a loop-carried start feeds the wrapped result back
+// into the shared destination parameter, which then has two values and breaks
+// in place aliasing.
+TEST_P(HloDataflowAnalysisTest,
+       AsyncStartWrappingDynamicUpdateSliceForwardsDestination) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule async_dus
+
+dus_wrapped {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  idx = s32[] parameter(2)
+  ROOT updated = f32[2,4]{1,0} dynamic-update-slice(dst, upd, idx, idx)
+}
+
+ENTRY main {
+  dst = f32[2,4]{1,0} parameter(0)
+  upd = f32[1,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  start = ((f32[2,4]{1,0}, f32[1,4]{1,0}, s32[]), f32[2,4]{1,0}, s32[]) async-start(dst, upd, c0), calls=dus_wrapped
+  ROOT done = f32[2,4]{1,0} async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+  const HloInstruction* dst =
+      module_->entry_computation()->parameter_instruction(0);
+  const HloInstruction* start = FindInstruction(module_.get(), "start");
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{1}),
+              ElementsAre(&analysis.GetValueDefinedAt(dst)));
+}
+
 }  // namespace
 }  // namespace xla

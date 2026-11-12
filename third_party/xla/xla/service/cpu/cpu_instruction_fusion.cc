@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -156,6 +157,25 @@ bool BlockSubcomputationFusion(const HloInstruction* instruction) {
   // blocked as the fusion emitter can't emit fusion ops inside another
   // fusion.
   return emitters::IsSupportedElementalOp(opcode);
+}
+
+// The number of distinct operands `fusion` would have after fusing `producer`
+// into it: its current operands minus the producer itself, plus every producer
+// operand that is not already an operand of the fusion.
+int64_t OperandCountAfterFusing(const HloInstruction* fusion,
+                                const HloInstruction* producer) {
+  int64_t count = 0;
+  for (const HloInstruction* operand : fusion->operands()) {
+    if (operand != producer) {
+      ++count;
+    }
+  }
+  for (const HloInstruction* operand : producer->unique_operands()) {
+    if (!absl::c_linear_search(fusion->operands(), operand)) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 }  // namespace
@@ -473,6 +493,25 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   RETURN_IF_NOT_FUSIBLE(InstructionFusion::ShouldFuse(consumer, operand_index));
+
+  // Keep the number of distinct operands of a loop fusion within a budget.
+  // Without one, long chains such as the pad-accumulate adjoints of stencil
+  // codes grow into fusions with hundreds of operands (and ~1000 fused
+  // instructions per output element): the elemental emitter then generates
+  // per-element code that neither vectorizes nor fits in registers, and such a
+  // fusion runs several times slower than materializing its inputs. This check
+  // is deliberately independent of may_duplicate(): the code-duplication check
+  // below is skipped when the pass runs with may_duplicate=false (multi-output
+  // fusion mode), which is exactly when the oversized fusions appeared. There
+  // is deliberately no budget on fused instructions: splitting a long
+  // elementwise chain changes FMA contraction across the new kernel boundary
+  // and so changes numerics.
+  if (consumer->opcode() == HloOpcode::kFusion && max_fusion_operands_ > 0 &&
+      OperandCountAfterFusing(consumer, producer) > max_fusion_operands_) {
+    return FusionDecision::Forbid(
+        "Not fusing: fusion would exceed the operand budget "
+        "(xla_cpu_max_fusion_operands).");
+  }
 
   // Fusing too many reductions together can lead to a giant LLVM modules after
   // loop unrolling. We prefer to split such fusions into multiple kernels to
