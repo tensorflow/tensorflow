@@ -61,6 +61,31 @@ func.func @broadcast_batchmatmul(%arg0: tensor<5x30x1024xf32>) -> tensor<5x30x81
   // CHECK: %0 = "tfl.batch_matmul"(%arg0, %cst) <{adj_x = false, adj_y = false}> : (tensor<5x30x1024xf32>, tensor<1024x8192xf32>) -> tensor<5x30x8192xf32>
 }
 
+// A plain dense (non-resource) constant broadcast past the BROADCAST_TO fold
+// limit is not folded, so the broadcast is still dropped into the BMM.
+// CHECK-LABEL: @broadcast_batchmatmul_dense_weight
+func.func @broadcast_batchmatmul_dense_weight(%arg0: tensor<40000x3x2xf32>) -> tensor<40000x3x4xf32> {
+  %cst = arith.constant dense<[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]> : tensor<2x4xf32>
+  %cst_1 = mhlo.constant dense<[40000, 2, 4]> : tensor<3xi32>
+  %0 = "tfl.broadcast_to"(%cst, %cst_1) : (tensor<2x4xf32>, tensor<3xi32>) -> tensor<40000x2x4xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<40000x3x2xf32>, tensor<40000x2x4xf32>) -> tensor<40000x3x4xf32>
+  return %1 : tensor<40000x3x4xf32>
+  // CHECK-NOT: tfl.broadcast_to
+  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %cst) <{adj_x = false, adj_y = false}> : (tensor<40000x3x2xf32>, tensor<2x4xf32>) -> tensor<40000x3x4xf32>
+}
+
+// Same for an elementwise consumer.
+// CHECK-LABEL: @broadcast_add_dense_const
+func.func @broadcast_add_dense_const(%arg0: tensor<65537x4xf32>) -> tensor<65537x4xf32> {
+  %cst = arith.constant dense<[[1.0, 2.0, 3.0, 4.0]]> : tensor<1x4xf32>
+  %cst_1 = mhlo.constant dense<[65537, 4]> : tensor<2xi32>
+  %0 = "tfl.broadcast_to"(%cst, %cst_1) : (tensor<1x4xf32>, tensor<2xi32>) -> tensor<65537x4xf32>
+  %1 = tfl.add(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<65537x4xf32>, tensor<65537x4xf32>) -> tensor<65537x4xf32>
+  return %1 : tensor<65537x4xf32>
+  // CHECK-NOT: tfl.broadcast_to
+  // CHECK: %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<65537x4xf32>, tensor<1x4xf32>) -> tensor<65537x4xf32>
+}
+
 // CHECK-LABEL: FoldFillOpIntoDivOpRHS
 func.func @FoldFillOpIntoDivOpRHS(%arg0: tensor<1x4x1440x1440xf32>, %arg1: tensor<4xi64>) -> tensor<1x4x1440x1440xf32> {
   %cst_2 = arith.constant dense<5.0> : tensor<f32>

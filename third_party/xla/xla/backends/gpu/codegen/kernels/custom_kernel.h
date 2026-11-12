@@ -43,16 +43,6 @@ namespace se = ::stream_executor;  // NOLINT
 // TODO(b/578658607) port to use GpuKernelSpec.
 class CustomKernel {
  public:
-  [[deprecated("Provide GpuKernelSpec")]]
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               size_t shared_memory_bytes);
-
-  [[deprecated("Provide GpuKernelSpec")]]
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
-
   CustomKernel(const GpuKernelSpec& spec, se::KernelLoaderSpec kernel_spec);
 
   absl::string_view name() const;
@@ -84,6 +74,16 @@ class CustomKernel {
           symbol_resolver = std::nullopt);
 
  private:
+  [[deprecated("Provide GpuKernelSpec")]]
+  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               size_t shared_memory_bytes);
+
+  [[deprecated("Provide GpuKernelSpec")]]
+  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
+
   std::string name_;
   se::KernelLoaderSpec kernel_spec_;
   se::BlockDim block_dims_;

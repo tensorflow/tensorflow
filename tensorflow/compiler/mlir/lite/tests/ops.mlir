@@ -185,6 +185,33 @@ func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
   func.return %0 : tensor<? x f32>
 }
 
+// -----
+
+// CHECK-LABEL: testNegCompatibleShapes
+func.func @testNegCompatibleShapes(%arg0: tensor<*xf32>) -> tensor<4xf32> {
+  // CHECK: "tfl.neg"(%arg0) : (tensor<*xf32>) -> tensor<4xf32>
+  %0 = "tfl.neg"(%arg0) : (tensor<*xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// -----
+
+func.func @testNegShapeMismatch(%arg0: tensor<2xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.neg"(%arg0) : (tensor<2xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
+func.func @testNegElementTypeMismatch(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires compatible element types for all operands and results}}
+  %0 = "tfl.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: testRsqrt
 func.func @testRsqrt(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):

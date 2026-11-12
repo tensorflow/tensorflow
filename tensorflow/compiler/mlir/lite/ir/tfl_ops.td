@@ -52,6 +52,19 @@ def TFL_Control: Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
                  BuildableType<"$_builder.getType<ControlType>()">;
 
 //===----------------------------------------------------------------------===//
+// TFLite traits
+//===----------------------------------------------------------------------===//
+
+// Op has the same operand and result types after resolving reference types,
+// allowing compatible shapes (e.g. tensor<*xf32> and tensor<4xf32>). See
+// `mlir::OpTrait::TFL::SameOperandsAndResultTypeResolveRef`.
+def TFL_SameOperandsAndResultTypeResolveRef : TraitList<
+  InferTensorType.traits #
+  [
+    NativeOpTrait<"TFL::SameOperandsAndResultTypeResolveRef">
+  ]>;
+
+//===----------------------------------------------------------------------===//
 // Type that represents N-D blockwise quantized storage. See
 // `BlockwiseQuantType` in tfl_ops.h.
 //===----------------------------------------------------------------------===//
@@ -863,7 +876,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
 
 def TFL_CeilOp: TFL_Op<"ceil", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Ceil operator";
 
   let description = [{
@@ -1054,7 +1067,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
 
 def TFL_CosOp: TFL_Op<"cos", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -1405,7 +1418,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
 def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
-    TF_SameOperandsAndResultTypeResolveRef,
+    TFL_SameOperandsAndResultTypeResolveRef,
     Pure]> {
   let summary = "Local Response Normalization.";
 
@@ -1965,7 +1978,7 @@ def TFL_FillOp: TFL_Op<"fill", [
 
 def TFL_FloorOp: TFL_Op<"floor", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Floor operator";
 
   let description = [{
@@ -2511,7 +2524,7 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 
 def TFL_RoundOp: TFL_Op<"round", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Round operator";
 
   let description = [{
@@ -2766,7 +2779,7 @@ def TFL_MulOp : TFL_Op<"mul", [
 
 def TFL_NegOp: TFL_Op<"neg", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Negation operator";
 
   let description = [{
@@ -3429,7 +3442,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
 
 def TFL_SinOp: TFL_Op<"sin", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -3528,7 +3541,7 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
 
 def TFL_SquareOp: TFL_Op<"square", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    TFL_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square operator";
 
   let description = [{

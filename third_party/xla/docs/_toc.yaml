@@ -105,6 +105,10 @@ toc:
     path: /xla/megascale/debugging_workflow
   - title: Tune Megascale
     path: /xla/megascale/performance_tuning
+  - title: SparseCore Mismatch Detector
+    path: /xla/sparsecore_mismatch_detector
+  - title: "XLA Flags: SparseCore"
+    path: /xla/sparsecore_flags
     # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling

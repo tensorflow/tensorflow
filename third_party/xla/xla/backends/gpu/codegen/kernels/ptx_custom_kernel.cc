@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -28,62 +27,38 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu::kernel {
 namespace se = ::stream_executor;
 
-// Note: Make sure that the kernel_name matches the kernel name in the ptx,
-// otherwise you will get a "CUDA_ERROR_NOT_FOUND: named symbol not found.".
-// E.g. `.visible .entry AddI32(...)` would have a kernel name of "AddI32".
-absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
-                                                absl::string_view ptx,
-                                                int num_args,
-                                                se::BlockDim block_dim,
-                                                se::ThreadDim thread_dim,
-                                                size_t shared_memory_bytes) {
+absl::StatusOr<CustomKernel> GetPtxCustomKernel(const GpuKernelSpec& spec,
+                                                absl::string_view ptx) {
+  int num_args = spec.kernel_arguments().args().size();
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          ptx, kernel_name, /*arity=*/num_args,
+          ptx, std::string{spec.name()}, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
-  return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
-                      thread_dim, shared_memory_bytes);
+  return CustomKernel(spec, std::move(kernel_spec));
 }
 
-absl::StatusOr<CustomKernel> GetPtxCustomKernel(
-    std::string kernel_name, absl::string_view ptx, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    se::ClusterDim cluster_dim, size_t shared_memory_bytes) {
-  se::KernelLoaderSpec kernel_spec =
-      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          ptx, kernel_name, /*arity=*/num_args,
-          se::KernelArgsPackingSpec::Identity(num_args));
-  return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
-                      thread_dim, cluster_dim, shared_memory_bytes);
-}
-
-absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
-    std::string kernel_name, std::string ptx, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes) {
+absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(const GpuKernelSpec& spec,
+                                                     std::string ptx) {
+  int num_args = spec.kernel_arguments().args().size();
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
-          std::move(ptx), kernel_name, /*arity=*/num_args,
+          std::move(ptx), std::string{spec.name()}, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
-  return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
-                      thread_dim, shared_memory_bytes);
+  return CustomKernel(spec, std::move(kernel_spec));
 }
 
 absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
-    std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes) {
+    const GpuKernelSpec& spec, std::vector<uint8_t> cubin) {
+  int num_args = spec.kernel_arguments().args().size();
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
-          std::move(cubin), kernel_name, /*arity=*/num_args,
+          std::move(cubin), std::string{spec.name()}, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
-  return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,
-                      thread_dim, shared_memory_bytes);
+  return CustomKernel(spec, std::move(kernel_spec));
 }
 
 absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(

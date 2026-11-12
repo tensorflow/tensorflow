@@ -20,10 +20,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -173,13 +177,22 @@ class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
     if (!program_proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError("Failed to parse IfrtIrProgramProto");
     }
-    // The MLIR Lexer (used by the text/assembly parser) assumes the input
-    // buffer is null-terminated. To avoid ASan stack-buffer-overflows when
-    // parsing text-based IFRT IR, we copy the serialized data to a
-    // `std::string` to guarantee null-termination before deserialization.
-    std::string flat_str(program_proto.ifrt_program());
+    // `IfrtIRProgram` modules can be large, so we avoid copying them whenever
+    // possible. Copying an `absl::Cord` shares its data, and `Flatten()` copies
+    // the data only if the `absl::Cord` is fragmented.
+    absl::Cord ifrt_program_cord = program_proto.ifrt_program();
+    absl::string_view ifrt_program = ifrt_program_cord.Flatten();
+    // `IfrtIRProgram` is always serialized as MLIR bytecode. Reject
+    // non-bytecode inputs upfront rather than letting `ParseMlirModuleString`
+    // fall back to the MLIR text parser.
+    if (!mlir::isBytecode(llvm::MemoryBufferRef(
+            llvm::StringRef(ifrt_program.data(), ifrt_program.size()),
+            /*Identifier=*/""))) {
+      return absl::InvalidArgumentError(
+          "Failed to parse IFRT IR module string: input is not MLIR bytecode");
+    }
     ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                     support::ParseMlirModuleString(flat_str, *context));
+                     support::ParseMlirModuleString(ifrt_program, *context));
 
     if (!program_proto.ifrt_version().empty()) {
       // Run the pipeline to convert a versioned IFRT IR program artifact to

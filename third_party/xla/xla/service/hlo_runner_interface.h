@@ -293,7 +293,8 @@ class HloRunnerInterface {
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
-  // value.
+  // value. In multi-host execution, entries for replicas not addressable by
+  // this process are default-constructed empty-tuple `Literal()` placeholders.
   // TODO(b/172931928): change to non-virtual function.
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
