@@ -357,6 +357,15 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
   absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
       representatives(/*N=*/computation->instruction_count() + 1,
                       absl::Hash<CseKey>{}, cse_equal);
+  // Removed instructions must not stay in `representatives`, otherwise an
+  // equivalent instruction visited later would be replaced with an instruction
+  // that is no longer part of the computation.
+  const auto erase_representative = [&](HloInstruction* removed) {
+    auto it = representatives.find(CseKey{removed});
+    if (it != representatives.end() && it->hlo == removed) {
+      representatives.erase(it);
+    }
+  };
   for (auto instruction : computation->MakeInstructionPostOrder()) {
     if (should_eliminate_instruction_ != nullptr
             ? !should_eliminate_instruction_(instruction)
@@ -376,7 +385,15 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
       ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(equivalent_instruction));
       ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-          instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
+          instruction,
+          /*cleanup=*/
+          [&](HloInstruction* removed) {
+            // `instruction` itself was not inserted into `representatives`.
+            if (removed != instruction) {
+              erase_representative(removed);
+            }
+          },
+          ignore_control_dependencies_));
       VLOG(4) << "Replaced " << instruction->name() << " with "
               << equivalent_instruction->name();
       changed = true;
@@ -395,6 +412,7 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
         changed = true;
         if (b->IsDead()) {
+          erase_representative(b);
           ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
