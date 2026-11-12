@@ -5538,6 +5538,20 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 255 * 256], dtypes.uint16, dtypes.int16, [0, 255 * 128])
       self._convert([0, 255 * 128], dtypes.int16, dtypes.uint16, [0, 255 * 256])
 
+  def testConvertFloatToInt(self):
+    # Verify float-to-integer scaling maps [0.0, 0.5, 1.0] to
+    # [0, max // 2, max] for 8-bit and 16-bit integer targets.
+    for src_dtype in [dtypes.float16, dtypes.bfloat16, dtypes.float32]:
+      for dst_dtype in [dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16]:
+        for saturate in [False, True]:
+          with self.subTest(src=src_dtype, dst=dst_dtype, saturate=saturate):
+            x = constant_op.constant([0.0, 0.5, 1.0], dtype=src_dtype)
+            y = image_ops.convert_image_dtype(x, dst_dtype, saturate=saturate)
+            self.assertEqual(dst_dtype, y.dtype)
+            self.assertAllEqual(
+                [0, dst_dtype.max // 2, dst_dtype.max], self.evaluate(y)
+            )
+
 
 class TotalVariationTest(test_util.TensorFlowTestCase):
   """Tests the function total_variation() in image_ops.
