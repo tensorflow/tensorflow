@@ -1486,15 +1486,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
           HloInstruction::CreateBitcast(fusion.output->shape(), dot_fusion));
     }
 
-    if (fusion.output->IsRoot()) {
-      fusion.output->parent()->set_root_instruction(replacement);
-      ABSL_RETURN_IF_ERROR(
-          fusion.output->parent()->RemoveInstructionAndUnusedOperands(
-              fusion.output));
-      MarkAsChanged();
-    } else {
-      ABSL_RETURN_IF_ERROR(ReplaceInstruction(fusion.output, replacement));
-    }
+    ABSL_RETURN_IF_ERROR(ReplaceInstruction(fusion.output, replacement));
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
     return absl::OkStatus();
   }
