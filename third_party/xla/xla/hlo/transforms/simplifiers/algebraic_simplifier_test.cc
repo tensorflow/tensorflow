@@ -15344,6 +15344,55 @@ TEST_F(AlgebraicSimplifierTest, TrivialReduce) {
   EXPECT_EQ(0, reduce_count);
 }
 
+// A reshape cannot change the element type, so a mixed precision reduce that
+// keeps the number of elements must not be replaced with a reshape.
+TEST_F(AlgebraicSimplifierTest, TrivialMixedPrecisionReduce) {
+  const std::string hlo_string = R"(
+  HloModule test
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    ENTRY test.1 {
+      input = f16[7,1] parameter(0)
+      init = f16[] constant(0)
+      ROOT out = f32[7] reduce(input, init), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReduce);
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialMixedPrecisionVariadicReduce) {
+  const std::string hlo_string = R"(
+  HloModule test
+    reducer {
+      acc0 = f32[] parameter(0)
+      acc1 = f32[] parameter(1)
+      val0 = f32[] parameter(2)
+      val1 = f32[] parameter(3)
+      add0 = f32[] add(acc0, val0)
+      add1 = f32[] add(acc1, val1)
+      ROOT r = (f32[], f32[]) tuple(add0, add1)
+    }
+    ENTRY test.1 {
+      input0 = f32[7,1] parameter(0)
+      input1 = bf16[7,1] parameter(1)
+      init = f32[] constant(0)
+      ROOT out = (f32[7], f32[7]) reduce(input0, input1, init, init), dimensions={1}, to_apply=reducer
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReduce);
+}
+
 TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastBF16) {
   const std::string hlo_string = R"(
   HloModule test

@@ -79,7 +79,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -184,13 +183,19 @@ std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
 
   // Try to get the alignment from the function signature.
   auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
-  if (!base) return std::nullopt;
+  if (!base) {
+    return std::nullopt;
+  }
   auto func =
       mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
-  if (!func) return std::nullopt;
+  if (!func) {
+    return std::nullopt;
+  }
   auto align_attr =
       func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
-  if (!align_attr) return std::nullopt;
+  if (!align_attr) {
+    return std::nullopt;
+  }
   int64_t base_align =
       mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
   if (base_align <= 0) {
@@ -375,7 +380,9 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto [index, yielded_value] :
          llvm::enumerate(new_terminator.getResults())) {
-      if (inits_to_remove.test(index)) continue;
+      if (inits_to_remove.test(index)) {
+        continue;
+      }
       new_yielded_values.push_back(yielded_value);
     }
     rewriter.replaceOpWithNewOp<scf::YieldOp>(new_terminator,
@@ -447,7 +454,7 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
     num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
-  auto tensor_ptr =
+  Value tensor_ptr =
       UnrealizedConversionCastOp::create(b, ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
@@ -916,8 +923,7 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
       auto unpacked_data =
           mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
       std::vector<char> packed_data(num_elements);
-      absl::Span<char> packed_data_span =
-          absl::MakeSpan(packed_data.data(), packed_data.size());
+      absl::Span<char> packed_data_span = absl::MakeSpan(packed_data);
       PackIntN(4, unpacked_data, packed_data_span);
       value = mlir::DenseElementsAttr::getFromRawBuffer(
           mlir::RankedTensorType::get({num_elements}, llvm_element_type),
@@ -1056,14 +1062,6 @@ struct RemoveUnusedIndexSwitchResults : OpRewritePattern<scf::IndexSwitchOp> {
     return success();
   }
 };
-
-bool IsAtomicIntegral(Type element_type) {
-  if (!element_type.isInteger()) {
-    return false;
-  }
-  unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
-  return element_bitwidth == 32 || element_bitwidth == 64;
-}
 
 Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
                     Value value, Type ty) {
@@ -1613,7 +1611,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           Value not_ok = ml::XOrOp::create(b, ok, low_bit);
           scf::ConditionOp::create(b, not_ok, ValueRange{next});
         },
-        [&](mlir::OpBuilder& b, Location loc, ValueRange values) {
+        [](mlir::OpBuilder& b, Location loc, ValueRange values) {
           scf::YieldOp::create(b, loc, values);
         });
   }

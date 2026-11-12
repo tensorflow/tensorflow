@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -95,12 +94,6 @@ absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
       se::KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
           std::move(cubin), std::string{spec.name()}, /*arity=*/num_args,
           se::KernelArgsPackingSpec::Identity(num_args));
-  if (spec.cluster_dim().has_value()) {
-    return CustomKernel(std::string{spec.name()}, std::move(kernel_spec),
-                        spec.launch_dimensions().block_counts(),
-                        spec.launch_dimensions().thread_counts_per_block(),
-                        *spec.cluster_dim(), spec.shmem_bytes());
-  }
   return CustomKernel(spec, std::move(kernel_spec));
 }
 

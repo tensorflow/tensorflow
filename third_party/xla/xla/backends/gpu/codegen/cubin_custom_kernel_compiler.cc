@@ -45,8 +45,10 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -96,18 +98,20 @@ CubinCustomKernelCompiler::CompileToTargetBinary(
     MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
     const HloModule& hlo_module, int unroll_factor) {
   if (!thread_pool_) {
-    return CompileMlirToCubinImpl(
-        kernel_def.spec(), std::move(kernel_def).TakeSource(),
-        std::move(borrowed_context), hlo_module, unroll_factor);
+    const GpuKernelSpec spec = kernel_def.spec();
+    return CompileMlirToCubinImpl(spec, std::move(kernel_def).TakeSource(),
+                                  std::move(borrowed_context), hlo_module,
+                                  unroll_factor);
   }
   return xla::MakeFutureOn(
       *thread_pool_->AsExecutor(),
       [this, borrowed_context = std::move(borrowed_context),
        kernel_def = std::move(kernel_def), &hlo_module,
        unroll_factor]() mutable {
-        return CompileMlirToCubinImpl(
-            kernel_def.spec(), std::move(kernel_def).TakeSource(),
-            std::move(borrowed_context), hlo_module, unroll_factor);
+        const GpuKernelSpec spec = kernel_def.spec();
+        return CompileMlirToCubinImpl(spec, std::move(kernel_def).TakeSource(),
+                                      std::move(borrowed_context), hlo_module,
+                                      unroll_factor);
       });
 }
 
@@ -135,7 +139,7 @@ CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
   }
 
   ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
-                        compiler_(*llvm_module, device_info_, debug_options_));
+                   compiler_(*llvm_module, device_info_, debug_options_));
   return cubin;
 }
 
@@ -151,11 +155,10 @@ CubinCustomKernelCompiler::CompileMlirToCubinImpl(
       absl::StrCat("CubinCustomKernelCompiler::CompileMlirToCubinImpl for ",
                    hlo_module.name()),
       hlo_module.config().debug_options().xla_enable_scoped_logging_timers());
-  ABSL_ASSIGN_OR_RETURN(
-      LlvmKernelSource llvm_source,
-      gpu::CompileMlirToLlvm(device_info_, hlo_module, std::string(spec.name()),
-                             unroll_factor, *mlir_context,
-                             std::move(mlir_source)));
+  ABSL_ASSIGN_OR_RETURN(LlvmKernelSource llvm_source,
+                   gpu::CompileMlirToLlvm(
+                       device_info_, hlo_module, std::string(spec.name()),
+                       unroll_factor, *mlir_context, std::move(mlir_source)));
   // Return `borrowed_context` to the pool before LLVM/PTX compilation so
   // concurrent emitters can reuse it without allocating fresh contexts.
   borrowed_context.reset();
@@ -170,19 +173,18 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
     int unroll_factor) {
   const GpuKernelSpec& spec = kernel_def.spec();
-  ABSL_ASSIGN_OR_RETURN(
-      std::vector<uint8_t> cubin,
-      CompileMlirToCubinImpl(spec, std::move(kernel_def).TakeSource(),
-                             std::move(borrowed_context), hlo_module,
-                             unroll_factor));
+  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+                   CompileMlirToCubinImpl(
+                       spec, std::move(kernel_def).TakeSource(),
+                       std::move(borrowed_context), hlo_module, unroll_factor));
 
   ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                        kernel::CreateOwnedCubinCustomKernel(
-                            std::string(spec.name()), std::move(cubin),
-                            spec.kernel_arguments().args().size(),
-                            spec.launch_dimensions().block_counts(),
-                            spec.launch_dimensions().thread_counts_per_block(),
-                            spec.scratch_bytes().value_or(0)));
+                   kernel::CreateOwnedCubinCustomKernel(
+                       std::string(spec.name()), std::move(cubin),
+                       spec.kernel_arguments().args().size(),
+                       spec.launch_dimensions().block_counts(),
+                       spec.launch_dimensions().thread_counts_per_block(),
+                       spec.scratch_bytes().value_or(0)));
 
   return std::make_unique<CustomKernelThunk>(
       std::move(thunk_info), std::move(custom_kernel), spec.kernel_arguments(),

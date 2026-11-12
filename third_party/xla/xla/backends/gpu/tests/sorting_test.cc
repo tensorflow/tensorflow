@@ -41,8 +41,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -98,7 +98,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 class SortingTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
-  SortingTest() {}
+  SortingTest() = default;
 };
 
 TEST_F(SortingTest, Regression1) {
@@ -440,10 +440,9 @@ bool CompareAdjacentValues(const Literal& literal, int index, bool ascending) {
   if (primitive_util::IsFloatingPointType(literal.shape().element_type())) {
     return CheckOrder(*literal.GetAsDouble({index - 1}),
                       *literal.GetAsDouble({index}), ascending, index);
-  } else {
-    return CheckOrder(*literal.GetIntegralAsS64({index - 1}),
-                      *literal.GetIntegralAsS64({index}), ascending, index);
   }
+  return CheckOrder(*literal.GetIntegralAsS64({index - 1}),
+                    *literal.GetIntegralAsS64({index}), ascending, index);
 }
 
 std::string GetTypeName(PrimitiveType type) {

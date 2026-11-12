@@ -204,7 +204,6 @@ xla_cc_test(
         ":launch_dimensions",
         ":launch_dimensions_proto_cc",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",

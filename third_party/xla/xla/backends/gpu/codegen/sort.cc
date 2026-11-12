@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1052,7 +1053,7 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
         ir_emitter_context->kernel_compiler()
             ->CompileToTargetBinary(std::move(kernel_def),
                                     std::move(borrowed_context),
-                                    *sort->GetModule())
+                                    *sort->GetModule(), /*unroll_factor=*/0)
             .Map([spec = std::move(spec)](
                      std::vector<uint8_t> cubin) mutable -> CompiledSortKernel {
               return CompiledSortKernel{

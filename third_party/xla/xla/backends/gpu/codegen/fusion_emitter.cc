@@ -16,14 +16,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
@@ -43,20 +40,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/analysis/indexing_map.h"
-#include "xla/runtime/work_dimensions.h"
-#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/xla_data.pb.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 namespace gpu {
