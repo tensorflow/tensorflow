@@ -32,6 +32,11 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.util.tf_export import tf_export
 
 
+# Matches characters that must be replaced when sanitizing feature keys into
+# op names.
+_SANITIZE_KEY_RE = re.compile(r"[^A-Za-z0-9_.\-/]")
+
+
 # TODO(b/122887740) Refactor code:
 #   * Move input verification to feature configuration objects (e.g.,
 #     VarLenFeature should check that dtype is a valid dtype).
@@ -546,7 +551,7 @@ class _ParseOpParams:
         # Reshape to a scalar to ensure user gets an error if they
         # provide a tensor that's not intended to be a padding value
         # (0 or 2+ elements).
-        key_name = "padding_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
+        key_name = "padding_" + _SANITIZE_KEY_RE.sub("_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, [])
@@ -554,7 +559,7 @@ class _ParseOpParams:
       if default_value is None:
         default_value = constant_op.constant([], dtype=dtype)
       elif not isinstance(default_value, tensor.Tensor):
-        key_name = "key_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
+        key_name = "key_" + _SANITIZE_KEY_RE.sub("_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, shape)
