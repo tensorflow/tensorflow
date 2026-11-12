@@ -43,6 +43,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/command_buffer_kernels.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_address.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -68,6 +70,7 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Each;
+using ::testing::NotNull;
 
 static Platform* CudaPlatform() {
   auto name = absl::AsciiStrToUpper(
@@ -617,6 +620,50 @@ TEST_F(CudaCommandBufferTest,
   dealloc_thread.join();
   absl::RemoveLogSink(&sink);
   EXPECT_EQ(sink.capture_errors.load(), 0);
+}
+
+TEST_F(CudaCommandBufferTest, HelperKernelLoaderSpecsAreCubinsInMemory) {
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec case_spec,
+                       GetSetCaseConditionKernelLoaderSpec());
+  EXPECT_TRUE(case_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(case_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(case_spec.has_in_process_symbol());
+  EXPECT_EQ(case_spec.arity(), 13);
+
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec while_spec,
+                       GetSetWhileConditionKernelLoaderSpec());
+  EXPECT_TRUE(while_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(while_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(while_spec.has_in_process_symbol());
+  EXPECT_EQ(while_spec.arity(), 2);
+
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec noop_spec, GetNoOpKernelLoaderSpec());
+  EXPECT_TRUE(noop_spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(noop_spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(noop_spec.has_in_process_symbol());
+  EXPECT_EQ(noop_spec.arity(), 0);
+
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  EXPECT_THAT(executor->LoadKernel(case_spec), IsOkAndHolds(NotNull()));
+  EXPECT_THAT(executor->LoadKernel(while_spec), IsOkAndHolds(NotNull()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> noop_kernel,
+                       executor->LoadKernel(noop_spec));
+  ASSERT_NE(noop_kernel, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  ASSERT_OK(cmd_buffer
+                ->CreateLaunch(ThreadDim(), BlockDim(), std::nullopt,
+                               *noop_kernel,
+                               *stream_executor::PackKernelArgs(0), {})
+                .status());
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 }  // namespace
 }  // namespace stream_executor::cuda

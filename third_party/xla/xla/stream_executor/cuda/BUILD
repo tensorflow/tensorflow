@@ -818,21 +818,23 @@ xla_test(
     ],
 )
 
-cc_library(
+embeddable_cuda_library(
     name = "command_buffer_kernels",
     srcs = [
-        "command_buffer_kernels.cc",
+        "command_buffer_kernels.cu.cc",
     ],
     hdrs = ["command_buffer_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    register_with_cudart = False,
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
+        ":cudart_kernel_registry",
         "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -2275,6 +2277,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":command_buffer_kernels",
         ":cuda_command_buffer",
         ":cuda_compute_capability",
         ":cudnn_plugin",
@@ -2285,6 +2288,7 @@ xla_test(
         "//xla/stream_executor:engine_options",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
