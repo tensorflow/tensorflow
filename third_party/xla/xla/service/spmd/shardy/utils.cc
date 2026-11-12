@@ -406,6 +406,37 @@ bool hasFrontendMeshes(mlir::ModuleOp module) {
       .has_value();
 }
 
+bool hasFrontendSdyAttrs(mlir::ModuleOp module) {
+  if (hasFrontendMeshes(module) || hasFrontendMhloShardings(module)) {
+    return true;
+  }
+  mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(module);
+  if (hasKey(moduleFrontendAttrs, kInTupleShardings) ||
+      hasKey(moduleFrontendAttrs, kOutTupleShardings)) {
+    return true;
+  }
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    mlir::DictionaryAttr funcFrontendAttrs = getFrontendAttrs(func);
+    if (hasKey(funcFrontendAttrs, kInShardings) ||
+        hasKey(funcFrontendAttrs, kOutShardings)) {
+      return true;
+    }
+    bool foundOpSdyAttr = false;
+    func->walk([&foundOpSdyAttr](mlir::Operation* op) {
+      mlir::DictionaryAttr dictAttr = getFrontendAttrs(op);
+      if (hasKey(dictAttr, kInShardings) || hasKey(dictAttr, kOutShardings)) {
+        foundOpSdyAttr = true;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (foundOpSdyAttr) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }

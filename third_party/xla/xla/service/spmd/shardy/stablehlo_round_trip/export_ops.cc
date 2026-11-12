@@ -151,6 +151,7 @@ void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
                          TensorShardingAttr sharding,
                          ConversionPatternRewriter& rewriter,
                          bool keepHloShardingConstraints) {
+  mlir::Attribute manualAxes = op->getAttr(kManualAxes);
   mlir::Operation* newOp;
   if (keepHloShardingConstraints) {
     auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
@@ -161,6 +162,9 @@ void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
     newOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
   }
   mlir::sdy::setShardings(newOp, sharding);
+  if (manualAxes) {
+    newOp->setAttr(kManualAxes, manualAxes);
+  }
 }
 
 bool isReplicatedSharding(TensorShardingAttr sharding,
@@ -210,6 +214,46 @@ class ShardingPattern : public OpConversionPattern<OpTy> {
   const SymbolTable& symbolTable;
 };
 
+bool isTensorShardingCustomCall(stablehlo::CustomCallOp op) {
+  return op.getCallTargetName() == kShardingCustomCallTargetName &&
+         op.getNumOperands() == 1 && op.getNumResults() == 1 &&
+         mlir::isa<mlir::RankedTensorType>(op.getResult(0).getType());
+}
+
+// Converts remaining tensor `@Sharding` custom calls (such as manual
+// `@Sharding` annotations skipped by `ImportSdyCustomCallsPass`) into
+// `mhlo::CopyOp` when `keepHloShardingConstraints` is false.
+class ShardingCustomCallPattern
+    : public OpConversionPattern<stablehlo::CustomCallOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      stablehlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    if (!isTensorShardingCustomCall(op)) {
+      return rewriter.notifyMatchFailure(op, "not a tensor @Sharding op");
+    }
+    auto copyOp =
+        rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, adaptor.getInputs()[0]);
+    if (mlir::ArrayRef<TensorShardingAttr> shardings =
+            mlir::sdy::getShardings(op);
+        !shardings.empty()) {
+      mlir::sdy::setShardings(copyOp, shardings);
+    }
+    if (auto manualAxes =
+            op->getAttrOfType<mlir::sdy::ManualAxesAttr>(kManualAxes)) {
+      copyOp->setAttr(kManualAxes, manualAxes);
+    }
+    if (auto xlaSharding =
+            op->getAttrOfType<mlir::StringAttr>(kXlaShardingAttr)) {
+      copyOp->setAttr(kXlaShardingAttr, xlaSharding);
+    }
+    return success();
+  }
+};
+
 template <class OpTy>
 class CollectivePattern : public OpConversionPattern<OpTy> {
  public:
@@ -257,16 +301,20 @@ class ExportOpsPass
                         PropagationBarrierOp>();
     target.addDynamicallyLegalOp<CallOp>(
         [](CallOp op) { return !hasFrontendAttr(op, kIsComputeOnStartAttr); });
-    target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp,
-                      stablehlo::CustomCallOp>();
+    target.addDynamicallyLegalOp<stablehlo::CustomCallOp>(
+        [&](stablehlo::CustomCallOp op) {
+          return keepHloShardingConstraints || !isTensorShardingCustomCall(op);
+        });
+    target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
     patterns.add<ComputeOnStartCallPattern, ConstantPattern, AllReducePattern,
-                 PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
-                 CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
+                 PropagationBarrierPattern, ShardingCustomCallPattern,
+                 CollectivePattern<AllGatherOp>, CollectivePattern<AllSliceOp>,
+                 CollectivePattern<AllToAllOp>,
                  CollectivePattern<CollectivePermuteOp>,
                  CollectivePattern<ReduceScatterOp>>(&context);
     patterns

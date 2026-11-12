@@ -55,9 +55,11 @@ cc_library(
     hdrs = ["custom_call_extensions.h"],
     deps = [
         ":partial_reduce_custom_call",
+        "//xla:sharding_op_util",
         "//xla/hlo/ir:hlo_sharding",
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:custom_call_sharding_helper",
+        "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",

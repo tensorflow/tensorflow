@@ -2651,6 +2651,13 @@ absl::Status DistributedTPURewritePass::BuildCompileNode(
   const bool use_spmd =
       UseSpmdForXlaPartitioning(replicate_node) && allow_xla_spmd_partition_;
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
+  bool use_shardy = false;
+  if (replicate_node != nullptr &&
+      GetNodeAttr(replicate_node->attrs(), "use_shardy_partitioner",
+                  &use_shardy)
+          .ok()) {
+    proto.set_use_shardy_partitioner(use_shardy);
+  }
   const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   // Get and fill padding map.

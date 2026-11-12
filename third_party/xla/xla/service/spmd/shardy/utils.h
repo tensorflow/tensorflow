@@ -162,6 +162,9 @@ bool hasFrontendMhloShardings(mlir::ModuleOp module);
 // Returns true if the module has frontend_attributes containing xla.sdy.meshes.
 bool hasFrontendMeshes(mlir::ModuleOp module);
 
+// Returns true if the module has any xla.sdy.* round-trip frontend attributes.
+bool hasFrontendSdyAttrs(mlir::ModuleOp module);
+
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
 // - `single_device_{X}`

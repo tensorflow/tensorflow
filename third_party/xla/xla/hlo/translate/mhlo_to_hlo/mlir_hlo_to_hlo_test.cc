@@ -351,6 +351,54 @@ TEST(ConvertMlirHloToHloModuleTest, MemoizesRepeatedNamedShardings) {
             kShardingB);
 }
 
+TEST(ConvertMlirHloToHloModuleTest, ExportsBoundedDynamicInfeed) {
+  const std::string kMlirSource = R"mlir(
+module @bounded_dynamic_infeed {
+  func.func @main(%arg0: !stablehlo.token) -> (tensor<?xi32, #stablehlo.bounds<4096>> {mhlo.sharding = "{manual}"}) {
+    %0:2 = "stablehlo.infeed"(%arg0) <{infeed_config = "sc_cfg", layout = [[0]]}> {mhlo.sharding = "{{manual}, {maximal device=0}}", xla_shape = "(s32[<=4096]{0}, token[])"} : (!stablehlo.token) -> (tensor<4096xi32>, !stablehlo.token)
+    %1 = stablehlo.custom_call @mhlo.bounded_dynamic_cast(%0#0) {mhlo.sharding = "{manual}"} : (tensor<4096xi32>) -> tensor<?xi32, #stablehlo.bounds<4096>>
+    return %1 : tensor<?xi32, #stablehlo.bounds<4096>>
+  }
+}
+)mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::BaseScopedDiagnosticHandler handler(&context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirSource, &context);
+  ASSERT_THAT(handler.ConsumeStatus(), absl_testing::IsOk());
+  ASSERT_TRUE(module);
+
+  MlirToHloConversionOptions options;
+  options.return_tuple = false;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> hlo_module,
+                       ConvertMlirHloToHloModule(*module, options));
+  const xla::HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->shape().is_dynamic_dimension(0));
+  EXPECT_EQ(root->shape().dimensions(0), 4096);
+  ASSERT_TRUE(root->has_sharding());
+  EXPECT_TRUE(root->sharding().IsManual());
+
+  const xla::HloInstruction* infeed = nullptr;
+  for (const xla::HloInstruction* inst :
+       hlo_module->entry_computation()->instructions()) {
+    if (inst->opcode() == xla::HloOpcode::kInfeed) {
+      infeed = inst;
+      break;
+    }
+  }
+  ASSERT_NE(infeed, nullptr);
+  EXPECT_EQ(infeed->infeed_config(), "sc_cfg");
+  const xla::Shape& data_elem = infeed->shape().tuple_shapes(0).tuple_shapes(0);
+  EXPECT_TRUE(data_elem.is_dynamic_dimension(0));
+  EXPECT_EQ(data_elem.dimensions(0), 4096);
+  ASSERT_TRUE(infeed->has_sharding());
+  EXPECT_EQ(infeed->sharding().ToString(), "{{manual}, {maximal device=0}}");
+}
+
 std::string MakeModuleSourceWithSharedNamedShardings(int num_ops) {
   static constexpr std::array<absl::string_view, 16> kShardings = {
       "{mesh['data'=64,'fsdp'=16,'tensor'=8,'context'=2], "

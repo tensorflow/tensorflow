@@ -1307,6 +1307,23 @@ ENTRY %main.4 (Arg_0.1: token[]) -> token[] {
 
 // -----
 
+// CHECK-LABEL: module @bounded_dynamic_infeed
+// CHECK:         func.func @main(%[[TOK:.*]]: !stablehlo.token) -> (tensor<?xi32, #stablehlo.bounds<4096>> {mhlo.sharding = "{manual}"}) {
+// CHECK:           %[[INFEED:.*]]:2 = "stablehlo.infeed"(%[[TOK]]) <{infeed_config = "", layout = {{\[\[}}0]]}> {mhlo.sharding = "{{[{][{]}}manual}, {maximal device=0}}", xla_shape = "(s32[<=4096]{0}, token[])"} : (!stablehlo.token) -> (tensor<4096xi32>, !stablehlo.token)
+// CHECK:           %[[CAST:.*]] = stablehlo.custom_call @mhlo.bounded_dynamic_cast(%[[INFEED]]#0) {mhlo.sharding = "{manual}"} : (tensor<4096xi32>) -> tensor<?xi32, #stablehlo.bounds<4096>>
+// CHECK:           return %[[CAST]] : tensor<?xi32, #stablehlo.bounds<4096>>
+// CHECK:         }
+HloModule bounded_dynamic_infeed, entry_computation_layout={(token[])->s32[<=4096]{0}}
+
+ENTRY %main (tok: token[]) -> s32[<=4096] {
+  %tok = token[] parameter(0)
+  %infeed = (s32[<=4096]{0}, token[]) infeed(%tok), sharding={{manual}, {maximal device=0}}
+  %tok_out = token[] get-tuple-element(%infeed), index=1, sharding={maximal device=0}
+  ROOT %data = s32[<=4096]{0} get-tuple-element(%infeed), index=0, sharding={manual}
+}
+
+// -----
+
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main() -> tensor<1x10xf32> {
 // CHECK:           %[[VAL_0:.*]] = stablehlo.iota dim = 0 : tensor<10xf32>

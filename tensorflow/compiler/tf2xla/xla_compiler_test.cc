@@ -2206,16 +2206,16 @@ TEST_F(XlaCompilerTest, SetShardingForParametersAndReturnValues) {
   ret_node->AddAttr("_XlaSharding", sharding.SerializeAsString());
   ret_node->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
 
-  // Expected HLO module with Shardy attributes
+  // Expected HLO module with HloShardings and no split-brain SDY frontend attrs
   const char* const expected = R"(
-    // CHECK:                HloModule test.1, entry_computation_layout={{.*}}, frontend_attributes=
-    // CHECK-SAME:             {xla.sdy.tuple_results_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    // CHECK:                HloModule test.1, entry_computation_layout={{.*}}
+    // CHECK-NOT:            xla.sdy.
     //
     // CHECK:                ENTRY %test.1 (arg0.1: s32[2,2]) -> (s32[2,2]) {
-    // CHECK-NEXT:             %arg0.1 = s32[2,2]{1,0} parameter(0), parameter_replication={false}, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>"}, metadata={op_name="XLA_Args"}
+    // CHECK-NEXT:             %arg0.1 = s32[2,2]{1,0} parameter(0), parameter_replication={false}, sharding={devices=[1,2]<=[2]}, metadata={op_name="XLA_Args"}
     // CHECK-NEXT:             %reshape.1 = s32[2,2]{1,0} reshape(%arg0.1)
     // CHECK-NEXT:             %XLA_Retvals.3 = s32[2,2]{1,0} reshape(%reshape.1), metadata={op_name="XLA_Retvals"}
-    // CHECK-NEXT:             %XLA_Retvals.4 = s32[2,2]{1,0} copy(%XLA_Retvals.3), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %XLA_Retvals.4 = s32[2,2]{1,0} copy(%XLA_Retvals.3), sharding={devices=[1,2]<=[2]}, metadata={op_name="XLA_Retvals"}
     // CHECK-NEXT{LITERAL}:    ROOT %XLA_Retvals.5 = (s32[2,2]{1,0}) tuple(%XLA_Retvals.4), sharding={{devices=[1,2]<=[2]}}, metadata={op_name="XLA_Retvals"}
   })";
   XlaCompiler::Options compiler_options = DefaultOptions();
@@ -2283,23 +2283,20 @@ TEST_F(XlaCompilerTest, SetShardingForTupleArguments) {
   ret_node_d->AddAttr("_XlaSharding", sharding.SerializeAsString());
   ret_node_d->AddAttr("_XlaShardingV2", sharding_v2.SerializeAsString());
 
-  // Expected HLO module with Shardy attributes
+  // Expected HLO module with HloShardings and xla.sdy.use_tuple_args="True"
   const char* const expected = R"(
-    // CHECK:                HloModule test.1, entry_computation_layout={{.*}}, frontend_attributes={
-    // CHECK-SAME:             xla.sdy.tuple_args_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>, <mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>",
-    // CHECK-SAME:             xla.sdy.tuple_results_shardings="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>, <mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>",
-    // CHECK-SAME:             xla.sdy.use_tuple_args="True"}
+    // CHECK:                HloModule test.1, entry_computation_layout={{.*}}, frontend_attributes={xla.sdy.use_tuple_args="True"}
     //
     // CHECK:                ENTRY %test.1 (arg_tuple.1: (s32[2,2], s32[2,2])) -> (s32[2,2], s32[2,2]) {
     // CHECK-NEXT{LITERAL}:    %arg_tuple.1 = (s32[2,2]{1,0}, s32[2,2]{1,0}) parameter(0), parameter_replication={false,false}, sharding={{devices=[1,2]<=[2]}, {devices=[1,2]<=[2]}}, metadata={op_name="XLA_Args"}
-    // CHECK-NEXT:             %get-tuple-element.2 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=0, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    // CHECK-NEXT:             %get-tuple-element.2 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=0, sharding={devices=[1,2]<=[2]}
     // CHECK-NEXT:             %reshape.2 = s32[2,2]{1,0} reshape(%get-tuple-element.2)
     // CHECK-NEXT:             %XLA_Retvals.5 = s32[2,2]{1,0} reshape(%reshape.2), metadata={op_name="XLA_Retvals"}
-    // CHECK-NEXT:             %XLA_Retvals.6 = s32[2,2]{1,0} copy(%XLA_Retvals.5), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
-    // CHECK-NEXT:             %get-tuple-element.3 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=1, sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}
+    // CHECK-NEXT:             %XLA_Retvals.6 = s32[2,2]{1,0} copy(%XLA_Retvals.5), sharding={devices=[1,2]<=[2]}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %get-tuple-element.3 = s32[2,2]{1,0} get-tuple-element(%arg_tuple.1), index=1, sharding={devices=[1,2]<=[2]}
     // CHECK-NEXT:             %reshape.3 = s32[2,2]{1,0} reshape(%get-tuple-element.3)
     // CHECK-NEXT:             %XLA_Retvals.7 = s32[2,2]{1,0} reshape(%reshape.3), metadata={op_name="XLA_Retvals"}
-    // CHECK-NEXT:             %XLA_Retvals.8 = s32[2,2]{1,0} copy(%XLA_Retvals.7), sharding={devices=[1,2]<=[2]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {\"_axis_0\"}]>]>"}, metadata={op_name="XLA_Retvals"}
+    // CHECK-NEXT:             %XLA_Retvals.8 = s32[2,2]{1,0} copy(%XLA_Retvals.7), sharding={devices=[1,2]<=[2]}, metadata={op_name="XLA_Retvals"}
     // CHECK-NEXT{LITERAL}:    ROOT %XLA_Retvals.9 = (s32[2,2]{1,0}, s32[2,2]{1,0}) tuple(%XLA_Retvals.6, %XLA_Retvals.8), sharding={{devices=[1,2]<=[2]}, {devices=[1,2]<=[2]}}, metadata={op_name="XLA_Retvals"}
   })";
 

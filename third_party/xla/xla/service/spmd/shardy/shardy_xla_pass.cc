@@ -36,10 +36,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
@@ -48,6 +51,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "re2/re2.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -65,6 +69,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -371,6 +376,490 @@ std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
   return shardyDir;
 }
 
+std::optional<mlir::RankedTensorType> toBoundedStaticType(mlir::Type type) {
+  auto rankedTy = mlir::dyn_cast<mlir::RankedTensorType>(type);
+  if (!rankedTy || rankedTy.hasStaticShape()) {
+    return std::nullopt;
+  }
+  std::optional<mlir::ArrayRef<int64_t>> bounds;
+  if (auto ext = mlir::dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>(
+          rankedTy.getEncoding())) {
+    bounds = ext.getBounds();
+  } else if (auto ext = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+                 rankedTy.getEncoding())) {
+    bounds = ext.getBounds();
+  }
+  if (!bounds.has_value() ||
+      bounds->size() != static_cast<size_t>(rankedTy.getRank())) {
+    return std::nullopt;
+  }
+  mlir::SmallVector<int64_t> staticShape(rankedTy.getRank());
+  for (int64_t d = 0; d < rankedTy.getRank(); ++d) {
+    staticShape[d] =
+        rankedTy.isDynamicDim(d) ? (*bounds)[d] : rankedTy.getDimSize(d);
+    if (staticShape[d] == mlir::ShapedType::kDynamic || staticShape[d] < 0) {
+      return std::nullopt;
+    }
+  }
+  return mlir::RankedTensorType::get(staticShape, rankedTy.getElementType());
+}
+
+HloSharding getValueLeafHloSharding(mlir::Value val) {
+  if (mlir::Operation* defOp = val.getDefiningOp()) {
+    if (auto shardingAttr =
+            defOp->getAttrOfType<mlir::StringAttr>(kXlaShardingAttr)) {
+      HloSharding sharding = xla::sdy::parseShardingFromString(shardingAttr);
+      if (sharding.IsTuple()) {
+        uint64_t idx = mlir::cast<mlir::OpResult>(val).getResultNumber();
+        if (idx < sharding.tuple_elements().size()) {
+          return sharding.tuple_elements()[idx];
+        }
+      } else {
+        return sharding;
+      }
+    }
+  } else if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
+    mlir::Operation* parentOp = blockArg.getOwner()->getParentOp();
+    if (auto funcOp = mlir::dyn_cast<mlir::func::FuncOp>(parentOp)) {
+      if (auto shardingAttr = funcOp.getArgAttrOfType<mlir::StringAttr>(
+              blockArg.getArgNumber(), kXlaShardingAttr)) {
+        return xla::sdy::parseShardingFromString(shardingAttr);
+      }
+    } else if (parentOp) {
+      if (auto shardingAttr =
+              parentOp->getAttrOfType<mlir::StringAttr>(kXlaShardingAttr)) {
+        HloSharding sharding = xla::sdy::parseShardingFromString(shardingAttr);
+        if (sharding.IsTuple() &&
+            blockArg.getArgNumber() < sharding.tuple_elements().size()) {
+          return sharding.tuple_elements()[blockArg.getArgNumber()];
+        }
+      }
+    }
+  }
+  return HloSharding::Replicate();
+}
+
+mlir::Value repackTupleValue(mlir::OpBuilder& builder, mlir::Location loc,
+                             mlir::ValueRange& flatValues, mlir::Type type,
+                             std::vector<HloSharding>& leafShardings) {
+  auto tupleType = mlir::dyn_cast<mlir::TupleType>(type);
+  if (!tupleType) {
+    CHECK(!flatValues.empty());
+    mlir::Value val = flatValues.front();
+    flatValues = flatValues.drop_front();
+    leafShardings.push_back(getValueLeafHloSharding(val));
+    return val;
+  }
+  mlir::SmallVector<mlir::Value> subValues;
+  subValues.reserve(tupleType.size());
+  size_t startLeafIdx = leafShardings.size();
+  for (mlir::Type childType : tupleType.getTypes()) {
+    subValues.push_back(
+        repackTupleValue(builder, loc, flatValues, childType, leafShardings));
+  }
+  auto tupleOp = mlir::stablehlo::TupleOp::create(builder, loc, subValues);
+  std::vector<HloSharding> tupleLeafShardings(
+      leafShardings.begin() + startLeafIdx, leafShardings.end());
+  if (!tupleLeafShardings.empty()) {
+    tupleOp->setAttr(
+        kXlaShardingAttr,
+        builder.getStringAttr(
+            HloSharding::FlatTuple(std::move(tupleLeafShardings)).ToString()));
+  }
+  return tupleOp.getResult();
+}
+
+void prepareBoundedDynamicTypesAndTupleCustomCalls(
+    mlir::ModuleOp mlirModule, bool& hasBoundedDynamicTypes,
+    bool& hasTupleCustomCallOperands) {
+  mlir::MLIRContext* ctx = mlirModule->getContext();
+  for (auto funcOp : mlirModule.getOps<mlir::func::FuncOp>()) {
+    bool sigChanged = false;
+    mlir::SmallVector<mlir::Type> newInTypes(funcOp.getArgumentTypes().begin(),
+                                             funcOp.getArgumentTypes().end());
+    mlir::SmallVector<mlir::Type> newOutTypes(funcOp.getResultTypes().begin(),
+                                              funcOp.getResultTypes().end());
+    for (auto [i, argTy] : llvm::enumerate(newInTypes)) {
+      if (auto staticTy = toBoundedStaticType(argTy)) {
+        funcOp.setArgAttr(i, kOrigTypeAttr, mlir::TypeAttr::get(argTy));
+        newInTypes[i] = *staticTy;
+        if (!funcOp.isExternal()) {
+          funcOp.getArgument(i).setType(*staticTy);
+        }
+        sigChanged = true;
+        hasBoundedDynamicTypes = true;
+      }
+    }
+    for (auto [i, resTy] : llvm::enumerate(newOutTypes)) {
+      if (auto staticTy = toBoundedStaticType(resTy)) {
+        funcOp.setResultAttr(i, kOrigTypeAttr, mlir::TypeAttr::get(resTy));
+        newOutTypes[i] = *staticTy;
+        sigChanged = true;
+        hasBoundedDynamicTypes = true;
+      }
+    }
+    if (sigChanged) {
+      funcOp.setFunctionType(
+          mlir::FunctionType::get(ctx, newInTypes, newOutTypes));
+    }
+    if (!funcOp.isExternal()) {
+      funcOp.front().walk([&](mlir::Operation* op) {
+        bool opResChanged = false;
+        mlir::SmallVector<mlir::Attribute> origResAttrs;
+        for (auto [resIdx, res] : llvm::enumerate(op->getResults())) {
+          if (auto staticTy = toBoundedStaticType(res.getType())) {
+            if (!opResChanged) {
+              origResAttrs.assign(op->getNumResults(),
+                                  mlir::UnitAttr::get(ctx));
+            }
+            origResAttrs[resIdx] = mlir::TypeAttr::get(res.getType());
+            res.setType(*staticTy);
+            opResChanged = true;
+            hasBoundedDynamicTypes = true;
+          }
+        }
+        if (opResChanged) {
+          op->setAttr(kOrigResultTypesAttr,
+                      mlir::ArrayAttr::get(ctx, origResAttrs));
+        }
+
+        if (auto customCall =
+                mlir::dyn_cast<mlir::stablehlo::CustomCallOp>(op)) {
+          if (llvm::any_of(customCall.getInputs(), [](mlir::Value opnd) {
+                return mlir::isa<mlir::TupleType>(opnd.getType());
+              })) {
+            mlir::SmallVector<mlir::Attribute> origOpndTypes;
+            origOpndTypes.reserve(customCall.getNumOperands());
+            for (mlir::Type ty : customCall.getOperandTypes()) {
+              origOpndTypes.push_back(mlir::TypeAttr::get(ty));
+            }
+            customCall->setAttr(kOrigOperandTypesAttr,
+                                mlir::ArrayAttr::get(ctx, origOpndTypes));
+            hasTupleCustomCallOperands = true;
+          }
+        }
+
+        if (op->getNumRegions() > 0) {
+          bool regArgsChanged = false;
+          mlir::SmallVector<mlir::Attribute> perRegionAttrs;
+          perRegionAttrs.reserve(op->getNumRegions());
+          for (mlir::Region& region : op->getRegions()) {
+            mlir::SmallVector<mlir::Attribute> regionArgAttrs;
+            bool thisRegionChanged = false;
+            size_t flatIdx = 0;
+            for (mlir::Block& block : region) {
+              for (mlir::BlockArgument blockArg : block.getArguments()) {
+                if (auto staticTy = toBoundedStaticType(blockArg.getType())) {
+                  if (!thisRegionChanged) {
+                    regionArgAttrs.assign(flatIdx, mlir::UnitAttr::get(ctx));
+                    thisRegionChanged = true;
+                  }
+                  regionArgAttrs.push_back(
+                      mlir::TypeAttr::get(blockArg.getType()));
+                  blockArg.setType(*staticTy);
+                  regArgsChanged = true;
+                  hasBoundedDynamicTypes = true;
+                } else if (thisRegionChanged) {
+                  regionArgAttrs.push_back(mlir::UnitAttr::get(ctx));
+                }
+                ++flatIdx;
+              }
+            }
+            perRegionAttrs.push_back(mlir::ArrayAttr::get(ctx, regionArgAttrs));
+          }
+          if (regArgsChanged) {
+            op->setAttr(kOrigRegionArgTypesAttr,
+                        mlir::ArrayAttr::get(ctx, perRegionAttrs));
+          }
+        }
+      });
+    }
+  }
+}
+
+void restoreBoundedDynamicTypesAndTupleCustomCalls(
+    mlir::ModuleOp mlirModule, bool hasBoundedDynamicTypes,
+    bool hasTupleCustomCallOperands) {
+  mlir::MLIRContext* ctx = mlirModule->getContext();
+  if (hasBoundedDynamicTypes) {
+    for (auto funcOp : mlirModule.getOps<mlir::func::FuncOp>()) {
+      mlir::SmallVector<mlir::Type> newInTypes(
+          funcOp.getArgumentTypes().begin(), funcOp.getArgumentTypes().end());
+      mlir::SmallVector<mlir::Type> newOutTypes(funcOp.getResultTypes().begin(),
+                                                funcOp.getResultTypes().end());
+      bool sigChanged = false;
+      for (unsigned i = 0; i < funcOp.getNumArguments(); ++i) {
+        if (auto origTy =
+                funcOp.getArgAttrOfType<mlir::TypeAttr>(i, kOrigTypeAttr)) {
+          newInTypes[i] = origTy.getValue();
+          if (!funcOp.isExternal()) {
+            funcOp.getArgument(i).setType(origTy.getValue());
+          }
+          funcOp.removeArgAttr(i, kOrigTypeAttr);
+          sigChanged = true;
+        }
+      }
+      if (!funcOp.isExternal()) {
+        funcOp.front().walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation*
+                                                               op) {
+          if (auto origRes =
+                  op->getAttrOfType<mlir::ArrayAttr>(kOrigResultTypesAttr)) {
+            for (auto [i, attr] : llvm::enumerate(origRes)) {
+              if (i < op->getNumResults()) {
+                if (auto typeAttr = mlir::dyn_cast<mlir::TypeAttr>(attr)) {
+                  mlir::Type origTy = typeAttr.getValue();
+                  if (toBoundedStaticType(origTy) ==
+                      op->getResult(i).getType()) {
+                    op->getResult(i).setType(origTy);
+                  }
+                }
+              }
+            }
+            op->removeAttr(kOrigResultTypesAttr);
+          } else if (op->getNumOperands() == 1 && op->getNumResults() == 1) {
+            bool isBoundaryShapeOp = false;
+            if (auto customCall =
+                    mlir::dyn_cast<mlir::stablehlo::CustomCallOp>(op)) {
+              mlir::StringRef target = customCall.getCallTargetName();
+              isBoundaryShapeOp =
+                  target == kSPMDFullToShardShapeCallTargetName ||
+                  target == kSPMDShardToFullShapeCallTargetName ||
+                  target == kGlobalToLocalShapeCallTargetName ||
+                  target == kLocalToGlobalShapeCallTargetName;
+            }
+            if (!isBoundaryShapeOp) {
+              if (auto opndTy = mlir::dyn_cast<mlir::RankedTensorType>(
+                      op->getOperand(0).getType());
+                  opndTy && !opndTy.hasStaticShape() &&
+                  toBoundedStaticType(opndTy) == op->getResult(0).getType()) {
+                op->getResult(0).setType(opndTy);
+              }
+            }
+          }
+
+          if (auto origRegArgs =
+                  op->getAttrOfType<mlir::ArrayAttr>(kOrigRegionArgTypesAttr)) {
+            for (auto [regIdx, regAttr] : llvm::enumerate(op->getRegions())) {
+              if (regIdx >= origRegArgs.size()) {
+                break;
+              }
+              auto perBlockArgs =
+                  mlir::dyn_cast<mlir::ArrayAttr>(origRegArgs[regIdx]);
+              if (!perBlockArgs) {
+                continue;
+              }
+              size_t argIdx = 0;
+              for (mlir::Block& block : regAttr) {
+                for (mlir::BlockArgument blockArg : block.getArguments()) {
+                  if (argIdx < perBlockArgs.size()) {
+                    if (auto typeAttr = mlir::dyn_cast<mlir::TypeAttr>(
+                            perBlockArgs[argIdx])) {
+                      mlir::Type origTy = typeAttr.getValue();
+                      if (toBoundedStaticType(origTy) == blockArg.getType()) {
+                        blockArg.setType(origTy);
+                      }
+                    }
+                  }
+                  ++argIdx;
+                }
+              }
+            }
+            op->removeAttr(kOrigRegionArgTypesAttr);
+          }
+
+          if (auto whileOp = mlir::dyn_cast<mlir::stablehlo::WhileOp>(op)) {
+            for (auto [i, opnd] : llvm::enumerate(whileOp->getOperands())) {
+              auto opndTy =
+                  mlir::dyn_cast<mlir::RankedTensorType>(opnd.getType());
+              if (!opndTy || opndTy.hasStaticShape()) {
+                continue;
+              }
+              if (i < whileOp.getCond().getNumArguments() &&
+                  toBoundedStaticType(opndTy) ==
+                      whileOp.getCond().getArgument(i).getType()) {
+                whileOp.getCond().getArgument(i).setType(opndTy);
+              }
+              if (i < whileOp.getBody().getNumArguments() &&
+                  toBoundedStaticType(opndTy) ==
+                      whileOp.getBody().getArgument(i).getType()) {
+                whileOp.getBody().getArgument(i).setType(opndTy);
+              }
+              if (i < whileOp->getNumResults() &&
+                  toBoundedStaticType(opndTy) ==
+                      whileOp->getResult(i).getType()) {
+                whileOp->getResult(i).setType(opndTy);
+              }
+            }
+          }
+        });
+      }
+      for (unsigned i = 0; i < funcOp.getNumResults(); ++i) {
+        if (auto origTy =
+                funcOp.getResultAttrOfType<mlir::TypeAttr>(i, kOrigTypeAttr)) {
+          newOutTypes[i] = origTy.getValue();
+          funcOp.removeResultAttr(i, mlir::StringAttr::get(ctx, kOrigTypeAttr));
+          sigChanged = true;
+        }
+      }
+      if (!funcOp.isExternal()) {
+        if (auto retOp = mlir::dyn_cast<mlir::func::ReturnOp>(
+                funcOp.front().getTerminator())) {
+          for (auto [i, opndTy] : llvm::enumerate(retOp.getOperandTypes())) {
+            if (i < newOutTypes.size() && newOutTypes[i] != opndTy) {
+              newOutTypes[i] = opndTy;
+              sigChanged = true;
+            }
+          }
+        }
+      }
+      if (sigChanged) {
+        funcOp.setFunctionType(
+            mlir::FunctionType::get(ctx, newInTypes, newOutTypes));
+      }
+    }
+  }
+  if (hasTupleCustomCallOperands) {
+    for (auto funcOp : mlirModule.getOps<mlir::func::FuncOp>()) {
+      if (funcOp.isExternal()) {
+        continue;
+      }
+      funcOp.front().walk([&](mlir::stablehlo::CustomCallOp customCall) {
+        auto origOpndAttrs =
+            customCall->getAttrOfType<mlir::ArrayAttr>(kOrigOperandTypesAttr);
+        if (!origOpndAttrs) {
+          return;
+        }
+        mlir::OpBuilder builder(customCall);
+        mlir::ValueRange flatOperands(customCall.getInputs());
+        mlir::SmallVector<mlir::Value> repackedOperands;
+        repackedOperands.reserve(origOpndAttrs.size());
+        for (mlir::Attribute attr : origOpndAttrs) {
+          auto typeAttr = mlir::dyn_cast<mlir::TypeAttr>(attr);
+          if (!typeAttr || flatOperands.empty()) {
+            break;
+          }
+          std::vector<HloSharding> leafShardings;
+          repackedOperands.push_back(
+              repackTupleValue(builder, customCall.getLoc(), flatOperands,
+                               typeAttr.getValue(), leafShardings));
+        }
+        if (flatOperands.empty() &&
+            repackedOperands.size() == origOpndAttrs.size()) {
+          customCall->setOperands(repackedOperands);
+        }
+        customCall->removeAttr(kOrigOperandTypesAttr);
+      });
+    }
+  }
+}
+
+bool hasNonV3MhloShardings(mlir::ModuleOp module, bool enableHloShardingV3) {
+  mlir::DictionaryAttr moduleDict = xla::sdy::getFrontendAttrs(module);
+  const bool hasInTupleSdy = xla::sdy::hasKey(moduleDict, kInTupleShardings);
+  const bool hasOutTupleSdy = xla::sdy::hasKey(moduleDict, kOutTupleShardings);
+  const mlir::StringRef sdyShardingAttrName(
+      xla::HloSharding::kShardingFrontendAttrName.data(),
+      xla::HloSharding::kShardingFrontendAttrName.size());
+  bool hasNamedSharding = false;
+  bool hasNonV3Sharding = false;
+  auto inspectAttr = [&](mlir::StringAttr attr, bool isShardingOp) {
+    if (!attr) {
+      return;
+    }
+    mlir::StringRef val = attr.getValue();
+    if (val.contains("mesh[")) {
+      hasNamedSharding = true;
+    } else if (val != "{replicated}" || isShardingOp) {
+      hasNonV3Sharding = true;
+    }
+  };
+  for (auto funcOp : module.getOps<mlir::func::FuncOp>()) {
+    if (funcOp.getSymName().contains(kManualComputationFuncName)) {
+      continue;
+    }
+    const bool isMain = funcOp.getSymName() == "main";
+    if (!(isMain && hasInTupleSdy)) {
+      for (unsigned i = 0; i < funcOp.getNumArguments(); ++i) {
+        if (xla::sdy::hasKey(xla::sdy::getFuncArgFrontendAttrs(funcOp, i),
+                             sdyShardingAttrName)) {
+          continue;
+        }
+        inspectAttr(
+            funcOp.getArgAttrOfType<mlir::StringAttr>(i, kXlaShardingAttr),
+            /*isShardingOp=*/false);
+        if (hasNamedSharding) {
+          return false;
+        }
+        if (!enableHloShardingV3 && hasNonV3Sharding) {
+          return true;
+        }
+      }
+    }
+    bool hasFuncResultSdy = isMain && hasOutTupleSdy;
+    if (!funcOp.isExternal()) {
+      funcOp.front().walk([&](mlir::Operation* op) {
+        if (auto customCall =
+                mlir::dyn_cast<mlir::stablehlo::CustomCallOp>(op)) {
+          mlir::StringRef target = customCall.getCallTargetName();
+          if (target == kFuncResultShardingTargetName) {
+            hasFuncResultSdy = true;
+            return mlir::WalkResult::advance();
+          }
+          if (target == kGlobalToLocalShapeCallTargetName ||
+              target == kLocalToGlobalShapeCallTargetName) {
+            return mlir::WalkResult::advance();
+          }
+        }
+        if (auto callOp = mlir::dyn_cast<mlir::func::CallOp>(op);
+            callOp && xla::sdy::isManualComputation(callOp)) {
+          return mlir::WalkResult::advance();
+        }
+        mlir::DictionaryAttr dict = xla::sdy::getFrontendAttrs(op);
+        if (xla::sdy::hasKey(dict, sdyShardingAttrName) ||
+            xla::sdy::hasKey(dict, kInShardings) ||
+            xla::sdy::hasKey(dict, kOutShardings) ||
+            xla::sdy::hasKey(dict, kManualAxes)) {
+          return mlir::WalkResult::advance();
+        }
+        bool isShardingOp = false;
+        if (auto customCall =
+                mlir::dyn_cast<mlir::stablehlo::CustomCallOp>(op)) {
+          mlir::StringRef target = customCall.getCallTargetName();
+          isShardingOp = target == kShardingCustomCallTargetName ||
+                         target == kSPMDFullToShardShapeCallTargetName ||
+                         target == kSPMDShardToFullShapeCallTargetName;
+        }
+        inspectAttr(op->getAttrOfType<mlir::StringAttr>(kXlaShardingAttr),
+                    isShardingOp);
+        if (hasNamedSharding || (!enableHloShardingV3 && hasNonV3Sharding)) {
+          return mlir::WalkResult::interrupt();
+        }
+        return mlir::WalkResult::advance();
+      });
+      if (hasNamedSharding) {
+        return false;
+      }
+      if (!enableHloShardingV3 && hasNonV3Sharding) {
+        return true;
+      }
+    }
+    if (!hasFuncResultSdy) {
+      for (unsigned i = 0; i < funcOp.getNumResults(); ++i) {
+        inspectAttr(
+            funcOp.getResultAttrOfType<mlir::StringAttr>(i, kXlaShardingAttr),
+            /*isShardingOp=*/false);
+        if (hasNamedSharding) {
+          return false;
+        }
+        if (!enableHloShardingV3 && hasNonV3Sharding) {
+          return true;
+        }
+      }
+    }
+  }
+  return hasNonV3Sharding && !hasNamedSharding;
+}
+
 absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::ModuleOp mlirModule,
                                     bool importMhloShardings,
@@ -413,6 +902,11 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     enableVerifier = true;
   }
 
+  bool hasBoundedDynamicTypes = false;
+  bool hasTupleCustomCallOperands = false;
+  prepareBoundedDynamicTypesAndTupleCustomCalls(
+      mlirModule, hasBoundedDynamicTypes, hasTupleCustomCallOperands);
+
   mlir::PassManager pm(mlirModule->getContext());
   pm.enableVerifier(enableVerifier);
   int dumpIndex = 0;
@@ -421,49 +915,116 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
   bool enableHloShardingV3 =
       hloModule->config().debug_options().xla_enable_hlo_sharding_v3();
+  const bool hasSdyAttrs = xla::sdy::hasFrontendSdyAttrs(mlirModule);
+  const bool hasMeshes = xla::sdy::hasFrontendMeshes(mlirModule);
+  const bool hasNonV3Mhlo =
+      ((enableHloShardingV3 && !hasSdyAttrs) || hasMeshes) &&
+      hasNonV3MhloShardings(mlirModule, enableHloShardingV3);
   // Fallback is required to support models exported earlier with mixed
-  // serialization disabled. One such use case is ifrt where support for mixed
-  // serialization was added recently here cl/900438035 but we need to wait for
-  // 6 months compatibility window.
-  // TODO (b/519501636): Remove this fallback once 6 months compatibility window
-  // for ifrt has passed in Nov'2026.
-  if (enableHloShardingV3 && (xla::sdy::hasFrontendMhloShardings(mlirModule) ||
-                              xla::sdy::hasFrontendMeshes(mlirModule))) {
-    // Fallback checks for mhlo sharding is not sufficient, we need to check for
-    // meshes as well to handle shard map cases.
-    LOG(WARNING)
-        << "Module contains sdy shardings or meshes in frontend_attributes "
-           "even when HloShardingV3 is enabled. This is probably due to stale "
-           "model export, try re-exporting the model on HEAD (with "
-           "HloShardingV3 enabled). Disabling HloShardingV3 here to prevent "
-           "conflicts during Shardy import";
+  // serialization disabled or lowered from frontends using HloShardingV1/V2
+  // (such as tf2xla).
+  // TODO (b/519501636): Remove the frontend_attributes fallback once 6 months
+  // compatibility window for ifrt has passed in Nov'2026.
+  if (enableHloShardingV3 && (hasSdyAttrs || hasNonV3Mhlo)) {
+    if (hasSdyAttrs) {
+      LOG(WARNING)
+          << "Module contains sdy shardings or meshes in frontend_attributes "
+             "even when HloShardingV3 is enabled. This is probably due to "
+             "stale model export, try re-exporting the model on HEAD (with "
+             "HloShardingV3 enabled). Disabling HloShardingV3 here to prevent "
+             "conflicts during Shardy import";
+    }
     hloModule->mutable_config()
         .mutable_debug_options()
         .set_xla_enable_hlo_sharding_v3(false);
     enableHloShardingV3 = false;
   }
 
-  if (importMhloShardings) {
-    // This branch is only used for testing. It allows us to test the module
-    // with hlo shardings without the frontend attributes.
-    LOG(WARNING) << "ShardyXLA is run against a module with HLO shardings. It "
-                    "should be used only for testing.";
-    auto spanToArrayRef = [](absl::Span<const bool> span) {
-      return mlir::ArrayRef<bool>(span.data(), span.size());
-    };
-
+  auto spanToArrayRef = [](absl::Span<const bool> span) {
+    return mlir::ArrayRef<bool>(span.data(), span.size());
+  };
+  const mlir::ArrayRef<bool> allowPropToArgs = spanToArrayRef(
+      hloModule->config().allow_spmd_sharding_propagation_to_parameters());
+  const mlir::ArrayRef<bool> allowPropToResults = spanToArrayRef(
+      hloModule->config().allow_spmd_sharding_propagation_to_output());
+  if (importMhloShardings ||
+      (!enableHloShardingV3 && (!hasMeshes || hasNonV3Mhlo))) {
+    if (importMhloShardings) {
+      LOG(WARNING)
+          << "ShardyXLA is run against a module with HLO shardings. It "
+             "should be used only for testing.";
+    }
     addStablehloImportPipeline(
-        pm,
-        spanToArrayRef(hloModule->config()
-                           .allow_spmd_sharding_propagation_to_parameters()),
-        spanToArrayRef(
-            hloModule->config().allow_spmd_sharding_propagation_to_output()),
-        enableHloShardingV3);
+        pm, allowPropToArgs, allowPropToResults, enableHloShardingV3,
+        /*inlineMesh=*/hasSdyAttrs,
+        /*liftAndDedupMeshes=*/true, hloModule->config().num_partitions());
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*liftAndDedupMeshes=*/true,
                                   enableHloShardingV3);
+  }
+
+  bool shardyGeneratesDeviceCode =
+      !options.avoidExportForPartitioning &&
+      !options.enablePerInstructionPartitioning &&
+      options.partitionerStage ==
+          mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  if (!shardyGeneratesDeviceCode && !enableHloShardingV3 && !hasSdyAttrs) {
+    auto isLockedAt = [](mlir::ArrayRef<bool> allowProp, size_t idx) {
+      if (allowProp.empty()) {
+        return true;
+      }
+      if (allowProp.size() == 1) {
+        return !allowProp.front();
+      }
+      return idx < allowProp.size() && !allowProp[idx];
+    };
+    auto isUnevenV2Sharding = [](mlir::Type type, mlir::StringAttr attr) {
+      auto rankedTy = mlir::dyn_cast<mlir::RankedTensorType>(type);
+      if (!rankedTy || !rankedTy.hasStaticShape() || !attr) {
+        return false;
+      }
+      const xla::HloSharding sharding = xla::sdy::parseShardingFromString(attr);
+      if (sharding.IsTuple() || sharding.UseNamedShardingLeaf() ||
+          !sharding.IsTiledLeaf()) {
+        return false;
+      }
+      for (int64_t d = 0; d < rankedTy.getRank() &&
+                          d < sharding.tile_assignment().num_dimensions();
+           ++d) {
+        if (rankedTy.getDimSize(d) % sharding.tile_assignment().dim(d) != 0) {
+          return true;
+        }
+      }
+      return false;
+    };
+    if (auto mainFunc = mlirModule.lookupSymbol<mlir::func::FuncOp>("main")) {
+      bool hasLockedUnevenBoundary = false;
+      for (unsigned i = 0; i < mainFunc.getNumArguments(); ++i) {
+        if (isLockedAt(allowPropToArgs, i) &&
+            isUnevenV2Sharding(mainFunc.getArgumentTypes()[i],
+                               mainFunc.getArgAttrOfType<mlir::StringAttr>(
+                                   i, kXlaShardingAttr))) {
+          hasLockedUnevenBoundary = true;
+          break;
+        }
+      }
+      if (!hasLockedUnevenBoundary) {
+        for (unsigned i = 0; i < mainFunc.getNumResults(); ++i) {
+          if (isLockedAt(allowPropToResults, i) &&
+              isUnevenV2Sharding(mainFunc.getResultTypes()[i],
+                                 mainFunc.getResultAttrOfType<mlir::StringAttr>(
+                                     i, kXlaShardingAttr))) {
+            hasLockedUnevenBoundary = true;
+            break;
+          }
+        }
+      }
+      if (hasLockedUnevenBoundary) {
+        options.updateNonDivisibleInputOutputShardings = false;
+      }
+    }
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
@@ -473,11 +1034,6 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
-  bool shardyGeneratesDeviceCode =
-      !options.avoidExportForPartitioning &&
-      !options.enablePerInstructionPartitioning &&
-      options.partitionerStage ==
-          mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
   stablehloExportPipelineOptions.addMissingShardingToControlFlow =
       !shardyGeneratesDeviceCode;
@@ -492,7 +1048,11 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                                dumpIndex++));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(
       mlirModule->getContext());
-  return diagnosticHandler.consumeStatus(pm.run(mlirModule));
+  ABSL_RETURN_IF_ERROR(diagnosticHandler.consumeStatus(pm.run(mlirModule)));
+
+  restoreBoundedDynamicTypesAndTupleCustomCalls(
+      mlirModule, hasBoundedDynamicTypes, hasTupleCustomCallOperands);
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> eraseInlineableAttrForShardyManualComputations(
