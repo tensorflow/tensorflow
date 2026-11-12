@@ -2333,8 +2333,11 @@ absl::Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
   int64_t concat_dim;
   if (concat_dim_t->dtype() == DT_INT32) {
     concat_dim = static_cast<int64_t>(concat_dim_t->flat<int32_t>()(0));
-  } else {
+  } else if (concat_dim_t->dtype() == DT_INT64) {
     concat_dim = concat_dim_t->flat<int64_t>()(0);
+  } else {
+    return absl::InvalidArgumentError(
+        "concat_dim must be an int32 or int64 scalar");
   }
 
   // Minimum required number of dimensions.
