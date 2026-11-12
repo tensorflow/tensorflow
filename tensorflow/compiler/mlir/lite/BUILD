@@ -1435,7 +1435,6 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
