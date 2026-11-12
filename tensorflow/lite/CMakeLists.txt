@@ -376,6 +376,23 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
     ${TFLITE_SOURCE_DIR}/converter/tools/versioning/op_signature.cc
   )
+  if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+    list(APPEND TFLITE_DELEGATES_GPU_SRCS
+      ${TFLITE_SOURCE_DIR}/async/backend_async_kernel_interface.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/android_hardware_buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/async_buffers.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/android_sync.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/egl_context.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/egl_environment.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/egl_surface.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/gl_errors.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/request_gpu_info.cc
+      ${TFLITE_SOURCE_DIR}/delegates/utils/async_type_helpers.cc
+      ${TFLITE_SOURCE_DIR}/delegates/utils/sync_fence.cc
+      ${TFLITE_SOURCE_DIR}/delegates/utils/utils.cc
+    )
+    list(APPEND TFLITE_TARGET_DEPENDENCIES EGL GLESv2)
+  endif()
   include_directories(
     AFTER
     ${TFLITE_SOURCE_DIR}/delegates/gpu/common
