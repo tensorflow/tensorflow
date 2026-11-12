@@ -26,9 +26,8 @@ namespace gpu {
 std::string ReplaceFilenameExtension(absl::string_view filename,
                                      absl::string_view new_extension) {
   auto pos = filename.rfind('.');
-  absl::string_view stem = pos == absl::string_view::npos
-                               ? filename
-                               : absl::string_view(filename.data(), pos);
+  absl::string_view stem =
+      pos == absl::string_view::npos ? filename : filename.substr(0, pos);
   return absl::StrCat(stem, ".", new_extension);
 }
 
