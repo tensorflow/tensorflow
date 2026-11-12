@@ -1,783 +1,504 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/CMakeLists.txt b/libc/src/__support/FPUtil/CMakeLists.txt
---- a/libc/src/__support/FPUtil/CMakeLists.txt
-+++ b/libc/src/__support/FPUtil/CMakeLists.txt
-@@ -106,7 +106,6 @@
-     .normal_float
-     libc.src.__support.CPP.type_traits
-     libc.src.__support.common
--    libc.src.__support.macros.optimization
- )
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/ADT/DenseMap.h b/llvm/include/llvm/ADT/DenseMap.h
+--- a/llvm/include/llvm/ADT/DenseMap.h
++++ b/llvm/include/llvm/ADT/DenseMap.h
+@@ -1360,9 +1360,8 @@
+ template <typename KeyT, typename ValueT,
+           typename KeyInfoT = DenseMapInfo<KeyT>,
+           typename BucketT = llvm::detail::DenseMapPair<KeyT, ValueT>>
+-class LLVM_ATTRIBUTE_WARN_UNUSED DenseMap
+-    : public DenseMapBase<densemap::detail::DenseMapStorage<BucketT>, KeyT,
+-                          ValueT, KeyInfoT, BucketT> {
++class DenseMap : public DenseMapBase<densemap::detail::DenseMapStorage<BucketT>,
++                                     KeyT, ValueT, KeyInfoT, BucketT> {
+   using BaseT = DenseMapBase<densemap::detail::DenseMapStorage<BucketT>, KeyT,
+                              ValueT, KeyInfoT, BucketT>;
  
- add_header_library(
-diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/DivisionAndRemainderOperations.h b/libc/src/__support/FPUtil/DivisionAndRemainderOperations.h
---- a/libc/src/__support/FPUtil/DivisionAndRemainderOperations.h
-+++ b/libc/src/__support/FPUtil/DivisionAndRemainderOperations.h
-@@ -16,7 +16,6 @@
- #include "src/__support/CPP/type_traits.h"
- #include "src/__support/common.h"
- #include "src/__support/macros/config.h"
--#include "src/__support/macros/optimization.h"
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp b/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
+--- a/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
++++ b/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
+@@ -4564,10 +4564,10 @@
  
- namespace LIBC_NAMESPACE_DECL {
- namespace fputil {
-@@ -28,31 +27,21 @@
- template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
- LIBC_INLINE constexpr T remquo(T x, T y, int &q) {
-   FPBits<T> xbits(x), ybits(y);
--  if (LIBC_UNLIKELY(xbits.is_inf_or_nan() || ybits.is_inf_or_nan() ||
--                    xbits.is_zero() || ybits.is_zero())) {
--    if (xbits.is_signaling_nan() || ybits.is_signaling_nan()) {
--      raise_except_if_required(FE_INVALID);
--      return FPBits<T>::quiet_nan().get_val();
--    }
--    if (xbits.is_nan())
--      return x;
--    if (ybits.is_nan())
--      return y;
--    if (xbits.is_inf() || ybits.is_zero()) {
--      set_errno_if_required(EDOM);
--      raise_except_if_required(FE_INVALID);
--      return FPBits<T>::quiet_nan().get_val();
--    }
-+  if (xbits.is_nan())
-+    return x;
-+  if (ybits.is_nan())
-+    return y;
-+  if (xbits.is_inf() || ybits.is_zero())
-+    return FPBits<T>::quiet_nan().get_val();
- 
--    if (xbits.is_zero()) {
--      q = 0;
--      return LIBC_NAMESPACE::fputil::copysign(T(0.0), x);
--    }
-+  if (xbits.is_zero()) {
-+    q = 0;
-+    return LIBC_NAMESPACE::fputil::copysign(T(0.0), x);
-+  }
- 
--    if (ybits.is_inf()) {
--      q = 0;
--      return x;
--    }
-+  if (ybits.is_inf()) {
-+    q = 0;
-+    return x;
+   if (!WaveAddr) {
+     WaveAddr = MRI->createVirtualRegister(&AMDGPU::SReg_32RegClass);
+-    BuildMI(*MBB, MI, DL, TII.get(AMDGPU::S_LSHR_B32), WaveAddr)
+-      .addReg(SrcReg)
+-      .addImm(Subtarget->getWavefrontSizeLog2())
+-      .setOperandDead(3); // Dead scc
++    BuildMI(*MBB, MI, DL, TII.get(AMDGPU::S_LSHL_B32), WaveAddr)
++        .addReg(SrcReg)
++        .addImm(Subtarget->getWavefrontSizeLog2())
++        .setOperandDead(3); // Dead scc
    }
  
-   const Sign result_sign =
-diff -ruN --strip-trailing-cr a/libc/src/__support/math/expm1f16.h b/libc/src/__support/math/expm1f16.h
---- a/libc/src/__support/math/expm1f16.h
-+++ b/libc/src/__support/math/expm1f16.h
-@@ -105,26 +105,6 @@
+   BuildMI(*MBB, &MI, DL, TII.get(AMDGPU::COPY), SP)
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp b/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
+--- a/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
++++ b/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
+@@ -1682,6 +1682,16 @@
  
-     // When 0 < |x| <= 2^(-3).
-     if (x_abs <= 0x3000U && !x_bits.is_zero()) {
--      // The correction to x is nonzero but less than half a subnormal ulp.
--      // Select the adjacent half value directly, preserving signed zero.
--      if (LIBC_UNLIKELY(x_abs < 0x0400U || x_u == 0x8400U)) {
--        uint16_t out = x_u;
--#ifndef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--        int mode = fputil::quick_get_round();
--        bool increase =
--            (x_bits.is_pos() && mode == FE_UPWARD) ||
--            (x_bits.is_neg() && (mode == FE_UPWARD || mode == FE_TOWARDZERO));
--        if (increase)
--          out = static_cast<uint16_t>(x_u + (x_bits.is_neg() ? -1 : 1));
--#endif // !LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--        int excepts = FE_INEXACT;
--        if ((out & 0x7fffU) < 0x0400U) {
--          fputil::set_errno_if_required(ERANGE);
--          excepts |= FE_UNDERFLOW;
--        }
--        fputil::raise_except_if_required(excepts);
--        return FPBits(out).get_val();
--      }
+   assert(Scope->RegInfos.size() >= 1 && "Should have at least one Region");
  
- #ifndef LIBC_MATH_HAS_SKIP_ACCURATE_PASS
-       if (auto r = EXPM1F16_EXCEPTS_LO.lookup(x_u);
-diff -ruN --strip-trailing-cr a/libc/src/__support/math/tanhf16.h b/libc/src/__support/math/tanhf16.h
---- a/libc/src/__support/math/tanhf16.h
-+++ b/libc/src/__support/math/tanhf16.h
-@@ -49,7 +49,8 @@
-   uint16_t x_u = x_bits.uintval();
-   uint16_t x_abs = x_u & 0x7fffU;
- 
--  // When |x| <= 0x1.d2p-4, |x| >= atanh(1 - 2^(-11)), or x is NaN.
-+  // When -2^(-14) <= x <= -2^(-9), or |x| <= 0x1.d2p-4,
-+  // or |x| >= atanh(1 - 2^(-11)), or x is NaN.
-   if (LIBC_UNLIKELY(x_abs <= 0x2f48U || x_abs >= 0x4429U)) {
-     // tanh(NaN) = NaN
-     if (x_bits.is_nan()) {
-@@ -60,45 +61,26 @@
- 
-       return x;
-     }
++  // An outer scope may have hoisted one of our selects out of this scope.
++  // It can no longer be specialized under this scope's merged branch, and
++  // may also be the cached branch insertion point.
++  // TODO: Add inner selects to Unhoistables to avoid hoisting them out of
++  // their scopes and allow those scopes to be transformed.
++  for (const RegInfo &RI : Scope->CHRRegions)
++    for (SelectInst *SI : RI.Selects)
++      if (!Scope->contains(SI))
++        return;
 +
-+    // When -2^(-14) <= x <= -2^(-9).
-+    if (x_u >= 0x8400U && x_u <= 0x9800U) {
-+#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
-+      return x;
-+#else
-+      switch (fputil::quick_get_round()) {
-+      case FE_TONEAREST:
-+      case FE_DOWNWARD:
-+        return x;
-+      default:
-+        return FPBits(static_cast<uint16_t>(x_u - 1U)).get_val();
-+      }
-+#endif // LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
-+    }
+   for (RegInfo &RI : Scope->RegInfos) {
+     const Region *R = RI.R;
+     unsigned Duplication = getRegionDuplicationCount(R);
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
+--- a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
++++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
+@@ -32,15 +32,15 @@
+     ; GFX10-WAVE32: liveins: $sgpr10
+     ; GFX10-WAVE32-NEXT: {{  $}}
+     ; GFX10-WAVE32-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr32
+-    ; GFX10-WAVE32-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 5, implicit-def dead $scc
+-    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
++    ; GFX10-WAVE32-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 5, implicit-def dead $scc
++    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
+     ;
+     ; GFX10-WAVE64-LABEL: name: stackrestore_direct_sp_sgpr
+     ; GFX10-WAVE64: liveins: $sgpr10
+     ; GFX10-WAVE64-NEXT: {{  $}}
+     ; GFX10-WAVE64-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr32
+-    ; GFX10-WAVE64-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 6, implicit-def dead $scc
+-    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
++    ; GFX10-WAVE64-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 6, implicit-def dead $scc
++    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
+     %0:sgpr(p5) = COPY $sgpr32
+     G_STACKRESTORE %0
  
-     // When |x| <= 0x1.d2p-4.
-     if (x_abs <= 0x2f48U) {
-       if (LIBC_UNLIKELY(x_abs == 0))
-         return x;
--
--      // The correction to x is nonzero but less than half a subnormal ulp.
--      // Select the adjacent half value directly, preserving signed zero.
--      if (LIBC_UNLIKELY(x_abs <= 0x0400U)) {
--        uint16_t out = x_u;
--#ifndef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--        int mode = fputil::quick_get_round();
--        if (mode == FE_TOWARDZERO || (x_bits.is_pos() && mode == FE_DOWNWARD) ||
--            (x_bits.is_neg() && mode == FE_UPWARD))
--          --out;
--#endif
--        int excepts = FE_INEXACT;
--        if ((out & 0x7fffU) < 0x0400U) {
--          fputil::set_errno_if_required(ERANGE);
--          excepts |= FE_UNDERFLOW;
--        }
--        fputil::raise_except_if_required(excepts);
--        return FPBits(out).get_val();
--      }
--
--      // When -2^(-9) <= x < -2^(-14).
--      if (x_u >= 0x8400U && x_u <= 0x9800U) {
--#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--        return x;
--#else
--        switch (fputil::quick_get_round()) {
--        case FE_TONEAREST:
--        case FE_DOWNWARD:
--          return x;
--        default:
--          return FPBits(static_cast<uint16_t>(x_u - 1U)).get_val();
--        }
--#endif // LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--      }
+@@ -58,15 +58,15 @@
+     ; GFX10-WAVE32: liveins: $sgpr10
+     ; GFX10-WAVE32-NEXT: {{  $}}
+     ; GFX10-WAVE32-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr10
+-    ; GFX10-WAVE32-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 5, implicit-def dead $scc
+-    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
++    ; GFX10-WAVE32-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 5, implicit-def dead $scc
++    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
+     ;
+     ; GFX10-WAVE64-LABEL: name: stackrestore_any_sgpr
+     ; GFX10-WAVE64: liveins: $sgpr10
+     ; GFX10-WAVE64-NEXT: {{  $}}
+     ; GFX10-WAVE64-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr10
+-    ; GFX10-WAVE64-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 6, implicit-def dead $scc
+-    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
++    ; GFX10-WAVE64-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 6, implicit-def dead $scc
++    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
+     %0:sgpr(p5) = COPY $sgpr10
+     G_STACKRESTORE %0
  
-       float xf = x;
-       float xf_sq = xf * xf;
-diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/RemQuoTest.h b/libc/test/src/math/smoke/RemQuoTest.h
---- a/libc/test/src/math/smoke/RemQuoTest.h
-+++ b/libc/test/src/math/smoke/RemQuoTest.h
-@@ -9,8 +9,6 @@
- #ifndef LLVM_LIBC_TEST_SRC_MATH_REMQUOTEST_H
- #define LLVM_LIBC_TEST_SRC_MATH_REMQUOTEST_H
- 
--#include "hdr/fenv_macros.h"
--#include "src/__support/FPUtil/FEnvImpl.h"
- #include "src/__support/FPUtil/FPBits.h"
- #include "test/UnitTest/FEnvSafeTest.h"
- #include "test/UnitTest/FPMatcher.h"
-@@ -20,7 +18,14 @@
- 
- template <typename T>
- class RemQuoTestTemplate : public LIBC_NAMESPACE::testing::FEnvSafeTest {
--  DECLARE_SPECIAL_CONSTANTS(T)
-+  using FPBits = LIBC_NAMESPACE::fputil::FPBits<T>;
-+  using StorageType = typename FPBits::StorageType;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll b/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
+--- a/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
++++ b/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
+@@ -669,20 +669,20 @@
+ ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_poison:
+ ; GISEL-WAVE32-OPT:       ; %bb.0:
+ ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
++; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_poison:
+ ; GISEL-WAVE64-OPT:       ; %bb.0:
+ ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
++; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stackrestore_poison:
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    ; implicit-def: $sgpr4
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -690,7 +690,7 @@
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    ; implicit-def: $sgpr4
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) poison)
+@@ -750,7 +750,7 @@
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, 0
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -758,7 +758,7 @@
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, 0
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) zeroinitializer)
+@@ -805,20 +805,20 @@
+ ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_neg1:
+ ; GISEL-WAVE32-OPT:       ; %bb.0:
+ ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-OPT-NEXT:    s_mov_b32 s32, 0x7ffffff
++; GISEL-WAVE32-OPT-NEXT:    s_movk_i32 s32, 0xffe0
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_neg1:
+ ; GISEL-WAVE64-OPT:       ; %bb.0:
+ ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-OPT-NEXT:    s_mov_b32 s32, 0x3ffffff
++; GISEL-WAVE64-OPT-NEXT:    s_movk_i32 s32, 0xffc0
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stackrestore_neg1:
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, -1
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -826,7 +826,7 @@
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, -1
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) inttoptr (i32 -1 to ptr addrspace(5)))
+@@ -873,20 +873,20 @@
+ ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_42:
+ ; GISEL-WAVE32-OPT:       ; %bb.0:
+ ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-OPT-NEXT:    s_mov_b32 s32, 1
++; GISEL-WAVE32-OPT-NEXT:    s_movk_i32 s32, 0x540
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_42:
+ ; GISEL-WAVE64-OPT:       ; %bb.0:
+ ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-OPT-NEXT:    s_mov_b32 s32, 0
++; GISEL-WAVE64-OPT-NEXT:    s_movk_i32 s32, 0xa80
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stackrestore_42:
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, 42
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -894,7 +894,7 @@
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, 42
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) inttoptr (i32 42 to ptr addrspace(5)))
+@@ -1192,7 +1192,7 @@
+ ; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s4, s32, 5
+ ; GISEL-WAVE32-OPT-NEXT:    v_add_nc_u32_e32 v0, s4, v0
+ ; GISEL-WAVE32-OPT-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
++; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stacksave_stackrestore_voffset:
+@@ -1201,7 +1201,7 @@
+ ; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s4, s32, 6
+ ; GISEL-WAVE64-OPT-NEXT:    v_add_nc_u32_e32 v0, s4, v0
+ ; GISEL-WAVE64-OPT-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
++; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stacksave_stackrestore_voffset:
+@@ -1212,7 +1212,7 @@
+ ; GISEL-WAVE32-O0-NEXT:    v_mov_b32_e32 v0, s4
+ ; GISEL-WAVE32-O0-NEXT:    v_add_nc_u32_e64 v0, v0, v1
+ ; GISEL-WAVE32-O0-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -1224,7 +1224,7 @@
+ ; GISEL-WAVE64-O0-NEXT:    v_mov_b32_e32 v0, s4
+ ; GISEL-WAVE64-O0-NEXT:    v_add_nc_u32_e64 v0, v0, v1
+ ; GISEL-WAVE64-O0-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   %stacksave = call ptr addrspace(5) @llvm.stacksave.p5()
+@@ -1276,21 +1276,21 @@
+ ; GISEL-WAVE32-OPT:       ; %bb.0:
+ ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE32-OPT-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
++; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stacksave_vgpr:
+ ; GISEL-WAVE64-OPT:       ; %bb.0:
+ ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE64-OPT-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
++; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stacksave_vgpr:
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE32-O0-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+@@ -1298,7 +1298,7 @@
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+ ; GISEL-WAVE64-O0-NEXT:    v_readfirstlane_b32 s4, v0
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) %stack)
+@@ -1342,26 +1342,26 @@
+ ; GISEL-WAVE32-OPT-LABEL: func_stacksave_sgpr:
+ ; GISEL-WAVE32-OPT:       ; %bb.0:
+ ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
++; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
+ ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-OPT-LABEL: func_stacksave_sgpr:
+ ; GISEL-WAVE64-OPT:       ; %bb.0:
+ ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
++; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
+ ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE32-O0-LABEL: func_stacksave_sgpr:
+ ; GISEL-WAVE32-O0:       ; %bb.0:
+ ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s34, s4, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s34, s4, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s34
+ ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GISEL-WAVE64-O0-LABEL: func_stacksave_sgpr:
+ ; GISEL-WAVE64-O0:       ; %bb.0:
+ ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s34, s4, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s34, s4, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s34
+ ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
+   call void @llvm.stackrestore.p5(ptr addrspace(5) %stack)
+@@ -1455,7 +1455,7 @@
+ ; GISEL-WAVE32-O0-NEXT:    ;;#ASMSTART
+ ; GISEL-WAVE32-O0-NEXT:    ; use s1
+ ; GISEL-WAVE32-O0-NEXT:    ;;#ASMEND
+-; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s0, s0, 5
++; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s0, s0, 5
+ ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s0
+ ; GISEL-WAVE32-O0-NEXT:    s_endpgm
+ ;
+@@ -1467,7 +1467,7 @@
+ ; GISEL-WAVE64-O0-NEXT:    ;;#ASMSTART
+ ; GISEL-WAVE64-O0-NEXT:    ; use s1
+ ; GISEL-WAVE64-O0-NEXT:    ;;#ASMEND
+-; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s0, s0, 6
++; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s0, s0, 6
+ ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s0
+ ; GISEL-WAVE64-O0-NEXT:    s_endpgm
+   call void asm sideeffect "; use $0", "s"(ptr addrspace(5) %stack)
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll b/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
+--- a/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
++++ b/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
+@@ -0,0 +1,120 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -passes='require<profile-summary>,function(chr)' -S %s | FileCheck %s
 +
-+  const T inf = FPBits::inf(Sign::POS).get_val();
-+  const T neg_inf = FPBits::inf(Sign::NEG).get_val();
-+  const T zero = FPBits::zero(Sign::POS).get_val();
-+  const T neg_zero = FPBits::zero(Sign::NEG).get_val();
-+  const T nan = FPBits::quiet_nan().get_val();
- 
- public:
-   typedef T (*RemQuoFunc)(T, T, int *);
-@@ -31,114 +36,60 @@
- 
-     y = T(1.0);
-     x = inf;
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(x, y, &quotient), FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
-     x = neg_inf;
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(x, y, &quotient), FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
- 
-     x = T(1.0);
-     y = zero;
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(x, y, &quotient), FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
-     y = neg_zero;
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(x, y, &quotient), FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
- 
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(zero, zero, &quotient), FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(inf, neg_inf, &quotient),
--                                FE_INVALID);
--    EXPECT_MATH_ERRNO(EDOM);
--
--    y = aNaN;
-+    y = nan;
-     x = T(1.0);
--    EXPECT_FP_EQ(aNaN, func(x, y, &quotient));
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
- 
-     y = T(1.0);
--    x = aNaN;
--    EXPECT_FP_EQ(aNaN, func(x, y, &quotient));
-+    x = nan;
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
- 
--    x = aNaN;
--    y = aNaN;
--    EXPECT_FP_EQ(aNaN, func(x, y, &quotient));
-+    x = nan;
-+    y = nan;
-+    EXPECT_FP_EQ(nan, func(x, y, &quotient));
- 
--    const T finite = T(1.0);
--    const T others[] = {finite, zero, inf, aNaN, sNaN};
--    T result = zero;
--    for (T other : others) {
--      EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, result = func(sNaN, other, &quotient),
--                                  FE_INVALID);
--      EXPECT_MATH_ERRNO(0);
--      EXPECT_FALSE(FPBits(result).is_signaling_nan());
--      EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, result = func(other, sNaN, &quotient),
--                                  FE_INVALID);
--      EXPECT_MATH_ERRNO(0);
--      EXPECT_FALSE(FPBits(result).is_signaling_nan());
--    }
-+    x = zero;
-+    y = T(1.0);
-+    EXPECT_FP_EQ(func(x, y, &quotient), zero);
- 
--    // A quiet NaN takes precedence over an otherwise invalid domain.
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(aNaN, zero, &quotient), 0);
--    EXPECT_MATH_ERRNO(0);
--    EXPECT_FP_EQ_WITH_EXCEPTION(aNaN, func(inf, aNaN, &quotient), 0);
--    EXPECT_MATH_ERRNO(0);
--
--    const T zeros[] = {zero, neg_zero};
--    const T denominators[] = {finite, T(-1.0), inf, neg_inf};
--    for (T numerator : zeros) {
--      for (T denominator : denominators) {
--        quotient = 123;
--        EXPECT_FP_EQ_WITH_EXCEPTION(numerator,
--                                    func(numerator, denominator, &quotient), 0);
--        EXPECT_MATH_ERRNO(0);
--        EXPECT_EQ(quotient, 0);
--      }
--    }
-+    x = neg_zero;
-+    y = T(1.0);
-+    EXPECT_FP_EQ(func(x, y, &quotient), neg_zero);
- 
--    const T numerators[] = {T(1.125), T(-1.125), min_denormal,
--                            neg_min_denormal};
--    const T infinities[] = {inf, neg_inf};
--    for (T numerator : numerators) {
--      for (T denominator : infinities) {
--        testRegular(func, numerator, denominator, numerator, 0);
--      }
--    }
-+    x = T(1.125);
-+    y = inf;
-+    EXPECT_FP_EQ(func(x, y, &quotient), x);
-+    EXPECT_EQ(quotient, 0);
-   }
- 
-   void testEqualNumeratorAndDenominator(RemQuoFunc func) {
--    const T values[] = {T(1.125), min_denormal, max_denormal, min_normal};
-+    T x = T(1.125), y = T(1.125);
-+    int q;
- 
-     // When the remainder is zero, the standard requires it to
-     // have the same sign as x.
- 
--    for (T x : values) {
--      testRegular(func, x, x, zero, 1);
--      testRegular(func, x, -x, zero, -1);
--      testRegular(func, -x, x, neg_zero, -1);
--      testRegular(func, -x, -x, neg_zero, 1);
--    }
--  }
-+    EXPECT_FP_EQ(func(x, y, &q), zero);
-+    EXPECT_EQ(q, 1);
-+
-+    EXPECT_FP_EQ(func(x, -y, &q), zero);
-+    EXPECT_EQ(q, -1);
-+
-+    EXPECT_FP_EQ(func(-x, y, &q), neg_zero);
-+    EXPECT_EQ(q, -1);
- 
--private:
--  void testRegular(RemQuoFunc func, T x, T y, T expected,
--                   int expected_quotient) {
--#ifdef FE_DENORM
--    constexpr int DENORM_EXCEPT = FE_DENORM;
--#elif defined(FE_DENORMAL)
--    constexpr int DENORM_EXCEPT = FE_DENORMAL;
--#elif defined(__FE_DENORM)
--    constexpr int DENORM_EXCEPT = __FE_DENORM;
--#else
--    constexpr int DENORM_EXCEPT = 0;
--#endif
--    int quotient = 123;
--    LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
--    EXPECT_FP_EQ(expected, func(x, y, &quotient));
--    EXPECT_MATH_ERRNO(0);
--    // Denormal operands may raise a nonstandard exception on some targets.
--    LIBC_NAMESPACE::fputil::clear_except(DENORM_EXCEPT);
--    EXPECT_FP_EXCEPTION(0);
--    EXPECT_EQ(quotient, expected_quotient);
-+    EXPECT_FP_EQ(func(-x, -y, &q), neg_zero);
-+    EXPECT_EQ(q, 1);
-   }
- };
- 
-diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/expm1f16_test.cpp b/libc/test/src/math/smoke/expm1f16_test.cpp
---- a/libc/test/src/math/smoke/expm1f16_test.cpp
-+++ b/libc/test/src/math/smoke/expm1f16_test.cpp
-@@ -15,67 +15,6 @@
- 
- using LlvmLibcExpm1f16Test = LIBC_NAMESPACE::testing::FPTest<float16>;
- 
--TEST_F(LlvmLibcExpm1f16Test, AllSubnormalRounding) {
--  using Bits = LIBC_NAMESPACE::fputil::FPBits<float16>;
--  using namespace LIBC_NAMESPACE::fputil::testing;
--#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest};
--#else
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest, RoundingMode::Upward,
--                                    RoundingMode::Downward,
--                                    RoundingMode::TowardZero};
--#endif // LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  for (RoundingMode mode : MODES) {
--    ForceRoundingMode rounding(mode);
--    if (!rounding.success)
--      continue;
--    for (uint16_t magnitude = 1; magnitude < 0x0400; ++magnitude) {
--      constexpr uint16_t SIGNS[] = {0, 0x8000};
--      for (uint16_t sign : SIGNS) {
--        bool negative = sign != 0;
--        uint16_t expected = static_cast<uint16_t>(magnitude | sign);
--        if ((!negative && mode == RoundingMode::Upward) ||
--            (negative && (mode == RoundingMode::Upward ||
--                          mode == RoundingMode::TowardZero)))
--          expected = static_cast<uint16_t>(expected + (negative ? -1 : 1));
--        bool tiny = (expected & 0x7fff) < 0x0400;
--        EXPECT_FP_EQ_WITH_EXCEPTION(
--            Bits(expected).get_val(),
--            LIBC_NAMESPACE::expm1f16(
--                Bits(uint16_t(magnitude | sign)).get_val()),
--            FE_INEXACT | (tiny ? FE_UNDERFLOW : 0));
--        EXPECT_MATH_ERRNO(tiny ? ERANGE : 0);
--      }
--    }
--  }
--}
--
--TEST_F(LlvmLibcExpm1f16Test, NegativeMinNormalTininessAfterRounding) {
--  using Bits = LIBC_NAMESPACE::fputil::FPBits<float16>;
--  using namespace LIBC_NAMESPACE::fputil::testing;
--#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest};
--#else
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest, RoundingMode::Upward,
--                                    RoundingMode::Downward,
--                                    RoundingMode::TowardZero};
--#endif // LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  for (RoundingMode mode : MODES) {
--    ForceRoundingMode rounding(mode);
--    if (!rounding.success)
--      continue;
--    uint16_t expected = 0x8400;
--    if (mode == RoundingMode::Upward || mode == RoundingMode::TowardZero)
--      expected = 0x83ff;
--    bool tiny = (expected & 0x7fff) < 0x0400;
--    EXPECT_FP_EQ_WITH_EXCEPTION(
--        Bits(expected).get_val(),
--        LIBC_NAMESPACE::expm1f16(Bits(uint16_t(0x8400)).get_val()),
--        FE_INEXACT | (tiny ? FE_UNDERFLOW : 0));
--    EXPECT_MATH_ERRNO(tiny ? ERANGE : 0);
--  }
--}
--
- TEST_F(LlvmLibcExpm1f16Test, SpecialNumbers) {
-   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::expm1f16(aNaN));
-   EXPECT_MATH_ERRNO(0);
-diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/tanhf16_test.cpp b/libc/test/src/math/smoke/tanhf16_test.cpp
---- a/libc/test/src/math/smoke/tanhf16_test.cpp
-+++ b/libc/test/src/math/smoke/tanhf16_test.cpp
-@@ -15,74 +15,6 @@
- 
- using LlvmLibcTanhf16Test = LIBC_NAMESPACE::testing::FPTest<float16>;
- 
--TEST_F(LlvmLibcTanhf16Test, AllSubnormalRounding) {
--  using Bits = LIBC_NAMESPACE::fputil::FPBits<float16>;
--  using namespace LIBC_NAMESPACE::fputil::testing;
--#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest};
--#else
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest, RoundingMode::Upward,
--                                    RoundingMode::Downward,
--                                    RoundingMode::TowardZero};
--#endif
--  for (RoundingMode mode : MODES) {
--    ForceRoundingMode rounding(mode);
--    if (!rounding.success)
--      continue;
--    for (uint16_t magnitude = 1; magnitude < 0x0400; ++magnitude) {
--      constexpr uint16_t SIGNS[] = {0, 0x8000};
--      for (uint16_t sign : SIGNS) {
--        bool negative = sign != 0;
--        uint16_t expected = static_cast<uint16_t>(magnitude | sign);
--        if ((!negative && (mode == RoundingMode::Downward ||
--                           mode == RoundingMode::TowardZero)) ||
--            (negative && (mode == RoundingMode::Upward ||
--                          mode == RoundingMode::TowardZero)))
--          --expected;
--        bool tiny = (expected & 0x7fff) < 0x0400;
--        EXPECT_FP_EQ_WITH_EXCEPTION(
--            Bits(expected).get_val(),
--            LIBC_NAMESPACE::tanhf16(Bits(uint16_t(magnitude | sign)).get_val()),
--            FE_INEXACT | (tiny ? FE_UNDERFLOW : 0));
--        EXPECT_MATH_ERRNO(tiny ? ERANGE : 0);
--      }
--    }
--  }
--}
--
--TEST_F(LlvmLibcTanhf16Test, MinNormalTininessAfterRounding) {
--  using Bits = LIBC_NAMESPACE::fputil::FPBits<float16>;
--  using namespace LIBC_NAMESPACE::fputil::testing;
--#ifdef LIBC_MATH_HAS_ASSUME_ROUND_NEAREST_ONLY
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest};
--#else
--  constexpr RoundingMode MODES[] = {RoundingMode::Nearest, RoundingMode::Upward,
--                                    RoundingMode::Downward,
--                                    RoundingMode::TowardZero};
--#endif
--  for (RoundingMode mode : MODES) {
--    ForceRoundingMode rounding(mode);
--    if (!rounding.success)
--      continue;
--    constexpr uint16_t SIGNS[] = {0, 0x8000};
--    for (uint16_t sign : SIGNS) {
--      bool negative = sign != 0;
--      uint16_t expected = static_cast<uint16_t>(0x0400 | sign);
--      if ((!negative && (mode == RoundingMode::Downward ||
--                         mode == RoundingMode::TowardZero)) ||
--          (negative &&
--           (mode == RoundingMode::Upward || mode == RoundingMode::TowardZero)))
--        --expected;
--      bool tiny = (expected & 0x7fff) < 0x0400;
--      EXPECT_FP_EQ_WITH_EXCEPTION(
--          Bits(expected).get_val(),
--          LIBC_NAMESPACE::tanhf16(Bits(uint16_t(0x0400 | sign)).get_val()),
--          FE_INEXACT | (tiny ? FE_UNDERFLOW : 0));
--      EXPECT_MATH_ERRNO(tiny ? ERANGE : 0);
--    }
--  }
--}
--
- TEST_F(LlvmLibcTanhf16Test, SpecialNumbers) {
-   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::tanhf16(aNaN));
-   EXPECT_MATH_ERRNO(0);
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionImport.cpp b/llvm/lib/Transforms/IPO/FunctionImport.cpp
---- a/llvm/lib/Transforms/IPO/FunctionImport.cpp
-+++ b/llvm/lib/Transforms/IPO/FunctionImport.cpp
-@@ -146,6 +146,34 @@
-     cl::desc("If true, import function declaration as fallback if the function "
-              "definition is not imported."));
- 
-+/// Narrower form of -import-declaration for indirect call promotion: when the
-+/// definition of a profiled indirect call target is not imported, import its
-+/// declaration and export it from its defining module, so that the backend can
-+/// promote the indirect call to it (see -icp-allow-decls).
-+static cl::opt<bool> ImportDeclarationForIndirectCalls(
-+    "import-declaration-for-indirect-calls", cl::init(false), cl::Hidden,
-+    cl::desc("If true, import a declaration of the target of an indirect call "
-+             "edge (and export it from its defining module) when its "
-+             "definition is not imported."));
-+
-+static cl::opt<CalleeInfo::HotnessType>
-+    ImportDeclarationForIndirectCallsMinHotness(
-+        "import-declaration-for-indirect-calls-min-hotness",
-+        cl::init(CalleeInfo::HotnessType::Hot), cl::Hidden,
-+        cl::desc("Minimum hotness of an indirect call edge for "
-+                 "-import-declaration-for-indirect-calls to import a "
-+                 "declaration of its target."),
-+        cl::values(clEnumValN(CalleeInfo::HotnessType::Unknown, "unknown",
-+                              "Any edge, including ones without profile"),
-+                   clEnumValN(CalleeInfo::HotnessType::Cold, "cold",
-+                              "Cold or hotter edges"),
-+                   clEnumValN(CalleeInfo::HotnessType::None, "none",
-+                              "Edges that are not cold"),
-+                   clEnumValN(CalleeInfo::HotnessType::Hot, "hot",
-+                              "Hot or critical edges"),
-+                   clEnumValN(CalleeInfo::HotnessType::Critical, "critical",
-+                              "Critical edges only")));
-+
- /// Pass a workload description file - an example of workload would be the
- /// functions executed to satisfy a RPC request. A workload is defined by a root
- /// function and the list of functions that are (frequently) needed to satisfy
-@@ -928,17 +956,23 @@
-     // callee exported from its defining module) if its definition is not
-     // imported. This is the case when the edge was marked as requiring a
-     // declaration import (e.g. for MemProf ICP), or when declaration imports
--    // are enabled via -import-declaration for an indirect call edge, since the
--    // backend may then promote the indirect call to the imported declaration
--    // (e.g. regular ICP under -icp-allow-decls), which requires that the
--    // callee not be internalized. Callees of direct calls don't need to be
--    // exported here, since they are either referenced directly from the
--    // destination module, in which case they are already treated as visible
--    // outside their defining module, or from an imported definition, in which
--    // case they are marked exported in ComputeCrossModuleImport.
-+    // are enabled for an indirect call edge (via -import-declaration, or via
-+    // -import-declaration-for-indirect-calls for edges at least as hot as
-+    // -import-declaration-for-indirect-calls-min-hotness), since the backend
-+    // may then promote the indirect call to the imported declaration (e.g.
-+    // regular ICP under -icp-allow-decls), which requires that the callee not
-+    // be internalized. Callees of direct calls don't need to be exported here,
-+    // since they are either referenced directly from the destination module,
-+    // in which case they are already treated as visible outside their
-+    // defining module, or from an imported definition, in which case they are
-+    // marked exported in ComputeCrossModuleImport.
-     const bool RequiresDeclImport =
-         Edge.second.requiresDeclImport() ||
--        (ImportDeclaration && Edge.second.hasIndirectCall());
-+        (Edge.second.hasIndirectCall() &&
-+         (ImportDeclaration ||
-+          (ImportDeclarationForIndirectCalls &&
-+           Edge.second.getHotness() >=
-+               ImportDeclarationForIndirectCallsMinHotness)));
- 
-     if (ImportCutoff >= 0 && ImportCount >= ImportCutoff) {
-       LLVM_DEBUG(dbgs() << "ignored! import-cutoff value of " << ImportCutoff
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.iglp.opt.exp.two-regions.mir b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.iglp.opt.exp.two-regions.mir
---- a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.iglp.opt.exp.two-regions.mir
-+++ b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.iglp.opt.exp.two-regions.mir
-@@ -1,12 +1,12 @@
--# RUN: llc -mtriple=amdgpu9.42-amd-amdhsa -start-before=machine-scheduler -stop-before=postmisched -verify-misched -o - %s | FileCheck %s
-+# RUN: llc -mtriple=amdgpu9.42-amd-amdhsa -start-before=machine-scheduler -stop-before=postmisched -o - %s | FileCheck %s
- 
- # The iglp_opt(2) analysis data is computed pre-RA, stored on each IGLP_OPT and
- # reused post-RA. Each region must keep its own data: the small kernel region
- # must not get the data of the large kernel region, which is analyzed after it.
- 
- # CHECK-LABEL: name: small_then_large
--# CHECK: IGLP_OPT 2, 32, 33, 1, 2, 4, 3, 0, 1{{$}}
--# CHECK: IGLP_OPT 2, 64, 93, 0, 4, 4, 6, 1, 0{{$}}
-+# CHECK: IGLP_OPT 2, 32, 33, 1, 1, 30, 3, 1, 1{{$}}
-+# CHECK: IGLP_OPT 2, 64, 97, 0, 1, 0, 6, 1, 0{{$}}
- 
- --- |
-   define amdgpu_kernel void @small_then_large() #0 { ret void }
-@@ -67,8 +67,8 @@
-     %262:vgpr_32 = V_CVT_F16_F32_e32 %121, implicit $mode, implicit $exec
-     undef %289.sub1:vreg_64_align2 = V_PACK_B32_F16_e64 0, undef %262, 0, undef %262, 0, 0, implicit $mode, implicit $exec
-     %289.sub0:vreg_64_align2 = V_PACK_B32_F16_e64 0, %212, 0, %262, 0, 0, implicit $mode, implicit $exec
--    %36:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %1040.sub0_sub1, %289, undef %36, 0, 0, 0, implicit $mode, implicit $exec
--    %37:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %1040.sub0_sub1, %289, undef %37, 0, 0, 0, implicit $mode, implicit $exec
-+    %36:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %1040.sub0_sub1, %289, undef %36, 0, 0, 0, implicit $mode, implicit $exec
-+    %37:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %1040.sub0_sub1, %289, undef %37, 0, 0, 0, implicit $mode, implicit $exec
-     %36:vreg_512_align2 = IMPLICIT_DEF
-     %37:vreg_512_align2 = IMPLICIT_DEF
-     %293:vgpr_32 = V_CVT_F16_F32_e32 %211, implicit $mode, implicit $exec
-@@ -77,7 +77,7 @@
-     %37:vreg_512_align2 = IMPLICIT_DEF
-     %36:vreg_512_align2 = IMPLICIT_DEF
-     %37:vreg_512_align2 = IMPLICIT_DEF
--    %37:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %1040.sub2_sub3, %312, undef %37, 0, 0, 0, implicit $mode, implicit $exec
-+    %37:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %1040.sub2_sub3, %312, undef %37, 0, 0, 0, implicit $mode, implicit $exec
-     S_CBRANCH_SCC1 %bb.2, implicit undef $scc
- 
-   bb.1:
-@@ -98,42 +98,42 @@
-     %391:vreg_512_align2 = IMPLICIT_DEF
-     %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %386.sub2_sub3, %1040.sub2_sub3, %391, 0, 0, 0, implicit $mode, implicit $exec
-     %392:vreg_128_align2 = DS_READ_B128_gfx9 undef %293, 1536, 0, implicit $exec
--    early-clobber %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_vgprcd_e64 %392.sub0_sub1, undef %1040.sub0_sub1, 0, 0, 0, 0, implicit $mode, implicit $exec
--    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %392.sub2_sub3, undef %1040.sub2_sub3, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-+    early-clobber %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_vgprcd_e64 %392.sub0_sub1, %1040.sub0_sub1, 0, 0, 0, 0, implicit $mode, implicit $exec
-+    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %392.sub2_sub3, %1040.sub2_sub3, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-     %394:vreg_128_align2 = DS_READ_B128_gfx9 undef %293, 0, 0, implicit $exec
--    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, undef %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, %1040.sub0_sub1, undef %391, 0, 0, 0, implicit $mode, implicit $exec
--    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %394.sub0_sub1, undef %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
--    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %394.sub2_sub3, undef %1040.sub2_sub3, undef %393, 0, 0, 0, implicit $mode, implicit $exec
--    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, undef %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %394.sub0_sub1, %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-+    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %394.sub2_sub3, %1040.sub2_sub3, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-+    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %394.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %403:vreg_128_align2 = IMPLICIT_DEF
--    %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %403.sub0_sub1, undef %1040.sub0_sub1, %391, 0, 0, 0, implicit $mode, implicit $exec
-+    %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %403.sub0_sub1, %1040.sub0_sub1, %391, 0, 0, 0, implicit $mode, implicit $exec
-     %404:vreg_128_align2 = IMPLICIT_DEF
-     %393:vreg_512_align2 = IMPLICIT_DEF
-     %393:vreg_512_align2 = IMPLICIT_DEF
--    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, undef %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
--    %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, undef %1040.sub0_sub1, undef %391, 0, 0, 0, implicit $mode, implicit $exec
-+    %387:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, %1040.sub0_sub1, undef %387, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %391:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, %1040.sub0_sub1, undef %391, 0, 0, 0, implicit $mode, implicit $exec
-     %393:vreg_512_align2 = IMPLICIT_DEF
-     %387:vreg_512_align2 = IMPLICIT_DEF
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %404.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %391:vreg_512_align2 = IMPLICIT_DEF
-     %393:vreg_512_align2 = IMPLICIT_DEF
-     %424:vreg_128_align2 = DS_READ_B128_gfx9 undef %293, 0, 0, implicit $exec
-     %387:vreg_512_align2 = IMPLICIT_DEF
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %424.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %424.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %391:vreg_512_align2 = IMPLICIT_DEF
--    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %424.sub0_sub1, undef %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-+    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %424.sub0_sub1, %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-     %387:vreg_512_align2 = IMPLICIT_DEF
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %424.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %424.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %391:vreg_512_align2 = IMPLICIT_DEF
-     %431:vreg_128_align2 = DS_READ_B128_gfx9 undef %293, 1536, 0, implicit $exec
--    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %431.sub0_sub1, undef %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-+    %393:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 %431.sub0_sub1, %1040.sub0_sub1, undef %393, 0, 0, 0, implicit $mode, implicit $exec
-     %387:vreg_512_align2 = IMPLICIT_DEF
-     %433:vreg_128_align2 = IMPLICIT_DEF
--    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %433.sub0_sub1, undef %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-+    %389:vreg_512_align2 = V_MFMA_F32_32X32X8F16_mac_vgprcd_e64 undef %433.sub0_sub1, %1040.sub0_sub1, %389, 0, 0, 0, implicit $mode, implicit $exec
-     %391:vreg_512_align2 = IMPLICIT_DEF
-     %393:vreg_512_align2 = IMPLICIT_DEF
-     %542:vgpr_32 = V_EXP_F32_e32 undef %371, implicit $mode, implicit $exec
-diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/import-declaration-indirect-calls.ll b/llvm/test/ThinLTO/X86/import-declaration-indirect-calls.ll
---- a/llvm/test/ThinLTO/X86/import-declaration-indirect-calls.ll
-+++ b/llvm/test/ThinLTO/X86/import-declaration-indirect-calls.ll
-@@ -0,0 +1,111 @@
-+;; Test -import-declaration-for-indirect-calls: when the definition of the
-+;; target of a profiled indirect call is not imported, a declaration is imported
-+;; instead and the target is exported from its defining module, so that the
-+;; backend can promote the indirect call to it under -icp-allow-decls. Only
-+;; edges at least as hot as -import-declaration-for-indirect-calls-min-hotness
-+;; (hot by default) are considered.
-+
-+; RUN: split-file %s %t
-+; RUN: opt -thinlto-bc %t/main.ll -o %t/main.o
-+; RUN: opt -thinlto-bc %t/foo.ll -o %t/foo.o
-+
-+;; The indirect call edge from foo to bar is hot.
-+; RUN: llvm-dis %t/foo.o -o - | FileCheck %s --check-prefix=SUMMARY
-+; SUMMARY: gv: (name: "foo", {{.*}} calls: ((callee: ^{{[0-9]+}}, hotness: hot, indirect: 1))
-+
-+;; bar is noinline, so its definition is not imported into foo's module. It is
-+;; only referenced via its address in main's module, so it would be internalized
-+;; unless the declaration import exports it.
-+; RUN: llvm-lto2 run %t/main.o %t/foo.o \
-+; RUN:  -import-declaration-for-indirect-calls -icp-allow-decls \
-+; RUN:  -r=%t/foo.o,foo,plx \
-+; RUN:  -r=%t/main.o,main,plx \
-+; RUN:  -r=%t/main.o,foo, \
-+; RUN:  -r=%t/main.o,bar,pl \
-+; RUN:  -r=%t/main.o,fptr,plx \
-+; RUN:  -thinlto-threads=1 \
-+; RUN:  -pass-remarks=pgo-icall-prom \
-+; RUN:  -save-temps \
-+; RUN:  -o %t.out 2>&1 | FileCheck %s --check-prefix=REMARKS
-+; RUN: llvm-dis %t.out.2.3.import.bc -o - | FileCheck %s --check-prefix=IMPORT
-+; RUN: llvm-nm %t.out.1 | FileCheck %s --check-prefix=EXPORTED
-+; RUN: llvm-nm %t.out.2 | FileCheck %s --check-prefix=REFERENCED
-+
-+; REMARKS: Promote indirect call to bar with count 10000 out of 10000
-+; IMPORT: declare !guid !{{[0-9]+}} void @bar()
-+; EXPORTED: T bar
-+; REFERENCED: U bar
-+
-+;; Raising the hotness bar above the edge's hotness disables the declaration
-+;; import: bar is not found in foo's module and is internalized.
-+; RUN: llvm-lto2 run %t/main.o %t/foo.o \
-+; RUN:  -import-declaration-for-indirect-calls \
-+; RUN:  -import-declaration-for-indirect-calls-min-hotness=critical \
-+; RUN:  -icp-allow-decls \
-+; RUN:  -r=%t/foo.o,foo,plx \
-+; RUN:  -r=%t/main.o,main,plx \
-+; RUN:  -r=%t/main.o,foo, \
-+; RUN:  -r=%t/main.o,bar,pl \
-+; RUN:  -r=%t/main.o,fptr,plx \
-+; RUN:  -thinlto-threads=1 \
-+; RUN:  -pass-remarks-missed=pgo-icall-prom \
-+; RUN:  -o %t.gated.out 2>&1 | FileCheck %s --check-prefix=REMARKS-GATED
-+; RUN: llvm-nm %t.gated.out.1 | FileCheck %s --check-prefix=INTERNALIZED
-+
-+; REMARKS-GATED: Cannot promote indirect call: target with md5sum 16434608426314478903 not found (count=10000)
-+; INTERNALIZED: t bar
-+
-+;--- foo.ll
-+source_filename = "foo.cc"
-+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
-+target triple = "x86_64-unknown-linux-gnu"
-+
-+define void @foo(ptr %fp) !prof !15 {
++; The outer scope hoists %a to entry because it is the condition of %b.
++; The inner scope must not split head at the now-hoisted %a or specialize it
++; outside the region guarded by the inner scope's merged branch.
++define void @hoisted_insert_point() !prof !12 {
++; CHECK-LABEL: define void @hoisted_insert_point(
++; CHECK-SAME: ) !prof [[PROF12:![0-9]+]] {
++; CHECK-NEXT:  [[ENTRY:.*:]]
++; CHECK-NEXT:    [[A:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13:![0-9]+]]
++; CHECK-NEXT:    [[TMP0:%.*]] = xor i1 true, [[A]]
++; CHECK-NEXT:    [[TMP1:%.*]] = select i1 true, i1 [[TMP0]], i1 false, !prof [[PROF14:![0-9]+]]
++; CHECK-NEXT:    [[TMP2:%.*]] = select i1 [[TMP1]], i1 true, i1 false, !prof [[PROF14]]
++; CHECK-NEXT:    br i1 [[TMP2]], label %[[ENTRY_SPLIT:.*]], label %[[ENTRY_SPLIT_NONCHR:.*]], !prof [[PROF15:![0-9]+]]
++; CHECK:       [[ENTRY_SPLIT]]:
++; CHECK-NEXT:    br label %[[HEAD:.*]]
++; CHECK:       [[HEAD]]:
++; CHECK-NEXT:    br i1 false, label %[[SIDE:.*]], label %[[EXIT:.*]], !prof [[PROF13]]
++; CHECK:       [[SIDE]]:
++; CHECK-NEXT:    br label %[[EXIT]]
++; CHECK:       [[EXIT]]:
++; CHECK-NEXT:    [[B:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[C:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    ret void
++; CHECK:       [[ENTRY_SPLIT_NONCHR]]:
++; CHECK-NEXT:    br label %[[HEAD_NONCHR:.*]]
++; CHECK:       [[HEAD_NONCHR]]:
++; CHECK-NEXT:    [[A_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    br i1 false, label %[[SIDE_NONCHR:.*]], label %[[EXIT_NONCHR:.*]], !prof [[PROF13]]
++; CHECK:       [[SIDE_NONCHR]]:
++; CHECK-NEXT:    br label %[[EXIT_NONCHR]]
++; CHECK:       [[EXIT_NONCHR]]:
++; CHECK-NEXT:    [[B_NONCHR:%.*]] = select i1 [[A_NONCHR]], i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[C_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    ret void
++;
 +entry:
-+  call void %fp(), !prof !0
++  br label %head
++head:
++  %a = select i1 false, i1 false, i1 false, !prof !13
++  br i1 false, label %side, label %exit, !prof !13
++side:
++  br label %exit
++exit:
++  %b = select i1 %a, i1 false, i1 false, !prof !13
++  %c = select i1 false, i1 false, i1 false, !prof !13
 +  ret void
 +}
 +
-+!0 = !{!"VP", i32 0, i64 10000, i64 -2012135647395072713, i64 10000}
-+
-+;; Profile summary with a hot count threshold of 100, so the call edge is hot.
-+!llvm.module.flags = !{!1}
-+!1 = !{i32 1, !"ProfileSummary", !2}
-+!2 = !{!3, !4, !5, !6, !7, !8, !9, !10}
-+!3 = !{!"ProfileFormat", !"InstrProf"}
-+!4 = !{!"TotalCount", i64 10000}
-+!5 = !{!"MaxCount", i64 10000}
-+!6 = !{!"MaxInternalCount", i64 10000}
-+!7 = !{!"MaxFunctionCount", i64 10000}
-+!8 = !{!"NumCounts", i64 3}
-+!9 = !{!"NumFunctions", i64 3}
-+!10 = !{!"DetailedSummary", !11}
-+!11 = !{!12, !13, !14}
-+!12 = !{i32 10000, i64 100, i32 1}
-+!13 = !{i32 990000, i64 100, i32 1}
-+!14 = !{i32 999999, i64 1, i32 2}
-+!15 = !{!"function_entry_count", i64 10000}
-+
-+;--- main.ll
-+source_filename = "main.cc"
-+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
-+target triple = "x86_64-unknown-linux-gnu"
-+
-+@fptr = global ptr @bar
-+
-+define i32 @main() {
++; A select other than the insertion point can also be hoisted. Preserve its
++; condition: specializing it would change the outer scope's branch condition.
++define i1 @hoisted_later_select() !prof !12 {
++; CHECK-LABEL: define i1 @hoisted_later_select(
++; CHECK-SAME: ) !prof [[PROF12]] {
++; CHECK-NEXT:  [[ENTRY:.*:]]
++; CHECK-NEXT:    [[A:%.*]] = select i1 true, i1 true, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[TMP0:%.*]] = xor i1 true, [[A]]
++; CHECK-NEXT:    [[TMP1:%.*]] = select i1 true, i1 [[TMP0]], i1 false, !prof [[PROF14]]
++; CHECK-NEXT:    [[TMP2:%.*]] = select i1 [[TMP1]], i1 true, i1 false, !prof [[PROF14]]
++; CHECK-NEXT:    br i1 [[TMP2]], label %[[ENTRY_SPLIT:.*]], label %[[ENTRY_SPLIT_NONCHR:.*]], !prof [[PROF15]]
++; CHECK:       [[ENTRY_SPLIT]]:
++; CHECK-NEXT:    br label %[[HEAD:.*]]
++; CHECK:       [[HEAD]]:
++; CHECK-NEXT:    [[KEEP:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    br i1 false, label %[[SIDE:.*]], label %[[EXIT:.*]], !prof [[PROF13]]
++; CHECK:       [[SIDE]]:
++; CHECK-NEXT:    br label %[[EXIT]]
++; CHECK:       [[EXIT]]:
++; CHECK-NEXT:    [[B:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[C:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    ret i1 [[A]]
++; CHECK:       [[ENTRY_SPLIT_NONCHR]]:
++; CHECK-NEXT:    br label %[[HEAD_NONCHR:.*]]
++; CHECK:       [[HEAD_NONCHR]]:
++; CHECK-NEXT:    [[KEEP_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[A_NONCHR:%.*]] = select i1 true, i1 true, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    br i1 false, label %[[SIDE_NONCHR:.*]], label %[[EXIT_NONCHR:.*]], !prof [[PROF13]]
++; CHECK:       [[SIDE_NONCHR]]:
++; CHECK-NEXT:    br label %[[EXIT_NONCHR]]
++; CHECK:       [[EXIT_NONCHR]]:
++; CHECK-NEXT:    [[B_NONCHR:%.*]] = select i1 [[A_NONCHR]], i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    [[C_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
++; CHECK-NEXT:    ret i1 [[A_NONCHR]]
++;
 +entry:
-+  %fp = load ptr, ptr @fptr
-+  call void @foo(ptr %fp)
-+  ret i32 0
++  br label %head
++head:
++  %keep = select i1 false, i1 false, i1 false, !prof !13
++  %a = select i1 true, i1 true, i1 false, !prof !13
++  br i1 false, label %side, label %exit, !prof !13
++side:
++  br label %exit
++exit:
++  %b = select i1 %a, i1 false, i1 false, !prof !13
++  %c = select i1 false, i1 false, i1 false, !prof !13
++  ret i1 %a
 +}
 +
-+declare void @foo(ptr)
++!llvm.module.flags = !{!0}
++!0 = !{i32 1, !"ProfileSummary", !1}
++!1 = !{!2, !3, !4, !5, !6, !7, !8, !9}
++!2 = !{!"ProfileFormat", !"InstrProf"}
++!3 = !{!"TotalCount", i64 1000}
++!4 = !{!"MaxCount", i64 1000}
++!5 = !{!"MaxInternalCount", i64 1000}
++!6 = !{!"MaxFunctionCount", i64 1000}
++!7 = !{!"NumCounts", i64 1}
++!8 = !{!"NumFunctions", i64 1}
++!9 = !{!"DetailedSummary", !10}
++!10 = !{!11}
++!11 = !{i32 999999, i64 1000, i32 1}
++!12 = !{!"function_entry_count", i64 1000}
++!13 = !{!"branch_weights", i32 0, i32 1000}
++;.
++; CHECK: [[PROF12]] = !{!"function_entry_count", i64 1000}
++; CHECK: [[PROF13]] = !{!"branch_weights", i32 0, i32 1000}
++; CHECK: [[PROF14]] = !{!"unknown", !"chr"}
++; CHECK: [[PROF15]] = !{!"branch_weights", i32 1000, i32 0}
++;.
+diff -ruN --strip-trailing-cr a/llvm/unittests/ADT/DenseMapTest.cpp b/llvm/unittests/ADT/DenseMapTest.cpp
+--- a/llvm/unittests/ADT/DenseMapTest.cpp
++++ b/llvm/unittests/ADT/DenseMapTest.cpp
+@@ -629,8 +629,7 @@
+     Values.emplace_back(i, CountCopyAndMove(i));
+ 
+   CountCopyAndMove::ResetCounts();
+-  [[maybe_unused]] DenseMap<int, CountCopyAndMove> Map(Values.begin(),
+-                                                       Values.end());
++  DenseMap<int, CountCopyAndMove> Map(Values.begin(), Values.end());
+   // Check that no move occurred
+   EXPECT_EQ(0, CountCopyAndMove::TotalMoves());
+   // Check that copy was called the expected number of times
+@@ -1286,7 +1285,7 @@
+   DenseMap<int, int> M;
+   M.try_emplace(1, 10);
+   auto It = M.find(1);
+-  [[maybe_unused]] DenseMap<int, int> Other = std::move(M);
++  DenseMap<int, int> Other = std::move(M);
+   EXPECT_DEATH((void)It->second, "invalid iterator access");
+ }
+ 
+@@ -1294,7 +1293,7 @@
+   DenseMap<int, int> M;
+   M.try_emplace(1, 10);
+   auto It = M.find(1);
+-  [[maybe_unused]] DenseMap<int, int> Other;
++  DenseMap<int, int> Other;
+   Other = std::move(M);
+   EXPECT_DEATH((void)It->second, "invalid iterator access");
+ }
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp b/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
+--- a/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
++++ b/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
+@@ -357,6 +357,9 @@
+   /// position.
+   PostDominanceInfo postDominators;
+ 
++  /// The map storing the final placement blocks of a given alloc value.
++  llvm::DenseMap<Value, Block *> placementBlocks;
 +
-+;; The noinline attribute prevents importing bar's definition.
-+define void @bar() #0 {
-+entry:
-+  ret void
-+}
-+
-+attributes #0 = { noinline }
+   /// The operation that this transformation is working on. It is used to also
+   /// gather allocas.
+   Operation *scopeOp;

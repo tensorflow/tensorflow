@@ -901,13 +901,25 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
     if (wrapped_comp == nullptr) {
       return changed;
     }
-    HloInstruction* root = wrapped_comp->root_instruction();
+    // An async-start wrapping dynamic-update-slice forwards its destination
+    // operand, which the update is written into in place, when that operand is
+    // bound on the start.
+    const HloInstruction* root = wrapped_comp->root_instruction();
+    const HloInstruction* source = root;
+    if (async_op->opcode() == HloOpcode::kAsyncStart &&
+        root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        root->operand(0)->opcode() == HloOpcode::kParameter) {
+      int64_t dst_param = root->operand(0)->parameter_number();
+      if (dst_param < async_op->operand_count()) {
+        source = async_op->operand(dst_param);
+      }
+    }
     ShapeUtil::ForEachSubshape(
-        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!subshape.IsArray() && !subshape.IsToken()) {
             return;
           }
-          const HloValueSet& root_value_set = GetValueSet(root, index);
+          const HloValueSet& source_value_set = GetValueSet(source, index);
 
           ShapeIndex output_index = async_op->opcode() == HloOpcode::kAsyncDone
                                         ? ShapeIndex{}
@@ -922,8 +934,8 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
           }
 
           HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
-          if (value_set != root_value_set) {
-            value_set = root_value_set;
+          if (value_set != source_value_set) {
+            value_set = source_value_set;
             changed = true;
           }
         });
@@ -977,21 +989,9 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     return changed;
   }
 
-  bool is_dus =
-      async_start->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
-  if (!is_dus) {
-    // AsyncStart forwards the async wrapped computation root values to element
-    // {1} of its output.
-    changed |= UpdateAsyncChainOutputValueSet(async_start);
-  } else if (HloInstruction::IsThreadIncluded(
-                 async_start->async_execution_thread(), execution_threads_)) {
-    const HloValueSet& operand_value_set = GetValueSet(async_start->operand(0));
-    HloValueSet& value_set = GetMutableValueSet(async_start, {1});
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
+  // AsyncStart forwards the async wrapped computation values to element {1} of
+  // its output.
+  changed |= UpdateAsyncChainOutputValueSet(async_start);
   return changed;
 }
 

@@ -20,11 +20,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
 
@@ -58,6 +60,8 @@ class CpuInstructionFusion : public InstructionFusion {
                                const absl::flat_hash_set<absl::string_view>&
                                    execution_threads) override {
     fusion_node_evaluations_.clear();
+    ABSL_ASSIGN_OR_RETURN(max_fusion_operands_,
+                     options::MaxFusionOperands(module->config()));
     ComputeInstructionsToSkip(module, execution_threads);
     return InstructionFusion::RunImpl(module, execution_threads);
   }
@@ -79,6 +83,10 @@ class CpuInstructionFusion : public InstructionFusion {
       fusion_node_evaluations_;
 
   absl::flat_hash_set<const HloInstruction*> instructions_to_skip_;
+
+  // Maximum number of distinct operands of a loop fusion, read from the
+  // module's xla_backend_extra_options in RunImpl (<= 0 disables the check).
+  int64_t max_fusion_operands_ = 96;
 };
 
 }  // namespace cpu

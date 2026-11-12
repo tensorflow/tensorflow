@@ -2994,6 +2994,25 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
             LiteralUtil::CreateR2<int64_t>({{1, 2}, {1, 2}}));
 }
 
+TEST_F(LiteralUtilTest, BroadcastVectorAlongMinorDimColumnMajorAndUint8) {
+  Literal u8_vec = LiteralUtil::CreateR1<uint8_t>({7, 42});
+  ASSERT_OK_AND_ASSIGN(
+      Literal u8_out,
+      u8_vec.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(U8, {2, 4}),
+                       /*dimensions=*/{0}));
+  EXPECT_EQ(u8_out,
+            LiteralUtil::CreateR2<uint8_t>({{7, 7, 7, 7}, {42, 42, 42, 42}}));
+
+  Literal s64_vec = LiteralUtil::CreateR1<int64_t>({10, 20, 30});
+  Shape col_major = ShapeUtil::MakeShapeWithDenseLayout(
+      S64, {2, 3}, /*minor_to_major=*/{0, 1});
+  ASSERT_OK_AND_ASSIGN(Literal col_major_out,
+                       s64_vec.Broadcast(col_major, /*dimensions=*/{1}));
+  EXPECT_EQ(col_major_out,
+            LiteralUtil::CreateR2WithLayout<int64_t>(
+                {{10, 20, 30}, {10, 20, 30}}, LayoutUtil::MakeLayout({0, 1})));
+}
+
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
   Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2});
   ASSERT_OK_AND_ASSIGN(

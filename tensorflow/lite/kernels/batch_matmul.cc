@@ -384,6 +384,31 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
       }
     }
+    // The hybrid kernel (float left-hand side, int8 right-hand side) doesn't
+    // implement zero points for the right-hand side, so it would silently
+    // ignore them.
+    if (lhs_data->type == kTfLiteFloat32 && rhs_data->type == kTfLiteInt8) {
+      bool has_zero_point = rhs_data->params.zero_point != 0;
+      if (!has_zero_point &&
+          rhs_data->quantization.type == kTfLiteAffineQuantization) {
+        const auto* affine_quantization =
+            reinterpret_cast<const TfLiteAffineQuantization*>(
+                rhs_data->quantization.params);
+        if (affine_quantization != nullptr &&
+            affine_quantization->zero_point != nullptr) {
+          const TfLiteIntArray* zero_points = affine_quantization->zero_point;
+          has_zero_point |= std::any_of(
+              zero_points->data, zero_points->data + zero_points->size,
+              [](int zero_point) { return zero_point != 0; });
+        }
+      }
+      if (has_zero_point) {
+        TF_LITE_KERNEL_LOG(context,
+                           "Hybrid BATCH_MATMUL does not support non-zero zero "
+                           "points for its int8 right-hand side.");
+        return kTfLiteError;
+      }
+    }
     // Either we have a hybrid quantization with a float32 and an int8 input,
     // otherwise both inputs should be of the same type.
     TF_LITE_ENSURE(
