@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -921,9 +922,13 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
                        stream_executor::gpu::GetAddI32TestKernelSpec(
                            stream_executor->GetPlatform()->id()));
 
-  auto custom_kernel =
-      CustomKernel("AddI32", std::move(spec), se::BlockDim(),
-                   se::ThreadDim(4, 1, 1), /*shared_memory_bytes=*/0);
+  GpuKernelSpec kernel_spec{
+      "AddI32", LaunchDimensions{se::BlockDim(), se::ThreadDim(4, 1, 1)},
+      emitters::KernelArguments(std::vector<emitters::KernelArgument>{
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}}})};
+  CustomKernel custom_kernel = CustomKernel(kernel_spec, std::move(spec));
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;

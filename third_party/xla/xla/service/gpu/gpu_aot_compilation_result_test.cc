@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/string_reader.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -124,14 +125,13 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         /*cluster_dim=*/std::nullopt,
         /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata(),
         gpu_topology.num_devices_per_host());
-    CustomKernel custom_kernel{
-        "custom_kernel_name",
-        stream_executor::KernelLoaderSpec::
-            CreateSerializableInProcessSymbolSpec(
-                "persistent_kernel_name", kCudaSymbol, "test_custom_kernel",
-                /*arity=*/42),
-        stream_executor::BlockDim(), stream_executor::ThreadDim(),
-        /*shared_memory_bytes=*/23};
+    GpuKernelSpec spec{"custom_kernel_name", LaunchDimensions{},
+                       emitters::KernelArguments({}), 23};
+    CustomKernel custom_kernel{spec, stream_executor::KernelLoaderSpec::
+                                         CreateSerializableInProcessSymbolSpec(
+                                             "persistent_kernel_name",
+                                             kCudaSymbol, "test_custom_kernel",
+                                             /*arity=*/42)};
     thunk_sequence.Emplace<CustomKernelThunk>(
         thunk_info, custom_kernel, emitters::KernelArguments({}),
         gpu_topology.num_devices_per_process());
