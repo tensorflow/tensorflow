@@ -78,6 +78,7 @@ cc_library(
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/functional:any_invocable",
@@ -138,8 +139,10 @@ cc_library(
     srcs = ["dedup_meshes.cc"],
     hdrs = ["dedup_meshes.h"],
     deps = [
+        "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

@@ -49,8 +49,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/extensions/partial_reduce_custom_call.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/sharding_op_util.h"
 
 namespace xla {
 namespace sdy {
@@ -160,6 +162,59 @@ struct CustomCallShardingRuleOpInterface
   mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
     auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
     llvm::StringRef callTargetName = customCall.getCallTargetName();
+    auto hasDynamicTensor = [](mlir::TypeRange types) {
+      return llvm::any_of(types, [](mlir::Type t) {
+        auto rankedTy = llvm::dyn_cast<mlir::RankedTensorType>(t);
+        return rankedTy && !rankedTy.hasStaticShape();
+      });
+    };
+    if (hasDynamicTensor(customCall.getOperandTypes()) ||
+        hasDynamicTensor(customCall.getResultTypes())) {
+      return mlir::sdy::OpShardingRuleAttr();
+    }
+    if (callTargetName == "mhlo.bounded_dynamic_cast" ||
+        callTargetName == kShardingCustomCallTargetName) {
+      return mlir::sdy::OpShardingRuleBuilder::buildPointwise(customCall);
+    }
+    if (callTargetName == kSPMDFullToShardShapeCallTargetName ||
+        callTargetName == kSPMDShardToFullShapeCallTargetName) {
+      std::vector<int64_t> unspecDims;
+      if (!xla::sharding_op_util::ParseAttributes(
+               getRawBackendConfig(customCall), &unspecDims)
+               .ok() ||
+          unspecDims.empty() || customCall.getNumOperands() != 1 ||
+          customCall.getNumResults() != 1) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      llvm::ArrayRef<int64_t> inShape =
+          mlir::sdy::getTensorShape(customCall.getOperand(0));
+      llvm::ArrayRef<int64_t> outShape =
+          mlir::sdy::getTensorShape(customCall.getResult(0));
+      if (inShape.size() != outShape.size()) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      mlir::sdy::OpShardingRuleBuilder builder(customCall);
+      for (int64_t d = 0; d < static_cast<int64_t>(inShape.size()); ++d) {
+        if (llvm::is_contained(unspecDims, d) && inShape[d] == outShape[d]) {
+          builder.addFactor(d, d, inShape[d]);
+        } else {
+          builder.addFactor(d, mlir::sdy::kNullDim, inShape[d],
+                            mlir::sdy::FactorType::kNeedReplication,
+                            /*isBlocked=*/true);
+          builder.addFactor(mlir::sdy::kNullDim, d, outShape[d],
+                            mlir::sdy::FactorType::kNeedReplication,
+                            /*isBlocked=*/true);
+        }
+      }
+      return builder.build();
+    }
+    if (op->hasAttr(kOrigResultTypesAttr) ||
+        llvm::any_of(op->getOperands(), [](mlir::Value v) {
+          mlir::Operation* defOp = v.getDefiningOp();
+          return defOp && defOp->hasAttr(kOrigResultTypesAttr);
+        })) {
+      return mlir::sdy::OpShardingRuleAttr();
+    }
     if (callTargetName == "CompactWyHelper" ||
         callTargetName == "compute-on-done" ||
         callTargetName == "InvertDiagBlocksLowerTriangular" ||

@@ -1396,11 +1396,87 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
-      auto op = mlir::stablehlo::InfeedOp::create(
-          *func_builder, loc, flattened_ret_types, operands, attributes);
+      bool has_dynamic_result = llvm::any_of(flattened_ret_types, [](Type t) {
+        auto ranked_ty = mlir::dyn_cast<RankedTensorType>(t);
+        return ranked_ty && !ranked_ty.hasStaticShape();
+      });
+      if (!has_dynamic_result) {
+        auto op = mlir::stablehlo::InfeedOp::create(
+            *func_builder, loc, flattened_ret_types, operands, attributes);
 
-      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
-                                      result_type);
+        return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                        result_type);
+      }
+
+      // StableHLO InfeedOp requires static tensor result types. Import bounded
+      // dynamic data results at their static upper-bound shape and cast back.
+      Shape static_shape = ShapeUtil::MakeStaticShape(shape);
+      ABSL_ASSIGN_OR_RETURN(
+          Type static_result_type,
+          ConvertShapeToType<RankedTensorType>(static_shape, *builder_));
+      llvm::SmallVector<Type> static_ret_types;
+      FlattenTupleType(static_result_type, static_ret_types);
+      bool all_static = llvm::all_of(static_ret_types, [](Type t) {
+        auto ranked_ty = mlir::dyn_cast<RankedTensorType>(t);
+        return !ranked_ty || ranked_ty.hasStaticShape();
+      });
+      if (!all_static) {
+        auto op = mlir::stablehlo::InfeedOp::create(
+            *func_builder, loc, flattened_ret_types, operands, attributes);
+        return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                        result_type);
+      }
+
+      auto op = mlir::stablehlo::InfeedOp::create(
+          *func_builder, loc, static_ret_types, operands, attributes);
+      op->setAttr(xla::kXlaShape, builder_->getStringAttr(
+                                      shape.ToString(/*print_layout=*/true)));
+
+      ArrayRef<HloSharding> leaf_shardings =
+          instruction->has_sharding()
+              ? FlattenTupleSharding(instruction->sharding())
+              : ArrayRef<HloSharding>();
+      llvm::SmallVector<Value> results(op.getResults().begin(),
+                                       op.getResults().end());
+      for (size_t i = 0; i < flattened_ret_types.size(); ++i) {
+        auto ranked_ty =
+            mlir::dyn_cast<RankedTensorType>(flattened_ret_types[i]);
+        if (!ranked_ty || ranked_ty.hasStaticShape()) {
+          continue;
+        }
+        llvm::SmallVector<NamedAttribute, 4> cast_attrs = {
+            builder_->getNamedAttr(
+                "call_target_name",
+                builder_->getStringAttr("mhlo.bounded_dynamic_cast")),
+            builder_->getNamedAttr("has_side_effect",
+                                   builder_->getBoolAttr(false)),
+            builder_->getNamedAttr(
+                "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
+                                   builder_->getContext(),
+                                   mlir::stablehlo::CustomCallApiVersion::
+                                       API_VERSION_ORIGINAL)),
+        };
+        if (!leaf_shardings.empty() &&
+            (!instruction->sharding().IsTuple() || i < leaf_shardings.size())) {
+          const HloSharding& leaf_sharding = instruction->sharding().IsTuple()
+                                                 ? leaf_shardings[i]
+                                                 : leaf_shardings.front();
+          cast_attrs.push_back(builder_->getNamedAttr(
+              xla::kMhloSharding, ConvertSharding(leaf_sharding, builder_)));
+        }
+        auto cast_op = mlir::stablehlo::CustomCallOp::create(
+            *func_builder, loc, mlir::TypeRange{flattened_ret_types[i]},
+            mlir::ValueRange{results[i]}, cast_attrs);
+        results[i] = cast_op.getResult(0);
+      }
+
+      if (!mlir::isa<mlir::TupleType>(result_type)) {
+        return op.getOperation();
+      }
+      mlir::ValueRange results_range(results);
+      Value tuple_val =
+          CreateTupleValue(func_builder, loc, results_range, result_type);
+      return tuple_val.getDefiningOp();
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(

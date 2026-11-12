@@ -170,6 +170,17 @@ inline constexpr llvm::StringRef kComputeOnDoneTargetName = "compute-on-done";
 inline constexpr llvm::StringRef kIsComputeOnStartAttr =
     "xla.sdy.is_compute_on_start";
 
+// Temporary attributes used by ShardyXLA to materialize static upper-bound
+// shapes on bounded-dynamic tensors across Shardy propagation and restore the
+// original bounded-dynamic types before exporting back to HLO.
+inline constexpr llvm::StringRef kOrigTypeAttr = "xla.sdy.orig_type";
+inline constexpr llvm::StringRef kOrigResultTypesAttr =
+    "xla.sdy.orig_result_types";
+inline constexpr llvm::StringRef kOrigRegionArgTypesAttr =
+    "xla.sdy.orig_region_arg_types";
+inline constexpr llvm::StringRef kOrigOperandTypesAttr =
+    "xla.sdy.orig_operand_types";
+
 }  //  namespace sdy
 }  //  namespace xla
 

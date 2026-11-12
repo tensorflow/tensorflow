@@ -29,6 +29,7 @@ cc_library(
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "//xla/mlir_hlo",
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log",
@@ -123,7 +124,9 @@ cc_library(
     srcs = ["stablehlo_import.cc"],
     hdrs = ["stablehlo_import.h"],
     deps = [
+        ":export_shardings",
         "//xla:shape_util",
+        "//xla:sharding_op_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -131,8 +134,10 @@ cc_library(
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
+        "//xla/mlir_hlo",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -147,6 +152,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/import:passes",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

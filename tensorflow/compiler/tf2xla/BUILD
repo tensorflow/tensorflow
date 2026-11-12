@@ -1078,8 +1078,6 @@ cc_library(
         "@xla//xla:status_macros",
         "@xla//xla/hlo/builder:sharding_builder",
         "@xla//xla/hlo/builder:xla_builder",
-        "@xla//xla/hlo/ir:hlo_sharding",
-        "@xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
     ],
 )
 

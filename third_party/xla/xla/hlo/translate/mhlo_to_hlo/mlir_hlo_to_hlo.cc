@@ -1884,12 +1884,42 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto result_types = op.getResultTypes();
   auto num_results = op.getNumResults();
 
+  std::vector<xla::Shape> dynamic_leaf_shapes;
+  if (op->hasAttr(xla::kXlaShape)) {
+    mlir::FailureOr<xla::Shape> orig_shape =
+        xla::ExtractXlaShape(op.getOperation());
+    if (succeeded(orig_shape) && orig_shape->IsTuple() &&
+        orig_shape->tuple_shapes().size() == 2) {
+      const xla::Shape& orig_data = orig_shape->tuple_shapes(0);
+      if (orig_data.IsTuple()) {
+        for (const xla::Shape& s : orig_data.tuple_shapes()) {
+          dynamic_leaf_shapes.push_back(s);
+        }
+      } else {
+        dynamic_leaf_shapes.push_back(orig_data);
+      }
+    }
+  }
+
   std::vector<xla::Shape> subshapes;
   for (const auto& item : llvm::enumerate(result_types)) {
     if (item.index() == num_results - 1) {
       break;
     }
-    subshapes.push_back(xla::TypeToShape(item.value()));
+    if (item.index() < dynamic_leaf_shapes.size()) {
+      subshapes.push_back(dynamic_leaf_shapes[item.index()]);
+      continue;
+    }
+    mlir::Type result_type = item.value();
+    for (mlir::Operation* user : op.getResult(item.index()).getUsers()) {
+      if (auto cast_call = mlir::dyn_cast<stablehlo::CustomCallOp>(user);
+          cast_call &&
+          cast_call.getCallTargetName() == "mhlo.bounded_dynamic_cast") {
+        result_type = cast_call.getResult(0).getType();
+        break;
+      }
+    }
+    subshapes.push_back(xla::TypeToShape(result_type));
   }
 
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
@@ -5618,6 +5648,37 @@ LogicalResult ConvertToHloModule::Lower(
       builder, CreateOriginalValueFromOp(inst));
 
   *return_value = xla::XlaOp();
+
+  if (auto custom_call = dyn_cast<stablehlo::CustomCallOp>(inst);
+      custom_call &&
+      custom_call.getCallTargetName() == "mhlo.bounded_dynamic_cast") {
+    if (custom_call.getNumOperands() != 1 || custom_call.getNumResults() != 1) {
+      return custom_call.emitOpError(
+          "mhlo.bounded_dynamic_cast expects 1 operand and 1 result");
+    }
+    xla::XlaOp xla_operand;
+    if (failed(GetXlaOp(custom_call.getOperand(0), *value_lowering,
+                        &xla_operand, custom_call))) {
+      return failure();
+    }
+    if (std::optional<xla::OpSharding> sharding =
+            CreateOpShardingFromAttribute(custom_call, this)) {
+      const xla::HloInstructionProto* operand_proto =
+          xla::internal::XlaBuilderFriend::GetInstruction(xla_operand);
+      bool same_sharding = false;
+      if (operand_proto->has_sharding()) {
+        auto lhs = xla::HloSharding::FromProto(operand_proto->sharding());
+        auto rhs = xla::HloSharding::FromProto(*sharding);
+        same_sharding = lhs.ok() && rhs.ok() && *lhs == *rhs;
+      }
+      if (!same_sharding) {
+        xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
+        xla_operand = xla::Copy(xla_operand);
+      }
+    }
+    (*value_lowering)[custom_call.getResult(0)] = xla_operand;
+    return success();
+  }
 
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder,
                                          &stack_frame_indexes_builder_}))) {

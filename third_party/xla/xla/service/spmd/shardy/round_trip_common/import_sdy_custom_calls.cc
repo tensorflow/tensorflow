@@ -193,6 +193,10 @@ class ImportSdyCustomCallsPass
     target.addLegalDialect<mlir::sdy::SdyDialect>();
     target.addLegalOp<mlir::func::CallOp>();
     target.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
+      if (op.getCallTargetName() == kShardingCustomCallTargetName &&
+          op->hasAttr(kManualAxes)) {
+        return true;
+      }
       return op.getCallTargetName() != kShardingCustomCallTargetName &&
              op.getCallTargetName() != kShardingGroupCustomCallTargetName &&
              op.getCallTargetName() !=

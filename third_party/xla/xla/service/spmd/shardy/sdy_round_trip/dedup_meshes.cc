@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -40,11 +41,13 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
 #include "shardy/dialect/sdy/transforms/export/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
 namespace sdy {
@@ -509,6 +512,66 @@ void replaceReplicaGroups(ModuleOp moduleOp,
 // to use the respective main mesh.
 void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                  const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  MLIRContext* context = moduleOp.getContext();
+  auto remapManualAxesAttr =
+      [&](sdy::ManualAxesAttr manualAxesAttr,
+          ArrayRef<TensorShardingAttr> shardings) -> sdy::ManualAxesAttr {
+    if (!manualAxesAttr || manualAxesAttr.empty()) {
+      return manualAxesAttr;
+    }
+    for (TensorShardingAttr sharding : shardings) {
+      if (!sharding || mlir::isa<MeshAttr>(sharding.getMeshOrRef())) {
+        continue;
+      }
+      MeshOp meshOp = symbolTable.lookup<MeshOp>(sharding.getMeshName());
+      if (!meshOp || meshOp.getMesh().getAxes().empty()) {
+        continue;
+      }
+      auto it = duplicateMeshesToAxisMap.find(sharding.getMeshName());
+      if (it == duplicateMeshesToAxisMap.end()) {
+        return manualAxesAttr;
+      }
+      const auto& [mainMeshName, mainMesh, axisMap] = it->getSecond();
+      AxisRefVector newAxisRefs;
+      newAxisRefs.reserve(manualAxesAttr.size());
+      for (AxisRefAttr manualAxis : manualAxesAttr.getValue()) {
+        addOrMergeNewAxisRefAttr(manualAxis, newAxisRefs, context, mainMesh,
+                                 axisMap);
+      }
+      return sdy::ManualAxesAttr::get(context, newAxisRefs);
+    }
+    return manualAxesAttr;
+  };
+  for (auto funcOp : moduleOp.getOps<mlir::func::FuncOp>()) {
+    for (unsigned i = 0; i < funcOp.getNumArguments(); ++i) {
+      if (auto manualAxesAttr =
+              funcOp.getArgAttrOfType<sdy::ManualAxesAttr>(i, kManualAxes)) {
+        auto sharding =
+            funcOp.getArgAttrOfType<TensorShardingAttr>(i, sdy::kShardingAttr);
+        funcOp.setArgAttr(i, kManualAxes,
+                          remapManualAxesAttr(manualAxesAttr, {sharding}));
+      }
+    }
+    for (unsigned i = 0; i < funcOp.getNumResults(); ++i) {
+      if (auto manualAxesAttr =
+              funcOp.getResultAttrOfType<sdy::ManualAxesAttr>(i, kManualAxes)) {
+        auto sharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
+            i, sdy::kShardingAttr);
+        funcOp.setResultAttr(i, kManualAxes,
+                             remapManualAxesAttr(manualAxesAttr, {sharding}));
+      }
+    }
+    if (!funcOp.isExternal()) {
+      funcOp.front().walk([&](Operation* op) {
+        if (auto manualAxesAttr =
+                op->getAttrOfType<sdy::ManualAxesAttr>(kManualAxes)) {
+          op->setAttr(kManualAxes, remapManualAxesAttr(manualAxesAttr,
+                                                       sdy::getShardings(op)));
+        }
+      });
+    }
+  }
+
   sdy::transformShardings(
       moduleOp,
       [&](TensorShardingAttr oldSharding) -> TensorShardingAttr {

@@ -30,6 +30,10 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+// Returns whether `manualAxes` covers every full axis of `mesh`.
+bool isFullyManual(mlir::sdy::MeshAttr mesh,
+                   mlir::ArrayRef<mlir::sdy::AxisRefAttr> manualAxes);
+
 // Convert the `sdySharding` into an `xla::HloSharding`.
 HloSharding convertToHloSharding(
     mlir::sdy::TensorShardingAttr sdySharding,

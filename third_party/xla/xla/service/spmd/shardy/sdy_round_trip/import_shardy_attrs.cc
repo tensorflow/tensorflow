@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/side_effect_util.h"
@@ -425,13 +426,27 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
 
   // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
-    // Preserve `kXlaShardingAttr` on infeed & outfeed ops, as frontend
-    // attributes are not always added for them, and we don't propagate
-    // shardings for these ops.
-    if (!mlir::isa<stablehlo::InfeedOp, stablehlo::OutfeedOp>(op)) {
+    // Preserve `kXlaShardingAttr` on infeed, outfeed, MHLO async ops, and
+    // Send/Recv or tuple-returning ops lacking `xla.sdy.sharding`, as frontend
+    // attributes are not always added for them and Shardy `sdy.sharding`
+    // cannot attach to tuple results or preserve token subgroup-manual axes.
+    DictionaryAttr dictAttr = getFrontendAttrs(op);
+    const bool hasNoSdyFrontendAttr = !hasKey(
+        dictAttr, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
+    const bool isTokenOnlyRecv =
+        mlir::isa<stablehlo::RecvOp>(op) && op->getNumResults() == 1;
+    const bool preserveXlaSharding =
+        hasNoSdyFrontendAttr &&
+        (mlir::isa<stablehlo::SendOp>(op) || isTokenOnlyRecv ||
+         llvm::any_of(op->getResultTypes(), [](mlir::Type t) {
+           return mlir::isa<mlir::TupleType>(t);
+         }));
+    if (!mlir::isa<stablehlo::InfeedOp, stablehlo::OutfeedOp,
+                   mlir::mhlo::AsyncStartOp, mlir::mhlo::AsyncUpdateOp,
+                   mlir::mhlo::AsyncDoneOp>(op) &&
+        !preserveXlaSharding) {
       op->removeAttr(kXlaShardingAttr);
     }
-    DictionaryAttr dictAttr = getFrontendAttrs(op);
     if (!dictAttr) {
       return;
     }

@@ -2018,6 +2018,395 @@ TEST_P(ShardyXLATest, PartialReduceConvertGlobalToLocal) {
                                  ShapeUtil::MakeShape(S32, {4, 384})})));
 }
 
+TEST_F(ShardyXLATestV2Only, NonIotaV1TileAssignmentPropagation) {
+  // 1. Non-iota 3-cycle permutation `{devices=[2,2]0,3,1,2}` where
+  // `TryToConvertV1ToV2` returns `std::nullopt`.
+  const char* const nonIotaCycleHlo = R"(
+    HloModule non_iota_cycle, num_partitions=4, allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %p0 = f32[6,10] parameter(0), sharding={devices=[2,2]0,3,1,2}
+      %p1 = f32[6,10] parameter(1)
+      ROOT %add = f32[6,10] add(%p0, %p1)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> cycleModule,
+                       ParseAndReturnVerifiedModule(nonIotaCycleHlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool cycleChanged,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(cycleModule.get()));
+  EXPECT_TRUE(cycleChanged);
+  EXPECT_THAT(cycleModule->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,2]0,3,1,2}"));
+
+  // 2. Non-factorizable V1 `{devices=[2,3]0,3,1,4,2,5}`, V2
+  // `{devices=[2,3]<=[3,2]T(1,0)}`, and incompatible `[3,2]` vs `[2,3]` axes.
+  const char* const nonFactorizableHlo = R"(
+    HloModule non_factorizable, num_partitions=6, allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %p0 = f32[6,12] parameter(0), sharding={devices=[2,3]0,3,1,4,2,5}
+      %q0 = f32[6,12] parameter(1)
+      %p1 = f32[6,12] parameter(2), sharding={devices=[2,3]<=[3,2]T(1,0)}
+      %q1 = f32[6,12] parameter(3)
+      %p2 = f32[6,12] parameter(4), sharding={devices=[3,2]<=[6]}
+      %p3 = f32[6,12] parameter(5), sharding={devices=[2,3]<=[6]}
+      %sum0 = f32[6,12] add(%p0, %q0)
+      %sum1 = f32[6,12] add(%p1, %q1)
+      %sum23 = f32[6,12] add(%p2, %p3)
+      ROOT %out = (f32[6,12], f32[6,12], f32[6,12]) tuple(%sum0, %sum1, %sum23)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> nfModule,
+                       ParseAndReturnVerifiedModule(nonFactorizableHlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool nfChanged,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(nfModule.get()));
+  EXPECT_TRUE(nfChanged);
+  const HloInstruction* nfRoot =
+      nfModule->entry_computation()->root_instruction();
+  ASSERT_TRUE(nfRoot->has_sharding());
+  ASSERT_TRUE(nfRoot->sharding().IsTuple());
+  EXPECT_EQ(
+      nfRoot->sharding().tuple_elements()[0],
+      nfModule->entry_computation()->parameter_instruction(0)->sharding());
+  EXPECT_EQ(
+      nfRoot->sharding().tuple_elements()[1],
+      nfModule->entry_computation()->parameter_instruction(2)->sharding());
+}
+
+TEST_F(ShardyXLATestV2Only,
+       InlineSpmdFullToShardPreservesManualAndUnspecifiedDims) {
+  const char* const hloString = R"(
+    HloModule inline_manual, num_partitions=4, allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %x = f32[8,12] parameter(0), sharding={devices=[2,2]<=[4]}
+      %ann_in = f32[8,12] custom-call(%x), custom_call_target="Sharding",
+        backend_config="unspecified_dims=[1]",
+        sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+      %to_local = f32[4,12] custom-call(%ann_in),
+        custom_call_target="SPMDFullToShardShape",
+        backend_config="unspecified_dims=[1]",
+        sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual, replicated}}
+      %c1 = f32[] constant(1)
+      %local_const = f32[4,12] broadcast(%c1), dimensions={}
+      %c2 = f32[4] constant({1, 2, 3, 4})
+      %c2_bcast = f32[4,12] broadcast(%c2), dimensions={0}
+      %local_sum = f32[4,12] add(%to_local, %local_const)
+      %local_add = f32[4,12] multiply(%local_sum, %c2_bcast)
+      %ann_out = f32[4,12] custom-call(%local_add), custom_call_target="Sharding",
+        backend_config="unspecified_dims=[1]",
+        sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual, replicated}}
+      ROOT %to_full = f32[8,12] custom-call(%ann_out),
+        custom_call_target="SPMDShardToFullShape",
+        backend_config="unspecified_dims=[1]",
+        sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Sharding("{devices=[2,2]<=[4]}"));
+
+  const HloInstruction* localMul =
+      FindInstruction(module.get(), xla::HloOpcode::kMultiply);
+  ASSERT_NE(localMul, nullptr);
+  ASSERT_TRUE(localMul->has_sharding());
+  EXPECT_TRUE(localMul->sharding().IsManualSubgroup());
+  EXPECT_EQ(localMul->sharding().ToString(),
+            "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dims={manual}}");
+
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    EXPECT_FALSE(inst->IsCustomCall("Sharding")) << inst->ToString();
+    if (inst->opcode() == xla::HloOpcode::kConstant &&
+        inst->shape().dimensions().size() == 2) {
+      ASSERT_TRUE(inst->has_sharding());
+      EXPECT_TRUE(inst->sharding().IsManualSubgroup()) << inst->ToString();
+    }
+  }
+}
+
+TEST_F(ShardyXLATestV2Only,
+       LockedUnevenEntryParameterShardingPreservedForGspmd) {
+  const char* const hloString = R"(
+    HloModule uneven_locked_param, num_partitions=8,
+      allow_spmd_sharding_propagation_to_parameters={false},
+      allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %w = f32[1,1,3] parameter(0), sharding={devices=[1,1,8]<=[8]}
+      %c = f32[] constant(2)
+      %b = f32[1,1,3] broadcast(%c), dimensions={}
+      ROOT %mul = f32[1,1,3] multiply(%w, %b)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{devices=[1,1,8]<=[8]}"));
+}
+
+TEST_F(ShardyXLATestV2Only, InlineFullManualRegionPreservesManualOnLocalOps) {
+  const char* const hloString = R"(
+    HloModule inline_full_manual, num_partitions=2, allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %x = s32[6,10] parameter(0)
+      %ann_in = s32[6,10] custom-call(%x), custom_call_target="Sharding",
+        sharding={devices=[2,1]<=[2]}
+      %to_local = s32[3,10] custom-call(%ann_in),
+        custom_call_target="SPMDFullToShardShape", sharding={manual}
+      %iota = s32[3,10] iota(), iota_dimension=0
+      %local_add = s32[3,10] add(%to_local, %iota)
+      %ann_out = s32[3,10] custom-call(%local_add),
+        custom_call_target="Sharding", sharding={manual}
+      ROOT %to_full = s32[6,10] custom-call(%ann_out),
+        custom_call_target="SPMDShardToFullShape",
+        sharding={devices=[2,1]<=[2]}
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* iota =
+      FindInstruction(module.get(), xla::HloOpcode::kIota);
+  const HloInstruction* localAdd =
+      FindInstruction(module.get(), xla::HloOpcode::kAdd);
+  ASSERT_NE(iota, nullptr);
+  ASSERT_NE(localAdd, nullptr);
+  EXPECT_THAT(iota, op::Sharding("{manual}"));
+  EXPECT_THAT(localAdd, op::Sharding("{manual}"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,1]<=[2]}"));
+}
+
+TEST_F(ShardyXLATestV2Only, UnannotatedInfeedAndHostTransferSendRecvShardings) {
+  const char* const hloString = R"(
+    HloModule infeed_and_host_transfer, num_partitions=2, allow_spmd_sharding_propagation_to_output={true}
+    ENTRY %main {
+      %tok0 = token[] after-all()
+      %infeed = ((f32[6,10]), token[]) infeed(%tok0)
+      %infeed_data_tuple = (f32[6,10]) get-tuple-element(%infeed), index=0
+      %infeed_data = f32[6,10] get-tuple-element(%infeed_data_tuple), index=0
+      %infeed_tok = token[] get-tuple-element(%infeed), index=1
+      %sharded_data = f32[6,10] custom-call(%infeed_data),
+        custom_call_target="Sharding", sharding={devices=[1,2]<=[2]}
+      %send = (f32[6,10], u32[], token[]) send(%sharded_data, %infeed_tok),
+        channel_id=1, is_host_transfer=true,
+        sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}
+      %send_done = token[] send-done(%send), channel_id=1,
+        is_host_transfer=true, sharding={maximal device=0}
+      %recv = (f32[6,10], u32[], token[]) recv(%send_done),
+        channel_id=2, is_host_transfer=true,
+        sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}
+      %recv_done = (f32[6,10], token[]) recv-done(%recv),
+        channel_id=2, is_host_transfer=true,
+        sharding={{maximal device=0}, {maximal device=0}}
+      %host_out = f32[6,10] get-tuple-element(%recv_done), index=0
+      ROOT %sum = f32[6,10] add(%sharded_data, %host_out)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* infeed =
+      FindInstruction(module.get(), xla::HloOpcode::kInfeed);
+  const HloInstruction* send =
+      FindInstruction(module.get(), xla::HloOpcode::kSend);
+  const HloInstruction* recv =
+      FindInstruction(module.get(), xla::HloOpcode::kRecv);
+  ASSERT_NE(infeed, nullptr);
+  ASSERT_NE(send, nullptr);
+  ASSERT_NE(recv, nullptr);
+  ASSERT_TRUE(infeed->has_sharding());
+  EXPECT_EQ(infeed->sharding().ToString(),
+            "{{devices=[1,2]<=[2]}, {replicated}}");
+  ASSERT_TRUE(send->has_sharding());
+  ASSERT_TRUE(recv->has_sharding());
+}
+
+TEST_F(ShardyXLATestV2Only, BoundedDynamicInfeedRoundTripsThroughShardyXLA) {
+  const char* const hloString = R"(
+    HloModule bounded_dynamic_infeed_sdy, num_partitions=4
+    ENTRY %main {
+      %p0 = f32[8,12] parameter(0), sharding={devices=[2,2]<=[4]}
+      %tok0 = token[] after-all()
+      %infeed = ((s32[<=4096]{0}), token[]) infeed(%tok0),
+        sharding={{manual}, {maximal device=0}}
+      %data_tuple = (s32[<=4096]{0}) get-tuple-element(%infeed), index=0
+      %data = s32[<=4096]{0} get-tuple-element(%data_tuple), index=0,
+        sharding={manual}
+      ROOT %out = (f32[8,12], s32[<=4096]{0}) tuple(%p0, %data)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* infeed =
+      FindInstruction(module.get(), xla::HloOpcode::kInfeed);
+  ASSERT_NE(infeed, nullptr);
+  const Shape& dataElem = infeed->shape().tuple_shapes(0).tuple_shapes(0);
+  EXPECT_TRUE(dataElem.is_dynamic_dimension(0));
+  EXPECT_EQ(dataElem.dimensions(0), 4096);
+  EXPECT_EQ(infeed->sharding().ToString(), "{{manual}, {maximal device=0}}");
+}
+
+TEST_F(ShardyXLATestV2Only,
+       HybridMhloAndSdyInnerManualComputationDedupesMeshes) {
+  const char* const hloString = R"(
+    HloModule hybrid_tf_jax2tf, num_partitions=2, allow_spmd_sharding_propagation_to_output={true}
+
+    %xla.sdy.manual_computation_body.1 (arg: f32[3,10]) -> f32[3,10] {
+      %arg = f32[3,10] parameter(0)
+      ROOT %dbl = f32[3,10] add(%arg, %arg)
+    }
+
+    %jax2tf_callee (x: f32[6,10]) -> f32[6,10] {
+      %x = f32[6,10] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<mesh<[\"data\"=2]>, [{\"data\"}, {}]>"}
+      %g2l = (f32[3,10]) custom-call(%x), custom_call_target="xla.sdy.GlobalToLocalShape",
+        custom_call_has_side_effect=true,
+        frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"data\"=2]>, [{\"data\"}, {}]>]>", xla.sdy.manual_axes="#sdy<manual_axes{\"data\"}>"}
+      %g2l_elem = f32[3,10] get-tuple-element(%g2l), index=0
+      %call = f32[3,10] call(%g2l_elem), to_apply=%xla.sdy.manual_computation_body.1,
+        frontend_attributes={inlineable="xla_late"}
+      ROOT %l2g = f32[6,10] custom-call(%call), custom_call_target="xla.sdy.LocalToGlobalShape",
+        custom_call_has_side_effect=true,
+        frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"data\"}>", xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"data\"=2]>, [{\"data\"}, {}]>]>"}
+    }
+
+    ENTRY %main {
+      %p0 = f32[6,10] parameter(0), sharding={devices=[2,1]<=[2]}
+      %p1 = f32[6,10] parameter(1)
+      %tf_sum = f32[6,10] add(%p0, %p1)
+      ROOT %res = f32[6,10] call(%tf_sum), to_apply=%jax2tf_callee
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[2,1]<=[2]}"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,1]<=[2]}"));
+}
+
+TEST_F(ShardyXLATestV2Only, WhileWithMixedManualAndShardedElements) {
+  const char* const hloString = R"(
+    HloModule while_mixed_manual, num_partitions=4, allow_spmd_sharding_propagation_to_output={true,true}
+
+    %body (arg_tuple: (s32[], f32[4,8], f32[16,8])) -> (s32[], f32[4,8], f32[16,8]) {
+      %arg_tuple = (s32[], f32[4,8], f32[16,8]) parameter(0)
+      %i = s32[] get-tuple-element(%arg_tuple), index=0
+      %one = s32[] constant(1)
+      %next_i = s32[] add(%i, %one)
+      %man = f32[4,8] get-tuple-element(%arg_tuple), index=1
+      %lr = f32[] constant(0.01)
+      %bcast = f32[4,8] broadcast(%lr), dimensions={}
+      %next_man = f32[4,8] add(%man, %bcast)
+      %shd = f32[16,8] get-tuple-element(%arg_tuple), index=2
+      %zero = f32[] constant(0.0)
+      %z_bcast = f32[16,8] broadcast(%zero), dimensions={}
+      %next_shd = f32[16,8] add(%shd, %z_bcast)
+      ROOT %tuple = (s32[], f32[4,8], f32[16,8]) tuple(%next_i, %next_man, %next_shd)
+    }
+
+    %cond (arg_tuple: (s32[], f32[4,8], f32[16,8])) -> pred[] {
+      %arg_tuple = (s32[], f32[4,8], f32[16,8]) parameter(0)
+      %i = s32[] get-tuple-element(%arg_tuple), index=0
+      %limit = s32[] constant(10)
+      ROOT %lt = pred[] compare(%i, %limit), direction=LT
+    }
+
+    ENTRY %main {
+      %c0 = s32[] constant(0)
+      %p0 = f32[16,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %f2s = f32[4,8] custom-call(%p0), custom_call_target="SPMDFullToShardShape", sharding={manual}
+      %p1 = f32[16,8] parameter(1), sharding={devices=[4,1]<=[4]}
+      %init = (s32[], f32[4,8], f32[16,8]) tuple(%c0, %f2s, %p1)
+      %while = (s32[], f32[4,8], f32[16,8]) while(%init), condition=%cond, body=%body
+      %man_out = f32[4,8] get-tuple-element(%while), index=1
+      %s2f = f32[16,8] custom-call(%man_out), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1]<=[4]}
+      %shd_out = f32[16,8] get-tuple-element(%while), index=2
+      ROOT %out = (f32[16,8], f32[16,8]) tuple(%s2f, %shd_out)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* whileInst =
+      FindInstruction(module.get(), xla::HloOpcode::kWhile);
+  ASSERT_NE(whileInst, nullptr);
+  EXPECT_THAT(whileInst,
+              op::Sharding("{{replicated}, {manual}, {devices=[4,1]<=[4]}}"));
+  EXPECT_THAT(whileInst->while_body()->root_instruction(),
+              op::Sharding("{{replicated}, {manual}, {devices=[4,1]<=[4]}}"));
+}
+
+TEST_F(ShardyXLATestV2Only,
+       CustomCallWithTupleOperandsPreservesTupleStructure) {
+  const char* const hloString = R"(
+    HloModule custom_call_tuple_operands, num_partitions=4, allow_spmd_sharding_propagation_to_output={true,true}
+
+    ENTRY %main {
+      %p0 = s32[4096] parameter(0), sharding={manual}
+      %p1 = f32[256,512] parameter(1), sharding={devices=[4,1]<=[4]}
+      %f2s1 = f32[64,512] custom-call(%p1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+      %p2 = f32[256,512] parameter(2), sharding={devices=[4,1]<=[4]}
+      %f2s2 = f32[64,512] custom-call(%p2), custom_call_target="SPMDFullToShardShape", sharding={manual}
+      %tables = (f32[64,512], f32[64,512]) tuple(%f2s1, %f2s2)
+      %grad = f32[128,512] parameter(3), sharding={manual}
+      %lr = f32[] constant(1e-6)
+      %hyperparams = (f32[]) tuple(%lr)
+      %update = (f32[64,512], f32[64,512]) custom-call(%p0, %tables, %grad, %hyperparams), custom_call_target="SparseDenseMatmulGradOptimizerUpdateWithMinibatchingOp"
+      %out0 = f32[64,512] get-tuple-element(%update), index=0
+      %s2f0 = f32[256,512] custom-call(%out0), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1]<=[4]}
+      %out1 = f32[64,512] get-tuple-element(%update), index=1
+      %s2f1 = f32[256,512] custom-call(%out1), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1]<=[4]}
+      ROOT %root = (f32[256,512], f32[256,512]) tuple(%s2f0, %s2f1)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardyXLA(/*runSdyShardingPropagation=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* update = nullptr;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->IsCustomCall(
+            "SparseDenseMatmulGradOptimizerUpdateWithMinibatchingOp")) {
+      update = inst;
+      break;
+    }
+  }
+  ASSERT_NE(update, nullptr);
+  ASSERT_EQ(update->operand_count(), 4);
+  EXPECT_TRUE(update->operand(1)->shape().IsTuple());
+  EXPECT_EQ(update->operand(1)->shape().tuple_shapes_size(), 2);
+  EXPECT_THAT(update->operand(1), op::Sharding("{{manual}, {manual}}"));
+  EXPECT_TRUE(update->operand(3)->shape().IsTuple());
+  EXPECT_EQ(update->operand(3)->shape().tuple_shapes_size(), 1);
+  EXPECT_THAT(update->operand(3), op::Sharding("{{manual}}"));
+  EXPECT_THAT(update, op::Sharding("{{manual}, {manual}}"));
+}
+
 // NOLINTEND(misc-override-with-different-visibility)
 
 INSTANTIATE_TEST_SUITE_P(

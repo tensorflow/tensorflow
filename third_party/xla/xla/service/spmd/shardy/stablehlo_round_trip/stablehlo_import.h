@@ -81,13 +81,17 @@ void registerStablehloImportPipeline();
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
                                 mlir::ArrayRef<bool> allowPropagationToResults,
-                                bool enableHloShardingV3 = false);
+                                bool enableHloShardingV3 = false,
+                                bool inlineMesh = false,
+                                bool liftAndDedupMeshes = false,
+                                int64_t numPartitions = 1);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     mlir::ArrayRef<bool> allowPropagationToArgs,
-    mlir::ArrayRef<bool> allowPropagationToResults, bool inlineMesh = false);
+    mlir::ArrayRef<bool> allowPropagationToResults, bool inlineMesh = false,
+    int64_t numPartitions = 1);
 
 }  // namespace sdy
 }  // namespace xla

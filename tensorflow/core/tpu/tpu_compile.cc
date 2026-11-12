@@ -590,7 +590,10 @@ absl::Status CompileTFFunctionToHlo(
   compiler_options.allow_cpu_custom_calls = false;
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
-  compiler_options.use_shardy_partitioner = metadata.use_shardy_partitioner();
+  compiler_options.use_shardy_partitioner =
+      metadata.use_shardy_partitioner() &&
+      metadata.use_spmd_for_xla_partitioning() &&
+      metadata.num_cores_per_replica() > 1;
 
   auto compiler = std::make_unique<XlaCompiler>(compiler_options);
 
