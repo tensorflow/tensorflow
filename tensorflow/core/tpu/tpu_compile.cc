@@ -570,6 +570,54 @@ absl::Status RunShapeInferenceOnComputation(
       shape_info);
 }
 
+// Returns true if `graph` (or its functions) contains a Shardy-enabled
+// XlaCallModule and no legacy TF-only SPMD ops that require GSPMD.
+bool CanUseShardyForGraph(const tpu::TPUCompileMetadataProto& metadata,
+                          const Graph& graph,
+                          const FunctionLibraryDefinition& flib_def) {
+  if (!metadata.use_shardy_partitioner() ||
+      !metadata.use_spmd_for_xla_partitioning() ||
+      metadata.num_cores_per_replica() <= 1) {
+    return false;
+  }
+  auto is_unsupported_op = [](absl::string_view op) {
+    return op == "XlaSpmdFullToShardShape" || op == "XlaSpmdShardToFullShape" ||
+           op == "InfeedDequeueTuple" || op == "InfeedDequeue";
+  };
+  bool has_shardy_xla_call_module = false;
+  for (const Node* node : graph.op_nodes()) {
+    const std::string& op = node->type_string();
+    if (is_unsupported_op(op)) {
+      return false;
+    }
+    bool node_use_shardy = false;
+    if (op == "XlaCallModule" &&
+        GetNodeAttr(node->attrs(), "use_shardy_partitioner", &node_use_shardy)
+            .ok() &&
+        node_use_shardy) {
+      has_shardy_xla_call_module = true;
+    }
+  }
+  for (const std::string& func_name : flib_def.ListFunctionNames()) {
+    const FunctionDef* func_def = flib_def.Find(func_name);
+    if (func_def == nullptr) {
+      continue;
+    }
+    for (const NodeDef& ndef : func_def->node_def()) {
+      if (is_unsupported_op(ndef.op())) {
+        return false;
+      }
+      bool node_use_shardy = false;
+      if (ndef.op() == "XlaCallModule" &&
+          GetNodeAttr(ndef, "use_shardy_partitioner", &node_use_shardy).ok() &&
+          node_use_shardy) {
+        has_shardy_xla_call_module = true;
+      }
+    }
+  }
+  return has_shardy_xla_call_module;
+}
+
 }  // namespace
 
 absl::Status CompileTFFunctionToHlo(
@@ -647,6 +695,13 @@ absl::Status CompileTFFunctionToHlo(
                       absl::flat_hash_map<std::string, std::string>>
       node_to_metadata = CollectXlaMetadata(*graph, flib_definition);
 
+  const bool use_shardy =
+      CanUseShardyForGraph(metadata, *graph, flib_definition);
+  if (compiler_options.use_shardy_partitioner != use_shardy) {
+    compiler_options.use_shardy_partitioner = use_shardy;
+    compiler = std::make_unique<XlaCompiler>(compiler_options);
+  }
+
   VLOG(1) << "Compiling TensorFlow graph to HLO";
   XlaCompiler::CompileOptions compile_options;
   compile_options.return_updated_values_for_all_resources = false;
@@ -656,8 +711,15 @@ absl::Status CompileTFFunctionToHlo(
   TF_RETURN_IF_ERROR(compiler->CompileGraph(compile_options, function_id,
                                             std::move(graph), args,
                                             compilation_result));
-
-  return AnnotateHloWithXlaMetadata(node_to_metadata, compilation_result);
+  TF_RETURN_IF_ERROR(
+      AnnotateHloWithXlaMetadata(node_to_metadata, compilation_result));
+  if (use_shardy) {
+    compilation_result->computation->mutable_proto()
+        ->mutable_frontend_attributes()
+        ->mutable_map()
+        ->try_emplace("xla.sdy.meshes", "{}");
+  }
+  return absl::OkStatus();
 }
 
 absl::Status GetShardingInfo(
