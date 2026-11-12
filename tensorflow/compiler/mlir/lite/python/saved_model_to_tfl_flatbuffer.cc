@@ -220,8 +220,9 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.unsafe_fuse_dynamic_shaped_broadcast =
       converter_flags.unsafe_fuse_dynamic_shaped_broadcast();
 
-  pass_config.unsafe_single_batch_rank_reduction =
-      converter_flags.unsafe_single_batch_rank_reduction();
+  pass_config.rank_reduction = converter_flags.rank_reduction();
+  pass_config.unsafe_gpu_compatibility =
+      converter_flags.unsafe_gpu_compatibility();
 
   if (converter_flags.strict_qdq_mode()) {
     pass_config.quant_specs.qdq_conversion_mode =
