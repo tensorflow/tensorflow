@@ -1669,5 +1669,41 @@ ENTRY e {
   EXPECT_THAT(defused_ftup->operands(),
               ::testing::ElementsAre(defused_fadd, p1, p2));
 }
+
+TEST_F(HloInstructionTest, FuseInstructionRemovesDuplicateOperandSlots) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_comp {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  sum = f32[8] add(p0, p1)
+  ROOT out = f32[8] multiply(sum, p2)
+}
+
+ENTRY e {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  neg = f32[8] negate(p0)
+  ROOT fusion = f32[8] fusion(neg, neg, p1), kind=kLoop, calls=fused_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+  HloInstruction* fusion = entry->root_instruction();
+
+  fusion->FuseInstruction(neg);
+  ASSERT_OK(entry->RemoveInstruction(neg));
+
+  EXPECT_THAT(fusion->operands(), ElementsAre(entry->parameter_instruction(1),
+                                              entry->parameter_instruction(0)));
+  const HloInstruction* root = fusion->fused_expression_root();
+  EXPECT_EQ(root->operand(1), fusion->fused_parameter(0));
+  EXPECT_EQ(root->operand(0)->operand(0), root->operand(0)->operand(1));
+  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kNegate);
+}
 }  // namespace
 }  // namespace xla
