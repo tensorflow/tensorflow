@@ -483,12 +483,8 @@ def _HSVToRGBGrad(op: ops.Operation, grad):
   """
   hsv = op.inputs[0]
   dtype = hsv.dtype
-  hue = hsv[..., 0]
-  saturation = hsv[..., 1]
-  value = hsv[..., 2]
-  grad_r = grad[..., 0]
-  grad_g = grad[..., 1]
-  grad_b = grad[..., 2]
+  hue, saturation, value = array_ops_stack.unstack(hsv, num=3, axis=-1)
+  grad_r, grad_g, grad_b = array_ops_stack.unstack(grad, num=3, axis=-1)
 
   dh = hue * 6
 
