@@ -468,7 +468,8 @@ def _MatrixSquareRootGrad(op: ops.Operation, grad):
     kprod_shape = array_ops.concat([shape_slice, [order_prod], [order_prod]], 0)
     return array_ops.reshape(b1_reshape * b2_reshape, kprod_shape)
 
-  sqrtm = op.outputs[0]  # R
+  # For complex inputs, the gradient is in the conjugate direction.
+  sqrtm = math_ops.conj(op.outputs[0])  # conj(R)
   shape = array_ops.shape(sqrtm)
   order = shape[-1]  # m
   matrix_count = math_ops.reduce_prod(shape[0:-2])
@@ -1073,14 +1074,16 @@ def _TridiagonalSolveGrad(op: ops.Operation, grad):
   # superdiagonal and subdiagonal wouldn't work on GPU due to mismatch with
   # paddings required by cusparse*gtsv routines.
   # So constructing the transposed matrix in Python.
-  diags_transposed = _TransposeTridiagonalMatrix(diags)
+  # For complex inputs, the gradient uses the conjugate transpose of the
+  # matrix and the conjugate of the solution.
+  diags_adjoint = math_ops.conj(_TransposeTridiagonalMatrix(diags))
 
   grad_rhs = linalg_ops.tridiagonal_solve(
-      diags_transposed,
+      diags_adjoint,
       grad,
       partial_pivoting=partial_pivoting,
       perturb_singular=perturb_singular)
-  grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, x)  # pylint: disable=invalid-unary-operand-type
+  grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, math_ops.conj(x))  # pylint: disable=invalid-unary-operand-type
   return grad_diags, grad_rhs
 
 
