@@ -1204,8 +1204,30 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np_array_ops.ones((3, 2, 1)))
     run_test(constant_op.constant(5))
     run_test(constant_op.constant([1, 1, 1]))
-    self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
-                      1)
+
+    # Test with axis parameter
+    run_test(np_array_ops.ones((2, 3, 4)), axis=0)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=1)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=2)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=-1)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=-2)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=-3)
+    run_test(np.arange(12).reshape((3, 4)), axis=0)
+    run_test(np.arange(12).reshape((3, 4)), axis=1)
+
+    # Out of bounds raises ValueError
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.size(np.ones((2, 3)), axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.size(np.ones((2, 3)), axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.size(5, axis=0)
+
+    # Non-integer axis raises TypeError
+    with self.assertRaises(TypeError):
+      np_array_ops.size(np.ones((2, 3)), axis=(0, 1))
+    with self.assertRaises(TypeError):
+      np_array_ops.size(np.ones((2, 3)), axis=1.5)
 
     @def_function.function(input_signature=[
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=None)])
@@ -1213,7 +1235,14 @@ class ArrayMethodsTest(test.TestCase):
       arr = np_array_ops.asarray(arr)
       return np_array_ops.size(arr)
 
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=None)])
+    def f_axis(arr):
+      arr = np_array_ops.asarray(arr)
+      return np_array_ops.size(arr, axis=1)
+
     self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
+    self.assertEqual(f_axis(np_array_ops.ones((3, 2))).numpy(), 2)
 
   def testRavel(self):
 
