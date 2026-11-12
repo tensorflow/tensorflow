@@ -16,23 +16,32 @@ limitations under the License.
 #ifndef XLA_PJRT_INFER_DISPATCH_INFO_H_
 #define XLA_PJRT_INFER_DISPATCH_INFO_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class HloModule;
 
 struct PjRtLoadedExecutableDispatchInfo {
   std::vector<Shape> parameter_device_shapes;
@@ -71,6 +80,11 @@ struct PjRtLoadedExecutableDispatchInfo {
 
 // Helper for extracting parameter shapes from GetParameterShapes.
 std::vector<Shape> GetParameterShapes(const ComputationLayout& layout);
+
+// Clears the prefix of `parameter_shapes` that a `PadRealToStatic` in the entry
+// computation reads; fails unless that pad is the parameter's only reader.
+absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
+    const HloModule& hlo_module, absl::Span<Shape> parameter_shapes);
 
 // Constructs PjRtLoadedExecutableDispatchInfo from both device lists
 // and metadata extracted from the final HloModule.

@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
+#include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -1196,32 +1197,10 @@ CommonPjRtClient::LoadInternal(
             ? absl::MakeSpan(*result_shape.mutable_tuple_shapes())
             : absl::MakeSpan(&result_shape, 1)));
     ABSL_RETURN_IF_ERROR(canonicalize_shapes(absl::MakeSpan(parameter_shapes)));
-    // canonicalize_shapes calls MakeCanonicalShapeForMemorySpace, which by
-    // default sets dynamic_shape_metadata_prefix_bytes to 1024 for all dynamic
-    // shapes. However, custom call PadRealToStatic consumes dynamic inputs
-    // without the 1024-byte metadata prefix. Find parameters feeding
-    // PadRealToStatic custom calls and explicitly set their prefix bytes to 0.
-    const HloComputation* entry_comp = hlo_module->entry_computation();
-    for (const HloInstruction* instruction : entry_comp->instructions()) {
-      if (instruction->IsCustomCall("PadRealToStatic") &&
-          instruction->operand_count() > 0) {
-        const HloInstruction* operand = instruction->operand(0);
-        while (operand->opcode() == HloOpcode::kCopy ||
-               operand->opcode() == HloOpcode::kBitcast) {
-          operand = operand->operand(0);
-        }
-        CHECK(operand->opcode() == HloOpcode::kParameter);
-        CHECK(operand->shape().IsArray());
-        int64_t param_no = operand->parameter_number();
-        DCHECK_LT(param_no, parameter_shapes.size());
-        DCHECK(parameter_shapes[param_no].IsArray());
-        if (param_no < parameter_shapes.size()) {
-          parameter_shapes[param_no]
-              .mutable_layout()
-              ->set_dynamic_shape_metadata_prefix_bytes(0);
-        }
-      }
-    }
+    // `canonicalize_shapes` gives every dynamic shape the metadata prefix;
+    // parameters read by `PadRealToStatic` have none.
+    ABSL_RETURN_IF_ERROR(ClearPadRealToStaticParameterMetadataPrefixes(
+        *hlo_module, absl::MakeSpan(parameter_shapes)));
   }
   using InputHloSnapshotBits =
       CommonPjRtLoadedExecutable::DispatchInfo::InputHloSnapshotBits;
