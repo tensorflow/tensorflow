@@ -3649,6 +3649,136 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
             PositionInVector(new_instruction_sequence, cps));
 }
 
+TEST_F(LatencyHidingSchedulerTest, RerunRestartsFromTheOriginalSchedule) {
+  // Records the input schedule of each scheduling pass.
+  class InputScheduleRecordingAsyncTracker : public AsyncTracker {
+   public:
+    InputScheduleRecordingAsyncTracker(
+        const SchedulerConfig& config,
+        std::vector<std::vector<std::string>>* input_schedules)
+        : AsyncTracker(config), input_schedules_(input_schedules) {}
+    using AsyncTracker::UpdateTargetDefinedStates;
+
+    void UpdateTargetDefinedStates(
+        const HloInstruction& hlo, const HloScheduleGraph* schedule_graph,
+        const LatencyEstimator* latency_estimator,
+        LatencyEstimator::TimeCost current_time,
+        SchedulerCore::SchedulingState* sched_state) override {
+      // The root is the first instruction scheduled in a bottom-up pass.
+      if (hlo.parent()->root_instruction() != &hlo) {
+        return;
+      }
+      std::vector<std::string>& input_schedule =
+          input_schedules_->emplace_back();
+      for (const HloInstruction* instruction :
+           schedule_graph->GetOriginalInstrList()) {
+        input_schedule.push_back(std::string(instruction->name()));
+      }
+    }
+
+   private:
+    std::vector<std::vector<std::string>>* input_schedules_;
+  };
+
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule rerun_restart_test, is_scheduled=true
+    ENTRY main {
+      p0 = bf16[8]{0} parameter(0)
+      c = bf16[] constant(0)
+      big = bf16[65]{0} broadcast(c), dimensions={}
+      s_big = bf16[1]{0} slice(big), slice={[0:1]}
+      small = bf16[20]{0} broadcast(c), dimensions={}, control-predecessors={s_big}
+      s_small = bf16[1]{0} slice(small), slice={[0:1]}
+      cp = bf16[8]{0} collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3}}, control-predecessors={s_big}
+      ROOT tuple = (bf16[1]{0}, bf16[8]{0}, bf16[1]{0}) tuple(s_big, cp, s_small)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseHloText(kHlo));
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 125;
+  sched_config.rerun = 2;
+  std::vector<std::vector<std::string>> input_schedules;
+  EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                         std::make_unique<ApproximateLatencyEstimator>(),
+                         std::make_unique<InputScheduleRecordingAsyncTracker>(
+                             sched_config, &input_schedules)));
+  // Every retry restarts from the pre-LHS input schedule rather than chaining
+  // from the previous trial's schedule.
+  ASSERT_EQ(input_schedules.size(), 3);
+  EXPECT_EQ(input_schedules[1], input_schedules[0]);
+  EXPECT_EQ(input_schedules[2], input_schedules[0]);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       RerunKeepsBestScheduleWhenTighterLimitIncreasesPeak) {
+  // `b_big` (125B) + `b_mid` (20B) creates an irreducible peak (> 140B), so
+  // Trial 0 (`memory_limit = 140`) triggers a rerun at `memory_limit = 126`.
+  // In Trial 0, `all-reduce` runs and unlocks/frees `huge` (100B) before
+  // `b_mid` / `b_big` are scheduled. At the tighter `memory_limit = 126`,
+  // `kMemoryPeakOverLimit` delays `a_end` behind `b_end`, pulling `b_mid` (20B)
+  // into `huge`'s live range and raising `GetMemoryPeak()`. The rerun loop must
+  // restore Trial 0's lower-peak schedule.
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule rerun_keep_best_test, is_scheduled=true
+    add_op {
+      lhs = u8[] parameter(0)
+      rhs = u8[] parameter(1)
+      ROOT sum = u8[] add(lhs, rhs)
+    }
+    ENTRY main {
+      p0 = u8[] parameter(0)
+      b_big = u8[125]{0} broadcast(p0), dimensions={}
+      b_mid = u8[20]{0} slice(b_big), slice={[0:20]}
+      b_end = u8[1]{0} slice(b_mid), slice={[0:1]}
+      huge = u8[100]{0} broadcast(p0), dimensions={}
+      s_huge = u8[36]{0} slice(huge), slice={[0:36]}
+      ar = u8[36]{0} all-reduce(s_huge), replica_groups={{0,1}}, to_apply=add_op
+      a_end = u8[1]{0} slice(ar), slice={[0:1]}
+      ab_end = u8[1]{0} add(a_end, b_end)
+      s_huge_end = u8[1]{0} slice(huge), slice={[0:1]}, control-predecessors={ab_end}
+      ROOT root = u8[1]{0} add(ab_end, s_huge_end)
+    }
+  )hlo";
+
+  // Verify that scheduling directly at the tightened `memory_limit = 126`
+  // places `a_end` before `b_end` (the higher-peak order).
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                         ParseHloText(kHlo));
+    SchedulerConfig tight_config = GetDefaultSchedConfig();
+    tight_config.memory_limit = 126;
+    tight_config.rerun = 0;
+    ASSERT_OK(RunScheduler(hlo_module.get(), tight_config));
+    const std::vector<HloInstruction*>& seq =
+        hlo_module->schedule()
+            .sequence(hlo_module->entry_computation())
+            .instructions();
+    EXPECT_LT(
+        PositionInVector(seq, FindInstruction(hlo_module.get(), "a_end")),
+        PositionInVector(seq, FindInstruction(hlo_module.get(), "b_end")));
+  }
+
+  // With `memory_limit = 140` and `rerun = 1`, the retry at `memory_limit =
+  // 126` produces a higher peak memory usage, and the rerun loop restores Trial
+  // 0's schedule (`b_end` before `a_end`).
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                         ParseHloText(kHlo));
+    SchedulerConfig sched_config = GetDefaultSchedConfig();
+    sched_config.memory_limit = 140;
+    sched_config.rerun = 1;
+    ASSERT_OK(RunScheduler(hlo_module.get(), sched_config));
+    const std::vector<HloInstruction*>& seq =
+        hlo_module->schedule()
+            .sequence(hlo_module->entry_computation())
+            .instructions();
+    EXPECT_LT(
+        PositionInVector(seq, FindInstruction(hlo_module.get(), "b_end")),
+        PositionInVector(seq, FindInstruction(hlo_module.get(), "a_end")));
+  }
+}
+
 TEST_F(LatencyHidingSchedulerTest, MultipleAsyncDoneOperationsDoNotCreateLoop) {
   absl::string_view hlo_string = R"(
 HloModule multiple_async_done_scheduler_test, is_scheduled=true

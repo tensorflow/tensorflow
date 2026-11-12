@@ -162,7 +162,7 @@ class SamplerCell {
   explicit SamplerCell(const std::vector<double>& bucket_limits)
       : histogram_(bucket_limits) {}
 
-  ~SamplerCell() {}
+  ~SamplerCell() = default;
 
   // Atomically adds a sample.
   void Add(double sample);

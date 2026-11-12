@@ -1661,39 +1661,42 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
     }
   }
+  // In the syntax sugar form (`<op>-start`, `<op>-update`, `<op>-done`), the
+  // wrapped computation is synthesized without its own attribute list, so the
+  // async ops' shared attributes also populate the wrapped instruction, the
+  // last op of the chain winning. In the full form (`calls=`), the wrapped
+  // computation was already parsed with its own attributes.
+  HloInstruction* const wrapped = async_wrapped_opcode.has_value()
+                                      ? instruction->async_wrapped_instruction()
+                                      : nullptr;
   if (metadata) {
     instruction->set_metadata(*metadata);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_metadata(*metadata);
+    if (wrapped != nullptr) {
+      wrapped->set_metadata(*metadata);
     }
   }
   if (original_value) {
     instruction->set_original_value(*original_value);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_original_value(
-          *original_value);
+    if (wrapped != nullptr) {
+      wrapped->set_original_value(*original_value);
     }
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(*backend_config);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_raw_backend_config_string(
-          *backend_config);
+    if (wrapped != nullptr) {
+      wrapped->set_raw_backend_config_string(*backend_config);
     }
   }
   if (frontend_attributes) {
     instruction->set_frontend_attributes(*frontend_attributes);
-    if (instruction->IsAsynchronous() &&
-        instruction->async_wrapped_instruction() != nullptr) {
-      instruction->async_wrapped_instruction()->set_frontend_attributes(
-          *frontend_attributes);
+    if (wrapped != nullptr) {
+      wrapped->set_frontend_attributes(*frontend_attributes);
     }
   }
   if (statistics_viz) {
     instruction->set_statistics_viz(*statistics_viz);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_statistics_viz(
-          *statistics_viz);
+    if (wrapped != nullptr) {
+      wrapped->set_statistics_viz(*statistics_viz);
     }
   }
 

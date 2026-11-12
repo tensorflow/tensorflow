@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/codegen/kernel_spec.h"
@@ -252,6 +253,10 @@ class ThunkEmitter {
 
   // A global resource that is used to order all collective operations.
   std::shared_ptr<Resource> communicator_resource_;
+
+  // One RNG state resource shared by all `rng-get-and-update-state` thunks in
+  // the module, so they advance one counter and are ordered at run time.
+  std::shared_ptr<RngStateResource> rng_state_;
 
   // Token resources that correspond to the token buffer allocation slices. We
   // rely on buffer assignment to assign unique "identity" to each token, and

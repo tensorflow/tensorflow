@@ -3980,12 +3980,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
   AsyncTracker* async_tracker = scheduling_context_->GetAsyncTracker().get();
   const bool use_heap_simulator =
       async_tracker->GetConfig().enable_schedule_by_structure;
-  // With schedule-by-structure, the first rerun starts from the same input
-  // schedule as the first try, so that it only differs in the scheduler
-  // configuration.
+  // Every rerun starts from the same input schedule as the first try, so that
+  // it only differs in the scheduler configuration.
   std::vector<std::pair<HloComputation*, HloInstructionSequence>>
       input_sequences;
-  if (use_heap_simulator && scheduler_core_->GetRerunTimes() > 0) {
+  if (scheduler_core_->GetRerunTimes() > 0) {
     input_sequences.reserve(computations_to_schedule_.size());
     for (HloComputation* computation : computations_to_schedule_) {
       input_sequences.emplace_back(computation,
@@ -4037,24 +4036,36 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
               << absl::FormatDuration(absl::Now() - start);
     return estimate.heap_size;
   };
-  for (int64_t iter = 0; iter < scheduler_core_->GetRerunTimes(); iter++) {
+  int64_t best_memory_usage = std::numeric_limits<int64_t>::max();
+  uint64_t best_memory_limit = initial_memory_limit;
+  std::vector<std::pair<HloComputation*, HloInstructionSequence>>
+      best_sequences;
+  for (int64_t iter = 0; scheduler_core_->GetRerunTimes() > 0; iter++) {
     ABSL_ASSIGN_OR_RETURN(int64_t memory_usage, estimate_memory_usage());
-    if (static_cast<uint64_t>(memory_usage) <= initial_memory_limit) {
+    if (memory_usage < best_memory_usage) {
+      best_memory_usage = memory_usage;
+      best_memory_limit = scheduler_core_->GetMemoryLimit();
+      best_sequences.clear();
+    }
+    if (static_cast<uint64_t>(memory_usage) <= initial_memory_limit ||
+        iter == scheduler_core_->GetRerunTimes()) {
       break;
+    }
+    if (best_sequences.empty()) {
+      for (HloComputation* computation : computations_to_schedule_) {
+        best_sequences.emplace_back(computation,
+                                    module->schedule().sequence(computation));
+      }
     }
     uint64_t new_limit =
         static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
     if (use_heap_simulator) {
       async_tracker->SetEnableCpdForSyncCollective(false);
-      if (iter == 0) {
-        // Restart from the original schedule when we changed the scheduler
-        // config.
-        for (const auto& [computation, sequence] : input_sequences) {
-          module->schedule().set_sequence(computation, sequence);
-        }
-        async_tracker->InvalidateCache();
-      }
     }
+    for (const auto& [computation, sequence] : input_sequences) {
+      module->schedule().set_sequence(computation, sequence);
+    }
+    async_tracker->InvalidateCache();
     LOG(INFO) << "[" << name()
               << "] LatencyHidingScheduler current memory usage: "
               << memory_usage << " bytes, does not fit in initial limit: "
@@ -4073,6 +4084,13 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
           scheduler_core_->GetSchedulingState().get());
       scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
     }
+  }
+  if (!best_sequences.empty()) {
+    for (const auto& [computation, sequence] : best_sequences) {
+      module->schedule().set_sequence(computation, sequence);
+    }
+    async_tracker->InvalidateCache();
+    scheduler_core_->SetMemoryLimit(best_memory_limit);
   }
   LOG(INFO) << "[" << name() << "]"
             << " LatencyHidingScheduler current memory usage: "

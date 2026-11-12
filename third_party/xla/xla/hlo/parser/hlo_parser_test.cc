@@ -6664,6 +6664,42 @@ ENTRY %main {
             module->ToString(fp_options));
 }
 
+// In the full form that HLO dumps print, the wrapped instruction of an async op
+// is parsed with its own attributes, and the async ops' attributes do not leak
+// onto it. That includes an async start's tuple shaped origin, which does not
+// fit the wrapped instruction's shape.
+TEST_F(HloParserTest, FullFormAsyncOpsKeepWrappedInstructionAttributes) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+%async_wrapped () -> token[] {
+  ROOT %bar = token[] custom-call(), custom_call_target="Barrier", metadata={op_name="bar"}, backend_config={"wrapped":1}, frontend_attributes={inner="1"}
+}
+
+ENTRY %main () -> token[] {
+  %start = ((), token[], s32[]) async-start(), calls=%async_wrapped, metadata={op_name="start"}, backend_config={"start":1}, frontend_attributes={outer="1"}, origin={((), {}, {"start" {2}})}
+  ROOT %done = token[] async-done(((), token[], s32[]) %start), backend_config={"done":1}, frontend_attributes={outer="2"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* wrapped = module->entry_computation()
+                                      ->root_instruction()
+                                      ->async_wrapped_instruction();
+  EXPECT_EQ(wrapped->raw_backend_config_string(), R"({"wrapped":1})");
+  EXPECT_EQ(wrapped->metadata().op_name(), "bar");
+  EXPECT_THAT(wrapped->frontend_attributes().map(),
+              ::testing::UnorderedElementsAre(::testing::Pair("inner", "1")));
+  EXPECT_EQ(wrapped->original_value(), nullptr);
+
+  const HloPrintOptions options =
+      HloPrintOptions().set_syntax_sugar_async_ops(false);
+  const std::string printed = module->ToString(options);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reparsed,
+                       ParseAndReturnVerifiedModule(printed));
+  EXPECT_EQ(reparsed->ToString(options), printed);
+}
+
 TEST_F(HloParserTest, LexesAsJsonDict) {
   EXPECT_TRUE(LexesAsJsonDict("{}"));
   EXPECT_TRUE(LexesAsJsonDict("{abc: 123}"));

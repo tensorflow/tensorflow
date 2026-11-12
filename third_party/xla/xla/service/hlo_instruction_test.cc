@@ -595,7 +595,7 @@ TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
 // Simple visitor that collects and post-processes each node in the graph.
 class NodeCollectorAndPostProcessor : public DfsHloVisitorWithDefault {
  public:
-  NodeCollectorAndPostProcessor() {}
+  NodeCollectorAndPostProcessor() = default;
 
   absl::Status Postprocess(HloInstruction* hlo) override {
     post_processed_nodes_.push_back(hlo);

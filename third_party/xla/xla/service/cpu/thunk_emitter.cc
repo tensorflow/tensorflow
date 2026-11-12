@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/backends/cpu/runtime/rng_seed_thunk.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -185,6 +186,7 @@ ThunkEmitter::ThunkEmitter(tsl::thread::ThreadPool& thread_pool,
       options_(options),
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
+      rng_state_(std::make_shared<RngStateResource>()),
       mlir_context_(FusionCompiler::CreateContext()),
       fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module,
                                              target_machine_features)),
@@ -864,7 +866,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
   ABSL_ASSIGN_OR_RETURN(auto state_buffer, GetAllocationSlice(instruction));
   auto* rng_state = Cast<HloRngGetAndUpdateStateInstruction>(instruction);
   return ThunkSequence::Of<RngGetAndUpdateStateThunk>(
-      ThunkInfo(instruction), state_buffer, rng_state->delta());
+      ThunkInfo(instruction), state_buffer, rng_state->delta(), rng_state_);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngSeedThunk(

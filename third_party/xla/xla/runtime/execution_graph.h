@@ -143,6 +143,7 @@ class ExecutionGraph {
       switch (resource) {
         case Resource::kToken:
         case Resource::kCollectiveCommunicator:
+        case Resource::kRngState:
           return NodeEdge::Kind::kExecution;
       }
     }
