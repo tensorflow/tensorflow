@@ -22,6 +22,7 @@ limitations under the License.
 #define XLA_CLIENT_CLIENT_LIBRARY_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -97,8 +98,12 @@ class ClientLibrary {
   static LocalClient* LocalClientOrDie();
 
   // Returns the service from the service thread. Only used in unit tests to
-  // access user computations from client.
-  static LocalService* GetXlaService(se::Platform* platform);
+  // access user computations from client. If `device_set` is `std::nullopt`
+  // and no unrestricted instance is cached for `platform`, returns the service
+  // for the first cached `allowed_devices` entry on `platform`.
+  static LocalService* GetXlaService(
+      se::Platform* platform,
+      const std::optional<std::set<int>>& device_set = std::nullopt);
 
   // Singleton constructor-or-accessor for compile-only clients. Arguments:
   //
@@ -112,11 +117,13 @@ class ClientLibrary {
   // GetOrCreateCompileOnlyClient() invocations are not valid anymore.
   static void DestroyLocalInstances();
 
-  // Like DestroyLocalInstances(), but only clears the local instance for
+  // Like DestroyLocalInstances(), but only clears the local instances for
   // the given platform (e.g. GPU, etc).
   static void DestroyLocalInstance(se::Platform* platform);
 
  private:
+  using AllowedDevices = std::optional<std::set<int>>;
+
   // Returns the singleton instance of ClientLibrary.
   static ClientLibrary& Singleton();
 
@@ -138,7 +145,8 @@ class ClientLibrary {
   };
 
   absl::Mutex service_mutex_;  // Guards the singleton creation state.
-  absl::flat_hash_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
+  absl::flat_hash_map<se::Platform::Id,
+                      std::map<AllowedDevices, std::unique_ptr<LocalInstance>>>
       local_instances_ ABSL_GUARDED_BY(service_mutex_);
 
   absl::flat_hash_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>

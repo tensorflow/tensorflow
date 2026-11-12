@@ -1121,6 +1121,37 @@ TEST(PJRTGpuDeviceTopologyTest, CreateGpuTopology) {
   EXPECT_EQ(destroy_error, nullptr) << GetErrorMessage(destroy_error, pjrt_api);
 }
 
+TEST(PJRTGpuDeviceTopologyTest, CreateGpuTopologyWithVisibleDevices) {
+  const PJRT_Api* pjrt_api = gpu_plugin::GetGpuPjrtApi();
+
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"visible_devices", std::vector<int64_t>{0}},
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
+
+  PJRT_TopologyDescription_Create_Args args;
+  args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = nullptr;
+  args.num_options = c_options.size();
+  args.create_options = c_options.data();
+
+  PJRT_Error* error = pjrt_api->PJRT_TopologyDescription_Create(&args);
+  ASSERT_EQ(error, nullptr) << GetErrorMessage(error, pjrt_api);
+
+  ASSERT_NE(args.topology, nullptr);
+  EXPECT_EQ(args.topology->topology->DeviceDescriptions().size(), 1);
+
+  PJRT_TopologyDescription_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.topology = args.topology;
+  PJRT_Error* destroy_error =
+      pjrt_api->PJRT_TopologyDescription_Destroy(&destroy_args);
+  EXPECT_EQ(destroy_error, nullptr) << GetErrorMessage(destroy_error, pjrt_api);
+}
+
 constexpr char const* kTargetConfigString = R"(gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32

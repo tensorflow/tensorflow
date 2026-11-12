@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -390,11 +391,11 @@ TEST_F(GPUDeviceTest, TestOnlyResetAllowsDifferentVisibleDeviceList) {
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       MakeSessionOptions("0"), kDeviceNamePrefix, &devices));
   EXPECT_THAT(devices, SizeIs(1));
-  // CreateDevices creates the process-global GPU XLA LocalClient restricted to
-  // the visible devices; GetOrCreateLocalClient returns that cached instance.
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::LocalClient * local_client,
-      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  // CreateDevices creates the GPU XLA LocalClient restricted to the visible
+  // devices; GetOrCreateLocalClient returns that cached instance.
+  TF_ASSERT_OK_AND_ASSIGN(xla::LocalClient * local_client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(
+                              se::GPUMachineManager(), std::set<int>{0}));
   EXPECT_EQ(local_client->device_count(), 1);
   devices.clear();
 
@@ -403,9 +404,9 @@ TEST_F(GPUDeviceTest, TestOnlyResetAllowsDifferentVisibleDeviceList) {
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       MakeSessionOptions("0,1", 0, 2), kDeviceNamePrefix, &devices));
   EXPECT_THAT(devices, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(
-      local_client,
-      xla::ClientLibrary::GetOrCreateLocalClient(se::GPUMachineManager()));
+  TF_ASSERT_OK_AND_ASSIGN(local_client,
+                          xla::ClientLibrary::GetOrCreateLocalClient(
+                              se::GPUMachineManager(), std::set<int>{0, 1}));
   EXPECT_EQ(local_client->device_count(), 2);
   TF_ASSERT_OK_AND_ASSIGN(xla::PjRtClient * pjrt_client,
                           GetPjRtClient(DeviceType(DEVICE_GPU)));

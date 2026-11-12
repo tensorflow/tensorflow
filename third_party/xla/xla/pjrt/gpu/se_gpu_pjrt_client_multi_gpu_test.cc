@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/pjrt/se/event_pool.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
+#include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -1387,6 +1388,49 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
                        kv_store->Get("gpu_fatal_error", absl::Seconds(5)));
   EXPECT_THAT(kv_error, HasSubstr("Fatal GPU device error on node 0 device 0"));
   EXPECT_THAT(kv_error, HasSubstr("CUDA_ERROR_ILLEGAL_ADDRESS"));
+}
+
+TEST(StreamExecutorGpuClientTest, AllowedDevicesRestrictsClientsIndependently) {
+  static constexpr char kProgram[] = R"hlo(
+    HloModule m
+    ENTRY main {
+      ROOT c = s32[] constant(42)
+    }
+  )hlo";
+
+  GpuClientOptions options_0;
+  options_0.allowed_devices = {0};
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client_0,
+                       GetStreamExecutorGpuClient(options_0));
+  ASSERT_EQ(client_0->addressable_device_count(), 1);
+  EXPECT_EQ(client_0->addressable_devices()[0]->local_device_id(),
+            LocalDeviceId(0));
+  EXPECT_EQ(client_0->addressable_devices()[0]->local_hardware_id(),
+            LocalChipId(0));
+
+  GpuClientOptions options_1;
+  options_1.allowed_devices = {1};
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client_1,
+                       GetStreamExecutorGpuClient(options_1));
+  ASSERT_EQ(client_1->addressable_device_count(), 1);
+  EXPECT_EQ(client_1->addressable_devices()[0]->local_device_id(),
+            LocalDeviceId(1));
+  EXPECT_EQ(client_1->addressable_devices()[0]->local_hardware_id(),
+            LocalChipId(1));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> exec_0,
+                       CompileExecutable(kProgram, *client_0));
+  auto result_0 = exec_0->Execute(/*argument_handles=*/{{}}, {});
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal_0,
+                       ExtractSingleResult(result_0));
+  EXPECT_EQ(literal_0->GetFirstElement<int32_t>(), 42);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> exec_1,
+                       CompileExecutable(kProgram, *client_1));
+  auto result_1 = exec_1->Execute(/*argument_handles=*/{{}}, {});
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal_1,
+                       ExtractSingleResult(result_1));
+  EXPECT_EQ(literal_1->GetFirstElement<int32_t>(), 42);
 }
 
 // Holds `stream` until the returned notification is notified.

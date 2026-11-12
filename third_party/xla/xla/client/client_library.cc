@@ -110,8 +110,9 @@ ClientLibrary::~ClientLibrary() = default;
     ABSL_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  auto it = client_library.local_instances_.find(platform->id());
-  if (it != client_library.local_instances_.end()) {
+  auto& platform_instances = client_library.local_instances_[platform->id()];
+  auto it = platform_instances.find(options.allowed_devices());
+  if (it != platform_instances.end()) {
     return it->second->client.get();
   }
 
@@ -127,8 +128,7 @@ ClientLibrary::~ClientLibrary() = default;
   instance->client = std::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
 
-  client_library.local_instances_.insert(
-      std::make_pair(platform->id(), std::move(instance)));
+  platform_instances.emplace(options.allowed_devices(), std::move(instance));
   return cl;
 }
 
@@ -139,12 +139,19 @@ ClientLibrary::~ClientLibrary() = default;
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(
-    se::Platform* platform) {
+    se::Platform* platform, const std::optional<std::set<int>>& device_set) {
   ClientLibrary& client_library = Singleton();
   absl::MutexLock lock(client_library.service_mutex_);
-  auto it = client_library.local_instances_.find(platform->id());
-  CHECK(it != client_library.local_instances_.end());
-  return it->second->service.get();
+  auto platform_it = client_library.local_instances_.find(platform->id());
+  CHECK(platform_it != client_library.local_instances_.end());
+  const auto& platform_instances = platform_it->second;
+  CHECK(!platform_instances.empty());
+  if (auto it = platform_instances.find(device_set);
+      it != platform_instances.end()) {
+    return it->second->service.get();
+  }
+  CHECK(!device_set.has_value());
+  return platform_instances.begin()->second->service.get();
 }
 
 /* static */ absl::StatusOr<CompileOnlyClient*>
