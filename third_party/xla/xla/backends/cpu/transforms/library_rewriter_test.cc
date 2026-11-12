@@ -266,12 +266,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulTransposeLHS) {
                   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
     })";
 
-  DotRewriteTestSpec spec = GetParam();
-  FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
-  if (spec.lib == "onednn" && IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
-  }
-  RunTest(hlo_template, expected);
+  RunTest(hlo_template, {HloOpcode::kDot, 2, 3, IsDotEnabledOnCPU()});
 }
 
 TEST_P(CpuLibraryFullParamTest, MatMulDimSizeUnqual) {
