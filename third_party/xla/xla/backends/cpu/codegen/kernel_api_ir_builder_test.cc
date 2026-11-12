@@ -153,56 +153,50 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 2
+    CHECK-NEXT: %[[NUM_WORKGROUPS:.+]] = load ptr, ptr %0
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 8
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 16
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 2
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 8
+    CHECK:      %[[WORKGROUP_ID:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 8
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 16
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 0, i32 0
     CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 1, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 16
     CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 2, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 32
     CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 3, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 48
     CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
-    CHECK:      load float, ptr %[[PTR0]], align 4,
+    CHECK-NEXT: load float, ptr %[[ARG0]], align 4,
     CHECK-SAME:                            !noalias ![[SCOPE1:.+]]
 
-    CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
-    CHECK:      load float, ptr %[[PTR1]], align 4,
+    CHECK-NEXT: load float, ptr %[[ARG1]], align 4,
     CHECK-SAME:                            !noalias ![[SCOPE1]]
 
-    CHECK-NEXT: %[[PTR2:.+]] = getelementptr inbounds float, ptr %[[ARG2]]
-    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope ![[SCOPE2:.+]],
+    CHECK-NEXT: load float, ptr %[[ARG2]], align 4, !alias.scope ![[SCOPE2:.+]],
     CHECK:                                          !noalias ![[SCOPE3:.+]]
 
-    CHECK-NEXT: %[[PTR3:.+]] = getelementptr inbounds float, ptr %[[ARG3]]
-    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope ![[SCOPE3]],
+    CHECK-NEXT: load float, ptr %[[ARG3]], align 4, !alias.scope ![[SCOPE3]],
     CHECK:                                          !noalias ![[SCOPE2]]
 
     CHECK:      ret ptr null
@@ -366,65 +360,58 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 2
+    CHECK-NEXT: %[[NUM_WORKGROUPS:.+]] = load ptr, ptr %0
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 8
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 16
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 2
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 8
+    CHECK:      %[[WORKGROUP_ID:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 8
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 16
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 0, i32 0
     CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 1, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 16
     CHECK:      %[[ARG1:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 2, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 32
     CHECK:      %[[ARG2:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 3, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 48
     CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 3
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
-    CHECK:      getelementptr %XLA_CPU_KernelArg, {{.*}} i32 4, i32 0
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 64
     CHECK:      %[[ARG4:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: %[[PTR0:.+]] = getelementptr inbounds float, ptr %[[ARG0]]
-    CHECK:      load float, ptr %[[PTR0]], align 4,
+    CHECK-NEXT: load float, ptr %[[ARG0]], align 4,
     CHECK-SAME:                            !noalias ![[ARG0_NOALIAS:.+]]
 
-    CHECK-NEXT: %[[PTR1:.+]] = getelementptr inbounds float, ptr %[[ARG1]]
-    CHECK:      load float, ptr %[[PTR1]], align 4,
+    CHECK-NEXT: load float, ptr %[[ARG1]], align 4,
     CHECK-SAME:                            !noalias ![[ARG1_NOALIAS:.+]]
 
-    CHECK-NEXT: %[[PTR2:.+]] = getelementptr inbounds float, ptr %[[ARG2]]
-    CHECK:      load float, ptr %[[PTR2]], align 4, !alias.scope ![[ARG2_SCOPE:.+]],
+    CHECK-NEXT: load float, ptr %[[ARG2]], align 4, !alias.scope ![[ARG2_SCOPE:.+]],
     CHECK:                                          !noalias ![[ARG4_SCOPE:.+]]
 
-    CHECK-NEXT: %[[PTR3:.+]] = getelementptr inbounds float, ptr %[[ARG3]]
-    CHECK:      load float, ptr %[[PTR3]], align 4, !alias.scope ![[ARG3_SCOPE:.+]],
+    CHECK-NEXT: load float, ptr %[[ARG3]], align 4, !alias.scope ![[ARG3_SCOPE:.+]],
     CHECK:                                          !noalias ![[ARG4_SCOPE]]
 
-    CHECK-NEXT: %[[PTR4:.+]] = getelementptr inbounds float, ptr %[[ARG4]]
-    CHECK:      load float, ptr %[[PTR4]], align 4, !alias.scope ![[ARG4_SCOPE]],
+    CHECK-NEXT: load float, ptr %[[ARG4]], align 4, !alias.scope ![[ARG4_SCOPE]],
     CHECK:                                          !noalias ![[ARG4_NOALIAS:.+]]
 
     CHECK:      ret ptr null

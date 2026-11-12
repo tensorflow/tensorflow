@@ -101,7 +101,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddress) {
 
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx:[0-9]+]]) {
-    CHECK: getelementptr inbounds float, ptr %[[ptr]], i32 %[[idx]]
+    CHECK: %[[sext:[0-9]+]] = sext i32 %[[idx]] to i64
+    CHECK: getelementptr inbounds [4 x i8], ptr %[[ptr]], i64 %[[sext]]
   )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -129,7 +130,10 @@ TEST_F(IrArrayTest, EmitArrayElementAddressNonLinear) {
     CHECK: %[[udiv1:[0-9]+]] = udiv i32 %[[idx]], 1
     CHECK: %[[urem:[0-9]+]] = urem i32 %[[udiv1]], 5
     CHECK: %[[udiv2:[0-9]+]] = udiv i32 %[[idx]], 5
-    CHECK: getelementptr inbounds [3 x [5 x float]], ptr %0, i32 0, i32 %[[udiv2]], i32 %[[urem]]
+    CHECK: %[[sext2:[0-9]+]] = sext i32 %[[udiv2]] to i64
+    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds [20 x i8], ptr %[[ptr]], i64 %[[sext2]]
+    CHECK: %[[sext1:[0-9]+]] = sext i32 %[[urem]] to i64
+    CHECK: getelementptr inbounds [4 x i8], ptr %[[gep]], i64 %[[sext1]]
   )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -160,7 +164,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx:[0-9]+]]) {
     CHECK: %[[rem:[0-9]+]] = urem i32 %[[idx]], 2
     CHECK: %[[div:[0-9]+]] = udiv i32 %[[idx]], 2
-    CHECK: getelementptr inbounds i8, ptr %[[ptr]], i32 %[[div]]
+    CHECK: %[[sext:[0-9]+]] = sext i32 %[[div]] to i64
+    CHECK: getelementptr inbounds i8, ptr %[[ptr]], i64 %[[sext]]
   )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -197,7 +202,8 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
     CHECK: %[[mul2:[0-9]+]] = mul nuw nsw i32 %[[idx0]], 5
     CHECK: %[[add2:[0-9]+]] = add nuw nsw i32 %[[add1]], %[[mul2]]
     CHECK: %[[udiv:[0-9]+]] = udiv i32 %[[add2]], 2
-    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[udiv]]
+    CHECK: %[[sext:[0-9]+]] = sext i32 %[[udiv]] to i64
+    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i64 %[[sext]]
   )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -227,7 +233,8 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
     CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
-    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
+    CHECK: %[[sext:[0-9]+]] = sext i32 %[[addr]] to i64
+    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i64 %[[sext]]
 
     COM: Load the element, optionally shift, and truncate.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
@@ -263,7 +270,8 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
     CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
     CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[mul]] to i8
-    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
+    CHECK: %[[sext:[0-9]+]] = sext i32 %[[addr]] to i64
+    CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i64 %[[sext]]
 
     COM: Load address, replace 4 bits with the value, and write to address.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
