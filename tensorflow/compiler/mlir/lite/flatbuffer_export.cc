@@ -1484,15 +1484,12 @@ class Translator {
       const_buffer_storage_;
   absl::flat_hash_map<mlir::AsmResourceBlob*, int> resource_ref_counts_;
 
-  // Maps custom options data to corresponding node
-  // Key is set to be the list of input tensor indices and list of output tensor
-  // indices
-  // in the idx map, the value is a pair of offset and size
-  absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      std::pair<uint64_t, uint64_t>>
+  // Maps custom options data to corresponding node.
+  // Keyed by the MLIR custom op; value is the (offset, size) of its large
+  // custom options in the exported buffer.
+  absl::flat_hash_map<mlir::Operation*, std::pair<uint64_t, uint64_t>>
       custom_op_idx_map_;
-  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      mlir::TFL::ConstBytesAttr>
+  ExportBufferStorage<mlir::Operation*, mlir::TFL::ConstBytesAttr>
       custom_op_buffer_storage_;
 
   // Points to TensorFlow and TFLite dialects, respectively. nullptr if the
@@ -2536,8 +2533,7 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      mlir::TFL::ConstBytesAttr>::ExportBuffer
+  ExportBufferStorage<mlir::Operation*, mlir::TFL::ConstBytesAttr>::ExportBuffer
       export_buffer(
           op.getCustomOption(),
           [](const mlir::TFL::ConstBytesAttr& attr, auto apply) {
@@ -2550,7 +2546,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
   if (use_buffer_offset_) {
     custom_op_buffer_storage_.Insert(
-        std::make_pair(operands, results),
+        inst,
         std::make_unique<decltype(export_buffer)>(std::move(export_buffer)));
     return tflite::CreateOperator(
         builder_, opcode_index, builder_.CreateVector(operands),
@@ -5421,35 +5417,37 @@ bool Translator::UpdateBufferOffsets(tflite::Model* mutable_model) {
     return ret;
   }
 
+  size_t updated_custom_ops = 0;
   auto mutable_subgraphs = mutable_model->mutable_subgraphs();
-  for (auto msubgraph : *mutable_subgraphs) {
+  for (uint32_t sg_idx = 0; sg_idx < mutable_subgraphs->size(); ++sg_idx) {
+    if (sg_idx >= subgraph_op_inst_map_.size()) {
+      ret = false;
+      break;
+    }
+    auto msubgraph = mutable_subgraphs->GetMutableObject(sg_idx);
     auto operators = msubgraph->mutable_operators();
-    for (auto op : *operators) {
+    for (uint32_t op_idx = 0; op_idx < operators->size(); ++op_idx) {
+      if (op_idx >= subgraph_op_inst_map_[sg_idx].size()) {
+        ret = false;
+        break;
+      }
+      auto op = operators->GetMutableObject(op_idx);
       auto opcode_idx = op->opcode_index();
       auto opcodes = mutable_model->operator_codes();
       auto opcode = (*opcodes)[opcode_idx]->builtin_code();
       if (opcode == tflite::BuiltinOperator_CUSTOM) {
-        std::vector<int32_t> inputs(op->inputs()->begin(), op->inputs()->end());
-        std::vector<int32_t> outputs(op->outputs()->begin(),
-                                     op->outputs()->end());
-        for (auto& custom_op : custom_op_idx_map_) {
-          std::vector<int32_t> key_inputs = custom_op.first.first;
-          std::vector<int32_t> key_outputs = custom_op.first.second;
-          // TODO(b/287306548): we need more rigorous check to make sure the
-          // node we're updating is the right one for now we're just ensuring
-          // they have the same number of input, output and first output is
-          // the same
-          if (key_inputs.size() == inputs.size() &&
-              key_outputs.size() == outputs.size() &&
-              key_outputs[0] == outputs[0]) {
-            ret &=
-                op->mutate_large_custom_options_offset(custom_op.second.first);
-            ret &=
-                op->mutate_large_custom_options_size(custom_op.second.second);
-          }
+        if (auto it =
+                custom_op_idx_map_.find(subgraph_op_inst_map_[sg_idx][op_idx]);
+            it != custom_op_idx_map_.end()) {
+          ret &= op->mutate_large_custom_options_offset(it->second.first);
+          ret &= op->mutate_large_custom_options_size(it->second.second);
+          ++updated_custom_ops;
         }
       }
     }
+  }
+  if (updated_custom_ops < custom_op_idx_map_.size()) {
+    ret = false;
   }
   if (!ret) LOG(ERROR) << "failed to update custom op offsets\n";
 
