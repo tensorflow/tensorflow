@@ -437,6 +437,14 @@ class ShapeOpsTest(test.TestCase):
     ):
       array_ops.squeeze(input_tensor, axis_list)
 
+    # Test with a NumPy object array containing a Tensor
+    axis_array = np.empty([1], dtype=object)
+    axis_array[0] = constant_op.constant(0, dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        TypeError, r"axis.*must be.*integer.*list.*cannot.*contain Tensors"
+    ):
+      array_ops.squeeze(input_tensor, axis_array)
+
   def testSqueezeWithNumpyArrayAxis(self):
     x = constant_op.constant(np.zeros([1, 3, 1], dtype=np.float32))
     for axis, expected_shape in (

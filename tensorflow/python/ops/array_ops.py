@@ -4332,6 +4332,10 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "squeeze_dims",
                                                 squeeze_dims)
+  if isinstance(axis, np.ndarray):
+    # `np.isscalar` is False for 0-d arrays; convert arrays to Python ints or
+    # lists before validating them and building the `squeeze_dims` attr.
+    axis = axis.tolist()
   # Validate that axis is not a Tensor or a list/tuple containing a Tensor.
   # This avoids a confusing MemoryError and keeps eager and graph mode
   # behavior consistent, since `int(tensor)` only works in eager mode.
@@ -4348,10 +4352,6 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
           "`axis` must be an integer or a list of integers, and cannot "
           f"contain Tensors. Received: axis={axis}"
       )
-  if isinstance(axis, np.ndarray):
-    # `np.isscalar` is False for 0-d arrays; convert arrays to Python ints or
-    # lists before building the `squeeze_dims` attr.
-    axis = axis.tolist()
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
