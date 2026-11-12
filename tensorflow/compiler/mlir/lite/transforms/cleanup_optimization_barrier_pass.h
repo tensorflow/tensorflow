@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace mlir {
 namespace TFL {
@@ -48,8 +47,8 @@ class CleanupOptimizationBarrierPass
 
  private:
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::arith::ArithDialect>();
+    registry
+        .insert<mlir::stablehlo::StablehloDialect, mlir::arith::ArithDialect>();
   }
 };
 }  // namespace TFL

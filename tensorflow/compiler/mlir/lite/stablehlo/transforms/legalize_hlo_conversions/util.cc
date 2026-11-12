@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -66,14 +65,6 @@ PermutationAndShape GetPermutationAndTransposedShape(
       RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
       permutation_array);
   return {permutation, transposed_type};
-}
-
-Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
-                      ConversionPatternRewriter& rewriter, int64_t const_value,
-                      Type type) {
-  Value result_const =
-      TF::ConstOp::create(builder, rewriter.getIntegerAttr(type, const_value));
-  return result_const;
 }
 
 llvm::SmallVector<int64_t> GetInversePermutationArray(

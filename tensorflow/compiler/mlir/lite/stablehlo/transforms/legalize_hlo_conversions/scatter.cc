@@ -177,7 +177,7 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
       indices_type.getRank() == 1 && updates_type.getRank() == 1 &&
       index_depth == 1 && num_updates == 1) {
     ImplicitLocOpBuilder builder(loc, rewriter);
-    auto indices_shape = BuildIntArrayConstOp(
+    auto indices_shape = BuildIntArrayConstOp<TF::ConstOp>(
         builder, rewriter,
         llvm::SmallVector<int64_t>({num_updates, index_depth}),
         rewriter.getI32Type());
@@ -186,7 +186,7 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
         RankedTensorType::get({num_updates, index_depth},
                               indices_type.getElementType()),
         indices, indices_shape);
-    auto updates_shape = BuildIntArrayConstOp(
+    auto updates_shape = BuildIntArrayConstOp<TF::ConstOp>(
         builder, rewriter,
         llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
         rewriter.getI32Type());

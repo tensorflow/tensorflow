@@ -91,8 +91,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 // TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
@@ -155,9 +153,15 @@ void printOneResultOp(Operation* op, OpAsmPrinter& p) {
   p << " : " << resultType;
 }
 
+// Returns true if `op` is the TF dialect op named `op_name`. TF ops are matched
+// by name so that the TFL dialect does not depend on the TF dialect.
+static bool IsTFOpNamed(Operation* op, StringRef op_name) {
+  return op != nullptr && op->getName().getStringRef() == op_name;
+}
+
 Operation* getDefiningBroadcastArgsOp(Value operand) {
   auto* defining_op = operand.getDefiningOp();
-  if (!llvm::dyn_cast_or_null<TF::BroadcastToOp>(defining_op) &&
+  if (!IsTFOpNamed(defining_op, "tf.BroadcastTo") &&
       !llvm::dyn_cast_or_null<TFL::BroadcastToOp>(defining_op)) {
     return nullptr;
   }
@@ -165,7 +169,7 @@ Operation* getDefiningBroadcastArgsOp(Value operand) {
   Value broadcast_shape = defining_op->getOperand(
       1);  // Broadcasted shape operand of BroadcastTo op.
   Operation* parent_of_defining_op = broadcast_shape.getDefiningOp();
-  if (!llvm::dyn_cast_or_null<TF::BroadcastArgsOp>(parent_of_defining_op) &&
+  if (!IsTFOpNamed(parent_of_defining_op, "tf.BroadcastArgs") &&
       !llvm::dyn_cast_or_null<TFL::BroadcastArgsOp>(parent_of_defining_op)) {
     return nullptr;
   }
@@ -1768,8 +1772,9 @@ LogicalResult CustomTfOp::inferReturnTypes(
 
   if (op.getRegions().empty()) return success();
   auto* real_op = &op.getBody().front().front();
-  if (llvm::isa<TF::FakeQuantWithMinMaxArgsOp, TF::FakeQuantWithMinMaxVarsOp,
-                TF::FakeQuantWithMinMaxVarsPerChannelOp>(real_op)) {
+  if (IsTFOpNamed(real_op, "tf.FakeQuantWithMinMaxArgs") ||
+      IsTFOpNamed(real_op, "tf.FakeQuantWithMinMaxVars") ||
+      IsTFOpNamed(real_op, "tf.FakeQuantWithMinMaxVarsPerChannel")) {
     Value input = *operands.begin();
     inferredReturnTypes.assign({input.getType()});
   }
@@ -6922,7 +6927,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
           // and that does not give any meaningful points to the decision
           // whether the given argument is a read-only variable or not.
           if (user->hasTrait<OpTrait::IsTerminator>()) continue;
-          if (!llvm::isa<mlir::TF::ReadVariableOp>(user)) {
+          if (!IsTFOpNamed(user, "tf.ReadVariableOp")) {
             has_read_only_variables = false;
             break;
           }

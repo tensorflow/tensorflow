@@ -349,7 +349,6 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   let dependentDialects = [
     "TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect",
-    "TF::TensorFlowDialect",
     "stablehlo::StablehloDialect"
   ];
 }

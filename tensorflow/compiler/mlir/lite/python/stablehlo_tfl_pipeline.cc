@@ -214,10 +214,6 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   // High-level StableHLO optimizations
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createStablehloUnfuseBatchNormPass());
-  // Unfusing training batch norms emits TF ops (mean and variance), which the
-  // flatbuffer exporter doesn't support.
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/false));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createStablehloFuseConvolutionPass());
 

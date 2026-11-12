@@ -140,21 +140,6 @@ cc_library(
     deps = [
         ":conversion_failure_reporter",
         ":preserve_regions",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:stablehlo_ops",
-        "@stablehlo//:stablehlo_passes",
-        "@stablehlo//:vhlo_ops",
         "//tensorflow/compiler/mlir/lite:cast_bf16_ops_to_f32",
         "//tensorflow/compiler/mlir/lite:cleanup_optimization_barrier",  # build_cleaner: keep (pass declared in passes.h)
         "//tensorflow/compiler/mlir/lite:common",
@@ -167,8 +152,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:pass_registry_utils",
         "//tensorflow/compiler/mlir/lite:strict_qdq_quantize_passes",  # build_cleaner: keep (pass declared in passes.h)
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        # LegalizeTFPass: drop once stablehlo-unfuse-batch-norm no longer emits TF ops.
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",  # build_cleaner: keep (pass declared in passes.h)
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",  # build_cleaner: keep (pass declared in passes.h)
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize_batch_matmul",  # build_cleaner: keep (pass declared in passes.h)
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_push_transpose_through_ewise_pass",  # build_cleaner: keep (pass declared in passes.h)
@@ -193,6 +176,21 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:unfold_splat_constant_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:uniform_quantized_stablehlo_to_tfl_pass",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:vhlo_ops",
         "@xla//xla/mlir/utils:error_util",
         "@xla//xla/mlir_hlo",
         "@xla//xla/mlir_hlo:mhlo_passes",
