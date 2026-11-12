@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <deque>
 
 #include "absl/log/check.h"
@@ -347,43 +349,50 @@ struct ResultCandidate {
   float box_coord[4];
 };
 
+// Maps a float to a uint32 whose unsigned order is the float order, with -0.0
+// and +0.0 sharing one value because they compare equal. NaN never reaches this
+// function: it fails the `score > score_threshold` test below.
+inline uint32_t OrderedScoreBits(float score) {
+  if (score == 0.0f) score = 0.0f;
+  uint32_t bits;
+  std::memcpy(&bits, &score, sizeof(bits));
+  return (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
+}
+
 void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
                    const float* scores_data, int num_boxes, int q,
                    int num_classes, const int size_per_class,
                    const float score_threshold, const float iou_threshold,
                    std::vector<ResultCandidate>& result_candidate_vec) {
-  // Do NMS, get the candidate indices of form vector<int>
-  // Data structure for selection candidate in NMS.
-  struct Candidate {
-    int box_index;
-    float score;
-  };
-  auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score < bs_j.score;
-  };
-  std::priority_queue<Candidate, std::vector<Candidate>, decltype(cmp)>
-      candidate_priority_queue(cmp);
-  float temp_score;
+  // Candidates leave the heap by score descending, then box index ascending.
+  // Each is packed into one key so the heap compares integers: the high half is
+  // the ordered score bits and the low half is the complemented box index.
+  std::vector<uint64_t> candidate_heap;
+  candidate_heap.reserve(num_boxes);
   for (int i = 0; i < num_boxes; ++i) {
-    temp_score = scores_data[i * num_classes + class_idx];
+    const float temp_score = scores_data[i * num_classes + class_idx];
     if (temp_score > score_threshold) {
-      candidate_priority_queue.emplace(Candidate({i, temp_score}));
+      candidate_heap.push_back(
+          (static_cast<uint64_t>(OrderedScoreBits(temp_score)) << 32) |
+          ~static_cast<uint32_t>(i));
     }
   }
+  std::make_heap(candidate_heap.begin(), candidate_heap.end());
 
   std::vector<int> selected;
-  Candidate next_candidate;
 
   int candidate_box_data_idx, selected_box_data_idx, class_box_idx;
   class_box_idx = (q > 1) ? class_idx : 0;
 
   float iou;
-  while (selected.size() < size_per_class &&
-         !candidate_priority_queue.empty()) {
-    next_candidate = candidate_priority_queue.top();
-    candidate_priority_queue.pop();
+  while (selected.size() < size_per_class && !candidate_heap.empty()) {
+    std::pop_heap(candidate_heap.begin(), candidate_heap.end());
+    const int box_index =
+        static_cast<int>(~static_cast<uint32_t>(candidate_heap.back()));
+    candidate_heap.pop_back();
+    const float score = scores_data[box_index * num_classes + class_idx];
 
-    candidate_box_data_idx = (next_candidate.box_index * q + class_box_idx) * 4;
+    candidate_box_data_idx = (box_index * q + class_box_idx) * 4;
 
     // Overlapping boxes are likely to have similar scores,
     // therefore we iterate through the previously selected boxes backwards
@@ -401,14 +410,14 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     if (should_select) {
       // Add the selected box to the result candidate. Sorted by score
       result_candidate_vec[selected.size() + size_per_class * class_idx] = {
-          next_candidate.box_index,
-          next_candidate.score,
+          box_index,
+          score,
           class_idx,
           {boxes_data[candidate_box_data_idx],
            boxes_data[candidate_box_data_idx + 1],
            boxes_data[candidate_box_data_idx + 2],
            boxes_data[candidate_box_data_idx + 3]}};
-      selected.push_back(next_candidate.box_index);
+      selected.push_back(box_index);
     }
   }
 }
@@ -421,21 +430,37 @@ void SelectResultPerBatch(std::vector<float>& nmsed_boxes,
                           const int batch_idx, int total_size_per_batch,
                           bool pad_per_class, int max_size_per_batch,
                           bool clip_boxes, int per_batch_size) {
-  auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
-    return rc_i.score > rc_j.score;
+  // The order is total (real entries first, then score descending, class
+  // ascending, box index ascending; padding entries compare equal), so the
+  // result does not depend on the sort implementation.
+  auto rc_cmp = [](const ResultCandidate& rc_i, const ResultCandidate& rc_j) {
+    const bool real_i = rc_i.box_index >= 0;
+    const bool real_j = rc_j.box_index >= 0;
+    if (real_i != real_j) return real_i;
+    if (!real_i) return false;
+    if (rc_i.score != rc_j.score) return rc_i.score > rc_j.score;
+    if (rc_i.class_idx != rc_j.class_idx) {
+      return rc_i.class_idx < rc_j.class_idx;
+    }
+    return rc_i.box_index < rc_j.box_index;
   };
-  std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
 
   int max_detections = 0;
-  int result_candidate_size =
-      std::count_if(result_candidate_vec.begin(), result_candidate_vec.end(),
-                    [](ResultCandidate rc) { return rc.box_index > -1; });
+  int result_candidate_size = std::count_if(
+      result_candidate_vec.begin(), result_candidate_vec.end(),
+      [](const ResultCandidate& rc) { return rc.box_index > -1; });
   // If pad_per_class is false, we always pad to max_total_size
   if (!pad_per_class) {
     max_detections = std::min(result_candidate_size, total_size_per_batch);
   } else {
     max_detections = std::min(per_batch_size, result_candidate_size);
   }
+  // Only the first max_detections entries are emitted and the order is total,
+  // so select that prefix and sort just it.
+  auto emitted_end = result_candidate_vec.begin() + max_detections;
+  std::nth_element(result_candidate_vec.begin(), emitted_end,
+                   result_candidate_vec.end(), rc_cmp);
+  std::sort(result_candidate_vec.begin(), emitted_end, rc_cmp);
 
   final_valid_detections[batch_idx] = max_detections;
 
