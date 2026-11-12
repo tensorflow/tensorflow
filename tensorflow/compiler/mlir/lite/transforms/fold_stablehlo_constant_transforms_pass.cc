@@ -44,8 +44,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/resource_constant_fold_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"
 
 namespace mlir {
 namespace TFL {

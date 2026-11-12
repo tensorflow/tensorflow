@@ -36,7 +36,7 @@ cc_library(
         ":vhlo_operators",
         "//tensorflow/compiler/mlir/lite:flatbuffer_tflite_operator_lib",
         "//tensorflow/compiler/mlir/lite:lite_version",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
@@ -63,7 +63,7 @@ cc_library(
     deps = [
         ":payloads",
         "//tensorflow/compiler/mlir/lite:low_bit_utils",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -100,7 +100,7 @@ cc_library(
     hdrs = ["tensor_names.h"],
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -117,7 +117,7 @@ cc_library(
     hdrs = ["types.h"],
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
