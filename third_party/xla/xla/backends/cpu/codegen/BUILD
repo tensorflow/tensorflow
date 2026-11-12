@@ -741,7 +741,6 @@ xla_cc_test(
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:kernel_c_api",
         "//xla/backends/cpu/runtime:kernel_thunk",
-        "//xla/backends/cpu/runtime:rng_state_resource",
         "//xla/backends/cpu/runtime:rng_state_thunk",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:while_thunk",

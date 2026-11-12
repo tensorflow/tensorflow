@@ -32,7 +32,6 @@ message ResourceProto {
     UNKNOWN = 0;
     TOKEN = 1;
     COLLECTIVE_COMMUNICATOR = 2;
-    RNG_STATE = 3;
   }
   Kind kind = 1;
 }
