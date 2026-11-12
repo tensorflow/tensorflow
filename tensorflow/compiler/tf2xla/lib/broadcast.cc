@@ -85,7 +85,7 @@ xla::XlaOp BroadcastDynamicDimension(xla::XlaOp input, int64_t dimension,
                             shape.dimensions(), broadcast_dimensions);
     xla::XlaOp is_one =
         xla::Eq(run_time_size, xla::ScalarLike(run_time_size, 1));
-    data = xla::Select(xla::Broadcast(is_one, shape.dimensions()), first, data);
+    data = xla::Select(is_one, first, data);
     return xla::SetDimensionSize(
         data,
         xla::Select(is_one, xla::ScalarLike(run_time_size, size),

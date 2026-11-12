@@ -64,7 +64,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
     for (int i = 0; i < rank_difference; ++i) {
       shape.InsertDim(0, 1);
     }
-    xla_shape = ctx->builder()->GetShape(handle).value();
+    OP_REQUIRES_VALUE(xla_shape, ctx, ctx->builder()->GetShape(handle));
   }
   if (lhs_shape.dims() == rhs_shape.dims()) {
     auto reconcile_tensor_mismatched_dims = [ctx](
