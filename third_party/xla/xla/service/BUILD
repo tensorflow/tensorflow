@@ -1241,6 +1241,16 @@ cc_library(
 )
 
 cc_library(
+    name = "latency_estimator",
+    srcs = ["latency_estimator.cc"],
+    hdrs = ["latency_estimator.h"],
+    deps = [
+        "//xla:frontend_attributes",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "latency_hiding_scheduler",
     srcs = ["latency_hiding_scheduler.cc"],
     hdrs = ["latency_hiding_scheduler.h"],
@@ -1251,8 +1261,8 @@ cc_library(
         ":hlo_buffer",
         ":hlo_cost_analysis",
         ":hlo_value",
+        ":latency_estimator",
         ":scheduling_annotations_util",
-        "//xla:frontend_attributes",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:status_macros",
