@@ -276,6 +276,7 @@ class TilingSpace {
   // Marks the scan dimension as sequential; fails if it cannot be located.
   absl::Status ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  absl::Status ProcessGather(const HloInstruction& hlo);
   void ProcessGetTupleElement(const HloInstruction& hlo);
   // Propagates dimensions to the operands of an elementwise instruction, also
   // across the producer-consumer fusion boundary, so that a scan in the

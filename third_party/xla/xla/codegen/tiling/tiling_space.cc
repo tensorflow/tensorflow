@@ -173,6 +173,8 @@ absl::Status TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
     case HloOpcode::kDynamicSlice:
       ProcessDynamicSlice(hlo);
       break;
+    case HloOpcode::kGather:
+      return ProcessGather(hlo);
     case HloOpcode::kGetTupleElement:
       ProcessGetTupleElement(hlo);
       break;
@@ -396,6 +398,27 @@ void TilingSpace::ProcessDynamicSlice(const HloInstruction& hlo) {
     AppendRTVar(&hlo, dim + first_index_num, ds->operand(dim + first_index_num),
                 input_shape.dimensions(dim) - slice_size);
   }
+}
+
+absl::Status TilingSpace::ProcessGather(const HloInstruction& hlo) {
+  const auto* gather = Cast<HloGatherInstruction>(&hlo);
+  const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
+  // Single-indexed gather with no batching dimensions uses a single runtime
+  // variable for the dynamic slice offset in `operand(1)`.
+  if (dnums.start_index_map_size() != 1 ||
+      !dnums.operand_batching_dims().empty() ||
+      !dnums.start_indices_batching_dims().empty()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Only gather with a single indexed dimension and no batching "
+        "dimensions is supported in ",
+        gather->ToString()));
+  }
+  int64_t indexed_dim = dnums.start_index_map(0);
+  int64_t slice_size = gather->gather_slice_sizes()[indexed_dim];
+  const Shape& operand_shape = gather->operand(0)->shape();
+  AppendRTVar(&hlo, /*operand_id=*/1, gather->operand(1),
+              operand_shape.dimensions(indexed_dim) - slice_size);
+  return absl::OkStatus();
 }
 
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index) {

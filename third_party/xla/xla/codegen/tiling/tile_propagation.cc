@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -519,6 +520,131 @@ Tiles PropagateTileToInputForDynamicSliceOp(
     operand_tiles.push_back(scalar_tensor_tile);
   }
   return operand_tiles;
+}
+
+// Propagates `output_tile` to the operands of `gather(operand, start_indices)`.
+//
+// How tiling works for `gather`:
+//   - `Tile` and `xtile.extract` represent a single contiguous block load with
+//     one scalar offset per `operand` dimension (not a vector of pointers).
+//     Therefore, every batch dimension in `output_tile` must have tile size 1,
+//     so that each output tile loads from a single slice of `operand`. Since a
+//     size-1 tile selects a single index (`offset`), its stride does not affect
+//     which slice is read and is normalized to 1.
+//   - We also require `start_index_map` to have size 1 (only one `operand`
+//     dimension has a dynamic start offset, so the coordinate vector along
+//     `index_vector_dim` has length 1) and no batching dims.
+//   - Under these conditions, each output tile maps to:
+//     1. `start_indices` (`operand(1)`): size-1 tiles on all batch dimensions
+//        and on `index_vector_dim`. This narrows `start_indices` to a
+//        1-element tile whose scalar value defines runtime variable `rt_0`.
+//     2. `operand` (`operand(0)`): size-1 tiles on `collapsed_slice_dims` and
+//        the `offset_dims` tiles from `output_tile` on all other dimensions,
+//        with the single indexed dimension's offset and upper bound shifted by
+//        `rt_0`.
+absl::StatusOr<Tiles> PropagateTileToInputForGatherOp(
+    const TilingSpace& tiling_space, const HloGatherInstruction& gather,
+    const Tile& output_tile) {
+  const GatherDimensionNumbers& dnums = gather.gather_dimension_numbers();
+  // Multi-indexed gather (`start_index_map_size() > 1`) requires significant
+  // cross-layer work (`TilingSpace` keys runtime variables by `(hlo,
+  // operand_id)`, `TiledHloComputation` binds one tensor per runtime variable,
+  // and `XTile` only allows rank-0 `tensor.extract` without `stablehlo.slice`).
+  // TODO(b/576975649) Supporting `operand_batching_dims` /
+  // `start_indices_batching_dims` would be a follow-up in `ProcessGather` and
+  // below (forwarding the size-1 batch tiles to `operand` as well).
+  if (dnums.start_index_map_size() != 1 ||
+      !dnums.operand_batching_dims().empty() ||
+      !dnums.start_indices_batching_dims().empty()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Unsupported gather dimension numbers in ", gather.ToString()));
+  }
+  const Shape& indices_shape = gather.operand(1)->shape();
+  // Sub-byte element types cannot be extracted at dynamic offsets, and unsigned
+  // index types fail MLIR verification in `EmitClampedRTVar` before
+  // `LegalizeUnsignedIntegersAsSignlessPass`.
+  if (primitive_util::IsSubByteNonPredType(gather.shape().element_type()) ||
+      !primitive_util::IsSignedIntegralType(indices_shape.element_type()) ||
+      primitive_util::IsSubByteNonPredType(indices_shape.element_type())) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Sub-byte types and unsigned index types are not supported for gather "
+        "in ",
+        gather.ToString()));
+  }
+
+  // `ValidateGatherDimensionNumbers` enforces strictly ascending `offset_dims`.
+  CHECK(absl::c_is_sorted(dnums.offset_dims()));
+  MLIRContext* ctx = output_tile.mlir_context();
+  SmallVector<DimTile> batch_dim_tiles;
+  int64_t next_offset_dim_idx = 0;
+  for (int64_t out_dim = 0; out_dim < output_tile.num_dim_tiles(); ++out_dim) {
+    if (next_offset_dim_idx < dnums.offset_dims_size() &&
+        dnums.offset_dims(next_offset_dim_idx) == out_dim) {
+      ++next_offset_dim_idx;
+      continue;
+    }
+    DimTile batch_tile = output_tile.dim_tiles()[out_dim];
+    if (!tiling_space.IsSymbolic()) {
+      batch_tile.Simplify(tiling_space, output_tile.constraints());
+      if (!IsConstantValue(batch_tile.size, 1)) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Gather batch dimension ", out_dim,
+            " must have tile size 1, got size=", batch_tile.size.ToString()));
+      }
+      batch_tile.stride = CreateSymbolicConstant(1, ctx);
+    } else if (IsConstantValue(batch_tile.size, 1)) {
+      batch_tile.stride = CreateSymbolicConstant(1, ctx);
+    }
+    batch_dim_tiles.push_back(std::move(batch_tile));
+  }
+  SmallVector<DimTile> indices_dim_tiles;
+  indices_dim_tiles.reserve(indices_shape.dimensions().size());
+  int64_t batch_idx = 0;
+  for (int64_t i = 0; i < indices_shape.dimensions().size(); ++i) {
+    if (i == dnums.index_vector_dim()) {
+      indices_dim_tiles.push_back(GetFullDimTile(1, ctx));
+    } else {
+      indices_dim_tiles.push_back(batch_dim_tiles[batch_idx++]);
+    }
+  }
+  Tile indices_tile =
+      output_tile.CloneWithNewDims(std::move(indices_dim_tiles));
+
+  std::optional<const TilingSpace::RTVarInfo*> rt_var_info =
+      tiling_space.GetRTVarInfo(gather, /*operand_id=*/1);
+  if (!rt_var_info.has_value()) {
+    return absl::InternalError(absl::StrCat(
+        "Runtime variable not found for gather ", gather.ToString()));
+  }
+  SymbolicExpr rt_offset =
+      CreateSymbolExpr(tiling_space.num_dimensions() + (*rt_var_info)->id,
+                       tiling_space.num_dimensions(), ctx);
+
+  const Shape& operand_shape = gather.operand(0)->shape();
+  int64_t indexed_dim = dnums.start_index_map(0);
+  SmallVector<DimTile> operand_dim_tiles;
+  operand_dim_tiles.reserve(operand_shape.dimensions().size());
+  int64_t offset_dim_idx = 0;
+  int64_t collapsed_dim_idx = 0;
+  for (int64_t op_dim = 0; op_dim < operand_shape.dimensions().size();
+       ++op_dim) {
+    DimTile dim_tile;
+    if (collapsed_dim_idx < dnums.collapsed_slice_dims_size() &&
+        dnums.collapsed_slice_dims(collapsed_dim_idx) == op_dim) {
+      ++collapsed_dim_idx;
+      dim_tile = GetFullDimTile(1, ctx);
+    } else {
+      dim_tile = output_tile.dim_tiles()[dnums.offset_dims(offset_dim_idx++)];
+    }
+    if (op_dim == indexed_dim) {
+      dim_tile.offset = rt_offset + dim_tile.offset;
+      dim_tile.upper_bound = dim_tile.upper_bound + rt_offset;
+    }
+    operand_dim_tiles.push_back(std::move(dim_tile));
+  }
+  Tile operand_tile =
+      output_tile.CloneWithNewDims(std::move(operand_dim_tiles));
+  return Tiles{std::move(operand_tile), std::move(indices_tile)};
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForPadOp(const HloPadInstruction& pad,
@@ -1886,6 +2012,10 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kDynamicSlice) {
     return PropagateTileToInputForDynamicSliceOp(
         tiling_space, *Cast<HloDynamicSliceInstruction>(&hlo), output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kGather) {
+    return PropagateTileToInputForGatherOp(
+        tiling_space, *Cast<HloGatherInstruction>(&hlo), output_tile);
   }
   if (hlo.opcode() == HloOpcode::kDot) {
     return PropagateTileToInputForDotOp(tiling_space, hlo, output_tile);
