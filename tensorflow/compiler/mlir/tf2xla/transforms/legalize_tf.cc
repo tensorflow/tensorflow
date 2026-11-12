@@ -1764,8 +1764,12 @@ class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
     Value compareGtZero = stablehlo::CompareOp::create(
         rewriter, loc, features, zeroVal, stablehlo::ComparisonDirection::GT);
 
-    rewriter.replaceOpWithNewOp<stablehlo::SelectOp>(
-        op, featureType, compareGtZero, gradients, leakyGradientVal);
+    Value isNan = stablehlo::CompareOp::create(
+        rewriter, loc, features, features, stablehlo::ComparisonDirection::NE);
+    Value normalGrad = stablehlo::SelectOp::create(
+        rewriter, loc, featureType, compareGtZero, gradients, leakyGradientVal);
+    rewriter.replaceOpWithNewOp<stablehlo::SelectOp>(op, featureType, isNan,
+                                                     features, normalGrad);
     return success();
   }
 };

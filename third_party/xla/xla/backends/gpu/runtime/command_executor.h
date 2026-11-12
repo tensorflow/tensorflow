@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
@@ -275,8 +274,6 @@ class CommandExecutor {
   // RenderExecutionGraph() can reproduce the same dependency graph.
   std::vector<Command::ResourceUses> extra_resources_;
 };
-
-using CommandBufferCmdExecutor ABSL_DEPRECATE_AND_INLINE() = CommandExecutor;
 
 }  // namespace xla::gpu
 

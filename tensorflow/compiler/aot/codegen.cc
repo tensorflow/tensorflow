@@ -604,22 +604,6 @@ bool HasThunkKind(const xla::cpu::ThunkSequenceProto& thunk_sequence,
   return has_kind;
 }
 
-absl::StatusOr<std::vector<xla::cpu::ThunkProto>> ExtractThunksOfKind(
-    const xla::cpu::ThunkSequenceProto& thunk_sequence,
-    xla::cpu::ThunkProto::ImplCase kind) {
-  std::vector<xla::cpu::ThunkProto> matching_thunks;
-
-  xla::cpu::ForEachThunkProto(
-      thunk_sequence,
-      [&kind, &matching_thunks](const xla::cpu::ThunkProto& thunk) {
-        if (thunk.impl_case() == kind) {
-          matching_thunks.push_back(thunk);
-        }
-      });
-
-  return matching_thunks;
-}
-
 absl::StatusOr<std::string> GetThunkSpecificConstantAllocationsInitializers(
     const xla::cpu::CompilationResultProto& proto,
     const xla::EmbeddedConstantBuffers& embedded_constant_buffers) {
@@ -705,18 +689,12 @@ absl::Status ExtendRewrites(
     runtime_specific_includes.push_back(R"(#include <random>)");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      const auto rng_thunks,
-      ExtractThunksOfKind(aot_thunks->proto().thunk_sequence(),
-                          xla::cpu::ThunkProto::kRngGetAndUpdateStateThunk));
-
   std::string executable_proto_getter = "";
   std::string thunk_specific_run_impl = "";
   std::string nanort_specific_static_data_setters = "";
   std::string thunk_specific_static_data_setters = "";
   std::string thunk_run_impl_getter = "";
   std::string embedded_constant_buffers_initializer_getter = "";
-  std::string rng_deltas_initializer_getter = "";
   std::string computation_class_base = "";
 
   if (codegen_opts.use_xla_nanort_runtime) {
@@ -749,32 +727,16 @@ absl::Status ExtendRewrites(
 
     thunk_specific_static_data_setters =
         R"(set_static_data_thunk_run_impl(data, ThunkRunImplFunction());
-        set_static_data_embedded_constant_buffers(data, EmbeddedConstantBuffers());
-        set_static_data_rng_state_deltas(data, RngStateDeltas());)";
-
-    std::vector<int64_t> rng_deltas;
-    rng_deltas.reserve(rng_thunks.size());
-    for (const auto& rng_thunk : rng_thunks) {
-      rng_deltas.push_back(rng_thunk.rng_get_and_update_state_thunk().delta());
-    }
-    rng_deltas_initializer_getter = absl::StrReplaceAll(
-        R"(
-  static std::vector<int64_t> RngStateDeltas() {
-    return {
-      {{RNG_DELTAS}}
-    };
-  }
-  )",
-        {{"{{RNG_DELTAS}}", absl::StrJoin(rng_deltas, ", ")}});
+        set_static_data_embedded_constant_buffers(data, EmbeddedConstantBuffers());)";
 
     thunk_run_impl_getter = absl::StrReplaceAll(
         R"(
   static std::function<bool(
         void** buffer_table, xla::ExecutableRunOptions*,
-        std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+        xla::cpu::RngState&)>
   ThunkRunImplFunction() {
     return [](void** buffer_table, xla::ExecutableRunOptions* run_options,
-    std::vector<std::unique_ptr<xla::cpu::RngState>>& rng_states) {
+    xla::cpu::RngState& rng_state) {
       {{THUNK_RUN_IMPL}}
       return true;
     };
@@ -811,7 +773,6 @@ absl::Status ExtendRewrites(
       {"{{THUNK_RUN_IMPL_GETTER}}", thunk_run_impl_getter},
       {"{{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}",
        embedded_constant_buffers_initializer_getter},
-      {"{{RNG_DELTAS_INITIALIZER_GETTER}}", rng_deltas_initializer_getter},
       {"{{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}",
        nanort_specific_static_data_setters},
       {"{{IS_THUNK_MODE}}", "true"},
@@ -1125,7 +1086,6 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
   {{EXECUTABLE_PROTO_GETTER}}
   {{THUNK_RUN_IMPL_GETTER}}
   {{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}
-  {{RNG_DELTAS_INITIALIZER_GETTER}}
 
   static absl::flat_hash_map<std::string, void*> FunctionLibrarySymbolMap() {
     return {{SYMBOL_MAP_INITIALIZER}};

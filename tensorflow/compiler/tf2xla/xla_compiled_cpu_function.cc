@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
@@ -51,6 +52,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
     : function_library_symbol_map_(&static_data.function_library_symbol_map_),
       temp_allocation_index_(static_data.temp_allocation_index_),
       thunk_run_impl_(static_data.thunk_run_impl_),
+      legacy_thunk_run_impl_(static_data.legacy_thunk_run_impl_),
       result_index_(GetResultIndex(static_data.result_index_table_,
                                    static_data.num_results_)),
       buffer_table_(new void*[static_data.num_buffers_]),
@@ -105,17 +107,49 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
           static_data.embedded_constant_buffers_.size());
   }
 
-  // Setup rng states
-  {
-    rng_states_.reserve(static_data.rng_state_deltas_.size());
-    for (int64_t delta : static_data.rng_state_deltas_) {
-      rng_states_.emplace_back(std::make_unique<xla::cpu::RngState>(delta));
-    }
+  rng_state_ = std::make_unique<xla::cpu::RngState>();
+  legacy_rng_states_.reserve(static_data.legacy_rng_state_deltas_.size());
+  for (int64_t delta : static_data.legacy_rng_state_deltas_) {
+    legacy_rng_states_.push_back(
+        std::make_unique<xla::cpu::RngState>(delta, rng_state_.get()));
   }
 }
 
+XlaCompiledCpuFunction::XlaCompiledCpuFunction(
+    XlaCompiledCpuFunction&& other) noexcept
+    : function_library_symbol_map_(other.function_library_symbol_map_),
+      temp_allocation_index_(other.temp_allocation_index_),
+      thunk_run_impl_(std::move(other.thunk_run_impl_)),
+      legacy_thunk_run_impl_(std::move(other.legacy_thunk_run_impl_)),
+      rng_state_(std::move(other.rng_state_)),
+      legacy_rng_states_(std::move(other.legacy_rng_states_)),
+      result_index_(other.result_index_),
+      buffer_table_(std::exchange(other.buffer_table_, nullptr)),
+      buffer_infos_(other.buffer_infos_),
+      num_buffers_(other.num_buffers_),
+      num_results_(other.num_results_),
+      result_index_table_(other.result_index_table_),
+      arg_index_table_(other.arg_index_table_),
+      num_args_(other.num_args_),
+      num_variables_(other.num_variables_),
+      arg_shape_infos_(other.arg_shape_infos_),
+      result_shape_infos_(other.result_shape_infos_),
+      alloc_buffer_table_(std::exchange(other.alloc_buffer_table_, nullptr)),
+      profile_counters_(std::exchange(other.profile_counters_, nullptr)),
+      run_options_(std::move(other.run_options_)),
+      arg_names_(other.arg_names_),
+      variable_names_(other.variable_names_),
+      result_names_(other.result_names_),
+      program_shape_(other.program_shape_),
+      hlo_profile_printer_data_(other.hlo_profile_printer_data_),
+      error_msg_(std::move(other.error_msg_)) {}
+
 bool XlaCompiledCpuFunction::Run() {
-  return thunk_run_impl_(buffer_table_, &run_options_, rng_states_);
+  if (legacy_thunk_run_impl_ != nullptr) {
+    return legacy_thunk_run_impl_(buffer_table_, &run_options_,
+                                  legacy_rng_states_);
+  }
+  return thunk_run_impl_(buffer_table_, &run_options_, *rng_state_);
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {

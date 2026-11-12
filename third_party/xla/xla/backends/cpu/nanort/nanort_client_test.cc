@@ -672,6 +672,60 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
             absl::Span<const int64_t>({0, 1}));
 }
 
+TEST_P(NanoRtClientTest, SharedRngGetAndUpdateStateAcrossOps) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule shared_rng_state
+    ENTRY main {
+      first = u64[2]{0} rng-get-and-update-state(), delta=131072
+      second = u64[2]{0} rng-get-and-update-state(), delta=65536
+      ROOT tuple = (u64[2]{0}, u64[2]{0}) tuple(first, second)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  XlaComputation computation(module->ToProto());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
+
+  alignas(32) std::array<uint64_t, 2> out1 = {0, 0};
+  alignas(32) std::array<uint64_t, 2> out2 = {0, 0};
+  Results results = {{out1.data(), 2}, {out2.data(), 2}};
+
+  // The HLO does not order `first` and `second`; the shared RNG resource only
+  // serializes them. Whichever runs first reads the counter, and the other
+  // reads it advanced by the first one's delta. Each execution advances the
+  // counter by both deltas. Independent counters would make both outputs equal.
+  constexpr uint64_t kInit = 0x7012395;
+  constexpr uint64_t kFirstDelta = 131072;
+  constexpr uint64_t kSecondDelta = 65536;
+  std::optional<bool> run0_first_ran_first;
+  for (uint64_t run = 0; run < 2; ++run) {
+    auto event = executable->Execute({}, results, {});
+    tsl::BlockUntilReady(event);
+    ASSERT_TRUE(event.IsConcrete());
+    EXPECT_EQ(out1[1], 0);
+    EXPECT_EQ(out2[1], 0);
+
+    const uint64_t base = kInit + run * (kFirstDelta + kSecondDelta);
+    const bool first_ran_first = out1[0] == base;
+    if (first_ran_first) {
+      EXPECT_EQ(out2[0], base + kFirstDelta) << "run " << run;
+    } else {
+      EXPECT_EQ(out2[0], base) << "run " << run;
+      EXPECT_EQ(out1[0], base + kSecondDelta) << "run " << run;
+    }
+    // The resource edge follows the fixed thunk sequence order, so every run
+    // of one executable uses the same order.
+    if (run0_first_ran_first.has_value()) {
+      EXPECT_EQ(first_ran_first, *run0_first_ran_first);
+    } else {
+      run0_first_ran_first = first_ran_first;
+    }
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(NanoRtClientTestSuite, NanoRtClientTest,
                          ::testing::Bool(),
                          [](const ::testing::TestParamInfo<bool>& info) {
