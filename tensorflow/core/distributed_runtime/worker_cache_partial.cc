@@ -42,7 +42,7 @@ void WorkerCachePartial::GetDeviceLocalityAsync(const std::string& device_name,
                                                 StatusCallback done) {
   if (!GetDeviceLocalityNonBlocking(device_name, locality)) {
     // If cache entry was empty, make one try to fill it by RPC.
-    SchedClosure([this, &device_name, locality, done]() {
+    SchedClosure([this, device_name, locality, done]() {
       absl::Status s = RefreshDeviceStatus(device_name);
       if (s.ok() && !GetDeviceLocalityNonBlocking(device_name, locality)) {
         s = absl::UnavailableError(
