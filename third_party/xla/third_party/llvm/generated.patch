@@ -1,504 +1,147 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/include/llvm/ADT/DenseMap.h b/llvm/include/llvm/ADT/DenseMap.h
---- a/llvm/include/llvm/ADT/DenseMap.h
-+++ b/llvm/include/llvm/ADT/DenseMap.h
-@@ -1360,9 +1360,8 @@
- template <typename KeyT, typename ValueT,
-           typename KeyInfoT = DenseMapInfo<KeyT>,
-           typename BucketT = llvm::detail::DenseMapPair<KeyT, ValueT>>
--class LLVM_ATTRIBUTE_WARN_UNUSED DenseMap
--    : public DenseMapBase<densemap::detail::DenseMapStorage<BucketT>, KeyT,
--                          ValueT, KeyInfoT, BucketT> {
-+class DenseMap : public DenseMapBase<densemap::detail::DenseMapStorage<BucketT>,
-+                                     KeyT, ValueT, KeyInfoT, BucketT> {
-   using BaseT = DenseMapBase<densemap::detail::DenseMapStorage<BucketT>, KeyT,
-                              ValueT, KeyInfoT, BucketT>;
+diff -ruN --strip-trailing-cr a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
+--- a/llvm/lib/Passes/PassBuilderPipelines.cpp
++++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
+@@ -1098,11 +1098,16 @@
+   else if (Opts.attributor_enable & AttributorRunOption::MODULE_LIGHT)
+     MPM.addPass(AttributorLightPass());
  
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp b/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
---- a/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
-+++ b/llvm/lib/Target/AMDGPU/AMDGPUInstructionSelector.cpp
-@@ -4564,10 +4564,10 @@
+-  // Lower type metadata and the type.test intrinsic in the ThinLTO
+-  // post link pipeline after ICP. This is to enable usage of the type
+-  // tests in ICP sequences.
+-  if (isThinLTOPostLink(Phase))
++  // Lower type metadata and the type.test intrinsic in the ThinLTO post link
++  // pipeline after ICP. This is to enable usage of the type tests in ICP
++  // sequences. It also lets ICP (including the ICP performed by the sample
++  // profile loader) see the original names of the CFI functions it wants to
++  // promote to, which LowerTypeTests renames to <name>.cfi.
++  if (isThinLTOPostLink(Phase)) {
++    if (ImportSummary)
++      MPM.addPass(LowerTypeTestsPass(nullptr, ImportSummary));
+     MPM.addPass(DropTypeTestsPass());
++  }
  
-   if (!WaveAddr) {
-     WaveAddr = MRI->createVirtualRegister(&AMDGPU::SReg_32RegClass);
--    BuildMI(*MBB, MI, DL, TII.get(AMDGPU::S_LSHR_B32), WaveAddr)
--      .addReg(SrcReg)
--      .addImm(Subtarget->getWavefrontSizeLog2())
--      .setOperandDead(3); // Dead scc
-+    BuildMI(*MBB, MI, DL, TII.get(AMDGPU::S_LSHL_B32), WaveAddr)
-+        .addReg(SrcReg)
-+        .addImm(Subtarget->getWavefrontSizeLog2())
-+        .setOperandDead(3); // Dead scc
+   invokePipelineEarlySimplificationEPCallbacks(MPM, Level, Phase);
+ 
+@@ -1859,10 +1864,10 @@
+       MPM.addPass(MemProfContextDisambiguation(
+           ImportSummary, PGOOpt && PGOOpt->Action == PGOOptions::SampleUse));
+ 
+-    // These passes import type identifier resolutions for whole-program
+-    // devirtualization and CFI. They must run early because other passes may
+-    // disturb the specific instruction patterns that these passes look for,
+-    // creating dependencies on resolutions that may not appear in the summary.
++    // WholeProgramDevirt imports type identifier resolutions for whole-program
++    // devirtualization. It must run early because later passes may disturb the
++    // specific instruction patterns that it looks for, creating dependencies on
++    // resolutions that may not appear in the summary.
+     //
+     // For example, GVN may transform the pattern assume(type.test) appearing in
+     // two basic blocks into assume(phi(type.test, type.test)), which would
+@@ -1872,13 +1877,16 @@
+     // Also, WPD has access to more precise information than ICP and can
+     // devirtualize more effectively, so it should operate on the IR first.
+     //
+-    // The WPD and LowerTypeTest passes need to run at -O0 to lower type
+-    // metadata and intrinsics.
++    // It also needs to run at -O0 to lower type metadata and intrinsics.
+     MPM.addPass(WholeProgramDevirtPass(nullptr, ImportSummary));
+-    MPM.addPass(LowerTypeTestsPass(nullptr, ImportSummary));
    }
  
-   BuildMI(*MBB, &MI, DL, TII.get(AMDGPU::COPY), SP)
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp b/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
---- a/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
-+++ b/llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp
-@@ -1682,6 +1682,16 @@
++  // LowerTypeTests renames CFI functions to <name>.cfi, so with optimization
++  // it runs in buildModuleSimplificationPipeline after ICP. Otherwise, lower
++  // type tests here.
+   if (Level == OptimizationLevel::O0) {
++    if (ImportSummary)
++      MPM.addPass(LowerTypeTestsPass(nullptr, ImportSummary));
+     // Run a second time to clean up any type tests left behind by WPD for use
+     // in ICP.
+     MPM.addPass(DropTypeTestsPass());
+@@ -1899,6 +1907,10 @@
+     return MPM;
+   }
+   if (!UseCtxProfile.empty()) {
++    // FIXME: Move LowerTypeTestsPass (and DropTypeTestsPass) into
++    // buildModuleInlinerPipeline after ModuleInlinerPass, which performs ICP.
++    if (ImportSummary)
++      MPM.addPass(LowerTypeTestsPass(nullptr, ImportSummary));
+     MPM.addPass(
+         buildModuleInlinerPipeline(Level, ThinOrFullLTOPhase::ThinLTOPostLink));
+   } else {
+diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/cfi-icall-pgo-icp.ll b/llvm/test/ThinLTO/X86/cfi-icall-pgo-icp.ll
+--- a/llvm/test/ThinLTO/X86/cfi-icall-pgo-icp.ll
++++ b/llvm/test/ThinLTO/X86/cfi-icall-pgo-icp.ll
+@@ -13,14 +13,14 @@
+ ; RUN:   -r=%t.bc,call_it,plx
+ ; RUN: llvm-dis %t.out.1.4.opt.bc -o - | FileCheck %s
  
-   assert(Scope->RegInfos.size() >= 1 && "Should have at least one Region");
+-; FIXME: LowerTypeTests runs before ICP, so each promoted comparison is against
+-; the .cfi body instead of the jump table entry (@add1 / @add2), and never
+-; matches a function pointer taken from the jump table.
++; Both indirect call targets were promoted. Each comparison is redirected to
++; the jump table entry (@add1 / @add2), while the direct calls target the .cfi
++; bodies (@add1.cfi is inlined; noinline @add2.cfi remains a direct call).
+ ; CHECK-LABEL: define hidden {{.*}}i32 @call_it(ptr {{.*}}%f, i32 {{.*}}%x)
+-; CHECK: icmp eq ptr {{.*}}, @add1.cfi{{$}}
++; CHECK: icmp eq ptr {{.*}}, @add1{{$|,}}
+ ; CHECK: add i32 %x, 1
+ ; CHECK-NOT: call {{.*}}@add1
+-; CHECK: icmp eq ptr {{.*}}, @add2.cfi{{$}}
++; CHECK: icmp eq ptr {{.*}}, @add2{{$|,}}
+ ; CHECK: call i32 @add2.cfi(i32 %x)
+ ; CHECK: call i32 %f(i32 %x)
  
-+  // An outer scope may have hoisted one of our selects out of this scope.
-+  // It can no longer be specialized under this scope's merged branch, and
-+  // may also be the cached branch insertion point.
-+  // TODO: Add inner selects to Unhoistables to avoid hoisting them out of
-+  // their scopes and allow those scopes to be transformed.
-+  for (const RegInfo &RI : Scope->CHRRegions)
-+    for (SelectInst *SI : RI.Selects)
-+      if (!Scope->contains(SI))
-+        return;
+diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/cfi-icall-samplepgo-icp.ll b/llvm/test/ThinLTO/X86/cfi-icall-samplepgo-icp.ll
+--- a/llvm/test/ThinLTO/X86/cfi-icall-samplepgo-icp.ll
++++ b/llvm/test/ThinLTO/X86/cfi-icall-samplepgo-icp.ll
+@@ -15,22 +15,24 @@
+ ; RUN:   -r=%t.dir/main.bc,call_it,plx
+ ; RUN: llvm-dis %t.dir/out.1.4.opt.bc -o - | FileCheck %s
+ 
+-; FIXME: LowerTypeTests runs first, so the sample profile loader sees @add1.cfi
+-; and @add2.cfi colliding with the @add1 and @add2 declarations, and does not
+-; annotate them with entry counts.
+-; CHECK: define hidden {{.*}}i32 @add1.cfi(i32 {{.*}}%x) #{{[0-9]+}} !dbg ![[#]] !type ![[#]] !guid ![[#]] {
+-; CHECK: define hidden {{.*}}i32 @add2.cfi(i32 {{.*}}%x) #{{[0-9]+}} !dbg ![[#]] !type ![[#]] !guid ![[#]] {
++; The sample profile loader saw @add1 and @add2 under their original names and
++; annotated them with entry counts before they were renamed to .cfi.
++; CHECK: define hidden {{.*}}i32 @add1.cfi(i32 {{.*}}%x){{.*}} !prof ![[ENTRY1:[0-9]+]]
++; CHECK: define hidden {{.*}}i32 @add2.cfi(i32 {{.*}}%x){{.*}} !prof ![[ENTRY2:[0-9]+]]
+ 
+-; FIXME: Both indirect call targets are promoted, but each comparison is against
+-; the .cfi body instead of the jump table entry (@add1 / @add2), so it never
+-; matches a function pointer taken from the jump table.
++; Both indirect call targets were promoted. Each comparison is redirected to
++; the jump table entry (@add1 / @add2), while the direct calls target the .cfi
++; bodies (@add1.cfi is inlined; noinline @add2.cfi remains a direct call).
+ ; CHECK-LABEL: define hidden {{.*}}i32 @call_it(ptr {{.*}}%f, i32 {{.*}}%x)
+-; CHECK: icmp eq ptr {{.*}}, @add1.cfi
++; CHECK: icmp eq ptr {{.*}}, @add1{{$|,}}
+ ; CHECK: add i32 %x, 1
+ ; CHECK-NOT: call {{.*}}@add1
+-; CHECK: icmp eq ptr {{.*}}, @add2.cfi
++; CHECK: icmp eq ptr {{.*}}, @add2{{$|,}}
+ ; CHECK: call i32 @add2.cfi(i32 %x)
+ ; CHECK: call i32 %f(i32 %x)
 +
-   for (RegInfo &RI : Scope->RegInfos) {
-     const Region *R = RI.R;
-     unsigned Duplication = getRegionDuplicationCount(R);
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
---- a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
-+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-stacksave-stackrestore.mir
-@@ -32,15 +32,15 @@
-     ; GFX10-WAVE32: liveins: $sgpr10
-     ; GFX10-WAVE32-NEXT: {{  $}}
-     ; GFX10-WAVE32-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr32
--    ; GFX10-WAVE32-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 5, implicit-def dead $scc
--    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
-+    ; GFX10-WAVE32-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 5, implicit-def dead $scc
-+    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
-     ;
-     ; GFX10-WAVE64-LABEL: name: stackrestore_direct_sp_sgpr
-     ; GFX10-WAVE64: liveins: $sgpr10
-     ; GFX10-WAVE64-NEXT: {{  $}}
-     ; GFX10-WAVE64-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr32
--    ; GFX10-WAVE64-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 6, implicit-def dead $scc
--    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
-+    ; GFX10-WAVE64-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 6, implicit-def dead $scc
-+    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
-     %0:sgpr(p5) = COPY $sgpr32
-     G_STACKRESTORE %0
++; CHECK: ![[ENTRY1]] = !{!"function_entry_count", i64 {{[0-9]+}}}
++; CHECK: ![[ENTRY2]] = !{!"function_entry_count", i64 {{[0-9]+}}}
  
-@@ -58,15 +58,15 @@
-     ; GFX10-WAVE32: liveins: $sgpr10
-     ; GFX10-WAVE32-NEXT: {{  $}}
-     ; GFX10-WAVE32-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr10
--    ; GFX10-WAVE32-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 5, implicit-def dead $scc
--    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
-+    ; GFX10-WAVE32-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 5, implicit-def dead $scc
-+    ; GFX10-WAVE32-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
-     ;
-     ; GFX10-WAVE64-LABEL: name: stackrestore_any_sgpr
-     ; GFX10-WAVE64: liveins: $sgpr10
-     ; GFX10-WAVE64-NEXT: {{  $}}
-     ; GFX10-WAVE64-NEXT: [[COPY:%[0-9]+]]:sreg_32 = COPY $sgpr10
--    ; GFX10-WAVE64-NEXT: [[S_LSHR_B32_:%[0-9]+]]:sreg_32 = S_LSHR_B32 [[COPY]], 6, implicit-def dead $scc
--    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHR_B32_]]
-+    ; GFX10-WAVE64-NEXT: [[S_LSHL_B32_:%[0-9]+]]:sreg_32 = S_LSHL_B32 [[COPY]], 6, implicit-def dead $scc
-+    ; GFX10-WAVE64-NEXT: $sgpr32 = COPY [[S_LSHL_B32_]]
-     %0:sgpr(p5) = COPY $sgpr10
-     G_STACKRESTORE %0
+ ;--- main.ll
+ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/pass-pipeline.ll b/llvm/test/ThinLTO/X86/pass-pipeline.ll
+--- a/llvm/test/ThinLTO/X86/pass-pipeline.ll
++++ b/llvm/test/ThinLTO/X86/pass-pipeline.ll
+@@ -32,9 +32,9 @@
  
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll b/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
---- a/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
-+++ b/llvm/test/CodeGen/AMDGPU/stacksave_stackrestore.ll
-@@ -669,20 +669,20 @@
- ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_poison:
- ; GISEL-WAVE32-OPT:       ; %bb.0:
- ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
-+; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_poison:
- ; GISEL-WAVE64-OPT:       ; %bb.0:
- ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
-+; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stackrestore_poison:
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    ; implicit-def: $sgpr4
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -690,7 +690,7 @@
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    ; implicit-def: $sgpr4
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) poison)
-@@ -750,7 +750,7 @@
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, 0
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -758,7 +758,7 @@
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, 0
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) zeroinitializer)
-@@ -805,20 +805,20 @@
- ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_neg1:
- ; GISEL-WAVE32-OPT:       ; %bb.0:
- ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-OPT-NEXT:    s_mov_b32 s32, 0x7ffffff
-+; GISEL-WAVE32-OPT-NEXT:    s_movk_i32 s32, 0xffe0
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_neg1:
- ; GISEL-WAVE64-OPT:       ; %bb.0:
- ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-OPT-NEXT:    s_mov_b32 s32, 0x3ffffff
-+; GISEL-WAVE64-OPT-NEXT:    s_movk_i32 s32, 0xffc0
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stackrestore_neg1:
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, -1
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -826,7 +826,7 @@
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, -1
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) inttoptr (i32 -1 to ptr addrspace(5)))
-@@ -873,20 +873,20 @@
- ; GISEL-WAVE32-OPT-LABEL: func_stackrestore_42:
- ; GISEL-WAVE32-OPT:       ; %bb.0:
- ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-OPT-NEXT:    s_mov_b32 s32, 1
-+; GISEL-WAVE32-OPT-NEXT:    s_movk_i32 s32, 0x540
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stackrestore_42:
- ; GISEL-WAVE64-OPT:       ; %bb.0:
- ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-OPT-NEXT:    s_mov_b32 s32, 0
-+; GISEL-WAVE64-OPT-NEXT:    s_movk_i32 s32, 0xa80
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stackrestore_42:
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s4, 42
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -894,7 +894,7 @@
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s4, 42
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) inttoptr (i32 42 to ptr addrspace(5)))
-@@ -1192,7 +1192,7 @@
- ; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s4, s32, 5
- ; GISEL-WAVE32-OPT-NEXT:    v_add_nc_u32_e32 v0, s4, v0
- ; GISEL-WAVE32-OPT-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
-+; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stacksave_stackrestore_voffset:
-@@ -1201,7 +1201,7 @@
- ; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s4, s32, 6
- ; GISEL-WAVE64-OPT-NEXT:    v_add_nc_u32_e32 v0, s4, v0
- ; GISEL-WAVE64-OPT-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
-+; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stacksave_stackrestore_voffset:
-@@ -1212,7 +1212,7 @@
- ; GISEL-WAVE32-O0-NEXT:    v_mov_b32_e32 v0, s4
- ; GISEL-WAVE32-O0-NEXT:    v_add_nc_u32_e64 v0, v0, v1
- ; GISEL-WAVE32-O0-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -1224,7 +1224,7 @@
- ; GISEL-WAVE64-O0-NEXT:    v_mov_b32_e32 v0, s4
- ; GISEL-WAVE64-O0-NEXT:    v_add_nc_u32_e64 v0, v0, v1
- ; GISEL-WAVE64-O0-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   %stacksave = call ptr addrspace(5) @llvm.stacksave.p5()
-@@ -1276,21 +1276,21 @@
- ; GISEL-WAVE32-OPT:       ; %bb.0:
- ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE32-OPT-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
-+; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stacksave_vgpr:
- ; GISEL-WAVE64-OPT:       ; %bb.0:
- ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE64-OPT-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
-+; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stacksave_vgpr:
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE32-O0-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s4, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s4, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
-@@ -1298,7 +1298,7 @@
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
- ; GISEL-WAVE64-O0-NEXT:    v_readfirstlane_b32 s4, v0
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s4, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s4, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s4
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) %stack)
-@@ -1342,26 +1342,26 @@
- ; GISEL-WAVE32-OPT-LABEL: func_stacksave_sgpr:
- ; GISEL-WAVE32-OPT:       ; %bb.0:
- ; GISEL-WAVE32-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-OPT-NEXT:    s_lshr_b32 s32, s4, 5
-+; GISEL-WAVE32-OPT-NEXT:    s_lshl_b32 s32, s4, 5
- ; GISEL-WAVE32-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-OPT-LABEL: func_stacksave_sgpr:
- ; GISEL-WAVE64-OPT:       ; %bb.0:
- ; GISEL-WAVE64-OPT-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-OPT-NEXT:    s_lshr_b32 s32, s4, 6
-+; GISEL-WAVE64-OPT-NEXT:    s_lshl_b32 s32, s4, 6
- ; GISEL-WAVE64-OPT-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE32-O0-LABEL: func_stacksave_sgpr:
- ; GISEL-WAVE32-O0:       ; %bb.0:
- ; GISEL-WAVE32-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s34, s4, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s34, s4, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s34
- ; GISEL-WAVE32-O0-NEXT:    s_setpc_b64 s[30:31]
- ;
- ; GISEL-WAVE64-O0-LABEL: func_stacksave_sgpr:
- ; GISEL-WAVE64-O0:       ; %bb.0:
- ; GISEL-WAVE64-O0-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s34, s4, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s34, s4, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s34
- ; GISEL-WAVE64-O0-NEXT:    s_setpc_b64 s[30:31]
-   call void @llvm.stackrestore.p5(ptr addrspace(5) %stack)
-@@ -1455,7 +1455,7 @@
- ; GISEL-WAVE32-O0-NEXT:    ;;#ASMSTART
- ; GISEL-WAVE32-O0-NEXT:    ; use s1
- ; GISEL-WAVE32-O0-NEXT:    ;;#ASMEND
--; GISEL-WAVE32-O0-NEXT:    s_lshr_b32 s0, s0, 5
-+; GISEL-WAVE32-O0-NEXT:    s_lshl_b32 s0, s0, 5
- ; GISEL-WAVE32-O0-NEXT:    s_mov_b32 s32, s0
- ; GISEL-WAVE32-O0-NEXT:    s_endpgm
- ;
-@@ -1467,7 +1467,7 @@
- ; GISEL-WAVE64-O0-NEXT:    ;;#ASMSTART
- ; GISEL-WAVE64-O0-NEXT:    ; use s1
- ; GISEL-WAVE64-O0-NEXT:    ;;#ASMEND
--; GISEL-WAVE64-O0-NEXT:    s_lshr_b32 s0, s0, 6
-+; GISEL-WAVE64-O0-NEXT:    s_lshl_b32 s0, s0, 6
- ; GISEL-WAVE64-O0-NEXT:    s_mov_b32 s32, s0
- ; GISEL-WAVE64-O0-NEXT:    s_endpgm
-   call void asm sideeffect "; use $0", "s"(ptr addrspace(5) %stack)
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll b/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
---- a/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
-+++ b/llvm/test/Transforms/PGOProfile/chr-hoisted-select.ll
-@@ -0,0 +1,120 @@
-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
-+; RUN: opt -passes='require<profile-summary>,function(chr)' -S %s | FileCheck %s
-+
-+; The outer scope hoists %a to entry because it is the condition of %b.
-+; The inner scope must not split head at the now-hoisted %a or specialize it
-+; outside the region guarded by the inner scope's merged branch.
-+define void @hoisted_insert_point() !prof !12 {
-+; CHECK-LABEL: define void @hoisted_insert_point(
-+; CHECK-SAME: ) !prof [[PROF12:![0-9]+]] {
-+; CHECK-NEXT:  [[ENTRY:.*:]]
-+; CHECK-NEXT:    [[A:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13:![0-9]+]]
-+; CHECK-NEXT:    [[TMP0:%.*]] = xor i1 true, [[A]]
-+; CHECK-NEXT:    [[TMP1:%.*]] = select i1 true, i1 [[TMP0]], i1 false, !prof [[PROF14:![0-9]+]]
-+; CHECK-NEXT:    [[TMP2:%.*]] = select i1 [[TMP1]], i1 true, i1 false, !prof [[PROF14]]
-+; CHECK-NEXT:    br i1 [[TMP2]], label %[[ENTRY_SPLIT:.*]], label %[[ENTRY_SPLIT_NONCHR:.*]], !prof [[PROF15:![0-9]+]]
-+; CHECK:       [[ENTRY_SPLIT]]:
-+; CHECK-NEXT:    br label %[[HEAD:.*]]
-+; CHECK:       [[HEAD]]:
-+; CHECK-NEXT:    br i1 false, label %[[SIDE:.*]], label %[[EXIT:.*]], !prof [[PROF13]]
-+; CHECK:       [[SIDE]]:
-+; CHECK-NEXT:    br label %[[EXIT]]
-+; CHECK:       [[EXIT]]:
-+; CHECK-NEXT:    [[B:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[C:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    ret void
-+; CHECK:       [[ENTRY_SPLIT_NONCHR]]:
-+; CHECK-NEXT:    br label %[[HEAD_NONCHR:.*]]
-+; CHECK:       [[HEAD_NONCHR]]:
-+; CHECK-NEXT:    [[A_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    br i1 false, label %[[SIDE_NONCHR:.*]], label %[[EXIT_NONCHR:.*]], !prof [[PROF13]]
-+; CHECK:       [[SIDE_NONCHR]]:
-+; CHECK-NEXT:    br label %[[EXIT_NONCHR]]
-+; CHECK:       [[EXIT_NONCHR]]:
-+; CHECK-NEXT:    [[B_NONCHR:%.*]] = select i1 [[A_NONCHR]], i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[C_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    ret void
-+;
-+entry:
-+  br label %head
-+head:
-+  %a = select i1 false, i1 false, i1 false, !prof !13
-+  br i1 false, label %side, label %exit, !prof !13
-+side:
-+  br label %exit
-+exit:
-+  %b = select i1 %a, i1 false, i1 false, !prof !13
-+  %c = select i1 false, i1 false, i1 false, !prof !13
-+  ret void
-+}
-+
-+; A select other than the insertion point can also be hoisted. Preserve its
-+; condition: specializing it would change the outer scope's branch condition.
-+define i1 @hoisted_later_select() !prof !12 {
-+; CHECK-LABEL: define i1 @hoisted_later_select(
-+; CHECK-SAME: ) !prof [[PROF12]] {
-+; CHECK-NEXT:  [[ENTRY:.*:]]
-+; CHECK-NEXT:    [[A:%.*]] = select i1 true, i1 true, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[TMP0:%.*]] = xor i1 true, [[A]]
-+; CHECK-NEXT:    [[TMP1:%.*]] = select i1 true, i1 [[TMP0]], i1 false, !prof [[PROF14]]
-+; CHECK-NEXT:    [[TMP2:%.*]] = select i1 [[TMP1]], i1 true, i1 false, !prof [[PROF14]]
-+; CHECK-NEXT:    br i1 [[TMP2]], label %[[ENTRY_SPLIT:.*]], label %[[ENTRY_SPLIT_NONCHR:.*]], !prof [[PROF15]]
-+; CHECK:       [[ENTRY_SPLIT]]:
-+; CHECK-NEXT:    br label %[[HEAD:.*]]
-+; CHECK:       [[HEAD]]:
-+; CHECK-NEXT:    [[KEEP:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    br i1 false, label %[[SIDE:.*]], label %[[EXIT:.*]], !prof [[PROF13]]
-+; CHECK:       [[SIDE]]:
-+; CHECK-NEXT:    br label %[[EXIT]]
-+; CHECK:       [[EXIT]]:
-+; CHECK-NEXT:    [[B:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[C:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    ret i1 [[A]]
-+; CHECK:       [[ENTRY_SPLIT_NONCHR]]:
-+; CHECK-NEXT:    br label %[[HEAD_NONCHR:.*]]
-+; CHECK:       [[HEAD_NONCHR]]:
-+; CHECK-NEXT:    [[KEEP_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[A_NONCHR:%.*]] = select i1 true, i1 true, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    br i1 false, label %[[SIDE_NONCHR:.*]], label %[[EXIT_NONCHR:.*]], !prof [[PROF13]]
-+; CHECK:       [[SIDE_NONCHR]]:
-+; CHECK-NEXT:    br label %[[EXIT_NONCHR]]
-+; CHECK:       [[EXIT_NONCHR]]:
-+; CHECK-NEXT:    [[B_NONCHR:%.*]] = select i1 [[A_NONCHR]], i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    [[C_NONCHR:%.*]] = select i1 false, i1 false, i1 false, !prof [[PROF13]]
-+; CHECK-NEXT:    ret i1 [[A_NONCHR]]
-+;
-+entry:
-+  br label %head
-+head:
-+  %keep = select i1 false, i1 false, i1 false, !prof !13
-+  %a = select i1 true, i1 true, i1 false, !prof !13
-+  br i1 false, label %side, label %exit, !prof !13
-+side:
-+  br label %exit
-+exit:
-+  %b = select i1 %a, i1 false, i1 false, !prof !13
-+  %c = select i1 false, i1 false, i1 false, !prof !13
-+  ret i1 %a
-+}
-+
-+!llvm.module.flags = !{!0}
-+!0 = !{i32 1, !"ProfileSummary", !1}
-+!1 = !{!2, !3, !4, !5, !6, !7, !8, !9}
-+!2 = !{!"ProfileFormat", !"InstrProf"}
-+!3 = !{!"TotalCount", i64 1000}
-+!4 = !{!"MaxCount", i64 1000}
-+!5 = !{!"MaxInternalCount", i64 1000}
-+!6 = !{!"MaxFunctionCount", i64 1000}
-+!7 = !{!"NumCounts", i64 1}
-+!8 = !{!"NumFunctions", i64 1}
-+!9 = !{!"DetailedSummary", !10}
-+!10 = !{!11}
-+!11 = !{i32 999999, i64 1000, i32 1}
-+!12 = !{!"function_entry_count", i64 1000}
-+!13 = !{!"branch_weights", i32 0, i32 1000}
-+;.
-+; CHECK: [[PROF12]] = !{!"function_entry_count", i64 1000}
-+; CHECK: [[PROF13]] = !{!"branch_weights", i32 0, i32 1000}
-+; CHECK: [[PROF14]] = !{!"unknown", !"chr"}
-+; CHECK: [[PROF15]] = !{!"branch_weights", i32 1000, i32 0}
-+;.
-diff -ruN --strip-trailing-cr a/llvm/unittests/ADT/DenseMapTest.cpp b/llvm/unittests/ADT/DenseMapTest.cpp
---- a/llvm/unittests/ADT/DenseMapTest.cpp
-+++ b/llvm/unittests/ADT/DenseMapTest.cpp
-@@ -629,8 +629,7 @@
-     Values.emplace_back(i, CountCopyAndMove(i));
+ ; O0: pipeline-passes: {{.*}}wholeprogramdevirt,lowertypetests,drop-type-tests<assume>,
  
-   CountCopyAndMove::ResetCounts();
--  [[maybe_unused]] DenseMap<int, CountCopyAndMove> Map(Values.begin(),
--                                                       Values.end());
-+  DenseMap<int, CountCopyAndMove> Map(Values.begin(), Values.end());
-   // Check that no move occurred
-   EXPECT_EQ(0, CountCopyAndMove::TotalMoves());
-   // Check that copy was called the expected number of times
-@@ -1286,7 +1285,7 @@
-   DenseMap<int, int> M;
-   M.try_emplace(1, 10);
-   auto It = M.find(1);
--  [[maybe_unused]] DenseMap<int, int> Other = std::move(M);
-+  DenseMap<int, int> Other = std::move(M);
-   EXPECT_DEATH((void)It->second, "invalid iterator access");
- }
+-; OPT: pipeline-passes: {{.*}}wholeprogramdevirt,lowertypetests,pgo-icall-prom,openmp-opt,drop-type-tests<assume>,ipsccp,
++; OPT: pipeline-passes: {{.*}}wholeprogramdevirt,pgo-icall-prom,openmp-opt,lowertypetests,drop-type-tests<assume>,ipsccp,
  
-@@ -1294,7 +1293,7 @@
-   DenseMap<int, int> M;
-   M.try_emplace(1, 10);
-   auto It = M.find(1);
--  [[maybe_unused]] DenseMap<int, int> Other;
-+  DenseMap<int, int> Other;
-   Other = std::move(M);
-   EXPECT_DEATH((void)It->second, "invalid iterator access");
- }
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp b/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
---- a/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
-+++ b/mlir/lib/Dialect/Bufferization/Transforms/BufferOptimizations.cpp
-@@ -357,6 +357,9 @@
-   /// position.
-   PostDominanceInfo postDominators;
+-; SAMPLEPGO: pipeline-passes: {{.*}}wholeprogramdevirt,lowertypetests,sample-profile,require<profile-summary>,pgo-icall-prom,openmp-opt,drop-type-tests<assume>,ipsccp,
++; SAMPLEPGO: pipeline-passes: {{.*}}wholeprogramdevirt,sample-profile,require<profile-summary>,pgo-icall-prom,openmp-opt,lowertypetests,drop-type-tests<assume>,ipsccp,
  
-+  /// The map storing the final placement blocks of a given alloc value.
-+  llvm::DenseMap<Value, Block *> placementBlocks;
-+
-   /// The operation that this transformation is working on. It is used to also
-   /// gather allocas.
-   Operation *scopeOp;
+ ; CTXPROF: pipeline-passes: {{.*}}wholeprogramdevirt,lowertypetests,module-inline,
+ 
