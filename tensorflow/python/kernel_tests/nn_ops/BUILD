@@ -194,6 +194,7 @@ cuda_py_strict_test(
     srcs = ["conv1d_transpose_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:gradient_checker",

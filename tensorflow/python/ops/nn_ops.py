@@ -2456,6 +2456,9 @@ def conv1d_transpose(
         output_shape, tensor_lib.Tensor) else output_shape
     output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
                                      output_shape[spatial_start_dim:]], 0)
+    if output_shape.dtype.is_integer and output_shape.dtype != dtypes.int32:
+      # `Conv2DBackpropInput` only accepts an int32 `input_sizes`.
+      output_shape = math_ops.cast(output_shape, dtypes.int32)
 
     result = gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape,
@@ -2968,6 +2971,9 @@ def conv2d_transpose_v2(
   with ops.name_scope(name, "conv2d_transpose",
                       [input, filter, output_shape]) as name:
     output_shape = ops.convert_to_tensor(output_shape, name="output_shape")
+    if output_shape.dtype.is_integer and output_shape.dtype != dtypes.int32:
+      # `Conv2DBackpropInput` only accepts an int32 `input_sizes`.
+      output_shape = math_ops.cast(output_shape, dtypes.int32)
     if output_shape.shape.rank is not None:
       if output_shape.shape.rank != 1:
         raise ValueError(
