@@ -1304,6 +1304,21 @@ TEST_F(ArrayElementwiseOpTest, PopcntS64) {
   ComputeAndCompareR2<int64_t>(&builder, expected_array, {});
 }
 
+TEST_F(ArrayElementwiseOpTest, PopcntS4) {
+  const Literal input = LiteralUtil::CreateR1<s4>(
+      {s4(-8), s4(-7), s4(-5), s4(-1), s4(0), s4(1), s4(6), s4(7)});
+  const Literal expected = LiteralUtil::CreateR1<s4>(
+      {s4(1), s4(2), s4(3), s4(4), s4(0), s4(1), s4(2), s4(3)});
+
+  XlaBuilder const_builder("popcnt_s4_const");
+  PopulationCount(ConstantLiteral(&const_builder, input));
+  ComputeAndCompareLiteral(&const_builder, expected, {});
+
+  XlaBuilder param_builder("popcnt_s4_param");
+  PopulationCount(Parameter(&param_builder, 0, input.shape(), "p0"));
+  ComputeAndCompareLiteral(&param_builder, expected, {&input});
+}
+
 TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<int32_t>(

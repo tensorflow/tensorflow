@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/primitive_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 
@@ -392,8 +393,7 @@ TEST_P(UnaryElementwiseTest, Unary) {
   auto [opcode, type] = GetParam();
   auto opcode_name = HloOpcodeString(opcode);
 
-  if (primitive_util::IsSignedIntegralType(type) &&
-      (opcode == HloOpcode::kClz || opcode == HloOpcode::kPopulationCount)) {
+  if (primitive_util::IsSignedIntegralType(type) && opcode == HloOpcode::kClz) {
     GTEST_SKIP() << "Unsupported op on signed type: " << opcode_name;
   }
   if (primitive_util::IsUnsignedIntegralType(type) &&

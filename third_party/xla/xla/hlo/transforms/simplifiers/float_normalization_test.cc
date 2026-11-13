@@ -990,5 +990,25 @@ TEST_P(FloatNormalizationExcessPrecisionTest,
                                 .WithShape(F8E4M3FN, {2, 4}))));
 }
 
+TEST_F(FloatNormalizationTest, S4PopulationCountNotNormalized) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule s4_popcnt
+
+    ENTRY main {
+      p0 = s4[4] parameter(0)
+      ROOT out = s4[4] popcnt(p0)
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  FloatSupport s4_support(S4, S8);
+  FloatNormalization normalization(&s4_support);
+  EXPECT_THAT(normalization.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kPopulationCount);
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->shape().element_type(),
+      S4);
+}
+
 }  // namespace
 }  // namespace xla

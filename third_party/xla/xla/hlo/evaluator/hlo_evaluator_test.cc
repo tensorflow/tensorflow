@@ -559,6 +559,22 @@ TEST_F(HloEvaluatorTest, DoesCountLeadingZerosS8) {
   auto expected = LiteralUtil::CreateR1<int8_t>({8, 7, 0, 0, 1});
   TestUnaryOp(HloOpcode::kClz, std::move(expected), std::move(input));
 }
+
+TEST_F(HloEvaluatorTest, DoesPopulationCountS4) {
+  Literal input = LiteralUtil::CreateR1<s4>(
+      {s4(-8), s4(-7), s4(-5), s4(-1), s4(0), s4(1), s4(7)});
+  Literal expected = LiteralUtil::CreateR1<s4>(
+      {s4(1), s4(2), s4(3), s4(4), s4(0), s4(1), s4(3)});
+  TestUnaryOp(HloOpcode::kPopulationCount, std::move(expected),
+              std::move(input));
+}
+
+TEST_F(HloEvaluatorTest, DoesPopulationCountS2) {
+  Literal input = LiteralUtil::CreateR1<s2>({s2(-2), s2(-1), s2(0), s2(1)});
+  Literal expected = LiteralUtil::CreateR1<s2>({s2(1), s2(-2), s2(0), s2(1)});
+  TestUnaryOp(HloOpcode::kPopulationCount, std::move(expected),
+              std::move(input));
+}
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivideInt64) {

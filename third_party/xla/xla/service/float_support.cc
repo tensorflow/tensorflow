@@ -73,6 +73,7 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kReducePrecision:
       return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
       // Upcasting these ops to higher precision results in a
@@ -109,6 +110,7 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
     case HloOpcode::kReducePrecision:
       return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
       // Upcasting these ops to higher precision results in a

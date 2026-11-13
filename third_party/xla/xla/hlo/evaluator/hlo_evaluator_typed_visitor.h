@@ -881,7 +881,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       return ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
-        return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand).count();
+        // Narrow ReturnT types (s4, s2, s1) have sizeof == 1; use the exact bit
+        // width so sign extension does not inflate the count.
+        constexpr int kBitWidth = std::numeric_limits<ReturnT>::digits +
+                                  std::numeric_limits<ReturnT>::is_signed;
+        return std::bitset<kBitWidth>(static_cast<uint64_t>(elem_operand))
+            .count();
       });
     }
     return UnsupportedTypeError(popcnt);
