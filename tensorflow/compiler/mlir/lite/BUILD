@@ -16,7 +16,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -142,6 +142,35 @@ gentbl_cc_library(
     },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_ops.td",
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+# The TFL op definitions as TableGen's JSON dump: every record of tfl_ops.td
+# with its classes, template arguments and overrides resolved. Read by the
+# operator documentation generator in
+# //third_party/odml/litert/litert/tools/op_spec, which takes the
+# operand and result types, attributes and quantization traits from it.
+# tfl_ops_json_gen replaces `llvm-tblgen --dump-json`: mlir-tblgen has no JSON
+# backend and llvm-tblgen is not visible outside LLVM.
+tf_native_cc_binary(
+    name = "tfl_ops_json_gen",
+    srcs = ["tfl_ops_json_gen.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
+    ],
+)
+
+gentbl_filegroup(
+    name = "tensorflow_lite_ops_json",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"ir/tfl_ops.json": []},
+    tblgen = ":tfl_ops_json_gen",
+    td_file = "ir/tfl_ops.td",
+    visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_lite_ops_td_files",
     ],
