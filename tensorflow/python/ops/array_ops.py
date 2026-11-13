@@ -5127,9 +5127,15 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   Raises:
     ValueError: if `indices` has an unknown shape.
   """
-  if batch_dims is not None and not isinstance(batch_dims, int):
-    raise TypeError("Argument `batch_dims` must be an int. "
-                    f"Received `batch_dims` = {batch_dims} instead")
+  if batch_dims is not None:
+    if isinstance(batch_dims, bool) or not isinstance(
+        batch_dims, (int, np.integer)
+    ):
+      raise TypeError(
+          "Argument `batch_dims` must be an int. "
+          f"Received `batch_dims` = {batch_dims} instead"
+      )
+    batch_dims = int(batch_dims)
   indices = ops.convert_to_tensor(indices, name="indices")
   params = ops.convert_to_tensor(params, name="params")
 
@@ -5454,8 +5460,13 @@ def batch_gather_nd(
     indices = ops.convert_to_tensor(indices, name="indices")
     params = ops.convert_to_tensor(params, name="params")
 
-    if not isinstance(batch_dims, int):
-      raise TypeError(f"Argument `batch_dims` must be an int; got {batch_dims}")
+    if isinstance(batch_dims, bool) or not isinstance(
+        batch_dims, (int, np.integer)
+    ):
+      raise TypeError(
+          f"Argument `batch_dims` must be an int; got {batch_dims}"
+      )
+    batch_dims = int(batch_dims)
     if batch_dims < 0:
       raise ValueError("tf.gather_nd does not allow negative batch_dims.")
     params_ndims = params.shape.ndims
@@ -6807,11 +6818,13 @@ def get_positive_axis(axis, ndims, axis_name="axis", ndims_name="ndims"):
     The normalized `axis` value.
 
   Raises:
+    TypeError: If `axis` is not an int or NumPy integer scalar.
     ValueError: If `axis` is out-of-bounds, or if `axis` is negative and
       `ndims is None`.
   """
-  if not isinstance(axis, int):
+  if isinstance(axis, bool) or not isinstance(axis, (int, np.integer)):
     raise TypeError(f"{axis_name} must be an int; got {type(axis).__name__}")
+  axis = int(axis)
   if ndims is not None:
     if 0 <= axis < ndims:
       return axis
@@ -6873,9 +6886,10 @@ def repeat_with_axis(data, repeats, axis, name=None):
   # after loading a saved model with the optimization.
   use_optimized_non_xla_implementation = False
 
-  if not isinstance(axis, int):
+  if isinstance(axis, bool) or not isinstance(axis, (int, np.integer)):
     raise TypeError("Argument `axis` must be an int. "
                     f"Received `axis` = {axis} of type {type(axis).__name__}")
+  axis = int(axis)
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")

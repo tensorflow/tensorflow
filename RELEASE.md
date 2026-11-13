@@ -54,6 +54,10 @@
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
+*   `tf.repeat` and `get_positive_axis`:
+    `axis` now accepts NumPy integer scalar types (e.g. `np.int32`, `np.int64`)
+    in addition to Python `int`, matching NumPy and other TensorFlow ops, while
+    correctly rejecting `bool`.
 
 ## Thanks to our Contributors
 

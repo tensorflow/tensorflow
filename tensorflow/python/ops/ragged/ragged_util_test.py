@@ -236,6 +236,17 @@ class RaggedUtilTest(test_util.TensorFlowTestCase,
     with self.assertRaises(exception):
       ragged_util.repeat_ranges(params, splits, repeats)
 
+  def testGetPositiveAxis(self):
+    self.assertEqual(array_ops.get_positive_axis(0, 3), 0)
+    self.assertEqual(array_ops.get_positive_axis(np.int32(1), 3), 1)
+    self.assertEqual(array_ops.get_positive_axis(np.int64(2), 3), 2)
+    self.assertEqual(array_ops.get_positive_axis(np.int32(-1), 3), 2)
+    self.assertEqual(array_ops.get_positive_axis(np.int64(-3), 3), 0)
+
+    for invalid in (True, False, 1.5, "0"):
+      with self.assertRaisesRegex(TypeError, "must be an int"):
+        array_ops.get_positive_axis(invalid, 3)
+
 
 if __name__ == '__main__':
   googletest.main()

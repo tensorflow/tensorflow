@@ -685,8 +685,9 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     Returns:
       The number of elements in the shape.
     """
-    if not isinstance(axis, int):
+    if isinstance(axis, bool) or not isinstance(axis, (int, np.integer)):
       raise TypeError("axis must be an integer")
+    axis = int(axis)
     if axis < 0:
       rank = self.rank
       if rank is None:
@@ -710,8 +711,9 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
   def is_uniform(self, axis):
     """Returns true if the indicated dimension is uniform."""
-    if not isinstance(axis, int):
+    if isinstance(axis, bool) or not isinstance(axis, (int, np.integer)):
       raise TypeError("axis must be an integer")
+    axis = int(axis)
     rank = self.rank
     if axis < 0:
       raise IndexError("Negative axis values are not supported")
@@ -1361,7 +1363,9 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     @property
     def rank(self) -> Optional[int]:
       inner_rank = self.inner_rank
-      return None if inner_rank is None else inner_rank + self.num_row_partitions
+      if inner_rank is None:
+        return None
+      return inner_rank + self.num_row_partitions
 
     def _dimension(self, index: int) -> Optional[int]:
       """Get the size of dimension index, if known statically."""
@@ -1417,8 +1421,6 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       Returns:
         the number of values in a dimension.
       """
-      if not isinstance(axis, int):
-        raise TypeError("axis must be an integer")
       axis = array_ops.get_positive_axis(axis, self.rank, ndims_name="rank")
 
       if axis == 0:
