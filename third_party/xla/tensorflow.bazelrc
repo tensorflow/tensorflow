@@ -425,8 +425,8 @@ common:linux --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=true
 # By default, build TF in C++ 17 mode.
 common:linux --cxxopt=-std=c++20
 common:linux --host_cxxopt=-std=c++20
-common:macos --cxxopt=-std=c++17
-common:macos --host_cxxopt=-std=c++17
+common:macos --cxxopt=-std=c++20
+common:macos --host_cxxopt=-std=c++20
 common:windows --cxxopt=/std:c++20
 common:windows --host_cxxopt=/std:c++20
 
