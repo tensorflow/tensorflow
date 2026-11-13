@@ -72,7 +72,7 @@ typedef struct TfLiteOperator TfLiteOperator;
 ///                     If `custom_name` is non-null, then `builtin_code` should
 ///                     be `TfLiteBuiltinCustom`.
 /// \param version      Version of the op.  See
-///                     https://www.tensorflow.org/lite/guide/ops_version
+///                     https://developers.google.com/edge/litert/conversion/tensorflow/ops_version
 /// \param user_data    Opaque pointer passed to the operator's callbacks set
 ///                     with functions such as `TfLiteOperatorSetXXXWithData`.
 ///                     The user is expected to manage the memory pointed by
