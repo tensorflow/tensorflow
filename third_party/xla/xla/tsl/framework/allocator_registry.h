@@ -37,7 +37,7 @@ namespace tsl {
 
 class AllocatorFactory {
  public:
-  virtual ~AllocatorFactory() {}
+  virtual ~AllocatorFactory() = default;
 
   // Returns true if the factory will create a functionally different
   // SubAllocator for different (legal) values of numa_node.
@@ -56,7 +56,7 @@ class AllocatorFactory {
 // framework.  This definition allows us to access the one method we need.
 class ProcessStateInterface {
  public:
-  virtual ~ProcessStateInterface() {}
+  virtual ~ProcessStateInterface() = default;
   virtual Allocator* GetCPUAllocator(int numa_node) = 0;
 };
 
@@ -68,8 +68,8 @@ class ProcessStateInterface {
 // which ProcessState will obtain the best fit at startup.
 class AllocatorFactoryRegistry {
  public:
-  AllocatorFactoryRegistry() {}
-  ~AllocatorFactoryRegistry() {}
+  AllocatorFactoryRegistry() = default;
+  ~AllocatorFactoryRegistry() = default;
 
   void Register(const char* source_file, int source_line,
                 const std::string& name, int priority,

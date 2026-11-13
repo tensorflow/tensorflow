@@ -535,7 +535,7 @@ HeapSimulator::HeapSimulator(
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
-HeapSimulator::~HeapSimulator() {}
+HeapSimulator::~HeapSimulator() = default;
 
 bool HeapSimulator::IsHeapPressureImpacting(const HloValue* buffer) const {
   return HloBuffer::IsHeapPressureImpacting(*buffer, options_.alloc_constants,
