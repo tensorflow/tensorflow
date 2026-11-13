@@ -34,17 +34,23 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
+#include "xla/literal.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
+#include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/numa.h"
 
 namespace xla {
@@ -126,7 +132,7 @@ class PjRtExecutableLoadState
   virtual ~PjRtExecutableLoadState() = default;
 
   struct DeviceAndAssignment {
-    PjRtDevice* device;
+    PJRT_Memory* default_memory_space = nullptr;
     LocalDeviceId local_device_id;
     GlobalDeviceId global_device_id;
     int process_index;
@@ -299,7 +305,7 @@ class PjRtRawClient {
   // Backend specific handlers for when an oom is detected during execute.
   virtual void CallOomHandlers() const {}
 
-  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+  virtual bool ShouldRetryOnOom(int attempts, LocalDeviceId local_device_id,
                                 PjRtExecutableLoadState* load_state,
                                 absl::Status prepare_status) {
     return false;

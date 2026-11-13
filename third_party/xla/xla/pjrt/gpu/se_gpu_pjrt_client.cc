@@ -1760,6 +1760,7 @@ struct PjRtDevicesAndTopology {
   std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   std::shared_ptr<StreamExecutorGpuTopologyDescription> topology;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
+  tsl::RCReference<const GpuMultiSliceConfig> multi_slice_config;
 };
 
 absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
@@ -1893,6 +1894,8 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
       std::make_shared<se::DeviceInterconnectResource::InfoMap>();
   absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
+  absl::flat_hash_map<int32_t, int32_t> num_devices_per_slice;
+  int32_t local_slice_id = partition_index.value_or(0);
   int curr_partition_index = -1;
   int curr_process_index = -1;
   int curr_process_index_in_partition = 0;
@@ -1913,6 +1916,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
 
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_process[global_device_id] = node.process_id();
+      ++num_devices_per_slice[device_proto.partition_index()];
       LocalDeviceState* local_device = nullptr;
 
       // Prepare DeviceInterconnectInfoMap.
@@ -1929,6 +1933,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
           {global_device_id.value(), std::move(device_interconnect_info)});
 
       if (node.process_id() == process_id) {
+        local_slice_id = device_proto.partition_index();
         auto it = local_device_states.find(device_proto.local_device_ordinal());
         TF_RET_CHECK(it != local_device_states.end())
             << device_proto.local_device_ordinal();
@@ -2047,8 +2052,14 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
         std::move(clique_id_callback));
   }
 
+  int32_t num_slices = num_devices_per_slice.size();
+  auto multi_slice_config = tsl::MakeRef<GpuMultiSliceConfig>(
+      num_slices, local_slice_id, std::move(num_devices_per_slice),
+      std::move(device_to_process));
+
   return PjRtDevicesAndTopology{std::move(devices), std::move(se_gpu_topology),
-                                std::move(local_device_states_vec)};
+                                std::move(local_device_states_vec),
+                                std::move(multi_slice_config)};
 }
 
 const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
@@ -2310,7 +2321,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       preallocate_device_memory, options.abort_collectives_on_failure,
-      std::move(gpu_run_options), std::move(memory_registration));
+      std::move(gpu_run_options), std::move(memory_registration),
+      std::move(devices_and_topology.multi_slice_config));
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_and_topology.devices.size(), options.num_nodes);
@@ -2381,7 +2393,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
       confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       /*cache_fabric_handles=*/false,
-      /*abort_collectives_on_failure=*/false, std::move(gpu_run_options));
+      /*abort_collectives_on_failure=*/false, std::move(gpu_run_options),
+      /*memory_registration=*/nullptr,
+      std::move(devices_and_topology.multi_slice_config));
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_and_topology.devices.size(), options.num_nodes);
@@ -2710,7 +2724,7 @@ StreamExecutorGpuRawClient::RuntimeAbiVersion() const {
   ABSL_ASSIGN_OR_RETURN(auto se_runtime_abi_version,
                    client()->platform()->GetRuntimeAbiVersion());
   return std::make_unique<StreamExecutorGpuPjRtRuntimeAbiVersion>(
-      platform_id_, std::move(se_runtime_abi_version));
+      platform_id(), std::move(se_runtime_abi_version));
 }
 
 }  // namespace xla

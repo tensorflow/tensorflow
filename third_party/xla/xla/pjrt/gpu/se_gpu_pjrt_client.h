@@ -98,14 +98,14 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
       bool abort_collectives_on_failure = false,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
       std::shared_ptr<gpu::AllocatorMemoryRegistration> memory_registration =
-          nullptr)
+          nullptr,
+      tsl::RCReference<const GpuMultiSliceConfig> multi_slice_config = {})
       : PjRtStreamExecutorRawClient(
-            std::move(local_device_states), std::move(allocator), client,
-            std::move(host_memory_allocator),
+            platform_id, std::move(local_device_states), std::move(allocator),
+            client, std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(async_work_runner),
             executor, std::move(gpu_run_options),
-            confidential_computing_enabled),
-        platform_id_(platform_id),
+            confidential_computing_enabled, std::move(multi_slice_config)),
         kv_store_(std::move(kv_store)),
         cache_fabric_handles_(cache_fabric_handles),
         abort_collectives_on_failure_(abort_collectives_on_failure),
@@ -163,8 +163,6 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   absl::StatusOr<std::shared_ptr<se::DeviceAddressBase>>
   GetOrImportFabricHandle(se::StreamExecutor* executor,
                           absl::string_view fabric_handle);
-
-  PjRtPlatformId platform_id_;
 
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   // Whether to cache fabric handles. Exporting and importing fabric handles can

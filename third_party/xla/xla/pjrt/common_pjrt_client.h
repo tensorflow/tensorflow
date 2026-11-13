@@ -255,7 +255,8 @@ class CommonPjRtClient : public PjRtClient {
   bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
                         PjRtExecutableLoadState* load_state,
                         absl::Status prepare_status) {
-    return raw_client()->ShouldRetryOnOom(attempts, device, load_state,
+    return raw_client()->ShouldRetryOnOom(attempts, device->local_device_id(),
+                                          load_state,
                                           std::move(prepare_status));
   }
 
