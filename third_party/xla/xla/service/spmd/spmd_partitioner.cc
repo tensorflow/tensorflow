@@ -403,6 +403,15 @@ HloSharding GetShardingReplicatedOnWindowedDimension(
       sharding, dimensions_to_replicate);
 }
 
+// Bitcasts `x` to `t` when its element type differs, allowing zeroless
+// floating point types such as F8E8M0FNU to use U8 zero masked AllReduce sums.
+HloInstruction* BitcastTo(SpmdBuilder* b, HloInstruction* x, PrimitiveType t) {
+  return x->shape().element_type() == t
+             ? x
+             : b->AddInstruction(HloInstruction::CreateBitcastConvert(
+                   ShapeUtil::ChangeElementType(x->shape(), t), x));
+}
+
 }  // namespace
 
 HloInstruction* SpmdBuilder::AddInstruction(
@@ -1706,8 +1715,11 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
   }
 
   if (!dus_ar_dims.empty()) {
+    const PrimitiveType type = shard_shape.element_type();
+    result = BitcastTo(state_.b, result, type == F8E8M0FNU ? U8 : type);
+    final_result_shape.set_element_type(result->shape().element_type());
     auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(shard_shape.element_type())));
+        LiteralUtil::Zero(final_result_shape.element_type())));
     std::vector<int64_t> skipped_dims;
     for (int64_t i = 0; i < base_shape().dimensions().size(); ++i) {
       if (!absl::c_linear_search(dus_ar_dims, i)) {
@@ -1734,10 +1746,11 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     }
     CHECK(reduction_op == ReductionOp::kSum);
     HloComputation* reduction =
-        MakeBinaryAdd(shard_shape.element_type(), state_.module);
+        MakeBinaryAdd(final_result_shape.element_type(), state_.module);
     result = state_.partitioner->AllReduceAlongShardingDims(
         state_.b, dus, sharding(), state_.next_channel_id, dus_ar_dims,
         state_.collective_ops_creator, reduction);
+    result = BitcastTo(state_.b, result, type);
   }
   return result;
 }
@@ -1883,10 +1896,13 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
 }
 
 PartitionedHlo PartitionedHlo::Broadcast() const {
-  const Shape& shape = hlo_->shape();
+  Shape shape = hlo_->shape();
   const HloSharding& sharding = hlo_->sharding();
   CHECK(sharding.IsSingleDevice());
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
+  const PrimitiveType type = shape.element_type();
+  auto* src = BitcastTo(state_.b, hlo_, type == F8E8M0FNU ? U8 : type);
+  shape.set_element_type(src->shape().element_type());
 
   auto src_core_id = state_.b->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR0<uint32_t>(sharding.GetUniqueDevice())));
@@ -1903,12 +1919,13 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
   auto zero_bcast = state_.b->AddInstruction(
       HloInstruction::CreateBroadcast(shape, zero, {}));
   auto operand = state_.b->AddInstruction(HloInstruction::CreateTernary(
-      shape, HloOpcode::kSelect, is_src_core, hlo(), zero_bcast));
+      shape, HloOpcode::kSelect, is_src_core, src, zero_bcast));
   HloComputation* reduction =
       MakeBinaryAdd(shape.element_type(), state_.module);
 
   auto result = state_.collective_ops_creator.create_all_reduce(
       state_.b, operand, reduction, CollectiveDeviceList(), NewChannel());
+  result = BitcastTo(state_.b, result, type);
   result->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(result, base_shape_, state_);
 }
