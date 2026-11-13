@@ -45,6 +45,9 @@ namespace xnnpack {
 // This is useful when disk space is not available or when having to manage the
 // cache file freshness is too complicated and still provides the deduplication
 // mechanism for constant buffers that are reused across graph signatures.
+//
+// In-memory caches don't use build steps: packed buffers are stored as they are
+// inserted and their addresses never change.
 inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
@@ -229,6 +232,8 @@ class WeightCacheBuilder {
 //
 // It substitutes itself to the file by storing packed data in buffers
 // allocated on the fly that aren't persisted to the cache file.
+//
+// It also stores all the buffers of in-memory caches (`kInMemoryCachePath`).
 class CacheMissHandler {
  public:
   // Reserves space in the data buffer for the required size in bytes and
@@ -348,16 +353,22 @@ class MMapWeightCacheProvider {
 
   // Checks if the cache is currently being built or if it was loaded from a
   // file.
+  //
+  // In-memory caches return false: they don't need build steps.
   [[nodiscard]]
   bool CanStartBuildStep() const {
     return builder_.IsStarted();
   };
 
   // Prepares to add new data to the cache.
+  //
+  // This is a no-op for in-memory caches.
   [[nodiscard /*Updating cache data may fail.*/]]
   bool StartBuildStep();
 
   // Prepares to use data that was added to the cache during a build step.
+  //
+  // This is a no-op for in-memory caches.
   [[nodiscard /*Updating cache data may fail.*/]]
   bool StopBuildStep();
 
@@ -416,10 +427,11 @@ class MMapWeightCacheProvider {
     return builder_.IsBuilding();
   };
 
-  // Returns true if a file is mapped or a file path is set.
+  // Returns true if a file is mapped, a file path is set or an in-memory cache
+  // was started.
   [[nodiscard]]
   bool IsActive() const {
-    return !mmap_handles_.empty() || builder_.IsStarted();
+    return !mmap_handles_.empty() || builder_.IsStarted() || in_memory_;
   };
 
   // Returns the cache provider expected by XNNPack.
@@ -498,7 +510,7 @@ class MMapWeightCacheProvider {
   std::vector<MMapHandle> mmap_handles_;
 
   // The offset to the first buffer data in the MMap allocation.
-  size_t mmap_buffer_base_offset_;
+  size_t mmap_buffer_base_offset_ = 0;
 
   // Holds a file descriptor to the cache file.
   FileDescriptor file_descriptor_;
@@ -506,12 +518,16 @@ class MMapWeightCacheProvider {
   // Used to build the cache.
   WeightCacheBuilder builder_;
 
-  // Handles cache misses when not building the cache file.
+  // Handles cache misses when not building the cache file and stores all the
+  // buffers of in-memory caches.
   CacheMissHandler cache_miss_handler_;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.
   std::map<size_t, void*> offset_to_addr_;
+
+  // True when using an in-memory cache (`kInMemoryCachePath`).
+  bool in_memory_ = false;
 };
 
 }  // namespace xnnpack
