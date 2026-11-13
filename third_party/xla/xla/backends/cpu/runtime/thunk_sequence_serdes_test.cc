@@ -1511,7 +1511,7 @@ void ForEachThunkProtoCountTestHelper(
 }
 
 TYPED_TEST(ThunkSequenceSerdesTest, CallThunkForEachThunkProto) {
-  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+  if (!std::is_same_v<TypeParam, ThunkSequenceSerDesProtobuf>) {
     GTEST_SKIP() << "This test is intended only for "
                     "ThunkSequenceSerDesProtobuf. Skipping for "
                  << typeid(TypeParam).name();
@@ -1531,7 +1531,7 @@ TYPED_TEST(ThunkSequenceSerdesTest, CallThunkForEachThunkProto) {
 }
 
 TYPED_TEST(ThunkSequenceSerdesTest, WhileThunkForEachThunkProto) {
-  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+  if (!std::is_same_v<TypeParam, ThunkSequenceSerDesProtobuf>) {
     GTEST_SKIP() << "This test is intended only for "
                     "ThunkSequenceSerDesProtobuf. Skipping for "
                  << typeid(TypeParam).name();
@@ -1551,7 +1551,7 @@ TYPED_TEST(ThunkSequenceSerdesTest, WhileThunkForEachThunkProto) {
 }
 
 TYPED_TEST(ThunkSequenceSerdesTest, ConditionalThunkForEachThunkProto) {
-  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+  if (!std::is_same_v<TypeParam, ThunkSequenceSerDesProtobuf>) {
     GTEST_SKIP() << "This test is intended only for "
                     "ThunkSequenceSerDesProtobuf. Skipping for "
                  << typeid(TypeParam).name();

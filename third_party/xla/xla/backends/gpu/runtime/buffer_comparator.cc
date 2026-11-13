@@ -218,7 +218,7 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
   ABSL_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
-    if (std::is_same<ElementType, Eigen::half>::value && a) {
+    if (std::is_same_v<ElementType, Eigen::half> && a) {
       constexpr ComparisonType kMaxFp16Value = 65505;
       if (std::isnan(a)) {
         return a;

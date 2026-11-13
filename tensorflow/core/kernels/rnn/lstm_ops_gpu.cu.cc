@@ -41,12 +41,12 @@ struct FloatToHalf {
 
 template <typename U, typename T>
 __host__ __device__ EIGEN_STRONG_INLINE
-    typename std::enable_if<!std::is_same<T, U>::value, U>::type
+    std::enable_if_t<!std::is_same_v<T, U>, U>
     strict_cast(T t);
 
 template <typename U, typename T>
 __host__ __device__ EIGEN_STRONG_INLINE
-    typename std::enable_if<std::is_same<T, U>::value, U>::type
+    std::enable_if_t<std::is_same_v<T, U>, U>
     strict_cast(T t) {
   return t;
 }

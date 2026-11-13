@@ -176,7 +176,7 @@ std::vector<Future<T>> Dispatch(ForwardIt begin, ForwardIt end, Action& action,
                                 tsl::Executor& executor) {
   // Check if the iterator category is a base class of std::forward_iterator_tag
   using Category = typename std::iterator_traits<ForwardIt>::iterator_category;
-  static_assert(std::is_base_of<std::forward_iterator_tag, Category>::value,
+  static_assert(std::is_base_of_v<std::forward_iterator_tag, Category>,
                 "Iterator must be a forward iterator or stronger");
 
   // Deduce absl::Status or absl::StatusOr action result type.

@@ -64,7 +64,7 @@ bool hasPrivateFeaturesNotInStablehlo(Operation* op) {
                     mhlo::XlaRngGetAndUpdateStateOp>::value) {
     return true;
   }
-  if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
+  if constexpr (std::is_same_v<HloOpTy, mhlo::ConvolutionOp>) {
     // StableHLO convolution doesn't support "unknown" dimensions.
     // This is an esoteric feature of MHLO convolutions, and it's different
     // from the notion of dynamic dimensions. For more context, here's the
@@ -76,7 +76,7 @@ bool hasPrivateFeaturesNotInStablehlo(Operation* op) {
         debugString(llvm::cast<mhlo::ConvolutionOp>(op).getDimensionNumbers());
     if (dimensionNumbers.find('?') != std::string::npos) return true;
   }
-  if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+  if constexpr (std::is_same_v<HloOpTy, mhlo::CustomCallOp>) {
     // To the best of our knowledge, none of the ML frontends are using this
     // enum, so we categorized it as private to XLA.
     // Please let us know if we missed something, and we'll recategorize it.
@@ -94,7 +94,7 @@ bool hasPrivateFeaturesNotInStablehlo(Operation* op) {
 // for StableHLO, and they are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 bool hasExperimentalFeaturesNotInStablehlo(Operation* op) {
-  if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+  if constexpr (std::is_same_v<HloOpTy, mhlo::AllToAllOp>) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
     if (op->getNumOperands() != 1) return true;
