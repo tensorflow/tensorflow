@@ -54,9 +54,6 @@ absl::flat_hash_set<int> NonInvariantOperands(const HloInstruction&);
 // Frontend attribute name for instruction latency in nanoseconds.
 inline constexpr absl::string_view kXlaLatencyMetadata = "latency_metadata";
 
-// Returns the non-negative latency in nanoseconds specified in frontend
-// attributes under `latency_metadata`, or std::nullopt if absent. Logs a
-// warning and returns std::nullopt on unparsable or negative latency values.
 std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction);
 
 // Attribute which indicates that copy insertion should avoid inserting copies

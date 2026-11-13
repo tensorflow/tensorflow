@@ -195,11 +195,14 @@ TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
     EXPECT_NEAR(*latency, 1.0, 1e-6);
   }
 
-  // Test case 2: Metadata present but invalid.
+  // Test case 2: Metadata present but invalid or negative.
   {
-    std::optional<LatencyEstimator::TimeCost> latency =
-        SetAndReturnCustomCallLatency(computation, "invalid");
-    EXPECT_FALSE(latency.has_value());
+    EXPECT_DEATH(SetAndReturnCustomCallLatency(computation, "invalid"),
+                 "Failed to parse latency_metadata");
+    EXPECT_DEATH(SetAndReturnCustomCallLatency(computation, "1500.5"),
+                 "Failed to parse latency_metadata");
+    EXPECT_DEATH(SetAndReturnCustomCallLatency(computation, "-10"),
+                 "Expected latency_metadata to be non-negative");
   }
 
   // Test case 3: Metadata missing.
@@ -215,13 +218,6 @@ TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
         SetAndReturnCustomCallLatency(computation, "0");
     ASSERT_TRUE(latency.has_value());
     EXPECT_EQ(*latency, 0.0);
-  }
-
-  // Test case 5: Metadata present but negative.
-  {
-    std::optional<LatencyEstimator::TimeCost> latency =
-        SetAndReturnCustomCallLatency(computation, "-10");
-    EXPECT_FALSE(latency.has_value());
   }
 }
 

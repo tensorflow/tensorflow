@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -143,16 +143,11 @@ std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction) {
     return std::nullopt;
   }
   int64_t latency_ns;
-  if (!absl::SimpleAtoi(*latency_str, &latency_ns)) {
-    LOG(WARNING) << "Failed to parse latency_metadata for "
-                 << instruction.name() << ": " << *latency_str;
-    return std::nullopt;
-  }
-  if (latency_ns < 0) {
-    LOG(WARNING) << "Ignoring negative latency_metadata for "
-                 << instruction.name() << ": " << latency_ns;
-    return std::nullopt;
-  }
+  CHECK(absl::SimpleAtoi(*latency_str, &latency_ns))
+      << "Failed to parse latency_metadata for " << instruction.name() << ": "
+      << *latency_str;
+  CHECK_GE(latency_ns, 0) << "Expected latency_metadata to be non-negative for "
+                          << instruction.name() << ": " << latency_ns;
   return latency_ns;
 }
 
