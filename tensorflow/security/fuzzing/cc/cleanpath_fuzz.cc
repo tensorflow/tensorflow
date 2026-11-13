@@ -27,7 +27,8 @@ limitations under the License.
 namespace {
 
 void FuzzTest(std::string_view input_path) {
-  std::string clean_path = tensorflow::io::CleanPath(input_path);
+  [[maybe_unused]] std::string clean_path =
+      tensorflow::io::CleanPath(input_path);
 
   // Assert there are no '/./' no directory changes.
   assert(!absl::StrContains(clean_path, "/./"));

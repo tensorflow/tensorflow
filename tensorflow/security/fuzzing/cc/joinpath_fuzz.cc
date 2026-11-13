@@ -25,7 +25,7 @@ limitations under the License.
 namespace {
 
 void FuzzTest(std::string_view first, std::string_view second) {
-  std::string path = tensorflow::io::JoinPath(first, second);
+  [[maybe_unused]] std::string path = tensorflow::io::JoinPath(first, second);
 
   // Assert path contains strings
   assert(absl::StrContains(path, first));

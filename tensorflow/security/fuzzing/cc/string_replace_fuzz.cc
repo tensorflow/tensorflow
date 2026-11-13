@@ -29,7 +29,7 @@ void FuzzTest(bool all_flag, std::string s, std::string oldsub,
   absl::string_view oldsubp(oldsub);
   absl::string_view newsubp(newsub);
 
-  std::string subbed =
+  [[maybe_unused]] std::string subbed =
       tensorflow::str_util::StringReplace(sp, oldsubp, newsubp, all_flag);
 }
 FUZZ_TEST(CC_FUZZING, FuzzTest)
