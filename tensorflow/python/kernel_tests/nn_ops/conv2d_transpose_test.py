@@ -394,7 +394,7 @@ class Conv2DTransposeTest(test.TestCase):
         )
         self.evaluate(op)
 
-  def testConv2DTransposeInvalidOutputShapeRank(self):
+  def testConv2DTransposeInvalidOutputShapeRankInSession(self):
     with self.session():
       with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         op = nn_ops.conv2d_transpose(
