@@ -60,6 +60,7 @@ cc_library(
     hdrs = ["hlo_longest_prefix.h"],
     deps = [
         "//xla:util",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",

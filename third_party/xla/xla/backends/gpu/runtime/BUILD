@@ -69,6 +69,7 @@ cc_library(
         "//xla:printer",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_metadata",
         "//xla/hlo/utils:hlo_longest_prefix",
