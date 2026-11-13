@@ -55,21 +55,12 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
 
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
-  int64_t num_elements = 1;
-  bool overflow = false;
   for (int64_t dim : proto.dims()) {
-    if (dim < 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Shape expects non-negative dimension sizes, but got %d", dim));
-    }
-    overflow |= __builtin_mul_overflow(num_elements, dim, &num_elements);
     dims.push_back(dim);
   }
-  if (overflow) {
-    return absl::InvalidArgumentError(
-        "Too large number of elements in a shape");
-  }
-  return Shape(std::move(dims));
+  Shape shape(std::move(dims));
+  ABSL_RETURN_IF_ERROR(shape.NumElements().status());
+  return shape;
 }
 
 void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
@@ -89,9 +80,29 @@ void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
 }
 
 int64_t Shape::num_elements() const {
+  absl::StatusOr<int64_t> count = NumElements();
+  CHECK_OK(count);
+  return *count;
+}
+
+absl::StatusOr<int64_t> Shape::NumElements() const {
   int64_t count = 1;
+  bool overflow = false;
   for (int64_t d : *dims_) {
-    count *= d;
+    if (d < 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Shape expects non-negative dimension sizes, but got %d", d));
+    }
+    if (d == 0) {
+      count = 0;
+      overflow = false;
+    } else if (count != 0) {
+      overflow |= __builtin_mul_overflow(count, d, &count);
+    }
+  }
+  if (overflow) {
+    return absl::InvalidArgumentError(
+        "Too large number of elements in a shape");
   }
   return count;
 }
