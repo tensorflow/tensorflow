@@ -687,7 +687,7 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               tensor_spec.TensorSpec(
                   shape=[1, None, 5, 1], dtype=dtypes.float32
               ),
-              tensor_spec.TensorSpec(shape=[3, 1, 1, 1], dtype=dtypes.float32),
+              tensor_spec.TensorSpec(shape=[4, 1, 1, 1], dtype=dtypes.float32),
           ]
       )
       def run_conv(x, filters, padding=padding):
@@ -700,7 +700,7 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         self.evaluate(
             run_conv(
                 constant_op.constant(np.zeros([1, 2, 5, 1], np.float32)),
-                constant_op.constant(np.zeros([3, 1, 1, 1], np.float32)),
+                constant_op.constant(np.zeros([4, 1, 1, 1], np.float32)),
             )
         )
 
