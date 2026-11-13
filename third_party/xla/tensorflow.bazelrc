@@ -331,8 +331,10 @@ common:sycl --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=false
 common:sycl --repo_env=TF_NEED_SYCL=1
 common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
-common:sycl --cxxopt=-std=c++17
-common:sycl --host_cxxopt=-std=c++17
+common:sycl --cxxopt=-std=c++20
+common:sycl --host_cxxopt=-std=c++20
+# C++20 with GCC 10 libstdc++ from glibc 2.31.
+common:sycl --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
 common:sycl --define=build_with_onednn_async=true
 
