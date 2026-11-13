@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,10 @@ class FakeErrorReporter : public tflite::StatefulErrorReporter {
   int Report(const char*, va_list) override { return 0; }
   std::string message() override { return "custom error message"; }
 };
+
+int64_t SumCounts(const TensorHistogram& hist) {
+  return std::accumulate(hist.counts.begin(), hist.counts.end(), int64_t{0});
+}
 
 class TflCalibrationUtilsTest : public ::testing::Test {
  protected:
@@ -201,6 +206,7 @@ TEST_F(TflCalibrationUtilsTest, FiltersNaNAndOutOfRangeFloats) {
   ASSERT_EQ(stats.count("input"), 1);
   EXPECT_FLOAT_EQ(stats.at("input").min, -2.5f);
   EXPECT_FLOAT_EQ(stats.at("input").max, 3.5f);
+  EXPECT_FALSE(stats.at("input").histogram.has_value());
   EXPECT_EQ(stats.count("all_nan"), 0);
 
   // When every non-NaN value falls outside `(kValidFloatMin, kValidFloatMax)`,
@@ -284,6 +290,83 @@ TEST_F(TflCalibrationUtilsTest, MergesRangesAcrossSameNamedTensors) {
   ASSERT_EQ(stats.count("shared_i32"), 1);
   EXPECT_FLOAT_EQ(stats.at("shared_i32").min, -12.0f);
   EXPECT_FLOAT_EQ(stats.at("shared_i32").max, 10.0f);
+}
+
+TEST_F(TflCalibrationUtilsTest, CollectsPerInvocationFloatHistogramsOnly) {
+  const int f32_idx = AddTensor("input_f32", kTfLiteFloat32, {1, 6});
+  const int i32_idx = AddTensor("input_i32", kTfLiteInt32, {1, 4});
+  const int out_of_range_idx =
+      AddTensor("out_of_range_f32", kTfLiteFloat32, {1, 2});
+  const int all_nan_idx = AddTensor("all_nan_f32", kTfLiteFloat32, {1, 2});
+  interpreter_->SetInputs({f32_idx, i32_idx, out_of_range_idx, all_nan_idx});
+  AddNoOpNode({f32_idx, i32_idx, out_of_range_idx, all_nan_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  constexpr float kInf = std::numeric_limits<float>::infinity();
+  constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+  const float in1[] = {-kInf, -2.0f, -1.0f, 1.0f, 2.0f, kInf};
+  const int32_t in_i32[] = {-10, 0, 10, 20};
+  const float out_of_range[] = {-kInf, 3.1e38f};
+  const float all_nan[] = {kNaN, kNaN};
+  PopulateTensor(f32_idx, in1);
+  PopulateTensor(i32_idx, in_i32);
+  PopulateTensor(out_of_range_idx, out_of_range);
+  PopulateTensor(all_nan_idx, all_nan);
+
+  auto status_or_stats1 = InvokeWithCalibration(
+      interpreter_.get(), 0, /*reporter=*/nullptr, /*collect_histogram=*/true);
+  ASSERT_TRUE(status_or_stats1.ok());
+  const auto& stats1 = *status_or_stats1;
+  ASSERT_TRUE(stats1.at("input_f32").histogram.has_value());
+  const TensorHistogram& hist1 = *stats1.at("input_f32").histogram;
+  EXPECT_EQ(hist1.counts.size(), 2048);
+  EXPECT_EQ(SumCounts(hist1), 4);
+  // Valid range [-2, 2] padded by 10% on each side gives [-2.4, 2.4] and bin
+  // width 4.8 / 2048 = 0.00234375.
+  EXPECT_NEAR(hist1.lower_bound, -2.4, 1e-6);
+  EXPECT_NEAR(hist1.bin_width, 0.00234375, 1e-9);
+  EXPECT_FALSE(stats1.at("input_i32").histogram.has_value());
+  EXPECT_FALSE(stats1.at("out_of_range_f32").histogram.has_value());
+  EXPECT_EQ(stats1.count("all_nan_f32"), 0);
+
+  // A second invocation returns a fresh histogram for its own values only.
+  const float in2[] = {-1.5f, 0.0f, 0.5f, 1.5f, kInf, -kInf};
+  PopulateTensor(f32_idx, in2);
+  auto status_or_stats2 = InvokeWithCalibration(
+      interpreter_.get(), 0, /*reporter=*/nullptr, /*collect_histogram=*/true);
+  ASSERT_TRUE(status_or_stats2.ok());
+  const auto& stats2 = *status_or_stats2;
+  EXPECT_FLOAT_EQ(stats2.at("input_f32").min, -1.5f);
+  EXPECT_FLOAT_EQ(stats2.at("input_f32").max, 1.5f);
+  ASSERT_TRUE(stats2.at("input_f32").histogram.has_value());
+  EXPECT_EQ(SumCounts(*stats2.at("input_f32").histogram), 4);
+  EXPECT_NEAR(stats2.at("input_f32").histogram->lower_bound, -1.8, 1e-6);
+}
+
+TEST_F(TflCalibrationUtilsTest, ExpandsHistogramAcrossSameNamedTensors) {
+  const int f0_idx = AddTensor("shared_f32", kTfLiteFloat32, {1, 2});
+  const int f1_idx = AddTensor("shared_f32", kTfLiteFloat32, {1, 2});
+  interpreter_->SetInputs({f0_idx, f1_idx});
+  AddNoOpNode({f0_idx, f1_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  const float f0[] = {-2.0f, 2.0f};
+  const float f1[] = {-5.0f, 8.0f};
+  PopulateTensor(f0_idx, f0);
+  PopulateTensor(f1_idx, f1);
+
+  auto status_or_stats = InvokeWithCalibration(
+      interpreter_.get(), 0, /*reporter=*/nullptr, /*collect_histogram=*/true);
+  ASSERT_TRUE(status_or_stats.ok());
+  const auto& stats = *status_or_stats;
+  ASSERT_EQ(stats.count("shared_f32"), 1);
+  EXPECT_FLOAT_EQ(stats.at("shared_f32").min, -5.0f);
+  EXPECT_FLOAT_EQ(stats.at("shared_f32").max, 8.0f);
+  ASSERT_TRUE(stats.at("shared_f32").histogram.has_value());
+  const TensorHistogram& hist = *stats.at("shared_f32").histogram;
+  EXPECT_EQ(SumCounts(hist), 4);
+  EXPECT_LE(hist.lower_bound, -5.0);
+  EXPECT_GE(hist.lower_bound + hist.counts.size() * hist.bin_width, 8.0);
 }
 
 TEST_F(TflCalibrationUtilsTest, SkipsConstantTensors) {
