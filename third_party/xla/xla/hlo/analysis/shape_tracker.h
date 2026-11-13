@@ -201,6 +201,12 @@ class ShapeTracker {
 
   class BufferView;
 
+  // Returns, for every output dimension, the (stride, extent) segments of the
+  // input that it iterates over, from major to minor. Broadcasts have stride 0
+  // and size-1 dimensions have no segments. Returns std::nullopt if the output
+  // is not a strided view of the input.
+  std::optional<std::vector<BufferView>> TryGetStridedView() const;
+
  private:
   struct SlicePropagationResult;
 

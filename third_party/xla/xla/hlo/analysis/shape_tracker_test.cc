@@ -2612,5 +2612,70 @@ TEST(ShapeTrackerBroadcastReduceTest,
   EXPECT_EQ(narrowed, expected);
 }
 
+// (stride, extent) segments of every output dimension.
+using DimensionSegments = std::vector<std::vector<std::pair<int64_t, int64_t>>>;
+
+std::optional<DimensionSegments> GetDimensionSegments(
+    const ShapeTracker& tracker) {
+  std::optional<std::vector<ShapeTracker::BufferView>> views =
+      tracker.TryGetStridedView();
+  if (!views.has_value()) {
+    return std::nullopt;
+  }
+  DimensionSegments result;
+  for (const ShapeTracker::BufferView& view : *views) {
+    std::vector<std::pair<int64_t, int64_t>>& segments = result.emplace_back();
+    for (int64_t i = 0; i < view.strides().size(); ++i) {
+      segments.push_back({view.strides()[i], view.extents()[i]});
+    }
+  }
+  return result;
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, DegenerateDimensionsAreEmpty) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {2, 3}));
+  ASSERT_OK(tracker.AppendReshape({2, 1, 3}));
+  EXPECT_EQ(GetDimensionSegments(tracker),
+            DimensionSegments({{{3, 2}}, {}, {{1, 3}}}));
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, BroadcastHasZeroStrides) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {48}));
+  ASSERT_OK(tracker.AppendBroadcast({4, 16, 48}, {2}));
+  ASSERT_OK(tracker.AppendReshape({64, 48}));
+  EXPECT_EQ(GetDimensionSegments(tracker),
+            DimensionSegments({{{0, 64}}, {{1, 48}}}));
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, CopyIsNotAStridedView) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {2, 3}));
+  ASSERT_OK(tracker.AppendTranspose({1, 0}));
+  ASSERT_OK(tracker.AppendReshape({6}));
+  // Merging the transposed dimensions is still a strided view...
+  EXPECT_EQ(GetDimensionSegments(tracker),
+            DimensionSegments({{{1, 3}, {3, 2}}}));
+  // ...but transposing a part of the merged dimension requires a copy.
+  ASSERT_OK(tracker.AppendReshape({2, 3}));
+  ASSERT_OK(tracker.AppendTranspose({1, 0}));
+  EXPECT_EQ(GetDimensionSegments(tracker), std::nullopt);
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, ReductionIsNotAStridedView) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {4, 8}));
+  ASSERT_OK(tracker.AppendReduce({0}));
+  EXPECT_EQ(GetDimensionSegments(tracker), std::nullopt);
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, SingleElement) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {1, 1}));
+  ASSERT_OK(tracker.AppendReshape({1, 1, 1}));
+  EXPECT_EQ(GetDimensionSegments(tracker), DimensionSegments({{}, {}, {}}));
+}
+
+TEST(ShapeTrackerTryGetStridedViewTest, ZeroElementsIsNotAStridedView) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {2, 0}));
+  EXPECT_EQ(tracker.TryGetStridedView(), std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

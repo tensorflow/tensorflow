@@ -1688,6 +1688,19 @@ bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims,
   return !has_swaps;
 }
 
+std::optional<std::vector<ShapeTracker::BufferView>>
+ShapeTracker::TryGetStridedView() const {
+  if (ShapeUtil::IsZeroElementArray(output_shape_)) {
+    return std::nullopt;
+  }
+  const bool needs_copy = projections_.size() > 1;
+  const bool has_reduction = !projections_.front().collapsed_strides().empty();
+  if (needs_copy || has_reduction) {
+    return std::nullopt;
+  }
+  return projections_.front().TryUnflatten(output_shape_.dimensions());
+}
+
 absl::StatusOr<ShapeTracker> ShapeTracker::Zip(
     absl::Span<const ShapeTracker> trackers) {
   if (trackers.empty()) {
