@@ -30,7 +30,7 @@ namespace {
 
 TEST(ExpiringLRUCacheTest, MaxAge) {
   const std::string key = "a";
-  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
+  std::unique_ptr<NowSecondsEnv> env = std::make_unique<NowSecondsEnv>();
   tf_gcs_filesystem::ExpiringLRUCache<int> cache(
       1, 0, [&env]() { return env->NowSeconds(); });
   env->SetNowSeconds(1);
