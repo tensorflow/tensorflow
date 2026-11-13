@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -45,6 +44,33 @@ using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
 enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic, kQDQStrict };
 
+// The data type that a model is converted to for inference. This is the subset
+// of `tensorflow::DataType` that the TFLite quantization passes use, so that
+// the quantization config does not depend on TensorFlow. The conversion from
+// `tensorflow::DataType` is in `tf_quantization_config.h`.
+enum class InferenceDataType {
+  kInvalid,  // DT_INVALID, and any data type that is not listed below.
+  kFloat,    // DT_FLOAT
+  kHalf,     // DT_HALF
+  kInt8,     // DT_INT8
+  kUInt8,    // DT_UINT8
+  kInt16,    // DT_INT16
+  kUInt16,   // DT_UINT16
+  kInt32,    // DT_INT32
+  kQInt8,    // DT_QINT8
+  kQUInt8,   // DT_QUINT8
+  kQInt16,   // DT_QINT16
+  kQUInt16,  // DT_QUINT16
+  kQInt32,   // DT_QINT32
+};
+
+// Returns the name of `type`, e.g. "DT_QINT8".
+absl::string_view InferenceDataTypeName(InferenceDataType type);
+
+// Returns whether `type` is one of the quantized data types (`kQInt8`,
+// `kQUInt8`, `kQInt16`, `kQUInt16` and `kQInt32`).
+bool IsQuantizedInferenceDataType(InferenceDataType type);
+
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
   std::string target_func = "main";
@@ -55,7 +81,7 @@ struct QuantizationSpecs {
 
   // Whether to allow dynamic range quantization. This is the easiest
   // quantization mode which doesn't require QAT or sample inputs.
-  // This option only targets `DT_HALF` and `DT_QINT8` inference type.
+  // This option only targets `kHalf` and `kQInt8` inference type.
   bool weight_quantization = false;
 
   // Whether to use the MLIR dynamic range quantizer instead of TOCO.
@@ -102,17 +128,17 @@ struct QuantizationSpecs {
   bool enable_mlir_variable_quantization = false;
 
   // The node type when the model is exported. Currently this is limited to
-  // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
-  // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
+  // kFloat, kHalf, kQInt8, and kQUInt8. When kHalf is used, the
+  // `weight_quantization` flag needs to set to true. When kQUInt8 is used,
   // the `weight_quantization` flag needs to set to false.
-  tensorflow::DataType inference_type = tensorflow::DT_FLOAT;
+  InferenceDataType inference_type = InferenceDataType::kFloat;
 
   // The input and output data type during inference. This flag is only used
-  // when `inference_type` is different from DT_FLOAT. This flag can only be set
-  // to DT_FLOAT or as same as `inference_type`. If this flag is different
+  // when `inference_type` is different from kFloat. This flag can only be set
+  // to kFloat or as same as `inference_type`. If this flag is different
   // from `inference_type`, adaptor ops are inserted as heading and tailing ops
   // in the result model.
-  tensorflow::DataType inference_input_type = tensorflow::DT_FLOAT;
+  InferenceDataType inference_input_type = InferenceDataType::kFloat;
 
   // Input node ranges. These ranges are stored as the same order of function
   // arguments. They are only used when `weight_quantization` is set to false,
@@ -138,17 +164,17 @@ struct QuantizationSpecs {
       tflite::optimize::ReducedPrecisionSupport::None;
 
   // Whether to run the passes to propagate the quantization parameters and
-  // graph rewrites. Returns false if the inference_type is DT_FLOAT or
+  // graph rewrites. Returns false if the inference_type is kFloat or
   // `weight_quantization` flag is set.
   bool RunPropagationAndRewriteQuantizationPasses() const {
-    return inference_type != tensorflow::DT_FLOAT && !weight_quantization;
+    return inference_type != InferenceDataType::kFloat && !weight_quantization;
   }
 
   // TODO: b/202075505 - make implicit weight type clearer
   // Whether run the passes and graph rewrites for dynamic range quantization.
   bool RunAndRewriteDynamicRangeQuantizationPasses() const {
     bool dynamic_range_quantize =
-        (inference_type != tensorflow::DT_FLOAT) && weight_quantization &&
+        (inference_type != InferenceDataType::kFloat) && weight_quantization &&
         !post_training_quantization && !disable_infer_tensor_range &&
         enable_mlir_dynamic_range_quantizer;
     return dynamic_range_quantize;
@@ -157,8 +183,8 @@ struct QuantizationSpecs {
   // Returns whether this inference type represents a signed storage type.
   bool IsSignedInferenceType() const {
     switch (inference_type) {
-      case tensorflow::DT_QUINT8:
-      case tensorflow::DT_QUINT16:
+      case InferenceDataType::kQUInt8:
+      case InferenceDataType::kQUInt16:
         return false;
       default:
         return true;
@@ -169,18 +195,18 @@ struct QuantizationSpecs {
   // quantization type.
   int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
-      case tensorflow::DT_INT8:
-      case tensorflow::DT_UINT8:
-      case tensorflow::DT_QINT8:
-      case tensorflow::DT_QUINT8:
+      case InferenceDataType::kInt8:
+      case InferenceDataType::kUInt8:
+      case InferenceDataType::kQInt8:
+      case InferenceDataType::kQUInt8:
         return 8;
-      case tensorflow::DT_INT16:
-      case tensorflow::DT_UINT16:
-      case tensorflow::DT_QINT16:
-      case tensorflow::DT_QUINT16:
+      case InferenceDataType::kInt16:
+      case InferenceDataType::kUInt16:
+      case InferenceDataType::kQInt16:
+      case InferenceDataType::kQUInt16:
         return 16;
-      case tensorflow::DT_INT32:
-      case tensorflow::DT_QINT32:
+      case InferenceDataType::kInt32:
+      case InferenceDataType::kQInt32:
         return 32;
       default:
         return 0;
@@ -226,22 +252,13 @@ void ParseCustomOpSpecs(absl::string_view node_names,
                         const CustomOpUpdateOptions& update_option,
                         CustomOpMap& custom_op_map);
 
-// Parses the command line flag strings to the quantization specification for
-// input arrays of a graph. The array names are not stored in the spec, and will
-// be matched by position. Returns true if failed.
-bool ParseInputNodeQuantSpecs(absl::string_view node_names,
-                              absl::string_view min_values,
-                              absl::string_view max_values,
-                              absl::string_view inference_type,
-                              QuantizationSpecs* quant_specs);
-
 // Gets the quantization specification for input arrays. The array names are not
 // stored in the spec, and will be matched by position. The min/max will be
 // ignored if the inference_type isn't a quantized type. Returns true if failed.
 bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             const std::vector<std::optional<double>>& node_mins,
                             const std::vector<std::optional<double>>& node_maxs,
-                            tensorflow::DataType inference_type,
+                            InferenceDataType inference_type,
                             QuantizationSpecs* quant_specs);
 
 // Returns a human-readable string of the QDQQuantMode enum class

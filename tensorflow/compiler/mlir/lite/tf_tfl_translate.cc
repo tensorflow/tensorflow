@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -200,9 +201,9 @@ int main(int argc, char **argv) {
   if (weight_quantization != "NONE") {
     quant_specs.weight_quantization = true;
     if (weight_quantization == "INT8") {
-      quant_specs.inference_type = tensorflow::DT_QINT8;
+      quant_specs.inference_type = mlir::TFL::InferenceDataType::kQInt8;
     } else if (weight_quantization == "FLOAT16") {
-      quant_specs.inference_type = tensorflow::DT_HALF;
+      quant_specs.inference_type = mlir::TFL::InferenceDataType::kHalf;
     } else {
       llvm::errs() << "Unknown weight quantization " << weight_quantization;
       return kTrFailure;

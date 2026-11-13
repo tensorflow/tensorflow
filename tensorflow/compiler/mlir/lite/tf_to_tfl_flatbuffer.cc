@@ -279,10 +279,10 @@ absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 
   mlir::lite::toco_legacy::BufferType quantized_type;
   switch (quant_specs.inference_type) {
-    case DT_QINT8:
+    case mlir::TFL::InferenceDataType::kQInt8:
       quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_INT8;
       break;
-    case DT_HALF:
+    case mlir::TFL::InferenceDataType::kHalf:
       quantized_type = mlir::lite::toco_legacy::BufferType::QUANTIZED_FLOAT16;
       break;
     default:
