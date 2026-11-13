@@ -134,7 +134,7 @@ class HandleCall : public OpInterfaceRewritePattern<CallOpInterface> {
     // func.call @f(%x : bar)
 
     CallInterfaceCallable callable = call.getCallableForCallee();
-    mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
+    auto sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(callable);
     auto symbol =
         mlir::SymbolTable::lookupNearestSymbolFrom(call.getOperation(), sym);
     if (!symbol) return failure();

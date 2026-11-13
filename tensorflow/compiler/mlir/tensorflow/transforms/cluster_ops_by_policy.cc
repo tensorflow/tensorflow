@@ -265,7 +265,7 @@ LogicalResult ClusteringState::VerifyDominanceProperty(
     // used to connect independent operation using the same argument.
     if (isa<BlockArgument*>(member.source)) continue;
 
-    Operation *op = member.source.dyn_cast<Operation *>();
+    Operation* op = llvm::dyn_cast<Operation*>(member.source);
     assert(op && "member operation must be not null");
 
     for (Operation *user : op->getUsers()) {
@@ -303,7 +303,7 @@ LogicalResult ClusteringState::VerifyValueConstraints(
   // Start from all operations in the `src_root` cluster.
   llvm::SmallVector<Operation *> worklist;
   for (Member &member : members)
-    if (Operation *op = member.source.dyn_cast<Operation *>())
+    if (Operation* op = llvm::dyn_cast_if_present<Operation*>(member.source))
       if (FindRoot(member.root) == src_root) worklist.emplace_back(op);
 
   // Collect `dst_root` constraints that are applicable to the values defined in
@@ -347,9 +347,10 @@ LogicalResult ClusteringState::Union(unsigned a, unsigned b,
   auto debug_clustered_ops = [&](unsigned root) {
     for (Member &member : members)
       if (FindRoot(member.root) == root) {
-        if (auto *op = member.source.dyn_cast<Operation *>()) {
+        if (auto* op = llvm::dyn_cast_if_present<Operation*>(member.source)) {
           llvm::dbgs() << "  " << *op << "\n";
-        } else if (auto *arg = member.source.dyn_cast<BlockArgument *>()) {
+        } else if (auto* arg = llvm::dyn_cast_if_present<BlockArgument*>(
+                       member.source)) {
           llvm::dbgs() << "  " << *arg;
         }
       }
@@ -450,7 +451,7 @@ static llvm::SmallVector<Operation *> GetClusteringCandidates(
     const ClusteringState &state, Source source) {
   // Users of operation result must be in the same block and placed on the same
   // device.
-  if (auto op = source.dyn_cast<Operation *>()) {
+  if (auto op = llvm::dyn_cast<Operation*>(source)) {
     auto range = llvm::make_filter_range(op->getUsers(), [&](Operation *user) {
       bool same_block = user->getBlock() == op->getBlock();
       bool same_device = op->getAttr(kDeviceAttr) == user->getAttr(kDeviceAttr);
@@ -460,7 +461,7 @@ static llvm::SmallVector<Operation *> GetClusteringCandidates(
   }
 
   // Users of block argument must be in the same block.
-  if (auto arg = source.dyn_cast<BlockArgument *>()) {
+  if (auto arg = llvm::dyn_cast<BlockArgument*>(source)) {
     auto range = llvm::make_filter_range(arg->getUsers(), [&](Operation *user) {
       bool same_block = user->getBlock() == arg->getOwner();
       return same_block && state.IsMember(user);
@@ -523,7 +524,7 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
       cluster.constraints = std::move(member.constraints);
 
     // Add operation to the cluster.
-    if (auto op = member.source.dyn_cast<Operation *>())
+    if (auto op = llvm::dyn_cast_if_present<Operation*>(member.source))
       cluster.operations.emplace_back(op);
   }
 

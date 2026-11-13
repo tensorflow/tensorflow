@@ -1114,14 +1114,14 @@ bool ShouldPreserveHierarchicalOutputName(mlir::Value operand,
 class TfliteOpOrArgLocNameMapper : public tensorflow::OpOrArgLocNameMapper {
  protected:
   std::string GetName(tensorflow::OpOrVal op_or_val) override {
-    if (auto* op = op_or_val.dyn_cast<mlir::Operation*>()) {
+    if (auto* op = llvm::dyn_cast_if_present<mlir::Operation*>(op_or_val)) {
       std::string name = GetHierarchicalNameFromLoc(op->getLoc(), op);
       if (!name.empty()) {
         return name;
       }
       return tensorflow::OpOrArgLocNameMapper::GetName(op_or_val);
     }
-    if (auto val = op_or_val.dyn_cast<mlir::Value>()) {
+    if (auto val = llvm::dyn_cast_if_present<mlir::Value>(op_or_val)) {
       std::string name =
           GetHierarchicalNameFromLoc(val.getLoc(), val.getDefiningOp());
       if (!name.empty()) {
