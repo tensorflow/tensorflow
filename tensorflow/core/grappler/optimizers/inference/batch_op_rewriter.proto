@@ -95,14 +95,24 @@ message BatchOpRewriteConfig {
     optional AdaptiveBatchSchedulerOption adaptive_batch_scheduler_option = 7;
   }
 
+  // batch_options, regex_batch_options and global_batch_options can each give
+  // the options for a model. The rewriter uses the first of these that applies:
+  //   1. the entry of batch_options for the model's name;
+  //   2. the first entry of regex_batch_options whose model_name_regex matches
+  //      the model's name;
+  //   3. global_batch_options.
+  // Only that one BatchOptions is used for the model. Fields that it doesn't
+  // set are left as they are in the model, and aren't taken from the others.
+
   // The options for overriding BatchFunction op in all models.
   //
   // When these BatchOptions are set, they will override the batching options
-  // for all models on the server.
+  // for every model on the server that has no entry in batch_options and
+  // matches no entry of regex_batch_options.
   BatchOptions global_batch_options = 9;
 
   // The options for overriding BatchFunction op in specific models. These
-  // options take precedence over global_batch_options.
+  // options take precedence over regex_batch_options and global_batch_options.
   //
   // When these BatchOptions are set for a given model, they will override the
   // models original batching options.
@@ -112,6 +122,29 @@ message BatchOpRewriteConfig {
   // updating batching options. Once the correct batching options have been
   // identified using this, the saved model should be updated to include them.
   map<string /* model name */, BatchOptions> batch_options = 2;
+
+  // The options for the models whose name matches a regular expression.
+  message RegexBatchOptions {
+    // A regular expression that has to match the whole model name, in RE2
+    // syntax (https://github.com/google/re2/wiki/Syntax).
+    //
+    // If this is empty or isn't a valid regular expression, the rewriter fails
+    // for every model, whatever its name, and applies none of the options in
+    // this config.
+    string model_name_regex = 1;
+
+    // The options for the models whose name matches model_name_regex.
+    BatchOptions batch_options = 2;
+  }
+
+  // The options for overriding BatchFunction op in the models whose name
+  // matches a regular expression. This is for model names that aren't fully
+  // known when this config is written, such as names with a generated suffix.
+  //
+  // These options are used only for a model that has no entry in batch_options,
+  // and they take precedence over global_batch_options. If a model name matches
+  // more than one entry, the first of them is used.
+  repeated RegexBatchOptions regex_batch_options = 10;
 
   // When set, switches all models to use a global batch scheduler with the
   // given number of shared threads.

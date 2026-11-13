@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.h"
 
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
@@ -127,6 +131,31 @@ RewriterConfig_CustomGraphOptimizer MakeConfig(
   (*rewriter_config.mutable_parameter_map())["batch_op_rewrite_config"].set_s(
       absl::Base64Escape(config.SerializeAsString()));
   return rewriter_config;
+}
+
+// Returns a graph with the batch op that AddBatchOp() adds by default, except
+// for its `num_batch_threads`.
+GraphDef GraphWithBatchOp(int num_batch_threads = 16) {
+  GraphDef graph;
+  AddBatchOp(&graph, num_batch_threads);
+  return graph;
+}
+
+// Runs the rewriter with `config` on GraphWithBatchOp(), in a session for the
+// model named `model_name`. Checks that Init() succeeds, and returns the status
+// of Optimize().
+Status RewriteGraphWithBatchOp(const BatchOpRewriteConfig& config,
+                               const std::string& model_name,
+                               GraphDef* optimized_graph) {
+  RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+  ConfigProto config_proto;
+  config_proto.mutable_experimental()->mutable_session_metadata()->set_name(
+      model_name);
+  BatchOpRewriter optimizer;
+  TF_CHECK_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
+  GrapplerItem item;
+  item.graph = GraphWithBatchOp();
+  return optimizer.Optimize(nullptr, item, optimized_graph);
 }
 
 class BatchOpRewriterTest : public ::testing::TestWithParam<bool> {};
@@ -389,6 +418,161 @@ TEST_F(BatchOpRewriterTest, UpdateGlobalBatchOptions) {
              /* reserved_int_attrs = */ {}, /* max_batch_size = */ 64);
   EXPECT_EQ(optimized_graph_global.DebugString(),
             expected_graph_global.DebugString());
+}
+
+// Tests that `regex_batch_options` can give options to a model whose name
+// isn't fully known when the config is written.
+TEST_F(BatchOpRewriterTest, UpdateRegexBatchOptions) {
+  BatchOpRewriteConfig config;
+  BatchOpRewriteConfig::RegexBatchOptions* regex_batch_options =
+      config.add_regex_batch_options();
+  regex_batch_options->set_model_name_regex("my_model__.*");
+  regex_batch_options->mutable_batch_options()->set_num_batch_threads(2);
+  regex_batch_options->mutable_batch_options()->set_max_batch_size(128);
+
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(
+      RewriteGraphWithBatchOp(config, "my_model__1b9d6bcd", &optimized_graph));
+
+  GraphDef expected_graph;
+  AddBatchOp(&expected_graph, /* num_batch_threads = */ 2,
+             /* reserved_int_attrs = */ {}, /* max_batch_size = */ 128);
+  EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
+}
+
+// Tests that a regular expression has to match the whole model name.
+TEST_F(BatchOpRewriterTest, RegexBatchOptionsMatchWholeModelName) {
+  BatchOpRewriteConfig config;
+  BatchOpRewriteConfig::RegexBatchOptions* regex_batch_options =
+      config.add_regex_batch_options();
+  regex_batch_options->set_model_name_regex("my_model");
+  regex_batch_options->mutable_batch_options()->set_num_batch_threads(2);
+
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "my_model", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp(2).DebugString());
+
+  // The regular expression matches only a part of these names, so the graph
+  // isn't changed.
+  TF_ASSERT_OK(
+      RewriteGraphWithBatchOp(config, "my_model__1b9d6bcd", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp().DebugString());
+  TF_ASSERT_OK(
+      RewriteGraphWithBatchOp(config, "not_my_model", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp().DebugString());
+}
+
+// Tests the order in which the options for a model are looked up: the entry of
+// `batch_options` for its name, then the first entry of `regex_batch_options`
+// that matches its name, then `global_batch_options`.
+TEST_F(BatchOpRewriterTest, BatchOptionsPrecedence) {
+  BatchOpRewriteConfig config;
+  (*config.mutable_batch_options())["model_a"].set_num_batch_threads(1);
+  BatchOpRewriteConfig::RegexBatchOptions* first_regex_batch_options =
+      config.add_regex_batch_options();
+  first_regex_batch_options->set_model_name_regex("model_.*");
+  first_regex_batch_options->mutable_batch_options()->set_num_batch_threads(2);
+  BatchOpRewriteConfig::RegexBatchOptions* second_regex_batch_options =
+      config.add_regex_batch_options();
+  second_regex_batch_options->set_model_name_regex(".*_b");
+  second_regex_batch_options->mutable_batch_options()->set_num_batch_threads(3);
+  config.mutable_global_batch_options()->set_num_batch_threads(4);
+
+  GraphDef optimized_graph;
+  // "model_a" has an entry in `batch_options`, which is used although the first
+  // regular expression also matches.
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "model_a", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp(1).DebugString());
+
+  // Both regular expressions match "model_b", so the first one is used.
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "model_b", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp(2).DebugString());
+
+  // Only the second regular expression matches "another_b".
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "another_b", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp(3).DebugString());
+
+  // Nothing matches "another_c", so the global options are used.
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "another_c", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp(4).DebugString());
+}
+
+// Tests that the keys of `batch_options` are model names and not regular
+// expressions.
+TEST_F(BatchOpRewriterTest, BatchOptionsKeyIsNotRegex) {
+  BatchOpRewriteConfig config;
+  (*config.mutable_batch_options())["model_.*"].set_num_batch_threads(2);
+
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(RewriteGraphWithBatchOp(config, "model_a", &optimized_graph));
+  EXPECT_EQ(optimized_graph.DebugString(), GraphWithBatchOp().DebugString());
+}
+
+// Tests that an invalid regular expression is an error for every model, and
+// that Optimize() returns it. If Init() returned it, the meta optimizer
+// wouldn't run any of its optimizers.
+TEST_F(BatchOpRewriterTest, InvalidRegexBatchOptions) {
+  BatchOpRewriteConfig config;
+  (*config.mutable_batch_options())["model_a"].set_num_batch_threads(2);
+  BatchOpRewriteConfig::RegexBatchOptions* regex_batch_options =
+      config.add_regex_batch_options();
+  regex_batch_options->set_model_name_regex("model_(");
+  regex_batch_options->mutable_batch_options()->set_num_batch_threads(3);
+
+  GraphDef optimized_graph;
+  // "model_a" has an entry in `batch_options`, and "model_b" doesn't.
+  EXPECT_THAT(RewriteGraphWithBatchOp(config, "model_a", &optimized_graph),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("'model_('")));
+  EXPECT_THAT(RewriteGraphWithBatchOp(config, "model_b", &optimized_graph),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("'model_('")));
+}
+
+// Tests that an empty regular expression, which is what an entry of
+// `regex_batch_options` has when `model_name_regex` isn't set, is an error.
+TEST_F(BatchOpRewriterTest, EmptyRegexBatchOptions) {
+  BatchOpRewriteConfig config;
+  config.add_regex_batch_options()
+      ->mutable_batch_options()
+      ->set_num_batch_threads(2);
+
+  GraphDef optimized_graph;
+  EXPECT_THAT(RewriteGraphWithBatchOp(config, "model_a", &optimized_graph),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr("model_name_regex is empty")));
+}
+
+// Tests that an empty or invalid regular expression fails Optimize() and
+// applies none of the options in the config even when `session_metadata` is
+// unset on `ConfigProto`.
+TEST_F(BatchOpRewriterTest, InvalidRegexBatchOptionsWithoutSessionMetadata) {
+  GrapplerItem item;
+  item.graph = GraphWithBatchOp(/*num_batch_threads=*/16);
+
+  for (const char* bad_regex : {"", "model_("}) {
+    BatchOpRewriteConfig config;
+    config.set_enable_adaptive_shared_batching_thread_pool(true);
+    config.mutable_global_prioritization()->set_num_threads(4);
+    BatchOpRewriteConfig::RegexBatchOptions* regex_batch_options =
+        config.add_regex_batch_options();
+    regex_batch_options->set_model_name_regex(bad_regex);
+    regex_batch_options->mutable_batch_options()->set_num_batch_threads(2);
+
+    RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+    ConfigProto config_proto;
+    BatchOpRewriter optimizer;
+    TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
+
+    GraphDef optimized_graph;
+    EXPECT_THAT(
+        optimizer.Optimize(nullptr, item, &optimized_graph),
+        absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               ::testing::HasSubstr("model_name_regex")));
+    EXPECT_EQ(optimized_graph.DebugString(),
+              GraphWithBatchOp(/*num_batch_threads=*/16).DebugString());
+  }
 }
 
 TEST_F(BatchOpRewriterTest,

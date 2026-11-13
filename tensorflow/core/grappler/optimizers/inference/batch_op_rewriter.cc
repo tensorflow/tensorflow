@@ -16,15 +16,21 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.h"
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
 #include "google/protobuf/map.h"
 #include "google/protobuf/repeated_field.h"
+#include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -33,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/inference/batch_op_rewriter.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -136,6 +144,62 @@ void UpdateBatchOps(GraphDef* graph, BatchOpRewriteFunction rewrite_fn) {
   }
 }
 
+// Compiles the regular expressions in `regex_batch_options` into
+// `compiled_regexes`, or returns an InvalidArgument error if any of them is
+// empty or invalid.
+absl::Status CompileRegexBatchOptions(
+    const protobuf::RepeatedPtrField<BatchOpRewriteConfig::RegexBatchOptions>&
+        regex_batch_options,
+    std::vector<std::unique_ptr<RE2>>* compiled_regexes) {
+  compiled_regexes->clear();
+  compiled_regexes->reserve(regex_batch_options.size());
+  for (int i = 0; i < regex_batch_options.size(); ++i) {
+    const std::string& model_name_regex =
+        regex_batch_options[i].model_name_regex();
+    if (model_name_regex.empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "regex_batch_options[", i,
+          "].model_name_regex is empty. Set it to a regular expression that "
+          "matches the whole model name."));
+    }
+    auto regex = std::make_unique<RE2>(model_name_regex, RE2::Quiet);
+    if (!regex->ok()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "regex_batch_options[", i, "].model_name_regex '", model_name_regex,
+          "' is not a valid RE2 regular expression: ", regex->error()));
+    }
+    compiled_regexes->push_back(std::move(regex));
+  }
+  return absl::OkStatus();
+}
+
+// Returns the options that `config` has for the model named `model_name`, or
+// nullptr if it has none. In order of precedence, these are the entry of
+// `batch_options` for that name, the first entry of `regex_batch_options` whose
+// regular expression (in `compiled_regexes`) matches the whole name, and
+// `global_batch_options`.
+const BatchOpRewriteConfig::BatchOptions* absl_nullable FindBatchOptions(
+    const BatchOpRewriteConfig& config ABSL_ATTRIBUTE_LIFETIME_BOUND,
+    const std::vector<std::unique_ptr<RE2>>& compiled_regexes,
+    const std::string& model_name) {
+  const BatchOpRewriteConfig::BatchOptions* batch_options =
+      gtl::FindOrNull(config.batch_options(), model_name);
+  if (batch_options != nullptr) {
+    return batch_options;
+  }
+  for (int i = 0; i < config.regex_batch_options_size(); ++i) {
+    if (RE2::FullMatch(model_name, *compiled_regexes[i])) {
+      VLOG(2) << "Model name " << model_name << " matches model_name_regex '"
+              << config.regex_batch_options(i).model_name_regex() << "'";
+      return &config.regex_batch_options(i).batch_options();
+    }
+  }
+  if (config.has_global_batch_options()) {
+    return &config.global_batch_options();
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 Status BatchOpRewriter::Init(
@@ -174,6 +238,19 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(2) << "Running BatchOp Rewriter";
   *optimized_graph = item.graph;
 
+  // An invalid regular expression in the config is reported here, like the
+  // other errors in the config, and not by Init(): when Init() fails, the
+  // meta optimizer doesn't run any of its optimizers on the graph. It is
+  // checked before `has_session_metadata()` so that an invalid regular
+  // expression fails and skips `enable_adaptive_shared_batching_thread_pool`
+  // and `global_prioritization` even when `session_metadata` is unset.
+  std::vector<std::unique_ptr<RE2>> compiled_regexes;
+  absl::Status status = CompileRegexBatchOptions(config_.regex_batch_options(),
+                                                 &compiled_regexes);
+  if (!status.ok()) {
+    return status;
+  }
+
   bool asbs_overridden = false;
   if (config_proto_.has_experimental() &&
       config_proto_.experimental().has_session_metadata()) {
@@ -186,12 +263,10 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
           "adaptive_batch_scheduler_option field in batch_options instead.");
     }
 
-    // if initialization statements are incompatible with C++ standards before
-    // C++17, so initialize iterator outside of if statements.
-    if (config_.batch_options().contains(model_name) ||
-        config_.has_global_batch_options()) {
-      const auto& batch_options = gtl::FindWithDefault(
-          config_.batch_options(), model_name, config_.global_batch_options());
+    if (const BatchOpRewriteConfig::BatchOptions* batch_options_ptr =
+            FindBatchOptions(config_, compiled_regexes, model_name);
+        batch_options_ptr != nullptr) {
+      const auto& batch_options = *batch_options_ptr;
       VLOG(2) << "Rewriting batch_options for " << model_name << " to "
               << batch_options.DebugString();
 
