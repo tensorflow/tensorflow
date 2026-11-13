@@ -101,6 +101,55 @@ TEST(ConcatShapeFnsTest, InvalidAxisDtypeReturnsError) {
   ExpectInvalidAxisDtype<uint64_t>();
 }
 
+TEST(ConcatShapeFnsTest, InvalidAxisShapeReturnsError) {
+  NodeDef def;
+  const OpDef op_def = MakeConcatOpDef();
+  {
+    const Tensor axis(DT_INT32, TensorShape({0}));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                       {PartialTensorShape({2, 3}), PartialTensorShape({2, 4}),
+                        PartialTensorShape({})},
+                       {nullptr, nullptr, &axis}, {}, {});
+
+    EXPECT_THAT(ConcatV2Shape(&c),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       "concat_dim must be a scalar"));
+  }
+  {
+    const Tensor axis(DT_INT32, TensorShape({2}));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                       {PartialTensorShape({2, 3}), PartialTensorShape({2, 4}),
+                        PartialTensorShape({})},
+                       {nullptr, nullptr, &axis}, {}, {});
+
+    EXPECT_THAT(ConcatV2Shape(&c),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       "concat_dim must be a scalar"));
+  }
+  {
+    const Tensor axis(DT_INT64, TensorShape({0}));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                       {PartialTensorShape({2, 3}), PartialTensorShape({2, 4}),
+                        PartialTensorShape({})},
+                       {nullptr, nullptr, &axis}, {}, {});
+
+    EXPECT_THAT(ConcatV2Shape(&c),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       "concat_dim must be a scalar"));
+  }
+  {
+    const Tensor axis(DT_INT64, TensorShape({2}));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, def, op_def,
+                       {PartialTensorShape({2, 3}), PartialTensorShape({2, 4}),
+                        PartialTensorShape({})},
+                       {nullptr, nullptr, &axis}, {}, {});
+
+    EXPECT_THAT(ConcatV2Shape(&c),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       "concat_dim must be a scalar"));
+  }
+}
+
 }  // namespace
 }  // namespace shape_inference
 }  // namespace tensorflow

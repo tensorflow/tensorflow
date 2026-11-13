@@ -2330,6 +2330,9 @@ absl::Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
 
   // Merge all the non-concat dims, and sum the concat dim to make an output
   // shape.
+  if (concat_dim_t->NumElements() != 1) {
+    return absl::InvalidArgumentError("concat_dim must be a scalar");
+  }
   int64_t concat_dim;
   if (concat_dim_t->dtype() == DT_INT32) {
     concat_dim = static_cast<int64_t>(concat_dim_t->flat<int32_t>()(0));
