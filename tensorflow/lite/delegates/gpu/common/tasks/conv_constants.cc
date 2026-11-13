@@ -276,7 +276,8 @@ GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
                                              attr.weights.shape, x_oob_reads,
                                              y_oob_reads, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
-      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
+      gpu_info.IsAdreno() && !gpu_info.opencl_info.IsCLVK() &&
+      gpu_info.adreno_info.IsAdreno3xx()) {
     op.compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
   if (definition.precision != CalculationsPrecision::F32 &&
