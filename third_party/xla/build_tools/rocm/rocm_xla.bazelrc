@@ -63,6 +63,7 @@ build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -g
+build:tsan --copt -O1
 build:tsan --run_under=//build_tools/rocm:sanitizer_wrapper
 
 build:asan --run_under=//build_tools/rocm:sanitizer_wrapper

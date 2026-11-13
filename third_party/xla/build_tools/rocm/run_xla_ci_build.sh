@@ -36,6 +36,12 @@ for arg in "$@"; do
     if [[ "$arg" == "--config=no_flaky" ]]; then
         TAG_FILTERS="${TAG_FILTERS},-flaky"
     fi
+    if [[ "$arg" == "--config=asan" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},-noasan"
+    fi
+    if [[ "$arg" == "--config=tsan" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},-notsan"
+    fi
 done
 
 SCRIPT_DIR=$(dirname $0)
