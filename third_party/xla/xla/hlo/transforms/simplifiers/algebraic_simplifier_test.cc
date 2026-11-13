@@ -13200,6 +13200,80 @@ TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       ScatterAddNotCombinedWhenToApplyRepeatsParameter) {
+  constexpr absl::string_view kRepeatedParamHlo = R"hlo(
+HloModule RepeatedParamScatters
+dp0 { p0 = f32[] parameter(0) p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p0) }
+dp1 { p0 = f32[] parameter(0) p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p1, p1) }
+ENTRY main {
+  op0 = f32[8] parameter(0) ix0 = s32[2,1] parameter(1)
+  up0 = f32[2] parameter(2) op1 = f32[8] parameter(3)
+  ix1 = s32[2,1] parameter(4) up1 = f32[2] parameter(5)
+  s_lhs0 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp0
+  a_lhs0 = f32[8] add(s_lhs0, op1)
+  s_lhs1 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp1
+  a_lhs1 = f32[8] add(s_lhs1, op1)
+  s_rhs0 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp0
+  a_rhs0 = f32[8] add(op1, s_rhs0)
+  s_rhs1 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp1
+  a_rhs1 = f32[8] add(op1, s_rhs1)
+  s_cat0 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp0
+  s_cat1 = f32[8] scatter(op1, ix1, up1), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp1
+  a_cat = f32[8] add(s_cat0, s_cat1)
+  ROOT out = (f32[8], f32[8], f32[8], f32[8], f32[8]) tuple(
+      a_lhs0, a_lhs1, a_rhs0, a_rhs1, a_cat)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> repeated,
+                       ParseAndReturnVerifiedModule(kRepeatedParamHlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool repeated_changed,
+      AlgebraicSimplifier(default_options_).Run(repeated.get()));
+  EXPECT_FALSE(repeated_changed);
+  for (const HloInstruction* item :
+       repeated->entry_computation()->root_instruction()->operands()) {
+    EXPECT_EQ(item->opcode(), HloOpcode::kAdd);
+  }
+
+  constexpr absl::string_view kMixedAndCommutedHlo = R"hlo(
+HloModule MixedAndCommutedScatters
+dp0 { p0 = f32[] parameter(0) p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p0) }
+cadd { p0 = f32[] parameter(0) p1 = f32[] parameter(1)
+       ROOT r = f32[] add(p1, p0) }
+ENTRY main {
+  op0 = f32[8] parameter(0) ix0 = s32[2,1] parameter(1)
+  up0 = f32[2] parameter(2) op1 = f32[8] parameter(3)
+  ix1 = s32[2,1] parameter(4) up1 = f32[2] parameter(5)
+  sc0 = f32[8] scatter(op0, ix0, up0), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=dp0
+  sc1 = f32[8] scatter(op1, ix1, up1), update_window_dims={}, index_vector_dim=1,
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, to_apply=cadd
+  ROOT out = f32[8] add(sc0, sc1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kMixedAndCommutedHlo));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AlgebraicSimplifier(default_options_).Run(m.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Scatter(
+                  m::AddAnyOrder(m::Scatter(m::Parameter(0), m::Parameter(1),
+                                            m::Parameter(2)),
+                                 m::Parameter(3)),
+                  m::Parameter(4), m::Parameter(5))));
+}
+
 TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
   constexpr absl::string_view hlo_string = R"(
   HloModule m

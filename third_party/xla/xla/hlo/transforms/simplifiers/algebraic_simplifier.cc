@@ -1107,13 +1107,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                                            m::Op(&lhs_scatter_update))
                                     .WithOneUse()) &&
                      Match(lhs->to_apply()->root_instruction(),
-                           m::Add(m::Parameter(), m::Parameter()));
+                           m::AddAnyOrder(m::Parameter(0), m::Parameter(1)));
   bool rhs_scatter = Match(rhs, m::Scatter(m::Op(&rhs_scatter_operand),
                                            m::Op(&rhs_scatter_index),
                                            m::Op(&rhs_scatter_update))
                                     .WithOneUse()) &&
                      Match(rhs->to_apply()->root_instruction(),
-                           m::Add(m::Parameter(), m::Parameter()));
+                           m::AddAnyOrder(m::Parameter(0), m::Parameter(1)));
   if (rhs_scatter && lhs_scatter) {
     const auto& lhs_dnums = lhs->scatter_dimension_numbers();
     const auto& rhs_dnums = rhs->scatter_dimension_numbers();
