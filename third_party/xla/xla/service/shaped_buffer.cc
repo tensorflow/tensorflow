@@ -75,7 +75,7 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) noexcept {
   return *this;
 }
 
-ShapedBuffer::~ShapedBuffer() {}
+ShapedBuffer::~ShapedBuffer() = default;
 
 absl::StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
