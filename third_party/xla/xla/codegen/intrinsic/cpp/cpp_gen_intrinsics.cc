@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/cpp/custom_cpp_intrinsics_ll.h"
 #include "xla/codegen/intrinsic/cpp/expm1_ll.h"
 #include "xla/codegen/intrinsic/cpp/trig_ll.h"
+#include "xla/codegen/intrinsic/cpp/ynnpack_unary_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -76,6 +78,9 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
   }
   if (!::llvm_ir::kTrigLlIr.empty()) {
     libraries.emplace_back(::llvm_ir::kTrigLlIr, "trig");
+  }
+  if (!::llvm_ir::kYnnpackUnaryLlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kYnnpackUnaryLlIr, "ynnpack_unary");
   }
   return libraries;
 }
@@ -147,6 +152,12 @@ llvm::Function* CreateDirectAdapter(llvm::Module* module, llvm::Function* body,
           create_slot(arg.getType(), body->getParamAlign(body_arg));
       builder.CreateStore(&arg, slot);
       args.push_back(slot);
+    } else if (body->getArg(body_arg)->getType() != arg.getType()) {
+      llvm::Type* target_type = body->getArg(body_arg)->getType();
+      CHECK_EQ(data_layout.getTypeSizeInBits(arg.getType()),
+               data_layout.getTypeSizeInBits(target_type))
+          << "Adapter argument size mismatch for " << name;
+      args.push_back(builder.CreateBitCast(&arg, target_type));
     } else {
       args.push_back(&arg);
     }
@@ -165,6 +176,12 @@ llvm::Function* CreateDirectAdapter(llvm::Module* module, llvm::Function* body,
   llvm::Value* result = call;
   if (ret_slot != nullptr) {
     result = builder.CreateLoad(type->getReturnType(), ret_slot);
+  } else if (result->getType() != type->getReturnType()) {
+    llvm::Type* ret_type = type->getReturnType();
+    CHECK_EQ(data_layout.getTypeSizeInBits(result->getType()),
+             data_layout.getTypeSizeInBits(ret_type))
+        << "Adapter return size mismatch for " << name;
+    result = builder.CreateBitCast(result, ret_type);
   }
   CHECK(result->getType() == type->getReturnType())
       << "CppGen function '" << name << "' returns "
@@ -225,6 +242,39 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
       func.setName(name);
     }
   }
+
+  // Clear module inline asm from standard library headers (e.g. GCC
+  // libstdc++'s `module asm ".globl _ZSt21ios_base_library_initv"` from
+  // <iostream>) so it does not pollute JIT modules.
+  module->removeModuleInlineAsm();
+
+  // Strip any global constructors (e.g. static std::ios_base::Init from
+  // standard library headers) and unreferenced runtime declarations/functions
+  // so they do not pollute JIT modules.
+  if (llvm::GlobalVariable* ctors =
+          module->getNamedGlobal("llvm.global_ctors")) {
+    ctors->eraseFromParent();
+  }
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (llvm::Function& func :
+         llvm::make_early_inc_range(module->functions())) {
+      if (func.use_empty() &&
+          (func.isDeclaration() || func.hasInternalLinkage())) {
+        func.eraseFromParent();
+        changed = true;
+      }
+    }
+    for (llvm::GlobalVariable& gv :
+         llvm::make_early_inc_range(module->globals())) {
+      if (gv.use_empty()) {
+        gv.eraseFromParent();
+        changed = true;
+      }
+    }
+  }
+
   return module;
 }
 

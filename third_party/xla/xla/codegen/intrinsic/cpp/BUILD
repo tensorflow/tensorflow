@@ -38,6 +38,11 @@ package_group(
     ],
 )
 
+config_setting(
+    name = "x86_64",
+    constraint_values = ["@platforms//cpu:x86_64"],
+)
+
 # This empty target provides the C++ compilation context for the C++ source file.
 cc_library(
     name = "cpp_context_provider",
@@ -154,6 +159,36 @@ cc_ir_header(
     ],
 )
 
+cc_library(
+    name = "ynnpack_unary_lib",
+    srcs = ["ynnpack_unary.cc"],
+    hdrs = ["ynnpack_unary.h"],
+    copts = ["-Wno-psabi"],
+    deps = [
+        ":vector_ops",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
+cc_ir_header(
+    name = "ynnpack_unary_ll",
+    src = "ynnpack_unary.cc",
+    copts = ["-fbuiltin"],
+    # YNNPACK's gnu_vector backend implements fma as a per-lane std::fma loop,
+    # which clang only vectorizes when the target has FMA. Without -mfma on
+    # x86_64 the bitcode keeps scalar llvm.fma calls, and nothing re-vectorizes
+    # them after inlining. Target features are stripped from the bitcode, so this
+    # does not require FMA at runtime. Not needed once YNNPACK uses
+    # __builtin_elementwise_fma.
+    x86_64_copts = ["-mfma"],
+    deps = [
+        ":cpp_context_provider",
+        ":vector_ops",
+        ":ynnpack_unary_lib",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
 xla_cc_test(
     name = "cpp_gen_intrinsics_test",
     srcs = ["cpp_gen_intrinsics_test.cc"],
@@ -229,6 +264,18 @@ xla_cc_test(
         "//xla:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "ynnpack_unary_test",
+    srcs = ["ynnpack_unary_test.cc"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":ynnpack_unary_ll",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -338,6 +385,7 @@ cc_library(
         ":custom_cpp_intrinsics_ll",
         ":expm1_ll",
         ":trig_ll",
+        ":ynnpack_unary_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

@@ -261,9 +261,12 @@ UNARY_TEST_COMPLEX_128(Log, {
       bool should_skip = std::isnan(x.real()) || std::isnan(x.imag());
 
       double abs_err = 0;
+      double rel_err = 0;
       if (IsCpu() && std::abs(x.imag()) < 1.0e-6) {
-        // Subnormal imaginary parts are flashed to zero.
+        // Subnormal imaginary parts are flashed to zero. That fails the
+        // distance check, so the real part log|x| needs its own 1 ULP bound.
         abs_err = std::numeric_limits<double>::min();
+        rel_err = std::numeric_limits<double>::epsilon();
       }
       if (IsCpu() && std::abs(x.imag()) < 1.0e-280) {
         // TODO(b/138578313) produces wrong result.
@@ -279,6 +282,7 @@ UNARY_TEST_COMPLEX_128(Log, {
       }
       return ErrorSpec::Builder()
           .abs_err(abs_err)
+          .rel_err(rel_err)
           .distance_err(distance_err)
           .skip_comparison(should_skip)
           .strict_signed_zeros()
