@@ -2298,7 +2298,10 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
   ~FoldMultiplyIntoConv() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsConv2D(*node) || IsConv3D(*node);
+    // Activations and weights are read from the first two regular data inputs.
+    return node->input_size() >= 2 && !IsControlInput(node->input(0)) &&
+           !IsControlInput(node->input(1)) &&
+           (IsConv2D(*node) || IsConv3D(*node));
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -2330,6 +2333,8 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     NodeDef* tail = GetTailOfValuePreservingChain(*conv, *ctx().node_map,
                                                   *ctx().nodes_to_preserve);
 
+    // The chain stops at a node without a regular data input to follow.
+    TF_RETURN_IF_TRUE(tail->input_size() < 1 || IsControlInput(tail->input(0)));
     NodeDef* source;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
 
@@ -2338,6 +2343,10 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
     // And that Mul is not in the preserve set.
     TF_RETURN_IF_TRUE(IsInPreserveSet(*source));
+    // The activations and scale are read from the first two regular inputs.
+    TF_RETURN_IF_TRUE(source->input_size() < 2 ||
+                      IsControlInput(source->input(0)) ||
+                      IsControlInput(source->input(1)));
 
     const NodeDef* mul = source;
     int input_idx = 0;
@@ -2354,6 +2363,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_TRUE(!IsConstant(*scale));
 
     // Check that one of the inputs to mul is a constant scalar.
+    TF_RETURN_IF_ERROR(CheckAttrExists(*scale, "value"));
     const TensorProto& scale_tensor = scale->attr().at("value").tensor();
     bool scale_is_a_scalar = scale_tensor.has_tensor_shape() &&
                              scale_tensor.tensor_shape().dim_size() == 0;
