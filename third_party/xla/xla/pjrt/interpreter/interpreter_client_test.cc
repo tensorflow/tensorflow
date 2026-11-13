@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -296,6 +298,47 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(
       result_literal,
       LiteralUtil::CreateR1(absl::Span<const int32_t>{-3, -3})));
+}
+
+// A module that parses but does not pass the HLO verifier: the reshape's
+// inferred_dimension is not a dimension of its result shape.
+constexpr absl::string_view kUnverifiableHloText = R"(
+HloModule ReshapeInferredDimensionOutOfRange
+
+ENTRY main {
+  p = s32[6,4] parameter(0)
+  six = s32[] constant(6)
+  dyn = s32[<=6,4] set-dimension-size(p, six), dimensions={0}
+  ROOT r = s32[<=3,2,4] reshape(dyn), inferred_dimension=3
+}
+)";
+
+TEST(InterpreterClientTest, CompileRejectsModuleThatFailsVerification) {
+  // The interpreter runs DynamicDimensionInference on the module it is given,
+  // which relies on the invariants checked by the HLO verifier.
+  InterpreterClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnUnverifiedModule(kUnverifiableHloText));
+  XlaComputation computation(hlo_module->ToProto());
+
+  auto executable = client.CompileAndLoad(computation, CompileOptions());
+  ASSERT_FALSE(executable.ok());
+  EXPECT_THAT(executable.status().message(),
+              ::testing::HasSubstr("Expected inferred_dimension of reshape"));
+}
+
+TEST(InterpreterClientTest, DeserializeRejectsModuleThatFailsVerification) {
+  InterpreterClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnUnverifiedModule(kUnverifiableHloText));
+  ExecutableAndOptionsProto proto;
+  proto.set_serialized_executable(hlo_module->ToProto().SerializeAsString());
+
+  auto executable =
+      client.DeserializeExecutable(proto.SerializeAsString(), std::nullopt);
+  ASSERT_FALSE(executable.ok());
+  EXPECT_THAT(executable.status().message(),
+              ::testing::HasSubstr("Expected inferred_dimension of reshape"));
 }
 
 }  // namespace

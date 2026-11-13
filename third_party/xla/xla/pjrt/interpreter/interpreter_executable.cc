@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -188,6 +189,12 @@ InterpreterExecutable::Deserialize(
       HloModule::CreateModuleConfigFromProto(hlo_proto, debug_options));
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    HloModule::CreateFromProto(hlo_proto, hlo_module_config));
+  // The serialized module is the output of the interpreter pipeline, so it may
+  // use mixed precision.
+  ABSL_RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/true)
+                      .Run(hlo_module.get())
+                      .status());
 
   ABSL_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
@@ -267,6 +274,13 @@ CompileInterpreterExecutableInternal(
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(computation.proto(), *hlo_module_config));
+  // Verify the module before any pass or analysis runs on it. Mixed precision
+  // is only allowed in modules that are already optimized.
+  ABSL_RETURN_IF_ERROR(
+      HloVerifier(/*layout_sensitive=*/false,
+                  /*allow_mixed_precision=*/build_options.run_backend_only())
+          .Run(hlo_module.get())
+          .status());
 
   if (build_options.num_partitions() != 1) {
     return absl::UnimplementedError(
