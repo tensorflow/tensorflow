@@ -692,7 +692,7 @@ inline bool IsWellFormed(
     return false;
   }
   auto* node_view = diff->graph_view->GetNode(diff->node_index);
-  const string& node_name =
+  const std::string& node_name =
       diff->update_name ? diff->name : node_view->GetName();
   auto invalid_node_name = [&](absl::string_view fanin_node_name) -> bool {
     return fanin_node_name == node_name ||
