@@ -6482,9 +6482,6 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterElementwiseOps(
     if (!user->IsElementwise()) {
       continue;
     }
-    if (!ShouldSinkBroadcastAfterUser(broadcast, user)) {
-      continue;
-    }
     if (!absl::c_all_of(user->operands(), is_compatible_broadcast)) {
       continue;
     }

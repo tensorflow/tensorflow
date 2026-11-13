@@ -260,13 +260,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Platform-dependent hook to determine if convolution `conv` is lowerable.
   virtual bool ConvIsLowerable(HloInstruction* conv) const { return true; }
 
-  // Backend hook to decide whether `broadcast` may be sunk after `user` in
-  // TryToSinkBroadcastAfterElementwiseOps.
-  virtual bool ShouldSinkBroadcastAfterUser(const HloInstruction* broadcast,
-                                            const HloInstruction* user) const {
-    return true;
-  }
-
   // A method that allows various backends to specialize the propagation of
   // various attributes to the new instruction.
   virtual void SetupDerivedInstruction(HloInstruction* old_inst,
