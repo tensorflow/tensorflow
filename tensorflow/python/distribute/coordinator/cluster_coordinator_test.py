@@ -1125,6 +1125,150 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     self.coordinator.schedule(worker_fn, args=(per_worker_iterator,))
     self.coordinator.join()
 
+  def testCancelledWorkerIteratorIsRebuilt(self):
+    with self.strategy.scope():
+      init_entered = variables.Variable(0, dtype=dtypes.int32)
+      in_step = variables.Variable(0, dtype=dtypes.int32)
+      unblock = variables.Variable(0, dtype=dtypes.int32)
+      post_entered = variables.Variable(0, dtype=dtypes.int32)
+      per_worker_var = variables.Variable(
+          0.0, dtype=dtypes.float32, per_worker_variable=True
+      )
+
+    @def_function.function
+    def init_var_fn():
+      init_entered.assign_add(1)
+      while init_entered.read_value() < 3:
+        pass
+      per_worker_var.assign(7.0)
+
+    for _ in range(3):
+      self.coordinator.schedule(init_var_fn)
+    self.coordinator.join()
+
+    def input_fn():
+      def map_fn(x):
+        while unblock.read_value() == 0:
+          x = array_ops.identity(x)
+        return x + 10
+
+      return (
+          dataset_ops.DatasetV2.range(0, 5)
+          .repeat()
+          .map(map_fn, num_parallel_calls=1)
+      )
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def blocking_read_step(iterator):
+      if in_step.assign_add(1) > 0:
+        return next(iterator)
+      return constant_op.constant(0, dtype=dtypes.int64)
+
+    for _ in range(2):
+      self.coordinator.schedule(blocking_read_step, args=(per_worker_iterator,))
+    while in_step.read_value().numpy() < 2:
+      time.sleep(0.01)
+    time.sleep(0.05)
+
+    self.coordinator.schedule(self._error_function)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.coordinator.join()
+
+    unblock.assign(1)
+
+    @def_function.function
+    def verify_fn(iterator):
+      val = math_ops.cast(next(iterator), dtypes.float32) + per_worker_var
+      post_entered.assign_add(1)
+      while post_entered.read_value() < 3:
+        val = array_ops.identity(val)
+      return val
+
+    rvs = [
+        self.coordinator.schedule(verify_fn, args=(per_worker_iterator,))
+        for _ in range(3)
+    ]
+    self.coordinator.join()
+    for rv in rvs:
+      self.assertEqual(rv.fetch(), 17.0)
+
+  def testRepeatedIteratorCancelledErrorRaises(self):
+    with self.strategy.scope():
+      in_step = variables.Variable(0, dtype=dtypes.int32)
+      unblock = variables.Variable(0, dtype=dtypes.int32)
+      post_entered = variables.Variable(0, dtype=dtypes.int32)
+
+    cached_iterators = {}
+    cache_lock = threading.Lock()
+
+    def create_sticky_iterator():
+      worker_idx = (
+          coordinator_context.get_current_dispatch_context().worker_index
+      )
+      with cache_lock:
+        if worker_idx not in cached_iterators:
+
+          def map_fn(x):
+            while unblock.read_value() == 0:
+              x = array_ops.identity(x)
+            return x
+
+          ds = (
+              dataset_ops.DatasetV2.range(0, 5)
+              .repeat()
+              .map(map_fn, num_parallel_calls=1)
+          )
+          cached_iterators[worker_idx] = iter(ds)
+        return cached_iterators[worker_idx]
+
+    sticky_iter = self.coordinator._create_per_worker_resources(
+        create_sticky_iterator
+    )
+    for val in sticky_iter._values:
+      val._type_spec = input_lib.get_iterator_spec_from_dataset(
+          self.strategy, dataset_ops.DatasetV2.range(0, 5)
+      )
+
+    @def_function.function
+    def blocking_read_step(iterator):
+      if in_step.assign_add(1) > 0:
+        return next(iterator)
+      return constant_op.constant(0, dtype=dtypes.int64)
+
+    for _ in range(2):
+      self.coordinator.schedule(blocking_read_step, args=(sticky_iter,))
+    while in_step.read_value().numpy() < 2:
+      time.sleep(0.01)
+    time.sleep(0.05)
+
+    self.coordinator.schedule(self._error_function)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.coordinator.join()
+
+    unblock.assign(1)
+
+    @def_function.function
+    def post_read_fn(iterator):
+      val = next(iterator)
+      post_entered.assign_add(1)
+      while post_entered.read_value() < 3:
+        val = array_ops.identity(val)
+      return val
+
+    for _ in range(3):
+      self.coordinator.schedule(post_read_fn, args=(sticky_iter,))
+    with self.assertRaisesRegex(
+        errors.CancelledError, 'Iterator was cancelled'
+    ):
+      self.coordinator.join()
+
+    for _ in range(3):
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.join()
+
 
 class LimitedClosureQueueErrorTest(ErrorReportingTest):
   """Test error reporting works with explicit maximum closure queue size.
