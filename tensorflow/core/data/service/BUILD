@@ -540,6 +540,7 @@ cc_library(
     hdrs = ["grpc_dispatcher_impl.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":credentials_factory",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
         ":export_proto_cc",
@@ -608,6 +609,7 @@ cc_library(
     hdrs = ["grpc_worker_impl.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":credentials_factory",
         ":export_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_impl",

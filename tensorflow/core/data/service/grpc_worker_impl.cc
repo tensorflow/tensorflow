@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -36,7 +37,8 @@ using ::grpc::ServerContext;
 
 GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
                                ServerBuilder& server_builder)
-    : impl_(std::make_shared<DataServiceWorkerImpl>(config)) {
+    : protocol_(config.protocol()),
+      impl_(std::make_shared<DataServiceWorkerImpl>(config)) {
   server_builder.RegisterService(this);
   VLOG(1) << "Registered data service worker";
 }
@@ -63,6 +65,11 @@ WorkerStateExport GrpcWorkerImpl::ExportState() const {
   ::grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \
                                         const method##Request* request, \
                                         method##Response* response) {   \
+    if (absl::Status s = CredentialsFactory::Authorize(                 \
+            protocol_, context->auth_context().get());                  \
+        !s.ok()) {                                                      \
+      return ToGrpcStatus(s);                                           \
+    }                                                                   \
     return ToGrpcStatus(impl_->method(request, response));              \
   }
 HANDLER(ProcessTask);
