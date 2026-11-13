@@ -89,7 +89,7 @@ class CuptiTraceCollector {
   explicit CuptiTraceCollector(const CuptiTracerCollectorOptions& options)
       : options_(options),
         annotation_map_(options.max_annotation_strings, options.num_gpus) {}
-  virtual ~CuptiTraceCollector() {}
+  virtual ~CuptiTraceCollector() = default;
 
   // Producer side functions (i.e. called by CuptiTracer).
   virtual void AddEvent(CuptiTracerEvent&& event) = 0;
