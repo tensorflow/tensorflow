@@ -31,6 +31,18 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _int_scalar(value, name):
+  """Converts `value` to a tensor, casting any integer dtype to int32.
+
+  The window functions only accept int32 lengths, so NumPy int64 values (and
+  int64 tensors) are cast. Other dtypes are left as they are.
+  """
+  value = ops.convert_to_tensor(value, name=name)
+  if value.dtype.is_integer and value.dtype != dtypes.int32:
+    value = math_ops.cast(value, dtypes.int32)
+  return value
+
+
 @tf_export('signal.stft')
 @dispatch.add_dispatch_support
 def stft(signals, frame_length, frame_step, fft_length=None,
@@ -69,9 +81,9 @@ def stft(signals, frame_length, frame_step, fft_length=None,
                                      frame_step]):
     signals = ops.convert_to_tensor(signals, name='signals')
     signals.shape.with_rank_at_least(1)
-    frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+    frame_length = _int_scalar(frame_length, 'frame_length')
     frame_length.shape.assert_has_rank(0)
-    frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
+    frame_step = _int_scalar(frame_step, 'frame_step')
     frame_step.shape.assert_has_rank(0)
 
     # Validate frame_length / fft_length statically when possible. The
@@ -140,9 +152,9 @@ def inverse_stft_window_fn(frame_step,
       `frame_step` is not scalar, or `frame_step` is not scalar.
     """
     with ops.name_scope(name, 'inverse_stft_window_fn', [forward_window_fn]):
-      frame_step_ = ops.convert_to_tensor(frame_step, name='frame_step')
+      frame_step_ = _int_scalar(frame_step, 'frame_step')
       frame_step_.shape.assert_has_rank(0)
-      frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+      frame_length = _int_scalar(frame_length, 'frame_length')
       frame_length.shape.assert_has_rank(0)
 
       # Use equation 7 from Griffin + Lim.
@@ -234,9 +246,9 @@ def inverse_stft(stfts,
   with ops.name_scope(name, 'inverse_stft', [stfts]):
     stfts = ops.convert_to_tensor(stfts, name='stfts')
     stfts.shape.with_rank_at_least(2)
-    frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+    frame_length = _int_scalar(frame_length, 'frame_length')
     frame_length.shape.assert_has_rank(0)
-    frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
+    frame_step = _int_scalar(frame_step, 'frame_step')
     frame_step.shape.assert_has_rank(0)
     # Same rationale as in `stft` above: the FFT backend aborts the
     # process on a zero-length transform, so we validate the static
@@ -369,7 +381,7 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
   with ops.name_scope(name, 'mdct', [signals, frame_length]):
     signals = ops.convert_to_tensor(signals, name='signals')
     signals.shape.with_rank_at_least(1)
-    frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+    frame_length = _int_scalar(frame_length, 'frame_length')
     frame_length.shape.assert_has_rank(0)
     # Assert that frame_length is divisible by 4.
     frame_length_static = tensor_util.constant_value(frame_length)
