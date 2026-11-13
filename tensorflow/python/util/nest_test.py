@@ -154,6 +154,21 @@ class NestTest(parameterized.TestCase, test.TestCase):
       field1 = attr.ib()
       field2 = attr.ib()
 
+    @attr.s(kw_only=True)
+    class KeywordOnlyAttr(object):
+      field1 = attr.ib()
+      _field2 = attr.ib()
+
+    @attr.s
+    class NonInitAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib(init=False, default=0)
+
+    @attr.s(frozen=True)
+    class FrozenNonInitAttr(object):
+      field1 = attr.ib(kw_only=True)
+      field2 = attr.ib(init=False, default=0)
+
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDataclassCustomProtocol(self):
     mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
@@ -708,6 +723,44 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Check that flatten fails if attributes are not iterable
     with self.assertRaisesRegex(TypeError, "object is not iterable"):
       flat = nest.flatten(NestTest.BadAttr())
+
+  def testAttrsKeywordOnlyFields(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    structure = NestTest.KeywordOnlyAttr(field1=1, field2=[2, 3])
+    self.assertEqual(nest.flatten(structure), [1, 2, 3])
+    restructured = nest.pack_sequence_as(structure, [4, 5, 6])
+    self.assertEqual(
+        restructured, NestTest.KeywordOnlyAttr(field1=4, field2=[5, 6])
+    )
+    mapped = nest.map_structure(lambda x: x + 1, structure)
+    self.assertEqual(
+        mapped, NestTest.KeywordOnlyAttr(field1=2, field2=[3, 4])
+    )
+
+  def testAttrsNonInitFields(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    structure = NestTest.NonInitAttr(field1=1)
+    structure.field2 = 2
+    self.assertEqual(nest.flatten(structure), [1, 2])
+    restructured = nest.pack_sequence_as(structure, [3, 4])
+    self.assertIsInstance(restructured, NestTest.NonInitAttr)
+    self.assertEqual((restructured.field1, restructured.field2), (3, 4))
+    # The input is left unchanged.
+    self.assertEqual((structure.field1, structure.field2), (1, 2))
+
+  def testAttrsFrozenNonInitFields(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    structure = NestTest.FrozenNonInitAttr(field1=1)
+    self.assertEqual(nest.flatten(structure), [1, 0])
+    mapped = nest.map_structure(lambda x: x + 1, structure)
+    self.assertIsInstance(mapped, NestTest.FrozenNonInitAttr)
+    self.assertEqual((mapped.field1, mapped.field2), (2, 1))
 
   @parameterized.parameters(
       {"values": [1, 2, 3]},

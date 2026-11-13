@@ -33,6 +33,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest_util
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.nest_util import CustomNestProtocol
 from tensorflow.python.util.tf_export import tf_export
@@ -490,9 +491,10 @@ def type_spec_from_value(element, use_fallback=True):
   if hasattr(element.__class__, "__attrs_attrs__"):
     # `element` is an `attr.s` decorated class
     attrs = getattr(element.__class__, "__attrs_attrs__")
-    return type(element)(*[
-        type_spec_from_value(getattr(element, a.name)) for a in attrs
-    ])
+    return nest_util.sequence_like(
+        element,
+        [type_spec_from_value(getattr(element, a.name)) for a in attrs],
+    )
 
   if isinstance(element, CustomNestProtocol):
     # pylint: disable=protected-access

@@ -664,7 +664,9 @@ class Attrs(trace.TraceType):
         attribute.placeholder_value(placeholder_context)
         for attribute in self.named_attributes.attributes.components
     ]
-    return self._placeholder_type(*attribute_placeholders)
+    return util.attrs_from_values(
+        self._placeholder_type, attribute_placeholders
+    )
 
   def to_tensors(self, value: Any):
     assert util.is_attrs(value)
@@ -680,11 +682,12 @@ class Attrs(trace.TraceType):
     if self._placeholder_type is None:
       raise ValueError("Packing serialized NamedTuples is not supported.")
 
-    return self._placeholder_type(
-        *[
+    return util.attrs_from_values(
+        self._placeholder_type,
+        [
             c.from_tensors(tensors)
             for c in self.named_attributes.attributes.components
-        ]
+        ],
     )
 
   def flatten(self) -> PythonList[trace.TraceType]:
@@ -706,7 +709,7 @@ class Attrs(trace.TraceType):
     )
 
     if was_casted:
-      return self._placeholder_type(*casted_values)  # pyrefly: ignore[not-callable]
+      return util.attrs_from_values(self._placeholder_type, casted_values)
     else:
       return value
 

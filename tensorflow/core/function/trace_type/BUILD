@@ -107,6 +107,7 @@ py_test(
     deps = [
         ":default_types",
         ":serialization",
+        ":util",
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow/python/platform:client_testlib",
