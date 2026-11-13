@@ -245,6 +245,11 @@ class GpuCompiler : public LLVMCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) = 0;
 
+  // Returns the backend-specific file extension for asm files.
+  virtual absl::StatusOr<absl::string_view> AsmFileExtension() const {
+    return absl::UnimplementedError("AsmFileExtension is not implemented.");
+  }
+
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.
   virtual absl::StatusOr<BackendCompileResult> CompileTargetBinary(

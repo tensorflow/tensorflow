@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
@@ -105,6 +106,8 @@ class NVPTXCompiler : public GpuCompiler {
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
       std::optional<int> shard_number) override;
+
+  absl::StatusOr<absl::string_view> AsmFileExtension() const override;
 
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config,

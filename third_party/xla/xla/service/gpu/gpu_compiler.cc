@@ -2702,29 +2702,40 @@ GpuCompiler::CompileSingleModule(
       CompileTargetBinary(module_config, llvm_module, device_description,
                           relocatable, debug_module, shard_number));
 
-  const bool should_dump =
-      DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                 debug_options) &&
-      DumpingEnabledForEmitter("llvm", debug_options);
+  bool dumping_enabled = DumpingEnabledForHloModule(
+      debug_module ? debug_module->name() : "", debug_options);
+  if (dumping_enabled && !debug_module) {
+    LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
+                  "inferred. Please implement (potentially MLIR) module -> "
+                  "filename heuristic.";
+    dumping_enabled = false;
+  }
 
-  if (should_dump) {
-    if (debug_module) {
-      llvm_ir::DumpIrIfEnabled(
-          *debug_module, *llvm_module,
-          /*optimized=*/true,
-          shard_number.has_value() ? std::to_string(*shard_number) : "");
-    } else {
-      LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
-                    "inferred. Please implement (potentially MLIR) module -> "
-                    "filename heuristic.";
-    }
+  if (dumping_enabled && DumpingEnabledForEmitter("llvm", debug_options)) {
+    llvm_ir::DumpIrIfEnabled(
+        *debug_module, *llvm_module,
+        /*optimized=*/true,
+        shard_number.has_value() ? std::to_string(*shard_number) : "");
   }
 
   CallUserPostOptimizationHook(*llvm_module);
 
-  absl::MutexLock lock(user_asm_hook_m_);
-  if (user_asm_hook_ && !result.asm_text.empty()) {
-    user_asm_hook_(result.asm_text);
+  if (!result.asm_text.empty()) {
+    ABSL_ASSIGN_OR_RETURN(absl::string_view asm_extension, AsmFileExtension());
+    if (dumping_enabled &&
+        DumpingEnabledForEmitter(asm_extension, debug_options)) {
+      DumpToFileInDirOrStdout(
+          *debug_module, "",
+          shard_number.has_value()
+              ? absl::StrCat(*shard_number, ".", asm_extension)
+              : asm_extension,
+          result.asm_text);
+    }
+
+    absl::MutexLock lock(user_asm_hook_m_);
+    if (user_asm_hook_) {
+      user_asm_hook_(result.asm_text);
+    }
   }
 
   return result;

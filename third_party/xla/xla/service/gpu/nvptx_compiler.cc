@@ -101,8 +101,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -111,9 +109,9 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
+constexpr absl::string_view kAsmFileExtension = "ptx";
 
 class ConvBfloat16Support : public FloatSupport {
  public:
@@ -532,6 +530,10 @@ std::unique_ptr<GpuAliasInfo> NVPTXCompiler::GetAliasInfo(
   return std::make_unique<NVPTXAliasInfo>(device_description);
 }
 
+absl::StatusOr<absl::string_view> NVPTXCompiler::AsmFileExtension() const {
+  return kAsmFileExtension;
+}
+
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
@@ -580,23 +582,6 @@ NVPTXCompiler::CompileTargetBinary(
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
-
-    if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   debug_options) &&
-        DumpingEnabledForEmitter("ptx", debug_options)) {
-      if (debug_module) {
-        DumpToFileInDirOrStdout(*debug_module, "",
-                                shard_number.has_value()
-                                    ? (std::to_string(*shard_number) + ".ptx")
-                                    : "ptx",
-                                ptx);
-      } else {
-        LOG(ERROR)
-            << "Dumping is not implemented since the file name cannot be "
-               "inferred. Please implement (potentially MLIR) module -> "
-               "filename heuristic.";
-      }
-    }
   }
 
   if (ptx.empty()) {
@@ -707,5 +692,4 @@ std::vector<std::string> NVPTXCompiler::GetLLVMCommandLineOptions(
     const DebugOptions& debug_options) const {
   return nvptx::GetNVPTXBackendOptions(debug_options);
 }
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
