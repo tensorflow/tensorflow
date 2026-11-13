@@ -23,7 +23,6 @@ old_ptxas.patch
 tmemfix.patch
 amd_range_analysis.patch
 fix_load_ops.patch
-cxx17_support.patch
 llvm_cl996124567.patch
 llvm_cl998243985.patch
 llvm_cl1000840178.patch
