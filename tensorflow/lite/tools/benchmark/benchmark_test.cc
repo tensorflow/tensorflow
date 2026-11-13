@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
+#include "tensorflow/lite/tools/benchmark/gpu_memory_profiling_listener.h"
 #include "tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
@@ -725,6 +726,53 @@ TEST(BenchmarkTest, BenchmarkResultFileIsWritten) {
             listener.results().warmup_time_us().count());
   EXPECT_FLOAT_EQ(result.misc_metrics().model_throughput_in_mb_per_sec(),
                   listener.results().throughput_MB_per_second());
+}
+
+TEST(BenchmarkTest, EnableGpuMemoryMonitorFlagPreservesCoreMetrics) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<std::string>("graph", *g_fp32_model_path);
+  params.Set<int32_t>("num_runs", 2);
+  params.Set<float>("min_secs", 0.0f);
+  params.Set<int32_t>("warmup_runs", 1);
+  params.Set<float>("warmup_min_secs", 0.0f);
+  params.Set<bool>("enable_gpu_memory_monitor", true);
+  params.Set<int32_t>("gpu_memory_monitor_interval_ms", 0);
+
+  TestBenchmark benchmark(std::move(params));
+  TestBenchmarkListener listener;
+  benchmark.AddListener(&listener);
+  EXPECT_EQ(benchmark.Run(), kTfLiteOk);
+  EXPECT_EQ(benchmark.mutable_params()->Get<int32_t>(
+                "gpu_memory_monitor_interval_ms"),
+            GpuMemoryProfilingListener::kDefaultSamplingIntervalMs);
+
+  // Default peak_mem_mb remains unset when --report_peak_memory_footprint is
+  // false, confirming the GPU memory listener does not alter core metrics.
+  EXPECT_LT(listener.results().peak_mem_mb(), 0.0f);
+}
+
+TEST(BenchmarkTest, ExternalGpuMemoryProfilingListenerCollectsSnapshots) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<std::string>("graph", *g_fp32_model_path);
+  params.Set<int32_t>("num_runs", 2);
+  params.Set<float>("min_secs", 0.0f);
+  params.Set<int32_t>("warmup_runs", 1);
+  params.Set<float>("warmup_min_secs", 0.0f);
+
+  TestBenchmark benchmark(std::move(params));
+  GpuMemoryProfilingListener gpu_listener;
+  benchmark.AddListener(&gpu_listener);
+  EXPECT_EQ(benchmark.Run(), kTfLiteOk);
+
+#if defined(__linux__)
+  ASSERT_TRUE(gpu_listener.IsSupported());
+  EXPECT_GE(gpu_listener.num_samples(), 2);
+  EXPECT_TRUE(gpu_listener.init_snapshot().has_value());
+  EXPECT_TRUE(gpu_listener.end_snapshot().has_value());
+  EXPECT_FALSE(gpu_listener.FormatSummary().empty());
+#endif
 }
 
 }  // namespace

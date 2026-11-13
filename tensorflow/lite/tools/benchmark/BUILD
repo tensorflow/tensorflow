@@ -134,6 +134,7 @@ cc_test(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
+        ":gpu_memory_profiling_listener",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
@@ -273,6 +274,76 @@ cc_library(
 )
 
 cc_library(
+    name = "benchmark_listener",
+    hdrs = ["benchmark_listener.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_params",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/profiling:memory_info",
+        "//tensorflow/lite/profiling:memory_usage_monitor",
+    ],
+)
+
+cc_library(
+    name = "gpu_memory_info",
+    srcs = ["gpu_memory_info.cc"],
+    hdrs = ["gpu_memory_info.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:shared_library",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "gpu_memory_info_test",
+    srcs = ["gpu_memory_info_test.cc"],
+    deps = [
+        ":gpu_memory_info",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_memory_profiling_listener",
+    srcs = ["gpu_memory_profiling_listener.cc"],
+    hdrs = ["gpu_memory_profiling_listener.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_listener",
+        ":benchmark_params",
+        ":gpu_memory_info",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    name = "gpu_memory_profiling_listener_test",
+    srcs = ["gpu_memory_profiling_listener_test.cc"],
+    deps = [
+        ":benchmark_listener",
+        ":benchmark_params",
+        ":gpu_memory_info",
+        ":gpu_memory_profiling_listener",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "benchmark_model_lib",
     srcs = [
         "benchmark_model.cc",
@@ -280,8 +351,10 @@ cc_library(
     hdrs = ["benchmark_model.h"],
     copts = common_copts,
     deps = [
+        ":benchmark_listener",
         ":benchmark_params",
         ":benchmark_utils",
+        ":gpu_memory_profiling_listener",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/c:common",
