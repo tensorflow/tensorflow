@@ -1196,5 +1196,201 @@ ENTRY cluster {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(TopkRewriterTest, Rewrite3DShardedSortClearsIncompatibleSharding) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[4,8,1024] parameter(0), sharding={devices=[2,1,1]0,1}
+  %iota = s32[4,8,1024] iota(), iota_dimension=2, sharding={devices=[2,1,1]0,1}
+  %sort = (f32[4,8,1024], s32[4,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[2,1,1]0,1}, {devices=[2,1,1]0,1}}
+  %gte.0 = f32[4,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[4,8,5] slice(%gte.0), slice={[0:4], [0:8], [0:5]}
+  %gte.1 = s32[4,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[4,8,5] slice(%gte.1), slice={[0:4], [0:8], [0:5]}
+  ROOT %tuple = (f32[4,8,5], s32[4,8,5]) tuple(%slice.0, %slice.1)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  ASSERT_OK(verifier().Run(module.get()).status());
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_FALSE(cc->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite2DSortDim0TiledShardingClearsSharding) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module_2d_tiled
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={devices=[1,2]0,1}
+  %iota = s32[1024,8] iota(), iota_dimension=0, sharding={devices=[1,2]0,1}
+  %sort = (f32[1024,8], s32[1024,8]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[1,2]0,1}, {devices=[1,2]0,1}}
+  %gte.0 = f32[1024,8] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5,8] slice(%gte.0), slice={[0:5], [0:8]}
+  %gte.1 = s32[1024,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5,8] slice(%gte.1), slice={[0:5], [0:8]}
+  ROOT %tuple = (f32[5,8], s32[5,8]) tuple(%slice.0, %slice.1)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  ASSERT_OK(verifier().Run(module.get()).status());
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Transpose(m::Parameter(0))), 0)),
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_FALSE(cc->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite1DShardedSortPreservesSharding) {
+  // 1D sorts (has_batch == false, sort_dim == 0) do not reshape or transpose,
+  // so valid 1D tiled shardings are preserved on topk (for 2-operand sort) and
+  // value_gte (for 1-operand sort).
+  const std::string hlo_1d_sharded = absl::StrCat(R"(
+HloModule module_1d
+)",
+                                                  getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024] parameter(0), sharding={devices=[2]0,1}
+  %iota = s32[1024] iota(), iota_dimension=0, sharding={devices=[2]0,1}
+  %sort = (f32[1024], s32[1024]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  %gte.0 = f32[1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5] slice(%gte.0), slice={[0:5]}
+  %gte.1 = s32[1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5] slice(%gte.1), slice={[0:5]}
+  ROOT %tuple = (f32[5], s32[5]) tuple(%slice.0, %slice.1)
+})");
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_1d,
+                       ParseAndReturnVerifiedModule(hlo_1d_sharded));
+  ASSERT_OK_AND_ASSIGN(bool changed_1d, rewriter.Run(module_1d.get()));
+  ASSERT_OK(HloDCE().Run(module_1d.get()).status());
+  EXPECT_TRUE(changed_1d);
+  ASSERT_OK(verifier().Run(module_1d.get()).status());
+  const HloInstruction* cc_1d = nullptr;
+  EXPECT_THAT(module_1d->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(&cc_1d, m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+  ASSERT_NE(cc_1d, nullptr);
+  EXPECT_TRUE(cc_1d->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite2DSortDim0ManualShardingPreservesSharding) {
+  // Manual sharding on a 2D sort_dim == 0 sort is preserved on topk, whereas
+  // tiled sharding is cleared because topk transposes the dimensions.
+  const std::string hlo_2d_manual = absl::StrCat(R"(
+HloModule module_manual
+)",
+                                                 getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={manual}
+  %iota = s32[1024,8] iota(), iota_dimension=0, sharding={manual}
+  %sort = (f32[1024,8], s32[1024,8]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{manual}, {manual}}
+  %gte.0 = f32[1024,8] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5,8] slice(%gte.0), slice={[0:5], [0:8]}
+  %gte.1 = s32[1024,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5,8] slice(%gte.1), slice={[0:5], [0:8]}
+  ROOT %tuple = (f32[5,8], s32[5,8]) tuple(%slice.0, %slice.1)
+})");
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_manual,
+                       ParseAndReturnVerifiedModule(hlo_2d_manual));
+  ASSERT_OK_AND_ASSIGN(bool changed_manual, rewriter.Run(module_manual.get()));
+  ASSERT_OK(HloDCE().Run(module_manual.get()).status());
+  EXPECT_TRUE(changed_manual);
+  ASSERT_OK(verifier().Run(module_manual.get()).status());
+  const HloInstruction* cc_manual = nullptr;
+  EXPECT_THAT(
+      module_manual->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Transpose(m::GetTupleElement(
+              m::CustomCall(&cc_manual, m::Transpose(m::Parameter(0))), 0)),
+          m::Transpose(m::GetTupleElement(
+              m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc_manual, nullptr);
+  ASSERT_TRUE(cc_manual->has_sharding());
+  EXPECT_TRUE(cc_manual->sharding().IsManual());
+}
+
+TEST_F(TopkRewriterTest,
+       Rewrite3DShardedSort1OperandClearsIncompatibleSharding) {
+  for (absl::string_view hlo_body : {
+           R"(
+ENTRY cluster {
+  %arg = f32[4,8,1024] parameter(0), sharding={devices=[2,1,1]0,1}
+  %sort = f32[4,8,1024] sort(%arg),
+    dimensions={2}, is_stable=true, to_apply=%compare,
+    sharding={devices=[2,1,1]0,1}
+  ROOT %slice = f32[4,8,5] slice(%sort), slice={[0:4], [0:8], [0:5]}
+})",
+           R"(
+ENTRY cluster {
+  %arg = f32[1024,4,8] parameter(0), sharding={devices=[1,2,1]0,1}
+  %sort = f32[1024,4,8] sort(%arg),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={devices=[1,2,1]0,1}
+  ROOT %slice = f32[5,4,8] slice(%sort), slice={[0:5], [0:4], [0:8]}
+})",
+           R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={devices=[1,2]0,1}
+  %sort = f32[1024,8] sort(%arg),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={devices=[1,2]0,1}
+  ROOT %slice = f32[5,8] slice(%sort), slice={[0:5], [0:8]}
+})",
+       }) {
+    const std::string hlo_string =
+        absl::StrCat("HloModule module\n", getComparatorNoIota(), hlo_body);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    EXPECT_TRUE(changed);
+    ASSERT_OK(verifier().Run(module.get()).status());
+    for (const HloInstruction* inst :
+         module->entry_computation()->instructions()) {
+      if (inst->opcode() != HloOpcode::kParameter) {
+        EXPECT_FALSE(inst->has_sharding()) << inst->ToString();
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla

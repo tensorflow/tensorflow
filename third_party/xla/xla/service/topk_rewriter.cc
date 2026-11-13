@@ -374,6 +374,11 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k,
   int64_t batch_size = 1;
   Shape topk_input_shape;
 
+  if ((data_shape.dimensions().size() > 2 || (has_batch && sort_dim == 0)) &&
+      sort->has_sharding() && sort->sharding().IsTiled()) {
+    sort->clear_sharding();
+  }
+
   if (has_batch) {
     // The TopK custom call expects either a 1d tensor or a 2d tensor with
     // the last dimension being the sort dimension. An input with rank > 2
