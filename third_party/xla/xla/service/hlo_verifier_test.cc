@@ -4520,6 +4520,35 @@ ENTRY main {
                 .status());
 }
 
+TEST_F(HloVerifierTest, ReshapeInferredDimensionOutOfRange) {
+  auto make_hlo = [](int64_t inferred_dimension) {
+    return absl::StrCat(R"(
+HloModule ReshapeInferredDimensionOutOfRange
+
+ENTRY main {
+  p = f32[<=6,4] parameter(0)
+  ROOT r = f32[<=3,2,4] reshape(p), inferred_dimension=)",
+                        inferred_dimension, R"(
+}
+)");
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto valid_module,
+                       ParseAndReturnUnverifiedModule(make_hlo(0)));
+  EXPECT_THAT(verifier().Run(valid_module.get()), IsOkAndHolds(false));
+
+  for (int64_t bad_dim : {int64_t{3}, int64_t{-2}}) {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnUnverifiedModule(make_hlo(bad_dim)));
+    EXPECT_THAT(
+        verifier().Run(module.get()),
+        StatusIs(
+            absl::StatusCode::kInvalidArgument,
+            HasSubstr("Expected inferred_dimension of reshape to be -1 or in "
+                      "[0, 3)")));
+  }
+}
+
 TEST_F(HloVerifierTest, VerifyCustomCallThread) {
   const char* const hlo = R"(
     HloModule module

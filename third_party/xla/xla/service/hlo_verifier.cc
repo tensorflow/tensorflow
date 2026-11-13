@@ -1760,9 +1760,18 @@ absl::Status ShapeVerifier::HandleDynamicReshape(
 absl::Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   // Check for mixed precision.
   const Shape& operand_shape = reshape->operand(0)->shape();
+  TF_RET_CHECK(reshape->shape().IsArray() && operand_shape.IsArray());
   TF_RET_CHECK(SameElementType(reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(operand_shape));
+  const int64_t inferred_dimension = reshape->inferred_dimension();
+  const int64_t rank = reshape->shape().dimensions().size();
+  if (inferred_dimension < -1 || inferred_dimension >= rank) {
+    return InvalidArgument(
+        "Expected inferred_dimension of reshape to be -1 or in [0, %d), got "
+        "%d: %s",
+        rank, inferred_dimension, reshape->ToString());
+  }
   return absl::OkStatus();
 }
 
