@@ -61,6 +61,30 @@ class BlasLt : public gpu::BlasLt {
       return absl::OkStatus();
     }
 
+    // For executing complex (C64/C128) matmuls using oneMKL as
+    // oneDNN doesn't support these data types.
+    class OneMklMatmulPlan : public gpu::BlasLt::MatmulPlan {
+     public:
+      OneMklMatmulPlan(const gpu::GemmConfig& config) : config_(config) {}
+      ~OneMklMatmulPlan() override = default;
+      absl::Status ExecuteOnStream(
+          Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+          blas::ProfileResult* profile_result) const override;
+
+      absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+          size_t max_algorithm_count,
+          size_t max_workspace_size) const override {
+        return std::vector<MatmulAlgorithm>{MatmulAlgorithm{std::any{}, 0}};
+      }
+
+      absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
+        return absl::OkStatus();
+      }
+
+     private:
+      const gpu::GemmConfig config_;
+    };
+
    private:
     std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
     xla::gpu::GemmConfig config_;
