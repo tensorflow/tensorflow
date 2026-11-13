@@ -65,7 +65,7 @@ std::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   if (!call_op) return std::nullopt;
 
   mlir::CallInterfaceCallable callable = call_op.getCallableForCallee();
-  mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
+  auto sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(callable);
   if (!sym) return std::nullopt;
 
   mlir::func::FuncOp func = llvm::dyn_cast<mlir::func::FuncOp>(
