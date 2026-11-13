@@ -860,9 +860,19 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
       absl::StrFormat("[%d] [rank=%v] [run_id=%v] Acquire clique: %v",
                       device->device_ordinal(), rank, run_id, clique_key);
 
+  // A clique lock together with an owner of the locked clique. `Lockable::Lock`
+  // holds a raw pointer, and a concurrent run can erase the clique from the
+  // cache (abandon it) before we lock it, so the cache entry alone doesn't
+  // guarantee that the clique outlives the lock. The owner is declared first,
+  // so it is destroyed after the lock is released.
+  struct OwnedLock {
+    std::shared_ptr<LockableGpuClique> owner;
+    LockableGpuClique::Lock lock;
+  };
+
   ABSL_ASSIGN_OR_RETURN(
-      std::shared_ptr<LockableGpuClique::Lock> clique,
-      Rendezvous<LockableGpuClique::Lock>(
+      std::shared_ptr<OwnedLock> owned_clique,
+      Rendezvous<OwnedLock>(
           rendezvous_name, rendezvous_key, device_rank, num_local_participants,
           [&](absl::Span<const DeviceRank* const> participants) {
             tsl::profiler::TraceMe trace("LockGpuClique");
@@ -880,8 +890,12 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
             // abandon their own cliques.
             std::shared_ptr<LockableGpuClique> abandoned;
 
-            // Returns nullptr if we do not have a clique for `clique_key`.
-            auto lockable_clique = [&]() -> LockableGpuClique* {
+            // Returns nullptr if we do not have a clique for `clique_key`. We
+            // return a shared pointer to keep the clique alive after we
+            // release `state.mu`: a concurrent run can abandon it (erase it
+            // from the cache) before we lock it below.
+            std::shared_ptr<LockableGpuClique> lockable_clique =
+                [&]() -> std::shared_ptr<LockableGpuClique> {
               absl::MutexLock lock(state.mu);
               CliqueCacheKey cache_key(collectives, clique_key);
               auto it = state.cliques.find(cache_key);
@@ -941,6 +955,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
                 // users we can delete it. It will be destroyed when `abandoned`
                 // gets out of scope, after we release `state.mu`.
                 state.cliques.erase(cache_key);
+                to_lock->MarkAbandoned();
                 abandoned = std::move(to_lock);
 
                 return nullptr;
@@ -957,13 +972,34 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
               // died), we return a nullptr, as the clique will have to be
               // re-created.
               absl::Status stale = CheckCliqueIsNotStaleImpl(state, clique_key);
-              return stale.ok() ? to_lock.get() : nullptr;
+              return stale.ok() ? std::move(to_lock) : nullptr;
             }();
 
-            return lockable_clique ? lockable_clique->Acquire()
-                                   : LockableGpuClique::Lock();
+            if (!lockable_clique) return OwnedLock();
+            LockableGpuClique::Lock lock = lockable_clique->Acquire();
+
+            // A concurrent run could abandon the clique after we looked it up
+            // but before we locked it. Reusing it would diverge from the other
+            // ranks that re-split the clique, so we release the lock and
+            // return an empty lock to acquire the clique from scratch. If the
+            // clique is not abandoned now, nobody can abandon it while we hold
+            // the lock, as abandoning has to wait for it.
+            if (lockable_clique->IsAbandoned()) {
+              VLOG(1) << absl::StrFormat(
+                  "[%s] [ranks=%s] Clique %v was abandoned by a concurrent "
+                  "run before it was locked. Re-acquiring it from scratch",
+                  DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+                  clique_key);
+              return OwnedLock();
+            }
+            return OwnedLock{std::move(lockable_clique), std::move(lock)};
           },
           WarnStuckTimeout(), TerminateTimeout()));
+
+  // Shares ownership of `owned_clique`, so the clique is
+  // kept alive until the last reference to the lock is dropped.
+  std::shared_ptr<LockableGpuClique::Lock> clique(owned_clique,
+                                                  &owned_clique->lock);
 
   // If lock is not null return it to the caller, as it means that we already
   // had a clique were were looking for and we were able to lock access to it.

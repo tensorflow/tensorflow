@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -160,6 +161,22 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
 
   // Cancels all communicators in the clique without taking the lock.
   void Cancel();
+
+  // Marks the clique as abandoned: it was erased from the process state, and
+  // its users must acquire a new clique instead. Must be called while holding
+  // the clique lock, so that anyone who acquires the lock afterwards (and
+  // synchronizes with its release) observes the flag.
+  void MarkAbandoned() { abandoned_.store(true, std::memory_order_release); }
+
+  // Returns true if the clique was abandoned. If it returns false to a holder
+  // of the clique lock, the clique can't be abandoned until the lock is
+  // released.
+  bool IsAbandoned() const {
+    return abandoned_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::atomic<bool> abandoned_ = false;
 };
 
 }  // namespace xla::gpu
