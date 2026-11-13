@@ -110,7 +110,7 @@ void DumpColocationGraph(const std::string& base_name,
   }
   if (!status.ok()) {
     LOG(ERROR) << "Failed to write final colocation graph to file " << fname
-               << " with " << status.ToString();
+               << " with " << status;
   }
 }
 

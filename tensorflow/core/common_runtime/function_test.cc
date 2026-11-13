@@ -263,8 +263,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     absl::Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(absl::IsNotFound(status2))
-        << "Actual status: " << status2.ToString();
+    EXPECT_TRUE(absl::IsNotFound(status2)) << "Actual status: " << status2;
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
