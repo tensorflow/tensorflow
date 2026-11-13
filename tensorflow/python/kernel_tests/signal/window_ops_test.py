@@ -69,6 +69,33 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   return window
 
 
+def _scipy_blackman(length, symmetric=True):
+  """A simple implementation of a Blackman window that matches SciPy.
+
+  https://en.wikipedia.org/wiki/Window_function#Blackman_window
+
+  Like `scipy.signal.windows.blackman(length, sym=symmetric)`, a periodic window
+  is the symmetric window of length `length + 1` with its last point dropped,
+  for both even and odd `length`.
+
+  Args:
+    length: The window length.
+    symmetric: Whether to create a symmetric window.
+
+  Returns:
+    A Blackman window of length `length`.
+  """
+  if length == 1:
+    return np.ones(1)
+  if not symmetric:
+    length += 1
+  window = (0.42 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
+            + 0.08 * np.cos(4.0 * np.pi * np.arange(length) / (length - 1)))
+  if not symmetric:
+    window = window[:-1]
+  return window
+
+
 @tf_test_util.run_all_in_graph_and_eager_modes
 class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
@@ -251,7 +278,55 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
-          (window_ops.hann_window, window_ops.hamming_window),
+          _WINDOW_LENGTHS,
+          (False, True),
+          _TF_DTYPE_TOLERANCE))
+  def test_blackman_window(self, window_length, periodic, tf_dtype_tol):
+    """Check that blackman_window matches scipy.signal.blackman's behavior."""
+    self._compare_window_fns(
+        _scipy_blackman,
+        window_ops.blackman_window, window_length, periodic, tf_dtype_tol)
+
+  @parameterized.parameters(
+      (window_ops.blackman_window, _scipy_blackman),
+      (window_ops.hann_window, _scipy_raised_cosine),
+  )
+  def test_dynamic_window_length(self, window_fn, scipy_window_fn):
+    """Check dynamic tensor window_length inputs exercising the cond branch."""
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def dynamic_window_symmetric(length):
+      return window_fn(length, periodic=False)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def dynamic_window_periodic(length):
+      return window_fn(length, periodic=True)
+
+    for length in (1, 5):
+      expected_sym = scipy_window_fn(length, symmetric=True).astype(np.float32)
+      actual_sym = dynamic_window_symmetric(
+          constant_op.constant(length, dtype=dtypes.int32))
+      self.assertAllClose(expected_sym, self.evaluate(actual_sym), 1e-6, 1e-6)
+
+      expected_per = scipy_window_fn(length, symmetric=False).astype(np.float32)
+      actual_per = dynamic_window_periodic(
+          constant_op.constant(length, dtype=dtypes.int32))
+      self.assertAllClose(expected_per, self.evaluate(actual_per), 1e-6, 1e-6)
+
+  def test_blackman_window_gradient(self):
+    x = constant_op.constant(np.ones(10), dtype=dtypes.float32)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      window = window_ops.blackman_window(10, dtype=dtypes.float32)
+      loss = math_ops.reduce_sum(window * x)
+    grad = tape.gradient(loss, x)
+    self.assertAllClose(self.evaluate(window), self.evaluate(grad))
+
+  @parameterized.parameters(
+      itertools.product(
+          (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.blackman_window),
           (3, 5, 9, 31),
           (False, True),
       )
@@ -282,6 +357,7 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       itertools.product(
           (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.blackman_window,
            window_ops.kaiser_window, window_ops.kaiser_bessel_derived_window,
            window_ops.vorbis_window),
           (False, True),

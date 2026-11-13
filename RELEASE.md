@@ -26,6 +26,8 @@
     * `tfl.logistic` now accepts FLOAT16 inputs and outputs (the LOGISTIC kernel already supports them at version 1), and the converter fuses float16 sigmoids into it, including the overflow-free `select(x >= 0, 1, exp(-|x|)) / (1 + exp(-|x|))` form that JAX lowers `jax.nn.sigmoid` to.
 * `tf.function` / `PolymorphicFunction`:
     * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
+* `tf.signal`:
+    * Adds `tf.signal.blackman_window` for generating Blackman windows.
 
 ### Bug Fixes and Other Changes
 
