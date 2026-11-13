@@ -17,6 +17,7 @@
 
 import collections
 
+import ml_dtypes
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -817,7 +818,8 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
 
   The default `atol` and `rtol` is `10 * eps`, where `eps` is the smallest
   representable positive number such that `1 + eps != 1`.  This is about
-  `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, and `0.00977` in `16bit`.
+  `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, `0.00977` in `16bit`, and
+  `0.078` in `bfloat16`.
   See `numpy.finfo`.
 
   Args:
@@ -880,7 +882,8 @@ def assert_near(
 
   The default `atol` and `rtol` is `10 * eps`, where `eps` is the smallest
   representable positive number such that `1 + eps != 1`.  This is about
-  `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, and `0.00977` in `16bit`.
+  `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, `0.00977` in `16bit`, and
+  `0.078` in `bfloat16`.
   See `numpy.finfo`.
 
   Args:
@@ -913,7 +916,8 @@ def assert_near(
     dtype = x.dtype
     if dtype.is_complex:
       dtype = dtype.real_dtype
-    eps = np.finfo(dtype.as_numpy_dtype).eps
+    # `ml_dtypes.finfo` also handles bfloat16, which `np.finfo` rejects.
+    eps = ml_dtypes.finfo(dtype.as_numpy_dtype).eps
     rtol = 10 * eps if rtol is None else rtol
     atol = 10 * eps if atol is None else atol
 
