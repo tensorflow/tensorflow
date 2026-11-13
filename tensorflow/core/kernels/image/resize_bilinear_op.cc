@@ -175,12 +175,17 @@ void ResizeLine3ChannelsVector(const T* const ys_input_lower_ptr,
                                const T* const ys_input_upper_ptr,
                                const CachedInterpolation* const xs,
                                const float ys_lerp, const int64_t out_width,
-                               float* out_y) {
+                               const int64_t in_row_size, float* out_y) {
   const __m128 ys_lerp_v = _mm_set1_ps(ys_lerp);
-  // All pixels but the last one can overflow, vectorize the inside of the
-  // row.
+  // The float specialization of load_3xfloat_v reads 4 floats at once, so an
+  // output column may only be vectorized while its furthest source index
+  // (xs[x].upper, which is >= xs[x].lower) leaves 4 floats inside the row.
+  // The final input pixel, and every output column that samples it (more than
+  // one when upscaling the width), would read a float past the row, and past
+  // the images buffer on the last row. Those columns are handled by the scalar
+  // routine below, which reads exactly the 3 channels.
   int64_t x = 0;
-  for (x = 0; x < out_width - 1; ++x) {
+  for (x = 0; x < out_width - 1 && xs[x].upper + 4 <= in_row_size; ++x) {
     const int64_t xs_lower = xs[x].lower;
     const int64_t xs_upper = xs[x].upper;
     const __m128 xs_lerp_v = _mm_set1_ps(xs[x].lerp);
@@ -194,10 +199,10 @@ void ResizeLine3ChannelsVector(const T* const ys_input_lower_ptr,
                   compute_lerp_v(top_left_v, top_right_v, bottom_left_v,
                                  bottom_right_v, xs_lerp_v, ys_lerp_v));
   }
-  // The last pixel of each row must be done in a non-vectorized way
-  // because we cannot overflow.
-  ResizeLineChannels(ys_input_lower_ptr, ys_input_upper_ptr, xs + out_width - 1,
-                     ys_lerp, 1, out_y + (out_width - 1) * 3, 3);
+  // Remaining columns (at least the last one) read the final input pixel, so
+  // they are done without a vectorized load to avoid reading past the row.
+  ResizeLineChannels(ys_input_lower_ptr, ys_input_upper_ptr, xs + x, ys_lerp,
+                     out_width - x, out_y + x * 3, 3);
 }
 #endif
 
@@ -232,7 +237,8 @@ void resize_image(typename TTypes<T, 4>::ConstTensor images,
         const T* ys_input_upper_ptr = input_b_ptr + ys[y].upper * in_row_size;
 #ifdef __SSE4_1__
         ResizeLine3ChannelsVector(ys_input_lower_ptr, ys_input_upper_ptr, xs,
-                                  ys[y].lerp, out_width, output_y_ptr);
+                                  ys[y].lerp, out_width, in_row_size,
+                                  output_y_ptr);
 #else
         ResizeLineChannels(ys_input_lower_ptr, ys_input_upper_ptr, xs,
                            ys[y].lerp, out_width, output_y_ptr, 3);
