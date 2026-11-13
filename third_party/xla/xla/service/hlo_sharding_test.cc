@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -850,6 +851,54 @@ TEST_F(HloShardingTest, HasherV2) {
   // Inserting V1 shardings crashes.
   HloSharding v1_sharding = HloSharding::Tile(Array<int64_t>({2}, {0, 1}));
   EXPECT_DEATH(map[v1_sharding] = 7, ".*");
+}
+
+TEST_F(HloShardingTest, ImplementsAbslHashCorrectly) {
+  Mesh mesh({6}, {"x"});
+  HloSharding tuple_sharding = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {4})}),
+      {HloSharding::Replicate(), HloSharding::SingleDevice(0)});
+  // Shardings are compared regardless of their representation, so V1, V2 and
+  // named shardings that are equal must hash equally.
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      HloSharding::Replicate(),
+      HloSharding(NamedSharding::Replicate()),
+      HloSharding::SingleDevice(5),
+      HloSharding(NamedSharding::SingleDevice(5)),
+      HloSharding::Manual(),
+      HloSharding::IotaTile({2, 2}),
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3})),
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1})),
+      HloSharding::IotaTile({6, 1}),
+      HloSharding(test_utils::FromAxisNames(mesh, {{"x"}, {}})),
+      tuple_sharding,
+  }));
+}
+
+TEST_F(HloShardingTest, HashV2WrapperImplementsAbslHashCorrectly) {
+  Mesh mesh({6}, {"x"});
+  HloSharding replicated = HloSharding::Replicate();
+  HloSharding named_replicated(NamedSharding::Replicate());
+  HloSharding single_device = HloSharding::SingleDevice(5);
+  HloSharding named_single_device(NamedSharding::SingleDevice(5));
+  HloSharding iota = HloSharding::IotaTile({6, 1});
+  HloSharding named_tile(test_utils::FromAxisNames(mesh, {{"x"}, {}}));
+  HloSharding iota_2x2 = HloSharding::IotaTile({2, 2});
+  using Wrapper = HloSharding::HashV2Wrapper;
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {
+          Wrapper{replicated},
+          Wrapper{named_replicated},
+          Wrapper{single_device},
+          Wrapper{named_single_device},
+          Wrapper{iota},
+          Wrapper{named_tile},
+          Wrapper{iota_2x2},
+      },
+      [](const Wrapper& a, const Wrapper& b) {
+        return a.sharding == b.sharding;
+      }));
 }
 
 using ShardingWithMetadataParamType =

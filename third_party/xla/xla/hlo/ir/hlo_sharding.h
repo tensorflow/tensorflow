@@ -577,8 +577,8 @@ class HloSharding {
     // Compare two shardings regardless of their representation in order to
     // support mixed sharding representations in HLO.
     if (sharding.UseNamedShardingLeaf()) {
-      return AbslHashValue(std::move(h),
-                           V3ToV2Sharding(*sharding.named_sharding_));
+      return H::combine(std::move(h),
+                        V3ToV2Sharding(*sharding.named_sharding_));
     }
     return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
                       sharding.unknown_, sharding.unreduced_,
@@ -602,7 +602,7 @@ class HloSharding {
       }
       if (sharding.UseNamedShardingLeaf()) {
         HloSharding v2 = V3ToV2Sharding(*sharding.named_sharding_);
-        return AbslHashValue(std::move(h), HashV2Wrapper{v2});
+        return H::combine(std::move(h), HashV2Wrapper{v2});
       }
       if (sharding.replicated_ || sharding.manual_ || sharding.unknown_ ||
           sharding.unreduced_ || sharding.single_device_) {
