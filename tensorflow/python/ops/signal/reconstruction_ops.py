@@ -59,6 +59,10 @@ def overlap_and_add(signal, frame_step, name=None):
     if not frame_step.dtype.is_integer:
       raise ValueError("frame_step must be an integer. Got %s" %
                        frame_step.dtype)
+    # The signal shape is int32, so an integer `frame_step` of any other dtype
+    # (e.g. an int64 tensor) is cast to it.
+    if frame_step.dtype != dtypes.int32:
+      frame_step = math_ops.cast(frame_step, dtypes.int32)
     frame_step_static = tensor_util.constant_value(frame_step)
     frame_step_is_static = frame_step_static is not None
     frame_step = frame_step_static if frame_step_is_static else frame_step

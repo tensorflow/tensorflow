@@ -394,6 +394,14 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
       spectral_ops.stft(signal, np.float64(32.5), 8)
     with self.assertRaises((errors.InvalidArgumentError, TypeError)):
       spectral_ops.stft(signal, 32, np.float64(8.5))
+    stft = spectral_ops.stft(signal, 32, 8)
+    expected_errors = (errors.InvalidArgumentError, TypeError, ValueError)
+    with self.assertRaises(expected_errors):
+      spectral_ops.inverse_stft(stft, np.float64(32.5), 8)
+    with self.assertRaises(expected_errors):
+      spectral_ops.inverse_stft(stft, 32, np.float64(8.5))
+    with self.assertRaises(expected_errors):
+      spectral_ops.mdct(signal, np.float64(32.5))
 
   def test_inverse_stft_zero_frames(self):
     stfts = np.zeros((0, 5), dtype=np.complex64)
