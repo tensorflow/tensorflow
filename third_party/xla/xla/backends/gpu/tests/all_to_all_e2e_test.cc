@@ -459,10 +459,17 @@ TEST_F(AllToAllTest, TwentyAllToAllsInWhileLoopWithCudaGraphs) {
 
   VerifyOneShotAllToAll(result.optimized_module);
 
-  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts while_counts,
-                       CountThunksInDump(dump_dir.path(), "kWhile"));
-  EXPECT_EQ(while_counts.in_command_buffer, 1);
-  EXPECT_EQ(while_counts.outside_command_buffer, 0);
+  // Capturing the while thunk itself requires on-device control flow
+  // (conditional graph nodes), which ROCm does not support, so the command
+  // buffer conversion pass drops WHILE there and instead captures the loop
+  // body into a command buffer nested inside the while thunk. The all-to-all
+  // expectations below hold either way.
+  if (Capability().IsCuda()) {
+    ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts while_counts,
+                         CountThunksInDump(dump_dir.path(), "kWhile"));
+    EXPECT_EQ(while_counts.in_command_buffer, 1);
+    EXPECT_EQ(while_counts.outside_command_buffer, 0);
+  }
   ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts one_shot,
                        CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
   EXPECT_EQ(one_shot.in_command_buffer, kNumAllToAlls);

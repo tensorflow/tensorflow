@@ -485,10 +485,17 @@ TEST_F(AllGatherTest, TwentyAllGathersInWhileLoopWithCudaGraphs) {
 
   // Both the while thunk and all 20 one-shot all-gathers in its body must be
   // recorded into command buffers, and none may fall back to NCCL.
-  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts while_counts,
-                       CountThunksInDump(dump_dir.path(), "kWhile"));
-  EXPECT_EQ(while_counts.in_command_buffer, 1);
-  EXPECT_EQ(while_counts.outside_command_buffer, 0);
+  // Capturing the while thunk itself requires on-device control flow
+  // (conditional graph nodes), which ROCm does not support, so the command
+  // buffer conversion pass drops WHILE there and instead captures the loop
+  // body into a command buffer nested inside the while thunk. The all-gather
+  // expectations below hold either way.
+  if (Capability().IsCuda()) {
+    ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts while_counts,
+                         CountThunksInDump(dump_dir.path(), "kWhile"));
+    EXPECT_EQ(while_counts.in_command_buffer, 1);
+    EXPECT_EQ(while_counts.outside_command_buffer, 0);
+  }
   ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts one_shot,
                        CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
   EXPECT_EQ(one_shot.in_command_buffer, kNumAllGathers);
