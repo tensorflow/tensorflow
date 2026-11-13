@@ -1124,7 +1124,9 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     ValueError:  If static checks determine `x` has wrong rank.
   """
   with ops.name_scope(name, 'assert_rank', (x, rank) + tuple(data or [])):
-    if not isinstance(x, sparse_tensor.SparseTensor):
+    if isinstance(x, sparse_tensor.SparseTensorValue):
+      x = sparse_tensor.SparseTensor.from_value(x)
+    elif not isinstance(x, sparse_tensor.SparseTensor):
       x = ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = _message_prefix(message)
@@ -1226,14 +1228,17 @@ def assert_rank_at_least(
   """
   with ops.name_scope(
       name, 'assert_rank_at_least', (x, rank) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    if isinstance(x, sparse_tensor.SparseTensorValue):
+      x = sparse_tensor.SparseTensor.from_value(x)
+    elif not isinstance(x, sparse_tensor.SparseTensor):
+      x = ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = _message_prefix(message)
 
     static_condition = lambda actual_rank, given_rank: actual_rank >= given_rank
     dynamic_condition = math_ops.greater_equal
 
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(x, sparse_tensor.SparseTensor):
       name = ''
     else:
       name = x.name
@@ -1392,7 +1397,9 @@ def assert_rank_in(
   """
   with ops.name_scope(
       name, 'assert_rank_in', (x,) + tuple(ranks) + tuple(data or [])):
-    if not isinstance(x, sparse_tensor.SparseTensor):
+    if isinstance(x, sparse_tensor.SparseTensorValue):
+      x = sparse_tensor.SparseTensor.from_value(x)
+    elif not isinstance(x, sparse_tensor.SparseTensor):
       x = ops.convert_to_tensor(x, name='x')
     ranks = tuple([ops.convert_to_tensor(rank, name='rank') for rank in ranks])
     message = _message_prefix(message)
@@ -1547,7 +1554,15 @@ def assert_type(tensor, tf_type, message=None, name=None):
   """
   tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
-    if not isinstance(tensor, sparse_tensor.SparseTensor):
+    if isinstance(tensor, sparse_tensor.SparseTensorValue):
+      val_dtype = getattr(tensor.values, 'dtype', None)
+      if val_dtype is None:
+        val_dtype = np.asarray(tensor.values).dtype
+      tensor = type('', (), {
+          'dtype': dtypes.as_dtype(val_dtype),
+          'name': 'SparseTensorValue'
+      })()
+    elif not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       raise TypeError(
@@ -1779,9 +1794,15 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
   message_prefix = _message_prefix(message)
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
+    def _convert_shape_target(x):
+      if isinstance(x, sparse_tensor.SparseTensorValue):
+        return sparse_tensor.SparseTensor.from_value(x)
+      if isinstance(x, sparse_tensor.SparseTensor):
+        return x
+      return ops.convert_to_tensor(x)
+
     # Shape specified as None implies no constraint
-    shape_constraints = [(x if isinstance(x, sparse_tensor.SparseTensor) else
-                          ops.convert_to_tensor(x), s)
+    shape_constraints = [(_convert_shape_target(x), s)
                          for x, s in shapes if s is not None]
 
     executing_eagerly = context.executing_eagerly()
@@ -2096,6 +2117,11 @@ def _assert_same_base_type(items, expected_type=None):
   mismatch = False
   for item in items:
     if item is not None:
+      if isinstance(item, sparse_tensor.SparseTensorValue):
+        val_dtype = getattr(item.values, 'dtype', None)
+        if val_dtype is None:
+          val_dtype = np.asarray(item.values).dtype
+        item = type('', (), {'dtype': dtypes.as_dtype(val_dtype)})()
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
@@ -2109,6 +2135,14 @@ def _assert_same_base_type(items, expected_type=None):
     original_item_str = None
     for item in items:
       if item is not None:
+        if isinstance(item, sparse_tensor.SparseTensorValue):
+          val_dtype = getattr(item.values, 'dtype', None)
+          if val_dtype is None:
+            val_dtype = np.asarray(item.values).dtype
+          item = type('', (), {
+              'dtype': dtypes.as_dtype(val_dtype),
+              'name': 'SparseTensorValue'
+          })()
         item_type = item.dtype.base_dtype
         if not expected_type:
           expected_type = item_type
