@@ -1116,6 +1116,38 @@ def expand_dims(a, axis):
 @np_utils.np_doc('squeeze')
 def squeeze(a, axis=None):
   a = asarray(a)
+  if axis is not None:
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None:
+      axes = (
+          (axis,)
+          if isinstance(axis, (int, np.integer))
+          or (isinstance(axis, np.ndarray) and axis.ndim == 0)
+          else axis
+      )
+      if isinstance(axes, (tuple, list, range, np.ndarray)):
+        seen_axes = set()
+        for ax in axes:
+          if isinstance(ax, np.ndarray) and ax.ndim == 0:
+            ax = int(ax)
+          elif not isinstance(ax, (int, np.integer)):
+            continue
+          ax = int(ax)
+          if not (-maybe_rank <= ax < maybe_rank):
+            raise ValueError(
+                f'axis {ax} is out of bounds for array of dimension'
+                f' {maybe_rank}'
+            )
+          norm_ax = ax + maybe_rank if ax < 0 else ax
+          if norm_ax in seen_axes:
+            raise ValueError("duplicate value in 'axis'")
+          seen_axes.add(norm_ax)
+          dim = a.shape[norm_ax]
+          if dim is not None and dim != 1:
+            raise ValueError(
+                'cannot select an axis to squeeze out which has size'
+                ' not equal to one'
+            )
   return array_ops.squeeze(a, axis)
 
 

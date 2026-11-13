@@ -1448,6 +1448,49 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[[1], [2], [3]]], axis=-1)
     run_test([[[1], [2], [3]]], axis=-3)
 
+  def testSqueezeInvalidAxis(self):
+    a = np.ones((2, 1, 3))
+    with self.assertRaisesRegex(
+        ValueError, r'axis 5 is out of bounds for array of dimension 3'
+    ):
+      np_array_ops.squeeze(a, axis=5)
+    with self.assertRaisesRegex(
+        ValueError, r'axis -4 is out of bounds for array of dimension 3'
+    ):
+      np_array_ops.squeeze(a, axis=-4)
+    with self.assertRaisesRegex(
+        ValueError,
+        r'cannot select an axis to squeeze out which has size not equal to one',
+    ):
+      np_array_ops.squeeze(a, axis=0)
+    with self.assertRaisesRegex(
+        ValueError,
+        r'cannot select an axis to squeeze out which has size not equal to one',
+    ):
+      np_array_ops.squeeze(a, axis=2)
+    with self.assertRaisesRegex(
+        ValueError, r"duplicate value in 'axis'"
+    ):
+      np_array_ops.squeeze(np.ones((1, 1, 3)), axis=(0, 0))
+    with self.assertRaisesRegex(
+        ValueError, r"duplicate value in 'axis'"
+    ):
+      np_array_ops.squeeze(np.ones((1, 1, 3)), axis=(0, -3))
+    with self.assertRaisesRegex(
+        ValueError, r'axis 0 is out of bounds for array of dimension 0'
+    ):
+      np_array_ops.squeeze(np.array(5), axis=0)
+    # 0-D array as axis
+    self.match(
+        np_array_ops.squeeze(a, axis=np.array(1)),
+        np.squeeze(a, axis=np.array(1)),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        r'cannot select an axis to squeeze out which has size not equal to one',
+    ):
+      np_array_ops.squeeze(a, axis=np.array(0))
+
   def testTranspose(self):
 
     def run_test(arr, axes=None):
