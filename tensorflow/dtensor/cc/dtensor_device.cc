@@ -1427,7 +1427,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
   VLOG(1) << "Selected call " << *stateful_partitioned_call_name;
 
   // Remove unused arg nodes in graph.
-  for (auto it = arg_nodes.begin(); it != arg_nodes.end(); it++) {
+  for (auto it = arg_nodes.begin(); it != arg_nodes.end();) {
     Node* arg_node = *it;
     bool arg_unused = true;
     for (const Edge* e : arg_node->out_edges()) {
@@ -1435,10 +1435,13 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
         arg_unused = false;
       }
     }
-    if (!arg_unused) continue;
+    if (!arg_unused) {
+      ++it;
+      continue;
+    }
 
     new_graph->RemoveNode(arg_node);
-    arg_nodes.erase(it--);
+    it = arg_nodes.erase(it);
   }
 
   // Reset index attributes for arg and retval nodes.
