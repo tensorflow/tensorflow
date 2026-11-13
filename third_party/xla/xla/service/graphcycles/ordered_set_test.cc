@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla {
