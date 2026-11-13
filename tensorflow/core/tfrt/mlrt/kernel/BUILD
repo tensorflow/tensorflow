@@ -136,12 +136,14 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_headers",
-        "@tf_runtime//:async_value",
         "@tf_runtime//:hostcontext",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
         "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/concurrency:async_value",
+        "@xla//xla/tsl/concurrency:ref_count",
         "@xla//xla/tsl/platform:criticality",
     ],
 )
@@ -175,10 +177,16 @@ cc_library(
     name = "context",
     hdrs = ["context.h"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
         "@tf_runtime//:hostcontext",
+        "@xla//xla/tsl/concurrency:async_value",
+        "@xla//xla/tsl/concurrency:ref_count",
     ],
 )
 
