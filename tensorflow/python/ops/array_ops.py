@@ -4612,10 +4612,10 @@ def where_v2(condition, x=None, y=None, name=None):
 
   1. If a tensor has fewer axes than the others, length-1 axes are added to the
      left of the shape.
-  2. Axes with length-1 are streched to match the coresponding axes of the other
+  2. Axes with length-1 are stretched to match the corresponding axes of the other
      tensors.
 
-  A length-1 vector is streched to match the other vectors:
+  A length-1 vector is stretched to match the other vectors:
 
   >>> tf.where([True, False, False, True], [1, 2, 3, 4], [100]).numpy()
   array([  1, 100, 100,   4], dtype=int32)
@@ -5252,7 +5252,7 @@ def gather_nd(params, indices, name=None, batch_dims=0, bad_indices_policy=""):
   ...     params=tf.zeros([5, 7, 3])).shape.as_list()
   [5, 3]
 
-  This is equivalent to caling a separate `gather_nd` for each location in the
+  This is equivalent to calling a separate `gather_nd` for each location in the
   batch dimensions.
 
 

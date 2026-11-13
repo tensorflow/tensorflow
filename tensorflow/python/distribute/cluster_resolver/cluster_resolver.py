@@ -138,7 +138,7 @@ class ClusterResolver(object):
 
     Optionally, we allow callers to specify the task_type, and task_id, for
     if they want to target a specific TensorFlow task to query
-    the number of accelerators. This is to support heterogenous environments,
+    the number of accelerators. This is to support heterogeneous environments,
     where the number of accelerators cores per host is different.
 
     Args:
