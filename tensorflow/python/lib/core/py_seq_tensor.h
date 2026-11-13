@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
