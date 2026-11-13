@@ -431,6 +431,82 @@ struct ReduceBatchMatMulRank : public OpRewritePattern<BatchMatMulOp> {
     return success();
   }
 };
+
+// Runs a FullyConnected over a high-rank input in two dimensions.
+// Pattern: FullyConnected(X[d0, ..., dn-1, K], W) -> [d0, ..., dn-1, N]
+// Becomes: Reshape(FullyConnected(Reshape(X, [M, K]), W), [d0, ..., dn-1, N])
+// with M = d0 * ... * dn-1.
+//
+// FullyConnected only contracts the last dimension, so flattening the leading
+// ones does not change the computation. The input of such an op is usually a
+// reshape itself (e.g. the window partition of a Swin block), which
+// FuseConsecutiveReshapes then folds with the new one so the high-rank tensor
+// disappears entirely.
+struct ReduceFullyConnectedRank : public OpRewritePattern<FullyConnectedOp> {
+  using OpRewritePattern<FullyConnectedOp>::OpRewritePattern;
+
+  // GPU delegates accept FullyConnected inputs up to this rank.
+  static constexpr int kMaxRank = 4;
+
+  LogicalResult matchAndRewrite(FullyConnectedOp fc_op,
+                                PatternRewriter& rewriter) const override {
+    auto input_ty = dyn_cast<RankedTensorType>(fc_op.getInput().getType());
+    auto out_ty = dyn_cast<RankedTensorType>(fc_op.getResult(0).getType());
+    if (!input_ty || !out_ty || !input_ty.hasStaticShape() ||
+        !out_ty.hasStaticShape()) {
+      return failure();
+    }
+    const int rank = input_ty.getRank();
+    if (rank <= kMaxRank) return failure();
+    if (fc_op.getWeightsFormat() != "DEFAULT") return failure();
+
+    const int64_t k = input_ty.getDimSize(rank - 1);
+    if (k == 0) return failure();
+    const int64_t m = input_ty.getNumElements() / k;
+
+    // Flatten the input to [M, K].
+    auto flat_in_ty = RankedTensorType::get({m, k}, input_ty.getElementType());
+    auto shape2_ty = RankedTensorType::get({2}, rewriter.getI32Type());
+    auto flat_in_shape = rewriter.create<ConstOp>(
+        fc_op.getLoc(), shape2_ty,
+        DenseIntElementsAttr::get(
+            shape2_ty, {static_cast<int32_t>(m), static_cast<int32_t>(k)}));
+    Value flat_in = rewriter.create<ReshapeOp>(fc_op.getLoc(), flat_in_ty,
+                                               fc_op.getInput(), flat_in_shape);
+
+    // Without keep_num_dims the result is already [M, N].
+    if (!fc_op.getKeepNumDims()) {
+      auto new_fc = rewriter.create<FullyConnectedOp>(
+          fc_op.getLoc(), ArrayRef<Type>{out_ty}, flat_in, fc_op.getFilter(),
+          fc_op.getBias(), fc_op.getFusedActivationFunctionAttr(),
+          fc_op.getWeightsFormatAttr(), fc_op.getKeepNumDimsAttr(),
+          fc_op.getAsymmetricQuantizeInputsAttr());
+      rewriter.replaceOp(fc_op, new_fc.getResult(0));
+      return success();
+    }
+
+    const int64_t n = out_ty.getDimSize(out_ty.getRank() - 1);
+    auto flat_out_ty = RankedTensorType::get({m, n}, out_ty.getElementType());
+    auto new_fc = rewriter.create<FullyConnectedOp>(
+        fc_op.getLoc(), ArrayRef<Type>{flat_out_ty}, flat_in, fc_op.getFilter(),
+        fc_op.getBias(), fc_op.getFusedActivationFunctionAttr(),
+        fc_op.getWeightsFormatAttr(), fc_op.getKeepNumDimsAttr(),
+        fc_op.getAsymmetricQuantizeInputsAttr());
+
+    // Restore the original output shape.
+    SmallVector<int32_t, 6> out_shape_v32;
+    for (auto d : out_ty.getShape())
+      out_shape_v32.push_back(static_cast<int32_t>(d));
+    auto out_shape_const_ty = RankedTensorType::get(
+        {static_cast<int64_t>(out_shape_v32.size())}, rewriter.getI32Type());
+    auto out_shape_const = rewriter.create<ConstOp>(
+        fc_op.getLoc(), out_shape_const_ty,
+        DenseIntElementsAttr::get(out_shape_const_ty, out_shape_v32));
+    rewriter.replaceOpWithNewOp<ReshapeOp>(fc_op, out_ty, new_fc.getResult(0),
+                                           out_shape_const);
+    return success();
+  }
+};
 // Reduces unary operation rank by squeezing leading unit dimensions.
 // Pattern: Unary(X) -> Output
 // Becomes: Reshape(Unary(Reshape(X))) -> Output
@@ -1282,6 +1358,7 @@ class RankReductionPass
     // patterns.add<LiftReshapeThroughBroadcastTo>(ctx);
     patterns.add<ReduceTransposeRank>(ctx);
     patterns.add<ReduceBatchMatMulRank>(ctx);
+    patterns.add<ReduceFullyConnectedRank>(ctx);
     patterns.add<ReduceBroadcastToRank>(ctx);
     patterns.add<ReduceReductionRank<MeanOp>>(ctx);
     patterns.add<ReduceReductionRank<SumOp>>(ctx);

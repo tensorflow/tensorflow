@@ -194,8 +194,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
+  @parameterized.named_parameters(
+      ('RankReduction', '_experimental_rank_reduction'),
+      ('DeprecatedAlias', '_experimental_unsafe_single_batch_rank_reduction'),
+  )
   @test_util.run_v2_only
-  def testUnsafeSingleBatchRankReductionConcatReshapeInterleave(self):
+  def testRankReductionConcatReshapeInterleave(self, flag_attr):
     @tf.function(
         input_signature=[
             tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
@@ -212,7 +216,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func], root
     )
-    converter._experimental_unsafe_single_batch_rank_reduction = True
+    setattr(converter, flag_attr, True)
     tflite_model = converter.convert()
 
     a = tf.constant(
@@ -227,6 +231,40 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     my_signature = interp.get_signature_runner()
     actual_value = list(my_signature(a=a, b=b).values())[0]
     self.assertAllClose(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testRankReductionAndGpuCompatibilityFlagsAreSeparate(self):
+    root = self._getSimpleVariableModel()
+    concrete_func = root.f.get_concrete_function(
+        tf.TensorSpec(shape=[1], dtype=tf.float32)
+    )
+
+    def flags(**attrs):
+      converter = lite.TFLiteConverterV2.from_concrete_functions(
+          [concrete_func], root
+      )
+      for k, v in attrs.items():
+        setattr(converter, k, v)
+      return convert.build_conversion_flags(
+          **converter._get_base_converter_args()
+      )
+
+    off = flags()
+    self.assertFalse(off.rank_reduction)
+    self.assertFalse(off.unsafe_gpu_compatibility)
+
+    rank_only = flags(_experimental_rank_reduction=True)
+    self.assertTrue(rank_only.rank_reduction)
+    self.assertFalse(rank_only.unsafe_gpu_compatibility)
+
+    gpu_only = flags(_experimental_unsafe_gpu_compatibility=True)
+    self.assertFalse(gpu_only.rank_reduction)
+    self.assertTrue(gpu_only.unsafe_gpu_compatibility)
+
+    # The deprecated name keeps its old meaning: both passes.
+    legacy = flags(_experimental_unsafe_single_batch_rank_reduction=True)
+    self.assertTrue(legacy.rank_reduction)
+    self.assertTrue(legacy.unsafe_gpu_compatibility)
 
   @test_util.run_v2_only
   def testMultiFunctionModel(self):
