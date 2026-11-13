@@ -911,50 +911,75 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                      << "but got " << opcode;
         }
       } else {
+        TF_RET_CHECK(proto.operand_ids_size() == 4)
+            << "In-place " << proto.opcode()
+            << " instruction should have 4 operands but sees "
+            << proto.operand_ids_size();
         std::vector<std::vector<int64_t>> slice_sizes;
         HloInstruction* input = operands(0);
         HloInstruction* input_start_indices = operands(2);
-        if (input->shape().IsTuple() &&
-            input->shape().tuple_shapes().size() > 1) {
-          slice_sizes.resize(input->shape().tuple_shapes().size());
-        } else {
-          slice_sizes.resize(1);
-        }
+        // The operand shapes determine how dynamic_slice_sizes is split into
+        // slices. Neither has been verified yet, so check them before use.
+        const auto is_nonempty_tuple = [](const Shape& shape) {
+          return shape.IsTuple() && !shape.tuple_shapes().empty();
+        };
+        TF_RET_CHECK(is_nonempty_tuple(input_start_indices->shape()))
+            << proto.name() << " instruction has invalid start indices";
         int proto_index = 0;
         if (input->shape().IsTuple()) {
+          TF_RET_CHECK(absl::c_all_of(
+              input->shape().tuple_shapes(),
+              [](const Shape& shape) { return shape.IsArray(); }))
+              << proto.name() << " instruction has invalid input buffers";
+          TF_RET_CHECK(input_start_indices->shape().tuple_shapes().size() ==
+                       input->shape().tuple_shapes().size())
+              << proto.name() << " instruction has invalid start indices";
+          TF_RET_CHECK(
+              is_nonempty_tuple(input_start_indices->shape().tuple_shapes(0)))
+              << proto.name() << " instruction has invalid start indices";
           if (input_start_indices->shape()
                   .tuple_shapes(0)
                   .tuple_shapes(0)
                   .IsArray()) {
             slice_sizes.resize(input->shape().tuple_shapes().size());
             for (int i = 0; i < input->shape().tuple_shapes().size(); ++i) {
+              TF_RET_CHECK(is_nonempty_tuple(
+                               input_start_indices->shape().tuple_shapes(i)) &&
+                           input_start_indices->shape()
+                               .tuple_shapes(i)
+                               .tuple_shapes(0)
+                               .IsArray())
+                  << proto.name() << " instruction has invalid start indices";
               slice_sizes[i].resize(
                   input->shape().tuple_shapes(i).dimensions().size());
               for (int j = 0;
                    j < input->shape().tuple_shapes(i).dimensions().size();
                    ++j) {
-                CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+                TF_RET_CHECK(proto_index < proto.dynamic_slice_sizes_size());
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
               }
             }
           } else {
-            slice_sizes.resize(
-                input->shape().tuple_shapes().size() *
-                ShapeUtil::TupleElementCount(
-                    input_start_indices->shape().tuple_shapes(0)));
+            const int64_t slices_per_buffer = ShapeUtil::TupleElementCount(
+                input_start_indices->shape().tuple_shapes(0));
+            slice_sizes.resize(input->shape().tuple_shapes().size() *
+                               slices_per_buffer);
             int slice_sizes_count = 0;
             for (int i = 0; i < input->shape().tuple_shapes().size(); ++i) {
-              for (int j = 0;
-                   j < ShapeUtil::TupleElementCount(
-                           input_start_indices->shape().tuple_shapes(i));
-                   ++j) {
+              TF_RET_CHECK(
+                  input_start_indices->shape().tuple_shapes(i).IsTuple() &&
+                  ShapeUtil::TupleElementCount(
+                      input_start_indices->shape().tuple_shapes(i)) ==
+                      slices_per_buffer)
+                  << proto.name() << " instruction has invalid start indices";
+              for (int j = 0; j < slices_per_buffer; ++j) {
                 slice_sizes[slice_sizes_count].resize(
                     input->shape().tuple_shapes(i).dimensions().size());
                 for (int k = 0;
                      k < input->shape().tuple_shapes(i).dimensions().size();
                      ++k) {
-                  CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+                  TF_RET_CHECK(proto_index < proto.dynamic_slice_sizes_size());
                   slice_sizes[slice_sizes_count][k] =
                       proto.dynamic_slice_sizes(proto_index);
                   proto_index += 1;
@@ -964,6 +989,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             }
           }
         } else {
+          TF_RET_CHECK(input->shape().IsArray())
+              << proto.name() << " instruction has an invalid input buffer";
           slice_sizes.resize(
               ShapeUtil::TupleElementCount(input_start_indices->shape()));
           if (input_start_indices->shape().tuple_shapes(0).IsTuple()) {
@@ -972,6 +999,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                  ++i) {
               slice_sizes[i].resize(input->shape().dimensions().size());
               for (int j = 0; j < input->shape().dimensions().size(); ++j) {
+                TF_RET_CHECK(proto_index < proto.dynamic_slice_sizes_size());
                 slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
                 proto_index += 1;
               }
@@ -980,11 +1008,14 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             slice_sizes.resize(1);
             slice_sizes[0].resize(input->shape().dimensions().size());
             for (int j = 0; j < input->shape().dimensions().size(); ++j) {
+              TF_RET_CHECK(proto_index < proto.dynamic_slice_sizes_size());
               slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
               proto_index += 1;
             }
           }
         }
+        TF_RET_CHECK(proto_index == proto.dynamic_slice_sizes_size())
+            << proto.name() << " instruction has invalid dynamic slice sizes";
         if (opcode == HloOpcode::kCollectivePermute) {
           instruction = CreateCollectivePermute(
               shape, operands(0), operands(1), operands(2), operands(3),
