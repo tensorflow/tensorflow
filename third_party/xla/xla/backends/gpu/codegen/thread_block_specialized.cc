@@ -229,6 +229,7 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
   // (`rel_bid < 1`) and share a single block-range guard so block barriers
   // synchronize them without flushing L1 via a cluster barrier.
   mlir::Value c0 = mlir::arith::ConstantIntOp::create(b, 0, 32);
+  mlir::Value c1 = mlir::arith::ConstantIntOp::create(b, 1, 32);
   std::optional<mlir::scf::IfOp> single_block_if;
   for (size_t idx = 0; idx < spec.children.size(); ++idx) {
     const NestedKernelSpec& child = spec.children[idx];
@@ -239,7 +240,6 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
         // cluster skip ahead avoiding any synchronization between phases.
         if (!single_block_if.has_value()) {
           b.restoreInsertionPoint(caller_ip);
-          mlir::Value c1 = mlir::arith::ConstantIntOp::create(b, 1, 32);
           mlir::Value in_block0 = mlir::arith::CmpIOp::create(
               b, mlir::arith::CmpIPredicate::ult, rel_bid, c1);
           single_block_if =
@@ -263,7 +263,16 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
         // Both phases run exclusively on relative block 0. Emit a block barrier
         // outside any child `tid` guard so every active thread of block 0
         // participates.
-        mlir::gpu::BarrierOp::create(b);
+        // Sub-kernels may use a block barrier inside them (e.g. row reductions
+        // or transposes) and only require a subset of threads. These threads
+        // will reach the barrier inside the sub-kernel first, while the threads
+        // outside the `tid` guard will reach the inter-phase barrier emitted
+        // here. To avoid collisions, emit a named barrier with barrier ID 1.
+        // This is safe as long as sub-kernels use default barrier ID 0 only.
+        // TODO(tjoerg): Revisit when adding support for Triton-generated
+        // sub-kernels.
+        mlir::NVVM::BarrierOp::create(b, /*barrierId=*/c1,
+                                      /*numberOfThreads=*/mlir::Value{});
       } else {
         // Emit a cluster barrier at `caller_ip` level outside all child block
         // and thread `if` guards so every thread of every block in the cluster

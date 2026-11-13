@@ -1490,7 +1490,7 @@ ENTRY main {
     // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:         llvm.br ^[[BAR]]
     // CHECK:       ^[[BAR]]:
-    // CHECK:         nvvm.barrier{{$}}
+    // CHECK:         nvvm.barrier id = %[[C1]]{{$}}
     // CHECK:         %[[TID1:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
     // CHECK:         llvm.cond_br %[[TID1]], ^[[P1_CALL:bb[0-9]+]], ^[[P1_MERGE:bb[0-9]+]]
     // CHECK:       ^[[P1_CALL]]:
@@ -1857,6 +1857,76 @@ ENTRY main {
   if (HasHopperClusterSupport()) {
     EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
   }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       PartialCtaReductionPhaseFollowedByWiderSingleBlockPhase) {
+  // `phase_0` (`1 block x 64 threads`) emits `barrier.sync 0, 64`, while
+  // `phase_1` (`1 block x 1024 threads`) widens the outer CTA to `1024`
+  // threads. The inter-phase block barrier must use named barrier `1` so
+  // threads `64..1023` skipping `phase_0` do not arm barrier `0` with thread
+  // count `1024` while threads `0..63` execute `barrier.sync 0, 64`.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add_f32 {
+  ROOT sum = f32[] add(f32[] parameter(0), f32[] parameter(1))
+}
+
+phase_0_comp {
+  ROOT r0 = f32[] reduce(f32[1024]{0} parameter(0), f32[] constant(0)),
+    dimensions={0}, to_apply=add_f32
+}
+
+phase_1_comp {
+  b0 = f32[32,64]{1,0} broadcast(f32[] parameter(0)), dimensions={}
+  sum = f32[32,64]{1,0} add(f32[32,64]{1,0} parameter(1), b0)
+  ROOT r1 = f32[64]{0} reduce(sum, f32[] constant(0)),
+    dimensions={0}, to_apply=add_f32
+}
+
+phased_comp {
+  phase_0 = f32[] fusion(f32[1024]{0} parameter(0)), kind=kInput,
+    calls=phase_0_comp
+  phase_1 = f32[64]{0} fusion(phase_0, f32[32,64]{1,0} parameter(1)),
+    kind=kInput, calls=phase_1_comp
+  ROOT t = (f32[], f32[64]{0}) tuple(phase_0, phase_1)
+}
+
+ENTRY main {
+  ROOT fusion = (f32[], f32[64]{0}) fusion(
+    f32[1024]{0} parameter(0), f32[32,64]{1,0} parameter(1)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ThreadBlockSpecializedFusion emitter(
+      HloFusionAnalysis::Create(*fusion, device_info_));
+  EXPECT_EQ(emitter.launch_dimensions().num_blocks(), 1);
+  EXPECT_EQ(emitter.launch_dimensions().num_threads_per_block(), 1024);
+  EXPECT_EQ(emitter.cluster_dim(), std::nullopt);
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                               /*buffer_assignment=*/nullptr, *mlir_context_));
+  std::string llvm_str;
+  llvm::raw_string_ostream(llvm_str) << *llvm_source_wrapper.source.module();
+  ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
+    // CHECK-LABEL: define void @fusion(
+    // CHECK:         call void @fusion_nested_0(
+    // CHECK:         call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 1)
+    // CHECK:         call void @fusion_nested_1(
+    // CHECK-LABEL: define internal void @fusion_nested_0(
+    // CHECK:         call void @llvm.nvvm.barrier{{.*}}(i32 0, i32 64)
+  )"));
+  EXPECT_TRUE(llvm_check) << llvm_str;
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
 }
 
 }  // namespace
