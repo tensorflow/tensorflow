@@ -238,6 +238,33 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           np.array([8, 9], dtype=dtype),
           expected=np.array([[7, 9], [8, 7], [8, 9]], dtype=dtype))
 
+  def testSelectV2DynamicDimensionOfSizeOne(self):
+    if "GPU" in self.device or "TPU" in self.device:
+      self.skipTest(
+          "XLA:GPU's dynamic padder doesn't support the dynamic "
+          "select that boolean_mask produces."
+      )
+
+    # A condition and branch whose size is 1 at run time broadcast against the
+    # other branch's static size.
+    @def_function.function(jit_compile=True)
+    def f(x, mask, y):
+      x = array_ops.boolean_mask(x, mask)
+      return array_ops.where_v2(x > 0, x, y)
+
+    y = np.array([10, 20, 30, 40, 50, 60], dtype=np.float32)
+    for x in ([1, 2, 3, 4, 5, 6], [-1, -2, -3, -4, -5, -6]):
+      x = np.array(x, dtype=np.float32)
+      mask = np.array([False, True, False, False, False, False])
+      with self.session() as session:
+        with self.test_scope():
+          px = array_ops.placeholder(dtypes.float32, shape=[6])
+          pmask = array_ops.placeholder(dtypes.bool, shape=[6])
+          py = array_ops.placeholder(dtypes.float32, shape=[6])
+          output = f(px, pmask, py)
+        result = session.run(output, {px: x, pmask: mask, py: y})
+      self.assertAllEqual(result, np.where(x[mask] > 0, x[mask], y))
+
   def testSlice(self):
     for dtype in self.numeric_types:
       self._testTernary(

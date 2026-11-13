@@ -32,6 +32,21 @@ namespace tensorflow {
 absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
                                        absl::Span<int64_t const> output_dims);
 
+// Applies BroadcastDynamicDimension to each dynamic dimension of `input` whose
+// bound and matching dimension in `output_dims` are larger than 1, so that a
+// following BroadcastTo broadcasts a run-time size of 1 as TensorFlow does.
+// BroadcastTo alone only sees the bound of a dynamic dimension.
+xla::XlaOp BroadcastDynamicDimensions(xla::XlaOp input,
+                                      absl::Span<int64_t const> output_dims);
+
+// Returns `input` with its dynamic dimension `dimension` sliced or zero-padded
+// to a bound of `size`. A run-time size of 1 is broadcast to `size`, as
+// TensorFlow broadcasts it against a dimension of that size, and other
+// run-time sizes are kept, capped at `size`. Requires that the dimension's
+// bound and `size` are both at least 1.
+xla::XlaOp BroadcastDynamicDimension(xla::XlaOp input, int64_t dimension,
+                                     int64_t size);
+
 // Forwards to xla::BroadcastOpsToSame.
 absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs);
 }  // namespace tensorflow
