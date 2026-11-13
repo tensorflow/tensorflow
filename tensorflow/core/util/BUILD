@@ -436,9 +436,6 @@ tf_cc_test(
     ],
     deps = [
         ":fake_clock_env",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/platform:env",
         "@com_google_googletest//:gtest_main",
     ],
@@ -508,6 +505,8 @@ cc_library(
         ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -521,7 +520,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:testlib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -642,6 +640,9 @@ cc_library(
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -654,6 +655,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -682,6 +684,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -948,6 +951,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -962,7 +969,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/functional:bind_front",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

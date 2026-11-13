@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/command_line_flags.h"
 
-#include <ctype.h>
-
+#include <cstdint>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/ascii.h"

@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/util/equal_graph_def.h"
 
+#include <cstdint>
 #include <map>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
