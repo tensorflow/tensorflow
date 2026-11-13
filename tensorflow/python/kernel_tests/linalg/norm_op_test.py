@@ -75,6 +75,45 @@ class NormOpTest(test_lib.TestCase):
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
 
   @test_util.run_in_graph_and_eager_modes
+  def testNumpyIntegerAxis(self):
+    matrix = constant_op.constant([[0.0, 1.0], [2.0, 3.0]])
+    # NumPy integer axes behave like the equivalent Python ints.
+    self.assertAllClose(
+        self.evaluate(linalg_ops.norm(matrix, axis=np.int64(1))),
+        self.evaluate(linalg_ops.norm(matrix, axis=1)))
+    self.assertAllClose(
+        self.evaluate(linalg_ops.norm(matrix, axis=np.int32(0))),
+        self.evaluate(linalg_ops.norm(matrix, axis=0)))
+    self.assertAllClose(
+        self.evaluate(
+            linalg_ops.norm(
+                matrix, axis=(np.int64(-2), np.int64(-1)), ord='fro')),
+        self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1), ord='fro')))
+    self.assertAllClose(
+        self.evaluate(
+            linalg_ops.norm(
+                matrix, axis=[np.int64(-2), np.int64(-1)], ord='fro')),
+        self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1), ord='fro')))
+    normalized, norm = self.evaluate(nn_impl.normalize(matrix,
+                                                       axis=np.int64(1)))
+    expected_normalized, expected_norm = self.evaluate(
+        nn_impl.normalize(matrix, axis=1))
+    self.assertAllClose(normalized, expected_normalized)
+    self.assertAllClose(norm, expected_norm)
+    # Invalid axes are still rejected: duplicate matrix axes and ndarray axes.
+    with self.assertRaisesRegex(ValueError, "tuple of 2 unique integers"):
+      linalg_ops.norm(matrix, axis=(np.int64(0), np.int64(0)), ord='fro')
+    with self.assertRaisesRegex(ValueError, "must be None, an integer"):
+      linalg_ops.norm(matrix, axis=np.array([0, 1]))
+    # A non-integer entry next to a NumPy integer is still rejected rather than
+    # silently truncated by int(), e.g. (np.int64(1), 2.5) must not become
+    # (1, 2).
+    with self.assertRaisesRegex(ValueError, "tuple of 2 unique integers"):
+      linalg_ops.norm(matrix, axis=(np.int64(0), 1.5), ord='fro')
+    with self.assertRaisesRegex(ValueError, "tuple of 2 unique integers"):
+      linalg_ops.norm(matrix, axis=(0.5, np.int64(1)), ord='fro')
+
+  @test_util.run_in_graph_and_eager_modes
   def testEmptyInputIsZero(self):
     # reduce_max over an empty axis is -inf. A norm of an empty input should be
     # 0, like the Euclidean, Frobenius and p-norms of an empty input. (numpy
