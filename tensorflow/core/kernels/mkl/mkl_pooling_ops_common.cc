@@ -369,8 +369,8 @@ void MklPoolParameters::Init(OpKernelContext* context,
                 (depth_window == 1 ||
                  (window_rows == 1 && window_cols == 1 && window_planes == 1)),
                 absl::UnimplementedError(
-                    "Pooling3D supports exactly one of pooling across depth "
-                    "or pooling across planes/width/height."));
+                    "AvgPooling3D supports exactly one of pooling across depth "
+                    "or pooling across depth/width/height."));
   }
 
   if (depth_window == 1) {  // We are pooling in the D (Pool3D only), H and W.
