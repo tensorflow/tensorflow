@@ -423,6 +423,11 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
       *output_id = dot_output_id;
     }
   } else {
+    if (*output_id == YNN_INVALID_VALUE_ID) {
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_tensor(subgraph, GetYnnType(output_tensor.type), 0,
+                            nullptr, nullptr, 0, output_id));
+    }
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, current_a_id, current_b_id,
                        broadcasted_bias_id, output_id, 0));
