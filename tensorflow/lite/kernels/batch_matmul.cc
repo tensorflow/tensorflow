@@ -377,10 +377,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     for (const TfLiteTensor* tensor : {lhs_data, rhs_data}) {
       if (tensor->quantization.type != kTfLiteNoQuantization &&
           tensor->quantization.type != kTfLiteAffineQuantization) {
-        TF_LITE_KERNEL_LOG(context,
-                           "BATCH_MATMUL does not support quantization type %d "
-                           "of its inputs.",
-                           tensor->quantization.type);
+        TF_LITE_KERNEL_LOG(
+            context,
+            "BATCH_MATMUL does not support %s quantization of its inputs.",
+            GetName(tensor->quantization.type));
         return kTfLiteError;
       }
     }
@@ -1114,7 +1114,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Currently BatchMatMul doesn't support type: %s",
-                         TfLiteTypeGetName(lhs->type));
+                         GetName(lhs->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

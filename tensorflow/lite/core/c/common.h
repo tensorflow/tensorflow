@@ -366,6 +366,9 @@ typedef enum TfLiteQuantizationType {
   kTfLiteBlockwiseQuantizationV2 = 4,
 } TfLiteQuantizationType;
 
+/// Return the name of a given quantization type, for error reporting purposes.
+const char* TfLiteQuantizationTypeGetName(TfLiteQuantizationType type);
+
 /// Structure specifying the quantization used by the tensor, if-any.
 typedef struct TfLiteQuantization {
   /// The type of quantization held by params.
@@ -1752,6 +1755,14 @@ TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
 
 // Returns a copy of the quantization parameters of the tensor.
 TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src);
+
+// Overload for `TfLiteTypeGetName()`.
+inline const char* GetName(TfLiteType type) { return TfLiteTypeGetName(type); }
+
+// Overload for `TfLiteQuantizeationTypeGetName()`.
+inline const char* GetName(TfLiteQuantizationType type) {
+  return TfLiteQuantizationTypeGetName(type);
+}
 
 #endif  // __cplusplus
 #endif  // TENSORFLOW_LITE_CORE_C_COMMON_H_

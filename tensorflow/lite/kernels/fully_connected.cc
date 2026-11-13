@@ -722,10 +722,10 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_OK(context, CheckBlockwiseBlocks(context, filter));
   } else if (filter_quantization != kTfLiteNoQuantization &&
              filter_quantization != kTfLiteAffineQuantization) {
-    TF_LITE_KERNEL_LOG(context,
-                       "FullyConnected does not support quantization type %d "
-                       "of its filter.",
-                       filter_quantization);
+    TF_LITE_KERNEL_LOG(
+        context,
+        "FullyConnected does not support %s quantization of its filter.",
+        GetName(filter_quantization));
     return kTfLiteError;
   }
   if (is_hybrid) {
@@ -2982,7 +2982,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Filter data type %s currently not supported.",
-                         TfLiteTypeGetName(filter->type));
+                         GetName(filter->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

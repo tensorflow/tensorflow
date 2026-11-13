@@ -751,6 +751,22 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
+const char* TfLiteQuantizationTypeGetName(TfLiteQuantizationType type) {
+  switch (type) {
+    case kTfLiteNoQuantization:
+      return "None";
+    case kTfLiteAffineQuantization:
+      return "Affine";
+    case kTfLiteBlockwiseQuantization:
+      return "Blockwise";
+    case kTfLiteMultiAxisQuantization:
+      return "MultiAxis";
+    case kTfLiteBlockwiseQuantizationV2:
+      return "BlockwiseV2";
+  }
+  return "Unknown";
+}
+
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
 // Returns a tensor data allocation strategy.
