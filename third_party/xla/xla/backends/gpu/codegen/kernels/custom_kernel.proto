@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/codegen/gpu_kernel_spec.proto";
 import "xla/stream_executor/kernel_spec.proto";
 import "xla/stream_executor/launch_dim.proto";
 
@@ -30,4 +31,5 @@ message CustomKernelProto {
   stream_executor.ThreadDimProto thread_dims = 4;
   optional stream_executor.ClusterDimProto cluster_dim = 5;
   int64 shared_memory_bytes = 6;
+  optional GpuKernelSpecProto spec = 7;
 }

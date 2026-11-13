@@ -37,6 +37,7 @@ tf_proto_library(
     srcs = ["custom_kernel.proto"],
     visibility = [":friends"],
     deps = [
+        "//xla/backends/gpu/codegen:gpu_kernel_spec_proto",
         "//xla/stream_executor:kernel_spec_proto",
         "//xla/stream_executor:launch_dim_proto",
     ],
