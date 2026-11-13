@@ -733,6 +733,18 @@ class FunctionTest(xla_test.XLATestCase):
 
       self.assertAllClose(f(constant_op.constant([3.1, 3.2, 3.2])), [3.1, 3.2])
 
+  def testUniqueWithCountsCompilability(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @polymorphic_function.function(jit_compile=True)
+      def f(x):
+        return array_ops.unique_with_counts(x)
+
+      y, idx, count = f(constant_op.constant([1, 2, 2, 3, 3, 3]))
+      self.assertAllEqual(y, [1, 2, 3])
+      self.assertAllEqual(idx, [0, 1, 1, 2, 2, 2])
+      self.assertAllEqual(count, [1, 2, 3])
+
   def testUpdateVariableMemoryUsage(self):
     with ops.device('device:{}:0'.format(self.device)):
 

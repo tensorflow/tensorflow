@@ -2316,6 +2316,8 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "UniformRequantize",
       "Unique",
       "UniqueV2",
+      "UniqueWithCounts",
+      "UniqueWithCountsV2",
       "UnravelIndex",
       "UpperBound",
       "UnsortedSegmentMax",

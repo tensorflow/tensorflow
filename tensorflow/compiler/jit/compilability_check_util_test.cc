@@ -160,6 +160,35 @@ TEST_F(CompilabilityCheckUtilTest, CheckNonFunctionalNodes) {
   ASSERT_EQ("", uncompilable_node_info.stack_trace.at(0).function_name);
 }
 
+TEST_F(CompilabilityCheckUtilTest, AllowUniqueOpFilterCoversAllUniqueOps) {
+  GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+  auto opts = builder.opts();
+  Node* input = ops::SourceOp("InputFloatOp", opts);
+  Node* axis = ops::SourceOp("InputInt32Op", opts);
+  std::vector<Node*> nodes = {
+      ops::UnaryOp("Unique", input, opts),
+      ops::BinaryOp("UniqueV2", input, axis, opts.WithAttr("Taxis", DT_INT32)),
+      ops::UnaryOp("UniqueWithCounts", input, opts),
+      ops::BinaryOp("UniqueWithCountsV2", input, axis,
+                    opts.WithAttr("Taxis", DT_INT32)),
+  };
+  GraphDef graph_def;
+  TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
+
+  auto* flib_runtime = GetFunctionLibraryRuntime();
+  for (Node* node : nodes) {
+    EXPECT_TRUE(checker_->IsCompilableNode(*node, flib_runtime))
+        << node->type_string();
+  }
+
+  op_filter_.allow_unique_op = false;
+  checker_ = CreateCompilabilityChecker();
+  for (Node* node : nodes) {
+    EXPECT_FALSE(checker_->IsCompilableNode(*node, flib_runtime))
+        << node->type_string();
+  }
+}
+
 TEST_F(CompilabilityCheckUtilTest, CheckOutsideCompiledNode) {
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   auto opts = builder.opts();
