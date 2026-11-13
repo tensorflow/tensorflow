@@ -31,12 +31,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_context.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -100,6 +103,40 @@ absl::InlinedVector<int64_t, 4> TransposedBcastDims(
     new_bcast_dims.push_back(inv_perm[dim]);
   }
   return new_bcast_dims;
+}
+
+bool OnlyInsertsDeletesOrPermutes1SizedDims(const HloInstruction* rearrange) {
+  if (rearrange->opcode() == HloOpcode::kReshape) {
+    return rearrange->ReshapeMerelyInsertsOrDeletes1SizedDimensions()
+        .has_value();
+  }
+  if (rearrange->opcode() == HloOpcode::kTranspose) {
+    int64_t prev_non_degenerate_dim = -1;
+    for (int64_t dim : rearrange->dimensions()) {
+      if (rearrange->operand(0)->shape().dimensions(dim) != 1) {
+        if (dim < prev_non_degenerate_dim) {
+          return false;
+        }
+        prev_non_degenerate_dim = dim;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+bool ProducedByContraction(const HloInstruction* instr) {
+  while (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kReducePrecision>(
+      instr)) {
+    instr = instr->operand(0);
+  }
+  return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution,
+                          HloOpcode::kRaggedDot>(instr);
+}
+
+bool AllUsersAreRearranges(const HloInstruction* instr) {
+  return instr != instr->parent()->root_instruction() &&
+         !instr->users().empty() && absl::c_all_of(instr->users(), IsRearrange);
 }
 
 }  // namespace
@@ -226,6 +263,22 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
   const HloInstruction* rearrange =
       FirstNontrivialRearrange(instruction->operands());
   if (rearrange == nullptr) {
+    return false;
+  }
+  // Do not sink data reordering reshapes or transposes across widening
+  // converts unless the source comes from a contraction (so sinking exposes the
+  // convert for contraction epilogue fusion or cast folding) or every user of
+  // the convert is itself a rearrange (so adjacent rearranges collapse).
+  // Otherwise sinking runs the rearrange in the wider element type, inflating
+  // intermediate buffer size and blocking convert fusion into downstream
+  // consumers, while fighting ConvertMover. Rearranges that only insert,
+  // delete, or permute degenerate dimensions of size 1 stay allowed.
+  if (instruction->opcode() == HloOpcode::kConvert &&
+      primitive_util::BitWidth(rearrange->shape().element_type()) <
+          primitive_util::BitWidth(instruction->shape().element_type()) &&
+      !OnlyInsertsDeletesOrPermutes1SizedDims(rearrange) &&
+      !ProducedByContraction(rearrange->operand(0)) &&
+      !AllUsersAreRearranges(instruction)) {
     return false;
   }
   return absl::c_all_of(
