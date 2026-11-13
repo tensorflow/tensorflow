@@ -1994,6 +1994,84 @@ ENTRY main {
   EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kMemzero));
 }
 
+TEST_F(GpuCompilerTest, CollectiveCommandBuffersKeepCollectivesOutOfOutputs) {
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+exponential {
+  p = f32[1024] parameter(0)
+  ROOT e = f32[1024] exponential(p)
+}
+
+negate {
+  p = f32[1024] parameter(0)
+  ROOT n = f32[1024] negate(p)
+}
+
+ENTRY main {
+  p0 = f32[1024] parameter(0)
+  ar = f32[1024] all-reduce(p0), replica_groups={}, to_apply=add
+  e = f32[1024] fusion(ar), kind=kLoop, calls=exponential
+  ROOT n = f32[1024] fusion(e), kind=kLoop, calls=negate
+}
+)";
+
+  auto all_reduce_maybe_live_out =
+      [&](DebugOptions::CommandBufferUpdateMode update_mode,
+          bool keep_collectives_out_of_outputs) -> absl::StatusOr<bool> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(kHloText));
+    DebugOptions& debug_options =
+        module->mutable_config().mutable_debug_options();
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
+    debug_options.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(
+        keep_collectives_out_of_outputs);
+
+    Compiler::CompileOptions compile_options;
+    compile_options.gpu_topology = GetSingleDeviceGpuTopology(
+        /*platform_version=*/"", gpu_target_config());
+    compile_options.early_exit_with_layouts = false;
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        compiler()->RunBackend(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+    auto* gpu_executable = absl::down_cast<GpuExecutable*>(executable.get());
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<BufferAssignment> assignment,
+        BufferAssignment::FromProto(gpu_executable->buffer_assignment_proto(),
+                                    &gpu_executable->module(),
+                                    compiler()->BufferSizeBytesFunction(),
+                                    gpu_executable->alias_info()));
+    const HloInstruction* ar = FindInstruction(&gpu_executable->module(), "ar");
+    if (ar == nullptr) {
+      return absl::NotFoundError("all-reduce `ar` not in the compiled module");
+    }
+    ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                     assignment->GetUniqueTopLevelSlice(ar));
+    return slice.allocation()->maybe_live_out();
+  };
+
+  EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::ALWAYS_UPDATE,
+                                        /*keep_collectives_out_of_outputs=*/
+                                        true),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::SKIP_TEMP,
+                                        /*keep_collectives_out_of_outputs=*/
+                                        false),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::SKIP_TEMP,
+                                        /*keep_collectives_out_of_outputs=*/
+                                        true),
+              absl_testing::IsOkAndHolds(false));
+}
+
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   if (gpu_target_config().device_description.dnn_version() <
           stream_executor::SemanticVersion(9, 12, 0) &&
