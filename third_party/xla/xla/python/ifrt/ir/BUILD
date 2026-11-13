@@ -149,7 +149,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -167,6 +166,7 @@ xla_cc_test(
     deps = [
         ":sharding_param",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -770,7 +770,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -781,9 +780,14 @@ xla_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     deps = [
+        ":ir",
         ":utils",
+        "//xla/mlir/utils:error_util",
         "//xla/python/ifrt/ir/support:module_parsing",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],

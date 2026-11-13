@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/ValueRange.h"
@@ -104,7 +105,8 @@ bool isBuiltinOrVifrtAttr(mlir::Attribute attr) {
 // Generic conversions; when there's a 1:1 mapping from a VIFRT to an IFRT
 // attribute, and passthrough for a subset of the builtin attributes.
 mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
-                               const mlir::TypeConverter* type_converter) {
+                               const mlir::TypeConverter* type_converter,
+                               mlir::Location loc) {
   LLVM_DEBUG(llvm::dbgs() << "Convert generic attribute: " << vifrt_attr
                           << '\n');
   if (!isBuiltinOrVifrtAttr(vifrt_attr)) {
@@ -113,48 +115,50 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   }
   // Ordered from most constrained to least constrained.
   if (auto attr = llvm::dyn_cast<VifrtDevicesV1Attr>(vifrt_attr)) {
-    return IfrtDevicesAttr::get(attr.getContext(), attr.getIds());
+    return IfrtDevicesAttr::getChecked(loc, attr.getContext(), attr.getIds());
   }
   if (auto attr = llvm::dyn_cast<VifrtShardingParamV2Attr>(vifrt_attr)) {
-    return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
+    return IfrtShardingParamAttr::getChecked(loc, attr.getContext(),
+                                             attr.getSharding());
   }
   if (auto attr = llvm::dyn_cast<VifrtUnspecifiedShardingV1Attr>(vifrt_attr)) {
     return IfrtUnspecifiedShardingAttr::get(attr.getContext());
   }
   if (auto attr = llvm::dyn_cast<VifrtIntervalV1Attr>(vifrt_attr)) {
-    return IfrtIntervalAttr::get(attr.getContext(), attr.getStart(),
-                                 attr.getEnd(), attr.getStep());
+    return IfrtIntervalAttr::getChecked(loc, attr.getContext(), attr.getStart(),
+                                        attr.getEnd(), attr.getStep());
   }
   if (auto attr = llvm::dyn_cast<VifrtMappingV1Attr>(vifrt_attr)) {
     auto from_shards = llvm::dyn_cast_or_null<IfrtIntervalAttr>(
-        convertGeneric(attr.getFromShards(), type_converter));
+        convertGeneric(attr.getFromShards(), type_converter, loc));
     auto to_shards = llvm::dyn_cast_or_null<IfrtIntervalAttr>(
-        convertGeneric(attr.getToShards(), type_converter));
-    if (!from_shards || !to_shards) {
+        convertGeneric(attr.getToShards(), type_converter, loc));
+    if (from_shards == nullptr || to_shards == nullptr) {
       LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
       return {};
     }
-    return IfrtMappingAttr::get(attr.getContext(), from_shards, to_shards);
+    return IfrtMappingAttr::getChecked(loc, attr.getContext(), from_shards,
+                                       to_shards);
   }
   if (auto attr = llvm::dyn_cast<VifrtArrayMappingV1Attr>(vifrt_attr)) {
     llvm::SmallVector<mlir::Attribute> ifrt_mappings;
     ifrt_mappings.reserve(attr.getMappings().size());
-    for (auto mapping : attr.getMappings()) {
+    for (mlir::Attribute mapping : attr.getMappings()) {
       auto ifrt_mapping = llvm::dyn_cast_or_null<IfrtMappingAttr>(
-          convertGeneric(mapping, type_converter));
-      if (!ifrt_mapping) {
+          convertGeneric(mapping, type_converter, loc));
+      if (ifrt_mapping == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
         return {};
       }
       ifrt_mappings.push_back(ifrt_mapping);
     }
-    return IfrtArrayMappingAttr::get(
-        attr.getContext(), attr.getInArrayIndex(), attr.getOutArrayIndex(),
+    return IfrtArrayMappingAttr::getChecked(
+        loc, attr.getContext(), attr.getInArrayIndex(), attr.getOutArrayIndex(),
         mlir::ArrayAttr::get(attr.getContext(), ifrt_mappings));
   }
   if (auto attr = llvm::dyn_cast<VifrtTypeV1Attr>(vifrt_attr)) {
-    auto ifrt_type = type_converter->convertType(attr.getValue());
-    if (!ifrt_type) {
+    mlir::Type ifrt_type = type_converter->convertType(attr.getValue());
+    if (ifrt_type == nullptr) {
       LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << vifrt_attr << '\n');
       return {};
     }
@@ -173,13 +177,13 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   if (auto attr = llvm::dyn_cast<mlir::ArrayAttr>(vifrt_attr)) {
     llvm::SmallVector<mlir::Attribute> ifrt_attrs;
     ifrt_attrs.reserve(attr.getValue().size());
-    for (auto vifrt_attr : attr.getValue()) {
-      if (auto ifrt_attr = convertGeneric(vifrt_attr, type_converter)) {
-        ifrt_attrs.push_back(ifrt_attr);
-      } else {
-        LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << vifrt_attr << '\n');
+    for (mlir::Attribute entry : attr.getValue()) {
+      mlir::Attribute ifrt_attr = convertGeneric(entry, type_converter, loc);
+      if (ifrt_attr == nullptr) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << entry << '\n');
         return {};
       }
+      ifrt_attrs.push_back(ifrt_attr);
     }
     return mlir::ArrayAttr::get(attr.getContext(), ifrt_attrs);
   }
@@ -196,19 +200,20 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   if (auto attr = llvm::dyn_cast<mlir::DictionaryAttr>(vifrt_attr)) {
     llvm::SmallVector<mlir::NamedAttribute> ifrt_attrs;
     ifrt_attrs.reserve(attr.getValue().size());
-    for (auto named_attr : attr.getValue()) {
-      auto attr_name = getAttrNameFromVifrtToIfrt(named_attr);
+    for (mlir::NamedAttribute named_attr : attr.getValue()) {
+      mlir::FailureOr<mlir::StringAttr> attr_name =
+          getAttrNameFromVifrtToIfrt(named_attr);
       if (mlir::failed(attr_name)) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << vifrt_attr << '\n');
         return {};
       }
-      if (auto ifrt_attr =
-              convertGeneric(named_attr.getValue(), type_converter)) {
-        ifrt_attrs.push_back({attr_name.value(), ifrt_attr});
-      } else {
+      mlir::Attribute ifrt_attr =
+          convertGeneric(named_attr.getValue(), type_converter, loc);
+      if (ifrt_attr == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << vifrt_attr << '\n');
         return {};
       }
+      ifrt_attrs.push_back({*attr_name, ifrt_attr});
     }
     return mlir::DictionaryAttr::get(attr.getContext(), ifrt_attrs);
   }
@@ -238,42 +243,48 @@ class VifrtToIfrtTypeConverter : public VifrtTypeConverterBuiltin {
       return {};
     });
     addConversion([&](VifrtArrayV1Type array) -> mlir::Type {
+      mlir::Location loc = mlir::UnknownLoc::get(array.getContext());
       auto sharding_attr = llvm::dyn_cast_or_null<IfrtShardingAttrInterface>(
-          convertGeneric(array.getShardingAttr(), this));
-      if (!sharding_attr) {
+          convertGeneric(array.getShardingAttr(), this, loc));
+      if (sharding_attr == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert sharding: "
                                 << array.getShardingAttr() << '\n');
         return {};
       }
       auto devices_attr = llvm::dyn_cast_or_null<IfrtDevicesAttr>(
-          convertGeneric(array.getDevicesAttr(), this));
-      if (!devices_attr) {
+          convertGeneric(array.getDevicesAttr(), this, loc));
+      if (devices_attr == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert devices: "
                                 << array.getDevicesAttr() << '\n');
         return {};
       }
       auto memory_kind_attr =
           llvm::dyn_cast<mlir::StringAttr>(array.getMemoryKindAttr());
-      if (memory_kind_attr && memory_kind_attr.str() == kVifrtDefaultString) {
+      if (memory_kind_attr != nullptr &&
+          memory_kind_attr.str() == kVifrtDefaultString) {
         // No memory kind was specified.
         memory_kind_attr = nullptr;
       }
       auto layout_attr =
           llvm::dyn_cast<mlir::StringAttr>(array.getLayoutAttr());
-      if (layout_attr && layout_attr.str() == kVifrtDefaultString) {
+      if (layout_attr != nullptr && layout_attr.str() == kVifrtDefaultString) {
         // No layout was specified.
         layout_attr = nullptr;
       }
       mlir::RankedTensorType shape = array.getShape();
       if (llvm::isa<VifrtTokenV1Type>(shape.getElementType())) {
-        shape = mlir::RankedTensorType::get(
-            {}, IfrtTokenType::get(array.getContext()));
+        shape = mlir::RankedTensorType::getChecked(
+            loc, shape.getShape(), IfrtTokenType::get(array.getContext()));
       } else if (llvm::isa<VifrtStringV1Type>(shape.getElementType())) {
-        shape = mlir::RankedTensorType::get(
-            shape.getShape(), IfrtStringType::get(array.getContext()));
+        shape = mlir::RankedTensorType::getChecked(
+            loc, shape.getShape(), IfrtStringType::get(array.getContext()));
       }
-      return IfrtArrayType::get(array.getContext(), shape, sharding_attr,
-                                devices_attr, memory_kind_attr, layout_attr);
+      if (shape == nullptr) {
+        return {};
+      }
+      return IfrtArrayType::getChecked(loc, array.getContext(), shape,
+                                       sharding_attr, devices_attr,
+                                       memory_kind_attr, layout_attr);
     });
     addConversion([](VifrtControlV1Type type) -> mlir::Type {
       return IfrtControlType::get(type.getContext());
@@ -401,12 +412,12 @@ class VifrtToIfrtOpConverter : public mlir::OpConversionPattern<VifrtOpTy> {
                                 << ", " << vifrt_attr.getValue() << '\n');
         return mlir::failure();
       }
-      if (auto ifrt_attr =
-              convertGeneric(vifrt_attr.getValue(), this->getTypeConverter())) {
-        ifrt_attrs.push_back({attr_name.value(), ifrt_attr});
-      } else {
+      mlir::Attribute ifrt_attr = convertGeneric(
+          vifrt_attr.getValue(), this->getTypeConverter(), vifrt_op.getLoc());
+      if (ifrt_attr == nullptr) {
         return mlir::failure();
       }
+      ifrt_attrs.push_back({attr_name.value(), ifrt_attr});
     }
 
     // The operands have already been converted to IFRT by the dialect

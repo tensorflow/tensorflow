@@ -16,11 +16,11 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -99,12 +100,7 @@ absl::Status ShardingParam::MinorToMajor::verify() const {
         "Expect same non-zero size for `permutation` and `axis_sizes`. Actual ",
         permutation.size(), " vs ", axis_sizes.size()));
   }
-  llvm::DenseSet<int> permutation_set(permutation.begin(), permutation.end());
-  if (permutation_set.size() != permutation.size()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("`permutation` [", absl::StrJoin(permutation, ","),
-                     "] has duplicate values"));
-  }
+  llvm::SmallBitVector seen_axes(axis_sizes.size());
   for (const int index : permutation) {
     if (index < 0 || index >= axis_sizes.size()) {
       return absl::InvalidArgumentError(
@@ -112,11 +108,22 @@ absl::Status ShardingParam::MinorToMajor::verify() const {
                        absl::StrJoin(permutation, ","), "] on ",
                        absl::StrJoin(axis_sizes, "x")));
     }
+    if (seen_axes.test(index)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`permutation` [", absl::StrJoin(permutation, ","),
+                       "] has duplicate values"));
+    }
+    seen_axes.set(index);
   }
   // The cumulative product of `axis_sizes` must fit in an `int`, since
   // ToDeviceList() narrows to it.
   int cum_size = 1;
   for (const int size : axis_sizes) {
+    if (size <= 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`axis_sizes` must be positive, got ", size, " in [",
+                       absl::StrJoin(axis_sizes, "x"), "]"));
+    }
     if (__builtin_mul_overflow(cum_size, size, &cum_size)) {
       return absl::InvalidArgumentError(
           absl::StrCat("`axis_sizes` product overflows: [",
@@ -171,8 +178,11 @@ mlir::FailureOr<ShardingParam> ShardingParam::ParseV2(
       ods_parser.parseKeyword("to") ||
       ods_parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
                                          parseIntoPermutation) ||
-      ods_parser.parseKeyword("on") ||
-      ods_parser.parseDimensionList(axis_sizes_64, false, false)) {
+      ods_parser.parseKeyword("on")) {
+    return mlir::failure();
+  }
+  llvm::SMLoc axis_sizes_loc = ods_parser.getCurrentLocation();
+  if (ods_parser.parseDimensionList(axis_sizes_64, false, false)) {
     return mlir::failure();
   }
 
@@ -192,7 +202,16 @@ mlir::FailureOr<ShardingParam> ShardingParam::ParseV2(
     }
   }
 
-  minor_to_major.axis_sizes.assign(axis_sizes_64.begin(), axis_sizes_64.end());
+  minor_to_major.axis_sizes.reserve(axis_sizes_64.size());
+  for (const int64_t axis_size : axis_sizes_64) {
+    if (axis_size > std::numeric_limits<int>::max()) {
+      ods_parser.emitError(axis_sizes_loc)
+          << "`axis_sizes` value " << axis_size
+          << " overflows 32-bit signed integer";
+      return mlir::failure();
+    }
+    minor_to_major.axis_sizes.push_back(static_cast<int>(axis_size));
+  }
   // The copy here is necessary because parseDimensionList expects a
   // llvm::SmallVector<int64_t>, whereas ShardingParam expects a
   // std::vector<int64_t>. ShardingParam has Python bindings, so we do not want
@@ -210,29 +229,32 @@ void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,
 absl::Status ShardingParam::verify() const {
   ABSL_RETURN_IF_ERROR(minor_to_major().verify());
   const int axis_size = minor_to_major().axis_sizes.size();
-  absl::flat_hash_set<int> unreduced_set;
+  llvm::SmallBitVector seen_unreduced_axes(axis_size);
   for (const int unreduced : unreduced_axes()) {
-    if (!unreduced_set.insert(unreduced).second) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("`unreduced_axes` has duplicate value: ", unreduced));
-    }
     if (unreduced < 0 || unreduced >= axis_size) {
       return absl::InvalidArgumentError(
           absl::StrCat("`unreduced_axes` must contain non-negative values "
                        "less than the number of mesh dimensions (=",
                        axis_size, "). Saw: ", unreduced));
     }
+    if (seen_unreduced_axes.test(unreduced)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`unreduced_axes` has duplicate value: ", unreduced));
+    }
+    seen_unreduced_axes.set(unreduced);
   }
   // TODO(b/491122256): Improve validation logic to check if `dim_shards` can be
   // distributed over the device mesh.
   int total_dim_shards_size = 1;
-  for (const int dim_shard : dim_shards()) {
+  for (const int64_t dim_shard : dim_shards()) {
     if (dim_shard <= 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("`dim_shards` must be positive, got ", dim_shard,
                        " in [", absl::StrJoin(dim_shards(), "x"), "]"));
     }
-    if (__builtin_mul_overflow(total_dim_shards_size, dim_shard,
+    if (dim_shard > std::numeric_limits<int>::max() ||
+        __builtin_mul_overflow(total_dim_shards_size,
+                               static_cast<int>(dim_shard),
                                &total_dim_shards_size)) {
       return absl::InvalidArgumentError(
           absl::StrCat("`dim_shards` product overflows: ",
@@ -267,10 +289,6 @@ std::string ShardingParam::DebugString() const {
 mlir::LogicalResult ShardingParam::CanApplyTo(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::RankedTensorType shape, llvm::ArrayRef<int> device_ids) const {
-  if (mlir::failed(verify(emitError))) {
-    return mlir::failure();
-  }
-
   if (shape.getRank() != dim_shards().size()) {
     return emitError() << "Requires dim shards to have the same rank as the "
                           "array. Array rank is "
@@ -278,7 +296,7 @@ mlir::LogicalResult ShardingParam::CanApplyTo(
                        << dim_shards().size();
   }
 
-  auto devices_in_mesh = NumDevices();
+  const int devices_in_mesh = NumDevices();
   if (devices_in_mesh != device_ids.size()) {
     return emitError() << "Requires the same amount of `devices` and from "
                           "`sharding`. Actual: "
@@ -291,13 +309,28 @@ mlir::LogicalResult ShardingParam::CanApplyTo(
 absl::StatusOr<llvm::SmallVector<int64_t>>
 ShardingParam::GlobalShapeFromLocalShape(
     llvm::ArrayRef<int64_t> local_shape) const {
-  llvm::SmallVector<int64_t> global_shape;
   if (local_shape.size() != dim_shards().size()) {
     return absl::InvalidArgumentError(
         "Rank of local tensor differs from rank of `dim_shards`.");
   }
+  llvm::SmallVector<int64_t> global_shape;
+  global_shape.reserve(local_shape.size());
   for (auto [idx, dim_shard] : llvm::enumerate(dim_shards())) {
-    global_shape.push_back(dim_shard * local_shape[idx]);
+    if (dim_shard <= 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("`dim_shards` must be positive, got ", dim_shard, "."));
+    }
+    if (local_shape[idx] < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Local shape dimensions must be non-negative, got ",
+                       local_shape[idx], " in dimension ", idx, "."));
+    }
+    int64_t global_dim = 0;
+    if (__builtin_mul_overflow(dim_shard, local_shape[idx], &global_dim)) {
+      return absl::InvalidArgumentError(
+          "Global shape dimension overflows 64-bit signed integer.");
+    }
+    global_shape.push_back(global_dim);
   }
   return global_shape;
 }
@@ -305,10 +338,23 @@ ShardingParam::GlobalShapeFromLocalShape(
 absl::StatusOr<llvm::SmallVector<int64_t>>
 ShardingParam::LocalShapeFromGlobalShape(
     llvm::ArrayRef<int64_t> global_shape) const {
-  auto num_shards = dim_shards();
+  llvm::ArrayRef<int64_t> num_shards = dim_shards();
+  if (global_shape.size() != num_shards.size()) {
+    return absl::InvalidArgumentError(
+        "Rank of global tensor differs from rank of `dim_shards`.");
+  }
   llvm::SmallVector<int64_t> local_shape;
   local_shape.reserve(global_shape.size());
   for (int i = 0; i < num_shards.size(); ++i) {
+    if (num_shards[i] <= 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "`dim_shards` must be positive, got ", num_shards[i], "."));
+    }
+    if (global_shape[i] < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Global shape dimensions must be non-negative, got ",
+                       global_shape[i], " in dimension ", i, "."));
+    }
     if (global_shape[i] % num_shards[i] != 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Global shape is not divisible by the number of shards in dimension ",

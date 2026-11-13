@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
@@ -138,7 +137,7 @@ class ShardingParam {
   mlir::LogicalResult verify(
       llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
 
-  // Verifies if the sharding can be applied to the array.
+  // Verifies if a validated sharding can be applied to the array.
   mlir::LogicalResult CanApplyTo(
       llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
       mlir::RankedTensorType shape, llvm::ArrayRef<int> device_ids) const;

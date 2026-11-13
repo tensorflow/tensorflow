@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <tuple>
 #include <utility>
@@ -317,29 +316,21 @@ bool SameLayout(IfrtArrayType t1, IfrtArrayType t2) {
   return true;
 }
 
-int GetNumberOfSteps(IfrtIntervalAttr interval) {
-  return (interval.getEnd() - interval.getStart() + interval.getStep() - 1) /
-         interval.getStep();
-}
-
 mlir::LogicalResult CheckIntervalRange(int64_t num_shards,
                                        IfrtIntervalAttr interval,
                                        mlir::Location loc) {
-  if (interval.getStart() < 0 || interval.getStart() > num_shards - 1) {
+  if (interval.getStart() >= num_shards) {
     return mlir::emitError(
         loc, absl::StrCat("start must be in [0, ", num_shards - 1, "], but is ",
                           interval.getStart()));
   }
-  if (interval.getStep() <= 0) {
-    return mlir::emitError(loc, absl::StrCat("step must be positive, but is ",
-                                             interval.getStep()));
-  }
-  if (interval.getEnd() < 0 ||
-      interval.getEnd() > num_shards + interval.getStep() - 1) {
+  const int64_t last_index =
+      interval.getEnd() - 1 -
+      (interval.getEnd() - 1 - interval.getStart()) % interval.getStep();
+  if (last_index >= num_shards) {
     return mlir::emitError(
-        loc, absl::StrCat("end must be in [0, ",
-                          num_shards + interval.getStep() - 1, "] if step is ",
-                          interval.getStep(), ", but is ", interval.getEnd()));
+        loc, absl::StrCat("last index in interval must be in [0, ",
+                          num_shards - 1, "], but is ", last_index));
   }
   return mlir::success();
 }
@@ -386,8 +377,7 @@ mlir::LogicalResult AssembleOp::verify() {
     input_devices.push_back(array.getDevices()[0]);
   }
   const llvm::ArrayRef<int> output_devices = getOutput().getType().getDevices();
-  if (!std::equal(input_devices.begin(), input_devices.end(),
-                  output_devices.begin())) {
+  if (!llvm::equal(input_devices, output_devices)) {
     return emitOpError() << "requires the same input/output device list. Input "
                          << input_devices << " vs Output " << output_devices;
   }
@@ -412,8 +402,7 @@ mlir::LogicalResult DisassembleOp::verify() {
     output_devices.push_back(array.getDevices()[0]);
   }
   const llvm::ArrayRef<int> input_devices = getInput().getType().getDevices();
-  if (!std::equal(input_devices.begin(), input_devices.end(),
-                  output_devices.begin())) {
+  if (!llvm::equal(input_devices, output_devices)) {
     return emitOpError() << "requires the same input/output device list. Input "
                          << input_devices << " vs Output " << output_devices;
   }
@@ -527,12 +516,12 @@ mlir::LogicalResult RemapArraysOp::verify() {
         llvm::cast<IfrtArrayMappingAttr>(array_mapping);
     int in_index = array_mapping_attr.getInArrayIndex();
     int out_index = array_mapping_attr.getOutArrayIndex();
-    if (in_index < 0 || in_index >= num_in_arrays) {
+    if (in_index >= num_in_arrays) {
       return emitOpError() << "mappings in array index " << idx
                            << " must be in [0, " << num_in_arrays
                            << "], but is " << in_index;
     }
-    if (out_index < 0 || out_index >= num_out_arrays) {
+    if (out_index >= num_out_arrays) {
       return emitOpError() << "mapping out array index " << idx
                            << " must be in [0, " << num_out_arrays
                            << "], but is " << out_index;
@@ -613,28 +602,9 @@ mlir::LogicalResult RemapArraysOp::verify() {
                << "out_interval: " << mlir::debugString(out_interval);
       }
 
-      if (GetNumberOfSteps(in_interval) != GetNumberOfSteps(out_interval)) {
-        return emitOpError()
-               << "mapping #" << idx << " from #" << sidx << " and mapping #"
-               << idx << " to #" << sidx << " must have the same number of "
-               << "steps, but were " << GetNumberOfSteps(in_interval) << " and "
-               << GetNumberOfSteps(out_interval) << " ("
-               << mlir::debugString(in_interval) << " vs. "
-               << mlir::debugString(out_interval) << ")";
-      }
-      int in_shard = in_interval.getStart();
-      int out_shard = out_interval.getStart();
+      int64_t in_shard = in_interval.getStart();
+      int64_t out_shard = out_interval.getStart();
       while (in_shard < in_interval.getEnd()) {
-        if (in_shard >= in_used_shards.size()) {
-          return emitOpError()
-                 << "input array #" << in_index << " shard #" << in_shard
-                 << " is out of range of input shards.";
-        }
-        if (out_shard >= out_mapped_shards.size()) {
-          return emitOpError()
-                 << "output array #" << out_index << " shard #" << out_shard
-                 << " is out of range of output shards.";
-        }
         if (in_used_shards[in_shard]) {
           return emitOpError() << "input array #" << in_index << " shard #"
                                << in_shard << " is already used.";

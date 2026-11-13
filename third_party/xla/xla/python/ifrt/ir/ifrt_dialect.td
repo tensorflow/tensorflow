@@ -145,6 +145,8 @@ def Ifrt_ArrayMappingAttr : AttrDef<Ifrt_Dialect, "IfrtArrayMapping"> {
     Ifrt_MappingAttrArrayAttr:$mappings);
 
   let assemblyFormat = "`<`$in_array_index`,` $out_array_index`,` $mappings`>`";
+
+  let genVerifyDecl = 1;
 }
 
 def Ifrt_ArrayMappingAttrArrayAttr :

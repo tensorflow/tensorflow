@@ -81,3 +81,37 @@ func.func @disassemble_requires_same_device_list(
                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>)
   return
 }
+
+// -----
+
+func.func @disassemble_rejects_fewer_input_devices_than_outputs(
+    %arg0: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires the same input/output device list. Input 0 vs Output 0, 1}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}
+
+// -----
+
+func.func @disassemble_rejects_more_input_devices_than_outputs(
+    %arg0: !ifrt.array<tensor<2x6xi32>,
+                       #ifrt.sharding_param<1x3 to [0] on 3>, [0,1,2]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Disassemble' op requires the same input/output device list. Input 0, 1, 2 vs Output 0, 1}}
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+      : (!ifrt.array<tensor<2x6xi32>,
+                     #ifrt.sharding_param<1x3 to [0] on 3>, [0,1,2]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}

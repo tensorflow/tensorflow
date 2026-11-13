@@ -19,11 +19,15 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Region.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: export
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Support/LLVM.h"
@@ -121,7 +125,8 @@ bool isLegalType(mlir::Type type, const Version& version) {
   }
   if (auto array_type = llvm::dyn_cast<VifrtArrayV1Type>(type)) {
     return isLegalType(array_type.getShape().getElementType(), version) &&
-           isLegalAttribute(array_type.getShardingAttr(), version);
+           isLegalAttribute(array_type.getShardingAttr(), version) &&
+           isLegalAttribute(array_type.getDevicesAttr(), version);
   }
   if (auto func_type = llvm::dyn_cast<VifrtFunctionV1Type>(type)) {
     auto is_legal_type_fn = [&](mlir::Type type) {
@@ -164,6 +169,10 @@ bool isLegalAttribute(mlir::Attribute attr, const Version& version) {
   if (auto type_attr = llvm::dyn_cast<VifrtTypeV1Attr>(attr)) {
     return isLegalType(type_attr.getValue(), version);
   }
+  if (auto mapping_attr = llvm::dyn_cast<VifrtMappingV1Attr>(attr)) {
+    return isLegalAttribute(mapping_attr.getFromShards(), version) &&
+           isLegalAttribute(mapping_attr.getToShards(), version);
+  }
   if (auto array_mapping_attr = llvm::dyn_cast<VifrtArrayMappingV1Attr>(attr)) {
     return llvm::all_of(array_mapping_attr.getMappings().getValue(),
                         [&](const auto& mapping) {
@@ -193,6 +202,13 @@ bool isLegalOperation(mlir::Operation* op, const Version& version) {
   if (!llvm::all_of(op->getOperandTypes(), is_legal_type_fn) ||
       !llvm::all_of(op->getResultTypes(), is_legal_type_fn)) {
     return false;
+  }
+  for (mlir::Region& region : op->getRegions()) {
+    for (mlir::Block& block : region) {
+      if (!llvm::all_of(block.getArgumentTypes(), is_legal_type_fn)) {
+        return false;
+      }
+    }
   }
 
   return true;

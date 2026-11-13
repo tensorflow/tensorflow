@@ -19,18 +19,29 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/mlir/utils/error_util.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 TEST(UtilsTest, GetPrettyLocationUnknownLoc) {
@@ -106,6 +117,75 @@ module {
 
   EXPECT_EQ(GetArgPrettyLocation(0, *module), "\t\"x\"\n");
   EXPECT_EQ(GetArgPrettyLocation(1, *module), "\t\"y\"\n");
+}
+
+TEST(UtilsTest, IfrtDevicesAttrRejectsEmptyDeviceList) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+  IfrtDevicesAttr empty_devices = IfrtDevicesAttr::getChecked(
+      [&]() { return mlir::emitError(mlir::UnknownLoc::get(&context)); },
+      &context, /*ids=*/llvm::ArrayRef<int>());
+  EXPECT_EQ(empty_devices.getAsOpaquePointer(), nullptr);
+  EXPECT_THAT(diagnostic_handler.ConsumeStatus(),
+              StatusIs(absl::StatusCode::kUnknown,
+                       HasSubstr("Device list cannot be empty")));
+}
+
+TEST(UtilsTest, IfrtArrayTypeRejectsNullParameters) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  mlir::OpBuilder builder(&context);
+  auto emit_error = [&]() {
+    return mlir::emitError(mlir::UnknownLoc::get(&context));
+  };
+  mlir::RankedTensorType valid_shape =
+      mlir::RankedTensorType::get({2}, builder.getI32Type());
+  IfrtShardingAttrInterface valid_sharding =
+      IfrtUnspecifiedShardingAttr::get(&context);
+  IfrtDevicesAttr valid_devices =
+      IfrtDevicesAttr::get(&context, /*ids=*/llvm::ArrayRef<int>({0, 1}));
+
+  {
+    mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+    IfrtArrayType null_shape = IfrtArrayType::getChecked(
+        emit_error, &context, /*shape=*/mlir::RankedTensorType(),
+        valid_sharding, valid_devices, /*memory_kind_attr=*/mlir::StringAttr(),
+        /*layout_attr=*/mlir::StringAttr());
+    EXPECT_EQ(null_shape, nullptr);
+    EXPECT_THAT(
+        diagnostic_handler.ConsumeStatus(),
+        StatusIs(absl::StatusCode::kUnknown,
+                 HasSubstr("expected non-null IfrtArrayType parameters")));
+  }
+
+  {
+    mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+    IfrtArrayType null_sharding = IfrtArrayType::getChecked(
+        emit_error, &context, valid_shape,
+        /*sharding_attr=*/IfrtShardingAttrInterface(), valid_devices,
+        /*memory_kind_attr=*/mlir::StringAttr(),
+        /*layout_attr=*/mlir::StringAttr());
+    EXPECT_EQ(null_sharding, nullptr);
+    EXPECT_THAT(
+        diagnostic_handler.ConsumeStatus(),
+        StatusIs(absl::StatusCode::kUnknown,
+                 HasSubstr("expected non-null IfrtArrayType parameters")));
+  }
+
+  {
+    mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+    IfrtArrayType null_devices = IfrtArrayType::getChecked(
+        emit_error, &context, valid_shape, valid_sharding,
+        /*devices_attr=*/IfrtDevicesAttr(),
+        /*memory_kind_attr=*/mlir::StringAttr(),
+        /*layout_attr=*/mlir::StringAttr());
+    EXPECT_EQ(null_devices, nullptr);
+    EXPECT_THAT(
+        diagnostic_handler.ConsumeStatus(),
+        StatusIs(absl::StatusCode::kUnknown,
+                 HasSubstr("expected non-null IfrtArrayType parameters")));
+  }
 }
 
 }  // namespace

@@ -206,10 +206,63 @@ func.func @error_empty_interval(%arg0: !array) attributes {ifrt.function} {
 !array = !ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 func.func @error_diff_number_shards(%arg0: !array) attributes {ifrt.function} {
-  // expected-error@+3 {{but they must have the same number of shards}}
+  // expected-error@+3 {{from has 1 and to has 2, but they must have the same number of shards.}}
   // expected-error@+2 {{failed to parse Ifrt_ArrayMappingAttr parameter}}
   %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
       [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:2:1]>]>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @error_symmetric_empty_interval(%arg0: !array) attributes {ifrt.function} {
+  // expected-error@+4 {{interval is empty}}
+  // expected-error@+3 {{failed to parse Ifrt_MappingAttr parameter}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayMappingAttr parameter}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[1:1:1] to [1:1:1]>]>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x8xi32>,
+                     #ifrt.sharding_param<1x4 to [0] on 4>, [0,1,2,3]>
+func.func @error_step_gt_one_diff_number_shards(%arg0: !array) attributes {ifrt.function} {
+  // expected-error@+3 {{from has 2 and to has 4, but they must have the same number of shards.}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayMappingAttr parameter}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:3:2] to [0:4:1]>]>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @error_interval_start_out_of_range(%arg0: !array) attributes {ifrt.function} {
+  // expected-error@+2 {{start must be in [0, 1], but is 2}}
+  // expected-error@+1 {{'ifrt.RemapArrays' op mapping #0 from #0 has invalid in_interval}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[2:3:1] to [0:1:1]>]>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x8xi32>,
+                     #ifrt.sharding_param<1x4 to [0] on 4>, [0,1,2,3]>
+func.func @error_interval_last_index_out_of_range(%arg0: !array) attributes {ifrt.function} {
+  // expected-error@+2 {{last index in interval must be in [0, 3], but is 4}}
+  // expected-error@+1 {{'ifrt.RemapArrays' op mapping #0 from #0 has invalid in_interval}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[1:6:3] to [0:2:1]>]>]
       : (!array) -> (!array)
   return
 }
@@ -316,4 +369,43 @@ func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
               #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
     : (!array0, !array1) -> (!array)
   return %0 : !array
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @error_negative_array_mapping_index(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+2 {{in_array_index and out_array_index must be non-negative}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<-1, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @error_empty_array_mapping_intervals(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+2 {{expected non-empty array of IfrtMappingAttr}}
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, []>]
+      : (!array) -> (!array)
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @remap_with_int32_max_step(%arg0: !array)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0) mappings =
+      [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>,
+                                  #ifrt.mapping<[1:2147483647:2147483647] to [1:2147483647:2147483647]>]>]
+      : (!array) -> (!array)
+  return
 }

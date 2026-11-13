@@ -67,6 +67,7 @@ class Vifrt_AttrDef<string name, string min_version, string max_version>
 def Vifrt_DevicesAttrV1 : Vifrt_AttrDef<"VifrtDevicesV1", "0.1.0", "current"> {
   let mnemonic = "devices_v1";
   let parameters = (ins ArrayRefParameter<"int">:$ids);
+  let genVerifyDecl = 1;
   let assemblyFormat = "`[` $ids `]`";
 }
 
@@ -87,6 +88,7 @@ def Vifrt_ShardingParamAttrV2 : Vifrt_AttrDef<"VifrtShardingParamV2", "0.2.0",
     "current"> {
   let mnemonic = "sharding_param_v2";
   let parameters = (ins Vifrt_ShardingParameterV2:$sharding);
+  let genVerifyDecl = 1;
   let assemblyFormat = "`<` $sharding `>`";
 }
 
@@ -94,6 +96,7 @@ def Vifrt_IntervalAttrV1 : Vifrt_AttrDef<"VifrtIntervalV1", "0.1.0",
     "current"> {
   let mnemonic = "interval_v1";
   let parameters = (ins "int":$start, "int":$end, "int":$step);
+  let genVerifyDecl = 1;
   let assemblyFormat = "`[`$start `:` $end `:` $step`]`";
 }
 
@@ -102,6 +105,7 @@ def Vifrt_MappingAttrV1 : Vifrt_AttrDef<"VifrtMappingV1", "0.1.0", "current"> {
   let parameters = (ins
      Vifrt_IntervalAttrV1:$from_shards,
      Vifrt_IntervalAttrV1:$to_shards);
+  let genVerifyDecl = 1;
   let assemblyFormat = "`<` $from_shards `to` $to_shards `>`";
 }
 
@@ -113,16 +117,6 @@ def Vifrt_ArrayMappingAttrV1 : Vifrt_AttrDef<"VifrtArrayMappingV1", "0.1.0",
     "int32_t":$out_array_index,
     "::mlir::ArrayAttr":$mappings);
   let genVerifyDecl = 1;
-  let extraClassDefinition = [{
-    mlir::LogicalResult VifrtArrayMappingV1Attr::verify(
-        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
-        int32_t in_array_index, int32_t out_array_index,
-        ::mlir::ArrayAttr mappings) {
-      if (!allFromBuiltinOrVifrt(mappings.getValue()))
-        return err_fn() << "expected VIFRT or builtin type";
-      return mlir::success();
-    }
-  }];
   let assemblyFormat = "`<`$in_array_index`,` $out_array_index`,` $mappings`>`";
 }
 
@@ -132,15 +126,6 @@ def Vifrt_TypeAttrV1 : Vifrt_AttrDef<"VifrtTypeV1", "0.1.0", "current"> {
   let mnemonic = "type_v1";
   let parameters = (ins "::mlir::Type":$value);
   let genVerifyDecl = 1;
-  let extraClassDefinition = [{
-    mlir::LogicalResult VifrtTypeV1Attr::verify(
-        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
-        mlir::Type value) {
-      if (!isFromBuiltinOrVifrt(value))
-        return err_fn() << "expected VIFRT or builtin type";
-      return mlir::success();
-    }
-  }];
   let assemblyFormat = "`<` $value `>`";
 }
 
@@ -173,17 +158,6 @@ def Vifrt_ArrayV1 : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"
     "::mlir::StringAttr":$memory_kind_attr,
     "::mlir::StringAttr":$layout_attr);
   let genVerifyDecl = 1;
-  let extraClassDefinition = [{
-    mlir::LogicalResult VifrtArrayV1Type::verify(
-        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
-        mlir::RankedTensorType shape, mlir::Attribute sharding_attr,
-        VifrtDevicesV1Attr devices_attr, mlir::StringAttr memory_kind_attr,
-        mlir::StringAttr layout_attr) {
-      if (!isFromVifrt(sharding_attr))
-          err_fn() << "expected VIFRT sharding attribute";
-      return mlir::success();
-    }
-  }];
   let assemblyFormat = [{
     `<` $shape`,` $sharding_attr `,` $devices_attr `,` `memory_kind` `=`
         $memory_kind_attr `,` `layout` `=` $layout_attr `>`
@@ -203,15 +177,6 @@ def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "cur
     ArrayRefParameter<"::mlir::Type">:$outputs
   );
   let genVerifyDecl = 1;
-  let extraClassDefinition = [{
-    mlir::LogicalResult VifrtFunctionV1Type::verify(
-        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
-        llvm::ArrayRef<mlir::Type> inputs, llvm::ArrayRef<mlir::Type> outputs) {
-      if (!allFromBuiltinOrVifrt(inputs) || !allFromBuiltinOrVifrt(outputs))
-        return err_fn() << "expected VIFRT or builtin types";
-      return mlir::success();
-    }
-  }];
   let assemblyFormat = "`<` `(` custom<TypeArray>($inputs) `)` `->` custom<TypeArray>($outputs) `>`";
 }
 
