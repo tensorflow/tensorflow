@@ -78,7 +78,7 @@ struct ArraySpec {
   }
 
   // Constructs `ArraySpec` from `ArraySpecProto`.
-  static absl::StatusOr<ArraySpec> FromProto(Client* client,
+  static absl::StatusOr<ArraySpec> FromProto(Client* absl_nonnull client,
                                              const ArraySpecProto& proto);
 
   // Converts the array spec to a protobuf.

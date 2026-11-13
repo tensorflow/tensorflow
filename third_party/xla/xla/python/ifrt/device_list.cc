@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -66,7 +67,7 @@ class FingerprintPrinter {
 char DeviceList::ID = 0;
 
 absl::StatusOr<DeviceListRef> DeviceList::FromProto(
-    xla::ifrt::Client* client, const DeviceListProto& proto) {
+    xla::ifrt::Client* absl_nonnull client, const DeviceListProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
   if (version_number != SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(absl::StrCat(

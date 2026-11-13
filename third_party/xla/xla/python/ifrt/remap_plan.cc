@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
@@ -601,7 +602,7 @@ absl::Status RemapPlan::Validate() const {
   return rep_->validate_array_shard_mappings_status;
 }
 
-absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
+absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* absl_nonnull client,
                                                const RemapPlanProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
   if (version_number < SerDesVersionNumber(0) ||

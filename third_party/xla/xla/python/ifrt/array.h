@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -59,7 +60,7 @@ enum class ArrayCopySemantics : int {
   kDonateInput,
 };
 
-using ArrayRef = tsl::RCReference<Array>;
+using ArrayRef = absl_nonnull tsl::RCReference<Array>;
 
 // Represents a single logical array from one or more sharded buffers.
 // Implementations must be thread-safe.

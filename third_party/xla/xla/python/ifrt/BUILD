@@ -266,6 +266,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -436,6 +437,7 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -447,6 +449,7 @@ xla_cc_test(
     deps = [
         ":ref_wrapper",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -799,6 +802,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
@@ -890,6 +894,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -945,6 +950,7 @@ cc_library(
         ":rtti",
         ":serdes",
         "//xla:util",
+        "@com_google_absl//absl/base:nullability",
     ],
     alwayslink = True,
 )
@@ -1157,6 +1163,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",

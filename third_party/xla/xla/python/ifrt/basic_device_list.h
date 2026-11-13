@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
@@ -50,12 +51,13 @@ class BasicDeviceList : public RTTIExtends<BasicDeviceList, DeviceList> {
 
   // TODO(hyeontaek): Consider using variant<Device*, std::vector<Device*>> for
   // better performance.
-  using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
+  using Devices = absl::InlinedVector<Device* absl_nonnull, kInlineDeviceSize>;
 
   // Constructor with a pre-populated `devices`.
   static DeviceListRef Create(Devices devices);
-  static DeviceListRef Create(absl::Span<Device* const> devices);
-  static DeviceListRef Create(std::initializer_list<Device*> devices);
+  static DeviceListRef Create(absl::Span<Device* absl_nonnull const> devices);
+  static DeviceListRef Create(
+      std::initializer_list<Device* absl_nonnull> devices);
 
   ~BasicDeviceList() override = default;
 

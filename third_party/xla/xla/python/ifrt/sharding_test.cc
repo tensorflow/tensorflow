@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
@@ -65,7 +66,8 @@ class ConcreteShardingTest : public ShardingTest {};
 class ConcreteEvenShardingTest : public ShardingTest {};
 
 TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
-  EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");
+  Device* device = nullptr;
+  EXPECT_DEATH(SingleDeviceSharding::Create(device, MemoryKind()), "");
 }
 
 TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {

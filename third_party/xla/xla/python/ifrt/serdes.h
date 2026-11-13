@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -91,12 +92,13 @@ class SerDes : public RTTIExtends<SerDes, RTTIRoot> {
 //
 // Typically, this function should be called from a module initializer.
 // Registering a serdes more than once for the same type crashes the process.
-void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes);
+void RegisterSerDes(const void* absl_nonnull type_id,
+                    absl_nonnull std::unique_ptr<SerDes> serdes);
 
 // Syntactic sugar of the above function that takes a `Serializable` class as a
 // template argument.
 template <typename T>
-void RegisterSerDes(std::unique_ptr<SerDes> serdes) {
+void RegisterSerDes(absl_nonnull std::unique_ptr<SerDes> serdes) {
   static_assert(std::is_base_of_v<Serializable, T>,
                 "Types must implement `xla::ifrt::Serializable` to have a "
                 "serdes implementation");

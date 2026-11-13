@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -259,19 +260,20 @@ class MockClient : public RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
   MOCK_METHOD(absl::StatusOr<DeviceListRef>, MakeDeviceList,
-              (absl::Span<Device* const> devices), (const));
+              (absl::Span<Device* absl_nonnull const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>>,
               Load,
               (absl::Span<const ExecutableRef> executables,
-               absl::Span<std::unique_ptr<LoadOptions>> options),
+               absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options),
               (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const xla::ifrt::DeviceListRef& devices), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               GetDefaultPjRtLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-               xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
+               xla::ifrt::Device* absl_nonnull device,
+               xla::ifrt::MemoryKind memory_kind),
               (const, final));
   MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
               (DType dtype, const Shape& shape, const ShardingRef& sharding),
@@ -279,7 +281,7 @@ class MockClient : public RTTIExtends<MockClient, Client> {
   MOCK_METHOD(
       absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>,
       SubscribeToAttributeChanges,
-      (absl::Span<xla::ifrt::Device* const> devices,
+      (absl::Span<xla::ifrt::Device* absl_nonnull const> devices,
        std::optional<absl::Span<const std::string>> attribute_names,
        xla::ifrt::OnDeviceAttributeChangeCallback callback),
       (final));
@@ -309,10 +311,11 @@ class MockCompiler : public RTTIExtends<MockCompiler, Compiler> {
               (const xla::ifrt::ExecutableVersion& executable_version,
                const xla::ifrt::DeviceListRef& devices),
               (const, final));
-  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
-              (const absl::Cord& serialized,
-               std::unique_ptr<DeserializeExecutableOptions> options),
-              (final));
+  MOCK_METHOD(
+      tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
+      (const absl::Cord& serialized,
+       absl_nullable std::unique_ptr<DeserializeExecutableOptions> options),
+      (final));
 
   static char ID;  // NOLINT
 };

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -79,7 +80,7 @@ absl::StatusOr<absl::Span<const int>> Sharding::ShardToUniqueIndexDomainIndex()
 }
 
 absl::StatusOr<ShardingRef> Sharding::FromProto(
-    Client* client, const ShardingProto& sharding_proto) {
+    Client* absl_nonnull client, const ShardingProto& sharding_proto) {
   return Deserialize<Sharding>(
       sharding_proto.serialized_sharding(),
       std::make_unique<DeserializeShardingOptions>(client));
@@ -99,7 +100,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 }
 
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
-    Device* device, MemoryKind memory_kind) {
+    Device* absl_nonnull device, MemoryKind memory_kind) {
   CHECK(device != nullptr);
   absl::StatusOr<DeviceListRef> device_list =
       device->client()->MakeDeviceList({device});

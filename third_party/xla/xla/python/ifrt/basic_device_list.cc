@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
@@ -40,11 +41,13 @@ DeviceListRef BasicDeviceList::Create(Devices devices) {
   return DeviceListRef(tsl::MakeRef<BasicDeviceList>(std::move(devices)));
 }
 
-DeviceListRef BasicDeviceList::Create(absl::Span<Device* const> devices) {
+DeviceListRef BasicDeviceList::Create(
+    absl::Span<Device* absl_nonnull const> devices) {
   return Create(Devices(devices.begin(), devices.end()));
 }
 
-DeviceListRef BasicDeviceList::Create(std::initializer_list<Device*> devices) {
+DeviceListRef BasicDeviceList::Create(
+    std::initializer_list<Device* absl_nonnull> devices) {
   return Create(Devices(devices.begin(), devices.end()));
 }
 

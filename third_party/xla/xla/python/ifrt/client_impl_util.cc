@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -102,7 +103,7 @@ bool CanUseMakeArrayFromHostBuffer(
 }  // namespace
 
 absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
-    Client* client,
+    Client* absl_nonnull client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics) {
   for (int i = 1; i < specs.size(); ++i) {
@@ -220,7 +221,8 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
 }
 
 absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
-    Client* client, absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
+    Client* absl_nonnull client,
+    absl::Span<Client::CopyArraysToHostBufferShardsSpec> specs,
     ArrayCopySemantics semantics) {
   // Validate the specs.
   for (int i = 1; i < specs.size(); ++i) {
@@ -333,7 +335,7 @@ absl::StatusOr<std::vector<tsl::Future<>>> ClientCopyArraysToHostBufferShards(
 
 absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
 LoadedExecutableExecuteBundle(
-    LoadedExecutable* executable, absl::Span<BundleRef> args,
+    LoadedExecutable* absl_nonnull executable, absl::Span<BundleRef> args,
     const ExecuteOptions& options,
     const std::optional<std::vector<int>>& outputs_bundle_slice_sizes) {
   int total_args_size = 0;

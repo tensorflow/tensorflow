@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -61,7 +62,8 @@ std::unique_ptr<IfrtIrExecutableVersion> GetCurrentIfrtIrExecutableVersion() {
 char IfrtIrProgramCompiler::ID = 0;
 
 IfrtIrProgramCompiler::IfrtIrProgramCompiler(
-    Client* client, AtomProgramCompilerFactory atom_program_compiler_factory)
+    Client* absl_nonnull client,
+    AtomProgramCompilerFactory atom_program_compiler_factory)
     : client_(client),
       atom_program_compiler_factory_(std::move(atom_program_compiler_factory)) {
 }
@@ -153,7 +155,7 @@ absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
 tsl::Future<LoadedExecutableRef>
 IfrtIrProgramCompiler::DeserializeLoadedExecutable(
     const absl::Cord& serialized,
-    std::unique_ptr<DeserializeExecutableOptions> options) {
+    absl_nullable std::unique_ptr<DeserializeExecutableOptions> options) {
   tsl::profiler::TraceMe traceme(
       "IfrtIrProgramCompiler::DeserializeLoadedExecutable");
 
