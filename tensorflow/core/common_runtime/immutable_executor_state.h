@@ -101,6 +101,8 @@ class ImmutableExecutorState {
 
   bool requires_control_flow_support() const { return requires_control_flow_; }
 
+  bool has_temporary_variables() const { return has_temporary_variables_; }
+
   // Copies the pending counts for nodes in this graph to the given array.
   //
   // This method provides a more efficient way of initializing
@@ -132,6 +134,7 @@ class ImmutableExecutorState {
   LocalExecutorParams params_;
   GraphView gview_;
   bool requires_control_flow_;
+  bool has_temporary_variables_ = false;
   std::vector<PendingCounts::Handle> pending_ids_;
 
   // Root nodes (with no in edges) that should form the initial ready queue

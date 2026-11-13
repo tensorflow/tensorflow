@@ -3305,6 +3305,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:check_numerics_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",

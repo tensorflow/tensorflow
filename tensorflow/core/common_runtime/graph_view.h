@@ -85,6 +85,9 @@ struct NodeItem {
                                     // node's input types.
   bool is_distributed_communication : 1;  // True iff the op is registered to
                                           // use distributed communication.
+  // TemporaryVariable and DestroyTemporaryVariable need an execution-local
+  // resource container, even when other resources outlive this execution.
+  bool is_temporary_variable : 1;
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;

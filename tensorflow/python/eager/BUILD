@@ -20,6 +20,32 @@ package(
     licenses = ["notice"],
 )
 
+tf_py_strict_test(
+    name = "temporary_variable_test",
+    size = "small",
+    srcs = ["temporary_variable_test.py"],
+    deps = [
+        ":cancellation",
+        ":context",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/ops:data_flow_ops_gen",
+        "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:state_ops_gen",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
