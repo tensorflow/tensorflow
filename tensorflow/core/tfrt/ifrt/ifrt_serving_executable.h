@@ -108,7 +108,8 @@ class IfrtServingExecutable {
       IfrtPersistentCompilationCache* persistent_compilation_cache,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
       bool use_output_arena = false,
-      bool use_undonatable_buffer_converter = false);
+      bool use_undonatable_buffer_converter = false,
+      absl::Span<const int> assigned_device_ids = {});
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -278,6 +279,7 @@ class IfrtServingExecutable {
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       xla::ifrt::DeviceListRef assigned_device_list,
+      absl::Span<const int> assigned_device_ids,
       absl::flat_hash_map<size_t, size_t> static_shape_arg_map,
       std::variant<tsl::protobuf::Message*,
                    xla::CompileOptions::EnvironmentOptionOverrides>
@@ -293,14 +295,8 @@ class IfrtServingExecutable {
         module_(std::move(module)),
         original_compile_metadata_(std::move(original_compile_metadata)),
         assigned_device_list_(std::move(assigned_device_list)),
-        assigned_device_ids_([this] {
-          std::vector<int> assigned_device_ids;
-          assigned_device_ids.reserve(assigned_device_list_->size());
-          for (const auto& device : assigned_device_list_->devices()) {
-            assigned_device_ids.push_back(device->Id().value());
-          }
-          return assigned_device_ids;
-        }()),
+        assigned_device_ids_(assigned_device_ids.begin(),
+                             assigned_device_ids.end()),
         static_shape_arg_map_(std::move(static_shape_arg_map)),
         ifrt_client_(std::move(client)),
         thread_pool_(*thread_pool),
@@ -343,9 +339,12 @@ class IfrtServingExecutable {
   // test portable execution condition even if the Module itself is already
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
+  // Devices assigned to this executable. For non-portable execution, this holds
+  // the fixed devices used for compilation and execution. For portable
+  // execution, this holds the explicit candidate devices if
+  // `assigned_device_ids_` is non-empty.
   const xla::ifrt::DeviceListRef assigned_device_list_;
-  // Pre-calculated device IDs to avoid redundant computation on the critical
-  // path within the Execute() call.
+  // Explicitly assigned device IDs (empty if not specified by the caller).
   const std::vector<int> assigned_device_ids_;
   absl::flat_hash_map<size_t /*original_arg_idx*/,
                       size_t /*static_shape_arg_idx*/>

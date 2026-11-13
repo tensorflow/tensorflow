@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+
+using ::testing::ElementsAre;
 
 class IfrtServingCoreSelectorTest : public ::testing::Test {
  protected:
@@ -54,6 +58,46 @@ TEST_F(IfrtServingCoreSelectorTest, ReservedDevicesReturns) {
   tsl::DeviceReservation reservation =
       core_selector_->ReserveDevice(program_id1);
   EXPECT_THAT(reservation.device_index(), 0);
+}
+
+TEST_F(IfrtServingCoreSelectorTest, CandidateCores) {
+  const std::vector<int> candidate_cores = {1, 3};
+  int64_t program_id = 222222;
+  EXPECT_CALL(serving_device_selector_,
+              ReserveDevice(absl::StrCat(program_id), ElementsAre(1, 3)))
+      .WillOnce([this](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(3, &serving_device_selector_);
+      });
+
+  // Warmup iterates only over the candidate cores in the given order.
+  EXPECT_EQ(
+      core_selector_->ReserveDevice(program_id, candidate_cores).device_index(),
+      1);
+  EXPECT_EQ(
+      core_selector_->ReserveDevice(program_id, candidate_cores).device_index(),
+      3);
+  // Subsequent calls delegate to the underlying device selector with
+  // candidate_cores.
+  EXPECT_EQ(
+      core_selector_->ReserveDevice(program_id, candidate_cores).device_index(),
+      3);
+}
+
+TEST_F(IfrtServingCoreSelectorTest, SingleCandidateCore) {
+  const std::vector<int> candidate_cores = {2};
+  int64_t program_id = 333333;
+  EXPECT_CALL(serving_device_selector_,
+              ReserveDevice(absl::StrCat(program_id), ElementsAre(2)))
+      .WillOnce([this](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(2, &serving_device_selector_);
+      });
+
+  EXPECT_EQ(
+      core_selector_->ReserveDevice(program_id, candidate_cores).device_index(),
+      2);
+  EXPECT_EQ(
+      core_selector_->ReserveDevice(program_id, candidate_cores).device_index(),
+      2);
 }
 
 }  // namespace

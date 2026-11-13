@@ -355,6 +355,15 @@ absl::StatusOr<tensorflow::Tensor> MaybeReshapeInputForStaticShape(
   return flattened;
 }
 
+bool UsePortableExecutionInternal(
+    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
+    const IfrtServingCoreSelector* ifrt_serving_core_selector) {
+  // TODO(b/335247101) Add a check that the core selector must be non-null if
+  // it is a single-device program after core selection in Ifrt is stable.
+  return IsSingleDevice(compile_metadata) &&
+         ifrt_serving_core_selector != nullptr;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -375,7 +384,8 @@ IfrtServingExecutable::Create(
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache,
     H2DTransferExecutorFactory* h2d_transfer_executor_factory,
-    bool use_output_arena, bool use_undonatable_buffer_converter) {
+    bool use_output_arena, bool use_undonatable_buffer_converter,
+    absl::Span<const int> assigned_device_ids) {
   if (h2d_transfer_executor_factory == nullptr) {
     return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
   }
@@ -383,11 +393,36 @@ IfrtServingExecutable::Create(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<xla::ifrt::Device*> assigned_devices,
-      GetAssignedDevices(*module, *client,
-                         original_compile_metadata.num_replicas(),
-                         original_compile_metadata.num_cores_per_replica()));
+  std::vector<xla::ifrt::Device*> assigned_devices;
+  if (!assigned_device_ids.empty()) {
+    const bool is_portable_execution = UsePortableExecutionInternal(
+        original_compile_metadata, ifrt_serving_core_selector);
+    if (!is_portable_execution) {
+      const int expected_num_devices =
+          original_compile_metadata.num_replicas() *
+          original_compile_metadata.num_cores_per_replica();
+      if (assigned_device_ids.size() != expected_num_devices) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "assigned_device_ids has ", assigned_device_ids.size(),
+            " devices, but expected ", expected_num_devices,
+            " (num_replicas=", original_compile_metadata.num_replicas(),
+            ", num_cores_per_replica=",
+            original_compile_metadata.num_cores_per_replica(), ")"));
+      }
+    }
+    assigned_devices.reserve(assigned_device_ids.size());
+    for (int device_id : assigned_device_ids) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                          client->LookupDevice(xla::ifrt::DeviceId(device_id)));
+      assigned_devices.push_back(device);
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        assigned_devices,
+        GetAssignedDevices(*module, *client,
+                           original_compile_metadata.num_replicas(),
+                           original_compile_metadata.num_cores_per_replica()));
+  }
 
   absl::flat_hash_map<size_t, size_t> static_shape_arg_map =
       GetStaticShapeArgMap(*module, signature_name);
@@ -399,10 +434,11 @@ IfrtServingExecutable::Create(
       thread_pool, ifrt_loaded_variable_registry, ifrt_restore,
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
-      std::move(device_list), std::move(static_shape_arg_map),
-      compilation_env_or_overrides, tf_to_hlo_compiler,
-      persistent_compilation_cache, h2d_transfer_executor_factory,
-      use_output_arena, use_undonatable_buffer_converter));
+      std::move(device_list), assigned_device_ids,
+      std::move(static_shape_arg_map), compilation_env_or_overrides,
+      tf_to_hlo_compiler, persistent_compilation_cache,
+      h2d_transfer_executor_factory, use_output_arena,
+      use_undonatable_buffer_converter));
 
   return executable;
 }
@@ -654,21 +690,29 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
 
   compiled.arg_hlo_shardings.reserve(compiled.compile_metadata.args().size());
 
+  const bool use_portable_execution = UsePortableExecution();
+
   for (const auto& arg : compiled.compile_metadata.args()) {
     TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
                         xla::HloSharding::FromProto(arg.sharding()));
     compiled.arg_hlo_shardings.push_back(hlo_sharding);
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_sharding,
-        ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
-    compiled.arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
+
+    if (!use_portable_execution) {
+      TF_ASSIGN_OR_RETURN(
+          auto ifrt_sharding,
+          ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
+      compiled.arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
+    }
   }
 
-  if (UsePortableExecution()) {
+  if (use_portable_execution) {
     // For core selection, the device is selected at runtime. We pre-calculate
-    // the sharding for each addressable device to avoid doing it on the
+    // the sharding for each candidate device to avoid doing it on the
     // critical path. The map is keyed by device ID.
-    for (xla::ifrt::Device* device : ifrt_client_->addressable_devices()) {
+    absl::Span<xla::ifrt::Device* const> candidate_devices =
+        assigned_device_ids_.empty() ? ifrt_client_->addressable_devices()
+                                     : assigned_device_list_->devices();
+    for (xla::ifrt::Device* const device : candidate_devices) {
       compiled.portable_single_device_shardings.emplace(
           device->Id(), xla::ifrt::SingleDeviceSharding::Create(
                             device, xla::ifrt::MemoryKind()));
@@ -1036,8 +1080,11 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     executable_bundle->compiled = std::move(compiled);
 
     if (UsePortableExecution()) {
-      // If core selector is enabled, we load variables on all cores.
-      for (const auto& device : ifrt_client_->addressable_devices()) {
+      // If core selector is enabled, we load variables on all candidate cores.
+      absl::Span<xla::ifrt::Device* const> candidate_devices =
+          assigned_device_ids_.empty() ? ifrt_client_->addressable_devices()
+                                       : assigned_device_list_->devices();
+      for (xla::ifrt::Device* const device : candidate_devices) {
         TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef selected_device_list,
                             ifrt_client_->MakeDeviceList({device}));
         TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
@@ -1071,10 +1118,8 @@ void IfrtServingExecutable::Freeze() {
 }
 
 bool IfrtServingExecutable::UsePortableExecution() {
-  // TODO(b/335247101) Add a check that the core selector must be non-null if
-  // it is a single-device program after core selection in Ifrt is stable.
-  return IsSingleDevice(original_compile_metadata_) &&
-         ifrt_serving_core_selector_;
+  return UsePortableExecutionInternal(original_compile_metadata_,
+                                      ifrt_serving_core_selector_);
 }
 
 absl::StatusOr<IfrtServingExecutable::ExecutionInfo>
@@ -1126,8 +1171,8 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
   xla::ifrt::DeviceListRef device_list;
   bool use_portable_execution = UsePortableExecution();
   if (use_portable_execution) {
-    device_reservation =
-        ifrt_serving_core_selector_->ReserveDevice(program_id_);
+    device_reservation = ifrt_serving_core_selector_->ReserveDevice(
+        program_id_, assigned_device_ids_);
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));

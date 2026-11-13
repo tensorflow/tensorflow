@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -171,6 +172,12 @@ class IfrtModelContext {
     return ifrt_serving_core_selector_;
   }
 
+  void set_device_ids(absl::InlinedVector<int, 8> device_ids) {
+    device_ids_ = std::move(device_ids);
+  }
+
+  absl::Span<const int> device_ids() const { return device_ids_; }
+
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue() const {
     return checkpoint_loader_queue_;
   }
@@ -301,6 +308,7 @@ class IfrtModelContext {
   bool enable_propagate_static_shapes_pass_ = true;
   bool use_output_arena_ = false;
   bool use_undonatable_buffer_converter_ = false;
+  absl::InlinedVector<int, 8> device_ids_;
 };
 
 }  // namespace ifrt_serving
