@@ -19,6 +19,7 @@ import numpy as np
 from packaging.version import Version  # pylint: disable=g-importing-member
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
@@ -122,6 +123,57 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     )
     self.assertEqual(np_dtype, actual.dtype)
     self.assertAllEqual([1.0, 4.0, 7.0, 10.0], actual.astype(np.float32))
+
+  def testLinspaceMixedTypes(self):
+    # Python int start with float stop
+    actual = self.evaluate(math_ops.linspace(0, 10.0, 5))
+    self.assertEqual(dtypes.float32, actual.dtype)
+    self.assertAllClose([0.0, 2.5, 5.0, 7.5, 10.0], actual)
+
+    # Python float start with int stop
+    actual = self.evaluate(math_ops.linspace(0.0, 10, 5))
+    self.assertEqual(dtypes.float32, actual.dtype)
+    self.assertAllClose([0.0, 2.5, 5.0, 7.5, 10.0], actual)
+
+    # Int tensor start with float tensor stop
+    start_t = constant_op.constant(0, dtype=dtypes.int32)
+    stop_t = constant_op.constant(10.0, dtype=dtypes.float32)
+    actual = self.evaluate(math_ops.linspace(start_t, stop_t, 5))
+    self.assertEqual(dtypes.float32, actual.dtype)
+    self.assertAllClose([0.0, 2.5, 5.0, 7.5, 10.0], actual)
+
+    # Float32 start with float64 stop
+    start_f32 = constant_op.constant(0.0, dtype=dtypes.float32)
+    stop_f64 = constant_op.constant(10.0, dtype=dtypes.float64)
+    actual = self.evaluate(math_ops.linspace(start_f32, stop_f64, 5))
+    self.assertEqual(dtypes.float64, actual.dtype)
+    self.assertAllClose([0.0, 2.5, 5.0, 7.5, 10.0], actual)
+
+    # Float64 array start with python float literal stop preserves precision
+    actual = self.evaluate(
+        math_ops.linspace(np.array(0.0, np.float64), 0.1, 12)
+    )
+    self.assertEqual(dtypes.float64, actual.dtype)
+    self.assertEqual(np.float64(0.1), actual[-1])
+
+    # Vector int start with vector float stop
+    actual = self.evaluate(math_ops.linspace([0, 1], [10.0, 20.0], 5))
+    self.assertEqual(dtypes.float32, actual.dtype)
+    expected = np.linspace([0, 1], [10.0, 20.0], 5)
+    self.assertAllClose(expected, actual)
+
+    # Int start with complex stop
+    stop_c64 = constant_op.constant(10.0 + 4.0j, dtype=dtypes.complex64)
+    actual = self.evaluate(math_ops.linspace(0, stop_c64, 5))
+    self.assertEqual(dtypes.complex64, actual.dtype)
+    self.assertAllClose(
+        [0.0 + 0.0j, 2.5 + 1.0j, 5.0 + 2.0j, 7.5 + 3.0j, 10.0 + 4.0j],
+        actual,
+    )
+
+  def testLinspaceIncompatibleTypes(self):
+    with self.assertRaises((TypeError, ValueError)):
+      math_ops.linspace("a", 10.0, 5)
 
 
 if __name__ == "__main__":

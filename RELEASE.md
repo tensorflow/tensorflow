@@ -54,6 +54,9 @@
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
+*   `tf.linspace`: `start` and `stop` are now promoted to a common dtype when
+    given mixed types (such as an integer `start` with a float `stop`, or mixed
+    precisions), matching `np.linspace` and `tf.range`.
 
 ## Thanks to our Contributors
 
