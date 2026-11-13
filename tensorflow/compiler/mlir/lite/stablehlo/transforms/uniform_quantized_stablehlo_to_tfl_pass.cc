@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/quant_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "uniform-quantized-stablehlo-to-tfl"
 
@@ -56,21 +56,21 @@ namespace mlir {
 namespace odml {
 namespace {
 
-using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
-using ::mlir::quant::CreateI32F32UniformQuantizedType;
-using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
-using ::mlir::quant::CreateI8F32UniformQuantizedType;
-using ::mlir::quant::GetElementType;
-using ::mlir::quant::IsI32F32UniformQuantizedPerAxisType;
-using ::mlir::quant::IsI32F32UniformQuantizedType;
-using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
-using ::mlir::quant::IsI8F32UniformQuantizedType;
-using ::mlir::quant::IsOpFullyQuantized;
-using ::mlir::quant::IsQuantizedTensorType;
-using ::mlir::quant::IsSupportedByTfliteQuantizeOrDequantizeOps;
 using ::mlir::quant::QuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
+using ::mlir::TFL::CreateI32F32UniformQuantizedPerAxisType;
+using ::mlir::TFL::CreateI32F32UniformQuantizedType;
+using ::mlir::TFL::CreateI8F32UniformQuantizedPerAxisType;
+using ::mlir::TFL::CreateI8F32UniformQuantizedType;
+using ::mlir::TFL::GetElementType;
+using ::mlir::TFL::IsI32F32UniformQuantizedPerAxisType;
+using ::mlir::TFL::IsI32F32UniformQuantizedType;
+using ::mlir::TFL::IsI8F32UniformQuantizedPerAxisType;
+using ::mlir::TFL::IsI8F32UniformQuantizedType;
+using ::mlir::TFL::IsOpFullyQuantized;
+using ::mlir::TFL::IsQuantizedTensorType;
+using ::mlir::TFL::IsSupportedByTfliteQuantizeOrDequantizeOps;
 
 const char* kPaddingSame = "SAME";
 const char* kPaddingValid = "VALID";

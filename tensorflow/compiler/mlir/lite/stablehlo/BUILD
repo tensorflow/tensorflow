@@ -312,7 +312,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":quant_attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
+        "//tensorflow/compiler/mlir/lite/quantization/common:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -590,7 +590,7 @@ cc_library(
         ":passes_inc_gen",
         ":quant_attrs_and_constraints",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
-        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
+        "//tensorflow/compiler/mlir/lite/quantization/common:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",

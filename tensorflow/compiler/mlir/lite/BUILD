@@ -1641,8 +1641,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
-        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
