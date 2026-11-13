@@ -245,7 +245,7 @@ class SDBSBatch : public Batch<TaskType> {
   SDBSBatch(SDBSQueue<TaskType>* queue, int64_t creation_time_micros)
       : queue_(queue), creation_time_micros_(creation_time_micros) {}
 
-  ~SDBSBatch() override {}
+  ~SDBSBatch() override = default;
 
   SDBSQueue<TaskType>* queue() const { return queue_; }
 
