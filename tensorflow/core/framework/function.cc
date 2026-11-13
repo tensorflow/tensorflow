@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <ctype.h>
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -88,6 +90,7 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
           absl::StrCat("type list attr not found: ", arg_def.type_list_attr()));
     }
     *is_type_list = true;
+    dtypes->reserve(v->list().type_size());
     for (int i = 0; i < v->list().type_size(); ++i) {
       dtypes->push_back(v->list().type(i));
     }
@@ -102,7 +105,19 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
       return absl::NotFoundError(
           absl::StrCat("number attr not found: ", arg_def.number_attr()));
     }
-    num = v->i();
+    TF_RETURN_IF_ERROR(AttrValueHasType(*v, "int"));
+    const int64_t repeats = v->i();
+    if (repeats < 0) {
+      return absl::InvalidArgumentError(absl::StrCat("Value for number attr ",
+                                                     arg_def.number_attr(), " ",
+                                                     repeats, " < 0"));
+    }
+    if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
+      return absl::InvalidArgumentError(absl::StrCat("Value for number attr ",
+                                                     arg_def.number_attr(),
+                                                     " is too big: ", repeats));
+    }
+    num = static_cast<int>(repeats);
   }
 
   DataType dtype;
@@ -116,6 +131,7 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
       return absl::NotFoundError(
           absl::StrCat("type attr not found: ", arg_def.type_attr()));
     }
+    TF_RETURN_IF_ERROR(AttrValueHasType(*v, "type"));
     dtype = v->type();
   }
   dtypes->resize(num, dtype);
@@ -1068,6 +1084,11 @@ std::string GetFunctionResourceInputDevice(
     absl::flat_hash_map<std::string, std::vector<std::string>>*
         composite_devices) {
   const auto& handles = input.flat<ResourceHandle>();
+  // An empty resource tensor carries no handle, so there is no device to
+  // report.
+  if (handles.size() == 0) {
+    return "";
+  }
   const ResourceHandle& handle0 = handles(0);
   std::string composite_device;
   auto iter = function_def.arg_attr().find(arg_index);

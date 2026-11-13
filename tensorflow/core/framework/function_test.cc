@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -982,6 +983,102 @@ TEST(InstantiateErrors, TypeMismatch) {
            "input inputs[1] expected type float != int32, the type of y[0]");
 }
 
+// Returns a function whose body is `a = AddN<N=n>(x, y)`.
+FunctionDef AddNWithNumberAttr(int64_t n) {
+  return FDH::Create(
+      // Name
+      "AddNWithNumberAttr",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", n}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+}
+
+TEST(InstantiateFunctionTest, ValidNumberAttrIsAccepted) {
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(AddNWithNumberAttr(2), AttrSlice(), GetOpSig,
+                                   &result));
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+}
+
+TEST(InstantiateErrors, NumberAttrTruncatesToInRangeValue) {
+  // 2^32 + 2 would truncate to 2 when narrowed to int.
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(int64_t{4294967298}),
+                               AttrSlice(), GetOpSig, &result),
+           "Value for number attr N is too big: 4294967298");
+}
+
+TEST(InstantiateErrors, NumberAttrTooBig) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(int64_t{2147483648}),
+                               AttrSlice(), GetOpSig, &result),
+           "Value for number attr N is too big: 2147483648");
+}
+
+TEST(InstantiateErrors, NumberAttrNegative) {
+  InstantiationResult result;
+  HasError(InstantiateFunction(AddNWithNumberAttr(-1), AttrSlice(), GetOpSig,
+                               &result),
+           "Value for number attr N -1 < 0");
+}
+
+// Returns a function whose body is `a = AddN<N=n>()`, a node with no inputs, so
+// that reading `n` as 0 would let it instantiate.
+FunctionDef AddNWithoutInputs(FDH::AttrValueWrapper n) {
+  return FDH::Create(
+      // Name
+      "AddNWithoutInputs",
+      // Inputs
+      {},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "AddN", {}, {{"T", DT_FLOAT}, {"N", n}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+}
+
+TEST(InstantiateErrors, NumberAttrWrongType) {
+  // A non-int AttrValue must be rejected, not read as 0 through `i()`.
+  InstantiationResult string_result;
+  HasError(InstantiateFunction(AddNWithoutInputs("two"), AttrSlice(), GetOpSig,
+                               &string_result),
+           "AttrValue had value with type 'string' when 'int' expected");
+  InstantiationResult float_result;
+  HasError(InstantiateFunction(AddNWithoutInputs(2.0f), AttrSlice(), GetOpSig,
+                               &float_result),
+           "AttrValue had value with type 'float' when 'int' expected");
+}
+
+TEST(InstantiateErrors, TypeAttrWrongType) {
+  auto fdef = FDH::Create(
+      // Name
+      "TypeAttrWrongType",
+      // Inputs
+      {},
+      // Outputs
+      {},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "One", {}, {{"T", "not_a_type"}}}},
+      // Returns
+      {});
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
+           "AttrValue had value with type 'string' when 'type' expected");
+}
+
 TEST(FunctionCallFrame, Void_Void) {
   FunctionCallFrame frame({}, {});
   TF_EXPECT_OK(frame.SetArgs({}));
@@ -1796,6 +1893,50 @@ TEST(InstantiateFunctionTest, ResourceInputDevice) {
   EXPECT_EQ(device1, "/device:CPU:0");
   EXPECT_EQ(composite_devices.size(), 1);
   EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
+}
+
+TEST(InstantiateFunctionTest, ResourceInputDeviceEmptyTensor) {
+  FunctionDef fdef = FDH::Create(
+      // Name
+      "Func",
+      // Args
+      {{"x0: resource"}, {"x1: resource"}},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"read0"}, "ReadVariableOp", {"x0"}, {{"dtype", DT_FLOAT}}},
+          {{"read1"}, "ReadVariableOp", {"x1"}, {{"dtype", DT_FLOAT}}},
+          {{"add"},
+           "Add",
+           {"read0:value:0", "read1:value:0"},
+           {{"T", DT_FLOAT}}},
+      },
+      {{"y", "add:z:0"}});
+  FunctionDef::ArgAttrs arg_attrs;
+  *(*arg_attrs.mutable_attr())["_composite_device"].mutable_s() =
+      "/device:COMPOSITE:0";
+  (*fdef.mutable_arg_attr())[0] = arg_attrs;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
+
+  ResourceHandle resource_handle;
+  resource_handle.set_device("/device:CPU:0");
+  Tensor one(DT_RESOURCE, TensorShape({1}));
+  one.flat<ResourceHandle>()(0) = resource_handle;
+  EXPECT_EQ(GetFunctionResourceInputDevice(one, /*arg_index=*/1, fdef,
+                                           &composite_devices),
+            "/device:CPU:0");
+
+  Tensor empty(DT_RESOURCE, TensorShape({0}));
+  EXPECT_EQ(GetFunctionResourceInputDevice(empty, /*arg_index=*/1, fdef,
+                                           &composite_devices),
+            "");
+  EXPECT_EQ(GetFunctionResourceInputDevice(empty, /*arg_index=*/0, fdef,
+                                           &composite_devices),
+            "");
+  EXPECT_TRUE(composite_devices.empty());
 }
 
 TEST(FrozenStackTrace, ToFramesReturnsAllFrames) {
