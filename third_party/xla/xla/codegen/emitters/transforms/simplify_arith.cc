@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -321,8 +322,12 @@ using RewriteMaximumFWithNaNPropagation =
     RewriteMinMaxFWithNaNPropagation<mlir::arith::MaximumFOp,
                                      mlir::arith::CmpFPredicate::OGE>;
 
-static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
-  // Match |x| implemented as (x >= 0) ? x : (0 - x).
+// Returns x if `sel` is |x| implemented as (x >= 0) ? x : (0 - x), and a null
+// value otherwise.
+static mlir::Value MatchAbsOperand(mlir::Operation* sel) {
+  if (!mlir::isa<mlir::arith::SelectOp>(sel)) {
+    return nullptr;
+  }
   mlir::Value x = sel->getOperand(1);
   auto m_x = mlir::matchers::m_Val(x);
   if (!x.getType().isSignlessIntOrIndex() ||
@@ -330,25 +335,71 @@ static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
           sel, mlir::m_Op<mlir::arith::SelectOp>(
                    mlir::m_Op<mlir::arith::CmpIOp>(m_x, mlir::m_Zero()), m_x,
                    mlir::m_Op<mlir::arith::SubIOp>(mlir::m_Zero(), m_x)))) {
-    return std::nullopt;
+    return nullptr;
   }
   if (sel->getOperand(0).getDefiningOp<mlir::arith::CmpIOp>().getPredicate() !=
       CmpIPredicate::sge) {
+    return nullptr;
+  }
+  return x;
+}
+
+static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
+  mlir::Value x = MatchAbsOperand(sel);
+  if (!x) {
     return std::nullopt;
   }
   // Annotate |x| as >= 0.
   Interval result{0,
                   static_cast<int64_t>(
                       (1ull << (x.getType().getIntOrFloatBitWidth() - 1)) - 1)};
+  // This only holds if x cannot be the minimum signed value, for which `0 - x`
+  // wraps around to x itself.
   std::optional<Interval> x_range = GetRange(x);
-  if (x_range.has_value()) {
-    Interval positive_range = x_range->max({0, 0});
-    Interval negative_range = -x_range->min({0, 0});
-    Interval abs_range = positive_range.Union(negative_range);
-    return result.Intersect(abs_range);
+  if (!x_range.has_value() || x_range->lower < -result.upper) {
+    return std::nullopt;
   }
-  return result;
+  Interval positive_range = x_range->max({0, 0});
+  Interval negative_range = -x_range->min({0, 0});
+  Interval abs_range = positive_range.Union(negative_range);
+  return result.Intersect(abs_range);
 }
+
+// Rewrites the clamp of an integer |x| to [0, C]
+//
+//   maxsi(minsi(index_cast(|x|), C), 0)
+//
+// to minui(index_castui(|x|), C). |x| is only negative if x is the minimum
+// signed value. Interpreted as an unsigned value, it is then larger than C, so
+// that one unsigned comparison is sufficient to clamp |x| for all values of x.
+// The minimum signed value is clamped to C rather than to 0.
+struct RewriteAbsIndexClamp : OpRewritePattern<mlir::arith::MaxSIOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::arith::MaxSIOp op,
+                                PatternRewriter& rewriter) const override {
+    auto min = op.getLhs().getDefiningOp<mlir::arith::MinSIOp>();
+    llvm::APInt upper;
+    if (!min || !mlir::matchPattern(op.getRhs(), mlir::m_Zero()) ||
+        !mlir::matchPattern(min.getRhs(), mlir::m_ConstantInt(&upper)) ||
+        upper.isNegative()) {
+      return rewriter.notifyMatchFailure(op, "not a clamp to [0, C]");
+    }
+    auto cast = min.getLhs().getDefiningOp<mlir::arith::IndexCastOp>();
+    if (!cast || !cast.getIn().getDefiningOp() ||
+        !MatchAbsOperand(cast.getIn().getDefiningOp())) {
+      return rewriter.notifyMatchFailure(op, "clamped value is not an abs");
+    }
+    auto unsigned_cast = mlir::arith::IndexCastUIOp::create(
+        rewriter, op.getLoc(), cast.getType(), cast.getIn());
+    auto unsigned_min = mlir::arith::MinUIOp::create(
+        rewriter, op.getLoc(), unsigned_cast, min.getRhs());
+    unsigned_min->setAttr(
+        "xla.range", rewriter.getIndexArrayAttr({0, upper.getSExtValue()}));
+    rewriter.replaceOp(op, unsigned_min);
+    return mlir::success();
+  }
+};
 
 void AnnotateRanges(mlir::func::FuncOp func) {
   func->walk([](mlir::Operation* op) {
@@ -464,6 +515,7 @@ class SimplifyArithPass
     // clang-format off
     patterns.add<
       RefineConstraints,
+      RewriteAbsIndexClamp,
       RewriteCmpI,
       RewriteMaxSi,
       RewriteMinSi,

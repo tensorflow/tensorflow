@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -21,6 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
@@ -44,6 +48,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 class GatherOperationTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
@@ -804,6 +810,145 @@ TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   std::vector<int32_t> expected = {};
   LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2, 3}, {7, 8, 9}},
                                           result_literal);
+}
+
+// Tests gathers whose start indices are the result of an integer abs. abs of
+// the minimum signed value is not representable, so there is no reference
+// result for it, but the slice that is read must still be within bounds. The
+// tests with 64 bit indices use an operand with elements of size 1, such that
+// the offset of an out of bounds read does not wrap around to 0.
+class GatherAbsIndexTest : public HloTestBase {
+ protected:
+  // Runs `hlo_text`, which must return slices of size 2 of an operand with 8
+  // elements of type T that start at abs(indices), and returns the flattened
+  // result.
+  template <typename T>
+  absl::StatusOr<std::vector<T>> ExecuteWithIndices(absl::string_view hlo_text,
+                                                    const Literal& indices) {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text, config));
+    Literal operand =
+        LiteralUtil::CreateR1<T>({10, 11, 12, 13, 14, 15, 16, 17});
+    ABSL_ASSIGN_OR_RETURN(Literal result,
+                     Execute(std::move(module), {&operand, &indices}));
+    absl::Span<const T> data = result.data<T>();
+    return std::vector<T>(data.begin(), data.end());
+  }
+};
+
+MATCHER(IsSliceWithinBounds, "is a slice of size 2 of the operand") {
+  return arg.size() == 2 && arg[0] >= 10 && arg[0] <= 16 &&
+         arg[1] == arg[0] + 1;
+}
+
+TEST_F(GatherAbsIndexTest, Gather32Bit) {
+  if (!test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
+  const std::string hlo_text = R"(
+HloModule GatherAbsIndex32Bit
+
+ENTRY main {
+  operand = s32[8] parameter(0)
+  indices = s32[5] parameter(1)
+  abs = s32[5] abs(indices)
+  ROOT gather = s32[5,2] gather(operand, abs),
+      offset_dims={1},
+      collapsed_slice_dims={},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={2}
+}
+)";
+  Literal indices = LiteralUtil::CreateR1<int32_t>(
+      {-3, 2, 100, -100, std::numeric_limits<int32_t>::min()});
+  ASSERT_OK_AND_ASSIGN(std::vector<int32_t> result,
+                       ExecuteWithIndices<int32_t>(hlo_text, indices));
+  ASSERT_EQ(result.size(), 10);
+  EXPECT_THAT(absl::MakeConstSpan(result).first(8),
+              ElementsAre(13, 14, 12, 13, 16, 17, 16, 17));
+  EXPECT_THAT(absl::MakeConstSpan(result).last(2), IsSliceWithinBounds());
+}
+
+TEST_F(GatherAbsIndexTest, Gather64Bit) {
+  if (!test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
+  const std::string hlo_text = R"(
+HloModule GatherAbsIndex64Bit
+
+ENTRY main {
+  operand = s8[8] parameter(0)
+  indices = s64[5] parameter(1)
+  abs = s64[5] abs(indices)
+  ROOT gather = s8[5,2] gather(operand, abs),
+      offset_dims={1},
+      collapsed_slice_dims={},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={2}
+}
+)";
+  Literal indices = LiteralUtil::CreateR1<int64_t>(
+      {-3, 2, 100, -100, std::numeric_limits<int64_t>::min()});
+  ASSERT_OK_AND_ASSIGN(std::vector<int8_t> result,
+                       ExecuteWithIndices<int8_t>(hlo_text, indices));
+  ASSERT_EQ(result.size(), 10);
+  EXPECT_THAT(absl::MakeConstSpan(result).first(8),
+              ElementsAre(13, 14, 12, 13, 16, 17, 16, 17));
+  EXPECT_THAT(absl::MakeConstSpan(result).last(2), IsSliceWithinBounds());
+}
+
+TEST_F(GatherAbsIndexTest, DynamicSlice32Bit) {
+  if (!test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
+  const std::string hlo_text = R"(
+HloModule DynamicSliceAbsIndex32Bit
+
+ENTRY main {
+  operand = s32[8] parameter(0)
+  index = s32[] parameter(1)
+  abs = s32[] abs(index)
+  ROOT slice = s32[2] dynamic-slice(operand, abs), dynamic_slice_sizes={2}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::vector<int32_t> in_range,
+                       ExecuteWithIndices<int32_t>(
+                           hlo_text, LiteralUtil::CreateR0<int32_t>(-3)));
+  EXPECT_THAT(in_range, ElementsAre(13, 14));
+  ASSERT_OK_AND_ASSIGN(std::vector<int32_t> min_value,
+                       ExecuteWithIndices<int32_t>(
+                           hlo_text, LiteralUtil::CreateR0<int32_t>(
+                                         std::numeric_limits<int32_t>::min())));
+  EXPECT_THAT(min_value, IsSliceWithinBounds());
+}
+
+TEST_F(GatherAbsIndexTest, DynamicSlice64Bit) {
+  if (!test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
+  const std::string hlo_text = R"(
+HloModule DynamicSliceAbsIndex64Bit
+
+ENTRY main {
+  operand = s8[8] parameter(0)
+  index = s64[] parameter(1)
+  abs = s64[] abs(index)
+  ROOT slice = s8[2] dynamic-slice(operand, abs), dynamic_slice_sizes={2}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<int8_t> in_range,
+      ExecuteWithIndices<int8_t>(hlo_text, LiteralUtil::CreateR0<int64_t>(-3)));
+  EXPECT_THAT(in_range, ElementsAre(13, 14));
+  ASSERT_OK_AND_ASSIGN(std::vector<int8_t> min_value,
+                       ExecuteWithIndices<int8_t>(
+                           hlo_text, LiteralUtil::CreateR0<int64_t>(
+                                         std::numeric_limits<int64_t>::min())));
+  EXPECT_THAT(min_value, IsSliceWithinBounds());
 }
 
 TEST_F(GatherOperationTest, b_301618442_case1) {
