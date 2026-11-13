@@ -1,0 +1,2773 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/cost_model/fusion_analysis_cache.h"
+#include "xla/backends/gpu/cost_model/gpu_dot_fusion_cost_model.h"
+#include "xla/backends/gpu/cost_model/gpu_hlo_cost_analysis.h"
+#include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/util.h"
+#include "tsl/platform/path.h"
+
+namespace xla {
+namespace gpu {
+namespace {
+
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
+
+using ::testing::Contains;
+using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::Field;
+using ::testing::Ge;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using ::xla::xtile::BlockLevelParameters;
+
+class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
+ public:
+  GpuIndexingPerformanceModelTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
+  static std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
+    auto ctx = std::make_unique<mlir::MLIRContext>();
+    ctx->disableMultithreading();
+    return ctx;
+  }
+
+  mlir::MLIRContext mlir_context_;
+  MlirContextPool mlir_context_pool_{CreateMlirContext, 4};
+  // The reference times in the test cases below are measured
+  // on A6000 by profiling the execution of the HLOs.
+  se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
+  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
+      &device_info_,
+      &fusion_analysis_cache_,
+      HloCostAnalysis::DefaultShapeSize,
+      &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false,
+      &mlir_context_pool_};
+
+  size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
+
+  // Returns `EstimateNumWarps` for `fusion_adaptor` tiled with `tile_sizes`.
+  absl::StatusOr<int64_t> EstimateNumWarpsForTileSizes(
+      const HloFusionAdaptor& fusion_adaptor,
+      absl::Span<const int64_t> tile_sizes) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(fusion_adaptor, &mlir_context_));
+    ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(
+        xla::xtile::GetPaddedTileSizes(tile_sizes)));
+    ABSL_ASSIGN_OR_RETURN(
+        TiledHloComputation tiled_hlo_computation,
+        TiledHloComputation::Tile(fusion_adaptor, std::move(tiling_space)));
+    return GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+        fusion_adaptor, tiled_hlo_computation);
+  }
+};
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TritonGemmWithCustomBlockLevelParameters) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_dot {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  lhs = f32[1024,1024] broadcast(p0), dimensions={}
+  rhs = f32[1024,1024] broadcast(p1), dimensions={}
+  ROOT dot = f32[1024,1024]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+ENTRY e {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT _ = f32[1024,1024]{1,0} fusion(p0, p1),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        kind: "__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["64", "64"]}],
+          "num_warps":"4",
+          "num_stages":"3",
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+)"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      const EstimateRunTimeData result_default,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
+
+  BlockLevelParameters custom_params;
+  custom_params.num_warps = 1;
+  custom_params.num_stages = 1;
+  custom_params.output_tile_sizes = {{16, 16}};
+  ASSERT_OK_AND_ASSIGN(
+      const EstimateRunTimeData result_with_custom,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, &custom_params));
+
+  EXPECT_NE(result_with_custom.exec_time, result_default.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16NumStages1) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_dot {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT dot = bf16[8192,8192] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+    backend_config={"sizes":["32"]}
+}
+
+ENTRY e {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT _ = bf16[8192,8192] fusion(p0, p1),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {"kind": "__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["256", "512"]}],"num_warps":"4","num_stages":"1","num_ctas":"1"}}}
+}
+)"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
+
+  const auto* dot_instr =
+      Cast<HloDotInstruction>(root->fused_expression_root());
+
+  ASSERT_OK_AND_ASSIGN(
+      const auto expected_compute_and_flops,
+      gpu_dot_fusion_cost_model::detail::
+          CalculateComputeTimeWithTileAndWaveQuantization(
+              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot_instr),
+              gpu_dot_fusion_cost_model::detail::DotTileSize{128, 128},
+              device_info_));
+
+  // For num_stages=1, exec_time is sequentially added: compute + mem + write.
+  // We expect it to be significantly larger than just compute_time.
+  EXPECT_GT(runtime.exec_time, expected_compute_and_flops.compute_time * 1.2);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundBf16) {
+  // TODO: b/510666436 - Tile sizes are intentionally kept large to reduce
+  // L2 cache replication overhead modeled by threadblock_count, keeping
+  // the operation compute bound.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_dot {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT dot = bf16[8192,8192] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+    backend_config={"sizes":["32"]}
+}
+
+ENTRY e {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT _ = bf16[8192,8192] fusion(p0, p1),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {"kind": "__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["128", "128"]}],"num_warps":"4","num_stages":"3","num_ctas":"1"}}}
+}
+)"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
+
+  const auto* dot_instr =
+      Cast<HloDotInstruction>(root->fused_expression_root());
+
+  ASSERT_OK_AND_ASSIGN(
+      const auto expected_compute_and_flops,
+      gpu_dot_fusion_cost_model::detail::
+          CalculateComputeTimeWithTileAndWaveQuantization(
+              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot_instr),
+              gpu_dot_fusion_cost_model::detail::DotTileSize{128, 128},
+              device_info_));
+
+  const absl::Duration expected_time =
+      expected_compute_and_flops.compute_time +
+      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+  // For pipelined loops, execution time is bounded by the dominant cost
+  // (compute in this case). We allow up to 10% overhead.
+  EXPECT_GE(runtime.exec_time, expected_time);
+  EXPECT_LE(runtime.exec_time, expected_time * 1.1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmMemoryBoundBf16) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_dot {
+  p0 = bf16[4,4096] parameter(0)
+  p1 = bf16[4096,4096] parameter(1)
+  ROOT dot = bf16[4,4096] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+    backend_config={"sizes":["128"]}
+}
+
+ENTRY e {
+  p0 = bf16[4,4096] parameter(0)
+  p1 = bf16[4096,4096] parameter(1)
+  ROOT _ = bf16[4,4096] fusion(p0, p1),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {"kind": "__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["4", "128"]}],"num_warps":"4","num_stages":"3","num_ctas":"1"}}}
+}
+)"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime,
+      indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
+
+  const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  const float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, device_info_);
+  const absl::Duration approx_hbm_time =
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
+      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+
+  // For pipelined loops, execution time is bounded by the dominant cost (memory
+  // in this case), but imperfect overlap or pipeline setup/teardown costs may
+  // slightly increase it. We allow up to 10% overhead.
+  EXPECT_GE(runtime.exec_time, approx_hbm_time);
+  EXPECT_LE(runtime.exec_time, approx_hbm_time * 1.1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TritonSoftmaxFusionInstructionIsSupported) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  broadcast_0 = f32[512,911]{1,0} broadcast(param_1), dimensions={1}
+  multiply_0 = f32[512,911]{1,0} multiply(param_0, broadcast_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[512]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[512,911]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[512,911]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","911"]}],"num_warps":"2"}}}
+}
+)"));
+  ASSERT_OK_AND_ASSIGN(auto runtime_data,
+                       indexing_cost_model_.EstimateRunTimeForTriton(
+                           module->entry_computation()->root_instruction()));
+
+  constexpr int64_t kParam0SizeBytes = 512 * 911 * 4;
+  constexpr int64_t kParam1SizeBytes = 911 * 4;
+  constexpr int64_t kOutputSizeBytes = 512 * 911 * 4;
+
+  // Each block reads 1 tile of shape [1, 911] from param_0 and full param_1.
+  // In total param_0 is read once and param_1 is read 512 times.
+  constexpr int64_t kExpectedBytesRead =
+      kParam0SizeBytes + 512 * kParam1SizeBytes;
+
+  EXPECT_EQ(runtime_data.bytes_read, kExpectedBytesRead);
+  EXPECT_EQ(runtime_data.bytes_written, kOutputSizeBytes);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(runtime_data.exec_time), 5, 1);
+}
+
+// Example from b/383162692.
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
+  // TODO: b/422689305 - Enable this test once multi-output fusions are
+  // supported.
+  GTEST_SKIP()
+      << "Experimental tiling does not support multi-output fusions yet.";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0.1 = f32[] parameter(0)
+  param_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0.1, param_1.1)
+}
+
+fused_computation {
+  param_2.1 = bf16[4096] parameter(2)
+  convert = f32[4096] convert(param_2.1)
+  constant = f32[] constant(1)
+  broadcast = f32[4096] broadcast(constant), dimensions={}
+  compare = pred[4096] compare(convert, broadcast), direction=LT
+  negate = f32[4096] negate(convert)
+  exponential = f32[4096] exponential(negate)
+  add.1 = f32[4096] add(exponential, broadcast)
+  divide = f32[4096] divide(broadcast, add.1)
+  multiply = f32[4096] multiply(divide, divide)
+  subtract = f32[4096] subtract(broadcast, multiply)
+  sqrt = f32[4096] sqrt(subtract)
+  constant.1 = f32[] constant(2)
+  broadcast.1 = f32[4096] broadcast(constant.1), dimensions={}
+  multiply.1 = f32[4096] multiply(exponential, broadcast.1)
+  constant.2 = f32[] constant(-2)
+  broadcast.2 = f32[4096] broadcast(constant.2), dimensions={}
+  multiply.2 = f32[4096] multiply(convert, broadcast.2)
+  exponential.1 = f32[4096] exponential(multiply.2)
+  add.2 = f32[4096] add(multiply.1, exponential.1)
+  sqrt.1 = f32[4096] sqrt(add.2)
+  multiply.3 = f32[4096] multiply(divide, sqrt.1)
+  select = f32[4096] select(compare, sqrt, multiply.3)
+  convert.1 = bf16[4096] convert(select)
+  broadcast.3 = bf16[1,8,4096] broadcast(convert.1), dimensions={2}
+  param_0.2 = bf16[1,8,4096] parameter(0)
+  multiply.4 = bf16[1,8,4096] multiply(broadcast.3, param_0.2)
+  convert.2 = bf16[4096] convert(divide)
+  broadcast.4 = bf16[8,4096] broadcast(convert.2), dimensions={1}
+  param_1.2 = bf16[8,4096] parameter(1)
+  multiply.5 = bf16[8,4096] multiply(param_1.2, param_1.2)
+  convert.3 = f32[8,4096] convert(multiply.5)
+  constant.3 = f32[] constant(0)
+  reduce = f32[8] reduce(convert.3, constant.3), dimensions={1}, to_apply=add
+  constant.4 = f32[] constant(0.000244140625)
+  broadcast.5 = f32[8] broadcast(constant.4), dimensions={}
+  multiply.6 = f32[8] multiply(reduce, broadcast.5)
+  convert.4 = bf16[8] convert(multiply.6)
+  constant.5 = bf16[] constant(9.984e-07)
+  broadcast.6 = bf16[8] broadcast(constant.5), dimensions={}
+  add.3 = bf16[8] add(convert.4, broadcast.6)
+  convert.5 = f32[8] convert(add.3)
+  rsqrt = f32[8] rsqrt(convert.5)
+  convert.6 = bf16[8] convert(rsqrt)
+  broadcast.7 = bf16[8,4096] broadcast(convert.6), dimensions={0}
+  multiply.7 = bf16[8,4096] multiply(param_1.2, broadcast.7)
+  multiply.8 = bf16[8,4096] multiply(broadcast.4, multiply.7)
+  bitcast = bf16[1,8,4096] bitcast(multiply.8)
+  add.4 = bf16[1,8,4096] add(multiply.4, bitcast)
+  multiply.9 = bf16[1,8,4096] multiply(add.4, add.4)
+  convert.7 = f32[1,8,4096] convert(multiply.9)
+  bitcast.1 = f32[8,4096] bitcast(convert.7)
+  constant.6 = f32[] constant(0)
+  reduce.1 = f32[8] reduce(bitcast.1, constant.6), dimensions={1}, to_apply=add
+  bitcast.2 = f32[8,1] bitcast(reduce.1)
+  constant.7 = f32[] constant(0.000244140625)
+  broadcast.8 = f32[8,1] broadcast(constant.7), dimensions={}
+  multiply.10 = f32[8,1] multiply(bitcast.2, broadcast.8)
+  convert.8 = bf16[8,1] convert(multiply.10)
+  constant.8 = bf16[] constant(9.984e-07)
+  broadcast.9 = bf16[8,1] broadcast(constant.8), dimensions={}
+  add.5 = bf16[8,1] add(convert.8, broadcast.9)
+  convert.9 = f32[8,1] convert(add.5)
+  rsqrt.1 = f32[8,1] rsqrt(convert.9)
+  convert.10 = bf16[8,1] convert(rsqrt.1)
+  bitcast.3 = bf16[8] bitcast(convert.10)
+  broadcast.10 = bf16[1,8,4096] broadcast(bitcast.3), dimensions={1}
+  multiply.11 = bf16[1,8,4096] multiply(add.4, broadcast.10)
+  ROOT tuple = (bf16[1,8,4096], bf16[1,8,4096]) tuple(add.4, multiply.11)
+}
+
+ENTRY entry_computation {
+  param_0.3 = bf16[1,8,4096] parameter(0)
+  param_1.3 = bf16[8,4096] parameter(1)
+  param_2.2 = bf16[4096] parameter(2)
+  ROOT fusion = (bf16[1,8,4096], bf16[1,8,4096]) fusion(param_0.3, param_1.3, param_2.2), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      TiledRunTimeDataOrError tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            2);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(1, 1, 4096));
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
+              ElementsAre(1, 1, 4096));
+  // TODO(b/390559452): Currently, the number of warps is 4, but should actually
+  // be 32, as it would improve the performance significantly.
+  // EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 32);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
+  // TODO: b/422689305 - Enable this test once multi-output fusions are
+  // supported.
+  GTEST_SKIP()
+      << "Experimental tiling does not support multi-output fusions yet.";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+region {
+  param_0.1 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0.1, param_1)
+}
+
+fused_computation {
+  param_0.2 = f32[64] parameter(0)
+  abs = f32[64] abs(param_0.2)
+  bitcast = f32[4,4,4] bitcast(abs)
+  constant = f32[] constant(0)
+  reduce = f32[4,4] reduce(bitcast, constant), dimensions={1}, to_apply=region
+  ROOT tuple = (f32[4,4], f32[64]) tuple(reduce, abs)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  ROOT fusion = (f32[4,4], f32[64]) fusion(param_0.3), kind=kCustom,
+    calls=fused_computation
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      TiledRunTimeDataOrError tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            2);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(1, 4));
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
+              ElementsAre(16));
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilingsForFusion_DumpsToFile) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[1024] parameter(0)
+  ROOT negate.1 = f32[1024] negate(param_0.1)
+}
+
+ENTRY main {
+  param_0.3 = f32[1024] parameter(0)
+  ROOT fusion = f32[1024] fusion(param_0.3), kind=kCustom, calls=fused_computation
+}
+)"));
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string dump_file =
+      tsl::io::JoinPath(temp_dir.path(), "top_k_candidates.txt");
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_dump_cost_model_top_k_candidates_to(dump_file);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto top_k_result,
+      indexing_cost_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor,
+                                                /*top_k=*/3)
+          .Await());
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      top_k_result)));
+
+  std::string dumped_content;
+  ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), dump_file, &dumped_content));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("=== Cost model top-"));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("Candidate #0:"));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateBestTiling_TritonSoftmax_IsSupported) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  broadcast_0 = f32[512,911]{1,0} broadcast(param_1), dimensions={1}
+  multiply_0 = f32[512,911]{1,0} multiply(param_0, broadcast_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[512]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[512,911]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[512,911]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[512,911]{1,0} parameter(0)
+  param_1 = f32[911]{0} parameter(1)
+  ROOT triton_softmax = f32[512,911]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      TiledRunTimeDataOrError tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
+
+  ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
+
+  auto tiled_runtime_data = std::get<TiledRunTimeData>(tiling_result);
+
+  constexpr int64_t kParam0SizeBytes = 512 * 911 * 4;
+  constexpr int64_t kParam1SizeBytes = 911 * 4;
+  constexpr int64_t kOutputSizeBytes = 512 * 911 * 4;
+
+  // Launch grid consists of 128 blocks. Each block reads 1 tile of shape [4,
+  // 911] from param_0 and full param_1. In total param_0 is read once and
+  // param_1 is read 128 times.
+  constexpr int64_t kExpectedBytesRead =
+      kParam0SizeBytes + 128 * kParam1SizeBytes;
+
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
+            1);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+              ElementsAre(4, 1024));
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
+
+  EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
+  EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_written, kOutputSizeBytes);
+  EXPECT_NEAR(
+      absl::ToDoubleMicroseconds(tiled_runtime_data.runtime_data.exec_time), 5,
+      1);
+}
+
+// This test means to catch integer overflow errors when run with ASan build.
+// The checks below are just sanity checks for values.
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_NumberOfTilesLargerThanInt32Max_IsSupported) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+
+softmax {
+  param_0 = f16[131076,16384]{1,0} parameter(0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[131076]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f16[131076,16384]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f16[131076,16384]{1,0} subtract(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f16[131076,16384]{1,0} parameter(0)
+  ROOT fusion = f16[131076,16384]{1,0} fusion(param_0), kind=kCustom, calls=softmax
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto runtime_data,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{1, 1}},
+                                                /*num_warps=*/1}));
+
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 14, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_Concatenate) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+concatenate_fusion {
+  p0 = f32[32, 128] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  exp = f32[32, 128] exponential(p0)
+  ROOT concatenate = f32[96, 128] concatenate(exp, p1), dimensions={0}
+}
+
+ENTRY main {
+  p0 = f32[32, 128] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  ROOT fusion = f32[96, 128] fusion(p0, p1), kind=kCustom, calls=concatenate_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto result, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                       *fusion_adaptor,
+                       BlockLevelParameters{/*output_tile_sizes=*/{{1, 128}},
+                                            /*num_warps=*/3}));
+  // The flops contribution for a single instruction is calculated as:
+  // flops_per_element * padded_tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.flops,
+            6 * 128 * 96                     // ==> %concatenate
+                + 86 * 128 * (96 * 32 / 96)  // ==> %exp
+  );
+  // The bytes read contribution for a single instruction is calculated as:
+  // element_type_size * tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.bytes_read,
+            4 * 128 * (96 * 64 / 96)        // ==> %p1
+                + 4 * 128 * (96 * 32 / 96)  // ==> %p0
+  );
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithReductionLoop) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+dot_fusion {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  exp = f32[128, 257] exponential(p0)
+  ROOT dot = f32[128, 64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+
+ENTRY main {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  ROOT fusion = f32[128, 64] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto result, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                       *fusion_adaptor,
+                       BlockLevelParameters{/*output_tile_sizes=*/{{32, 32}},
+                                            /*num_warps=*/32}));
+
+  constexpr int64_t kNumBlocks = 8;
+  // Profiled clock cycles for F32 exponential in HloOpProfiles
+  // (hlo_op_profiles_data.h).
+  constexpr int64_t kExpFlopsPerElement = 86;
+  constexpr int64_t kExpPaddedTileSize = 32 * 64;
+  constexpr int64_t kKLoopIterations = CeilOfRatio(257, 64);
+
+  // The flops contribution for a single instruction is calculated as:
+  // flops_per_element * padded_tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.flops,
+            514 * 1024 * kNumBlocks  // ==> %dot
+                + kExpFlopsPerElement * kExpPaddedTileSize *
+                      (kNumBlocks * kKLoopIterations)  // ==> %exp
+  );
+  // The bytes read contribution for a single instruction is calculated as:
+  // element_type_size * tile_size * num_blocks_cur_hlo * in_bound_read_fraction
+  EXPECT_EQ(result.bytes_read,
+            4 * (257 * 32) * kNumBlocks        // ==> %p1
+                + 4 * (257 * 32) * kNumBlocks  // ==> %p0
+  );
+  EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction()->fused_expression_root());
+  dot_model::HbmEstimates expected_hbm = dot_model::CalculateHbmTime(
+      dot_model::DotProblemInfo(*dot), device_info_);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(expected_hbm.read_time), 1.0);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
+              absl::ToDoubleNanoseconds(expected_hbm.write_time), 1.0);
+  // (32 * 64 + 32 * 64) * 4 bytes (f32) * 1 stage = 16384 bytes.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 2 * (32 * 64 * 4));
+  // 1 accumulator register per thread (32 * 32 / 1024) plus base kernel-state
+  // overhead, staying below one 32-register allocation block.
+  EXPECT_GT(result.registers_per_thread, 1);
+  EXPECT_LT(result.registers_per_thread, 32);
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/32, /*k=*/64, /*b=*/1},
+          device_info_));
+  EstimateRunTimeData expected_roofline_estimates = result;
+  // Utilization uses wave-quantized dot FLOPs plus non-dot (%exp) FLOPs.
+  expected_roofline_estimates.flops = dot_compute.flops_with_wave_quant +
+                                      kExpFlopsPerElement * kExpPaddedTileSize *
+                                          (kNumBlocks * kKLoopIterations);
+  expected_roofline_estimates.bytes_read = expected_hbm.bytes_read;
+  EXPECT_DOUBLE_EQ(
+      result.compute_utilization,
+      dot_model::CalculateComputeUtilization(expected_roofline_estimates,
+                                             device_info_, PrimitiveType::F32));
+  EXPECT_DOUBLE_EQ(result.memory_utilization,
+                   dot_model::CalculateMemoryUtilization(
+                       expected_roofline_estimates, device_info_));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ChainedDotsMergesDotEstimates) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+chained_dot_fusion {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  dot0 = f32[128, 128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
+  ROOT dot1 = f32[128, 32] dot(dot0, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+ENTRY main {
+  p0 = f32[128, 64] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  p2 = f32[128, 32] parameter(2)
+  ROOT fusion = f32[128, 32] fusion(p0, p1, p2),
+    kind=kCustom, calls=chained_dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
+      HloFusionAdaptor::ForInstruction(
+          module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/2}));
+
+  // Sequential dots reuse shared memory and registers, so the fusion takes the
+  // max of each across dot0 (tile [32, 64], block_k=16) and dot1 (tile [32,
+  // 16], block_k=64):
+  // - dot1 has the larger block_k and dominates shared memory:
+  //   (32 * 64 + 16 * 64) * 4 = 12288 bytes (vs. 6144 for dot0).
+  // - dot0 has the larger output tile and dominates registers: 32 accumulator
+  //   registers per thread (32 * 64 / 64) plus base kernel-state overhead
+  //   (vs. 8 accumulator registers for dot1), staying below 64.
+  EXPECT_EQ(result.shared_memory_per_block_bytes, 12288);
+  EXPECT_GT(result.registers_per_thread, 32);
+  EXPECT_LT(result.registers_per_thread, 64);
+
+  const HloDotInstruction* dot1 = Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction()->fused_expression_root());
+  const HloDotInstruction* dot0 = Cast<HloDotInstruction>(dot1->operand(0));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot0_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot0),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/64, /*k=*/16, /*b=*/1},
+          device_info_));
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops dot1_compute,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot1),
+          dot_model::DotTileSize{/*m=*/32, /*n=*/16, /*k=*/64, /*b=*/1},
+          device_info_));
+  EXPECT_EQ(result.compute_time,
+            dot0_compute.compute_time + dot1_compute.compute_time);
+  // 6 K-loop iterations in total: 64 / 16 = 4 (dot0) + 128 / 64 = 2 (dot1).
+  EXPECT_EQ(result.exec_time, result.read_time + result.write_time +
+                                  result.compute_time +
+                                  6 * dot_model::kLoopLatencyTax);
+  constexpr int64_t kParam0SizeBytes = 128 * 64 * 4;
+  constexpr int64_t kParam1SizeBytes = 64 * 128 * 4;
+  constexpr int64_t kParam2SizeBytes = 128 * 32 * 4;
+  EstimateRunTimeData expected_roofline_estimates = result;
+  expected_roofline_estimates.flops =
+      dot0_compute.flops_with_wave_quant + dot1_compute.flops_with_wave_quant;
+  expected_roofline_estimates.bytes_read =
+      kParam0SizeBytes + kParam1SizeBytes + kParam2SizeBytes;
+  EXPECT_DOUBLE_EQ(
+      result.compute_utilization,
+      dot_model::CalculateComputeUtilization(expected_roofline_estimates,
+                                             device_info_, PrimitiveType::F32));
+  EXPECT_DOUBLE_EQ(result.memory_utilization,
+                   dot_model::CalculateMemoryUtilization(
+                       expected_roofline_estimates, device_info_));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotPipeliningAndL2) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  auto estimate = [&](int num_stages) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                                       /*num_warps=*/4,
+                                       /*num_ctas=*/1,
+                                       /*num_stages=*/num_stages});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage1_result,
+                       estimate(/*num_stages=*/1));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage4_result,
+                       estimate(/*num_stages=*/4));
+
+  EXPECT_EQ(stage4_result.shared_memory_per_block_bytes,
+            4 * stage1_result.shared_memory_per_block_bytes);
+  // Pipelining reduces exec_time for the same FLOPs and HBM bytes, increasing
+  // utilization.
+  EXPECT_GT(stage4_result.compute_utilization,
+            stage1_result.compute_utilization);
+  EXPECT_GT(stage4_result.memory_utilization, stage1_result.memory_utilization);
+  // Software pipelining (num_stages = 4) overlaps HBM reads with compute,
+  // dropping mainloop time below L2 time.
+  EXPECT_EQ(stage4_result.compute_time, stage1_result.compute_time);
+  EXPECT_EQ(stage4_result.read_time, stage1_result.read_time);
+  EXPECT_LT(stage4_result.exec_time, stage1_result.exec_time);
+  EXPECT_EQ(stage4_result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/32, device_info_,
+                                       stage4_result.l2_bytes_read,
+                                       /*is_tma_allowed=*/false));
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_DotHbmCapIsMinOfCoalescingAndTransferSize) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/1}));
+  constexpr int64_t kNetBytesRead = 2 * (512 * 2048 + 2048 * 512);
+  constexpr int64_t kBytesWritten = 2 * 512 * 512;
+  float expected_hbm_bw = dot_model::GetEffectiveHbmBandwidth(
+      kNetBytesRead + kBytesWritten, device_info_);
+  // `p1` and output tiles read 32 contiguous bytes (coalescing 0.5), but for
+  // 4.5 MiB of traffic the transfer-size fraction is lower, so `std::min` picks
+  // it for every access.
+  ASSERT_LT(expected_hbm_bw, 0.5 * device_info_.memory_bandwidth());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kNetBytesRead / expected_hbm_bw)),
+              1.0);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.write_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(1.0 * kBytesWritten / expected_hbm_bw)),
+              1.0);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_BatchedDotWideningPrologueL2Traffic) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  cvt = bf16[2, 2048, 4096] convert(p0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT dot = bf16[2, 2048, 2048] dot(cvt, p1), lhs_batch_dims={0},
+    rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = s8[2, 2048, 4096] parameter(0)
+  p1 = bf16[2, 4096, 2048] parameter(1)
+  ROOT fusion = bf16[2, 2048, 2048] fusion(p0, p1), kind=kCustom,
+    calls=dot_fusion
+})"));
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 32, 16}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/3}));
+  // 2 * 64 * 128 = 16384 blocks, each with batch tile 1. Per block the K loop
+  // reads 32 * 4096 (p0) + 4096 * 16 (p1) elements: 2 GiB (p0: s8) + 2 GiB
+  // (p1: bf16) in total. At the dot's operand types `cvt` is bf16, so the floor
+  // is 4 + 2 = 6 GiB.
+  // TODO(b/581269931): Expect 4 GiB L2 traffic plus in-register convert compute
+  // once prologue convert cost is modeled directly.
+  EXPECT_EQ(result.l2_bytes_read, int64_t{4} << 30);
+  EXPECT_EQ(result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/64, device_info_,
+                                       /*l2_bytes=*/int64_t{6} << 30,
+                                       /*is_tma_allowed=*/false));
+
+  // p0 and the output are 16 MiB, p1 is 32 MiB. `p0` tiles read 64 contiguous
+  // bytes (fully coalesced), so the transfer-size fraction caps them. `p1` and
+  // output tiles read 32 contiguous bytes (coalescing 0.5), below that
+  // fraction.
+  constexpr int64_t kMiB = int64_t{1} << 20;
+  double peak_bw = device_info_.memory_bandwidth();
+  double transfer_fraction =
+      dot_model::GetEffectiveHbmBandwidth(64 * kMiB, device_info_) / peak_bw;
+  ASSERT_GT(transfer_fraction, 0.5);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(result.read_time),
+              absl::ToDoubleNanoseconds(
+                  absl::Seconds(16 * kMiB / (transfer_fraction * peak_bw) +
+                                32 * kMiB / (0.5 * peak_bw))),
+              1.0);
+  EXPECT_NEAR(
+      absl::ToDoubleNanoseconds(result.write_time),
+      absl::ToDoubleNanoseconds(absl::Seconds(16 * kMiB / (0.5 * peak_bw))),
+      1.0);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ScanWithEpilogue) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  add = f32[64] add(p0, p1)
+  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[64,1024] parameter(0)
+  p1 = f32[64,1024] parameter(1)
+  init = f32[64] parameter(2)
+  scan = (f32[64,1024], f32[64]) scan(p0, init), dimensions={1},
+    num_carries=1, is_associative=true, to_apply=add
+  gte = f32[64,1024] get-tuple-element(scan), index=0
+  ROOT add = f32[64,1024] add(gte, p1)
+}
+
+ENTRY main {
+  p0 = f32[64,1024] parameter(0)
+  p1 = f32[64,1024] parameter(1)
+  init = f32[64] parameter(2)
+  ROOT fusion = f32[64,1024] fusion(p0, p1, init), kind=kCustom, calls=scan_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{1}};
+  block_level_parameters.sequential_tile_sizes = {128};
+  block_level_parameters.num_warps = 4;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, block_level_parameters));
+
+  // One block per row, each block loops 1024 / 128 = 8 times over the scan
+  // dimension. The scan and its epilogue are executed on every iteration.
+  int64_t num_blocks = 64;
+  int64_t num_root_tile_executions = num_blocks * 8;
+
+  // The flops contribution for a single instruction is calculated as:
+  // flops_per_element * padded_tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.flops,
+            3 * 128 * num_root_tile_executions        // ==> %scan
+                + 3 * 128 * num_root_tile_executions  // ==> %add
+  );
+  // The bytes read contribution for a single instruction is calculated as:
+  // element_type_size * tile_size * num_blocks_cur_hlo
+  EXPECT_EQ(result.bytes_read,
+            4 * 128 * num_root_tile_executions        // ==> %p0
+                + 4 * 128 * num_root_tile_executions  // ==> %p1
+                + 4 * 1 * num_root_tile_executions    // ==> %init
+  );
+  EXPECT_EQ(result.bytes_written, 4 * 64 * 1024);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindBestTilingForFusionAsync_RowLocalScanGetsSingleTileOnB200) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f16[2,3] parameter(0)
+  p1 = f16[2,3] parameter(1)
+  sum = f16[2,3] add(p0, p1)
+  ROOT tuple = (f16[2,3], f16[2,3]) tuple(sum, sum)
+}
+
+scan_fusion {
+  p0 = f16[2,3,3] parameter(0)
+  c0 = f16[] constant(0)
+  init = f16[2,3] broadcast(c0), dimensions={}
+  scan = (f16[2,3,3], f16[2,3]) scan(p0, init), dimensions={2},
+    num_carries=1, is_associative=true, to_apply=add
+  ROOT gte = f16[2,3,3] get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  p0 = f16[2,3,3] parameter(0)
+  ROOT fusion = f16[2,3,3] fusion(p0), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  se::DeviceDescription b200_device_info =
+      TestGpuDeviceInfo::B200SXMDeviceInfo();
+  HloFusionAnalysisCache b200_analysis_cache(b200_device_info);
+  GpuPerformanceModelWithIndexingAnalysis b200_cost_model(
+      &b200_device_info, &b200_analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
+                       b200_cost_model
+                           .TryFindBestTilingForFusionAsync(
+                               *HloFusionAdaptor::ForInstruction(root))
+                           .Await());
+  ASSERT_TRUE(
+      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
+  const TiledRunTimeData& tiled_runtime_data =
+      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
+              ElementsAre(4));
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    TryFindBestTilingForFusionAsync_UntiledReduceHasEmptySequentialTileSizes) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+reduce_fusion {
+  p0 = f32[64,1024] parameter(0)
+  init = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(p0, init), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[64,1024] parameter(0)
+  ROOT fusion = f32[64] fusion(p0), kind=kCustom, calls=reduce_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
+                       indexing_cost_model_
+                           .TryFindBestTilingForFusionAsync(
+                               *HloFusionAdaptor::ForInstruction(root))
+                           .Await());
+  ASSERT_TRUE(
+      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
+  const TiledRunTimeData& tiled_runtime_data =
+      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
+              IsEmpty());
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithEpilogue) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  p2 = bf16[512, 512] parameter(2)
+  dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+  exp = bf16[512, 512] exponential(dot)
+  ROOT add = bf16[512, 512] add(dot, p2)
+})"));
+  const HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  const HloInstruction* exp =
+      module->entry_computation()->GetInstructionWithName("exp");
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  BlockLevelParameters stage4_params{/*output_tile_sizes=*/{{64, 64}},
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*num_stages=*/4};
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData dot_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(dot), stage4_params));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData compute_only_epilogue_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForProducerConsumer(dot, exp), stage4_params));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData epilogue_with_memory_read_result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForProducerConsumer(dot, add), stage4_params));
+  EXPECT_GT(compute_only_epilogue_result.flops, dot_result.flops);
+  EXPECT_EQ(compute_only_epilogue_result.bytes_read, dot_result.bytes_read);
+  EXPECT_EQ(compute_only_epilogue_result.exec_time, dot_result.exec_time);
+  EXPECT_EQ(epilogue_with_memory_read_result.bytes_read,
+            dot_result.bytes_read + 512 * 512 * 2);
+  EXPECT_EQ(epilogue_with_memory_read_result.l2_bytes_read,
+            dot_result.l2_bytes_read);
+  EXPECT_GT(epilogue_with_memory_read_result.read_time,
+            compute_only_epilogue_result.read_time);
+  EXPECT_GT(epilogue_with_memory_read_result.exec_time,
+            compute_only_epilogue_result.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_UnsupportedDotReadsOperands) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = bf16[2, 512, 512] parameter(0)
+  p1 = bf16[512, 2048] parameter(1)
+  ROOT d = bf16[2, 512, 2048] dot(p0, p1), lhs_contracting_dims={2},
+    rhs_contracting_dims={0}, backend_config={sizes:[32]}
+})"));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(
+              module->entry_computation()->root_instruction()),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 64, 128}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/3}));
+  // Multiple non-contracting dimensions are unsupported by BuildDotEstimates,
+  // so the !has_dot fallback must still charge the dot's operand reads.
+  constexpr int64_t kOperandBytes = (2 * 512 * 512 + 512 * 2048) * 2;
+  EXPECT_GE(result.read_time, absl::Seconds(static_cast<double>(kOperandBytes) /
+                                            device_info_.memory_bandwidth()));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[16,16000] parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast = f32[16,16000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[16,16000] multiply(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f32[16,16000] parameter(0)
+  ROOT triton_softmax = f32[16,16000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res1, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                     *fusion_adaptor,
+                     BlockLevelParameters{/*output_tile_sizes=*/{{1, 16000}}}));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 3, 1);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res2, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                     *fusion_adaptor,
+                     BlockLevelParameters{/*output_tile_sizes=*/{{2, 16000}}}));
+  EXPECT_TRUE(res2.IsInfinite());
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_SoftmaxF64_RegisterSpill_ReturnsInfinite) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f64[] parameter(0)
+  Arg_1 = f64[] parameter(1)
+  ROOT add = f64[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f64[16,8000] parameter(0)
+  constant_0 = f64[] constant(0)
+  reduce_0 = f64[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast = f64[16,8000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f64[16,8000] multiply(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f64[16,8000] parameter(0)
+  ROOT triton_softmax = f64[16,8000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // f64 requires 2 registers per element. With a 65536 register limit and 0.4
+  // fraction for boundary tiles (26214 registers), a padded tile of 1 * 8192
+  // elements (16384 registers) fits, while 2 * 8192 elements (32768 registers)
+  // spills.
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_fits,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 8000}}}));
+  EXPECT_FALSE(res_fits.IsInfinite());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_spills,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{2, 8000}}}));
+  EXPECT_TRUE(res_spills.IsInfinite());
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = s32[] parameter(1)
+  param_1 = s32[] parameter(0)
+  ROOT add = s32[] add(param_0, param_1)
+}
+
+fused_reduce {
+  param_0 = pred[4096,32]{1,0} parameter(0)
+  convert.0 = s32[4096,32]{1,0} convert(param_0)
+  transpose = s32[32,4096]{1,0} transpose(convert.0), dimensions={1,0}
+  broadcast.0 = s32[4096,32,4096]{2,1,0} broadcast(transpose), dimensions={1,2}
+  iota.0 = s32[4096,4096]{1,0} iota(), iota_dimension=0
+  iota.1 = s32[4096,4096]{1,0} iota(), iota_dimension=1
+  compare.1 = pred[4096,4096]{1,0} compare(iota.0, iota.1), direction=GE
+  convert.1 = s32[4096,4096]{1,0} convert(compare.1)
+  broadcast.1 = s32[4096,32,4096]{2,1,0} broadcast(convert.1), dimensions={0,2}
+  multiply = s32[4096,32,4096]{2,1,0} multiply(broadcast.0, broadcast.1)
+  c0 = s32[] constant(0)
+  ROOT reduce.4552.1 = s32[4096,32]{1,0} reduce(multiply, c0), dimensions={2}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = pred[4096,32]{1,0} parameter(0)
+  ROOT input_reduce_fusion = s32[4096,32]{1,0} fusion(param_0), kind=kCustom, calls=fused_reduce
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res1,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{4, 4}},
+                                                /*num_warps=*/8}));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 147, 1);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res2,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{8, 4}},
+                                                /*num_warps=*/8}));
+  EXPECT_TRUE(res2.IsInfinite());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res3,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{4, 8}},
+                                                /*num_warps=*/4}));
+  EXPECT_TRUE(res3.IsInfinite());
+
+  // With a tiled reduction dimension of size 512, output tile [16, 8] gives a
+  // 3D intermediate broadcast/multiply tile of size 16 * 8 * 512 = 65536, which
+  // fits within the full register limit (65536).
+  BlockLevelParameters tiled_reduction_fits;
+  tiled_reduction_fits.output_tile_sizes = {{16, 8}};
+  tiled_reduction_fits.num_warps = 8;
+  tiled_reduction_fits.sequential_tile_sizes = {512};
+  ASSERT_OK_AND_ASSIGN(auto res4,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, tiled_reduction_fits));
+  EXPECT_FALSE(res4.IsInfinite());
+
+  // Output tile [16, 16] with reduction tile 512 keeps all boundary and iota
+  // tiles at <= 8192 elements (within 0.4 * 65536), but the 3D intermediate
+  // broadcast/multiply tile is 16 * 16 * 512 = 131072 > 65536 and spills.
+  BlockLevelParameters tiled_reduction_spills;
+  tiled_reduction_spills.output_tile_sizes = {{16, 16}};
+  tiled_reduction_spills.num_warps = 8;
+  tiled_reduction_spills.sequential_tile_sizes = {512};
+  ASSERT_OK_AND_ASSIGN(auto res5,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, tiled_reduction_spills));
+  EXPECT_TRUE(res5.IsInfinite());
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_UsesHloDimensionSizeWhenTileCoversFullDimensionForMemoryAccessTime) {  // NOLINT(whitespace/line_length)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[65,65] parameter(0)
+  param_1 = f32[65,65] parameter(1)
+  ROOT add = f32[65,65] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[65,65] parameter(0)
+  param_1 = f32[65,65] parameter(1)
+  ROOT triton_softmax = f32[65,65] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                    *fusion_adaptor,
+                    BlockLevelParameters{/*output_tile_sizes=*/{{65, 65}},
+                                         /*num_warps=*/2}));
+
+  constexpr int64_t kParamSizeBytes = 65 * 65 * 4;
+  constexpr int64_t kPaddedOutputTileSize = 128 * 128;
+  constexpr int64_t kAddFlops = 3;
+
+  // Memory access time is estimated for the tile without padding to the power
+  // of 2, because padded values are set directly in registers.
+  EXPECT_EQ(res.bytes_read, 2 * kParamSizeBytes);
+
+  // Compute happens on all value in the tile, including padded ones.
+  EXPECT_EQ(res.flops, kPaddedOutputTileSize * kAddFlops);
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_UncoalescedReadsAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[2048,512] parameter(0)
+  param_1 = f32[2048,512] parameter(1)
+  ROOT add = f32[2048,512] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[2048,512] parameter(0)
+  param_1 = f32[2048,512] parameter(1)
+  ROOT triton_softmax = f32[2048,512] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res_coalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{2, 128}},
+                               /*num_warps=*/2}));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res_uncoalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{128, 2}},
+                               /*num_warps=*/2}));
+
+  // The number of bytes read is the same for coalesced and uncoalesced reads.
+  constexpr int64_t kParamSizeBytes = 2048 * 512 * 4;
+  EXPECT_EQ(res_coalesced.bytes_read, 2 * kParamSizeBytes);
+  EXPECT_EQ(res_uncoalesced.bytes_read, 2 * kParamSizeBytes);
+
+  // But we expect to waste 7/8th of read transaction time in the
+  // uncoalesced case, making the read time 8 times slower.
+  EXPECT_NEAR(
+      absl::FDivDuration(res_uncoalesced.read_time, res_coalesced.read_time), 8,
+      0.001);
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_UncoalescedWritesAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = s8[2048,512] parameter(0)
+  param_1 = s8[2048,512] parameter(1)
+  ROOT add = s8[2048,512] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = s8[2048,512] parameter(0)
+  param_1 = s8[2048,512] parameter(1)
+  ROOT fusion = s8[2048,512] fusion(param_0, param_1),
+    kind=kCustom, calls=add,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res_coalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{16, 128}}}));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto res_uncoalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{128, 16}}}));
+
+  // The number of bytes read is the same for coalesced and uncoalesced reads.
+  constexpr int64_t kParamSizeBytes = 2048 * 512;
+  EXPECT_EQ(res_coalesced.bytes_read, 2 * kParamSizeBytes);
+  EXPECT_EQ(res_uncoalesced.bytes_read, 2 * kParamSizeBytes);
+
+  // But we expect to waste 3/4th of write transaction time in the
+  // uncoalesced case, making the write time 4 times slower.
+  EXPECT_NEAR(
+      absl::FDivDuration(res_uncoalesced.write_time, res_coalesced.write_time),
+      4, 0.001);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       GetLaunchDimensionsForTiledFusion_IsSupported) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[9,9,9] parameter(0)
+  param_1 = f32[9,9,9] parameter(1)
+  ROOT multiply = f32[9,9,9] multiply(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[9,9,9] parameter(0)
+  param_1 = f32[9,9,9] parameter(1)
+  ROOT fusion = f32[9,9,9] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(int64_t num_warps, EstimateNumWarpsForTileSizes(
+                                              *fusion_adaptor, {9, 9, 9}));
+
+  // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
+  // the number of warps for padded tile that has size of 16 * 16 * 16 = 4096
+  // and corresponds to 4 warps.
+  EXPECT_EQ(num_warps, 4);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       NumberOfWarpsDependsOnLargestLiveTileSize) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+fusion_computation {
+  param_0 = f32[1,4096] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[1] reduce(param_0, c0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[1,4096] parameter(0)
+  ROOT fusion = f32[1] fusion(param_0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(int64_t num_warps, EstimateNumWarpsForTileSizes(
+                                              *fusion_adaptor, {1, 4096}));
+
+  // The largest tile size is 1 * 4096, for which our implementation recommends
+  // using 4 warps.
+  EXPECT_EQ(num_warps, 4);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateNumWarps_ScalesIntermediateTilesByByteWidth) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+or_region {
+  lhs = pred[] parameter(0)
+  rhs = pred[] parameter(1)
+  ROOT out = pred[] or(lhs, rhs)
+}
+
+fusion_computation {
+  p0 = s32[64,256] parameter(0)
+  bcast = s32[64,32000,256] broadcast(p0), dimensions={0,2}
+  iota = s32[64,32000,256] iota(), iota_dimension=1
+  cmp = pred[64,32000,256] compare(bcast, iota), direction=EQ
+  c0 = pred[] constant(false)
+  ROOT reduce = pred[64,32000] reduce(cmp, c0), dimensions={2},
+    to_apply=or_region
+}
+
+ENTRY main {
+  p0 = s32[64,256] parameter(0)
+  ROOT fusion = pred[64,32000] fusion(p0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // For output tile [1, 64] and reduction tile 256, `bcast` is ignored, `iota`
+  // materializes 64 elements along dim 1, and `cmp` has 16384 1-byte `pred`
+  // elements (4096 4-byte words), yielding 4 warps instead of 8.
+  ASSERT_OK_AND_ASSIGN(
+      int64_t num_warps_64,
+      EstimateNumWarpsForTileSizes(*fusion_adaptor, {1, 64, 256}));
+  EXPECT_EQ(num_warps_64, 4);
+
+  // For output tile [1, 16] and reduction tile 256, `cmp` has 4096 1-byte
+  // `pred` elements (1024 4-byte words), yielding 2 warps instead of 4.
+  ASSERT_OK_AND_ASSIGN(
+      int64_t num_warps_16,
+      EstimateNumWarpsForTileSizes(*fusion_adaptor, {1, 16, 256}));
+  EXPECT_EQ(num_warps_16, 2);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateNumWarps_DoesNotScaleNarrowRootTiles) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fusion_computation {
+  p0 = s32[64,256] parameter(0)
+  bcast = s32[64,32000,256] broadcast(p0), dimensions={0,2}
+  iota = s32[64,32000,256] iota(), iota_dimension=1
+  ROOT cmp = pred[64,32000,256] compare(bcast, iota), direction=EQ
+}
+
+ENTRY main {
+  p0 = s32[64,256] parameter(0)
+  ROOT fusion = pred[64,32000,256] fusion(p0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // The root `cmp` tile has 16384 `pred` elements and is not scaled by byte
+  // width, which yields 8 warps.
+  ASSERT_OK_AND_ASSIGN(int64_t num_warps, EstimateNumWarpsForTileSizes(
+                                              *fusion_adaptor, {1, 64, 256}));
+  EXPECT_EQ(num_warps, 8);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateNumWarps_DoesNotScaleNarrowOperandTiles) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+or_region {
+  lhs = pred[] parameter(0)
+  rhs = pred[] parameter(1)
+  ROOT out = pred[] or(lhs, rhs)
+}
+
+fusion_computation {
+  p0 = pred[64,16384] parameter(0)
+  c0 = pred[] constant(false)
+  ROOT reduce = pred[64] reduce(p0, c0), dimensions={1}, to_apply=or_region
+}
+
+ENTRY main {
+  p0 = pred[64,16384] parameter(0)
+  ROOT fusion = pred[64] fusion(p0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // The operand `p0` tile has 4096 `pred` elements and is not scaled by byte
+  // width, which yields 4 warps.
+  ASSERT_OK_AND_ASSIGN(int64_t num_warps, EstimateNumWarpsForTileSizes(
+                                              *fusion_adaptor, {1, 4096}));
+  EXPECT_EQ(num_warps, 4);
+}
+
+class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
+ public:
+  void CompareFlopsModels(absl::string_view hlo_module_string) {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_module_string));
+
+    GpuHloCostAnalysis cost_analysis(
+        GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+        device_info_);
+
+    EXPECT_OK(module->entry_computation()->Accept(&cost_analysis));
+    auto instr = module->entry_computation()->root_instruction();
+
+    int64_t flops_per_element = indexing_cost_model_.FlopsPerElement(instr);
+    const Shape& output_shape = instr->shape().IsArray()
+                                    ? instr->shape()
+                                    : instr->shape().tuple_shapes(0);
+    int64_t total_flops =
+        ShapeUtil::ElementsIn(output_shape) * flops_per_element;
+
+    EXPECT_EQ(total_flops, cost_analysis.flop_count(*instr));
+  }
+};
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
+  CompareFlopsModels(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,64] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[32] reduce(param_0.3, constant), dimensions={1}, to_apply=add
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+  // Note: This comparison only succeeds when the reduction dimension size is a
+  // power of two (e.g. 64), because FlopsPerElement accounts for power-of-two
+  // padding while GpuHloCostAnalysis measures unpadded FLOP counts.
+  CompareFlopsModels(R"(
+HloModule m
+
+add_multiply {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add = f32[] add(param_0, param_2)
+  multiply = f32[] multiply(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add, multiply)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[32,64] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = (f32[32], f32[32]) reduce(param_0, param_0, c0, c0), dimensions={1}, to_apply=add_multiply
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, PaddedReduceDimensions) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[10,15,9] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[10] reduce(param_0.3, constant), dimensions={1,2}, to_apply=add
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+
+  // Dim 1 size 15 -> PowerOf2Ceil(15) = 16.
+  // Dim 2 size 9  -> PowerOf2Ceil(9)  = 16.
+  // Padded reduction factor = 16 * 16 = 256.
+  // Elementwise f32 add = 3 FLOPs per operation.
+  // FLOPs per output element = (256 - 1) * 3 = 765.
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 765);
+}
+
+TEST_F(FlopsPerElementTest, Scan) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  add.0 = f32[] add(param_0, param_1)
+  ROOT tuple.0 = (f32[], f32[]) tuple(add.0, add.0)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  constant = f32[] constant(0)
+  ROOT scan = (f32[64], f32[]) scan(param_0.3, constant), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+
+  // The combiner is applied once per element: an f32 add, 3 FLOPs.
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 3);
+}
+
+TEST_F(FlopsPerElementTest, GetTupleElementIsThreadSafe) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  add.0 = f32[] add(param_0, param_1)
+  ROOT tuple.0 = (f32[], f32[]) tuple(add.0, add.0)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[64] parameter(0)
+  constant = f32[] constant(0)
+  scan = (f32[64], f32[]) scan(param_0.3, constant), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=add
+  ROOT gte = f32[64] get-tuple-element(scan), index=0
+}
+)"));
+  auto* gte = module->entry_computation()->root_instruction();
+
+  // PriorityFusion estimates overlapping fusions concurrently.
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 8);
+    for (int i = 0; i < 200; ++i) {
+      thread_pool.Schedule(
+          [&]() { EXPECT_EQ(indexing_cost_model_.FlopsPerElement(gte), 0); });
+    }
+  }
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[32] parameter(0)
+  ROOT cosine = f32[32] cosine(param_0)
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[32] parameter(0)
+  param_1 = f32[32] parameter(1)
+  param_2 = f32[32] parameter(2)
+  ROOT clamp = clamp(param_0, param_1, param_2)
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
+  CompareFlopsModels(R"(
+HloModule module
+entry {
+  operand = f32[33, 76, 70] parameter(0)
+  indices = s32[1806, 2] parameter(1)
+  ROOT gather = f32[1806, 7, 8, 4] gather(operand, indices),
+    offset_dims={1,2,3}, collapsed_slice_dims={}, start_index_map={0,1},
+    index_vector_dim=1, slice_sizes={7,8,4}
+})");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
+  CompareFlopsModels(R"(
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param_0 = f32[13,12,8,15] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce-window = f32[13,3,8,15] reduce-window(param_0, c0), window={size=1x1x7x1 stride=1x4x1x1 pad=0_0x0_0x3_3x0_0}, to_apply=add
+})");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 64] parameter(0)
+  p1 = f32[32, 64] parameter(1)
+  ROOT concat = f32[32, 128] concatenate(p0, p1), dimensions={1}
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 31] parameter(0)
+  p1 = f32[32, 33] parameter(1)
+  ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, Concatenate_UsesDeviceWarpSize) {
+  // A boundary at 32 splits a wave64 wavefront but not a warp of 32.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 32] parameter(0)
+  p1 = f32[32, 32] parameter(1)
+  ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
+}
+)"));
+  const HloInstruction* concat =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(concat), 6);
+
+  const se::DeviceDescription wave64_device_info =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  HloFusionAnalysisCache wave64_fusion_analysis_cache(wave64_device_info);
+  GpuPerformanceModelWithIndexingAnalysis wave64_indexing_cost_model(
+      &wave64_device_info, &wave64_fusion_analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+  EXPECT_EQ(wave64_indexing_cost_model.FlopsPerElement(concat), 400);
+
+  GpuHloCostAnalysis wave64_cost_analysis(
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      wave64_device_info);
+  ASSERT_OK(module->entry_computation()->Accept(&wave64_cost_analysis));
+  EXPECT_EQ(wave64_cost_analysis.flop_count(*concat),
+            400 * ShapeUtil::ElementsIn(concat->shape()));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  c0 = f32[] constant(0)
+  exp = f32[128,256] exponential(p0)
+  dot = f32[128,64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reduce = f32[128] reduce(dot, c0), dimensions={1}, to_apply=add
+  ROOT tuple = (f32[128,64], f32[128]) tuple(dot, reduce)
+}
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  ROOT fusion = (f32[128,64], f32[128]) fusion(p0, p1), kind=kCustom,
+    calls=fused_computation
+}
+)"));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+
+  auto flops_map = internal::PrecomputeFlopsMap(
+      *fusion_adaptor, [this](const HloInstruction* instr) {
+        return indexing_cost_model_.FlopsPerElement(instr);
+      });
+
+  HloComputation* fused_comp = fusion->fused_instructions_computation();
+  const HloInstruction* dot = fused_comp->GetInstructionWithName("dot");
+  const HloInstruction* reduce = fused_comp->GetInstructionWithName("reduce");
+  const HloInstruction* exp = fused_comp->GetInstructionWithName("exp");
+
+  EXPECT_EQ(flops_map.at(dot), indexing_cost_model_.FlopsPerElement(dot));
+  EXPECT_EQ(flops_map.at(reduce), indexing_cost_model_.FlopsPerElement(reduce));
+  EXPECT_EQ(flops_map.at(exp), indexing_cost_model_.FlopsPerElement(exp));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilingsForFusionAsync_ParallelMatchesSequential) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[1024,1024] parameter(0)
+  ROOT negate.1 = f32[1024,1024] negate(param_0.1)
+}
+
+ENTRY main {
+  param_0.3 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0.3), kind=kCustom, calls=fused_computation
+}
+)"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  constexpr int top_k = 5;
+  ASSERT_OK_AND_ASSIGN(
+      auto seq_result,
+      indexing_cost_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, top_k)
+          .Await());
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 8);
+  ASSERT_OK_AND_ASSIGN(auto parallel_result,
+                       indexing_cost_model_
+                           .TryFindTopKBestTilingsForFusionAsync(
+                               *fusion_adaptor, top_k, thread_pool.AsExecutor())
+                           .Await());
+
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      seq_result)));
+  const auto& seq_candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(seq_result);
+  ASSERT_FALSE(seq_candidates.empty());
+
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      parallel_result)));
+  const auto& parallel_candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(parallel_result);
+
+  ASSERT_EQ(parallel_candidates.size(), seq_candidates.size());
+  for (int i = 0; i < seq_candidates.size(); ++i) {
+    EXPECT_EQ(parallel_candidates[i].runtime_data.exec_time,
+              seq_candidates[i].runtime_data.exec_time);
+    EXPECT_EQ(parallel_candidates[i].block_level_parameters.output_tile_sizes,
+              seq_candidates[i].block_level_parameters.output_tile_sizes);
+    EXPECT_EQ(parallel_candidates[i].block_level_parameters.num_warps,
+              seq_candidates[i].block_level_parameters.num_warps);
+  }
+}
+
+TEST_F(FlopsPerElementTest, CopyHasZeroFlops) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 64] parameter(0)
+  ROOT copy = f32[32, 64] copy(p0)
+}
+)"));
+  auto* instr = module->entry_computation()->root_instruction();
+  EXPECT_EQ(indexing_cost_model_.FlopsPerElement(instr), 0);
+}
+
+struct RegisterFitTestCase {
+  std::string name;
+  std::string hlo;
+};
+
+class RegisterFitConsistencyTest
+    : public GpuIndexingPerformanceModelTest,
+      public ::testing::WithParamInterface<RegisterFitTestCase> {};
+
+TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
+  const RegisterFitTestCase& test_case = GetParam();
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(test_case.hlo));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
+
+  auto tile = [&](absl::Span<const int64_t> tile_sizes)
+      -> absl::StatusOr<TiledHloComputation> {
+    std::unique_ptr<TilingSpace> concrete_space = tiling_space->Clone();
+    ABSL_RETURN_IF_ERROR(concrete_space->AssignTileSizes(tile_sizes));
+    return TiledHloComputation::Tile(*fusion_adaptor,
+                                     std::move(concrete_space));
+  };
+  auto passes_precheck = [&](absl::Span<const int64_t> tile_sizes) {
+    return internal::DoesTilingFitInRegisters(*fusion_adaptor, symbolic,
+                                              tile_sizes, device_info_);
+  };
+  auto passes_check = [&](absl::Span<const int64_t> tile_sizes) {
+    absl::StatusOr<TiledHloComputation> concrete = tile(tile_sizes);
+    CHECK_OK(concrete);
+    return internal::DoesComputationFitInRegisters(*fusion_adaptor, *concrete,
+                                                   device_info_);
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto tilings, tiling_space->GetValidTilings());
+  const int64_t rank = tilings.front().size();
+  const llvm::SmallVector<int64_t, 4> fitting_tile_sizes(rank, 1);
+  EXPECT_TRUE(passes_precheck(fitting_tile_sizes));
+  EXPECT_TRUE(passes_check(fitting_tile_sizes));
+
+  const llvm::SmallVector<int64_t, 4> too_large_tile_sizes(rank, 1024);
+  EXPECT_FALSE(passes_precheck(too_large_tile_sizes));
+  EXPECT_FALSE(passes_check(too_large_tile_sizes));
+
+  for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
+    llvm::SmallVector<int64_t, 4> tile_sizes =
+        xla::xtile::GetPaddedTileSizes(tiling);
+    if (!tile(tile_sizes).ok()) {
+      // Not all tilings from `GetValidTilings` can be tiled.
+      continue;
+    }
+    EXPECT_EQ(passes_check(tile_sizes), passes_precheck(tile_sizes))
+        << absl::StrJoin(tile_sizes, ",");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RegisterFitConsistencyTests, RegisterFitConsistencyTest,
+    ::testing::Values(RegisterFitTestCase{/*name=*/"SoftmaxLike",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[64,4096] parameter(0)
+  c0 = f32[] constant(0)
+  reduce = f32[64] reduce(p0, c0), dimensions={1}, to_apply=add
+  broadcast = f32[64,4096] broadcast(reduce), dimensions={0}
+  ROOT sub = f32[64,4096] subtract(p0, broadcast)
+}
+ENTRY entry {
+  p0 = f32[64,4096] parameter(0)
+  ROOT fusion = f32[64,4096] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"Dot",
+                                          /*hlo=*/R"(
+HloModule m
+triton_dot {
+  p0 = bf16[1024,1024] parameter(0)
+  p1 = bf16[1024,1024] parameter(1)
+  ROOT dot = bf16[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["32"]}
+}
+ENTRY e {
+  p0 = bf16[1024,1024] parameter(0)
+  p1 = bf16[1024,1024] parameter(1)
+  ROOT fusion = bf16[1024,1024] fusion(p0, p1),
+    kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {"kind": "__triton_nested_gemm_fusion"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"Concatenate",
+                                          /*hlo=*/R"(
+HloModule m
+fused {
+  p0 = f32[64,2048] parameter(0)
+  p1 = f32[64,2048] parameter(1)
+  c0 = f32[64,4096] concatenate(p0, p1), dimensions={1}
+  ROOT neg = f32[64,4096] negate(c0)
+}
+ENTRY entry {
+  p0 = f32[64,2048] parameter(0)
+  p1 = f32[64,2048] parameter(1)
+  ROOT fusion = f32[64,4096] fusion(p0, p1), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"Iota",
+                                          /*hlo=*/R"(
+HloModule m
+fused {
+  p0 = s32[64,4096] parameter(0)
+  iota = s32[64] iota(), iota_dimension=0
+  broadcast = s32[64,4096] broadcast(iota), dimensions={0}
+  ROOT add = s32[64,4096] add(p0, broadcast)
+}
+ENTRY entry {
+  p0 = s32[64,4096] parameter(0)
+  ROOT fusion = s32[64,4096] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"Transpose",
+                                          /*hlo=*/R"(
+HloModule m
+fused {
+  p0 = f32[4096,64] parameter(0)
+  transpose = f32[64,4096] transpose(p0), dimensions={1,0}
+  ROOT neg = f32[64,4096] negate(transpose)
+}
+ENTRY entry {
+  p0 = f32[4096,64] parameter(0)
+  ROOT fusion = f32[64,4096] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"ExpandReshape",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[4,1024,1024] parameter(0)
+  reshape = f32[4096,1024] reshape(p0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[4096] reduce(reshape, c0), dimensions={1}, to_apply=add
+}
+ENTRY entry {
+  p0 = f32[4,1024,1024] parameter(0)
+  ROOT fusion = f32[4096] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"Reshape",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[4096,1024] parameter(0)
+  reshape = f32[4,1024,1024] reshape(p0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[4,1024] reduce(reshape, c0), dimensions={2}, to_apply=add
+}
+ENTRY entry {
+  p0 = f32[4096,1024] parameter(0)
+  ROOT fusion = f32[4,1024] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"DynamicSlice",
+                                          /*hlo=*/R"(
+HloModule m
+fused {
+  p0 = f32[64,4096] parameter(0)
+  offset0 = s32[] parameter(1)
+  offset1 = s32[] parameter(2)
+  ROOT ds = f32[32,2048] dynamic-slice(p0, offset0, offset1), dynamic_slice_sizes={32,2048}
+}
+ENTRY entry {
+  p0 = f32[64,4096] parameter(0)
+  offset0 = s32[] parameter(1)
+  offset1 = s32[] parameter(2)
+  ROOT fusion = f32[32,2048] fusion(p0, offset0, offset1), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"ReduceScatter",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[4096,1024] parameter(0)
+  p1 = f32[1024,2048] parameter(1)
+  dot = f32[4096,2048] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT rs = f32[2048,2048] reduce-scatter(dot), replica_groups={{0,1}},
+    dimensions={0}, to_apply=add
+}
+ENTRY entry {
+  p0 = f32[4096,1024] parameter(0)
+  p1 = f32[1024,2048] parameter(1)
+  ROOT fusion = f32[2048,2048] fusion(p0, p1), kind=kCustom, calls=fused
+}
+)"},
+                      RegisterFitTestCase{/*name=*/"BroadcastReduce",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT add = s32[] add(p0, p1)
+}
+fused {
+  p0 = s32[32,4096] parameter(0)
+  b0 = s32[4096,32,4096] broadcast(p0), dimensions={1,2}
+  iota0 = s32[4096,4096] iota(), iota_dimension=0
+  iota1 = s32[4096,4096] iota(), iota_dimension=1
+  cmp = pred[4096,4096] compare(iota0, iota1), direction=GE
+  conv = s32[4096,4096] convert(cmp)
+  b1 = s32[4096,32,4096] broadcast(conv), dimensions={0,2}
+  mul = s32[4096,32,4096] multiply(b0, b1)
+  c0 = s32[] constant(0)
+  ROOT reduce = s32[4096,32] reduce(mul, c0), dimensions={2}, to_apply=add
+}
+ENTRY entry {
+  p0 = s32[32,4096] parameter(0)
+  ROOT fusion = s32[4096,32] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"}),
+    [](const ::testing::TestParamInfo<RegisterFitTestCase>& info) {
+      return info.param.name;
+    });
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilings_PrunesReductionDimensionTilings) {
+  auto get_top_k_for_hlo = [&](absl::string_view hlo) {
+    auto module = ParseAndReturnVerifiedModule(hlo);
+    CHECK_OK(module);
+    module.value()
+        ->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+        module.value()->entry_computation()->root_instruction());
+    auto result = indexing_cost_model_
+                      .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor,
+                                                            /*top_k=*/1000)
+                      .Await();
+    CHECK_OK(result);
+    return std::get<absl::InlinedVector<TiledRunTimeData, 4>>(*result);
+  };
+  auto get_top_k = [&](int64_t d0, int64_t d1, int64_t reduce_dim) {
+    return get_top_k_for_hlo(absl::Substitute(
+        R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[$0,$1]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[$2]{0} reduce(p0, c0), dimensions={$3}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[$0,$1]{1,0} parameter(0)
+  ROOT fusion = f32[$2]{0} fusion(p0), kind=kCustom, calls=fused
+})",
+        d0, d1, reduce_dim == 0 ? d1 : d0, reduce_dim));
+  };
+  auto seq_tiles_are = [](auto matcher) {
+    return Field(&TiledRunTimeData::block_level_parameters,
+                 Field(&BlockLevelParameters::sequential_tile_sizes, matcher));
+  };
+
+  // Power-of-two contiguous reduction <= 256 is kept untiled.
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Non-power-of-two contiguous reduction in (128, 256) is tiled, with
+  // sequential tile sizes < 16 pruned.
+  auto non_pow2 = get_top_k(128, 192, /*reduce_dim=*/1);
+  EXPECT_THAT(non_pow2, Contains(seq_tiles_are(Not(IsEmpty()))));
+  EXPECT_THAT(non_pow2, Each(seq_tiles_are(Each(Ge(16)))));
+
+  // Strided reduction with reduction_size >= 64 and minor_dim_size >= 128
+  // is tiled and retains small sequential tile sizes (< 16).
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0),
+              Contains(seq_tiles_are(ElementsAre(2))));
+
+  // Strided reductions with reduction_size < 64 or (reduction_size <= 256 and
+  // minor_dim_size < 128) are kept untiled.
+  EXPECT_THAT(get_top_k(32, 256, /*reduce_dim=*/0),
+              Each(seq_tiles_are(IsEmpty())));
+  EXPECT_THAT(get_top_k(128, 64, /*reduce_dim=*/0),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Zero-sized reduction dimension is kept untiled without error.
+  EXPECT_THAT(get_top_k(128, 0, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Multi-dimension reductions and fusions with multiple reductions keep all
+  // reduction dimensions untiled.
+  EXPECT_THAT(get_top_k_for_hlo(R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[8]{0} reduce(p0, c0), dimensions={1,2}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  ROOT fusion = f32[8]{0} fusion(p0), kind=kCustom, calls=fused
+})"),
+              Each(seq_tiles_are(IsEmpty())));
+
+  EXPECT_THAT(get_top_k_for_hlo(R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  c0 = f32[] constant(0)
+  r0 = f32[8,16]{1,0} reduce(p0, c0), dimensions={2}, to_apply=add
+  ROOT r1 = f32[8]{0} reduce(r0, c0), dimensions={1}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  ROOT fusion = f32[8]{0} fusion(p0), kind=kCustom, calls=fused
+})"),
+              Each(seq_tiles_are(IsEmpty())));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ReduceWithReductionLoop) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+fused_computation {
+  param_0 = f32[128,1100] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[128,1100] parameter(0)
+  ROOT fusion = f32[128] fusion(param_0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  auto estimate = [&](int64_t reduction_tile_size) {
+    BlockLevelParameters block_level_parameters;
+    block_level_parameters.output_tile_sizes = {{8}};
+    block_level_parameters.num_warps = 4;
+    block_level_parameters.sequential_tile_sizes = {reduction_tile_size};
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *fusion_adaptor, block_level_parameters);
+  };
+
+  // No loop: the tile is padded to 2048 and covers the whole dimension.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData no_loop, estimate(1100));
+  // 2 iterations, the second one masks 948 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_1024, estimate(1024));
+  // 5 iterations, the last one masks 180 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_256, estimate(256));
+
+  // The operand is read exactly once regardless of the reduction tile size.
+  constexpr int64_t kOperandBytes = 128 * 1100 * 4;
+  EXPECT_EQ(no_loop.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_256.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.read_time, no_loop.read_time);
+  EXPECT_EQ(loop_256.read_time, no_loop.read_time);
+
+  // The reduce is charged once per output element regardless of the reduction
+  // tile size.
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  const int64_t reduce_flops =
+      128 * indexing_cost_model_.FlopsPerElement(reduce);
+  EXPECT_EQ(no_loop.flops, reduce_flops);
+  EXPECT_EQ(loop_1024.flops, reduce_flops);
+  EXPECT_EQ(loop_256.flops, reduce_flops);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateSharedMemoryUsageAndDoesTilingFitInSharedMemory) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[256,512] parameter(0)
+  t = f32[512,256] transpose(p0), dimensions={1,0}
+  ROOT out = f32[512,256] exponential(t)
+}
+
+ENTRY main {
+  p0 = f32[256,512] parameter(0)
+  ROOT fusion = f32[512,256] fusion(p0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
+
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 32}));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+
+  // Transpose tile is 32 * 32 * 4 bytes = 4096 bytes.
+  EXPECT_EQ(internal::EstimateSharedMemoryUsagePerBlock(tiled_computation,
+                                                        device_info_),
+            4096);
+
+  // Set shared memory to 2 * 4096 bytes so {32, 32} is right at the 50% limit.
+  se::DeviceDescription device_info = device_info_;
+  device_info.set_shared_memory_per_core(2 * 4096);
+  EXPECT_TRUE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{32, 32}, device_info));
+  EXPECT_FALSE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{32, 64}, device_info));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateSharedMemoryUsageAndDoesTilingFitInSharedMemory_Reduce) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[256,512] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT r = f32[256] reduce(p0, c0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[256,512] parameter(0)
+  ROOT fusion = f32[256] fusion(p0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
+
+  ASSERT_OK(tiling_space->AssignTileSizes({16, 64}));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+
+  // Largest live tile is 16 * 64 = 1024 -> 2 warps, and reduced_tile_size is
+  // 64 > WarpSize (32).
+  // Reduce output tile is 16 * 4 bytes * 2 warps = 128 bytes.
+  EXPECT_EQ(internal::EstimateSharedMemoryUsagePerBlock(tiled_computation,
+                                                        device_info_),
+            128);
+
+  // Set shared memory to 2 * 128 bytes so {16, 64} is right at the 50% limit.
+  se::DeviceDescription device_info = device_info_;
+  device_info.set_shared_memory_per_core(2 * 128);
+  EXPECT_TRUE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{16, 64}, device_info));
+  EXPECT_FALSE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{32, 64}, device_info));
+  // When the reduced dimension tile size is <= WarpSize (32), reduction is
+  // performed within registers and a single warp via shfl.sync (0 B SMEM).
+  device_info.set_shared_memory_per_core(0);
+  EXPECT_TRUE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{32, 32}, device_info));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       DoesTilingFitInSharedMemory_IgnoresUnfusedProducerOperands) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[256,128] parameter(0)
+  p1 = f32[256,128] parameter(1)
+  ROOT out = f32[256,128] add(p0, p1)
+}
+
+ENTRY main {
+  p0 = f32[256,128,64] parameter(0)
+  p1 = f32[128,256] parameter(1)
+  c0 = f32[] constant(0)
+  unfused_reduce = f32[256,128] reduce(p0, c0), dimensions={2}, to_apply=add
+  unfused_transpose = f32[256,128] transpose(p1), dimensions={1,0}
+  ROOT fusion = f32[256,128] fusion(unfused_reduce, unfused_transpose),
+    kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
+
+  ASSERT_OK(tiling_space->AssignTileSizes({32, 32}));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+
+  EXPECT_EQ(internal::EstimateSharedMemoryUsagePerBlock(tiled_computation,
+                                                        device_info_),
+            0);
+  EXPECT_TRUE(internal::DoesTilingFitInSharedMemory(
+      symbolic_computation, /*tile_sizes=*/{32, 32}, device_info_));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_AccountsForSharedMemoryUsage) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT sum = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[256,512] parameter(0)
+  t = f32[512,256] transpose(p0), dimensions={1,0}
+  c0 = f32[] constant(0)
+  ROOT r = f32[512] reduce(t, c0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[256,512] parameter(0)
+  ROOT fusion = f32[512] fusion(p0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // Output tile size is {32} and reduction dimension is 256, so the transpose
+  // tile is 32 * 256 * 4 bytes = 32768 bytes, which dominates the reduce
+  // shared memory (32 * 4 bytes * 8 warps = 1024 bytes).
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_data,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{32}}}));
+  EXPECT_EQ(runtime_data.shared_memory_per_block_bytes, 32768);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilings_FiltersTilingsExceedingSharedMemoryLimit) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[256,512] parameter(0)
+  t = f32[512,256] transpose(p0), dimensions={1,0}
+  ROOT out = f32[512,256] exponential(t)
+}
+
+ENTRY main {
+  p0 = f32[256,512] parameter(0)
+  ROOT fusion = f32[512,256] fusion(p0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // Allow at most 4096 bytes of shared memory per block (50% of 8192 bytes).
+  se::DeviceDescription constrained_device_info = device_info_;
+  constrained_device_info.set_shared_memory_per_core(2 * 4096);
+  HloFusionAnalysisCache analysis_cache(constrained_device_info);
+  GpuPerformanceModelWithIndexingAnalysis cost_model(
+      &constrained_device_info, &analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+
+  ASSERT_OK_AND_ASSIGN(
+      TopKTiledRunTimeDataOrError top_k_result,
+      cost_model
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, /*top_k=*/1000)
+          .Await());
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      top_k_result)));
+  const auto& candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(top_k_result);
+  ASSERT_FALSE(candidates.empty());
+
+  auto output_tiles_are = [](auto matcher) {
+    return Field(&TiledRunTimeData::block_level_parameters,
+                 Field(&BlockLevelParameters::output_tile_sizes, matcher));
+  };
+  // {32, 32} uses 32 * 32 * 4 = 4096 bytes and fits within the 50% limit,
+  // whereas {32, 64} uses 8192 bytes and is filtered out.
+  EXPECT_THAT(candidates,
+              Contains(output_tiles_are(ElementsAre(ElementsAre(32, 32)))));
+  EXPECT_THAT(
+      candidates,
+      Not(Contains(output_tiles_are(ElementsAre(ElementsAre(32, 64))))));
+  for (const TiledRunTimeData& candidate : candidates) {
+    EXPECT_LE(candidate.runtime_data.shared_memory_per_block_bytes, 4096);
+  }
+}
+
+}  // namespace
+}  // namespace gpu
+}  // namespace xla
