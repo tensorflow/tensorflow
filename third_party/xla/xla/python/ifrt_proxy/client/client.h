@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -191,13 +192,14 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
         "LookupAddressableDevice is not supported for the IFRT proxy client.");
   }
   absl::StatusOr<xla::ifrt::DeviceListRef> MakeDeviceList(
-      absl::Span<xla::ifrt::Device* const> devices) const override;
+      absl::Span<xla::ifrt::Device* absl_nonnull const> devices) const override;
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
   }
   absl::StatusOr<std::vector<tsl::Future<xla::ifrt::LoadedExecutableRef>>> Load(
       absl::Span<const xla::ifrt::ExecutableRef> executables,
-      absl::Span<std::unique_ptr<xla::ifrt::LoadOptions>> options) override {
+      absl::Span<absl_nonnull std::unique_ptr<xla::ifrt::LoadOptions>> options)
+      override {
     return absl::UnimplementedError(
         "Load is not supported for the IFRT proxy client.");
   }
@@ -208,7 +210,7 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
   }
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
       xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-      xla::ifrt::Device* device,
+      xla::ifrt::Device* absl_nonnull device,
       xla::ifrt::MemoryKind memory_kind) const override;
   absl::StatusOr<xla::ifrt::CustomLayoutRef> GetDefaultLayout(
       xla::ifrt::DType dtype, const xla::ifrt::Shape& shape,
@@ -216,7 +218,7 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<xla::ifrt::Device* const> devices,
+      absl::Span<xla::ifrt::Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
     return absl::UnimplementedError(

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -118,16 +119,17 @@ absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
 // `xla::ifrt::DeserializeExecutableOptions`.
 absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
-    std::unique_ptr<DeserializeExecutableOptions> options);
+    absl_nullable std::unique_ptr<DeserializeExecutableOptions> options);
 
 // Gets `xla::ifrt::DeviceListRef` from `xla::DeviceAssignment`.
 absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromDeviceAssignment(
-    xla::ifrt::Client* ifrt_client,
+    xla::ifrt::Client* absl_nonnull ifrt_client,
     const xla::DeviceAssignment& device_assignment);
 
 // Gets `xla::ifrt::DeviceListRef` from `xla::XlaCompileOptions`.
 absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromXlaCompileOptions(
-    xla::ifrt::Client* ifrt_client, const xla::CompileOptions& compile_options);
+    xla::ifrt::Client* absl_nonnull ifrt_client,
+    const xla::CompileOptions& compile_options);
 
 }  // namespace ifrt
 }  // namespace xla

@@ -25,6 +25,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -340,7 +341,7 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       int local_hardware_id) const override;
 
   absl::StatusOr<DeviceListRef> MakeDeviceList(
-      absl::Span<Device* const> devices) const override;
+      absl::Span<Device* absl_nonnull const> devices) const override;
 
   Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
@@ -348,13 +349,13 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
 
   absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
       absl::Span<const ExecutableRef> executables,
-      absl::Span<std::unique_ptr<LoadOptions>> options) override;
+      absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) override;
 
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
       const DeviceListRef& devices) const override;
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
-      DType dtype, absl::Span<const int64_t> dims, Device* device,
+      DType dtype, absl::Span<const int64_t> dims, Device* absl_nonnull device,
       MemoryKind memory_kind) const override;
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
       DType dtype, const Shape& shape,
@@ -391,7 +392,7 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<xla::ifrt::Device* const> devices,
+      absl::Span<xla::ifrt::Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
     return absl::UnimplementedError(

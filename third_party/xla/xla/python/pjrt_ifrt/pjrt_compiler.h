@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -40,7 +41,7 @@ class PjRtClient;
 // requirement of `PjRtClient`, which will enable ahead-of-time compilation.
 class PjRtCompiler final : public RTTIExtends<PjRtCompiler, Compiler> {
  public:
-  explicit PjRtCompiler(PjRtClient* client);
+  explicit PjRtCompiler(PjRtClient* absl_nullable client);
 
   // Compiler implementation.
 
@@ -62,12 +63,13 @@ class PjRtCompiler final : public RTTIExtends<PjRtCompiler, Compiler> {
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
       const absl::Cord& serialized,
-      std::unique_ptr<DeserializeExecutableOptions> options) override;
+      absl_nullable std::unique_ptr<DeserializeExecutableOptions> options)
+      override;
 
   static char ID;  // NOLINT
 
  private:
-  PjRtClient* client_;
+  PjRtClient* absl_nullable client_;
 };
 
 }  // namespace ifrt

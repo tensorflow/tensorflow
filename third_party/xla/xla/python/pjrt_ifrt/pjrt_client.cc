@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -1018,7 +1019,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
 }
 
 absl::StatusOr<DeviceListRef> PjRtClient::MakeDeviceList(
-    absl::Span<Device* const> devices) const {
+    absl::Span<Device* absl_nonnull const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
@@ -2068,7 +2069,7 @@ absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
 
 absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> PjRtClient::Load(
     absl::Span<const ExecutableRef> executables,
-    absl::Span<std::unique_ptr<LoadOptions>> options) {
+    absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) {
   if (executables.size() != options.size()) {
     return absl::InvalidArgumentError(
         absl::StrCat("executables and options must have the same size, got ",
@@ -2191,7 +2192,8 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
-                                 Device* device, MemoryKind memory_kind) const {
+                                 Device* absl_nonnull device,
+                                 MemoryKind memory_kind) const {
   // PjRt-IFRT devices are currently homogeneous. The cache key omits device
   // information.
   // TODO(hyeontaek): Add device-specific information (e.g., `device->Kind()`)

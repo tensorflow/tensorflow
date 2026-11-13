@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -551,14 +552,14 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
 }
 
 absl::StatusOr<xla::ifrt::DeviceListRef> Client::MakeDeviceList(
-    absl::Span<xla::ifrt::Device* const> devices) const {
+    absl::Span<xla::ifrt::Device* absl_nonnull const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
                              absl::Span<const int64_t> dims,
-                             xla::ifrt::Device* device,
+                             xla::ifrt::Device* absl_nonnull device,
                              xla::ifrt::MemoryKind memory_kind) const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointGetDefaultLayout");

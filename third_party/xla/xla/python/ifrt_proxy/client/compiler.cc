@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
@@ -63,8 +64,8 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
-Compiler::Compiler(xla::ifrt::Client* client,
-                   std::shared_ptr<RpcHelper> rpc_helper)
+Compiler::Compiler(xla::ifrt::Client* absl_nonnull client,
+                   absl_nonnull std::shared_ptr<RpcHelper> rpc_helper)
     : client_(client), rpc_helper_(std::move(rpc_helper)) {}
 
 tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
@@ -255,7 +256,8 @@ tsl::Future<xla::ifrt::ExecutableRef> Compiler::Compile(
 tsl::Future<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
     const absl::Cord& serialized,
-    std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {
+    absl_nullable std::unique_ptr<xla::ifrt::DeserializeExecutableOptions>
+        options) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([size = serialized.size()]() {
     return tsl::profiler::TraceMeEncode(
         "IfrtProxyEntrypointCompilerDeserializeLoadedExecutable",
