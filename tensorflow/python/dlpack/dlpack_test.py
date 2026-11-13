@@ -39,6 +39,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
@@ -173,6 +175,38 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
 
     self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
                            UnsupportedQint16)
+
+  @parameterized.named_parameters(
+      ("string", lambda: constant_op.constant(["a", "bc"])),
+      ("variant", lambda: list_ops.empty_tensor_list([1], dtypes.float32)),
+      ("resource", lambda: resource_variable_ops.ResourceVariable(1.0).handle),
+  )
+  def testNonNumericTypesRaiseInsteadOfAborting(self, make_tensor) -> None:
+    """String, variant and resource tensors must raise, not abort the process.
+
+    The C++ exporter reads the tensor's data pointer before validating the
+    dtype, which hits a `CHECK` failure (SIGABRT) for these dtypes.
+
+    Args:
+      make_tensor: Creates a non-empty tensor of the dtype under test.
+    """
+    tf_tensor = make_tensor()
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                ".* is not supported by dlpack"):
+      dlpack.to_dlpack(tf_tensor)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                ".* is not supported by dlpack"):
+      tf_tensor.__dlpack__()
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                ".* is not supported by dlpack"):
+      np.from_dlpack(tf_tensor)
+
+  def testNumpyArrayStillRejectedAsNonTensor(self) -> None:
+    """Non-TF inputs keep the C++ "must be a TF tensor" error."""
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "The argument to `to_dlpack` must be a TF tensor, not Python object"):
+      dlpack.to_dlpack(np.array([1.0]))
 
   def testMustPassTensorArgumentToDLPack(self) -> None:
     """Passing a non-Tensor should fail fast with a clear message."""
