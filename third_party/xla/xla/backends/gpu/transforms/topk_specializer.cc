@@ -56,8 +56,8 @@ namespace xla::gpu {
 
 namespace {
 
-// Fallback scratch memory (32 MB) for non-F32 RAFT select_k types (BF16, U64)
-// until their scratch-size formulas are integrated.
+// Fallback scratch memory (32 MB) for U64 RAFT select_k until its
+// scratch-size formula is integrated.
 constexpr int64_t kDefaultRaftScratchSize = 32 * 1024 * 1024;
 
 // Broadcast a 32-bit scalar to a target shape.
@@ -435,12 +435,18 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
           k);
     }
     int64_t scratch_bytes = kDefaultRaftScratchSize;
+    // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
+    // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
+    // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
     if (dtype == F32) {
-      // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
-      // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
-      // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
       ABSL_ASSIGN_OR_RETURN(scratch_bytes,
                        EstimateRaftSelectKScratchBytesFloat(
+                           static_cast<uint32_t>(batch),
+                           static_cast<uint32_t>(n), static_cast<uint32_t>(k),
+                           sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+    } else if (dtype == BF16) {
+      ABSL_ASSIGN_OR_RETURN(scratch_bytes,
+                       EstimateRaftSelectKScratchBytesBFloat16(
                            static_cast<uint32_t>(batch),
                            static_cast<uint32_t>(n), static_cast<uint32_t>(k),
                            sm_count, RaftScratchPhaseMode::kSumAcrossPhases));

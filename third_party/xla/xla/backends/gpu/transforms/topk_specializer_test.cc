@@ -704,6 +704,80 @@ TEST_F(TopkTest, UnstableFloatTopKUsesEstimatedScratchSize) {
   }
 }
 
+TEST_F(TopkTest, UnstableBFloat16TopKUsesEstimatedScratchSize) {
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  // Test both a BF16 WarpSort shape (bf16[8,1024], k=32) and a BF16 Radix
+  // shape (bf16[64,65536], k=256) to verify HLO scratch sizing and GPU
+  // execution.
+  struct TestCase {
+    int batch;
+    int n;
+    int k;
+  };
+  for (const TestCase& tc : {TestCase{8, 1024, 32}, TestCase{64, 65536, 256}}) {
+    const std::string hlo = absl::Substitute(
+        R"hlo(
+      HloModule m
+
+      %compare-gt.1 {
+        p.1.lhs = s32[] parameter(2)
+        p.1.rhs = s32[] parameter(3)
+        p.0.lhs = bf16[] parameter(0)
+        p.0.rhs = bf16[] parameter(1)
+        ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+      }
+
+      ENTRY top_k {
+        arg = bf16[$0,$1] parameter(0)
+        topk = (bf16[$0,$2], s32[$0,$2]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = false, order = "TOTAL"}
+        ROOT values = bf16[$0,$2] get-tuple-element(topk), index=0
+      }
+    )hlo",
+        tc.batch, tc.n, tc.k);
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                         ParseAndReturnVerifiedModule(hlo));
+    std::unique_ptr<HloModule> reference_module =
+        topk_module->Clone("reference");
+
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        TopkSpecializer(device_description()).Run(topk_module.get()));
+    ASSERT_TRUE(changed);
+
+    const se::CudaComputeCapability* cuda_cc =
+        device_description().gpu_compute_capability().cuda_compute_capability();
+    ASSERT_NE(cuda_cc, nullptr);
+    const int expected_sm_count =
+        GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+    ASSERT_OK_AND_ASSIGN(int64_t expected_scratch_bytes,
+                         EstimateRaftSelectKScratchBytesBFloat16(
+                             tc.batch, tc.n, tc.k, expected_sm_count,
+                             RaftScratchPhaseMode::kSumAcrossPhases));
+
+    const HloInstruction* root =
+        topk_module->entry_computation()->root_instruction();
+    const HloInstruction* custom_call =
+        root->operand(0)->operand(0)->operand(0);
+    EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
+    ASSERT_EQ(custom_call->shape().tuple_shapes().size(), 3);
+    EXPECT_EQ(custom_call->shape().tuple_shapes(2).dimensions(0),
+              expected_scratch_bytes);
+
+    ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+    ASSERT_TRUE(changed);
+    reference_module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_disable_hlo_passes("topk-rewriter");
+
+    EXPECT_TRUE(RunAndCompareTwoModules(
+        std::move(topk_module), std::move(reference_module), std::nullopt));
+  }
+}
+
 TEST_F(TopkTest, CrossSkuAndMigCompileExecutesSafelyOnFullGpu) {
   const se::CudaComputeCapability* cuda_cc =
       device_description().gpu_compute_capability().cuda_compute_capability();

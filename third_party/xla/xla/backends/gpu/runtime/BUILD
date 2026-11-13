@@ -1667,6 +1667,7 @@ cuda_library(
     ],
     tags = ["cuda-only"],
     deps = [
+        ":raft_select_k_utils",
         "//xla:status_macros",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
@@ -1696,7 +1697,6 @@ cuda_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
     ],
 )
@@ -1711,6 +1711,7 @@ cuda_library(
     ],
     tags = ["cuda-only"],
     deps = [
+        ":raft_select_k_utils",
         ":select_k_exec_raft_impl",
         "//xla:types",
         "//xla/stream_executor:device_address",

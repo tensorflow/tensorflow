@@ -33,7 +33,6 @@ namespace {
 constexpr int64_t kScratchAlignment = 256;
 constexpr int64_t kMinSafetyMarginBytes = 4096;
 constexpr int64_t kSafetyMarginDivisor = 16;
-constexpr int64_t kFloatBytes = sizeof(float);
 constexpr int64_t kIndexBytes = sizeof(uint32_t);
 constexpr int64_t kWarpSize = 32;
 constexpr int64_t kMaxThreadsPerSm = 2048;
@@ -51,23 +50,29 @@ int64_t AddSafetyMargin(int64_t estimated_bytes) {
   return RoundUpTo(estimated_bytes + margin, kScratchAlignment);
 }
 
-// Mirrors `raft::matrix::detail::select::radix::impl::calc_buf_len<float,
+// Mirrors `raft::matrix::detail::select::radix::impl::calc_buf_len<T,
 // uint32_t, RatioT>(len)` in select_radix.cuh:
-//   constexpr RatioT ratio = 2 + sizeof(uint32_t) * 2 / sizeof(float);  // 4
+//   constexpr RatioT ratio = 2 + sizeof(uint32_t) * 2 / sizeof(T);
 //   uint32_t buf_len = len / (ratio * 8);
-//   return Pow2<64>::roundDown(buf_len);
+//   constexpr uint32_t aligned = 256 / std::min(sizeof(T), sizeof(uint32_t));
+//   return Pow2<aligned>::roundDown(buf_len);
 // `radix_topk_one_block` instantiates `RatioT = unsigned`, whereas multi-block
 // `radix_topk` uses the default `RatioT = float`, where IEEE-754 float
-// promotion of `len > 2^24` can round up across a 64-element boundary.
+// promotion of `len > 2^24` can round up across an `aligned`-element boundary.
 template <typename RatioT>
-int64_t CalcRadixBufLenFloat(uint32_t len) {
-  constexpr RatioT kRatio = 2 + sizeof(uint32_t) * 2 / sizeof(float);
-  const uint32_t buf_len = static_cast<uint32_t>(len / (kRatio * 8));
-  return static_cast<int64_t>(buf_len & ~uint32_t{63});
+int64_t CalcRadixBufLen(uint32_t len, int64_t elem_bytes) {
+  const uint32_t elem_bytes_u32 = static_cast<uint32_t>(elem_bytes);
+  const uint32_t idx_bytes_u32 = static_cast<uint32_t>(kIndexBytes);
+  const RatioT ratio =
+      static_cast<RatioT>(2 + idx_bytes_u32 * 2 / elem_bytes_u32);
+  const uint32_t buf_len = static_cast<uint32_t>(len / (ratio * 8));
+  const uint32_t aligned =
+      256 / std::min<uint32_t>(elem_bytes_u32, idx_bytes_u32);
+  return static_cast<int64_t>(buf_len & ~(aligned - 1));
 }
 
 // Bounds temporary workspace for RAFT select_warpsort:
-//   tmp_val: num_of_block * batch * k * sizeof(float)
+//   tmp_val: num_of_block * batch * k * sizeof(T)
 //   tmp_idx: num_of_block * batch * k * sizeof(uint32_t)
 // WarpSort outputs are already sorted, so no Phase 2 sort runs.
 //
@@ -78,8 +83,8 @@ int64_t CalcRadixBufLenFloat(uint32_t len) {
 // for a fixed `w` is monotonically non-decreasing with `min_grid_size`, taking
 // the maximum across `w in [1, 8]` upper-bounds `num_of_block` across all GPU
 // architectures and compiler occupancy outcomes.
-int64_t EstimateWarpSortScratchBytesFloat(int64_t batch, int64_t n, int64_t k,
-                                          int64_t sm_count) {
+int64_t EstimateWarpSortScratchBytes(int64_t elem_bytes, int64_t batch,
+                                     int64_t n, int64_t k, int64_t sm_count) {
   const int64_t capacity =
       static_cast<int64_t>(absl::bit_ceil(static_cast<uint32_t>(k)));
   const int64_t capacity_per_full_warp = std::max<int64_t>(capacity, kWarpSize);
@@ -107,7 +112,7 @@ int64_t EstimateWarpSortScratchBytesFloat(int64_t batch, int64_t n, int64_t k,
 
   const int64_t total_elems = max_num_blocks * batch * k;
   const int64_t tmp_val_bytes =
-      RoundUpTo(total_elems * kFloatBytes, kScratchAlignment);
+      RoundUpTo(total_elems * elem_bytes, kScratchAlignment);
   const int64_t tmp_idx_bytes =
       RoundUpTo(total_elems * kIndexBytes, kScratchAlignment);
   return tmp_val_bytes + tmp_idx_bytes;
@@ -118,22 +123,23 @@ int64_t EstimateWarpSortScratchBytesFloat(int64_t batch, int64_t n, int64_t k,
 //   and ItemsPerThread=32):
 //     - When k == n: 0 bytes (direct copy + iota).
 //     - One-block path (`n <= 16384` or `grid_dim == 1`):
-//         `bufs` = chunk_one * buf_len * 2 * (sizeof(float) + sizeof(uint32_t))
+//         `bufs` = chunk_one * buf_len * 2 * (sizeof(T) + sizeof(uint32_t))
 //     - Multi-block path (`n > 16384` and `grid_dim > 1`):
 //         `counters`   = Align256(chunk_multi * 640)
 //         `histograms` = Align256(chunk_multi * num_buckets * sizeof(uint32_t))
-//         `bufs`       = Align256(chunk_multi * buf_len * 2 * (4 + 4))
+//         `bufs`       = Align256(chunk_multi * buf_len * 2 * (sizeof(T) + 4))
 //       where `active_blocks <= 2048 / 512 = 4` and `num_waves = 10`.
 //   Phase 2 (`offsets` + `segmented_sort_by_key` via CUB
 //   `DeviceSegmentedRadixSort::SortPairs`):
 //     - `offsets`        = Align256((batch + 1) * sizeof(uint32_t))
 //     - `out_inds`       = Align256(batch * k * sizeof(uint32_t))
-//     - `out_dists`      = Align256(batch * k * sizeof(float))
-//     - `d_temp_storage` = Align256(batch * k * sizeof(float)) +
+//     - `out_dists`      = Align256(batch * k * sizeof(T))
+//     - `d_temp_storage` = Align256(batch * k * sizeof(T)) +
 //                          Align256(batch * k * sizeof(uint32_t)) + 256
-int64_t EstimateRadixScratchBytesFloat(RaftSelectKAlgo algo, int64_t batch,
-                                       int64_t n, int64_t k, int64_t sm_count,
-                                       RaftScratchPhaseMode phase_mode) {
+int64_t EstimateRadixScratchBytes(int64_t elem_bytes, RaftSelectKAlgo algo,
+                                  int64_t batch, int64_t n, int64_t k,
+                                  int64_t sm_count,
+                                  RaftScratchPhaseMode phase_mode) {
   constexpr int64_t kRadixBlockSize = 512;
   constexpr int64_t kItemsPerThread = 32;
   constexpr int64_t kOneBlockMaxLen = kRadixBlockSize * kItemsPerThread;
@@ -144,9 +150,10 @@ int64_t EstimateRadixScratchBytesFloat(RaftSelectKAlgo algo, int64_t batch,
   int64_t phase1_bytes = 0;
   if (k < n) {
     const uint32_t len_u32 = static_cast<uint32_t>(n);
-    const int64_t one_block_buf_len = CalcRadixBufLenFloat<unsigned>(len_u32);
+    const int64_t one_block_buf_len =
+        CalcRadixBufLen<unsigned>(len_u32, elem_bytes);
     const int64_t one_block_row_buf_bytes =
-        one_block_buf_len * 2 * (kFloatBytes + kIndexBytes);
+        one_block_buf_len * 2 * (elem_bytes + kIndexBytes);
 
     const int64_t max_one_block_chunk =
         std::min<int64_t>(batch, kNumWaves * sm_count * kMaxActiveBlocksPerSm);
@@ -156,10 +163,10 @@ int64_t EstimateRadixScratchBytesFloat(RaftSelectKAlgo algo, int64_t batch,
     if (n <= kOneBlockMaxLen) {
       phase1_bytes = phase1_one_block_bytes;
     } else {
-      const int64_t multi_block_buf_len =
-          std::max(one_block_buf_len, CalcRadixBufLenFloat<float>(len_u32));
+      const int64_t multi_block_buf_len = std::max(
+          one_block_buf_len, CalcRadixBufLen<float>(len_u32, elem_bytes));
       const int64_t multi_block_row_buf_bytes =
-          multi_block_buf_len * 2 * (kFloatBytes + kIndexBytes);
+          multi_block_buf_len * 2 * (elem_bytes + kIndexBytes);
       const int64_t num_buckets =
           (algo == RaftSelectKAlgo::kRadix8bits) ? 256 : 2048;
       const int64_t max_items_per_chunk = kNumWaves * sm_count *
@@ -183,7 +190,7 @@ int64_t EstimateRadixScratchBytesFloat(RaftSelectKAlgo algo, int64_t batch,
   const int64_t offsets_bytes =
       RoundUpTo((batch + 1) * kIndexBytes, kScratchAlignment);
   const int64_t values_bytes =
-      RoundUpTo(batch * k * kFloatBytes, kScratchAlignment);
+      RoundUpTo(batch * k * elem_bytes, kScratchAlignment);
   const int64_t indices_bytes =
       RoundUpTo(batch * k * kIndexBytes, kScratchAlignment);
   const int64_t cub_temp_bytes =
@@ -195,6 +202,60 @@ int64_t EstimateRadixScratchBytesFloat(RaftSelectKAlgo algo, int64_t batch,
     return phase1_bytes + phase2_bytes;
   }
   return std::max<int64_t>(phase1_bytes, phase2_bytes);
+}
+
+absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesImpl(
+    int64_t elem_bytes, uint32_t batch, uint32_t n, uint32_t k, int sm_count,
+    RaftScratchPhaseMode phase_mode,
+    RaftSelectKAlgo (*choose_algo)(uint32_t, uint32_t, uint32_t)) {
+  if (batch == 0 || n == 0 || k == 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "RAFT select_k dimensions must be positive, got batch=", batch,
+        ", n=", n, ", k=", k));
+  }
+  if (k > n) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("RAFT select_k requires k <= n, got k=", k, ", n=", n));
+  }
+  constexpr uint32_t kMaxInt32 =
+      static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
+  if (batch > kMaxInt32) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("RAFT select_k batch exceeds int32_t max: batch=", batch));
+  }
+  if (n > kMaxInt32) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("RAFT select_k n exceeds int32_t max: n=", n));
+  }
+  if (uint64_t{batch} * uint64_t{k} >
+      static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "RAFT select_k batch * k exceeds uint32_t max: batch=", batch,
+        ", k=", k));
+  }
+
+  const int64_t effective_sm_count =
+      sm_count > 0 ? static_cast<int64_t>(sm_count)
+                   : static_cast<int64_t>(kDefaultRaftSelectKMaxSmCount);
+  const RaftSelectKAlgo algo = choose_algo(batch, n, k);
+  switch (algo) {
+    case RaftSelectKAlgo::kWarpImmediate:
+    case RaftSelectKAlgo::kWarpFiltered:
+    case RaftSelectKAlgo::kWarpDistributed:
+    case RaftSelectKAlgo::kWarpDistributedShm:
+      return AddSafetyMargin(EstimateWarpSortScratchBytes(
+          elem_bytes, batch, n, k, effective_sm_count));
+    case RaftSelectKAlgo::kRadix8bits:
+    case RaftSelectKAlgo::kRadix11bits:
+    case RaftSelectKAlgo::kRadix11bitsExtraPass:
+      return AddSafetyMargin(EstimateRadixScratchBytes(
+          elem_bytes, algo, batch, n, k, effective_sm_count, phase_mode));
+    case RaftSelectKAlgo::kAuto:
+    case RaftSelectKAlgo::kWarpAuto:
+      break;
+  }
+  return absl::InternalError(
+      absl::StrCat("Unexpected RaftSelectKAlgo: ", algo));
 }
 
 }  // namespace
@@ -421,57 +482,154 @@ RaftSelectKAlgo choose_select_k_algorithm_float(uint32_t rows, uint32_t cols,
   }
 }
 
+// ============================================================================
+// choose_select_k_algorithm_bfloat16
+//
+// Notes:
+//   - Generated from the RAFT select_k benchmark/heuristic workflow in
+//     choose_select_k_algorithm_float by registering nv_bfloat16 in
+//     cpp/bench/prims/matrix/select_k.cu via SELECTION_REGISTER macros.
+// ============================================================================
+
+RaftSelectKAlgo choose_select_k_algorithm_bfloat16(uint32_t rows, uint32_t cols,
+                                                   uint32_t k) {
+  if (k > 40) {
+    if (cols > 24576) {
+      if (rows > 768) {
+        if (k > 192) {
+          return RaftSelectKAlgo::kRadix8bits;
+        } else {
+          if (cols > 196608) {
+            if (k > 80) {
+              return RaftSelectKAlgo::kRadix11bits;
+            } else {
+              if (rows > 1536) {
+                return RaftSelectKAlgo::kWarpDistributed;
+              } else {
+                return RaftSelectKAlgo::kWarpDistributedShm;
+              }
+            }
+          } else {
+            return RaftSelectKAlgo::kWarpDistributedShm;
+          }
+        }
+      } else {
+        if (k > 192) {
+          if (cols > 393216) {
+            if (cols > 6291456) {
+              return RaftSelectKAlgo::kRadix11bitsExtraPass;
+            } else {
+              if (k > 768) {
+                if (cols > 3145728) {
+                  return RaftSelectKAlgo::kRadix11bits;
+                } else {
+                  return RaftSelectKAlgo::kRadix11bitsExtraPass;
+                }
+              } else {
+                return RaftSelectKAlgo::kRadix11bits;
+              }
+            }
+          } else {
+            return RaftSelectKAlgo::kRadix11bitsExtraPass;
+          }
+        } else {
+          if (cols > 6291456) {
+            if (k > 80) {
+              return RaftSelectKAlgo::kRadix11bitsExtraPass;
+            } else {
+              if (cols > 25165824) {
+                if (rows > 6) {
+                  return RaftSelectKAlgo::kWarpDistributed;
+                } else {
+                  return RaftSelectKAlgo::kRadix11bitsExtraPass;
+                }
+              } else {
+                return RaftSelectKAlgo::kRadix11bitsExtraPass;
+              }
+            }
+          } else {
+            if (cols > 98304) {
+              return RaftSelectKAlgo::kRadix11bits;
+            } else {
+              if (rows > 48) {
+                return RaftSelectKAlgo::kRadix11bitsExtraPass;
+              } else {
+                return RaftSelectKAlgo::kWarpFiltered;
+              }
+            }
+          }
+        }
+      }
+    } else {
+      if (k > 256) {
+        return RaftSelectKAlgo::kRadix8bits;
+      } else {
+        if (rows > 768) {
+          return RaftSelectKAlgo::kWarpDistributedShm;
+        } else {
+          if (rows > 48) {
+            if (cols > 6144) {
+              return RaftSelectKAlgo::kRadix8bits;
+            } else {
+              return RaftSelectKAlgo::kWarpFiltered;
+            }
+          } else {
+            if (cols > 6144) {
+              return RaftSelectKAlgo::kWarpFiltered;
+            } else {
+              if (k > 80) {
+                return RaftSelectKAlgo::kWarpImmediate;
+              } else {
+                return RaftSelectKAlgo::kWarpFiltered;
+              }
+            }
+          }
+        }
+      }
+    }
+  } else {
+    if (k > 1) {
+      if (cols > 24576) {
+        if (cols > 98304) {
+          return RaftSelectKAlgo::kWarpDistributedShm;
+        } else {
+          if (rows > 48) {
+            return RaftSelectKAlgo::kWarpDistributedShm;
+          } else {
+            if (k > 24) {
+              return RaftSelectKAlgo::kWarpDistributedShm;
+            } else {
+              return RaftSelectKAlgo::kWarpImmediate;
+            }
+          }
+        }
+      } else {
+        if (rows > 384) {
+          return RaftSelectKAlgo::kWarpDistributedShm;
+        } else {
+          return RaftSelectKAlgo::kWarpImmediate;
+        }
+      }
+    } else {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+  }
+}
+
 absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesFloat(
     uint32_t batch, uint32_t n, uint32_t k, int sm_count,
     RaftScratchPhaseMode phase_mode) {
-  if (batch == 0 || n == 0 || k == 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "RAFT select_k dimensions must be positive, got batch=", batch,
-        ", n=", n, ", k=", k));
-  }
-  if (k > n) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("RAFT select_k requires k <= n, got k=", k, ", n=", n));
-  }
-  constexpr uint32_t kMaxInt32 =
-      static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
-  if (batch > kMaxInt32) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("RAFT select_k batch exceeds int32_t max: batch=", batch));
-  }
-  if (n > kMaxInt32) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("RAFT select_k n exceeds int32_t max: n=", n));
-  }
-  if (uint64_t{batch} * uint64_t{k} >
-      static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "RAFT select_k batch * k exceeds uint32_t max: batch=", batch,
-        ", k=", k));
-  }
+  return EstimateRaftSelectKScratchBytesImpl(sizeof(float), batch, n, k,
+                                             sm_count, phase_mode,
+                                             choose_select_k_algorithm_float);
+}
 
-  const int64_t effective_sm_count =
-      sm_count > 0 ? static_cast<int64_t>(sm_count)
-                   : static_cast<int64_t>(kDefaultRaftSelectKMaxSmCount);
-  const RaftSelectKAlgo algo = choose_select_k_algorithm_float(batch, n, k);
-  switch (algo) {
-    case RaftSelectKAlgo::kWarpImmediate:
-    case RaftSelectKAlgo::kWarpFiltered:
-    case RaftSelectKAlgo::kWarpDistributed:
-    case RaftSelectKAlgo::kWarpDistributedShm:
-      return AddSafetyMargin(
-          EstimateWarpSortScratchBytesFloat(batch, n, k, effective_sm_count));
-    case RaftSelectKAlgo::kRadix8bits:
-    case RaftSelectKAlgo::kRadix11bits:
-    case RaftSelectKAlgo::kRadix11bitsExtraPass:
-      return AddSafetyMargin(EstimateRadixScratchBytesFloat(
-          algo, batch, n, k, effective_sm_count, phase_mode));
-    case RaftSelectKAlgo::kAuto:
-    case RaftSelectKAlgo::kWarpAuto:
-      break;
-  }
-  return absl::InternalError(
-      absl::StrCat("Unexpected RaftSelectKAlgo: ", algo));
+absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesBFloat16(
+    uint32_t batch, uint32_t n, uint32_t k, int sm_count,
+    RaftScratchPhaseMode phase_mode) {
+  return EstimateRaftSelectKScratchBytesImpl(
+      sizeof(uint16_t), batch, n, k, sm_count, phase_mode,
+      choose_select_k_algorithm_bfloat16);
 }
 
 }  // namespace xla::gpu

@@ -38,6 +38,7 @@ limitations under the License.
 #include "raft/core/resources.hpp"
 #include "raft/matrix/select_k.cuh"
 #include "raft/matrix/select_k_types.hpp"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
@@ -198,6 +199,49 @@ struct RaftStreamResource : public se::Stream::Resource {
 
 template <typename T>
 SelectAlgo choose_select_k_algorithm(uint32_t rows, uint32_t cols, uint32_t k);
+
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kAuto) ==
+              static_cast<uint8_t>(SelectAlgo::kAuto));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kRadix8bits) ==
+              static_cast<uint8_t>(SelectAlgo::kRadix8bits));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kRadix11bits) ==
+              static_cast<uint8_t>(SelectAlgo::kRadix11bits));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kRadix11bitsExtraPass) ==
+              static_cast<uint8_t>(SelectAlgo::kRadix11bitsExtraPass));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kWarpAuto) ==
+              static_cast<uint8_t>(SelectAlgo::kWarpAuto));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kWarpImmediate) ==
+              static_cast<uint8_t>(SelectAlgo::kWarpImmediate));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kWarpFiltered) ==
+              static_cast<uint8_t>(SelectAlgo::kWarpFiltered));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kWarpDistributed) ==
+              static_cast<uint8_t>(SelectAlgo::kWarpDistributed));
+static_assert(static_cast<uint8_t>(RaftSelectKAlgo::kWarpDistributedShm) ==
+              static_cast<uint8_t>(SelectAlgo::kWarpDistributedShm));
+
+inline SelectAlgo ToRaftSelectAlgo(RaftSelectKAlgo algo) {
+  switch (algo) {
+    case RaftSelectKAlgo::kAuto:
+      return SelectAlgo::kAuto;
+    case RaftSelectKAlgo::kRadix8bits:
+      return SelectAlgo::kRadix8bits;
+    case RaftSelectKAlgo::kRadix11bits:
+      return SelectAlgo::kRadix11bits;
+    case RaftSelectKAlgo::kRadix11bitsExtraPass:
+      return SelectAlgo::kRadix11bitsExtraPass;
+    case RaftSelectKAlgo::kWarpAuto:
+      return SelectAlgo::kWarpAuto;
+    case RaftSelectKAlgo::kWarpImmediate:
+      return SelectAlgo::kWarpImmediate;
+    case RaftSelectKAlgo::kWarpFiltered:
+      return SelectAlgo::kWarpFiltered;
+    case RaftSelectKAlgo::kWarpDistributed:
+      return SelectAlgo::kWarpDistributed;
+    case RaftSelectKAlgo::kWarpDistributedShm:
+      return SelectAlgo::kWarpDistributedShm;
+  }
+  LOG(FATAL) << "Invalid RaftSelectKAlgo value: " << static_cast<int>(algo);
+}
 
 template <typename T>
 constexpr absl::string_view SelectKTypeName() {

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/backends/gpu/runtime/select_k_exec_raft_impl.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -25,167 +26,10 @@ limitations under the License.
 namespace xla::gpu {
 namespace raft_internal {
 
-// ============================================================================
-// choose_select_k_algorithm
-//
-// Purpose:
-//   Heuristic-based selection of the optimal "select k" algorithm depending on
-//   problem shape (rows, cols, k). The decision is based on benchmark data.
-//
-// How the heuristic is generated:
-//
-//   1. Build the benchmark module:
-//        cd raft
-//        ./build.sh libraft bench-prims
-//
-//   2. Collect performance data by running microbenchmarks:
-//
-//        From the RAFT project root:
-//          ./cpp/build/bench/prims/MATRIX_BENCH \
-//            --benchmark_filter=Select \
-//            --benchmark_out_format=json \
-//            --benchmark_out=select_k_times.json
-//
-//        Output:
-//          - Benchmark results are written to `select_k_times.json`
-//
-//   3. Generate the heuristic using the provided notebook:
-//
-//        ./cpp/scripts/heuristics/select_k/generate_heuristic.ipynb
-//
-//        The notebook consumes `select_k_times.json`, analyzes performance
-//        trade-offs, and produces the decision tree implemented here.
-//
-// Notes:
-//   - To generate performance data for BFloat16,
-//     modify cpp/bench/prims/matrix/select_k.cu  and register nv_bfloat16 type
-//     using SELECTION_REGISTER macros.
-// ============================================================================
-
 template <>
 SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
                                                   uint32_t k) {
-  if (k > 40) {
-    if (cols > 24576) {
-      if (rows > 768) {
-        if (k > 192) {
-          return SelectAlgo::kRadix8bits;
-        } else {
-          if (cols > 196608) {
-            if (k > 80) {
-              return SelectAlgo::kRadix11bits;
-            } else {
-              if (rows > 1536) {
-                return SelectAlgo::kWarpDistributed;
-              } else {
-                return SelectAlgo::kWarpDistributedShm;
-              }
-            }
-          } else {
-            return SelectAlgo::kWarpDistributedShm;
-          }
-        }
-      } else {
-        if (k > 192) {
-          if (cols > 393216) {
-            if (cols > 6291456) {
-              return SelectAlgo::kRadix11bitsExtraPass;
-            } else {
-              if (k > 768) {
-                if (cols > 3145728) {
-                  return SelectAlgo::kRadix11bits;
-                } else {
-                  return SelectAlgo::kRadix11bitsExtraPass;
-                }
-              } else {
-                return SelectAlgo::kRadix11bits;
-              }
-            }
-          } else {
-            return SelectAlgo::kRadix11bitsExtraPass;
-          }
-        } else {
-          if (cols > 6291456) {
-            if (k > 80) {
-              return SelectAlgo::kRadix11bitsExtraPass;
-            } else {
-              if (cols > 25165824) {
-                if (rows > 6) {
-                  return SelectAlgo::kWarpDistributed;
-                } else {
-                  return SelectAlgo::kRadix11bitsExtraPass;
-                }
-              } else {
-                return SelectAlgo::kRadix11bitsExtraPass;
-              }
-            }
-          } else {
-            if (cols > 98304) {
-              return SelectAlgo::kRadix11bits;
-            } else {
-              if (rows > 48) {
-                return SelectAlgo::kRadix11bitsExtraPass;
-              } else {
-                return SelectAlgo::kWarpFiltered;
-              }
-            }
-          }
-        }
-      }
-    } else {
-      if (k > 256) {
-        return SelectAlgo::kRadix8bits;
-      } else {
-        if (rows > 768) {
-          return SelectAlgo::kWarpDistributedShm;
-        } else {
-          if (rows > 48) {
-            if (cols > 6144) {
-              return SelectAlgo::kRadix8bits;
-            } else {
-              return SelectAlgo::kWarpFiltered;
-            }
-          } else {
-            if (cols > 6144) {
-              return SelectAlgo::kWarpFiltered;
-            } else {
-              if (k > 80) {
-                return SelectAlgo::kWarpImmediate;
-              } else {
-                return SelectAlgo::kWarpFiltered;
-              }
-            }
-          }
-        }
-      }
-    }
-  } else {
-    if (k > 1) {
-      if (cols > 24576) {
-        if (cols > 98304) {
-          return SelectAlgo::kWarpDistributedShm;
-        } else {
-          if (rows > 48) {
-            return SelectAlgo::kWarpDistributedShm;
-          } else {
-            if (k > 24) {
-              return SelectAlgo::kWarpDistributedShm;
-            } else {
-              return SelectAlgo::kWarpImmediate;
-            }
-          }
-        }
-      } else {
-        if (rows > 384) {
-          return SelectAlgo::kWarpDistributedShm;
-        } else {
-          return SelectAlgo::kWarpImmediate;
-        }
-      }
-    } else {
-      return SelectAlgo::kWarpImmediate;
-    }
-  }
+  return ToRaftSelectAlgo(choose_select_k_algorithm_bfloat16(rows, cols, k));
 }
 
 }  // namespace raft_internal
