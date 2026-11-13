@@ -1643,6 +1643,7 @@ xla_test(
     deps =
         [
             ":dot_operand_converter",
+            "//xla:error_spec",
             "//xla:shape_util",
             "//xla:xla_data_proto_cc",
             "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",

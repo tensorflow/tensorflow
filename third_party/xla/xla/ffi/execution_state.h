@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -90,7 +91,8 @@ class ExecutionState {
   std::unique_ptr<void, Deleter> state_;
 };
 
-inline void ExecutionState::Deleter::operator()(void* state) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI inline void ExecutionState::Deleter::operator()(
+    void* state) {
   if (type_info.deleter) {
     type_info.deleter(state);
   }
