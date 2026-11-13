@@ -25,7 +25,7 @@ func.func @test_const_tensor_canonicalization_single_denst_tensor_operand() -> !
 // CHECK-LABEL: func @test_const_tensor_canonicalization_single_string_operand
 func.func @test_const_tensor_canonicalization_single_string_operand() -> !tfrt_fallback.tf_tensor {
   // CHECK: tfrt_fallback_async.const_string_tensor
-  %a = corert.const_string_tensor {shape = [2], value = ["string", "tensor"]}
+  %a = corert.const_string_tensor <shape = [2], value = ["string", "tensor"]>
   %ra = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a {_tfrt_cost = 1 : i64, device = "/CPU:0"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   tfrt.return %ra : !tfrt_fallback.tf_tensor
 }
@@ -35,7 +35,7 @@ func.func @test_const_tensor_canonicalization_multiple_operands() -> (!tfrt_fall
   // CHECK:      tfrt_fallback_async.const_dense_tensor
   // CHECK-NEXT: tfrt_fallback_async.const_string_tensor
   %a = corert.const_dense_tensor dense<[true, false]> : tensor<2xi1>
-  %b = corert.const_string_tensor {shape = [2], value = ["string", "tensor"]}
+  %b = corert.const_string_tensor <shape = [2], value = ["string", "tensor"]>
   %ra, %rb = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %a, %b {_tfrt_cost = 1 : i64, device = "/CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   tfrt.return %ra, %rb : !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor
