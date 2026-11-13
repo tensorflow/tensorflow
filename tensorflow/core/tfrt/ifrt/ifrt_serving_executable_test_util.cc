@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -95,6 +96,18 @@ IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
       tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
       /*compilation_environment_proto=*/nullptr, &tf_to_hlo_compiler_,
       ifrt_persistent_compilation_cache_.get(),
+      h2d_transfer_executor_factory_.get());
+  TF_CHECK_OK(executable_or.status());
+  return std::move(executable_or.value());
+}
+
+std::unique_ptr<IfrtServingExecutable>
+IfrtServingExecutableTestHelper::MakeExecutable(
+    int64_t program_id, std::shared_ptr<IfrtProgram> program) {
+  auto executable_or = IfrtServingExecutable::Create(
+      program_id, std::move(program), client_, thread_pool_.get(),
+      &ifrt_loaded_variable_registry_, &ifrt_restore_tensor_registry_,
+      work_queue_.get(), core_selector_.get(),
       h2d_transfer_executor_factory_.get());
   TF_CHECK_OK(executable_or.status());
   return std::move(executable_or.value());
