@@ -984,6 +984,52 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
+TEST_F(CpuGpuFusionTest,
+       TemporaryReadElementwiseThroughTupleGtesExecutesCorrectly) {
+  const char* const hlo = R"hlo(
+HloModule temp_elementwise_through_tuple
+
+ENTRY main {
+  a = s32[65536] parameter(0)
+  x_raw = s32[65536] negate(a)
+  x = s32[65536] opt-barrier(x_raw)
+  tup_raw = (s32[65536], s32[65536]) tuple(x, x)
+  tup = (s32[65536], s32[65536]) opt-barrier(tup_raw)
+  gte0 = s32[65536] get-tuple-element(tup), index=0
+  gte1 = s32[65536] get-tuple-element(tup), index=1
+  sq = s32[65536] multiply(gte1, gte1)
+  z_raw = s32[65536] add(gte0, sq)
+  z = s32[65536] opt-barrier(z_raw)
+  z_slice = s32[32768] slice(z), slice={[0:65536:2]}
+  ROOT out = s32[32768] negate(z_slice)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(CpuGpuFusionTest,
+       TemporaryReadReversedThroughTupleGtesDoesNotCorruptSharedBuffer) {
+  const char* const hlo = R"hlo(
+HloModule temp_reversed_through_tuple
+
+ENTRY main {
+  a = s32[65536] parameter(0)
+  x_raw = s32[65536] negate(a)
+  x = s32[65536] opt-barrier(x_raw)
+  tup_raw = (s32[65536], s32[65536]) tuple(x, x)
+  tup = (s32[65536], s32[65536]) opt-barrier(tup_raw)
+  gte0 = s32[65536] get-tuple-element(tup), index=0
+  gte1 = s32[65536] get-tuple-element(tup), index=1
+  gte1_rev = s32[65536] reverse(gte1), dimensions={0}
+  z_raw = s32[65536] add(gte0, gte1_rev)
+  z = s32[65536] opt-barrier(z_raw)
+  z_slice = s32[32768] slice(z), slice={[0:65536:2]}
+  ROOT out = s32[32768] negate(z_slice)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 
