@@ -508,7 +508,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-  opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
+  opts.set_xla_autotune_rtol(0.1f);
   opts.set_xla_gpu_autotune_flush_l2_cache(true);
   opts.set_xla_gpu_autotune_num_timed_runs(3);
 
@@ -650,7 +650,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
     const auto backend = static_cast<autotuner::Backend>(
         autotuner::Backend_descriptor()->value(i)->number());
     if (backend != autotuner::Backend::UNSPECIFIED_BACKEND) {
-      opts.add_xla_gpu_experimental_autotune_backends(backend);
+      opts.add_xla_config_assigner_backends(backend);
     }
   }
   return opts;
@@ -1840,9 +1840,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "autotuning non-gemm fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_autotune_gemm_rtol",
-      float_setter_for(&DebugOptions::set_xla_gpu_autotune_gemm_rtol),
-      debug_options->xla_gpu_autotune_gemm_rtol(),
-      "Relative precision for comparing GEMM solutions vs the reference one"));
+      float_setter_for(&DebugOptions::set_xla_autotune_rtol),
+      debug_options->xla_autotune_rtol(),
+      "[Deprecated, use --xla_autotune_rtol instead] Relative precision for "
+      "comparing GEMM solutions vs the reference one"));
+  flag_list->push_back(tsl::Flag(
+      "xla_autotune_rtol",
+      float_setter_for(&DebugOptions::set_xla_autotune_rtol),
+      debug_options->xla_autotune_rtol(),
+      "Relative precision for comparing autotuning solutions vs the reference "
+      "one."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_autotune_flush_l2_cache",
       bool_setter_for(&DebugOptions::set_xla_gpu_autotune_flush_l2_cache),
@@ -2885,19 +2892,38 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "HLO."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotuned_instructions",
-      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_instructions),
-      debug_options->xla_gpu_dump_autotuned_instructions(),
-      "Dumps autotuned instructions to the directory specified by "
-      "xla_dump_to or stdout. Each instruction is dumped only once, as an "
-      "optimized HLO."));
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_dump_isolated_hlos_pre_and_post_config_assignment),
+      debug_options->xla_dump_isolated_hlos_pre_and_post_config_assignment(),
+      "[Deprecated, use "
+      "--xla_dump_isolated_hlos_pre_and_post_config_assignment instead] Dumps "
+      "autotuned instructions to the directory specified by xla_dump_to or "
+      "stdout. Each instruction is dumped only once, as an optimized HLO."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_isolated_hlos_pre_and_post_config_assignment",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_dump_isolated_hlos_pre_and_post_config_assignment),
+      debug_options->xla_dump_isolated_hlos_pre_and_post_config_assignment(),
+      "Dumps isolated HLO instructions before and after config assignment to "
+      "the directory specified by xla_dump_to or stdout."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_override_gemm_autotuner",
-      string_setter_for(&DebugOptions::set_xla_gpu_override_gemm_autotuner),
-      debug_options->xla_gpu_override_gemm_autotuner(),
-      "Overrides the GEMM autotuner to use the specified "
+      string_setter_for(&DebugOptions::set_xla_gpu_override_triton_config),
+      debug_options->xla_gpu_override_triton_config(),
+      "[Deprecated, use --xla_gpu_override_triton_config instead] Overrides "
+      "the GEMM autotuner to use the specified "
       "(AutotuneResult::TritonGemmKey) textproto configuration for all Triton "
       "GEMM fusions. (You can get such textprotos from the debug logs of the "
       "GEMM autotuner.) "));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_override_triton_config",
+      string_setter_for(&DebugOptions::set_xla_gpu_override_triton_config),
+      debug_options->xla_gpu_override_triton_config(),
+      "Overrides the Triton autotuner to use the specified "
+      "(AutotuneResult::TritonGemmKey) textproto configuration for all Triton "
+      "GEMM fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_command_buffer_unroll_loops",
       bool_setter_for(&DebugOptions::set_xla_gpu_command_buffer_unroll_loops),
@@ -3156,8 +3182,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "See CollectivesMode for details."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_logs_to",
-      string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),
-      debug_options->xla_gpu_dump_autotune_logs_to(),
+      string_setter_for(&DebugOptions::set_xla_dump_autotune_logs_to),
+      debug_options->xla_dump_autotune_logs_to(),
+      "[Deprecated, use --xla_dump_autotune_logs_to instead] File to write "
+      "autotune logs to. It will be a binary file unless the name ends with "
+      ".txt or .textproto."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_autotune_logs_to",
+      string_setter_for(&DebugOptions::set_xla_dump_autotune_logs_to),
+      debug_options->xla_dump_autotune_logs_to(),
       "File to write autotune logs to. It will be a binary file unless the "
       "name ends with .txt or .textproto."));
   flag_list->push_back(tsl::Flag(
@@ -3282,13 +3315,32 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             return autotuner::Backend_Parse(s, v);
           },
           [debug_options]() {
-            return debug_options
-                ->mutable_xla_gpu_experimental_autotune_backends();
+            return debug_options->mutable_xla_config_assigner_backends();
           }),
       autotune_backends_to_string(
-          debug_options->xla_gpu_experimental_autotune_backends()),
-      "Backends to enable for autotuning. Comma-separated (no spaces). "
+          debug_options->xla_config_assigner_backends()),
+      "[Deprecated, use --xla_config_assigner_backends instead] Backends to "
+      "enable for autotuning. Comma-separated (no spaces). "
       "Examples:\n"
+      "  'cudnn,triton' (overwrites defaults)\n"
+      "  '+cudnn,-cublas' (adds/removes from defaults)\n"
+      "Available: cudnn, triton, cublas, cublaslt etc, check "
+      "xla.autotuner.Backend for the full list."));
+  flag_list->push_back(tsl::Flag(
+      "xla_config_assigner_backends",
+      SetterForRepeatedEnum<autotuner::Backend>(
+          "xla_config_assigner_backends",
+          /*enum_prefix=*/"",
+          [](absl::string_view s, autotuner::Backend* v) {
+            return autotuner::Backend_Parse(s, v);
+          },
+          [debug_options]() {
+            return debug_options->mutable_xla_config_assigner_backends();
+          }),
+      autotune_backends_to_string(
+          debug_options->xla_config_assigner_backends()),
+      "Backends to enable for config assignment / autotuning. Comma-separated "
+      "(no spaces). Examples:\n"
       "  'cudnn,triton' (overwrites defaults)\n"
       "  '+cudnn,-cublas' (adds/removes from defaults)\n"
       "Available: cudnn, triton, cublas, cublaslt etc, check "
@@ -3313,10 +3365,19 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag(
       "xla_gpu_gemm_autotuner_override_file",
       string_setter_for(
-          &DebugOptions::set_xla_gpu_gemm_autotuner_override_file),
-      debug_options->xla_gpu_gemm_autotuner_override_file(),
-      "A textproto file to override autotune results. See also "
-      "`xla_gpu_override_gemm_autotuner` to override with a single config."));
+          &DebugOptions::set_xla_gpu_override_triton_configs_file),
+      debug_options->xla_gpu_override_triton_configs_file(),
+      "[Deprecated, use --xla_gpu_override_triton_configs_file instead] A "
+      "textproto file to override autotune results. See also "
+      "`xla_gpu_override_triton_config` to override with a single config."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_override_triton_configs_file",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_override_triton_configs_file),
+      debug_options->xla_gpu_override_triton_configs_file(),
+      "A textproto file to override Triton configs considered by the "
+      "autotuner. See also `xla_gpu_override_triton_config` to override with "
+      "a single config."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_command_buffers_during_profiling",
       bool_setter_for(

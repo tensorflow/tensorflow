@@ -1017,10 +1017,10 @@ ENTRY main {
   HloModuleConfig config;
   // Triton enabled, but forced to fallback to cuBLAS (no Triton backend).
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
-  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+  triton_enabled_debug_options.clear_xla_config_assigner_backends();
+  triton_enabled_debug_options.add_xla_config_assigner_backends(
       autotuner::Backend::CUBLASLT_FISSION);
-  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+  triton_enabled_debug_options.add_xla_config_assigner_backends(
       autotuner::Backend::NATIVE_EMITTER);
   config.set_debug_options(triton_enabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
@@ -1071,10 +1071,10 @@ class CublasPaddingTest : public GpuCompilerTest {
   HloModuleConfig FissionOnlyConfig() {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions& debug_options = config.mutable_debug_options();
-    debug_options.clear_xla_gpu_experimental_autotune_backends();
-    debug_options.add_xla_gpu_experimental_autotune_backends(
+    debug_options.clear_xla_config_assigner_backends();
+    debug_options.add_xla_config_assigner_backends(
         autotuner::Backend::CUBLASLT_FISSION);
-    debug_options.add_xla_gpu_experimental_autotune_backends(
+    debug_options.add_xla_config_assigner_backends(
         autotuner::Backend::NATIVE_EMITTER);
     return config;
   }

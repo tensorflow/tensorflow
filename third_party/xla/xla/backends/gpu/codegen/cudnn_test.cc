@@ -87,9 +87,8 @@ class CuDnnFusionTest
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
     // Only run the CuDNN backend.
-    debug_options.clear_xla_gpu_experimental_autotune_backends();
-    debug_options.add_xla_gpu_experimental_autotune_backends(
-        autotuner::Backend::CUDNN);
+    debug_options.clear_xla_config_assigner_backends();
+    debug_options.add_xla_config_assigner_backends(autotuner::Backend::CUDNN);
     return debug_options;
   }
   se::CudaComputeCapability get_cuda_cc() const {
@@ -329,7 +328,7 @@ e {
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
   HloModuleConfig config = GetModuleConfigForTest();
-  config.mutable_debug_options().add_xla_gpu_experimental_autotune_backends(
+  config.mutable_debug_options().add_xla_config_assigner_backends(
       autotuner::Backend::TRITON);
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
@@ -1688,10 +1687,9 @@ class CuDnnNonGemmFusionTest
     debug_options.clear_xla_disable_hlo_passes();
     debug_options.add_xla_enable_hlo_passes_only("autotuner");
     debug_options.set_xla_gpu_cudnn_non_gemm_fusion_level(1);
-    debug_options.clear_xla_gpu_experimental_autotune_backends();
+    debug_options.clear_xla_config_assigner_backends();
 
-    debug_options.add_xla_gpu_experimental_autotune_backends(
-        autotuner::Backend::CUDNN);
+    debug_options.add_xla_config_assigner_backends(autotuner::Backend::CUDNN);
     return debug_options;
   }
 
