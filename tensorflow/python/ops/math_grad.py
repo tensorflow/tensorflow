@@ -243,21 +243,11 @@ def _MinOrMaxGrad(op: ops.Operation, grad):
   # Compute the number of selected (maximum or minimum) elements in each
   # reduction dimension. If there are multiple minimum or maximum elements
   # then the gradient will be divided between them.
-  # When y is NaN (due to NaN in input), IEEE-754 equal(NaN, NaN) evaluates to
-  # False everywhere, causing indicators to be all zeros. In XLA compilation,
-  # 0 * (grad / 0) simplifies to 0 instead of NaN, dropping the gradient signal.
-  # Propagate NaN explicitly when the reduced output is NaN.
   indicators = math_ops.cast(math_ops.equal(y, op.inputs[0]), grad.dtype)
   num_selected = array_ops.reshape(
       math_ops.reduce_sum(indicators, op.inputs[1]), output_shape_kept_dims)
 
-  result = math_ops.divide(indicators, num_selected) * grad
-  if grad.dtype.is_floating:
-    result = array_ops.where_v2(
-        math_ops.is_nan(y), math_ops.cast(float("nan"), grad.dtype), result
-    )
-
-  return [result, None]
+  return [math_ops.divide(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")
@@ -477,11 +467,7 @@ def _SegmentMinOrMaxGrad(op: ops.Operation, grad):
   # divided evenly among the selected elements in that segment.
   weighted_grads = math_ops.divide(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
-  res = array_ops.where_v2(is_selected, gathered_grads, zeros)
-  if grad.dtype.is_floating:
-    nan_val = math_ops.cast(float("nan"), grad.dtype)
-    res = array_ops.where_v2(math_ops.is_nan(gathered_outputs), nan_val, res)
-  return res, None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None
 
 
 @ops.RegisterGradient("SegmentMin")
@@ -596,11 +582,7 @@ def _UnsortedSegmentMinOrMaxGrad(op: ops.Operation, grad):
       weighted_grads, None, zero_clipped_indices, is_positive
   )
   zeros = array_ops.zeros_like(gathered_grads)
-  res = array_ops.where_v2(is_selected, gathered_grads, zeros)
-  if grad.dtype.is_floating:
-    nan_val = math_ops.cast(float("nan"), grad.dtype)
-    res = array_ops.where_v2(math_ops.is_nan(gathered_outputs), nan_val, res)
-  return res, None, None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None, None
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
@@ -1666,10 +1648,6 @@ def _MaximumMinimumGradInputOnly(op: ops.Operation, grad, selector_op):
   zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   xgrad = array_ops.where_v2(xmask, grad, zeros)
-  if grad.dtype.is_floating:
-    is_nan = math_ops.logical_or(math_ops.is_nan(x), math_ops.is_nan(y))
-    nan_val = math_ops.cast(float("nan"), grad.dtype)
-    xgrad = array_ops.where_v2(is_nan, nan_val, xgrad)
   ygrad = None  # Return None for ygrad since the config allows that.
   return (xgrad, ygrad)
 
@@ -1697,13 +1675,6 @@ def _MaximumMinimumGrad(op: ops.Operation, grad, selector_op):
     gy = None
   else:
     gy = array_ops.where_v2(xmask, zeros, grad)
-  if grad.dtype.is_floating:
-    is_nan = math_ops.logical_or(math_ops.is_nan(x), math_ops.is_nan(y))
-    nan_val = math_ops.cast(float("nan"), grad.dtype)
-    if gx is not None:
-      gx = array_ops.where_v2(is_nan, nan_val, gx)
-    if gy is not None:
-      gy = array_ops.where_v2(is_nan, nan_val, gy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
 

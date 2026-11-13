@@ -3620,7 +3620,6 @@ cuda_py_strict_test(
     srcs = ["math_grad_test.py"],
     main = "math_grad_test.py",
     tags = ["no_windows_gpu"],
-    xla_enabled = True,
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -3633,7 +3632,6 @@ cuda_py_strict_test(
         ":math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
