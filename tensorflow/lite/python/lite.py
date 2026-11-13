@@ -726,6 +726,14 @@ class TFLiteConverterBase:
     self.canonicalizing_inf_as_min_max_float = True
     self._experimental_strict_qdq = False
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
+    # Runs RankReductionPass (folds unit dims out of rank > 4 ops; assumes the
+    # exported batch size is kept).
+    self._experimental_rank_reduction = False
+    # Runs GpuCompatibilityPass (GPU-delegate-only rewrites, unbounded
+    # materialization).
+    self._experimental_unsafe_gpu_compatibility = False
+    # Deprecated: former name of the two flags above, which it enabled
+    # together. Setting it to True still enables both.
     self._experimental_unsafe_single_batch_rank_reduction = False
 
     # Debug parameters
@@ -914,8 +922,13 @@ class TFLiteConverterBase:
         "unsafe_fuse_dynamic_shaped_broadcast": (
             self._experimental_unsafe_fuse_dynamic_shaped_broadcast
         ),
-        "unsafe_single_batch_rank_reduction": (
-            self._experimental_unsafe_single_batch_rank_reduction
+        "rank_reduction": (
+            self._experimental_rank_reduction
+            or self._experimental_unsafe_single_batch_rank_reduction
+        ),
+        "unsafe_gpu_compatibility": (
+            self._experimental_unsafe_gpu_compatibility
+            or self._experimental_unsafe_single_batch_rank_reduction
         ),
     }
 

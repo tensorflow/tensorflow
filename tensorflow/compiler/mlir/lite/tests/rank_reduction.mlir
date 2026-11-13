@@ -316,4 +316,43 @@ module {
     %1 = "tfl.reshape"(%0, %cst) : (tensor<1x14x14x32x2xf32>, tensor<4xi32>) -> tensor<1x14x14x64xf32>
     func.return %1 : tensor<1x14x14x64xf32>
   }
+
+  // A fully_connected over a rank-6 input (Swin window partition) runs in 2-D,
+  // and the reshapes around it fold with the new ones so no rank-6 tensor is
+  // left.
+  // CHECK-LABEL: func.func @reduce_fully_connected_rank
+  func.func @reduce_fully_connected_rank(%arg0: tensor<4x9x3x8xf32>, %w: tensor<24x24xf32>, %b: tensor<24xf32>) -> tensor<1x2x2x3x3x24xf32> {
+    // CHECK-DAG: %[[IN_SHAPE:.*]] = "tfl.pseudo_const"() <{value = dense<[36, 24]> : tensor<2xi32>}>
+    // CHECK-DAG: %[[OUT_SHAPE:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 2, 2, 3, 3, 24]> : tensor<6xi32>}>
+    // CHECK: %[[FLAT:.*]] = "tfl.reshape"(%arg0, %[[IN_SHAPE]]) : (tensor<4x9x3x8xf32>, tensor<2xi32>) -> tensor<36x24xf32>
+    // CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[FLAT]], %arg1, %arg2) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<36x24xf32>, tensor<24x24xf32>, tensor<24xf32>) -> tensor<36x24xf32>
+    // CHECK: %[[OUT:.*]] = "tfl.reshape"(%[[FC]], %[[OUT_SHAPE]]) : (tensor<36x24xf32>, tensor<6xi32>) -> tensor<1x2x2x3x3x24xf32>
+    // CHECK-NOT: tensor<1x2x2x3x3x24xf32>
+    // CHECK: return %[[OUT]]
+    %cst = arith.constant dense<[1, 2, 2, 3, 3, 24]> : tensor<6xi32>
+    %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x9x3x8xf32>, tensor<6xi32>) -> tensor<1x2x2x3x3x24xf32>
+    %1 = "tfl.fully_connected"(%0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x2x2x3x3x24xf32>, tensor<24x24xf32>, tensor<24xf32>) -> tensor<1x2x2x3x3x24xf32>
+    func.return %1 : tensor<1x2x2x3x3x24xf32>
+  }
+
+  // Without keep_num_dims the result is already 2-D; only the input is
+  // flattened.
+  // CHECK-LABEL: func.func @reduce_fully_connected_rank_no_keep_dims
+  func.func @reduce_fully_connected_rank_no_keep_dims(%arg0: tensor<1x2x2x3x3x24xf32>, %w: tensor<16x24xf32>) -> tensor<36x16xf32> {
+    // CHECK: %[[FLAT:.*]] = "tfl.reshape"(%arg0, %{{.*}}) : (tensor<1x2x2x3x3x24xf32>, tensor<2xi32>) -> tensor<36x24xf32>
+    // CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[FLAT]], %arg1, %[[NONE:.*]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<36x24xf32>, tensor<16x24xf32>, none) -> tensor<36x16xf32>
+    // CHECK: return %[[FC]]
+    %none = "tfl.no_value"() {value} : () -> none
+    %0 = "tfl.fully_connected"(%arg0, %w, %none) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x2x2x3x3x24xf32>, tensor<16x24xf32>, none) -> tensor<36x16xf32>
+    func.return %0 : tensor<36x16xf32>
+  }
+
+  // Rank-4 inputs are within the delegate limit and are left alone.
+  // CHECK-LABEL: func.func @fully_connected_rank4_unchanged
+  func.func @fully_connected_rank4_unchanged(%arg0: tensor<1x7x7x24xf32>, %w: tensor<24x24xf32>, %b: tensor<24xf32>) -> tensor<1x7x7x24xf32> {
+    // CHECK-NOT: tfl.reshape
+    // CHECK: "tfl.fully_connected"(%arg0, %arg1, %arg2)
+    %0 = "tfl.fully_connected"(%arg0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x7x7x24xf32>, tensor<24x24xf32>, tensor<24xf32>) -> tensor<1x7x7x24xf32>
+    func.return %0 : tensor<1x7x7x24xf32>
+  }
 }
