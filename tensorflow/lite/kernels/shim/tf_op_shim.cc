@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
@@ -75,12 +75,14 @@ TfInitContext::TfInitContext(const ::tensorflow::OpKernelConstruction* context)
 
 absl::StatusOr<AttrValue> TfInitContext::GetAttr(
     const std::string& attr_name) const {
-  if (!context_->HasAttr(attr_name))
+  const auto* attr_value =
+      ::tensorflow::AttrSlice(context_->def()).Find(attr_name);
+  if (attr_value == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("Non-existent attribute: ", attr_name, "\nop def:\n",
                      context_->def().DebugString()));
-  const auto& attr_value = context_->def().attr().at(attr_name);
-  return TfAttrValueToShimAttrValue(attr_value);
+  }
+  return TfAttrValueToShimAttrValue(*attr_value);
 }
 
 TfInvokeContext::TfInvokeContext(::tensorflow::OpKernelContext* context)
