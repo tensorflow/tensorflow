@@ -133,7 +133,7 @@ static mlir::TypedValue<mlir::MemRefType> GetClampedSubView(
   output_shape.reserve(tile_type.getRank());
   for (auto [idx, size] : llvm::enumerate(tile_size)) {
     if (!reduced_dims.contains(idx)) {
-      auto attr = size.dyn_cast<mlir::Attribute>();
+      auto attr = llvm::dyn_cast_if_present<mlir::Attribute>(size);
       output_shape.push_back(attr ? mlir::cast<mlir::IntegerAttr>(attr).getInt()
                                   : mlir::ShapedType::kDynamic);
     }
@@ -207,7 +207,7 @@ static std::optional<mlir::Value> TileIsFullSize(
       GetClampedTileSize(builder, op, false);
   std::optional<mlir::Value> is_full_size;
   for (auto [dim_idx, tile_dim_size] : llvm::enumerate(clamped_tile_size)) {
-    if (auto value = tile_dim_size.dyn_cast<mlir::Value>()) {
+    if (auto value = llvm::dyn_cast_if_present<mlir::Value>(tile_dim_size)) {
       mlir::Value is_full_size_dim = mlir::arith::CmpIOp::create(
           builder, mlir::arith::CmpIPredicate::eq, value,
           mlir::arith::ConstantIndexOp::create(

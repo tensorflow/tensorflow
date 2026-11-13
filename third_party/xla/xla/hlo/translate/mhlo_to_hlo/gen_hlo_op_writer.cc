@@ -95,7 +95,8 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     auto arg = op.getArg(index);
 
     // Emit an argument for an operand.
-    if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
+    if (auto* operand_cst =
+            llvm::dyn_cast_if_present<NamedTypeConstraint*>(arg)) {
       std::string xla_arg = "xla_arg_" + std::to_string(index);
       // Handle a non-variadic operand.
       if (!operand_cst->isVariableLength()) {
@@ -119,7 +120,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     }
 
     // Otherwise, this is an attribute.
-    auto named_attr = arg.dyn_cast<NamedAttribute*>();
+    auto named_attr = llvm::dyn_cast_if_present<NamedAttribute*>(arg);
     os << "  auto xla_arg_" << index << " = "
        << GetDefaultAttrExport(*named_attr) << "(op.get"
        << convertToCamelFromSnakeCase(op.getArgName(index),
