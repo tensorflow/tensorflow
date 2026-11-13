@@ -5154,8 +5154,8 @@ tf_kernel_library(
     name = "decode_compressed_op",
     prefix = "decode_compressed_op",
     deps = [
-        "//tensorflow/core:lib_internal",
         "@net_zstd//:zstd",
+        "@zlib",
     ] + PARSING_DEPS,
 )
 

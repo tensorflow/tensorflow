@@ -15,9 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/parse_ops.cc.
 
-#include <climits>
+#include <zlib.h>
+
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "absl/status/status.h"
@@ -27,9 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/io/inputstream_interface.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/platform/tstring.h"
 
 // NOTE: The way zstd is packaged in TF, we cannot include it as <zstd.h>.
@@ -38,45 +38,183 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-// Wrap memory buffer into InputStreamInterface
-class MemoryInputStream : public io::InputStreamInterface {
+
+// Maximum decompressed size accepted for every compression type (1 GiB).
+// Prevents attacker-controlled inputs ("decompression bombs") from causing
+// unbounded memory growth / OOM.
+constexpr size_t kMaxDecompressedBytes = 1024ULL * 1024 * 1024;
+
+// zlib's SIMD fast path (`inflate_fast_chunk_`) requires at least 260 bytes of
+// available output space (`INFLATE_FAST_MIN_OUTPUT` = 258 max match + 2
+// literals) per iteration to avoid falling back to byte-by-byte decoding.
+constexpr size_t kInflateFastHeadroom = 260;
+constexpr size_t kMaxOutputAllocation =
+    kMaxDecompressedBytes + kInflateFastHeadroom;
+
+// Returns the initial output buffer capacity (in bytes) to allocate for a
+// compressed input of `input_size` bytes.
+size_t InitialOutputCapacity(size_t input_size) {
+  if (input_size >= kMaxDecompressedBytes) {
+    return kMaxOutputAllocation;
+  }
+  // Use 1.5x compressed size (+ SIMD headroom) rather than 2x: for 1.0x
+  // incompressible inputs where `compressed_size > uncompressed_size`, 2x would
+  // leave `final_size < capacity / 2` and trigger a shrink `realloc()` in
+  // `tstring::resize_uninitialized(final_size)`.
+  return std::min<size_t>(input_size + (input_size >> 1) + kInflateFastHeadroom,
+                          kMaxOutputAllocation);
+}
+
+// NOLINTBEGIN(misc-include-cleaner): <zlib.h> gets types from <zconf.h>.
+
+// Lazily initializes a `z_stream` on the first non-empty element and resets it
+// via `inflateReset` for subsequent elements in the same `Compute()` call,
+// avoiding per-element `inflateInit2`/`inflateEnd` heap churn while keeping
+// `OpKernel` stateless across concurrent `Compute()` calls.
+class ZlibInflateStream {
  public:
-  explicit MemoryInputStream(const char* buffer, size_t length)
-      : buf_(buffer), len_(length), pos_(0) {}
+  explicit ZlibInflateStream(bool is_gzip) : is_gzip_(is_gzip) {}
+  ZlibInflateStream(const ZlibInflateStream&) = delete;
+  ZlibInflateStream& operator=(const ZlibInflateStream&) = delete;
 
-  ~MemoryInputStream() override = default;
-
-  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
-    result->clear();
-    if (bytes_to_read < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Can't read a negative number of bytes: ", bytes_to_read));
+  ~ZlibInflateStream() {
+    if (initialized_) {
+      inflateEnd(&stream_);
     }
-    int64_t bytes = bytes_to_read;
-    absl::Status s = absl::OkStatus();
-    if (pos_ + bytes_to_read > len_) {
-      bytes = len_ - pos_;
-      s = absl::OutOfRangeError("reached end of file");
-    }
-    if (bytes > 0) {
-      result->assign_as_view(&buf_[pos_], bytes);
-      pos_ += bytes;
-    }
-    return s;
   }
 
-  int64_t Tell() const override { return pos_; }
+  // Decompresses `input` (ZLIB or GZIP, per `is_gzip_`) into `output`,
+  // enforcing `kMaxDecompressedBytes`.
+  absl::Status Decode(const tstring& input, tstring& output) {
+    if (input.empty()) {
+      // Preserve `ZlibInputStream` parity (relied upon by TF dataset pipelines
+      // that default missing compressed features to `""`): an empty input hits
+      // immediate EOF and produces `""` rather than an error.
+      output.clear();
+      return absl::OkStatus();
+    }
 
-  absl::Status Reset() override {
-    pos_ = 0;
+    if (absl::Status s = PrepareStream(); !s.ok()) {
+      return s;
+    }
+
+    // `z_stream::next_in` is non-const `Bytef*` unless `ZLIB_CONST` is set,
+    // though `inflate()` never mutates the input buffer.
+    stream_.next_in =
+        const_cast<Bytef*>(reinterpret_cast<const Bytef*>(input.data()));
+    stream_.avail_in = 0;
+    size_t remaining_in = input.size();
+
+    size_t total_out = 0;
+    output.resize_uninitialized(InitialOutputCapacity(input.size()));
+
+    while (true) {
+      if (stream_.avail_in == 0 && remaining_in > 0) {
+        const uInt chunk_in = static_cast<uInt>(
+            std::min<size_t>(remaining_in, std::numeric_limits<uInt>::max()));
+        stream_.avail_in = chunk_in;
+        remaining_in -= chunk_in;
+      }
+
+      // Keep at least `kInflateFastHeadroom` bytes of output space for each
+      // `inflate()` call (including across concatenated gzip members). Since
+      // `total_out <= kMaxDecompressedBytes` holds here (checked after every
+      // `inflate()`), `output.size() < kMaxOutputAllocation` whenever this
+      // branch is taken.
+      if (output.size() - total_out < kInflateFastHeadroom) {
+        const size_t next_cap = (output.size() > kMaxOutputAllocation / 2)
+                                    ? kMaxOutputAllocation
+                                    : output.size() * 2;
+        output.resize_uninitialized(next_cap);
+      }
+
+      const uInt chunk_out = static_cast<uInt>(std::min<size_t>(
+          output.size() - total_out, std::numeric_limits<uInt>::max()));
+      stream_.next_out = reinterpret_cast<Bytef*>(output.mdata() + total_out);
+      stream_.avail_out = chunk_out;
+
+      // Pass `Z_FINISH` once all compressed bytes are queued in `avail_in`.
+      // When the full output fits in the initial `avail_out`, `inflate()`
+      // reaches `Z_STREAM_END` in one call and skips allocating/updating its
+      // 32 KiB sliding window (`state->wsize == 0`). If more output space is
+      // needed, it fills `avail_out`, saves the window, and returns
+      // `Z_BUF_ERROR` so the loop grows `output`.
+      const int flush = (remaining_in == 0) ? Z_FINISH : Z_NO_FLUSH;
+      const int err = inflate(&stream_, flush);
+      total_out += chunk_out - stream_.avail_out;
+
+      if (total_out > kMaxDecompressedBytes) {
+        output.clear();
+        return absl::InvalidArgumentError(
+            "Decompressed size exceeds 1GB limit");
+      }
+
+      const bool has_more_input = (stream_.avail_in > 0 || remaining_in > 0);
+      if (err == Z_STREAM_END) {
+        if (!is_gzip_ || !has_more_input) {
+          break;
+        }
+        // RFC 1952 permits concatenated gzip members; reset and continue.
+        if (absl::Status s = PrepareStream(); !s.ok()) {
+          output.clear();
+          return s;
+        }
+        continue;
+      }
+      if (err == Z_OK) {
+        continue;
+      }
+      if (err == Z_BUF_ERROR) {
+        if (!has_more_input && stream_.avail_out > 0) {
+          // All compressed input has been consumed and no further output can be
+          // produced (e.g. a `Z_SYNC_FLUSH` stream without a final trailer),
+          // matching `ZlibInputStream` EOF semantics.
+          break;
+        }
+        continue;
+      }
+
+      std::string error_string =
+          absl::StrCat("inflate() failed with error ", err);
+      if (stream_.msg != nullptr) {
+        absl::StrAppend(&error_string, ": ", stream_.msg);
+      }
+      output.clear();
+      return absl::DataLossError(error_string);
+    }
+
+    output.resize_uninitialized(total_out);
     return absl::OkStatus();
   }
 
  private:
-  const char* buf_;  // Not owned.
-  int64_t len_;
-  int64_t pos_ = 0;  // Tracks where we are in the file.
+  // Initializes `stream_` on first use, or resets it while preserving its
+  // `next_in` / `avail_in` cursors for subsequent elements or gzip members.
+  absl::Status PrepareStream() {
+    if (!initialized_) {
+      const int err =
+          inflateInit2(&stream_, is_gzip_ ? MAX_WBITS + 16 : MAX_WBITS);
+      if (err != Z_OK) {
+        return absl::InternalError(
+            absl::StrCat("inflateInit2() failed with error ", err));
+      }
+      initialized_ = true;
+      return absl::OkStatus();
+    }
+    const int err = inflateReset(&stream_);
+    if (err != Z_OK) {
+      return absl::InternalError(
+          absl::StrCat("inflateReset() failed with error ", err));
+    }
+    return absl::OkStatus();
+  }
+
+  const bool is_gzip_;
+  bool initialized_ = false;
+  z_stream stream_{};
 };
+
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 
@@ -99,52 +237,6 @@ class DecodeCompressedOp : public OpKernel {
   // specified in `compression_type_`. Return absl::OkStatus() on success, and
   // anything else on failure.
   absl::Status DecompressOne(const tstring& input, tstring& output) {
-    if (compression_type_ == "ZLIB" || compression_type_ == "GZIP") {
-      // TODO: Don't use ZlibInputStream, since we're just going to read the
-      // entire thing into memory.
-      MemoryInputStream input_stream(input.data(), input.size());
-
-      const io::ZlibCompressionOptions zlib_options =
-          compression_type_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
-                                      : io::ZlibCompressionOptions::GZIP();
-      io::ZlibInputStream zlib_stream(
-          &input_stream,
-          /*input_buffer_bytes=*/static_cast<size_t>(kBufferSize),
-          /*output_buffer_bytes=*/static_cast<size_t>(kBufferSize),
-          zlib_options);
-
-      // Cap the decompressed output size, mirroring the 1GB limit enforced
-      // on the ZSTD branch below. Without this cap, ReadNBytes(INT_MAX, ...)
-      // would decompress an attacker-controlled, highly-compressible input
-      // (a "decompression bomb") up to ~2GiB with no compression-ratio or
-      // absolute-size check, causing unbounded memory growth / OOM.
-      //
-      // Read kMaxDecompressedBytes + 1 bytes rather than exactly the cap,
-      // so a stream that is exactly kMaxDecompressedBytes long is correctly
-      // accepted and one that is even one byte longer is correctly
-      // rejected - reading exactly the cap would make these two cases
-      // indistinguishable.
-      absl::Status result =
-          zlib_stream.ReadNBytes(kMaxDecompressedBytes + 1, &output);
-
-      if (absl::IsOutOfRange(result)) {
-        // Stream ended before or exactly at the limit. ReadNBytes swallows
-        // EOF only if it read up to the requested amount; here it failed to
-        // read limit + 1, so the true size is <= 1GB.
-        return absl::OkStatus();
-      }
-
-      if (result.ok()) {
-        // Read exactly limit + 1 bytes, meaning the stream is larger than
-        // 1GB. Free the oversized buffer before propagating the error.
-        output.clear();
-        return absl::InvalidArgumentError(
-            "Decompressed size exceeds 1GB limit");
-      }
-
-      return result;
-    }
-
     if (compression_type_ == "ZSTD") {
       ZSTD_DCtx* decompress_ctx = ZSTD_createDCtx();
       if (decompress_ctx == nullptr) {
@@ -210,15 +302,20 @@ class DecodeCompressedOp : public OpKernel {
                    context->allocate_output("output", bytes_tensor->shape(),
                                             &output_tensor));
     auto output_flat = output_tensor->flat<tstring>();
+    if (compression_type_ == "ZLIB" || compression_type_ == "GZIP") {
+      ZlibInflateStream zlib_stream(/*is_gzip=*/compression_type_ == "GZIP");
+      for (int64_t i = 0; i < bytes_flat.size(); i++) {
+        OP_REQUIRES_OK(context,
+                       zlib_stream.Decode(bytes_flat(i), output_flat(i)));
+      }
+      return;
+    }
     for (int64_t i = 0; i < bytes_flat.size(); i++) {
       OP_REQUIRES_OK(context, DecompressOne(bytes_flat(i), output_flat(i)));
     }
   }
 
  private:
-  enum { kBufferSize = 256 << 10 /* 256 kB */ };
-  // Maximum decompressed size accepted for every compression type.
-  static constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
   std::string compression_type_;
 };
 
