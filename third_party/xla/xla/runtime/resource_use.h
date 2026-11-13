@@ -39,13 +39,22 @@ class Resource {
     // Collective operations must be scheduled in the same order as they are
     // defined in the HLO module. We rely on collective communicator resource
     // to enforce ordering at run time.
-    kCollectiveCommunicator
+    kCollectiveCommunicator,
+
+    // Stateful RNG operations (`rng-get-and-update-state`) share an executable
+    // wide counter and must be scheduled deterministically.
+    kRngState,
   };
 
   static constexpr Kind kToken = Kind::kToken;
   static constexpr Kind kCollectiveCommunicator = Kind::kCollectiveCommunicator;
+  static constexpr Kind kRngState = Kind::kRngState;
 
+  // Creates a resource of the given kind. `kRngState` is rejected (CHECK
+  // failure) because it requires a backend subclass that owns the counter.
   static std::shared_ptr<Resource> Create(Kind kind);
+
+  virtual ~Resource() = default;
 
   Kind kind() const { return kind_; }
 
@@ -56,11 +65,15 @@ class Resource {
         return "token";
       case Kind::kCollectiveCommunicator:
         return "collective_communicator";
+      case Kind::kRngState:
+        return "rng_state";
     }
   }
 
- private:
+ protected:
   explicit Resource(Kind kind);
+
+ private:
   Kind kind_;
 };
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "unsupported/Eigen/SpecialFunctions"
@@ -482,6 +483,76 @@ TEST_F(PrngTest, MultiDeviceCollision) {
       test_runner().ExecuteReplicated(std::move(module), options));
   ASSERT_EQ(results.size(), 2);
   // Replicas SHOULD be different despite having the same global seed!
+  EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
+}
+
+TEST_F(PrngTest, DifferentValuesForMultipleCallsToSameRngComputation) {
+  if (test::DeviceTypeIsOneOf({test::kInterpreter})) {
+    GTEST_SKIP() << "HloEvaluator re-seeds embedded calls from module seed.";
+  }
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule MultipleCallsToSameRngComputation
+    sample {
+      lo = u32[] parameter(0)
+      hi = u32[] parameter(1)
+      ROOT r = u32[4]{0} rng(lo, hi), distribution=rng_uniform
+    }
+    ENTRY main {
+      lo = u32[] constant(0)
+      hi = u32[] constant(1000000)
+      a = u32[4]{0} call(lo, hi), to_apply=sample, frontend_attributes={inlineable="xla_late"}
+      b = u32[4]{0} call(lo, hi), to_apply=sample, frontend_attributes={inlineable="xla_late"}
+      ROOT out = (u32[4]{0}, u32[4]{0}) tuple(a, b)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.seed = 42;
+  options.run_hlo_passes = true;
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      FirstResult(test_runner().ExecuteReplicated(std::move(module), options)));
+  std::vector<Literal> results = std::move(result).DecomposeTuple();
+  ASSERT_EQ(results.size(), 2);
+  EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
+}
+
+TEST_F(PrngTest,
+       DifferentValuesForMultipleCallsToSameRngComputationFastCompile) {
+  if (test::DeviceTypeIsOneOf({test::kInterpreter})) {
+    GTEST_SKIP() << "HloEvaluator re-seeds embedded calls from module seed.";
+  }
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule MultipleCallsToSameRngComputationFastCompile
+    sample {
+      lo = u32[] parameter(0)
+      hi = u32[] parameter(1)
+      ROOT r = u32[4]{0} rng(lo, hi), distribution=rng_uniform
+    }
+    ENTRY main {
+      lo = u32[] constant(0)
+      hi = u32[] constant(1000000)
+      a = u32[4]{0} call(lo, hi), to_apply=sample
+      b = u32[4]{0} call(lo, hi), to_apply=sample
+      ROOT out = (u32[4]{0}, u32[4]{0}) tuple(a, b)
+    }
+  )hlo";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_cpu_opt_preset(
+      DebugOptions::CPU_OPT_PRESET_FAST_COMPILE);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, config));
+
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.seed = 0;
+  options.run_hlo_passes = true;
+  ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      FirstResult(test_runner().ExecuteReplicated(std::move(module), options)));
+  std::vector<Literal> results = std::move(result).DecomposeTuple();
+  ASSERT_EQ(results.size(), 2);
   EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
 }
 

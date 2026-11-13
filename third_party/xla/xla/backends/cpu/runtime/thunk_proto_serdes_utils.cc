@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/runtime/resource_use.h"
@@ -73,6 +74,8 @@ absl::StatusOr<Resource::Kind> ResourceKindFromProto(
       return Resource::kToken;
     case ResourceProto::COLLECTIVE_COMMUNICATOR:
       return Resource::kCollectiveCommunicator;
+    case ResourceProto::RNG_STATE:
+      return Resource::kRngState;
     default:
       return absl::UnimplementedError("Resource kind not supported.");
   }
@@ -81,6 +84,9 @@ absl::StatusOr<Resource::Kind> ResourceKindFromProto(
 absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
     const ResourceProto& proto) {
   ABSL_ASSIGN_OR_RETURN(Resource::Kind kind, ResourceKindFromProto(proto));
+  if (kind == Resource::kRngState) {
+    return std::make_shared<RngStateResource>();
+  }
   return Resource::Create(kind);
 }
 
@@ -92,6 +98,9 @@ absl::StatusOr<ResourceProto> ToProto(const Resource& resource) {
       break;
     case Resource::kCollectiveCommunicator:
       proto.set_kind(ResourceProto::COLLECTIVE_COMMUNICATOR);
+      break;
+    case Resource::kRngState:
+      proto.set_kind(ResourceProto::RNG_STATE);
       break;
     default:
       return absl::UnimplementedError("Resource kind not supported.");
