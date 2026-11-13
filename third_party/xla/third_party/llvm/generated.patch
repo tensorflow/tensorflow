@@ -1,1 +1,3760 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/docs/LanguageExtensions.md b/clang/docs/LanguageExtensions.md
+--- a/clang/docs/LanguageExtensions.md
++++ b/clang/docs/LanguageExtensions.md
+@@ -1785,7 +1785,6 @@
+ | `#embed`                                      | \_\_cpp_pp_embed                   | C++26         | C++03         |
+ |``auto()`` cast                                | \_\_cpp_auto_cast                  | C++26         | C++03         |
+ | Pack Indexing for Template Names              | \_\_cpp_pack_indexing >= 202606L   | C++2d         | C++03         |
+-| Defaulted postfix `++` and `--` operators     |                                    | C++2d         | C++03         |
+ | Designated initializers (N494)                |                                    | C99           | C89           |
+ | `_Complex` (N693)                             |                                    | C99           | C89, C++      |
+ | `_Bool` (N815)                                |                                    | C99           | C89           |
+diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.md b/clang/docs/ReleaseNotes.md
+--- a/clang/docs/ReleaseNotes.md
++++ b/clang/docs/ReleaseNotes.md
+@@ -249,12 +249,6 @@
+   `-Wc++2d-extensions` and `-Wpre-c++2d-compat`, and `__cpp_pack_indexing` is
+   bumped to `202606L`.
+ 
+-- Clang now supports [P3668R4](https://wg21.link/p3668r4) (Defaulting postfix
+-  increment and decrement operations), which allows the postfix `operator++(int)`
+-  and `operator--(int)` to be explicitly defaulted. 
+-  This is available in all C++ language modes as an extension, controlled
+-  by `-Wc++2d-extensions` and `-Wpre-c++2d-compat`.
+-
+ #### C++2c Feature Support
+ 
+ - `#embed` ([P1967R14](https://wg21.link/P1967R14)) is no longer diagnosed as
+@@ -826,8 +820,6 @@
+   (#GH227392)
+ - Clang will now no longer assert or miscompile on a constructor that has more than 65535 base and member initializers. (#GH219366)
+ 
+-- `-Wunsequenced` now diagnoses unsequenced volatile accesses.
+-
+ ### Improvements to Clang's time-trace
+ 
+ ### Improvements to Coverage Mapping
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Decl.h b/clang/include/clang/AST/Decl.h
+--- a/clang/include/clang/AST/Decl.h
++++ b/clang/include/clang/AST/Decl.h
+@@ -2038,17 +2038,6 @@
+   Invalid
+ };
+ 
+-/// Kinds of defaulted postfix increment and decrement operator functions
+-/// (C++2d [over.inc.default]).
+-enum class PostfixOperatorKind : unsigned char {
+-  /// This is not a defaultable postfix increment or decrement operator.
+-  None,
+-  /// This is a postfix increment operator, 'operator++(int)'.
+-  Increment,
+-  /// This is a postfix decrement operator, 'operator--(int)'.
+-  Decrement,
+-};
+-
+ /// Kinds of defaulted comparison operator functions.
+ enum class DefaultedComparisonKind : unsigned char {
+   /// This is not a defaultable comparison operator.
+@@ -2145,28 +2134,19 @@
+   /// For a defaulted function, the kind of defaulted function that it is.
+   class DefaultedFunctionKind {
+     LLVM_PREFERRED_TYPE(CXXSpecialMemberKind)
+-    unsigned SpecialMember : 3;
+-    LLVM_PREFERRED_TYPE(DefaultedComparisonKind)
+-    unsigned Comparison : 3;
+-    LLVM_PREFERRED_TYPE(PostfixOperatorKind)
+-    unsigned PostfixOperator : 2;
++    unsigned SpecialMember : 8;
++    unsigned Comparison : 8;
+ 
+   public:
+     DefaultedFunctionKind()
+         : SpecialMember(llvm::to_underlying(CXXSpecialMemberKind::Invalid)),
+-          Comparison(llvm::to_underlying(DefaultedComparisonKind::None)),
+-          PostfixOperator(llvm::to_underlying(PostfixOperatorKind::None)) {}
+-    DefaultedFunctionKind(CXXSpecialMemberKind CSM) : DefaultedFunctionKind() {
+-      SpecialMember = llvm::to_underlying(CSM);
+-    }
++          Comparison(llvm::to_underlying(DefaultedComparisonKind::None)) {}
++    DefaultedFunctionKind(CXXSpecialMemberKind CSM)
++        : SpecialMember(llvm::to_underlying(CSM)),
++          Comparison(llvm::to_underlying(DefaultedComparisonKind::None)) {}
+     DefaultedFunctionKind(DefaultedComparisonKind Comp)
+-        : DefaultedFunctionKind() {
+-      Comparison = llvm::to_underlying(Comp);
+-    }
+-
+-    DefaultedFunctionKind(PostfixOperatorKind PO) : DefaultedFunctionKind() {
+-      PostfixOperator = llvm::to_underlying(PO);
+-    }
++        : SpecialMember(llvm::to_underlying(CXXSpecialMemberKind::Invalid)),
++          Comparison(llvm::to_underlying(Comp)) {}
+ 
+     bool isSpecialMember() const {
+       return static_cast<CXXSpecialMemberKind>(SpecialMember) !=
+@@ -2176,13 +2156,9 @@
+       return static_cast<DefaultedComparisonKind>(Comparison) !=
+              DefaultedComparisonKind::None;
+     }
+-    bool isPostfixOperator() const {
+-      return static_cast<PostfixOperatorKind>(PostfixOperator) !=
+-             PostfixOperatorKind::None;
+-    }
+ 
+     explicit operator bool() const {
+-      return isSpecialMember() || isComparison() || isPostfixOperator();
++      return isSpecialMember() || isComparison();
+     }
+ 
+     CXXSpecialMemberKind asSpecialMember() const {
+@@ -2191,10 +2167,6 @@
+     DefaultedComparisonKind asComparison() const {
+       return static_cast<DefaultedComparisonKind>(Comparison);
+     }
+-
+-    PostfixOperatorKind asPostfixOperator() const {
+-      return static_cast<PostfixOperatorKind>(PostfixOperator);
+-    }
+ 
+     /// Get the index of this function kind for use in diagnostics.
+     unsigned getDiagnosticIndex() const {
+@@ -2203,9 +2175,7 @@
+                     "invalid should have highest index");
+       static_assert((unsigned)DefaultedComparisonKind::None == 0,
+                     "none should be equal to zero");
+-      static_assert((unsigned)PostfixOperatorKind::None == 0,
+-                    "none should be equal to zero");
+-      return SpecialMember + Comparison + PostfixOperator;
++      return SpecialMember + Comparison;
+     }
+   };
+ 
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticCommonKinds.td b/clang/include/clang/Basic/DiagnosticCommonKinds.td
+--- a/clang/include/clang/Basic/DiagnosticCommonKinds.td
++++ b/clang/include/clang/Basic/DiagnosticCommonKinds.td
+@@ -97,11 +97,8 @@
+   "invalid storage class specifier in function declarator">;
+ def err_expected_namespace_name : Error<"expected namespace name">;
+ def err_default_special_members : Error<
+-  "only special member functions"
+-  "%enum_select<DefaultableFunctionKinds>{%Default{}|"
+-  "%Cxx20{ and comparison operators}|"
+-  "%Cxx29{, comparison operators, and postfix increment and "
+-  "decrement operators}}0 may be defaulted">;
++  "only special member functions %select{|and comparison operators }0"
++  "may be defaulted">;
+ def err_deleted_non_function : Error<
+   "only functions can have deleted definitions">;
+ def err_module_not_found : Error<"module '%0' not found">, DefaultFatal;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -106,8 +106,6 @@
+ 
+ // C++29 compatibility with C++26 and earlier.
+ defm pack_indexing_template : CXX29Compat<"pack indexing for template names is">;
+-defm defaulted_postfix_operator : CXX29Compat<
+-  "defaulted postfix increment and decrement operators are">;
+ 
+ // Compatibility warnings duplicated across multiple language versions.
+ foreach std = [14, 20, 23] in {
+@@ -2661,8 +2659,6 @@
+   "multiple unsequenced modifications to %0">, InGroup<Unsequenced>;
+ def warn_unsequenced_mod_use : Warning<
+   "unsequenced modification and access to %0">, InGroup<Unsequenced>;
+-def warn_unsequenced_use_use_volatile : Warning<
+-  "unsequenced accesses to volatile qualified %0">, InGroup<Unsequenced>;
+ 
+ def select_initialized_entity_kind : TextSubstitution<
+   "%select{copying variable|copying parameter|initializing template parameter|"
+@@ -10624,9 +10620,8 @@
+ def select_defaulted_comparison_kind : TextSubstitution<
+   "%select{<ERROR>|equality|three-way|equality|relational}0 comparison "
+   "operator">;
+-def err_defaulted_operator_template : Error<
+-  "%select{comparison operator|%sub{select_defaulted_postfix_operator_kind}1}0 "
+-  "template cannot be defaulted">;
++def err_defaulted_comparison_template : Error<
++  "comparison operator template cannot be defaulted">;
+ def err_defaulted_comparison_num_args : Error<
+   "%select{non-member|member}0 %sub{select_defaulted_comparison_kind}1"
+   " must have %select{2|1}0 parameters">;
+@@ -10675,12 +10670,9 @@
+   "defaulted %0 is implicitly deleted because it would invoke a "
+   "%select{private|protected}3 %4%select{ member of %6|"
+   " member of %6 to compare member %2| to compare base class %2}1">;
+-// Shared by defaulted comparisons and defaulted postfix operators. The first
+-// four %select indices of %1 are given by diag::DefaultedPostfixOperatorStep.
+-def note_defaulted_function_calls_deleted : Note<
++def note_defaulted_comparison_calls_deleted : Note<
+   "defaulted %0 is implicitly deleted because it would invoke a deleted "
+-  "%select{constructor|destructor|prefix 'operator++'|prefix 'operator--'|"
+-  "comparison function}1%select{| for member %3| for base class %3}2">;
++  "comparison function%select{| for member %2| for base class %2}1">;
+ def note_defaulted_comparison_no_viable_function : Note<
+   "defaulted %0 is implicitly deleted because there is no viable "
+   "%select{three-way comparison function|'operator=='}1 for "
+@@ -10728,56 +10720,6 @@
+ def err_ref_qualifier_comparison_operator : Error<
+   "ref-qualifier '&&' is not allowed on a defaulted comparison operator">;
+ 
+-// C++2d defaulted postfix increment and decrement operators
+-// This corresponds to values of PostfixOperatorKind.
+-def select_defaulted_postfix_operator_kind : TextSubstitution<
+-  "postfix %select{<ERROR>|increment|decrement}0 operator">;
+-def err_defaulted_prefix_operator : Error<
+-  "only the postfix form of 'operator%select{++|--}0' can be defaulted">;
+-def err_defaulted_postfix_operator_const : Error<
+-  "defaulted member %sub{select_defaulted_postfix_operator_kind}0 cannot be "
+-  "const-qualified">;
+-def err_defaulted_postfix_operator_param : Error<
+-  "invalid %select{explicit object|first}1 parameter type for defaulted "
+-  "%sub{select_defaulted_postfix_operator_kind}0; found %2, expected %3">;
+-def err_defaulted_postfix_operator_return_type : Error<
+-  "return type for defaulted %sub{select_defaulted_postfix_operator_kind}0 "
+-  "must be %1, not %2">;
+-def err_defaulted_postfix_operator_deduced_return_type : Error<
+-  "defaulted %sub{select_defaulted_postfix_operator_kind}0 cannot have a "
+-  "deduced return type">;
+-def err_defaulted_postfix_operator_incomplete : Error<
+-  "cannot default %sub{select_defaulted_postfix_operator_kind}0 for "
+-  "incomplete type %1">;
+-def err_non_first_default_postfix_operator_deletes : Error<
+-  "defaulting this %sub{select_defaulted_postfix_operator_kind}0 "
+-  "would delete it after its first declaration">;
+-def err_non_first_default_postfix_operator_in_class : Error<
+-  "defaulting this %sub{select_defaulted_postfix_operator_kind}0 "
+-  "is not allowed because it was already declared outside the class">;
+-def warn_defaulted_postfix_operator_deleted : Warning<
+-  "explicitly defaulted %sub{select_defaulted_postfix_operator_kind}0 is "
+-  "implicitly deleted">, InGroup<DefaultedFunctionDeleted>;
+-def note_defaulted_postfix_operator_no_viable : Note<
+-  "defaulted %0 is implicitly deleted because there is no viable prefix "
+-  "%select{'operator++'|'operator--'}1 for an lvalue of type %2">;
+-def note_defaulted_postfix_operator_ambiguous : Note<
+-  "defaulted %0 is implicitly deleted because prefix "
+-  "%select{'operator++'|'operator--'}1 for an lvalue of type %2 is ambiguous">;
+-def note_defaulted_postfix_operator_inaccessible : Note<
+-  "defaulted %0 is implicitly deleted because it would invoke a "
+-  "%select{private|protected}2 %enum_select<DefaultedPostfixOperatorStep>{"
+-  "%Constructor{constructor}|%Destructor{destructor}|"
+-  "%PrefixIncrement{prefix 'operator++'}|"
+-  "%PrefixDecrement{prefix 'operator--'}}1 of %5">;
+-def err_ovl_deleted_postfix_operator : Error<
+-  "object of type %0 cannot be %select{<ERROR>|incremented|decremented}1 "
+-  "because its defaulted %sub{select_defaulted_postfix_operator_kind}1 is "
+-  "implicitly deleted">;
+-def note_postfix_operator_synthesized_at : Note<
+-  "in defaulted %sub{select_defaulted_postfix_operator_kind}0 for %1 "
+-  "first required here">;
+-
+ def ext_implicit_exception_spec_mismatch : ExtWarn<
+   "function previously declared with an %select{explicit|implicit}0 exception "
+   "specification redeclared with an %select{implicit|explicit}0 exception "
+diff -ruN --strip-trailing-cr a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
+@@ -6315,21 +6315,6 @@
+   void DefineDefaultedComparison(SourceLocation Loc, FunctionDecl *FD,
+                                  DefaultedComparisonKind DCK);
+ 
+-  /// Check a defaulted postfix increment or decrement operator function
+-  /// (C++2d [over.inc.default]), defining it as deleted if necessary.
+-  ///
+-  /// \param S The scope in which the function is defaulted, used to perform
+-  /// the unqualified name lookups needed by the implicit definition, or
+-  /// \c nullptr if those lookups have already been performed.
+-  ///
+-  /// \returns \c true if the function is ill-formed.
+-  bool CheckExplicitlyDefaultedPostfixOperator(Scope *S, FunctionDecl *FD,
+-                                               PostfixOperatorKind Kind);
+-  /// Synthesize the body of a defaulted postfix increment or decrement
+-  /// operator function (C++2d [over.inc.default]p3).
+-  void DefineDefaultedPostfixOperator(SourceLocation Loc, FunctionDecl *FD,
+-                                      PostfixOperatorKind Kind);
+-
+   void CheckExplicitObjectMemberFunction(Declarator &D, DeclarationName Name,
+                                          QualType R, bool IsLambda,
+                                          DeclContext *DC = nullptr);
+@@ -6647,17 +6632,10 @@
+   void ActOnPureSpecifier(Decl *D, SourceLocation PureSpecLoc);
+   void SetDeclDeleted(Decl *dcl, SourceLocation DelLoc,
+                       StringLiteral *Message = nullptr);
+-  /// Mark the given declaration as explicitly defaulted.
+-  ///
+-  /// \param S The scope in which the function is defaulted, if it is
+-  /// available. It is used to perform the unqualified name lookups needed by
+-  /// the implicit definition of an out-of-class defaulted function.
+-  void SetDeclDefaulted(Decl *dcl, SourceLocation DefaultLoc,
+-                        Scope *S = nullptr);
++  void SetDeclDefaulted(Decl *dcl, SourceLocation DefaultLoc);
+ 
+   void SetFunctionBodyKind(Decl *D, SourceLocation Loc, FnBodyKind BodyKind,
+-                           StringLiteral *DeletedMessage = nullptr,
+-                           Scope *S = nullptr);
++                           StringLiteral *DeletedMessage = nullptr);
+   void ActOnStartTrailingRequiresClause(Scope *S, Declarator &D);
+   ExprResult ActOnFinishTrailingRequiresClause(ExprResult ConstraintExpr);
+   ExprResult ActOnRequiresClause(ExprResult ConstraintExpr);
+diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
+--- a/clang/lib/AST/Decl.cpp
++++ b/clang/lib/AST/Decl.cpp
+@@ -3324,20 +3324,7 @@
+       return CXXSpecialMemberKind::Destructor;
+   }
+ 
+-  // Only the postfix forms of ++ and -- can be defaulted. They are
+-  // distinguished from the prefix forms by their trailing 'int' parameter, so
+-  // they have exactly two parameters including implicit or explicit 'this'.
+   switch (getDeclName().getCXXOverloadedOperator()) {
+-  case OO_PlusPlus:
+-    if (getNumParamsIncludingThis() == 2)
+-      return PostfixOperatorKind::Increment;
+-    break;
+-
+-  case OO_MinusMinus:
+-    if (getNumParamsIncludingThis() == 2)
+-      return PostfixOperatorKind::Decrement;
+-    break;
+-
+   case OO_EqualEqual:
+     return DefaultedComparisonKind::Equal;
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Parse/ParseDecl.cpp b/clang/lib/Parse/ParseDecl.cpp
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -2643,11 +2643,7 @@
+           << 0 /* default */;
+       else
+         Diag(ConsumeToken(), diag::err_default_special_members)
+-            << (getLangOpts().CPlusPlus29
+-                    ? diag::DefaultableFunctionKinds::Cxx29
+-                : getLangOpts().CPlusPlus20
+-                    ? diag::DefaultableFunctionKinds::Cxx20
+-                    : diag::DefaultableFunctionKinds::Default);
++            << getLangOpts().CPlusPlus20;
+     } else {
+       InitializerScopeRAII InitScope(*this, D, ThisDecl);
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Parse/ParseDeclCXX.cpp b/clang/lib/Parse/ParseDeclCXX.cpp
+--- a/clang/lib/Parse/ParseDeclCXX.cpp
++++ b/clang/lib/Parse/ParseDeclCXX.cpp
+@@ -3383,11 +3383,7 @@
+             << 0 /* default */;
+       else
+         Diag(ConsumeToken(), diag::err_default_special_members)
+-            << (getLangOpts().CPlusPlus29
+-                    ? diag::DefaultableFunctionKinds::Cxx29
+-                : getLangOpts().CPlusPlus20
+-                    ? diag::DefaultableFunctionKinds::Cxx20
+-                    : diag::DefaultableFunctionKinds::Default);
++            << getLangOpts().CPlusPlus20;
+       return ExprError();
+     }
+   }
+diff -ruN --strip-trailing-cr a/clang/lib/Parse/Parser.cpp b/clang/lib/Parse/Parser.cpp
+--- a/clang/lib/Parse/Parser.cpp
++++ b/clang/lib/Parse/Parser.cpp
+@@ -1375,8 +1375,7 @@
+   D.getMutableDeclSpec().abort();
+ 
+   if (BodyKind != Sema::FnBodyKind::Other) {
+-    Actions.SetFunctionBodyKind(Res, KWLoc, BodyKind, DeletedMessage,
+-                                getCurScope());
++    Actions.SetFunctionBodyKind(Res, KWLoc, BodyKind, DeletedMessage);
+     Stmt *GeneratedBody = Res ? Res->getBody() : nullptr;
+     Actions.ActOnFinishFunctionBody(Res, GeneratedBody, false);
+     return Res;
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
+--- a/clang/lib/Sema/SemaChecking.cpp
++++ b/clang/lib/Sema/SemaChecking.cpp
+@@ -14872,7 +14872,7 @@
+   };
+ 
+   /// An object for which we can track unsequenced uses.
+-  using Object = const ValueDecl *;
++  using Object = const NamedDecl *;
+ 
+   /// Different flavors of object usage which we track. We only track the
+   /// least-sequenced usage of each kind.
+@@ -14891,17 +14891,6 @@
+     UK_Count = UK_ModAsSideEffect + 1
+   };
+ 
+-  enum WarningKind {
+-    /// A warning message is one for unsequenced use and modification
+-    WK_UseAndMod,
+-
+-    /// A warning message is one for multiple unsequenced modification
+-    WK_ModAndMod,
+-
+-    /// A warning message is one for multiple unsequenced volatile use
+-    WK_Volatile_UseAndUse
+-  };
+-
+   /// Bundle together a sequencing region and the expression corresponding
+   /// to a specific usage. One Usage is stored for each usage kind in UsageInfo.
+   struct Usage {
+@@ -15044,9 +15033,10 @@
+   /// Check whether a modification or use of an object \p O in an expression
+   /// \p UsageExpr conflicts with a prior usage of kind \p OtherKind. \p UI is
+   /// the \p UsageInfo for the object \p O as obtained via the \p UsageMap.
+-  /// The message displayed in case of a conflict depends on \p WarnKind.
++  /// \p IsModMod is true when we are checking for a mod-mod unsequenced
++  /// usage and false we are checking for a mod-use unsequenced usage.
+   void checkUsage(Object O, UsageInfo &UI, const Expr *UsageExpr,
+-                  UsageKind OtherKind, WarningKind WarnKind) {
++                  UsageKind OtherKind, bool IsModMod) {
+     if (UI.Diagnosed)
+       return;
+ 
+@@ -15058,23 +15048,12 @@
+     const Expr *ModOrUse = UsageExpr;
+     if (OtherKind == UK_Use)
+       std::swap(Mod, ModOrUse);
+-
+-    unsigned DiagID = 0;
+-    switch (WarnKind) {
+-    case WK_UseAndMod:
+-      DiagID = diag::warn_unsequenced_mod_use;
+-      break;
+-    case WK_ModAndMod:
+-      DiagID = diag::warn_unsequenced_mod_mod;
+-      break;
+-    case WK_Volatile_UseAndUse:
+-      DiagID = diag::warn_unsequenced_use_use_volatile;
+-      break;
+-    }
+ 
+     SemaRef.DiagRuntimeBehavior(
+         Mod->getExprLoc(), {Mod, ModOrUse},
+-        SemaRef.PDiag(DiagID) << O << SourceRange(ModOrUse->getExprLoc()));
++        SemaRef.PDiag(IsModMod ? diag::warn_unsequenced_mod_mod
++                               : diag::warn_unsequenced_mod_use)
++            << O << SourceRange(ModOrUse->getExprLoc()));
+     UI.Diagnosed = true;
+   }
+ 
+@@ -15107,28 +15086,27 @@
+   void notePreUse(Object O, const Expr *UseExpr) {
+     UsageInfo &UI = UsageMap[O];
+     // Uses conflict with other modifications.
+-    checkUsage(O, UI, UseExpr, /*OtherKind=*/UK_ModAsValue, WK_UseAndMod);
+-    // Volatile uses conflict with other uses.
+-    if (O->getType().isVolatileQualified())
+-      checkUsage(O, UI, UseExpr, /*OtherKind=*/UK_Use, WK_Volatile_UseAndUse);
++    checkUsage(O, UI, UseExpr, /*OtherKind=*/UK_ModAsValue, /*IsModMod=*/false);
+   }
+ 
+   void notePostUse(Object O, const Expr *UseExpr) {
+     UsageInfo &UI = UsageMap[O];
+-    checkUsage(O, UI, UseExpr, /*OtherKind=*/UK_ModAsSideEffect, WK_UseAndMod);
++    checkUsage(O, UI, UseExpr, /*OtherKind=*/UK_ModAsSideEffect,
++               /*IsModMod=*/false);
+     addUsage(O, UI, UseExpr, /*UsageKind=*/UK_Use);
+   }
+ 
+   void notePreMod(Object O, const Expr *ModExpr) {
+     UsageInfo &UI = UsageMap[O];
+     // Modifications conflict with other modifications and with uses.
+-    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_ModAsValue, WK_ModAndMod);
+-    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_Use, WK_UseAndMod);
++    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_ModAsValue, /*IsModMod=*/true);
++    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_Use, /*IsModMod=*/false);
+   }
+ 
+   void notePostMod(Object O, const Expr *ModExpr, UsageKind UK) {
+     UsageInfo &UI = UsageMap[O];
+-    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_ModAsSideEffect, WK_ModAndMod);
++    checkUsage(O, UI, ModExpr, /*OtherKind=*/UK_ModAsSideEffect,
++               /*IsModMod=*/true);
+     addUsage(O, UI, ModExpr, /*UsageKind=*/UK);
+   }
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
+--- a/clang/lib/Sema/SemaDeclCXX.cpp
++++ b/clang/lib/Sema/SemaDeclCXX.cpp
+@@ -6928,9 +6928,6 @@
+   FunctionDecl::DefaultedFunctionKind DFK = FD->getDefaultedFunctionKind();
+   if (DFK.isComparison())
+     return S.DefineDefaultedComparison(DefaultLoc, FD, DFK.asComparison());
+-  if (DFK.isPostfixOperator())
+-    return S.DefineDefaultedPostfixOperator(DefaultLoc, FD,
+-                                            DFK.asPostfixOperator());
+ 
+   switch (DFK.asSpecialMember()) {
+   case CXXSpecialMemberKind::DefaultConstructor:
+@@ -7807,11 +7804,6 @@
+                                         FunctionDecl *FD,
+                                         DefaultedComparisonKind DCK);
+ 
+-static Sema::ImplicitExceptionSpecification
+-ComputeDefaultedPostfixOperatorExceptionSpec(Sema &S, SourceLocation Loc,
+-                                             FunctionDecl *FD,
+-                                             PostfixOperatorKind Kind);
+-
+ static Sema::ImplicitExceptionSpecification
+ computeImplicitExceptionSpec(Sema &S, SourceLocation Loc, FunctionDecl *FD) {
+   auto DFK = FD->getDefaultedFunctionKind();
+@@ -7821,9 +7813,6 @@
+   if (DFK.isComparison())
+     return ComputeDefaultedComparisonExceptionSpec(S, Loc, FD,
+                                                    DFK.asComparison());
+-  if (DFK.isPostfixOperator())
+-    return ComputeDefaultedPostfixOperatorExceptionSpec(
+-        S, Loc, FD, DFK.asPostfixOperator());
+ 
+   auto *CD = cast<CXXConstructorDecl>(FD);
+   assert(CD->getInheritedConstructor() &&
+@@ -7881,13 +7870,6 @@
+       }
+     }
+   }
+-
+-  if (DefKind.isPostfixOperator()) {
+-    if (CheckExplicitlyDefaultedPostfixOperator(S, FD,
+-                                                DefKind.asPostfixOperator()))
+-      FD->setInvalidDecl();
+-    return;
+-  }
+ 
+   if (DefKind.isSpecialMember()
+           ? CheckExplicitlyDefaultedSpecialMember(cast<CXXMethodDecl>(FD),
+@@ -8585,8 +8567,9 @@
+                  diag::note_defaulted_comparison_not_rewritten_callee)
+               << FD;
+         } else {
+-          S.Diag(Subobj.Loc, diag::note_defaulted_function_calls_deleted)
+-              << FD << /*comparison function*/ 4 << Subobj.Kind << Subobj.Decl;
++          S.Diag(Subobj.Loc,
++                 diag::note_defaulted_comparison_calls_deleted)
++              << FD << Subobj.Kind << Subobj.Decl;
+           S.NoteDeletedFunction(Best->Function);
+         }
+       }
+@@ -9395,79 +9378,65 @@
+   popCodeSynthesisContext();
+ }
+ 
+-/// Define a defaulted function whose body is synthesized by \p BuildBody: a
+-/// defaulted comparison operator function or a defaulted postfix increment or
+-/// decrement operator function.
+-static void defineDefaultedFunctionWithSynthesizedBody(
+-    Sema &S, SourceLocation UseLoc, FunctionDecl *FD,
+-    llvm::function_ref<StmtResult(SourceLocation BodyLoc)> BuildBody) {
++void Sema::DefineDefaultedComparison(SourceLocation UseLoc, FunctionDecl *FD,
++                                     DefaultedComparisonKind DCK) {
+   assert(FD->isDefaulted() && !FD->isDeleted() &&
+          !FD->doesThisDeclarationHaveABody());
+   if (FD->willHaveBody() || FD->isInvalidDecl())
+     return;
+ 
+-  Sema::SynthesizedFunctionScope Scope(S, FD);
++  SynthesizedFunctionScope Scope(*this, FD);
+ 
+   // Add a context note for diagnostics produced after this point.
+   Scope.addContextNote(UseLoc);
+ 
+-  DefaultedFunctionFPFeaturesRAII RestoreFP(S, FD);
++  DefaultedFunctionFPFeaturesRAII RestoreFP(*this, FD);
+ 
+   {
+     // Build and set up the function body.
++    // The first parameter has type maybe-ref-to maybe-const T, use that to get
++    // the type of the class being compared.
++    auto PT = FD->getParamDecl(0)->getType();
++    CXXRecordDecl *RD = PT.getNonReferenceType()->getAsCXXRecordDecl();
+     SourceLocation BodyLoc =
+         FD->getEndLoc().isValid() ? FD->getEndLoc() : FD->getLocation();
+-    StmtResult Body = BuildBody(BodyLoc);
++    StmtResult Body =
++        DefaultedComparisonSynthesizer(*this, RD, FD, DCK, BodyLoc).build();
+     if (Body.isInvalid()) {
+       FD->setInvalidDecl();
+       return;
+     }
+     FD->setBody(Body.get());
+-    FD->markUsed(S.Context);
++    FD->markUsed(Context);
+   }
+ 
+   // The exception specification is needed because we are defining the
+   // function. Note that this will reuse the body we just built.
+-  S.ResolveExceptionSpec(UseLoc, FD->getType()->castAs<FunctionProtoType>());
++  ResolveExceptionSpec(UseLoc, FD->getType()->castAs<FunctionProtoType>());
+ 
+-  if (ASTMutationListener *L = S.getASTMutationListener())
++  if (ASTMutationListener *L = getASTMutationListener())
+     L->CompletedImplicitDefinition(FD);
+ }
+ 
+-void Sema::DefineDefaultedComparison(SourceLocation UseLoc, FunctionDecl *FD,
+-                                     DefaultedComparisonKind DCK) {
+-  auto BuildBody = [&](SourceLocation BodyLoc) {
+-    // The first parameter has type maybe-ref-to maybe-const T, use that to
+-    // get the type of the class being compared.
+-    auto PT = FD->getParamDecl(0)->getType();
+-    CXXRecordDecl *RD = PT.getNonReferenceType()->getAsCXXRecordDecl();
+-    return DefaultedComparisonSynthesizer(*this, RD, FD, DCK, BodyLoc).build();
+-  };
+-  defineDefaultedFunctionWithSynthesizedBody(*this, UseLoc, FD, BuildBody);
+-}
+-
+-/// Compute the exception specification of a defaulted function whose body is
+-/// synthesized by \p BuildBody: a defaulted comparison operator function or a
+-/// defaulted postfix increment or decrement operator function.
+ static Sema::ImplicitExceptionSpecification
+-computeExceptionSpecFromSynthesizedBody(
+-    Sema &S, SourceLocation Loc, FunctionDecl *FD,
+-    llvm::function_ref<StmtResult(SourceLocation BodyLoc)> BuildBody) {
++ComputeDefaultedComparisonExceptionSpec(Sema &S, SourceLocation Loc,
++                                        FunctionDecl *FD,
++                                        DefaultedComparisonKind DCK) {
+   ComputingExceptionSpec CES(S, FD, Loc);
+   Sema::ImplicitExceptionSpecification ExceptSpec(S);
+ 
+   if (FD->isInvalidDecl())
+     return ExceptSpec;
+ 
+-  // The common case is that we just defined the function. In that case, just
+-  // look at whether the body can throw.
++  // The common case is that we just defined the comparison function. In that
++  // case, just look at whether the body can throw.
+   if (Stmt *FunctionBody = FD->getBody()) {
+     ExceptSpec.CalledStmt(FunctionBody);
+   } else {
+     // Otherwise, build a body so we can check it. This should ideally only
+     // happen when we're not actually marking the function referenced. (This is
+     // only really important for efficiency: we don't want to build and throw
+-    // away bodies for defaulted functions more than we strictly need to.)
++    // away bodies for comparison functions more than we strictly need to.)
+ 
+     // Pretend to synthesize the function body in an unevaluated context.
+     // Note that we can't actually just go ahead and define the function here:
+@@ -9476,9 +9445,14 @@
+     EnterExpressionEvaluationContext Context(
+         S, Sema::ExpressionEvaluationContext::Unevaluated);
+ 
++    CXXRecordDecl *RD =
++        cast<CXXRecordDecl>(FD->getFriendObjectKind() == Decl::FOK_None
++                                ? FD->getDeclContext()
++                                : FD->getLexicalDeclContext());
+     SourceLocation BodyLoc =
+         FD->getEndLoc().isValid() ? FD->getEndLoc() : FD->getLocation();
+-    StmtResult Body = BuildBody(BodyLoc);
++    StmtResult Body =
++        DefaultedComparisonSynthesizer(S, RD, FD, DCK, BodyLoc).build();
+     if (!Body.isInvalid())
+       ExceptSpec.CalledStmt(Body.get());
+ 
+@@ -9490,519 +9464,6 @@
+ 
+   return ExceptSpec;
+ }
+-
+-static Sema::ImplicitExceptionSpecification
+-ComputeDefaultedComparisonExceptionSpec(Sema &S, SourceLocation Loc,
+-                                        FunctionDecl *FD,
+-                                        DefaultedComparisonKind DCK) {
+-  auto BuildBody = [&](SourceLocation BodyLoc) {
+-    CXXRecordDecl *RD =
+-        cast<CXXRecordDecl>(FD->getFriendObjectKind() == Decl::FOK_None
+-                                ? FD->getDeclContext()
+-                                : FD->getLexicalDeclContext());
+-    return DefaultedComparisonSynthesizer(S, RD, FD, DCK, BodyLoc).build();
+-  };
+-  return computeExceptionSpecFromSynthesizedBody(S, Loc, FD, BuildBody);
+-}
+-
+-// C++2d [over.inc.default]: defaulted postfix increment and decrement operator
+-// functions (P3668R4).
+-
+-namespace {
+-/// Information about a defaulted postfix increment or decrement operator
+-/// function, as determined by analyzeDefaultedPostfixOperator.
+-struct DefaultedPostfixOperatorInfo {
+-  /// Whether the function should be defined as deleted.
+-  bool Deleted = false;
+-  /// Whether every function invoked by the implicit definition is constexpr.
+-  bool Constexpr = true;
+-};
+-} // namespace
+-
+-/// Get the type of the first parameter of a postfix increment or decrement
+-/// operator function, where the implicit object parameter (if any) is
+-/// considered to be the first parameter.
+-static QualType getPostfixOperatorFirstParamType(const FunctionDecl *FD) {
+-  if (const auto *MD = dyn_cast<CXXMethodDecl>(FD))
+-    return MD->getFunctionObjectParameterReferenceType();
+-  return FD->getParamDecl(0)->getType();
+-}
+-
+-/// Determine whether the implicit definition of the defaulted postfix
+-/// increment or decrement operator function \p FD can direct-initialize a
+-/// variable of class type \p C from the lvalue \p Obj of type \p C, and then
+-/// destroy it, using functions that are usable from the current context.
+-///
+-/// \p CheckConstexpr is called on each constructor the initialization invokes.
+-/// If \p Diagnose is true, explain why the copy or destruction is not possible.
+-static bool canCopyAndDestroyForDefaultedPostfixOperator(
+-    Sema &S, FunctionDecl *FD, CXXRecordDecl *RD, QualType C, Expr *Obj,
+-    bool Diagnose,
+-    llvm::function_ref<void(const FunctionDecl *)> CheckConstexpr) {
+-  SourceLocation Loc = FD->getLocation();
+-  auto InaccessibleDiag = [&](unsigned Step) {
+-    return Diagnose
+-               ? S.PDiag(diag::note_defaulted_postfix_operator_inaccessible)
+-                     << FD << Step
+-               : S.PDiag();
+-  };
+-
+-  InitializedEntity Entity = InitializedEntity::InitializeTemporary(C);
+-  InitializationKind InitKind = InitializationKind::CreateDirect(Loc, Loc, Loc);
+-  InitializationSequence Seq(S, Entity, InitKind, Obj);
+-  if (Seq.Failed()) {
+-    // FIXME: This emits errors rather than notes explaining why the function
+-    // is deleted.
+-    if (Diagnose)
+-      Seq.Diagnose(S, Entity, InitKind, Obj);
+-    return false;
+-  }
+-  for (const InitializationSequence::Step &Step : Seq.steps()) {
+-    if (Step.Kind != InitializationSequence::SK_ConstructorInitialization)
+-      continue;
+-    if (!S.isMemberAccessibleForDeletion(
+-            RD, Step.Function.FoundDecl, C, Loc,
+-            InaccessibleDiag(diag::DefaultedPostfixOperatorStep::Constructor)))
+-      return false;
+-    CheckConstexpr(Step.Function.Function);
+-  }
+-
+-  CXXDestructorDecl *Dtor = S.LookupDestructor(RD);
+-  if (!Dtor)
+-    return true;
+-  if (Dtor->isDeleted()) {
+-    if (Diagnose) {
+-      S.Diag(Loc, diag::note_defaulted_function_calls_deleted)
+-          << FD << diag::DefaultedPostfixOperatorStep::Destructor
+-          << /*complete object*/ 0;
+-      S.NoteDeletedFunction(Dtor);
+-    }
+-    return false;
+-  }
+-  return S.isMemberAccessibleForDeletion(
+-      RD, DeclAccessPair::make(Dtor, Dtor->getAccess()), C, Loc,
+-      InaccessibleDiag(diag::DefaultedPostfixOperatorStep::Destructor));
+-}
+-
+-/// Determine whether a defaulted postfix increment or decrement operator
+-/// function for type \p C should be defined as deleted, as specified in C++2d
+-/// [over.inc.default]p2, and whether every function it would invoke is
+-/// constexpr.
+-///
+-/// If \p Diagnose is true, explain why the function is defined as deleted.
+-static DefaultedPostfixOperatorInfo
+-analyzeDefaultedPostfixOperator(Sema &S, FunctionDecl *FD,
+-                                PostfixOperatorKind Kind, QualType C,
+-                                bool Diagnose) {
+-  DefaultedPostfixOperatorInfo Info;
+-  SourceLocation Loc = FD->getLocation();
+-
+-  // C++2d [over.inc.default]p1:
+-  //   Name lookups and access checks in the implicit definition of a defaulted
+-  //   postfix increment or decrement operator function are performed from a
+-  //   context equivalent to its function-body.
+-  Sema::ContextRAII SavedContext(S, FD);
+-
+-  // Let c be an lvalue of type C. c stands for the first parameter (or the
+-  // implicit object), which is always an lvalue when named in the function
+-  // body, even if it is declared as an rvalue reference.
+-  OpaqueValueExpr Obj(Loc, C, VK_LValue);
+-  Expr *Args[] = {&Obj};
+-
+-  auto Deleted = [&] {
+-    Info.Deleted = true;
+-    return Info;
+-  };
+-  auto InaccessibleDiag = [&](unsigned Step) {
+-    return Diagnose
+-               ? S.PDiag(diag::note_defaulted_postfix_operator_inaccessible)
+-                     << FD << Step
+-               : S.PDiag();
+-  };
+-  auto NoteCallsDeleted = [&](unsigned Step, FunctionDecl *Callee) {
+-    if (!Diagnose)
+-      return;
+-    S.Diag(Loc, diag::note_defaulted_function_calls_deleted)
+-        << FD << Step << /*complete object*/ 0;
+-    if (Callee)
+-      S.NoteDeletedFunction(Callee);
+-  };
+-  auto CheckConstexpr = [&](const FunctionDecl *Callee) {
+-    if (!Callee->isConstexpr())
+-      Info.Constexpr = false;
+-  };
+-
+-  // C++2d [over.inc.default]p2:
+-  //   A defaulted postfix increment or decrement operator function for a type
+-  //   C is defined as deleted if
+-  //  -- C is a class type for which overload resolution, as applied to
+-  //     direct-initialization of a variable of type C from an lvalue of
+-  //     type C, does not result in a usable candidate,
+-  //  -- C has a destructor that is deleted or inaccessible from the context
+-  //     of the function-body, or
+-  CXXRecordDecl *RD = C->getAsCXXRecordDecl();
+-  if (RD && !canCopyAndDestroyForDefaultedPostfixOperator(
+-                S, FD, RD, C, &Obj, Diagnose, CheckConstexpr))
+-    return Deleted();
+-
+-  //  -- for an lvalue c of type C, overload resolution as applied to ++c for a
+-  //     postfix increment operator function or --c for a postfix decrement
+-  //     operator function does not result in a usable candidate.
+-  bool IsIncrement = Kind == PostfixOperatorKind::Increment;
+-  unsigned PrefixStep =
+-      IsIncrement ? diag::DefaultedPostfixOperatorStep::PrefixIncrement
+-                  : diag::DefaultedPostfixOperatorStep::PrefixDecrement;
+-  UnresolvedSet<2> Fns;
+-  if (auto *DFI = FD->getDefaultedOrDeletedInfo())
+-    Fns.assign(DFI->getUnqualifiedLookups().begin(),
+-               DFI->getUnqualifiedLookups().end());
+-  OverloadCandidateSet CandidateSet(Loc, OverloadCandidateSet::CSK_Operator);
+-  S.LookupOverloadedUnaryOp(
+-      CandidateSet, IsIncrement ? OO_PlusPlus : OO_MinusMinus, Fns, Args);
+-
+-  OverloadCandidateSet::iterator Best;
+-  switch (CandidateSet.BestViableFunction(S, Loc, Best)) {
+-  case OR_Success:
+-    if (FunctionDecl *Prefix = Best->Function) {
+-      // Only a member of C can be inaccessible here; the non-member
+-      // candidates were found by unqualified lookup and ADL.
+-      if (RD && Best->FoundDecl.getDecl() &&
+-          Best->FoundDecl.getDecl()->isCXXClassMember() &&
+-          !S.isMemberAccessibleForDeletion(RD, Best->FoundDecl, C, Loc,
+-                                           InaccessibleDiag(PrefixStep)))
+-        return Deleted();
+-      CheckConstexpr(Prefix);
+-    } else if (!Best->Conversions.empty() &&
+-               Best->Conversions[0].isUserDefined()) {
+-      // A built-in candidate, reached through a conversion function.
+-      CheckConstexpr(Best->Conversions[0].UserDefined.ConversionFunction);
+-    }
+-    break;
+-
+-  case OR_Ambiguous:
+-    if (Diagnose)
+-      CandidateSet.NoteCandidates(
+-          PartialDiagnosticAt(
+-              Loc, S.PDiag(diag::note_defaulted_postfix_operator_ambiguous)
+-                       << FD << !IsIncrement << C),
+-          S, OCD_AmbiguousCandidates, Args, IsIncrement ? "++" : "--", Loc);
+-    return Deleted();
+-
+-  case OR_Deleted:
+-    NoteCallsDeleted(PrefixStep, Best->Function);
+-    return Deleted();
+-
+-  case OR_No_Viable_Function:
+-    // Don't list the non-viable candidates: like for any other unary operator,
+-    // the candidate notes can't sensibly describe an arity mismatch for a
+-    // member postfix operator (whose object argument is not a parameter).
+-    if (Diagnose)
+-      S.Diag(Loc, diag::note_defaulted_postfix_operator_no_viable)
+-          << FD << !IsIncrement << C;
+-    return Deleted();
+-  }
+-
+-  return Info;
+-}
+-
+-bool Sema::CheckExplicitlyDefaultedPostfixOperator(Scope *S, FunctionDecl *FD,
+-                                                   PostfixOperatorKind Kind) {
+-  assert(Kind != PostfixOperatorKind::None &&
+-         "not a defaulted postfix operator");
+-  bool IsIncrement = Kind == PostfixOperatorKind::Increment;
+-
+-  // Perform the unqualified lookup of the prefix operator that the implicit
+-  // definition needs. C++2d [over.inc.default]p1:
+-  //   Name lookups and access checks in the implicit definition of a defaulted
+-  //   postfix increment or decrement operator function are performed from a
+-  //   context equivalent to its function-body.
+-  // The lookup is performed from S, not from CurContext. S is either the body
+-  // scope of an out-of-line definition, or the scope of the class in which the
+-  // function is defaulted on its first declaration; for a lookup that ignores
+-  // member functions, both are equivalent to the function-body.
+-  if (S) {
+-    assert((S->getEntity() == FD ||
+-            S->getEntity() == FD->getLexicalDeclContext()) &&
+-           "lookup scope is not equivalent to the function-body");
+-    UnresolvedSet<2> Operators;
+-    LookupOverloadedOperatorName(IsIncrement ? OO_PlusPlus : OO_MinusMinus, S,
+-                                 Operators);
+-    FD->setDefaultedOrDeletedInfo(
+-        FunctionDecl::DefaultedOrDeletedFunctionInfo::Create(
+-            Context, Operators.pairs(), CurFPFeatureOverrides()));
+-  }
+-
+-  // C++2d [over.inc.default]p1:
+-  //   A defaulted postfix increment or decrement operator function for a type
+-  //   C shall be a non-template function that
+-  //    -- has a first parameter of type "reference to C" or a first parameter
+-  //       of type "reference to volatile C", where the implicit object
+-  //       parameter (if any) is considered to be the first parameter,
+-  //    -- is defined as defaulted in C or in a context where C is complete,
+-  //       and
+-  //    -- has a declared return type of C.
+-  auto *MD = dyn_cast<CXXMethodDecl>(FD);
+-  ParmVarDecl *FirstParam = FD->getParamDecl(0);
+-  QualType FirstParamType = getPostfixOperatorFirstParamType(FD);
+-  QualType ReturnType = FD->getDeclaredReturnType();
+-
+-  // If the first parameter type is dependent, or the function is in a dependent
+-  // context, defer all checks until instantiation.
+-  if (FirstParamType->isDependentType() || FD->isDependentContext())
+-    return false;
+-
+-  // Check the type of the first parameter and determine the type C from it.
+-  // For a member function, C is the enclosing class. For a non-member function,
+-  // C is the class or enumeration type of its first parameter;
+-  // CheckOverloadedOperatorDeclaration has already required it to have one.
+-  QualType Referent = FirstParamType.getNonReferenceType();
+-  QualType C = MD ? Context.getCanonicalTagType(MD->getParent())
+-                  : Referent.getUnqualifiedType();
+-  assert((C->isRecordType() || C->isEnumeralType()) &&
+-         "postfix operator for a non-class, non-enumeration type");
+-
+-  // The first parameter must be a reference to C, which may be
+-  // volatile-qualified but not const-qualified.
+-  if (!FirstParamType->isReferenceType() ||
+-      !Context.hasSameUnqualifiedType(Referent, C) ||
+-      Referent.isConstQualified()) {
+-    if (MD && MD->isImplicitObjectMemberFunction()) {
+-      // The implicit object parameter is always a reference to the enclosing
+-      // class, so the only possible problem is a const qualifier.
+-      Diag(MD->getLocation(), diag::err_defaulted_postfix_operator_const)
+-          << (int)Kind;
+-    } else {
+-      Diag(FirstParam->getBeginLoc(),
+-           diag::err_defaulted_postfix_operator_param)
+-          << (int)Kind << !MD << FirstParamType
+-          << Context.getLValueReferenceType(C) << FirstParam->getSourceRange();
+-    }
+-    return true;
+-  }
+-
+-  // A deduced return type is never permitted. Allowing it would need P2952R2
+-  // (auto& operator=(X&&) = default), which is not part of the standard.
+-  if (ReturnType->getContainedDeducedType()) {
+-    Diag(FD->getLocation(),
+-         diag::err_defaulted_postfix_operator_deduced_return_type)
+-        << (int)Kind << FD->getReturnTypeSourceRange();
+-    return true;
+-  }
+-
+-  //    -- has a declared return type of C.
+-  if (!Context.hasSameType(ReturnType, C)) {
+-    Diag(FD->getLocation(), diag::err_defaulted_postfix_operator_return_type)
+-        << (int)Kind << C << ReturnType << FD->getReturnTypeSourceRange();
+-    return true;
+-  }
+-
+-  //    -- is defined as defaulted in C or in a context where C is complete
+-  if (RequireCompleteType(FD->getLocation(), C,
+-                          diag::err_defaulted_postfix_operator_incomplete,
+-                          (int)Kind))
+-    return true;
+-
+-  // Determine whether the function should be defined as deleted.
+-  DefaultedPostfixOperatorInfo Info =
+-      analyzeDefaultedPostfixOperator(*this, FD, Kind, C, /*Diagnose=*/false);
+-
+-  // An instantiated member function has a single declaration; whether it is
+-  // defaulted on its first declaration, and where, is decided by the
+-  // defaulted definition that it is instantiated from.
+-  const FunctionDecl *Defaulted = FD;
+-  if (const FunctionDecl *Pattern = FD->getTemplateInstantiationPattern())
+-    if (const FunctionDecl *PatternDef = Pattern->getDefinition())
+-      Defaulted = PatternDef;
+-  bool First = Defaulted == Defaulted->getFirstDecl();
+-
+-  if (!First) {
+-    if (Info.Deleted) {
+-      // C++11 [dcl.fct.def.default]p4:
+-      //   [For a] user-provided explicitly-defaulted function [...] if such a
+-      //   function is implicitly defined as deleted, the program is ill-formed.
+-      //
+-      // This is really just a consequence of the general rule that you can
+-      // only delete a function on its first declaration.
+-      Diag(FD->getLocation(),
+-           diag::err_non_first_default_postfix_operator_deletes)
+-          << (int)Kind;
+-      analyzeDefaultedPostfixOperator(*this, FD, Kind, C, /*Diagnose=*/true);
+-      return true;
+-    }
+-    if (isa<CXXRecordDecl>(Defaulted->getLexicalDeclContext())) {
+-      // C++2d [over.inc.default]p1:
+-      //   A definition of a postfix increment or decrement operator as
+-      //   defaulted that appears in a class shall be the first declaration of
+-      //   that function.
+-      Diag(FD->getLocation(),
+-           diag::err_non_first_default_postfix_operator_in_class)
+-          << (int)Kind;
+-      Diag(FD->getCanonicalDecl()->getLocation(),
+-           diag::note_previous_declaration);
+-      return true;
+-    }
+-  }
+-
+-  // If we want to delete the function, then do so; there's nothing else to
+-  // check in that case.
+-  if (Info.Deleted) {
+-    SetDeclDeleted(FD, FD->getLocation());
+-    if (!inTemplateInstantiation() && !FD->isImplicit()) {
+-      Diag(FD->getLocation(), diag::warn_defaulted_postfix_operator_deleted)
+-          << (int)Kind;
+-      analyzeDefaultedPostfixOperator(*this, FD, Kind, C, /*Diagnose=*/true);
+-      if (FD->getDefaultLoc().isValid())
+-        Diag(FD->getDefaultLoc(), diag::note_replace_equals_default_to_delete)
+-            << FixItHint::CreateReplacement(FD->getDefaultLoc(), "delete");
+-    }
+-    return false;
+-  }
+-
+-  // C++23 [dcl.fct.def.default]p3 [P2448R2] allows any defaulted function to
+-  // be declared constexpr or consteval. Before C++23, it could only be declared
+-  // so if it was constexpr-compatible; we don't apply that restriction to
+-  // defaulted postfix operators, which are an extension before C++2d.
+-
+-  if (First) {
+-    // C++11 [dcl.fct.def.default]p5:
+-    //   A function explicitly defaulted on its first declaration is implicitly
+-    //   inline.
+-    FD->setImplicitlyInline();
+-
+-    // C++2a [dcl.fct.def.default]p3 [P2002R0]:
+-    //   If a constexpr-compatible function is explicitly defaulted on its
+-    //   first declaration, it is implicitly considered to be constexpr.
+-    // C++23 [dcl.fct.def.default]p3 [P2448R2]:
+-    //   A function explicitly defaulted on its first declaration is [...]
+-    //   implicitly constexpr if it is constexpr-suitable.
+-    // A postfix operator function is always constexpr-suitable. The implicit
+-    // definition declares a variable, so it can only be constexpr in C++14
+-    // and later, and a virtual function can only be constexpr in C++20 and
+-    // later.
+-    if (!FD->isConstexpr() && getLangOpts().CPlusPlus14 &&
+-        (getLangOpts().CPlusPlus20 || !MD || !MD->isVirtual()) &&
+-        (getLangOpts().CPlusPlus23 ||
+-         (Info.Constexpr &&
+-          CheckConstexprReturnType(*this, FD, CheckConstexprKind::CheckValid) &&
+-          CheckConstexprParameterTypes(*this, FD,
+-                                       CheckConstexprKind::CheckValid))))
+-      FD->setConstexprKind(ConstexprSpecKind::Constexpr);
+-
+-    // C++2d [except.spec]p10:
+-    //   The exception specification for [...] a postfix increment or decrement
+-    //   operator function without a noexcept-specifier that is defaulted on
+-    //   its first declaration is potentially-throwing if and only if any
+-    //   expression in the implicit definition is potentially-throwing.
+-    if (FD->getExceptionSpecType() == EST_None) {
+-      auto *FPT = FD->getType()->castAs<FunctionProtoType>();
+-      FunctionProtoType::ExtProtoInfo EPI = FPT->getExtProtoInfo();
+-      EPI.ExceptionSpec.Type = EST_Unevaluated;
+-      EPI.ExceptionSpec.SourceDecl = FD;
+-      FD->setType(Context.getFunctionType(FPT->getReturnType(),
+-                                          FPT->getParamTypes(), EPI));
+-    }
+-  }
+-
+-  return false;
+-}
+-
+-/// Build the body of a defaulted postfix increment or decrement operator
+-/// function. C++2d [over.inc.default]p3:
+-///   The implicit definition of a defaulted postfix increment or decrement
+-///   operator function F that is not defined as deleted for a type C is
+-///   equivalent to:
+-///     C tmp(c);
+-///     ++c;      // or --c
+-///     return tmp;
+-///   where tmp is a variable defined for exposition only, and c is an lvalue
+-///   that denotes *this if F is an implicit object member function, or the
+-///   first parameter of F otherwise.
+-static StmtResult buildDefaultedPostfixOperatorBody(Sema &S, FunctionDecl *FD,
+-                                                    PostfixOperatorKind Kind,
+-                                                    SourceLocation Loc) {
+-  Sema::CompoundScopeRAII CompoundScope(S);
+-
+-  // Build an expression denoting 'c'.
+-  auto BuildObject = [&]() -> Expr * {
+-    if (const auto *MD = dyn_cast<CXXMethodDecl>(FD);
+-        MD && MD->isImplicitObjectMemberFunction()) {
+-      ExprResult This = S.ActOnCXXThis(Loc);
+-      assert(This.isUsable() && "no 'this' in an implicit object member");
+-      return S.CreateBuiltinUnaryOp(Loc, UO_Deref, This.get()).get();
+-    }
+-    // Diagnose the use of an unavailable or deprecated parameter. Nothing else
+-    // can make the use of a parameter in its function's body invalid.
+-    ParmVarDecl *Param = FD->getParamDecl(0);
+-    [[maybe_unused]] bool Invalid = S.DiagnoseUseOfDecl(Param, Loc);
+-    assert(!Invalid && "invalid use of a parameter in its function's body");
+-    return S.BuildDeclRefExpr(Param, Param->getType().getNonReferenceType(),
+-                              VK_LValue, Loc);
+-  };
+-
+-  // C tmp(c);
+-  QualType C = FD->getReturnType();
+-  VarDecl *Tmp =
+-      VarDecl::Create(S.Context, S.CurContext, Loc, Loc, /*Id=*/nullptr, C,
+-                      S.Context.getTrivialTypeSourceInfo(C, Loc), SC_None);
+-  Expr *InitArgs[] = {BuildObject()};
+-  S.AddInitializerToDecl(Tmp,
+-                         ParenListExpr::Create(S.Context, Loc, InitArgs, Loc),
+-                         /*DirectInit=*/true);
+-  // A failed initialization doesn't invalidate the variable, but an abstract
+-  // type C does.
+-  if (Tmp->isInvalidDecl())
+-    return StmtError();
+-  StmtResult TmpStmt = S.ActOnDeclStmt(S.ConvertDeclToDeclGroup(Tmp), Loc, Loc);
+-  assert(TmpStmt.isUsable() && "failed to build a declaration statement");
+-
+-  // ++c; or --c;
+-  Expr *Obj = BuildObject();
+-  UnaryOperatorKind Opc =
+-      Kind == PostfixOperatorKind::Increment ? UO_PreInc : UO_PreDec;
+-  UnresolvedSet<2> Fns;
+-  if (auto *DFI = FD->getDefaultedOrDeletedInfo())
+-    Fns.assign(DFI->getUnqualifiedLookups().begin(),
+-               DFI->getUnqualifiedLookups().end());
+-  ExprResult Prefix =
+-      S.CreateOverloadedUnaryOp(Loc, Opc, Fns, Obj, /*RequiresADL=*/true);
+-  if (Prefix.isInvalid())
+-    return StmtError();
+-  StmtResult PrefixStmt = S.ActOnExprStmt(Prefix, /*DiscardedValue=*/true);
+-  if (PrefixStmt.isInvalid())
+-    return StmtError();
+-
+-  // return tmp;
+-  Expr *TmpRef = S.BuildDeclRefExpr(Tmp, C, VK_LValue, Loc);
+-  StmtResult Return = S.BuildReturnStmt(Loc, TmpRef);
+-  if (Return.isInvalid())
+-    return StmtError();
+-  // 'tmp' is the only variable returned by this function, so it qualifies for
+-  // the named return value optimization.
+-  if (cast<ReturnStmt>(Return.get())->getNRVOCandidate() == Tmp)
+-    Tmp->setNRVOVariable(true);
+-
+-  Stmt *Stmts[] = {TmpStmt.get(), PrefixStmt.get(), Return.get()};
+-  return S.ActOnCompoundStmt(Loc, Loc, Stmts, /*IsStmtExpr=*/false);
+-}
+-
+-void Sema::DefineDefaultedPostfixOperator(SourceLocation UseLoc,
+-                                          FunctionDecl *FD,
+-                                          PostfixOperatorKind Kind) {
+-  defineDefaultedFunctionWithSynthesizedBody(
+-      *this, UseLoc, FD, [&](SourceLocation BodyLoc) {
+-        return buildDefaultedPostfixOperatorBody(*this, FD, Kind, BodyLoc);
+-      });
+-}
+-
+-static Sema::ImplicitExceptionSpecification
+-ComputeDefaultedPostfixOperatorExceptionSpec(Sema &S, SourceLocation Loc,
+-                                             FunctionDecl *FD,
+-                                             PostfixOperatorKind Kind) {
+-  return computeExceptionSpecFromSynthesizedBody(
+-      S, Loc, FD, [&](SourceLocation BodyLoc) {
+-        return buildDefaultedPostfixOperatorBody(S, FD, Kind, BodyLoc);
+-      });
+-}
+ 
+ void Sema::CheckDelayedMemberExceptionSpecs() {
+   decltype(DelayedOverridingExceptionSpecChecks) Overriding;
+@@ -10683,12 +10144,6 @@
+   if (DFK.isSpecialMember()) {
+     ShouldDeleteSpecialMember(cast<CXXMethodDecl>(FD), DFK.asSpecialMember(),
+                               nullptr, /*Diagnose=*/true);
+-  } else if (DFK.isPostfixOperator()) {
+-    QualType C = getPostfixOperatorFirstParamType(FD)
+-                     .getNonReferenceType()
+-                     .getUnqualifiedType();
+-    analyzeDefaultedPostfixOperator(*this, FD, DFK.asPostfixOperator(), C,
+-                                    /*Diagnose=*/true);
+   } else {
+     DefaultedComparisonAnalyzer(
+         *this, cast<CXXRecordDecl>(FD->getLexicalDeclContext()), FD,
+@@ -19513,30 +18968,21 @@
+   Fn->setDeletedAsWritten(true, Message);
+ }
+ 
+-void Sema::SetDeclDefaulted(Decl *Dcl, SourceLocation DefaultLoc, Scope *S) {
++void Sema::SetDeclDefaulted(Decl *Dcl, SourceLocation DefaultLoc) {
+   if (!Dcl || Dcl->isInvalidDecl())
+     return;
+ 
+-  // Which kinds of functions can be defaulted in the current language mode.
+-  unsigned DefaultableKinds = diag::DefaultableFunctionKinds::Default;
+-  if (getLangOpts().CPlusPlus29)
+-    DefaultableKinds = diag::DefaultableFunctionKinds::Cxx29;
+-  else if (getLangOpts().CPlusPlus20)
+-    DefaultableKinds = diag::DefaultableFunctionKinds::Cxx20;
+-
+   auto *FD = dyn_cast<FunctionDecl>(Dcl);
+   if (!FD) {
+     if (auto *FTD = dyn_cast<FunctionTemplateDecl>(Dcl)) {
+-      FunctionDecl::DefaultedFunctionKind DFK =
+-          FTD->getTemplatedDecl()->getDefaultedFunctionKind();
+-      if (DFK.isComparison() || DFK.isPostfixOperator()) {
+-        Diag(DefaultLoc, diag::err_defaulted_operator_template)
+-            << DFK.isPostfixOperator() << (int)DFK.asPostfixOperator();
++      if (FTD->getTemplatedDecl()->getDefaultedFunctionKind().isComparison()) {
++        Diag(DefaultLoc, diag::err_defaulted_comparison_template);
+         return;
+       }
+     }
+ 
+-    Diag(DefaultLoc, diag::err_default_special_members) << DefaultableKinds;
++    Diag(DefaultLoc, diag::err_default_special_members)
++        << getLangOpts().CPlusPlus20;
+     return;
+   }
+ 
+@@ -19549,12 +18995,8 @@
+       (!FD->isDependentContext() ||
+        (!isa<CXXConstructorDecl>(FD) &&
+         FD->getDeclName().getCXXOverloadedOperator() != OO_Equal))) {
+-    OverloadedOperatorKind OO = FD->getDeclName().getCXXOverloadedOperator();
+-    if (OO == OO_PlusPlus || OO == OO_MinusMinus)
+-      Diag(DefaultLoc, diag::err_defaulted_prefix_operator)
+-          << (OO == OO_MinusMinus);
+-    else
+-      Diag(DefaultLoc, diag::err_default_special_members) << DefaultableKinds;
++    Diag(DefaultLoc, diag::err_default_special_members)
++        << getLangOpts().CPlusPlus20;
+     return;
+   }
+ 
+@@ -19564,36 +19006,22 @@
+       DefKind.asComparison() != DefaultedComparisonKind::ThreeWay) {
+     DiagCompat(DefaultLoc, diag_compat::defaulted_comparison);
+   }
+-  // Defaulted postfix increment and decrement operators (P3668R4) are a C++2d
+-  // feature that we support in all C++ language modes as an extension.
+-  if (DefKind.isPostfixOperator() && !inTemplateInstantiation())
+-    DiagCompat(DefaultLoc, diag_compat::defaulted_postfix_operator);
+ 
+   FD->setDefaulted();
+   FD->setExplicitlyDefaulted();
+   FD->setDefaultLoc(DefaultLoc);
+ 
+   // Defer checking functions that are defaulted in a dependent context.
+-  if (FD->isDependentContext()) {
+-    // The unqualified lookup of the prefix operator for a postfix operator
+-    // defaulted outside its class can only be performed now, while we have the
+-    // scope of the function-body. Instantiation reuses its result. (When it is
+-    // defaulted in its class, the lookup is performed once the class is
+-    // complete.)
+-    if (DefKind.isPostfixOperator() &&
+-        !isa<CXXRecordDecl>(FD->getLexicalDeclContext()))
+-      CheckExplicitlyDefaultedPostfixOperator(S, FD,
+-                                              DefKind.asPostfixOperator());
++  if (FD->isDependentContext())
+     return;
+-  }
+ 
+   // Unset that we will have a body for this function. We might not,
+   // if it turns out to be trivial, and we don't need this marking now
+   // that we've marked it as defaulted.
+   FD->setWillHaveBody(false);
+ 
+-  if (DefKind.isComparison() || DefKind.isPostfixOperator()) {
+-    // If this function's defaulting occurs within the definition of its
++  if (DefKind.isComparison()) {
++    // If this comparison's defaulting occurs within the definition of its
+     // lexical class context, we have to do the checking when complete.
+     if (auto const *RD = dyn_cast<CXXRecordDecl>(FD->getLexicalDeclContext()))
+       if (!RD->isCompleteDefinition())
+@@ -19628,13 +19056,6 @@
+       FD->setInvalidDecl();
+     else
+       DefineDefaultedComparison(DefaultLoc, FD, DefKind.asComparison());
+-  } else if (DefKind.isPostfixOperator()) {
+-    if (CheckExplicitlyDefaultedPostfixOperator(S, FD,
+-                                                DefKind.asPostfixOperator()))
+-      FD->setInvalidDecl();
+-    else if (!FD->isDeleted())
+-      DefineDefaultedPostfixOperator(DefaultLoc, FD,
+-                                     DefKind.asPostfixOperator());
+   } else {
+     auto *MD = cast<CXXMethodDecl>(FD);
+ 
+@@ -19666,13 +19087,13 @@
+ }
+ 
+ void Sema::SetFunctionBodyKind(Decl *D, SourceLocation Loc, FnBodyKind BodyKind,
+-                               StringLiteral *DeletedMessage, Scope *S) {
++                               StringLiteral *DeletedMessage) {
+   switch (BodyKind) {
+   case FnBodyKind::Delete:
+     SetDeclDeleted(D, Loc, DeletedMessage);
+     break;
+   case FnBodyKind::Default:
+-    SetDeclDefaulted(D, Loc, S);
++    SetDeclDefaulted(D, Loc);
+     break;
+   case FnBodyKind::Other:
+     llvm_unreachable(
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
+--- a/clang/lib/Sema/SemaExpr.cpp
++++ b/clang/lib/Sema/SemaExpr.cpp
+@@ -19446,12 +19446,9 @@
+       }
+ 
+       if (Func->isDefaulted() && !Func->isDeleted()) {
+-        FunctionDecl::DefaultedFunctionKind DFK =
+-            Func->getDefaultedFunctionKind();
+-        if (DFK.isComparison())
+-          DefineDefaultedComparison(Loc, Func, DFK.asComparison());
+-        else if (DFK.isPostfixOperator())
+-          DefineDefaultedPostfixOperator(Loc, Func, DFK.asPostfixOperator());
++        DefaultedComparisonKind DCK = Func->getDefaultedComparisonKind();
++        if (DCK != DefaultedComparisonKind::None)
++          DefineDefaultedComparison(Loc, Func, DCK);
+       }
+ 
+       // Implicit instantiation of function templates and member functions of
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaOverload.cpp b/clang/lib/Sema/SemaOverload.cpp
+--- a/clang/lib/Sema/SemaOverload.cpp
++++ b/clang/lib/Sema/SemaOverload.cpp
+@@ -15554,19 +15554,6 @@
+     return ExprError();
+ 
+   case OR_Deleted: {
+-    // A defaulted postfix increment or decrement operator that was implicitly
+-    // defined as deleted. Explain why it was deleted.
+-    if (FunctionDecl *DeletedFD = Best->Function;
+-        DeletedFD->isDefaulted() &&
+-        DeletedFD->getDefaultedFunctionKind().isPostfixOperator()) {
+-      Diag(OpLoc, diag::err_ovl_deleted_postfix_operator)
+-          << Input->getType()
+-          << (int)DeletedFD->getDefaultedFunctionKind().asPostfixOperator()
+-          << Input->getSourceRange();
+-      NoteDeletedFunction(DeletedFD);
+-      return ExprError();
+-    }
+-
+     // CreateOverloadedUnaryOp fills the first element of ArgsArray with the
+     // object whose method was called. Later in NoteCandidates size of ArgsArray
+     // is passed further and it eventually ends up compared to number of
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+--- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+@@ -1168,13 +1168,6 @@
+         DiagFunc(Active->PointOfInstantiation,
+                  PDiag(diag::note_comparison_synthesized_at)
+                      << (int)DFK.asComparison() << RecordType);
+-      } else if (DFK.isPostfixOperator()) {
+-        // The declared return type of a defaulted postfix operator is the
+-        // type for which it is defaulted.
+-        DiagFunc(Active->PointOfInstantiation,
+-                 PDiag(diag::note_postfix_operator_synthesized_at)
+-                     << (int)DFK.asPostfixOperator()
+-                     << FD->getReturnType().getUnqualifiedType());
+       }
+       break;
+     }
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
+--- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
+@@ -6264,13 +6264,6 @@
+ 
+   if (PatternDecl->isDefaulted()) {
+     RebuildTypeSourceInfoForDefaultSpecialMembers();
+-    // A function defaulted outside its class was not defaulted when its
+-    // declaration was instantiated, so transfer the unqualified lookups
+-    // performed at its definition now. They were performed from namespace
+-    // scope, so they don't need to be instantiated.
+-    if (!Function->getDefaultedOrDeletedInfo())
+-      Function->setDefaultedOrDeletedInfo(
+-          PatternDecl->getDefaultedOrDeletedInfo());
+     SetDeclDefaulted(Function, PatternDecl->getLocation());
+   } else {
+     DeclContext *DC = Function->getLexicalDeclContext();
+diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-defaulted-postfix-operators.cpp b/clang/test/AST/ast-dump-defaulted-postfix-operators.cpp
+--- a/clang/test/AST/ast-dump-defaulted-postfix-operators.cpp
++++ b/clang/test/AST/ast-dump-defaulted-postfix-operators.cpp
+@@ -1,119 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -ast-dump %s | FileCheck %s
+-
+-// The implicit definition of a defaulted postfix increment or decrement
+-// operator for a type C is equivalent to:
+-//   C tmp(c);
+-//   ++c;
+-//   return tmp;
+-
+-struct S {
+-  int v;
+-  S &operator++();
+-  S operator++(int) = default;
+-};
+-void use_member(S s) { s++; }
+-
+-// CHECK:      CXXMethodDecl {{.*}} used constexpr operator++ 'S (int) noexcept(false)' default implicit-inline
+-// CHECK-NEXT:   ParmVarDecl {{.*}} 'int'
+-// CHECK-NEXT:   CompoundStmt
+-// CHECK-NEXT:     DeclStmt
+-// CHECK-NEXT:       VarDecl {{.*}} used 'S' nrvo callinit
+-// CHECK-NEXT:         CXXConstructExpr {{.*}} 'S' 'void (const S &) noexcept'
+-// CHECK-NEXT:           ImplicitCastExpr {{.*}} 'const S' lvalue <NoOp>
+-// CHECK-NEXT:             UnaryOperator {{.*}} 'S' lvalue prefix '*' cannot overflow
+-// CHECK-NEXT:               CXXThisExpr {{.*}} 'S *' this
+-// CHECK-NEXT:     CXXOperatorCallExpr {{.*}} 'S' lvalue '++'
+-// CHECK-NEXT:       ImplicitCastExpr {{.*}} 'S &(*)()' <FunctionToPointerDecay>
+-// CHECK-NEXT:         DeclRefExpr {{.*}} 'S &()' lvalue CXXMethod {{.*}} 'operator++' 'S &()'
+-// CHECK-NEXT:       UnaryOperator {{.*}} 'S' lvalue prefix '*' cannot overflow
+-// CHECK-NEXT:         CXXThisExpr {{.*}} 'S *' this
+-// CHECK-NEXT:     ReturnStmt {{.*}} nrvo_candidate(Var {{.*}} 'S')
+-// CHECK-NEXT:       CXXConstructExpr {{.*}} 'S' 'void (S &&) noexcept'
+-// CHECK-NEXT:         ImplicitCastExpr {{.*}} 'S' xvalue <NoOp>
+-// CHECK-NEXT:           DeclRefExpr {{.*}} 'S' lvalue Var {{.*}} 'S'
+-
+-struct T {
+-  int v;
+-  T &operator--();
+-};
+-T operator--(T &self, int) = default;
+-void use_non_member(T t) { t--; }
+-
+-// CHECK:      FunctionDecl {{.*}} used constexpr operator-- 'T (T &, int) noexcept(false)' default implicit-inline
+-// CHECK-NEXT:   ParmVarDecl {{.*}} used self 'T &'
+-// CHECK-NEXT:   ParmVarDecl {{.*}} 'int'
+-// CHECK-NEXT:   CompoundStmt
+-// CHECK-NEXT:     DeclStmt
+-// CHECK-NEXT:       VarDecl {{.*}} used 'T' nrvo callinit
+-// CHECK-NEXT:         CXXConstructExpr {{.*}} 'T' 'void (const T &) noexcept'
+-// CHECK-NEXT:           ImplicitCastExpr {{.*}} 'const T' lvalue <NoOp>
+-// CHECK-NEXT:             DeclRefExpr {{.*}} 'T' lvalue ParmVar {{.*}} 'self' 'T &'
+-// CHECK-NEXT:     CXXOperatorCallExpr {{.*}} 'T' lvalue '--'
+-// CHECK-NEXT:       ImplicitCastExpr {{.*}} 'T &(*)()' <FunctionToPointerDecay>
+-// CHECK-NEXT:         DeclRefExpr {{.*}} 'T &()' lvalue CXXMethod {{.*}} 'operator--' 'T &()'
+-// CHECK-NEXT:       DeclRefExpr {{.*}} 'T' lvalue ParmVar {{.*}} 'self' 'T &'
+-// CHECK-NEXT:     ReturnStmt {{.*}} nrvo_candidate(Var {{.*}} 'T')
+-// CHECK-NEXT:       CXXConstructExpr {{.*}} 'T' 'void (T &&) noexcept'
+-// CHECK-NEXT:         ImplicitCastExpr {{.*}} 'T' xvalue <NoOp>
+-// CHECK-NEXT:           DeclRefExpr {{.*}} 'T' lvalue Var {{.*}} 'T'
+-
+-struct U {
+-  int v;
+-  U &operator++();
+-  U operator++(this U &self, int) = default;
+-};
+-void use_explicit_object(U u) { u++; }
+-
+-// CHECK:      CXXMethodDecl {{.*}} used constexpr operator++ 'U (U &, int) noexcept(false)' default implicit-inline
+-// CHECK-NEXT:   ParmVarDecl {{.*}} used self this 'U &'
+-// CHECK-NEXT:   ParmVarDecl {{.*}} 'int'
+-// CHECK-NEXT:   CompoundStmt
+-// CHECK-NEXT:     DeclStmt
+-// CHECK-NEXT:       VarDecl {{.*}} used 'U' nrvo callinit
+-// CHECK-NEXT:         CXXConstructExpr {{.*}} 'U' 'void (const U &) noexcept'
+-// CHECK-NEXT:           ImplicitCastExpr {{.*}} 'const U' lvalue <NoOp>
+-// CHECK-NEXT:             DeclRefExpr {{.*}} 'U' lvalue ParmVar {{.*}} 'self' 'U &'
+-// CHECK-NEXT:     CXXOperatorCallExpr {{.*}} 'U' lvalue '++'
+-// CHECK-NEXT:       ImplicitCastExpr {{.*}} 'U &(*)()' <FunctionToPointerDecay>
+-// CHECK-NEXT:         DeclRefExpr {{.*}} 'U &()' lvalue CXXMethod {{.*}} 'operator++' 'U &()'
+-// CHECK-NEXT:       DeclRefExpr {{.*}} 'U' lvalue ParmVar {{.*}} 'self' 'U &'
+-// CHECK-NEXT:     ReturnStmt {{.*}} nrvo_candidate(Var {{.*}} 'U')
+-// CHECK-NEXT:       CXXConstructExpr {{.*}} 'U' 'void (U &&) noexcept'
+-// CHECK-NEXT:         ImplicitCastExpr {{.*}} 'U' xvalue <NoOp>
+-// CHECK-NEXT:           DeclRefExpr {{.*}} 'U' lvalue Var {{.*}} 'U'
+-
+-// A deleted defaulted postfix operator has no body.
+-struct Deleted {
+-  Deleted operator++(int) = default;
+-};
+-// CHECK:      CXXRecordDecl {{.*}} struct Deleted definition
+-// CHECK:      CXXMethodDecl {{.*}} operator++ 'Deleted (int)' default_delete
+-// CHECK-NEXT:   ParmVarDecl {{.*}} 'int'
+-// CHECK-NOT:    CompoundStmt
+-
+-// A constrained defaulted postfix operator keeps its requires-clause, and its
+-// implicit definition calls the prefix operator selected by overload
+-// resolution, which is the more constrained one.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct Constrained {
+-  T v;
+-  Constrained &operator++() requires Small<T>;
+-  Constrained &operator++();
+-  Constrained operator++(int) requires Small<T> = default;
+-};
+-void use_constrained(Constrained<int> c) { c++; }
+-
+-// CHECK:      ClassTemplateSpecializationDecl {{.*}} struct Constrained definition
+-// CHECK:        CXXMethodDecl [[PREFIX:0x[0-9a-f]+]] {{.*}} used operator++ 'Constrained<int> &()'
+-// CHECK-NEXT:     ConceptSpecializationExpr {{.*}} 'bool' Concept {{.*}} 'Small'
+-// CHECK:        CXXMethodDecl {{.*}} operator++ 'Constrained<int> &()'
+-// CHECK-NEXT:   CXXMethodDecl {{.*}} used constexpr operator++ 'Constrained<int> (int) noexcept(false)' implicit_instantiation default implicit-inline
+-// CHECK-NEXT:     ParmVarDecl {{.*}} 'int'
+-// CHECK-NEXT:     ConceptSpecializationExpr {{.*}} 'bool' Concept {{.*}} 'Small'
+-// CHECK:          CompoundStmt
+-// CHECK-NEXT:       DeclStmt
+-// CHECK-NEXT:         VarDecl {{.*}} used 'Constrained<int>' nrvo callinit
+-// CHECK:            CXXOperatorCallExpr {{.*}} 'Constrained<int>' lvalue '++'
+-// CHECK-NEXT:         ImplicitCastExpr {{.*}} 'Constrained<int> &(*)()' <FunctionToPointerDecay>
+-// CHECK-NEXT:           DeclRefExpr {{.*}} 'Constrained<int> &()' lvalue CXXMethod [[PREFIX]] 'operator++' 'Constrained<int> &()'
+-// CHECK:            ReturnStmt {{.*}} nrvo_candidate(Var {{.*}} 'Constrained<int>')
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/SystemZ/builtins-systemz-zvector.c b/clang/test/CodeGen/SystemZ/builtins-systemz-zvector.c
+--- a/clang/test/CodeGen/SystemZ/builtins-systemz-zvector.c
++++ b/clang/test/CodeGen/SystemZ/builtins-systemz-zvector.c
+@@ -59,15 +59,11 @@
+ volatile signed short ss;
+ volatile signed int si;
+ volatile signed long long sl;
+-volatile signed long long sl1;
+-volatile signed long long sl2;
+ volatile signed __int128 slll;
+ volatile unsigned char uc;
+ volatile unsigned short us;
+ volatile unsigned int ui;
+ volatile unsigned long long ul;
+-volatile unsigned long long ul1;
+-volatile unsigned long long ul2;
+ volatile unsigned __int128 ulll;
+ volatile double d;
+ 
+@@ -773,9 +769,9 @@
+   // CHECK: call void @llvm.s390.vstl(<16 x i8> %{{.*}}, i32 %{{.*}}, ptr %{{.*}})
+   // CHECK-ASM: vstl
+ 
+-  vsl = vec_load_pair(sl1 + 1, sl2 - 1);
++  vsl = vec_load_pair(sl + 1, sl - 1);
+   // CHECK-ASM: vlvgp
+-  vul = vec_load_pair(ul1 + 1, ul2 - 1);
++  vul = vec_load_pair(ul + 1, ul - 1);
+   // CHECK-ASM: vlvgp
+ 
+   vuc = vec_genmask(0);
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/cxx2d-defaulted-postfix-operators.cpp b/clang/test/CodeGenCXX/cxx2d-defaulted-postfix-operators.cpp
+--- a/clang/test/CodeGenCXX/cxx2d-defaulted-postfix-operators.cpp
++++ b/clang/test/CodeGenCXX/cxx2d-defaulted-postfix-operators.cpp
+@@ -1,81 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -triple x86_64-linux-gnu -emit-llvm -o - %s | FileCheck %s
+-
+-// A defaulted postfix increment or decrement operator copies the object,
+-// applies the prefix operator, and returns the copy (with NRVO).
+-
+-struct Trivial {
+-  int v;
+-  Trivial &operator++();
+-  Trivial operator++(int) = default;
+-};
+-Trivial use_trivial(Trivial t) { return t++; }
+-
+-// CHECK-LABEL: define {{.*}} @_Z11use_trivial7Trivial(
+-// CHECK:         call i32 @_ZN7TrivialppEi(ptr {{.*}} %t, i32 noundef 0)
+-
+-// A function defaulted on its first declaration is implicitly inline.
+-// CHECK-LABEL: define linkonce_odr i32 @_ZN7TrivialppEi(ptr {{.*}} %this, i32 noundef %0)
+-// CHECK:         call void @llvm.memcpy.p0.p0.i64(ptr align 4 %retval, ptr align 4 %this1, i64 4, i1 false)
+-// CHECK-NEXT:    call {{.*}} @_ZN7TrivialppEv(ptr {{.*}} %this1)
+-// CHECK:         ret i32
+-
+-struct NonTrivial {
+-  int *p;
+-  NonTrivial(const NonTrivial &);
+-  NonTrivial(NonTrivial &&);
+-  ~NonTrivial();
+-  NonTrivial &operator--();
+-};
+-NonTrivial operator--(NonTrivial &, int) = default;
+-NonTrivial use_non_trivial(NonTrivial n) { return n--; }
+-
+-// CHECK-LABEL: define {{.*}} @_Z15use_non_trivial10NonTrivial(
+-// CHECK:         call void @_ZmmR10NonTriviali(ptr {{.*}} %agg.result, ptr {{.*}} %n, i32 noundef 0)
+-
+-// The copy is constructed directly in the return slot; no move constructor is
+-// called.
+-// CHECK-LABEL: define linkonce_odr void @_ZmmR10NonTriviali(ptr {{.*}} %agg.result, ptr {{.*}} %0, i32 noundef %1)
+-// CHECK:         call void @_ZN10NonTrivialC1ERKS_(ptr {{.*}} %agg.result, ptr {{.*}})
+-// CHECK:         call {{.*}} @_ZN10NonTrivialmmEv(
+-// CHECK-NOT:     call void @_ZN10NonTrivialC1EOS_
+-// CHECK:         ret void
+-
+-struct Explicit {
+-  int v;
+-  Explicit &operator++();
+-  Explicit operator++(this Explicit &self, int) = default;
+-};
+-Explicit use_explicit(Explicit e) { return e++; }
+-
+-// CHECK-LABEL: define linkonce_odr i32 @_ZNH8ExplicitppERS_i(ptr {{.*}} %self, i32 noundef %0)
+-// CHECK:         call void @llvm.memcpy.p0.p0.i64(ptr align 4 %retval, ptr align 4 %{{.*}}, i64 4, i1 false)
+-// CHECK:         call {{.*}} @_ZN8ExplicitppEv(
+-// CHECK:         ret i32
+-
+-// The requires-clause of a constrained defaulted postfix operator is part of
+-// its mangled name, and the implicit definition calls the more constrained
+-// prefix operator.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct Constrained {
+-  T v;
+-  Constrained &operator++() requires Small<T>;
+-  Constrained &operator++();
+-  Constrained &operator--();
+-  Constrained operator++(int) requires Small<T> = default;
+-  friend Constrained operator--(Constrained &, int) requires Small<T> = default;
+-};
+-Constrained<int> use_constrained(Constrained<int> c) { c--; return c++; }
+-
+-// CHECK-LABEL: define {{.*}} @_Z15use_constrained11ConstrainedIiE(
+-// CHECK:         call i32 @_ZN11ConstrainedIiEFmmERS0_iQ5SmallIT_E(ptr {{.*}} %c, i32 noundef 0)
+-// CHECK:         call i32 @_ZN11ConstrainedIiEppEiQ5SmallIT_E(ptr {{.*}} %c, i32 noundef 0)
+-
+-// CHECK-LABEL: define linkonce_odr i32 @_ZN11ConstrainedIiEFmmERS0_iQ5SmallIT_E(ptr {{.*}} %0, i32 noundef %1)
+-// CHECK:         call void @llvm.memcpy.p0.p0.i64(ptr align 4 %retval, ptr align 4 %{{.*}}, i64 4, i1 false)
+-// CHECK:         call {{.*}} @_ZN11ConstrainedIiEmmEv(
+-// CHECK:         ret i32
+-
+-// CHECK-LABEL: define linkonce_odr i32 @_ZN11ConstrainedIiEppEiQ5SmallIT_E(ptr {{.*}} %this, i32 noundef %0)
+-// CHECK:         call void @llvm.memcpy.p0.p0.i64(ptr align 4 %retval, ptr align 4 %this1, i64 4, i1 false)
+-// CHECK-NEXT:    call {{.*}} @_ZN11ConstrainedIiEppEvQ5SmallIT_E(ptr {{.*}} %this1)
+-// CHECK:         ret i32
+diff -ruN --strip-trailing-cr a/clang/test/PCH/cxx2d-defaulted-postfix-operators.cpp b/clang/test/PCH/cxx2d-defaulted-postfix-operators.cpp
+--- a/clang/test/PCH/cxx2d-defaulted-postfix-operators.cpp
++++ b/clang/test/PCH/cxx2d-defaulted-postfix-operators.cpp
+@@ -1,95 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -verify -include %s %s
+-//
+-// RUN: %clang_cc1 -std=c++2d -emit-pch %s -o %t.pch
+-// RUN: %clang_cc1 -std=c++2d -include-pch %t.pch %s -verify
+-//
+-// RUN: %clang_cc1 -std=c++2d -emit-pch -fpch-instantiate-templates %s -o %t.pch
+-// RUN: %clang_cc1 -std=c++2d -include-pch %t.pch %s -verify
+-
+-// expected-no-diagnostics
+-
+-#ifndef INCLUDED
+-#define INCLUDED
+-
+-struct Counter {
+-  int v;
+-  constexpr Counter &operator++() { ++v; return *this; }
+-  constexpr Counter &operator--() { --v; return *this; }
+-  Counter operator++(int) = default;
+-  friend Counter operator--(Counter &, int) = default;
+-};
+-
+-// Ensure that we can round-trip DefaultedOrDeletedInfo through an AST file.
+-namespace LookupContext {
+-namespace A {
+-struct X { int v; };
+-}
+-namespace B {
+-constexpr A::X &operator++(A::X &x) { ++x.v; return x; }
+-}
+-namespace A {
+-using namespace B;
+-template <typename T> struct Y {
+-  T x;
+-  constexpr Y &operator++() { ++x; return *this; }
+-  Y operator++(int) = default;
+-};
+-} // namespace A
+-} // namespace LookupContext
+-
+-// Ensure that requires-clauses on defaulted postfix operators and the prefix
+-// operators they select round-trip through an AST file.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct Constrained {
+-  T v;
+-  constexpr Constrained &operator++() requires Small<T> { v += 1; return *this; }
+-  constexpr Constrained &operator++() { v += 10; return *this; }
+-  constexpr Constrained &operator--() { --v; return *this; }
+-  Constrained operator++(int) requires Small<T> = default;
+-  friend Constrained operator--(Constrained &, int) requires Small<T> = default;
+-};
+-template <typename T> struct PrefixConstrained {
+-  T v;
+-  constexpr PrefixConstrained &operator++() requires Small<T> { ++v; return *this; }
+-  PrefixConstrained operator++(int) requires requires(PrefixConstrained &p) { ++p; } = default;
+-};
+-
+-#else
+-
+-constexpr int counter() {
+-  Counter c{1};
+-  Counter a = c++;
+-  Counter b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(counter() == 121);
+-
+-namespace Other {
+-constexpr int lookup() {
+-  LookupContext::A::Y<LookupContext::A::X> y{{1}};
+-  LookupContext::A::Y<LookupContext::A::X> a = y++;
+-  return a.x.v * 10 + y.x.v;
+-}
+-static_assert(lookup() == 12);
+-} // namespace Other
+-
+-constexpr int constrained() {
+-  Constrained<int> c{1};
+-  Constrained<int> a = c++;
+-  Constrained<int> b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(constrained() == 121);
+-template <typename T> concept PostIncrementable = requires(T t) { t++; };
+-static_assert(PostIncrementable<Constrained<int>>);
+-static_assert(!PostIncrementable<Constrained<long long>>);
+-
+-constexpr int prefix_constrained() {
+-  PrefixConstrained<int> p{1};
+-  PrefixConstrained<int> a = p++;
+-  return a.v * 10 + p.v;
+-}
+-static_assert(prefix_constrained() == 12);
+-static_assert(!PostIncrementable<PrefixConstrained<long long>>);
+-
+-#endif
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-declaration.cpp b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-declaration.cpp
+--- a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-declaration.cpp
++++ b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-declaration.cpp
+@@ -1,413 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -verify %s
+-
+-// C++2d [over.inc.default]p1:
+-//   A defaulted postfix increment or decrement operator function for a type C
+-//   shall be a non-template function that
+-//    -- has a first parameter of type "reference to C" or a first parameter of
+-//       type "reference to volatile C", where the implicit object parameter
+-//       (if any) is considered to be the first parameter,
+-//    -- is defined as defaulted in C or in a context where C is complete, and
+-//    -- has a declared return type of C.
+-//   [...] A definition of a postfix increment or decrement operator as
+-//   defaulted that appears in a class shall be the first declaration of that
+-//   function.
+-
+-struct S {
+-  S &operator++();
+-  S &operator--();
+-
+-  S operator++(int) = default;
+-  S operator--(int) = default;
+-};
+-
+-// The implicit object parameter is the first parameter.
+-struct Const {
+-  Const &operator++();
+-  Const operator++(int) const = default; // expected-error {{defaulted member postfix increment operator cannot be const-qualified}}
+-};
+-struct ConstDecrement {
+-  ConstDecrement &operator--();
+-  ConstDecrement operator--(int) const = default; // expected-error {{defaulted member postfix decrement operator cannot be const-qualified}}
+-};
+-struct Volatile {
+-  Volatile &operator++() volatile;
+-  Volatile operator++(int) volatile = default; // OK, "reference to volatile C"
+-};
+-struct RefQualified {
+-  RefQualified &operator++();
+-  RefQualified operator++(int) & = default;  // OK
+-  RefQualified operator++(int) && = default; // OK, an rvalue reference is a "reference to C"
+-};
+-
+-// __restrict__ is not part of the type of the implicit object parameter.
+-struct Restrict {
+-  Restrict &operator++();
+-  Restrict operator++(int) __restrict__ = default; // OK
+-};
+-struct RestrictBoth {
+-  RestrictBoth &operator--() __restrict__;
+-  RestrictBoth operator--(int) __restrict__ = default; // OK
+-};
+-struct RestrictRvalue {
+-  RestrictRvalue &operator++();
+-  RestrictRvalue operator++(int) __restrict__ && = default; // OK
+-};
+-struct RestrictVolatile {
+-  RestrictVolatile &operator++() volatile;
+-  RestrictVolatile(const volatile RestrictVolatile &);
+-  RestrictVolatile(RestrictVolatile &&);
+-  RestrictVolatile operator++(int) volatile __restrict__ = default; // OK
+-};
+-struct RestrictConst {
+-  RestrictConst &operator++();
+-  RestrictConst operator++(int) const __restrict__ = default; // expected-error {{defaulted member postfix increment operator cannot be const-qualified}}
+-};
+-struct ExplicitRestrict {
+-  ExplicitRestrict &operator++();
+-  ExplicitRestrict operator++(this ExplicitRestrict &__restrict__, int) = default; // OK
+-};
+-
+-// Explicit object parameters.
+-struct Explicit {
+-  Explicit &operator++();
+-  Explicit operator++(this Explicit &, int) = default; // OK
+-};
+-struct ExplicitVolatile {
+-  ExplicitVolatile &operator++() volatile;
+-  ExplicitVolatile operator++(this volatile ExplicitVolatile &, int) = default; // OK
+-};
+-struct ExplicitRvalue {
+-  ExplicitRvalue &operator++();
+-  ExplicitRvalue operator++(this ExplicitRvalue &&, int) = default; // OK
+-};
+-struct ExplicitConst {
+-  ExplicitConst &operator++();
+-  ExplicitConst operator++(this const ExplicitConst &, int) = default; // expected-error {{invalid explicit object parameter type for defaulted postfix increment operator; found 'const ExplicitConst &', expected 'ExplicitConst &'}}
+-};
+-struct ExplicitOther {
+-  ExplicitOther &operator++();
+-  ExplicitOther operator++(this S &, int) = default; // expected-error {{invalid explicit object parameter type for defaulted postfix increment operator; found 'S &', expected 'ExplicitOther &'}}
+-};
+-struct ExplicitByValue {
+-  ExplicitByValue &operator--();
+-  ExplicitByValue operator--(this ExplicitByValue, int) = default; // expected-error {{invalid explicit object parameter type for defaulted postfix decrement operator; found 'ExplicitByValue', expected 'ExplicitByValue &'}}
+-};
+-
+-// Return type.
+-struct ReturnsRef {
+-  ReturnsRef &operator++();
+-  ReturnsRef &operator++(int) = default; // expected-error {{return type for defaulted postfix increment operator must be 'ReturnsRef', not 'ReturnsRef &'}}
+-};
+-struct ReturnsConst {
+-  ReturnsConst &operator++();
+-  const ReturnsConst operator++(int) = default; // expected-error {{return type for defaulted postfix increment operator must be 'ReturnsConst', not 'const ReturnsConst'}}
+-};
+-struct ReturnsAuto {
+-  ReturnsAuto &operator++();
+-  auto operator++(int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-struct ReturnsDecltypeAuto {
+-  ReturnsDecltypeAuto &operator--();
+-  decltype(auto) operator--(int) = default; // expected-error {{defaulted postfix decrement operator cannot have a deduced return type}}
+-};
+-struct ReturnsInt {
+-  ReturnsInt &operator++();
+-  int operator++(int) = default; // expected-error {{return type for defaulted postfix increment operator must be 'ReturnsInt', not 'int'}}
+-};
+-struct ReturnsAlias {
+-  using Self = ReturnsAlias;
+-  Self &operator++();
+-  Self operator++(int) = default; // OK
+-};
+-struct ReturnsTrailing {
+-  ReturnsTrailing &operator++();
+-  auto operator++(int) -> ReturnsTrailing = default; // OK, not a deduced return type
+-};
+-
+-// A placeholder type is not C, even if deduction would produce C.
+-template <typename T> concept Any = true;
+-struct ReturnsConstrainedAuto {
+-  ReturnsConstrainedAuto &operator++();
+-  Any auto operator++(int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-struct ReturnsAutoPointer {
+-  ReturnsAutoPointer &operator++();
+-  auto *operator++(int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-struct ReturnsAutoRef {
+-  ReturnsAutoRef &operator--();
+-  auto &operator--(int) = default; // expected-error {{defaulted postfix decrement operator cannot have a deduced return type}}
+-};
+-struct ReturnsConstAuto {
+-  ReturnsConstAuto &operator++();
+-  const auto operator++(int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-struct ReturnsConstrainedAutoRef {
+-  ReturnsConstrainedAutoRef &operator++();
+-  const Any auto &operator++(int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-
+-// Non-member functions.
+-struct N {
+-  N &operator++();
+-  N &operator--();
+-};
+-N operator++(N &, int) = default;  // OK
+-N operator--(N &&, int) = default; // OK, an rvalue reference is a "reference to C"
+-
+-struct NV {
+-  NV &operator++() volatile;
+-  NV(const volatile NV &);
+-  NV(NV &&);
+-};
+-NV operator++(volatile NV &, int) = default; // OK
+-
+-struct NConst { NConst &operator++(); };
+-NConst operator++(const NConst &, int) = default; // expected-error {{invalid first parameter type for defaulted postfix increment operator; found 'const NConst &', expected 'NConst &'}}
+-struct NValue { NValue &operator++(); };
+-NValue operator++(NValue, int) = default; // expected-error {{invalid first parameter type for defaulted postfix increment operator; found 'NValue', expected 'NValue &'}}
+-struct NRet { NRet &operator--(); };
+-int operator--(NRet &, int) = default; // expected-error {{return type for defaulted postfix decrement operator must be 'NRet', not 'int'}}
+-struct NMismatch { NMismatch &operator++(); };
+-S operator++(NMismatch &, int) = default; // expected-error {{return type for defaulted postfix increment operator must be 'NMismatch', not 'S'}}
+-// The first parameter is checked before the return type.
+-struct NValueBadReturn { NValueBadReturn &operator++(); };
+-S &operator++(NValueBadReturn, int) = default; // expected-error {{invalid first parameter type for defaulted postfix increment operator; found 'NValueBadReturn', expected 'NValueBadReturn &'}}
+-struct NAuto {
+-  NAuto &operator++();
+-  NAuto &operator--();
+-};
+-auto operator++(NAuto &, int) = default;           // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-Any auto operator--(NAuto &, int) = default;       // expected-error {{defaulted postfix decrement operator cannot have a deduced return type}}
+-decltype(auto) operator++(NAuto &&, int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-auto operator--(NAuto &&, int) -> NAuto = default;  // OK
+-struct NRestrict { NRestrict &operator++(); };
+-NRestrict operator++(NRestrict &__restrict__, int) = default; // OK
+-
+-// Enumerations.
+-enum E { e };
+-E &operator++(E &);
+-E operator++(E &, int) = default; // OK
+-enum class EC { ec };
+-EC operator++(EC &, int) = default; // OK, defined as deleted (see p2.cpp)
+-// expected-warning@-1 {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@-2 {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'EC'}}
+-// expected-note@-3 {{replace 'default' with 'delete'}}
+-
+-// C must be complete.
+-struct Incomplete; // expected-note {{forward declaration of 'Incomplete'}}
+-Incomplete operator++(Incomplete &, int) = default; // expected-error {{incomplete result type 'Incomplete' in function definition}}
+-struct IncompleteFriend; // expected-note {{forward declaration of 'IncompleteFriend'}}
+-struct Befriender {
+-  friend IncompleteFriend operator++(IncompleteFriend &, int) = default; // expected-error {{cannot default postfix increment operator for incomplete type 'IncompleteFriend'}}
+-};
+-struct DefinedLater {
+-  friend DefinedLater operator++(DefinedLater &, int) = default; // OK, defaulted in C
+-  DefinedLater &operator++();
+-};
+-
+-// A definition as defaulted that appears in a class shall be the first
+-// declaration of that function.
+-struct First;
+-First operator++(First &, int); // expected-note {{previous declaration is here}}
+-struct First {
+-  First &operator++();
+-  friend First operator++(First &, int) = default; // expected-error {{defaulting this postfix increment operator is not allowed because it was already declared outside the class}}
+-};
+-struct OutOfLine {
+-  OutOfLine &operator++();
+-  OutOfLine operator++(int);
+-};
+-OutOfLine OutOfLine::operator++(int) = default; // OK
+-struct OutOfLineFriend {
+-  OutOfLineFriend &operator--();
+-  friend OutOfLineFriend operator--(OutOfLineFriend &, int);
+-};
+-OutOfLineFriend operator--(OutOfLineFriend &, int) = default; // OK
+-struct Redefined {
+-  Redefined &operator++();
+-  Redefined operator++(int) = default;
+-};
+-Redefined Redefined::operator++(int) { return *this; } // expected-error {{definition of explicitly defaulted function}}
+-
+-// Templates cannot be defaulted.
+-struct Template {
+-  Template &operator++();
+-  template <typename T = void> Template operator++(int) = default; // expected-error {{postfix increment operator template cannot be defaulted}}
+-};
+-template <typename T = void> S operator--(S &, int) = default; // expected-error {{postfix decrement operator template cannot be defaulted}}
+-
+-// A parameter declared with a placeholder type makes the function an
+-// abbreviated function template.
+-struct AutoFirst {
+-  AutoFirst &operator++();
+-  AutoFirst &operator--();
+-  AutoFirst operator++(this auto &, int) = default;   // expected-error {{postfix increment operator template cannot be defaulted}}
+-  friend AutoFirst operator--(auto &, int) = default; // expected-error {{postfix decrement operator template cannot be defaulted}}
+-};
+-AutoFirst operator++(Any auto &, int) = default; // expected-error {{postfix increment operator template cannot be defaulted}}
+-AutoFirst operator--(auto &&, int) = default;    // expected-error {{postfix decrement operator template cannot be defaulted}}
+-
+-// The second parameter of a postfix operator always has type int.
+-struct AutoSecond {
+-  AutoSecond &operator++();
+-  AutoSecond &operator--();
+-  AutoSecond operator++(auto) = default;                    // expected-error {{postfix increment operator template cannot be defaulted}}
+-  AutoSecond operator--(this AutoSecond &, auto) = default; // expected-error {{postfix decrement operator template cannot be defaulted}}
+-};
+-AutoSecond operator++(AutoSecond &&, Any auto) = default; // expected-error {{postfix increment operator template cannot be defaulted}}
+-struct NotInt {
+-  NotInt &operator++();
+-  NotInt &operator--();
+-  NotInt operator++(long) = default;                    // expected-error {{parameter of overloaded post-increment operator must have type 'int' (not 'long')}}
+-  NotInt operator--(this NotInt &, unsigned) = default; // expected-error {{parameter of overloaded post-decrement operator must have type 'int' (not 'unsigned int')}}
+-};
+-NotInt operator++(NotInt &&, char) = default; // expected-error {{parameter of overloaded post-increment operator must have type 'int' (not 'char')}}
+-struct IntSpellings {
+-  using Int = int;
+-  IntSpellings &operator++();
+-  IntSpellings &operator--();
+-  IntSpellings operator++(const int) = default; // OK
+-  IntSpellings operator--(Int) = default;       // OK
+-};
+-struct DefaultArgument {
+-  DefaultArgument &operator++();
+-  DefaultArgument operator++(int = 0) = default; // expected-error {{parameter of overloaded 'operator++' cannot have a default argument}}
+-};
+-
+-// Only the postfix forms can be defaulted.
+-struct Prefix {
+-  Prefix &operator++() = default; // expected-error {{only the postfix form of 'operator++' can be defaulted}}
+-  Prefix &operator--() = default; // expected-error {{only the postfix form of 'operator--' can be defaulted}}
+-};
+-struct PrefixNonMember {};
+-PrefixNonMember &operator++(PrefixNonMember &) = default; // expected-error {{only the postfix form of 'operator++' can be defaulted}}
+-
+-// Other operators still cannot be defaulted.
+-struct Other {
+-  Other operator+(int) = default; // expected-error {{only special member functions, comparison operators, and postfix increment and decrement operators may be defaulted}}
+-};
+-
+-// Dependent declarations are checked when instantiated.
+-template <typename T> struct DependentReturn {
+-  DependentReturn &operator++();
+-  T operator++(int) = default; // expected-error {{return type for defaulted postfix increment operator must be 'DependentReturn<int>', not 'int'}}
+-};
+-DependentReturn<int> dr1; // expected-note {{in instantiation of template class 'DependentReturn<int>' requested here}}
+-
+-template <typename T> struct DependentObject {
+-  DependentObject &operator++();
+-  DependentObject operator++(this T &, int) = default; // expected-error {{invalid explicit object parameter type for defaulted postfix increment operator; found 'int &', expected 'DependentObject<int> &'}}
+-};
+-DependentObject<int> do1; // expected-note {{in instantiation of template class 'DependentObject<int>' requested here}}
+-
+-template <typename T> struct DependentFriend {
+-  DependentFriend &operator++();
+-  friend DependentFriend operator++(DependentFriend &, int) = default; // OK
+-  friend int operator--(T &, int) = default;                           // expected-error {{return type for defaulted postfix decrement operator must be 'S', not 'int'}}
+-};
+-DependentFriend<S> df1; // expected-note {{in instantiation of template class 'DependentFriend<S>' requested here}}
+-
+-// In a dependent context, a deduced return type is diagnosed when the template
+-// is instantiated.
+-template <typename T> struct DependentAuto {
+-  DependentAuto &operator++();
+-  DependentAuto &operator--();
+-  friend auto operator++(DependentAuto &, int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-  auto operator--(this DependentAuto &, int) = default;   // expected-error {{defaulted postfix decrement operator cannot have a deduced return type}}
+-};
+-DependentAuto<int> da1; // expected-note {{in instantiation of template class 'DependentAuto<int>' requested here}}
+-
+-template <typename T> struct DependentDeducedReturn {
+-  DependentDeducedReturn &operator++();
+-  DependentDeducedReturn &operator--();
+-  auto operator++(int) = default;     // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-  Any auto operator--(int) = default; // expected-error {{defaulted postfix decrement operator cannot have a deduced return type}}
+-};
+-DependentDeducedReturn<int> ddr1; // expected-note {{in instantiation of template class 'DependentDeducedReturn<int>' requested here}}
+-template <typename T> struct DependentDeducedReturn2 {
+-  DependentDeducedReturn2 &operator++();
+-  DependentDeducedReturn2 &operator--();
+-  decltype(auto) operator++(int) = default;                       // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-  friend T *operator--(DependentDeducedReturn2 &, int) = default; // expected-error {{return type for defaulted postfix decrement operator must be 'DependentDeducedReturn2<int>', not 'int *'}}
+-};
+-DependentDeducedReturn2<int> ddr2; // expected-note {{in instantiation of template class 'DependentDeducedReturn2<int>' requested here}}
+-template <typename T> struct DependentConstrainedFriend {
+-  DependentConstrainedFriend &operator++();
+-  friend Any auto operator++(DependentConstrainedFriend &, int) = default; // expected-error {{defaulted postfix increment operator cannot have a deduced return type}}
+-};
+-DependentConstrainedFriend<int> dcf1; // expected-note {{in instantiation of template class 'DependentConstrainedFriend<int>' requested here}}
+-
+-// A trailing return type that names C is not deduced.
+-template <typename T> struct DependentTrailing {
+-  DependentTrailing &operator++();
+-  auto operator++(int) -> T = default; // expected-error {{return type for defaulted postfix increment operator must be 'DependentTrailing<int>', not 'int'}}
+-};
+-DependentTrailing<int> dt1; // expected-note {{in instantiation of template class 'DependentTrailing<int>' requested here}}
+-template <typename T> struct DependentTrailingOK {
+-  DependentTrailingOK &operator++();
+-  auto operator++(int) -> DependentTrailingOK = default; // OK
+-};
+-DependentTrailingOK<int> dt2;
+-
+-// A placeholder parameter makes the function a template even in a class
+-// template.
+-template <typename T> struct DependentAutoParam {
+-  DependentAutoParam &operator++();
+-  DependentAutoParam &operator--();
+-  DependentAutoParam operator++(this auto &, int) = default;  // expected-error {{postfix increment operator template cannot be defaulted}}
+-  friend DependentAutoParam operator--(auto &, int) = default; // expected-error {{postfix decrement operator template cannot be defaulted}}
+-  DependentAutoParam operator++(auto) = default;               // expected-error {{postfix increment operator template cannot be defaulted}}
+-};
+-
+-// A dependent second parameter is checked when instantiated.
+-template <typename T> struct DependentSecond {
+-  DependentSecond &operator++();
+-  DependentSecond operator++(T) = default; // expected-error {{parameter of overloaded post-increment operator must have type 'int' (not 'long')}}
+-};
+-DependentSecond<int> ds1;  // OK
+-DependentSecond<long> ds2; // expected-note {{in instantiation of template class 'DependentSecond<long>' requested here}}
+-
+-template <typename T> struct DependentRestrict {
+-  DependentRestrict &operator++();
+-  DependentRestrict operator++(int) __restrict__ = default;       // OK
+-  DependentRestrict operator--(int) const __restrict__ = default; // expected-error {{defaulted member postfix decrement operator cannot be const-qualified}}
+-};
+-DependentRestrict<int> dres1; // expected-note {{in instantiation of template class 'DependentRestrict<int>' requested here}}
+-
+-// The same checks apply to the postfix decrement operator.
+-struct IncompleteDecrement; // expected-note {{forward declaration of 'IncompleteDecrement'}}
+-struct BefrienderDecrement {
+-  friend IncompleteDecrement operator--(IncompleteDecrement &, int) = default; // expected-error {{cannot default postfix decrement operator for incomplete type 'IncompleteDecrement'}}
+-};
+-struct NConstDecrement { NConstDecrement &operator--(); };
+-NConstDecrement operator--(const NConstDecrement &, int) = default; // expected-error {{invalid first parameter type for defaulted postfix decrement operator; found 'const NConstDecrement &', expected 'NConstDecrement &'}}
+-
+-// A defaulted postfix operator may be constrained. The requires-clause does
+-// not make it a template.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct Constrained {
+-  Constrained &operator++();
+-  Constrained &operator--();
+-  Constrained operator++(int) requires Small<T> = default;                   // OK
+-  Constrained operator--(this Constrained &, int) requires Small<T> = default; // OK
+-  friend Constrained operator++(Constrained &&, int) requires Small<T> = default; // OK
+-};
+-Constrained<int> c1;
+-Constrained<long long> c2;
+-
+-// A constrained defaulted postfix operator is checked when its class is
+-// instantiated, even if its constraints are not satisfied.
+-template <typename T> struct ConstrainedBad {
+-  ConstrainedBad &operator++();
+-  ConstrainedBad &operator--();
+-  int operator++(int) requires Small<T> = default; // expected-error {{return type for defaulted postfix increment operator must be 'ConstrainedBad<long long>', not 'int'}}
+-  ConstrainedBad operator--(this const ConstrainedBad &, int) requires Small<T> = default; // expected-error {{invalid explicit object parameter type for defaulted postfix decrement operator; found 'const ConstrainedBad<long long> &', expected 'ConstrainedBad<long long> &'}}
+-};
+-ConstrainedBad<long long> cb1; // expected-note {{in instantiation of template class 'ConstrainedBad<long long>' requested here}}
+-
+-// A requires-clause on a postfix operator that is not a templated entity.
+-struct NotTemplated {
+-  NotTemplated &operator++();
+-  NotTemplated operator++(int) requires true = default; // expected-error {{non-templated function cannot have a requires clause}}
+-};
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-definition.cpp b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-definition.cpp
+--- a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-definition.cpp
++++ b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-definition.cpp
+@@ -1,653 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -verify %s
+-// RUN: %clang_cc1 -std=c++2d -funknown-anytype -DUNKNOWN_ANYTYPE -verify=anytype %s
+-
+-#ifdef UNKNOWN_ANYTYPE
+-// The discarded-value prefix call must have a known type.
+-struct UnknownPrefixResult {
+-  __unknown_anytype operator++();
+-  UnknownPrefixResult operator++(int) = default; // anytype-error {{'operator++' has unknown return type; cast the call to its declared return type}}
+-};
+-void unknown_prefix_result(UnknownPrefixResult u) {
+-  u++; // anytype-note {{in defaulted postfix increment operator for 'UnknownPrefixResult' first required here}}
+-}
+-#else
+-
+-// C++2d [over.inc.default]p3:
+-//   The implicit definition of a defaulted postfix increment or decrement
+-//   operator function F that is not defined as deleted for a type C is
+-//   equivalent to:
+-//     C tmp(c);
+-//     ++c;
+-//     return tmp;
+-//   for a postfix increment operator function, or
+-//     C tmp(c);
+-//     --c;
+-//     return tmp;
+-//   for a postfix decrement operator function, where tmp is a variable defined
+-//   for exposition only, and c is an lvalue that denotes *this if F is an
+-//   implicit object member function, or the first parameter of F otherwise.
+-
+-struct Counter {
+-  int v;
+-  constexpr Counter &operator++() { ++v; return *this; }
+-  constexpr Counter &operator--() { --v; return *this; }
+-  Counter operator++(int) = default;
+-  Counter operator--(int) = default;
+-};
+-constexpr int counter() {
+-  Counter c{1};
+-  Counter a = c++;
+-  Counter b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(counter() == 121);
+-
+-struct NonMember {
+-  int v;
+-  constexpr NonMember &operator++() { ++v; return *this; }
+-};
+-constexpr NonMember operator++(NonMember &, int) = default;
+-constexpr int non_member() {
+-  NonMember n{1};
+-  NonMember a = n++;
+-  return a.v * 10 + n.v;
+-}
+-static_assert(non_member() == 12);
+-
+-struct ExplicitObject {
+-  int v;
+-  constexpr ExplicitObject &operator++() { ++v; return *this; }
+-  ExplicitObject operator++(this ExplicitObject &self, int) = default;
+-};
+-constexpr int explicit_object() {
+-  ExplicitObject e{1};
+-  ExplicitObject a = e++;
+-  return a.v * 10 + e.v;
+-}
+-static_assert(explicit_object() == 12);
+-
+-struct RvalueObject {
+-  int v;
+-  constexpr RvalueObject &operator++() { ++v; return *this; }
+-  RvalueObject operator++(int) && = default;
+-};
+-constexpr int rvalue_object() {
+-  RvalueObject r{1};
+-  RvalueObject a = static_cast<RvalueObject &&>(r)++;
+-  return a.v * 10 + r.v;
+-}
+-static_assert(rvalue_object() == 12);
+-
+-// The result of the prefix operator is discarded, so its type is irrelevant.
+-struct ReturnsVoid {
+-  int v;
+-  constexpr void operator++() { ++v; }
+-  ReturnsVoid operator++(int) = default;
+-};
+-constexpr int returns_void() {
+-  ReturnsVoid r{1};
+-  ReturnsVoid a = r++;
+-  return a.v * 10 + r.v;
+-}
+-static_assert(returns_void() == 12);
+-
+-// Enumerations.
+-enum E { e0, e1, e2 };
+-constexpr E &operator++(E &e) { return e = E(e + 1); }
+-constexpr E operator++(E &, int) = default;
+-constexpr int enumeration() {
+-  E e = e0;
+-  E a = e++;
+-  return a * 10 + e;
+-}
+-static_assert(enumeration() == 1);
+-
+-// The prefix operator may be a built-in operator reached through a conversion
+-// function.
+-struct ConvertsToInt {
+-  int v;
+-  constexpr operator int &() { return v; }
+-  ConvertsToInt operator++(int) = default;
+-};
+-constexpr int converts_to_int() {
+-  ConvertsToInt c{1};
+-  ConvertsToInt a = c++;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(converts_to_int() == 12);
+-
+-// Class templates.
+-template <typename T> struct Wrapper {
+-  T v;
+-  constexpr Wrapper &operator++() { ++v; return *this; }
+-  constexpr Wrapper &operator--() { --v; return *this; }
+-  Wrapper operator++(int) = default;
+-  friend Wrapper operator--(Wrapper &, int) = default;
+-};
+-constexpr int wrapper() {
+-  Wrapper<int> w{5};
+-  Wrapper<int> a = w++;
+-  Wrapper<int> b = w--;
+-  return a.v * 100 + b.v * 10 + w.v;
+-}
+-static_assert(wrapper() == 565);
+-
+-// Direct-initialization of the copy permits an explicit copy constructor, but
+-// the return statement needs a usable move or copy constructor.
+-struct ExplicitCopy {
+-  explicit ExplicitCopy(const ExplicitCopy &);
+-  ExplicitCopy(ExplicitCopy &&);
+-  ExplicitCopy &operator++();
+-  ExplicitCopy operator++(int) = default; // OK
+-};
+-void explicit_copy(ExplicitCopy e) { e++; }
+-
+-struct ExplicitCopyOnly {
+-  explicit ExplicitCopyOnly(const ExplicitCopyOnly &); // expected-note {{explicit constructor is not a candidate}}
+-  ExplicitCopyOnly &operator++();
+-  ExplicitCopyOnly operator++(int) = default; // expected-error {{no matching constructor for initialization of 'ExplicitCopyOnly'}}
+-};
+-void explicit_copy_only(ExplicitCopyOnly e) {
+-  e++; // expected-note {{in defaulted postfix increment operator for 'ExplicitCopyOnly' first required here}}
+-}
+-
+-struct DeletedMove {
+-  DeletedMove(const DeletedMove &);
+-  DeletedMove(DeletedMove &&) = delete; // expected-note {{'DeletedMove' has been explicitly marked deleted here}}
+-  DeletedMove &operator++();
+-  DeletedMove operator++(int) = default; // expected-error {{call to deleted constructor of 'DeletedMove'}}
+-};
+-void deleted_move(DeletedMove d) {
+-  d++; // expected-note {{in defaulted postfix increment operator for 'DeletedMove' first required here}}
+-}
+-
+-// [over.inc.default]p2 checks the copy from an lvalue of type C, but in the
+-// implicit definition of a volatile member, c is an lvalue of type volatile C.
+-struct VolatileAggregate {
+-  volatile VolatileAggregate &operator++() volatile;
+-  VolatileAggregate operator++(int) volatile = default; // expected-error {{excess elements in struct initializer}}
+-};
+-void volatile_aggregate(VolatileAggregate v) {
+-  v++; // expected-note {{in defaulted postfix increment operator for 'VolatileAggregate' first required here}}
+-}
+-
+-// Errors that overload resolution does not detect make the implicit definition
+-// ill-formed rather than deleted.
+-struct BadDefaultArgument {
+-  BadDefaultArgument();
+-  template <class T> BadDefaultArgument(T &, int = T::missing); // expected-error 2 {{no member named 'missing' in 'BadDefaultArgument'}}
+-  BadDefaultArgument &operator++();
+-  BadDefaultArgument operator++(int) = default; // expected-note 2 {{in instantiation of default function argument expression for 'BadDefaultArgument<BadDefaultArgument>' required here}}
+-};
+-void bad_default_argument(BadDefaultArgument b) {
+-  b++; // expected-note 2 {{in defaulted postfix increment operator for 'BadDefaultArgument' first required here}}
+-}
+-
+-// tmp cannot have an abstract class type.
+-struct Abstract {
+-  virtual void f() = 0; // expected-note {{unimplemented pure virtual method 'f' in 'Abstract'}}
+-  Abstract &operator++();
+-  Abstract operator++(int) = default; // expected-error {{variable type 'Abstract' is an abstract class}}
+-};
+-void abstract(Abstract &a) {
+-  a++; // expected-note {{in defaulted postfix increment operator for 'Abstract' first required here}}
+-}
+-
+-struct Incomplete; // expected-note 2 {{forward declaration of 'Incomplete'}}
+-struct IncompletePrefixResult {
+-  Incomplete operator++(); // expected-note {{'operator++' declared here}}
+-  IncompletePrefixResult operator++(int) = default; // expected-error {{calling 'operator++' with incomplete return type 'Incomplete'}}
+-};
+-void incomplete_prefix_result(IncompletePrefixResult i) {
+-  i++; // expected-note {{in defaulted postfix increment operator for 'IncompletePrefixResult' first required here}}
+-}
+-
+-struct DeletedDestructor {
+-  ~DeletedDestructor() = delete; // expected-note {{'~DeletedDestructor' has been explicitly marked deleted here}}
+-};
+-struct DeletedDestructorPrefixResult {
+-  DeletedDestructor operator--();
+-  DeletedDestructorPrefixResult operator--(int) = default; // expected-error {{attempt to use a deleted function}}
+-};
+-void deleted_destructor_prefix_result(DeletedDestructorPrefixResult d) {
+-  d--; // expected-note {{in defaulted postfix decrement operator for 'DeletedDestructorPrefixResult' first required here}}
+-}
+-
+-// Uses of the first parameter in the implicit definition are checked as usual.
+-struct UnavailableParam {
+-  UnavailableParam &operator++();
+-};
+-UnavailableParam operator++(UnavailableParam &u __attribute__((unavailable)), int) = default; // expected-note 2 {{'u' has been explicitly marked unavailable here}}
+-// expected-error@-1 2 {{'u' is unavailable}}
+-// expected-note@-2 {{in defaulted postfix increment operator for 'UnavailableParam' first required here}}
+-void unavailable_param(UnavailableParam u) { u++; }
+-
+-// The same errors are diagnosed when the body is only built to compute the
+-// exception specification.
+-struct IncompletePrefixResultNoexcept {
+-  Incomplete operator++(); // expected-note {{'operator++' declared here}}
+-  IncompletePrefixResultNoexcept operator++(int) = default; // expected-error {{calling 'operator++' with incomplete return type 'Incomplete'}}
+-};
+-extern IncompletePrefixResultNoexcept incomplete_prefix_result_noexcept;
+-bool incomplete_noexcept = noexcept(incomplete_prefix_result_noexcept++); // expected-note {{in evaluation of exception specification for 'IncompletePrefixResultNoexcept::operator++' needed here}}
+-
+-// Attributes on the prefix operator are honored, as for any other call.
+-struct Nodiscard {
+-  [[nodiscard]] Nodiscard &operator++();
+-  Nodiscard operator++(int) = default; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-};
+-void nodiscard(Nodiscard n) {
+-  n++; // expected-note {{in defaulted postfix increment operator for 'Nodiscard' first required here}}
+-}
+-
+-// Volatile objects.
+-struct Volatile {
+-  Volatile();
+-  Volatile(const Volatile &);
+-  Volatile(const volatile Volatile &);
+-  Volatile(Volatile &&);
+-  Volatile &operator++() volatile;
+-  Volatile operator++(int) volatile = default;
+-};
+-void use_volatile() {
+-  volatile Volatile v;
+-  v++;
+-}
+-
+-// Name lookup for the prefix operator is performed from a context equivalent
+-// to the function body, even if the body is synthesized elsewhere.
+-namespace Lookup {
+-namespace A {
+-struct X { int v; };
+-struct Y;
+-} // namespace A
+-namespace B {
+-constexpr A::Y &operator++(A::Y &y);
+-} // namespace B
+-namespace C {
+-namespace Nested {
+-constexpr A::X &operator++(A::X &x) { ++x.v; return x; }
+-} // namespace Nested
+-using namespace Nested;
+-// Found by unqualified lookup through the using-directive, not by ADL.
+-constexpr A::X operator++(A::X &, int) = default;
+-} // namespace C
+-constexpr int non_member() {
+-  A::X x{1};
+-  A::X a = C::operator++(x, 0);
+-  return a.v * 10 + x.v;
+-}
+-static_assert(non_member() == 12);
+-
+-namespace A {
+-using namespace B;
+-struct Y {
+-  int v;
+-  Y operator++(int) = default;
+-};
+-} // namespace A
+-constexpr A::Y &B::operator++(A::Y &y) { ++y.v; return y; }
+-namespace D {
+-constexpr int member() {
+-  A::Y y{1};
+-  A::Y a = y++; // The body is synthesized here, where B::operator++ is not visible.
+-  return a.v * 10 + y.v;
+-}
+-static_assert(member() == 12);
+-} // namespace D
+-
+-// For a member of a class template defaulted outside the class, the lookup is
+-// performed at the definition and reused by each instantiation.
+-namespace E {
+-template <class T> struct Z {
+-  int v;
+-  constexpr Z operator++(int);
+-  constexpr Z operator--(int);
+-};
+-} // namespace E
+-template <class T> constexpr E::Z<T> &operator++(E::Z<T> &z) {
+-  ++z.v;
+-  return z;
+-}
+-template <class T> constexpr E::Z<T> E::Z<T>::operator++(int) = default;
+-template <class T> constexpr E::Z<T> E::Z<T>::operator--(int) = default; // #ZDec
+-// expected-error@#ZDec {{defaulting this postfix decrement operator would delete it after its first declaration}}
+-// expected-note@#ZDec {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'Lookup::E::Z<int>'}}
+-// Declared after the defaulted definition, so not found.
+-template <class T> constexpr E::Z<T> &operator--(E::Z<T> &z);
+-template E::Z<int> E::Z<int>::operator++(int);
+-constexpr int out_of_line() {
+-  E::Z<int> z{1};
+-  E::Z<int> a = z++;
+-  E::Z<long> l{1};
+-  E::Z<long> b = l++;
+-  return a.v * 1000 + z.v * 100 + b.v * 10 + l.v;
+-}
+-static_assert(out_of_line() == 1212);
+-void decrement(E::Z<int> z) {
+-  z--; // expected-note {{in instantiation of member function 'Lookup::E::Z<int>::operator--' requested here}}
+-}
+-} // namespace Lookup
+-
+-// C++2d [except.spec]p10:
+-//   The exception specification for [...] a postfix increment or decrement
+-//   operator function without a noexcept-specifier that is defaulted on its
+-//   first declaration is potentially-throwing if and only if any expression in
+-//   the implicit definition is potentially-throwing.
+-struct Noexcept {
+-  Noexcept &operator++() noexcept;
+-  Noexcept operator++(int) = default;
+-};
+-static_assert(noexcept(Noexcept{}++));
+-struct ThrowingPrefix {
+-  ThrowingPrefix &operator++();
+-  ThrowingPrefix operator++(int) = default;
+-};
+-static_assert(!noexcept(ThrowingPrefix{}++));
+-struct ThrowingCopy {
+-  ThrowingCopy();
+-  ThrowingCopy(const ThrowingCopy &) noexcept(false);
+-  ThrowingCopy &operator++() noexcept;
+-  ThrowingCopy operator++(int) = default;
+-};
+-static_assert(!noexcept(ThrowingCopy{}++));
+-struct ThrowingDestructor {
+-  ThrowingDestructor();
+-  ~ThrowingDestructor() noexcept(false);
+-  ThrowingDestructor &operator++() noexcept;
+-  ThrowingDestructor operator++(int) = default;
+-};
+-static_assert(!noexcept(ThrowingDestructor{}++));
+-struct ThrowingDestructorDefined {
+-  ThrowingDestructorDefined();
+-  ~ThrowingDestructorDefined() noexcept(false);
+-  ThrowingDestructorDefined &operator++() noexcept;
+-  ThrowingDestructorDefined operator++(int) = default;
+-};
+-void throwing_destructor_defined(ThrowingDestructorDefined t) { t++; }
+-static_assert(!noexcept(ThrowingDestructorDefined{}++));
+-struct ExplicitNoexcept {
+-  ExplicitNoexcept &operator++();
+-  ExplicitNoexcept operator++(int) noexcept = default;
+-};
+-static_assert(noexcept(ExplicitNoexcept{}++));
+-struct ThrowingNonMember {
+-  ThrowingNonMember &operator++();
+-};
+-ThrowingNonMember operator++(ThrowingNonMember &, int) = default;
+-extern ThrowingNonMember throwing_non_member;
+-static_assert(!noexcept(throwing_non_member++));
+-struct NoexceptNonMember {
+-  NoexceptNonMember &operator++() noexcept;
+-};
+-NoexceptNonMember operator++(NoexceptNonMember &, int) = default;
+-extern NoexceptNonMember noexcept_non_member;
+-static_assert(noexcept(noexcept_non_member++));
+-
+-// Prefix operators with an explicit object parameter.
+-struct ExplicitObjectPrefix {
+-  int v;
+-  constexpr ExplicitObjectPrefix &operator++(this ExplicitObjectPrefix &self) { ++self.v; return self; }
+-  constexpr ExplicitObjectPrefix &operator--(this ExplicitObjectPrefix &self) { --self.v; return self; }
+-  ExplicitObjectPrefix operator++(int) = default;
+-  friend ExplicitObjectPrefix operator--(ExplicitObjectPrefix &, int) = default;
+-};
+-constexpr int explicit_object_prefix() {
+-  ExplicitObjectPrefix e{1};
+-  ExplicitObjectPrefix a = e++;
+-  ExplicitObjectPrefix b = e--;
+-  return a.v * 100 + b.v * 10 + e.v;
+-}
+-static_assert(explicit_object_prefix() == 121);
+-
+-// A deduced explicit object parameter deduces an lvalue of type C.
+-struct DeducedObjectPrefix {
+-  int v;
+-  constexpr auto &operator++(this auto &&self) {
+-    static_assert(__is_same(decltype(self), DeducedObjectPrefix &));
+-    ++self.v;
+-    return self;
+-  }
+-  DeducedObjectPrefix operator++(int) = default;
+-};
+-constexpr int deduced_object_prefix() {
+-  DeducedObjectPrefix d{1};
+-  DeducedObjectPrefix a = d++;
+-  return a.v * 10 + d.v;
+-}
+-static_assert(deduced_object_prefix() == 12);
+-
+-// The explicit object parameter need not be a non-const lvalue reference; the
+-// prefix operator is called like any other.
+-struct ByValueObjectPrefix {
+-  int v;
+-  constexpr ByValueObjectPrefix operator++(this ByValueObjectPrefix self) { return {self.v + 1}; }
+-  ByValueObjectPrefix operator++(int) = default;
+-};
+-constexpr int by_value_object_prefix() {
+-  ByValueObjectPrefix b{1};
+-  ByValueObjectPrefix a = b++;
+-  return a.v * 10 + b.v;
+-}
+-static_assert(by_value_object_prefix() == 11);
+-struct ConstObjectPrefix {
+-  mutable int v;
+-  constexpr const ConstObjectPrefix &operator--(this const ConstObjectPrefix &self) { --self.v; return self; }
+-  ConstObjectPrefix operator--(int) = default;
+-};
+-constexpr int const_object_prefix() {
+-  ConstObjectPrefix c{1};
+-  ConstObjectPrefix a = c--;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(const_object_prefix() == 10);
+-
+-// Postfix operators with an explicit object parameter.
+-struct ExplicitObjectRvalue {
+-  int v;
+-  constexpr ExplicitObjectRvalue &operator++() { ++v; return *this; }
+-  ExplicitObjectRvalue operator++(this ExplicitObjectRvalue &&, int) = default;
+-};
+-constexpr int explicit_object_rvalue() {
+-  ExplicitObjectRvalue e{1};
+-  ExplicitObjectRvalue a = static_cast<ExplicitObjectRvalue &&>(e)++;
+-  return a.v * 10 + e.v;
+-}
+-static_assert(explicit_object_rvalue() == 12);
+-struct ExplicitObjectVolatile {
+-  ExplicitObjectVolatile();
+-  ExplicitObjectVolatile(const volatile ExplicitObjectVolatile &);
+-  ExplicitObjectVolatile(ExplicitObjectVolatile &&);
+-  ExplicitObjectVolatile &operator++(this volatile ExplicitObjectVolatile &);
+-  ExplicitObjectVolatile operator++(this volatile ExplicitObjectVolatile &, int) = default;
+-};
+-void explicit_object_volatile() {
+-  volatile ExplicitObjectVolatile v;
+-  v++;
+-}
+-// Both operators have an explicit object parameter.
+-template <typename T> struct ExplicitObjectBoth {
+-  T v;
+-  constexpr ExplicitObjectBoth &operator++(this ExplicitObjectBoth &self) { ++self.v; return self; }
+-  constexpr ExplicitObjectBoth &operator--(this auto &self) { --self.v; return self; }
+-  ExplicitObjectBoth operator++(this ExplicitObjectBoth &self, int) = default;
+-  ExplicitObjectBoth operator--(this ExplicitObjectBoth &self, int) = default;
+-};
+-constexpr int explicit_object_both() {
+-  ExplicitObjectBoth<int> e{1};
+-  ExplicitObjectBoth<int> a = e++;
+-  ExplicitObjectBoth<int> b = e--;
+-  return a.v * 100 + b.v * 10 + e.v;
+-}
+-static_assert(explicit_object_both() == 121);
+-// An explicit object postfix operator with an implicit object prefix operator
+-// is called the same way.
+-struct ExplicitObjectPostfixOnly {
+-  int v;
+-  constexpr ExplicitObjectPostfixOnly &operator--() { --v; return *this; }
+-  ExplicitObjectPostfixOnly operator--(this ExplicitObjectPostfixOnly &self, int) = default;
+-};
+-constexpr int explicit_object_postfix_only() {
+-  ExplicitObjectPostfixOnly e{1};
+-  ExplicitObjectPostfixOnly a = e--;
+-  return a.v * 10 + e.v;
+-}
+-static_assert(explicit_object_postfix_only() == 10);
+-
+-// Constrained prefix operators.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> concept Int = __is_same(T, int);
+-template <typename T, typename U> concept Same = __is_same(T, U);
+-template <typename T> struct ConstrainedPrefix {
+-  T v;
+-  constexpr ConstrainedPrefix &operator++() requires Small<T> { ++v; return *this; }
+-  constexpr ConstrainedPrefix &operator--(this ConstrainedPrefix &self) requires Small<T> { --self.v; return self; }
+-  ConstrainedPrefix operator++(int) = default;
+-  ConstrainedPrefix operator--(int) = default;
+-};
+-constexpr int constrained_prefix() {
+-  ConstrainedPrefix<int> c{1};
+-  ConstrainedPrefix<int> a = c++;
+-  ConstrainedPrefix<int> b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(constrained_prefix() == 121);
+-// The more constrained prefix operator is selected.
+-template <typename T> struct MoreConstrainedPrefix {
+-  T v;
+-  constexpr MoreConstrainedPrefix &operator++() requires Small<T> { v += 1; return *this; }
+-  constexpr MoreConstrainedPrefix &operator++() requires Small<T> && Int<T> { v += 10; return *this; }
+-  MoreConstrainedPrefix operator++(int) = default;
+-};
+-constexpr int more_constrained_prefix() {
+-  MoreConstrainedPrefix<int> i{1};
+-  MoreConstrainedPrefix<int> a = i++;
+-  MoreConstrainedPrefix<short> s{1};
+-  MoreConstrainedPrefix<short> b = s++;
+-  return a.v * 1000 + i.v * 100 + b.v * 10 + s.v;
+-}
+-static_assert(more_constrained_prefix() == 1 * 1000 + 11 * 100 + 1 * 10 + 2);
+-// A constrained non-member prefix operator template.
+-struct ConstrainedNonMemberPrefix { int v; };
+-template <typename T> requires __is_same(T, ConstrainedNonMemberPrefix)
+-constexpr T &operator++(T &t) { ++t.v; return t; }
+-constexpr ConstrainedNonMemberPrefix operator++(ConstrainedNonMemberPrefix &, int) = default;
+-constexpr int constrained_non_member_prefix() {
+-  ConstrainedNonMemberPrefix c{1};
+-  ConstrainedNonMemberPrefix a = c++;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(constrained_non_member_prefix() == 12);
+-// The exception specification depends on the selected prefix operator.
+-template <typename T> struct ConstrainedPrefixNoexcept {
+-  T v;
+-  ConstrainedPrefixNoexcept &operator++() noexcept requires Small<T>;
+-  ConstrainedPrefixNoexcept &operator++();
+-  ConstrainedPrefixNoexcept operator++(int) = default;
+-};
+-static_assert(noexcept(ConstrainedPrefixNoexcept<int>{}++));
+-static_assert(!noexcept(ConstrainedPrefixNoexcept<long long>{}++));
+-
+-// Constrained postfix operators.
+-template <typename T> struct ConstrainedPostfix {
+-  T v;
+-  constexpr ConstrainedPostfix &operator++() { ++v; return *this; }
+-  constexpr ConstrainedPostfix &operator--() { --v; return *this; }
+-  ConstrainedPostfix operator++(int) requires Small<T> = default;
+-  friend ConstrainedPostfix operator--(ConstrainedPostfix &, int) requires Small<T> = default;
+-};
+-constexpr int constrained_postfix() {
+-  ConstrainedPostfix<int> c{1};
+-  ConstrainedPostfix<int> a = c++;
+-  ConstrainedPostfix<int> b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(constrained_postfix() == 121);
+-void constrained_postfix_unsatisfied(ConstrainedPostfix<long long> c) {
+-  c++; // expected-error {{cannot increment value of type 'ConstrainedPostfix<long long>'}}
+-  c--; // expected-error {{cannot decrement value of type 'ConstrainedPostfix<long long>'}}
+-}
+-// A defaulted postfix operator can be more constrained than a user-provided
+-// one, and vice versa.
+-template <typename T> struct MoreConstrainedPostfix {
+-  T v;
+-  constexpr MoreConstrainedPostfix &operator++() { v += 1; return *this; }
+-  constexpr MoreConstrainedPostfix operator++(int) requires Small<T> { MoreConstrainedPostfix t = *this; v += 10; return t; }
+-  MoreConstrainedPostfix operator++(int) requires Small<T> && Int<T> = default;
+-  constexpr MoreConstrainedPostfix &operator--() { v -= 1; return *this; }
+-  MoreConstrainedPostfix operator--(int) requires Small<T> = default;
+-  constexpr MoreConstrainedPostfix operator--(int) requires Small<T> && Int<T> { MoreConstrainedPostfix t = *this; v -= 10; return t; }
+-};
+-constexpr int more_constrained_postfix() {
+-  MoreConstrainedPostfix<int> i{1};
+-  MoreConstrainedPostfix<int> a = i++;
+-  MoreConstrainedPostfix<int> b = i--;
+-  MoreConstrainedPostfix<short> s{1};
+-  MoreConstrainedPostfix<short> c = s++;
+-  MoreConstrainedPostfix<short> d = s--;
+-  return a.v * 100000 + b.v * 10000 + i.v * 1000 + c.v * 100 + d.v * 10 + s.v;
+-}
+-static_assert(more_constrained_postfix() == 1 * 100000 + 2 * 10000 + (-8) * 1000 + 1 * 100 + 11 * 10 + 10);
+-// A constrained explicit object postfix operator.
+-template <typename T> struct ConstrainedExplicitObjectPostfix {
+-  T v;
+-  constexpr ConstrainedExplicitObjectPostfix &operator++(this ConstrainedExplicitObjectPostfix &self) requires Small<T> { ++self.v; return self; }
+-  ConstrainedExplicitObjectPostfix operator++(this ConstrainedExplicitObjectPostfix &self, int) requires Small<T> = default;
+-};
+-constexpr int constrained_explicit_object_postfix() {
+-  ConstrainedExplicitObjectPostfix<int> c{1};
+-  ConstrainedExplicitObjectPostfix<int> a = c++;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(constrained_explicit_object_postfix() == 12);
+-void constrained_explicit_object_postfix_unsatisfied(ConstrainedExplicitObjectPostfix<long long> c) {
+-  c++; // expected-error {{cannot increment value of type 'ConstrainedExplicitObjectPostfix<long long>'}}
+-}
+-// The exception specification of an explicit object postfix operator.
+-struct ExplicitObjectNoexcept {
+-  ExplicitObjectNoexcept &operator++(this ExplicitObjectNoexcept &) noexcept;
+-  ExplicitObjectNoexcept operator++(this ExplicitObjectNoexcept &, int) = default;
+-  ExplicitObjectNoexcept &operator--(this ExplicitObjectNoexcept &);
+-  ExplicitObjectNoexcept operator--(this ExplicitObjectNoexcept &, int) = default;
+-};
+-extern ExplicitObjectNoexcept explicit_object_noexcept;
+-static_assert(noexcept(explicit_object_noexcept++));
+-static_assert(!noexcept(explicit_object_noexcept--));
+-// A requires-expression observes whether a defaulted postfix operator is
+-// usable, its exception specification and its return type.
+-template <typename T> concept PostIncrementable = requires(T t) { t++; };
+-template <typename T> concept NoexceptPostIncrementable = requires(T t) {
+-  { t++ } noexcept -> Same<T>;
+-};
+-struct NoPrefix {
+-  NoPrefix operator++(int) = default; // #NoPrefix
+-  // expected-warning@#NoPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#NoPrefix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'NoPrefix'}}
+-  // expected-note@#NoPrefix {{replace 'default' with 'delete'}}
+-};
+-static_assert(PostIncrementable<Noexcept>);
+-static_assert(NoexceptPostIncrementable<Noexcept>);
+-static_assert(PostIncrementable<ThrowingPrefix>);
+-static_assert(!NoexceptPostIncrementable<ThrowingPrefix>);
+-static_assert(!PostIncrementable<NoPrefix>);
+-static_assert(PostIncrementable<ConstrainedPostfix<int>>);
+-static_assert(!PostIncrementable<ConstrainedPostfix<long long>>);
+-// A defaulted postfix operator constrained on its own prefix operator is not
+-// viable, rather than deleted, when there is no prefix operator.
+-template <typename T> struct PrefixConstrainedPostfix {
+-  T v;
+-  constexpr PrefixConstrainedPostfix &operator++() requires Small<T> { ++v; return *this; }
+-  PrefixConstrainedPostfix operator++(int) requires requires(PrefixConstrainedPostfix &p) { ++p; } = default;
+-};
+-constexpr int prefix_constrained_postfix() {
+-  PrefixConstrainedPostfix<int> p{1};
+-  PrefixConstrainedPostfix<int> a = p++;
+-  return a.v * 10 + p.v;
+-}
+-static_assert(prefix_constrained_postfix() == 12);
+-static_assert(PostIncrementable<PrefixConstrainedPostfix<int>>);
+-static_assert(!PostIncrementable<PrefixConstrainedPostfix<long long>>);
+-void prefix_constrained_postfix_unsatisfied(PrefixConstrainedPostfix<long long> p) {
+-  p++; // expected-error {{cannot increment value of type 'PrefixConstrainedPostfix<long long>'}}
+-}
+-#endif
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-deleted.cpp b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-deleted.cpp
+--- a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-deleted.cpp
++++ b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators-deleted.cpp
+@@ -1,452 +0,0 @@
+-// RUN: %clang_cc1 -std=c++2d -verify %s
+-
+-// C++2d [over.inc.default]p2:
+-//   A defaulted postfix increment or decrement operator function for a type C
+-//   is defined as deleted if
+-//    -- C is a class type for which overload resolution, as applied to
+-//       direct-initialization of a variable of type C from an lvalue of type
+-//       C, does not result in a usable candidate,
+-//    -- C has a destructor that is deleted or inaccessible from the context of
+-//       the function-body, or
+-//    -- for an lvalue c of type C, overload resolution as applied to ++c for a
+-//       postfix increment operator function or --c for a postfix decrement
+-//       operator function does not result in a usable candidate.
+-
+-struct NoPrefix {
+-  NoPrefix operator++(int) = default; // #NoPrefix
+-  // expected-warning@#NoPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#NoPrefix 2 {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'NoPrefix'}}
+-  // expected-note@#NoPrefix {{replace 'default' with 'delete'}}
+-  // expected-note@#NoPrefix {{explicitly defaulted function was implicitly deleted here}}
+-};
+-void use_no_prefix(NoPrefix n) {
+-  n++; // expected-error {{object of type 'NoPrefix' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-
+-struct NoPrefixDecrement {
+-  NoPrefixDecrement &operator++();
+-  NoPrefixDecrement operator--(int) = default; // #NoPrefixDecrement
+-  // expected-warning@#NoPrefixDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#NoPrefixDecrement 2 {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'NoPrefixDecrement'}}
+-  // expected-note@#NoPrefixDecrement {{replace 'default' with 'delete'}}
+-  // expected-note@#NoPrefixDecrement {{explicitly defaulted function was implicitly deleted here}}
+-};
+-void use_no_prefix_decrement(NoPrefixDecrement n) {
+-  n--; // expected-error {{object of type 'NoPrefixDecrement' cannot be decremented because its defaulted postfix decrement operator is implicitly deleted}}
+-}
+-
+-// There is no built-in increment operator for enumeration types.
+-enum class E {};
+-E operator++(E &, int) = default; // #E
+-// expected-warning@#E {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#E 2 {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'E'}}
+-// expected-note@#E {{replace 'default' with 'delete'}}
+-// expected-note@#E {{explicitly defaulted function was implicitly deleted here}}
+-void use_e(E e) {
+-  e++; // expected-error {{object of type 'E' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-
+-// A conversion to a built-in type provides a usable candidate.
+-struct ConvertsToInt {
+-  operator int &();
+-  ConvertsToInt operator++(int) = default; // OK
+-};
+-struct AmbiguousBuiltin {
+-  operator int &();
+-  operator long &();
+-  AmbiguousBuiltin operator++(int) = default; // #AmbiguousBuiltin
+-  // expected-warning@#AmbiguousBuiltin {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#AmbiguousBuiltin {{defaulted 'operator++' is implicitly deleted because prefix 'operator++' for an lvalue of type 'AmbiguousBuiltin' is ambiguous}}
+-  // expected-note@#AmbiguousBuiltin {{built-in candidate operator++(int &)}}
+-  // expected-note@#AmbiguousBuiltin {{built-in candidate operator++(long &)}}
+-  // expected-note@#AmbiguousBuiltin {{replace 'default' with 'delete'}}
+-};
+-
+-struct DeletedPrefix {
+-  DeletedPrefix &operator++() = delete; // expected-note {{'operator++' has been explicitly marked deleted here}}
+-  DeletedPrefix operator++(int) = default; // #DeletedPrefix
+-  // expected-warning@#DeletedPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#DeletedPrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a deleted prefix 'operator++'}}
+-  // expected-note@#DeletedPrefix {{replace 'default' with 'delete'}}
+-};
+-
+-struct RvaluePrefix {
+-  RvaluePrefix &operator++() &&;
+-  RvaluePrefix operator++(int) = default; // #RvaluePrefix
+-  // expected-warning@#RvaluePrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#RvaluePrefix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'RvaluePrefix'}}
+-  // expected-note@#RvaluePrefix {{replace 'default' with 'delete'}}
+-};
+-
+-class PrivatePrefix {
+-  PrivatePrefix &operator++(); // expected-note {{declared private here}}
+-
+-public:
+-  PrivatePrefix operator--(int) = default; // #PrivatePrefixDecrement
+-  // expected-warning@#PrivatePrefixDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#PrivatePrefixDecrement {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'PrivatePrefix'}}
+-  // expected-note@#PrivatePrefixDecrement {{replace 'default' with 'delete'}}
+-};
+-PrivatePrefix operator++(PrivatePrefix &, int) = default; // #PrivatePrefix
+-// expected-warning@#PrivatePrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#PrivatePrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a private prefix 'operator++' of 'PrivatePrefix'}}
+-// expected-note@#PrivatePrefix {{replace 'default' with 'delete'}}
+-struct FriendOfPrivatePrefix {
+-  // A friend has access to the prefix operator.
+-  friend PrivatePrefix operator--(PrivatePrefix &, int) = default; // #FriendOfPrivatePrefix
+-  // expected-warning@#FriendOfPrivatePrefix {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#FriendOfPrivatePrefix {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'PrivatePrefix'}}
+-  // expected-note@#FriendOfPrivatePrefix {{replace 'default' with 'delete'}}
+-};
+-
+-struct DeletedCopy {
+-  DeletedCopy &operator++();
+-  DeletedCopy(const DeletedCopy &) = delete; // expected-note {{'DeletedCopy' has been explicitly marked deleted here}}
+-  DeletedCopy operator++(int) = default; // #DeletedCopy
+-  // expected-warning@#DeletedCopy {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-error@#DeletedCopy {{call to deleted constructor of 'DeletedCopy'}}
+-  // expected-note@#DeletedCopy {{replace 'default' with 'delete'}}
+-};
+-
+-struct MoveOnly {
+-  MoveOnly &operator++();
+-  MoveOnly(MoveOnly &&); // expected-note {{copy constructor is implicitly deleted because 'MoveOnly' has a user-declared move constructor}}
+-  MoveOnly operator++(int) = default; // #MoveOnly
+-  // expected-warning@#MoveOnly {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-error@#MoveOnly {{call to implicitly-deleted copy constructor of 'MoveOnly'}}
+-  // expected-note@#MoveOnly {{replace 'default' with 'delete'}}
+-};
+-
+-struct AmbiguousCopy {
+-  AmbiguousCopy &operator++();
+-  AmbiguousCopy(AmbiguousCopy &, int = 0);  // expected-note {{candidate constructor}}
+-  AmbiguousCopy(AmbiguousCopy &, long = 0); // expected-note {{candidate constructor}}
+-  AmbiguousCopy operator++(int) = default; // #AmbiguousCopy
+-  // expected-warning@#AmbiguousCopy {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-error@#AmbiguousCopy {{call to constructor of 'AmbiguousCopy' is ambiguous}}
+-  // expected-note@#AmbiguousCopy {{replace 'default' with 'delete'}}
+-};
+-
+-class PrivateCopy {
+-  PrivateCopy(const PrivateCopy &); // expected-note {{declared private here}}
+-
+-public:
+-  PrivateCopy &operator++();
+-  PrivateCopy &operator--();
+-  PrivateCopy operator++(int) = default; // OK, a member has access to the copy constructor
+-};
+-PrivateCopy operator--(PrivateCopy &, int) = default; // #PrivateCopy
+-// expected-warning@#PrivateCopy {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-// expected-note@#PrivateCopy {{defaulted 'operator--' is implicitly deleted because it would invoke a private constructor of 'PrivateCopy'}}
+-// expected-note@#PrivateCopy {{replace 'default' with 'delete'}}
+-
+-struct DeletedDestructor {
+-  DeletedDestructor &operator++();
+-  ~DeletedDestructor() = delete; // expected-note {{'~DeletedDestructor' has been explicitly marked deleted here}}
+-  DeletedDestructor operator++(int) = default; // #DeletedDestructor
+-  // expected-warning@#DeletedDestructor {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#DeletedDestructor {{defaulted 'operator++' is implicitly deleted because it would invoke a deleted destructor}}
+-  // expected-note@#DeletedDestructor {{replace 'default' with 'delete'}}
+-};
+-
+-class PrivateDestructor {
+-  ~PrivateDestructor(); // expected-note {{declared private here}}
+-
+-public:
+-  PrivateDestructor &operator++();
+-  PrivateDestructor(const PrivateDestructor &);
+-  PrivateDestructor operator++(int) = default; // OK, a member has access to the destructor
+-};
+-PrivateDestructor operator++(PrivateDestructor &, int) = default; // #PrivateDestructor
+-// expected-warning@#PrivateDestructor {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#PrivateDestructor {{defaulted 'operator++' is implicitly deleted because it would invoke a private destructor of 'PrivateDestructor'}}
+-// expected-note@#PrivateDestructor {{replace 'default' with 'delete'}}
+-
+-// A function that is not defaulted on its first declaration cannot be deleted.
+-struct NotFirst {
+-  NotFirst &operator++();
+-  NotFirst(const NotFirst &) = delete; // expected-note {{'NotFirst' has been explicitly marked deleted here}}
+-  NotFirst operator++(int);
+-};
+-NotFirst NotFirst::operator++(int) = default; // expected-error {{defaulting this postfix increment operator would delete it after its first declaration}}
+-// expected-error@-1 {{call to deleted constructor of 'NotFirst'}}
+-
+-// The same holds for an instantiation of such a definition.
+-template <typename T> struct NotFirstTemplate {
+-  NotFirstTemplate operator++(int);
+-};
+-template <typename T>
+-NotFirstTemplate<T> NotFirstTemplate<T>::operator++(int) = default; // #NotFirstTemplate
+-// expected-error@#NotFirstTemplate {{defaulting this postfix increment operator would delete it after its first declaration}}
+-// expected-note@#NotFirstTemplate {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'NotFirstTemplate<int>'}}
+-void use_not_first_template(NotFirstTemplate<int> n) {
+-  n++; // expected-note {{in instantiation of member function 'NotFirstTemplate<int>::operator++' requested here}}
+-}
+-
+-// No warning is produced for a template instantiation, but the function is
+-// still deleted.
+-template <typename T> struct Wrapper {
+-  T v;
+-  Wrapper operator++(int) = default; // #Wrapper
+-  // expected-note@#Wrapper {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#Wrapper {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'Wrapper<int>'}}
+-};
+-void use_wrapper(Wrapper<int> w) {
+-  w++; // expected-error {{object of type 'Wrapper<int>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-
+-// -Wdefaulted-function-deleted can be disabled.
+-#pragma clang diagnostic push
+-#pragma clang diagnostic ignored "-Wdefaulted-function-deleted"
+-struct Quiet {
+-  Quiet operator++(int) = default;
+-};
+-#pragma clang diagnostic pop
+-
+-// The same notes are produced for the postfix decrement operator.
+-struct DeletedPrefixDecrement {
+-  DeletedPrefixDecrement &operator--() = delete; // expected-note {{'operator--' has been explicitly marked deleted here}}
+-  DeletedPrefixDecrement operator--(int) = default; // #DeletedPrefixDecrement
+-  // expected-warning@#DeletedPrefixDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#DeletedPrefixDecrement {{defaulted 'operator--' is implicitly deleted because it would invoke a deleted prefix 'operator--'}}
+-  // expected-note@#DeletedPrefixDecrement {{replace 'default' with 'delete'}}
+-};
+-struct AmbiguousBuiltinDecrement {
+-  operator int &();
+-  operator long &();
+-  AmbiguousBuiltinDecrement operator--(int) = default; // #AmbiguousBuiltinDecrement
+-  // expected-warning@#AmbiguousBuiltinDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#AmbiguousBuiltinDecrement {{defaulted 'operator--' is implicitly deleted because prefix 'operator--' for an lvalue of type 'AmbiguousBuiltinDecrement' is ambiguous}}
+-  // expected-note@#AmbiguousBuiltinDecrement {{built-in candidate operator--(int &)}}
+-  // expected-note@#AmbiguousBuiltinDecrement {{built-in candidate operator--(long &)}}
+-  // expected-note@#AmbiguousBuiltinDecrement {{replace 'default' with 'delete'}}
+-};
+-class PrivatePrefixDecrement {
+-  PrivatePrefixDecrement &operator--(); // expected-note {{implicitly declared private here}}
+-};
+-PrivatePrefixDecrement operator--(PrivatePrefixDecrement &, int) = default; // #PrivatePrefixDecrementNonMember
+-// expected-warning@#PrivatePrefixDecrementNonMember {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-// expected-note@#PrivatePrefixDecrementNonMember {{defaulted 'operator--' is implicitly deleted because it would invoke a private prefix 'operator--' of 'PrivatePrefixDecrement'}}
+-// expected-note@#PrivatePrefixDecrementNonMember {{replace 'default' with 'delete'}}
+-
+-// Protected members.
+-class ProtectedPrefix {
+-protected:
+-  ProtectedPrefix &operator++(); // expected-note {{declared protected here}}
+-  ProtectedPrefix &operator--(); // expected-note {{declared protected here}}
+-};
+-ProtectedPrefix operator++(ProtectedPrefix &, int) = default; // #ProtectedPrefixIncrement
+-// expected-warning@#ProtectedPrefixIncrement {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#ProtectedPrefixIncrement {{defaulted 'operator++' is implicitly deleted because it would invoke a protected prefix 'operator++' of 'ProtectedPrefix'}}
+-// expected-note@#ProtectedPrefixIncrement {{replace 'default' with 'delete'}}
+-ProtectedPrefix operator--(ProtectedPrefix &, int) = default; // #ProtectedPrefixDecrement
+-// expected-warning@#ProtectedPrefixDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-// expected-note@#ProtectedPrefixDecrement {{defaulted 'operator--' is implicitly deleted because it would invoke a protected prefix 'operator--' of 'ProtectedPrefix'}}
+-// expected-note@#ProtectedPrefixDecrement {{replace 'default' with 'delete'}}
+-// A friend of a derived class cannot use the protected member on an object of
+-// the base class type.
+-class ProtectedBase {
+-protected:
+-  ProtectedBase &operator--(); // expected-note {{can only access this member on an object of type 'DerivedFromProtectedBase'}}
+-};
+-struct DerivedFromProtectedBase : ProtectedBase {
+-  friend ProtectedBase operator--(ProtectedBase &, int) = default; // #DerivedFromProtectedBase
+-  // expected-warning@#DerivedFromProtectedBase {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#DerivedFromProtectedBase {{defaulted 'operator--' is implicitly deleted because it would invoke a protected prefix 'operator--' of 'ProtectedBase'}}
+-  // expected-note@#DerivedFromProtectedBase {{replace 'default' with 'delete'}}
+-};
+-
+-class ProtectedCopy {
+-protected:
+-  ProtectedCopy(const ProtectedCopy &); // expected-note {{declared protected here}}
+-
+-public:
+-  ProtectedCopy &operator++();
+-  ProtectedCopy operator++(int) = default; // OK, a member has access to the copy constructor
+-};
+-ProtectedCopy operator++(ProtectedCopy &, int) = default; // #ProtectedCopy
+-// expected-warning@#ProtectedCopy {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#ProtectedCopy {{defaulted 'operator++' is implicitly deleted because it would invoke a protected constructor of 'ProtectedCopy'}}
+-// expected-note@#ProtectedCopy {{replace 'default' with 'delete'}}
+-
+-class ProtectedDestructor {
+-protected:
+-  ~ProtectedDestructor(); // expected-note {{declared protected here}}
+-
+-public:
+-  ProtectedDestructor &operator--();
+-  ProtectedDestructor(const ProtectedDestructor &);
+-  ProtectedDestructor operator--(int) = default; // OK, a member has access to the destructor
+-};
+-ProtectedDestructor operator--(ProtectedDestructor &, int) = default; // #ProtectedDestructor
+-// expected-warning@#ProtectedDestructor {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-// expected-note@#ProtectedDestructor {{defaulted 'operator--' is implicitly deleted because it would invoke a protected destructor of 'ProtectedDestructor'}}
+-// expected-note@#ProtectedDestructor {{replace 'default' with 'delete'}}
+-
+-struct NotFirstDecrement {
+-  NotFirstDecrement &operator--();
+-  ~NotFirstDecrement() = delete; // expected-note {{'~NotFirstDecrement' has been explicitly marked deleted here}}
+-  NotFirstDecrement operator--(int);
+-};
+-NotFirstDecrement NotFirstDecrement::operator--(int) = default; // expected-error {{defaulting this postfix decrement operator would delete it after its first declaration}}
+-// expected-note@-1 {{defaulted 'operator--' is implicitly deleted because it would invoke a deleted destructor}}
+-
+-// Postfix operators with an explicit object parameter.
+-struct ExplicitObjectNoPrefix {
+-  ExplicitObjectNoPrefix operator++(this ExplicitObjectNoPrefix &, int) = default; // #ExplicitObjectNoPrefix
+-  // expected-warning@#ExplicitObjectNoPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#ExplicitObjectNoPrefix 2 {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'ExplicitObjectNoPrefix'}}
+-  // expected-note@#ExplicitObjectNoPrefix {{replace 'default' with 'delete'}}
+-  // expected-note@#ExplicitObjectNoPrefix {{explicitly defaulted function was implicitly deleted here}}
+-  ExplicitObjectNoPrefix operator--(this ExplicitObjectNoPrefix &&, int) = default; // #ExplicitObjectNoPrefixDecrement
+-  // expected-warning@#ExplicitObjectNoPrefixDecrement {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#ExplicitObjectNoPrefixDecrement 2 {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'ExplicitObjectNoPrefix'}}
+-  // expected-note@#ExplicitObjectNoPrefixDecrement {{replace 'default' with 'delete'}}
+-  // expected-note@#ExplicitObjectNoPrefixDecrement {{explicitly defaulted function was implicitly deleted here}}
+-};
+-void use_explicit_object_no_prefix(ExplicitObjectNoPrefix e) {
+-  e++; // expected-error {{object of type 'ExplicitObjectNoPrefix' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-  static_cast<ExplicitObjectNoPrefix &&>(e)--; // expected-error {{object of type 'ExplicitObjectNoPrefix' cannot be decremented because its defaulted postfix decrement operator is implicitly deleted}}
+-}
+-// An explicit object member function is a member, so it has access to the
+-// private members of its class.
+-class ExplicitObjectPrivate {
+-  ExplicitObjectPrivate(const ExplicitObjectPrivate &);
+-  ~ExplicitObjectPrivate();
+-  ExplicitObjectPrivate &operator++();
+-
+-public:
+-  ExplicitObjectPrivate operator++(this ExplicitObjectPrivate &, int) = default; // OK
+-};
+-struct ExplicitObjectDeletedPrefix {
+-  ExplicitObjectDeletedPrefix &operator++() = delete; // expected-note {{'operator++' has been explicitly marked deleted here}}
+-  ExplicitObjectDeletedPrefix operator++(this ExplicitObjectDeletedPrefix &, int) = default; // #ExplicitObjectDeletedPrefix
+-  // expected-warning@#ExplicitObjectDeletedPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#ExplicitObjectDeletedPrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a deleted prefix 'operator++'}}
+-  // expected-note@#ExplicitObjectDeletedPrefix {{replace 'default' with 'delete'}}
+-};
+-
+-// Prefix operators with an explicit object parameter. The prefix operator is
+-// applied to an lvalue of type C, so an explicit object parameter of type
+-// "rvalue reference to C" is not viable.
+-struct ExplicitObjectPrefix {
+-  ExplicitObjectPrefix &operator++(this ExplicitObjectPrefix &);
+-  ExplicitObjectPrefix operator++(int) = default; // OK
+-};
+-struct RvalueExplicitObjectPrefix {
+-  RvalueExplicitObjectPrefix &operator++(this RvalueExplicitObjectPrefix &&);
+-  RvalueExplicitObjectPrefix operator++(int) = default; // #RvalueExplicitObjectPrefix
+-  // expected-warning@#RvalueExplicitObjectPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#RvalueExplicitObjectPrefix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'RvalueExplicitObjectPrefix'}}
+-  // expected-note@#RvalueExplicitObjectPrefix {{replace 'default' with 'delete'}}
+-};
+-struct DeletedExplicitObjectPrefix {
+-  DeletedExplicitObjectPrefix &operator--(this DeletedExplicitObjectPrefix &) = delete; // expected-note {{'operator--' has been explicitly marked deleted here}}
+-  DeletedExplicitObjectPrefix operator--(int) = default; // #DeletedExplicitObjectPrefix
+-  // expected-warning@#DeletedExplicitObjectPrefix {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-  // expected-note@#DeletedExplicitObjectPrefix {{defaulted 'operator--' is implicitly deleted because it would invoke a deleted prefix 'operator--'}}
+-  // expected-note@#DeletedExplicitObjectPrefix {{replace 'default' with 'delete'}}
+-};
+-class PrivateExplicitObjectPrefix {
+-  PrivateExplicitObjectPrefix &operator++(this PrivateExplicitObjectPrefix &); // expected-note {{implicitly declared private here}}
+-};
+-PrivateExplicitObjectPrefix operator++(PrivateExplicitObjectPrefix &, int) = default; // #PrivateExplicitObjectPrefix
+-// expected-warning@#PrivateExplicitObjectPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#PrivateExplicitObjectPrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a private prefix 'operator++' of 'PrivateExplicitObjectPrefix'}}
+-// expected-note@#PrivateExplicitObjectPrefix {{replace 'default' with 'delete'}}
+-// A deduced explicit object parameter makes the prefix operator a template.
+-// The deleted specialization is selected by overload resolution.
+-struct DeletedDeducedPrefix {
+-  template <typename Self> DeletedDeducedPrefix &operator++(this Self &&) = delete; // expected-note {{'operator++<DeletedDeducedPrefix &>' has been explicitly marked deleted here}}
+-  DeletedDeducedPrefix operator++(int) = default; // #DeletedDeducedPrefix
+-  // expected-warning@#DeletedDeducedPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#DeletedDeducedPrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a deleted prefix 'operator++'}}
+-  // expected-note@#DeletedDeducedPrefix {{replace 'default' with 'delete'}}
+-};
+-
+-// Constrained prefix operators. An unsatisfied constraint makes the candidate
+-// non-viable.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct ConstrainedPrefix {
+-  T v;
+-  ConstrainedPrefix &operator++() requires Small<T>;
+-  ConstrainedPrefix &operator--(this ConstrainedPrefix &) requires Small<T>;
+-  ConstrainedPrefix operator++(int) = default; // #ConstrainedPrefixIncrement
+-  // expected-note@#ConstrainedPrefixIncrement {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#ConstrainedPrefixIncrement {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'ConstrainedPrefix<long long>'}}
+-  friend ConstrainedPrefix operator--(ConstrainedPrefix &, int) = default; // #ConstrainedPrefixDecrement
+-  // expected-note@#ConstrainedPrefixDecrement {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#ConstrainedPrefixDecrement {{defaulted 'operator--' is implicitly deleted because there is no viable prefix 'operator--' for an lvalue of type 'ConstrainedPrefix<long long>'}}
+-};
+-void use_constrained_prefix(ConstrainedPrefix<int> a, ConstrainedPrefix<long long> b) {
+-  a++; // OK
+-  a--; // OK
+-  b++; // expected-error {{object of type 'ConstrainedPrefix<long long>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-  b--; // expected-error {{object of type 'ConstrainedPrefix<long long>' cannot be decremented because its defaulted postfix decrement operator is implicitly deleted}}
+-}
+-struct ConstrainedNonMemberPrefix { long long a, b; };
+-template <typename T> requires (__is_same(T, ConstrainedNonMemberPrefix) && Small<T>) T &operator++(T &);
+-ConstrainedNonMemberPrefix operator++(ConstrainedNonMemberPrefix &, int) = default; // #ConstrainedNonMemberPrefix
+-// expected-warning@#ConstrainedNonMemberPrefix {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-// expected-note@#ConstrainedNonMemberPrefix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'ConstrainedNonMemberPrefix'}}
+-// expected-note@#ConstrainedNonMemberPrefix {{replace 'default' with 'delete'}}
+-// A deleted candidate is still viable if its constraints are satisfied.
+-struct DeletedConstrainedPrefix {};
+-template <typename T> requires __is_same(T, DeletedConstrainedPrefix) T &operator--(T &) = delete; // expected-note {{'operator--<DeletedConstrainedPrefix>' has been explicitly marked deleted here}}
+-DeletedConstrainedPrefix operator--(DeletedConstrainedPrefix &, int) = default; // #DeletedConstrainedPrefix
+-// expected-warning@#DeletedConstrainedPrefix {{explicitly defaulted postfix decrement operator is implicitly deleted}}
+-// expected-note@#DeletedConstrainedPrefix {{defaulted 'operator--' is implicitly deleted because it would invoke a deleted prefix 'operator--'}}
+-// expected-note@#DeletedConstrainedPrefix {{replace 'default' with 'delete'}}
+-// The more constrained prefix operator is selected.
+-template <typename T> struct MoreConstrainedPrefix {
+-  MoreConstrainedPrefix &operator++() requires Small<T>;
+-  MoreConstrainedPrefix &operator++() requires Small<T> && __is_same(T, int) = delete; // expected-note {{'operator++' has been explicitly marked deleted here}}
+-  MoreConstrainedPrefix operator++(int) = default; // #MoreConstrainedPrefix
+-  // expected-note@#MoreConstrainedPrefix {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#MoreConstrainedPrefix {{defaulted 'operator++' is implicitly deleted because it would invoke a deleted prefix 'operator++'}}
+-};
+-void use_more_constrained_prefix(MoreConstrainedPrefix<short> a, MoreConstrainedPrefix<int> b) {
+-  a++; // OK
+-  b++; // expected-error {{object of type 'MoreConstrainedPrefix<int>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-
+-// Constrained postfix operators. The constraints of the postfix operator do
+-// not affect whether it is defined as deleted, only whether it is viable.
+-template <typename T> struct ConstrainedPostfix {
+-  ConstrainedPostfix operator++(int) requires Small<T> = default; // #ConstrainedPostfix
+-  // expected-note@#ConstrainedPostfix {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#ConstrainedPostfix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'ConstrainedPostfix<int>'}}
+-};
+-void use_constrained_postfix(ConstrainedPostfix<int> a, ConstrainedPostfix<long long> b) {
+-  a++; // expected-error {{object of type 'ConstrainedPostfix<int>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-  b++; // expected-error {{cannot increment value of type 'ConstrainedPostfix<long long>'}}
+-}
+-
+-// Constrained special member functions. The copy constructor and destructor
+-// are selected by overload resolution, so their constraints decide whether the
+-// defaulted postfix operator is deleted.
+-template <typename T> struct ConstrainedCopy {
+-  ConstrainedCopy() = default;
+-  ConstrainedCopy(const ConstrainedCopy &) requires Small<T> = default;
+-  ConstrainedCopy(const ConstrainedCopy &) = delete; // expected-note {{'ConstrainedCopy' has been explicitly marked deleted here}}
+-  ConstrainedCopy &operator++();
+-  ConstrainedCopy operator++(int) = default; // #ConstrainedCopy
+-  // expected-note@#ConstrainedCopy {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-error@#ConstrainedCopy {{call to deleted constructor of 'ConstrainedCopy<long long>'}}
+-};
+-void use_constrained_copy(ConstrainedCopy<int> &a, ConstrainedCopy<long long> &b) {
+-  a++; // OK
+-  b++; // expected-error {{object of type 'ConstrainedCopy<long long>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-template <typename T> struct ConstrainedDestructor {
+-  ~ConstrainedDestructor() requires Small<T> = default;
+-  ~ConstrainedDestructor() = delete; // expected-note {{'~ConstrainedDestructor' has been explicitly marked deleted here}}
+-  ConstrainedDestructor &operator--();
+-  friend ConstrainedDestructor operator--(ConstrainedDestructor &, int) = default; // #ConstrainedDestructor
+-  // expected-note@#ConstrainedDestructor {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#ConstrainedDestructor {{defaulted 'operator--' is implicitly deleted because it would invoke a deleted destructor}}
+-};
+-void use_constrained_destructor(ConstrainedDestructor<int> &a, ConstrainedDestructor<long long> &b) {
+-  a--; // OK
+-  b--; // expected-error {{object of type 'ConstrainedDestructor<long long>' cannot be decremented because its defaulted postfix decrement operator is implicitly deleted}}
+-}
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators.cpp b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators.cpp
+--- a/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators.cpp
++++ b/clang/test/SemaCXX/cxx2d-defaulted-postfix-operators.cpp
+@@ -1,191 +0,0 @@
+-// RUN: %clang_cc1 -std=c++03 -verify=expected,cxx03,pre14,pre20,pre23,pre2d %s
+-// RUN: %clang_cc1 -std=c++11 -verify=expected,pre14,pre20,pre23,pre2d %s
+-// RUN: %clang_cc1 -std=c++14 -verify=expected,pre20,pre23,pre2d %s
+-// RUN: %clang_cc1 -std=c++17 -verify=expected,pre20,pre23,pre2d %s
+-// RUN: %clang_cc1 -std=c++20 -verify=expected,cxx20,pre23,pre2d %s
+-// RUN: %clang_cc1 -std=c++23 -verify=expected,cxx20,pre2d %s
+-// RUN: %clang_cc1 -std=c++26 -verify=expected,cxx20,pre2d %s
+-// RUN: %clang_cc1 -std=c++2d -verify=expected,cxx2d %s
+-// RUN: %clang_cc1 -std=c++2d -Wpre-c++2d-compat -verify=expected,cxx2d,compat %s
+-
+-// Defaulted postfix increment and decrement operators (P3668R4) are a C++2d
+-// feature that is available in all language modes as an extension.
+-
+-struct S {
+-  int v;
+-  S &operator++();
+-  S &operator--();
+-  S operator++(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  // cxx03-warning@-3 {{defaulted function definitions are a C++11 extension}}
+-  S operator--(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  // cxx03-warning@-3 {{defaulted function definitions are a C++11 extension}}
+-};
+-void use_s(S s) {
+-  s++;
+-  s--;
+-}
+-
+-struct N {
+-  N &operator++();
+-};
+-N operator++(N &, int) = default;
+-// pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-// compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-// cxx03-warning@-3 {{defaulted function definitions are a C++11 extension}}
+-void use_n(N n) { n++; }
+-
+-// The warning is produced once for a class template, not again for each
+-// instantiation.
+-template <typename T> struct W {
+-  T v;
+-  W &operator++();
+-  W operator++(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  // cxx03-warning@-3 {{defaulted function definitions are a C++11 extension}}
+-};
+-void use_w(W<int> w, W<long> x) {
+-  w++;
+-  x++;
+-}
+-
+-// Other functions still cannot be defaulted.
+-struct Other {
+-  void f() = default;
+-  // pre20-error@-1 {{only special member functions may be defaulted}}
+-  // cxx20-error@-2 {{only special member functions and comparison operators may be defaulted}}
+-  // cxx2d-error@-3 {{only special member functions, comparison operators, and postfix increment and decrement operators may be defaulted}}
+-  // cxx03-warning@-4 {{defaulted function definitions are a C++11 extension}}
+-  Other &operator++() = default;
+-  // expected-error@-1 {{only the postfix form of 'operator++' can be defaulted}}
+-  // cxx03-warning@-2 {{defaulted function definitions are a C++11 extension}}
+-};
+-
+-// An implicitly deleted defaulted postfix operator.
+-struct Deleted {
+-  Deleted operator++(int) = default; // #Deleted
+-  // expected-warning@#Deleted {{explicitly defaulted postfix increment operator is implicitly deleted}}
+-  // expected-note@#Deleted 2 {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'Deleted'}}
+-  // expected-note@#Deleted {{replace 'default' with 'delete'}}
+-  // expected-note@#Deleted {{explicitly defaulted function was implicitly deleted here}}
+-  // pre2d-warning@#Deleted {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@#Deleted {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  // cxx03-warning@#Deleted {{defaulted function definitions are a C++11 extension}}
+-};
+-void use_deleted(Deleted d) {
+-  d++; // expected-error {{object of type 'Deleted' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-
+-#if __cplusplus >= 201402L
+-// Unlike other defaulted functions before C++23, a defaulted postfix operator
+-// may be declared constexpr even if it invokes a non-constexpr function.
+-struct NotConstexprCompatible {
+-  NotConstexprCompatible &operator++(); // expected-note {{declared here}}
+-  constexpr NotConstexprCompatible operator++(int) = default;
+-  // expected-note@-1 {{non-constexpr function 'operator++' cannot be used in a constant expression}}
+-  // pre2d-warning@-2 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-3 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-};
+-
+-struct NotConstexprNonMember {
+-  NotConstexprNonMember &operator++();
+-};
+-constexpr NotConstexprNonMember operator++(NotConstexprNonMember &, int) = default;
+-// pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-// compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-
+-// Such a function is not usable in constant expressions.
+-constexpr bool use_not_constexpr_compatible() {
+-  NotConstexprCompatible n{};
+-  n++; // expected-note {{in call to 'n.operator++(0)'}}
+-  return true;
+-}
+-static_assert(use_not_constexpr_compatible(), "");
+-// expected-error@-1 {{static assertion expression is not an integral constant expression}}
+-// expected-note@-2 {{in call to 'use_not_constexpr_compatible()'}}
+-
+-// A defaulted postfix operator is implicitly constexpr when it can be.
+-struct Constexpr {
+-  int v;
+-  constexpr Constexpr &operator++() { ++v; return *this; }
+-  Constexpr operator++(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-};
+-constexpr int use_constexpr() {
+-  Constexpr c{1};
+-  Constexpr a = c++;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(use_constexpr() == 12, "");
+-#endif
+-
+-#if __cplusplus >= 202002L
+-struct NotConstevalCompatible {
+-  NotConstevalCompatible &operator++();
+-  consteval NotConstevalCompatible operator++(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-};
+-struct Consteval {
+-  int v;
+-  constexpr Consteval &operator++() { ++v; return *this; }
+-  consteval Consteval operator++(int) = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-};
+-consteval int use_consteval() {
+-  Consteval c{1};
+-  Consteval a = c++;
+-  return a.v * 10 + c.v;
+-}
+-static_assert(use_consteval() == 12);
+-
+-// Defaulted postfix operators may be constrained in every mode that has
+-// requires-clauses.
+-template <typename T> concept Small = sizeof(T) <= 4;
+-template <typename T> struct Constrained {
+-  T v;
+-  constexpr Constrained &operator++() requires Small<T> { ++v; return *this; }
+-  constexpr Constrained &operator--() { --v; return *this; }
+-  Constrained operator++(int) requires Small<T> = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  friend Constrained operator--(Constrained &, int) requires Small<T> = default;
+-  // pre2d-warning@-1 {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@-2 {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-};
+-constexpr int use_constrained() {
+-  Constrained<int> c{1};
+-  Constrained<int> a = c++;
+-  Constrained<int> b = c--;
+-  return a.v * 100 + b.v * 10 + c.v;
+-}
+-static_assert(use_constrained() == 121);
+-template <typename T> concept PostIncrementable = requires(T t) { t++; };
+-static_assert(PostIncrementable<Constrained<int>>);
+-static_assert(!PostIncrementable<Constrained<long long>>);
+-void use_constrained_unsatisfied(Constrained<long long> c) {
+-  c++; // expected-error {{cannot increment value of type 'Constrained<long long>'}}
+-  c--; // expected-error {{cannot decrement value of type 'Constrained<long long>'}}
+-}
+-
+-// An unsatisfied constraint on the prefix operator deletes the defaulted
+-// postfix operator.
+-template <typename T> struct ConstrainedPrefix {
+-  ConstrainedPrefix &operator++() requires Small<T>;
+-  ConstrainedPrefix operator++(int) = default; // #ConstrainedPrefix
+-  // pre2d-warning@#ConstrainedPrefix {{defaulted postfix increment and decrement operators are a C++2d extension}}
+-  // compat-warning@#ConstrainedPrefix {{defaulted postfix increment and decrement operators are incompatible with C++ standards before C++2d}}
+-  // expected-note@#ConstrainedPrefix {{explicitly defaulted function was implicitly deleted here}}
+-  // expected-note@#ConstrainedPrefix {{defaulted 'operator++' is implicitly deleted because there is no viable prefix 'operator++' for an lvalue of type 'ConstrainedPrefix<long long>'}}
+-};
+-void use_constrained_prefix(ConstrainedPrefix<int> a, ConstrainedPrefix<long long> b) {
+-  a++;
+-  b++; // expected-error {{object of type 'ConstrainedPrefix<long long>' cannot be incremented because its defaulted postfix increment operator is implicitly deleted}}
+-}
+-#endif
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/warn-unsequenced.cpp b/clang/test/SemaCXX/warn-unsequenced.cpp
+--- a/clang/test/SemaCXX/warn-unsequenced.cpp
++++ b/clang/test/SemaCXX/warn-unsequenced.cpp
+@@ -815,51 +815,3 @@
+ }
+ 
+ } // namespace templates
+-
+-namespace muliple_read_volatile {
+-  volatile int v1, v2;
+-
+-  
+-  void PositiveTest(){
+-    int x = 0;
+-    int y = 0;
+-    x = v1 + v1;        // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}
+-                        // cxx17-warning@-1 {{unsequenced accesses to volatile qualified 'v1'}}
+-    v1 = v1 * v1;       // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}
+-                        // cxx17-warning@-1 {{unsequenced accesses to volatile qualified 'v1'}}
+-    x = v1 + (y++, v1); // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}
+-                        // cxx17-warning@-1 {{unsequenced accesses to volatile qualified 'v1'}}
+-    x = v1 + v1 || y;   // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}
+-                        // cxx17-warning@-1 {{unsequenced accesses to volatile qualified 'v1'}}  
+-               
+-    //FIXME: tracking pointer ownership in SequenceChecker
+-    volatile int *pv1 = &v1;
+-    volatile int *pv2 = &v1;
+-    x = *pv1 + *pv2;    // no-warning now    
+-  }
+-
+-  void PositiveTest_BeforeCXX17(){
+-    (v1, v2) = v1;      // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}   
+-    
+-    int array[] = { 0, 1, 2, 3};
+-    array[v1] = v1;     // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}}  
+-
+-    int x = 0;
+-    x = v1 << v1;       // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}} 
+-    x = v1 >> v1;       // cxx11-warning    {{unsequenced accesses to volatile qualified 'v1'}} 
+-  }
+-
+-  void NegativeTest(){
+-    int x = 0;
+-    int y = 0;
+-    x = v1 + y;   // no-warning
+-    x = v1 + v2;  // no-warning
+-    x = v1 << v2; // no-warning
+-    x = v1 >> v2; // no-warning
+-    v1 = v1 * y;  // no-warning 
+-    x = (v1, v1); // no-warning
+-    v1, v2 = v1;  // no-warning
+-    x = v1 || v1; // no-warning
+-    x = v1 && v1; // no-warning
+-  }
+-} // namespace muliple_read_volatile
+diff -ruN --strip-trailing-cr a/clang/www/cxx_status.html b/clang/www/cxx_status.html
+--- a/clang/www/cxx_status.html
++++ b/clang/www/cxx_status.html
+@@ -117,7 +117,7 @@
+ <tr>
+   <td>Defaulting postfix increment and decrement operations</td>
+   <td><a href="https://wg21.link/P3668R4">P3668R4</a></td>
+-  <td class="unreleased" align="center">Clang 24</td>
++  <td class="none" align="center">No</td>
+ </tr>
+ <tr>
+   <td>Adding restrictions to defaulted assignment operator functions</td>
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/powf_test.cpp b/libc/test/src/math/smoke/powf_test.cpp
+--- a/libc/test/src/math/smoke/powf_test.cpp
++++ b/libc/test/src/math/smoke/powf_test.cpp
+@@ -295,8 +295,7 @@
+     LIBC_NAMESPACE::testing::ModifyMXCSR mxcsr(LIBC_NAMESPACE::testing::FTZ);
+     volatile float x = -min_denormal;
+     volatile float y = 0.5f;
+-    float funcRes = func(x, y);
+-    EXPECT_FP_IS_NAN(funcRes);
++    EXPECT_FP_IS_NAN(func(x, y));
+     volatile float two = 2.0f;
+     volatile float d = min_denormal;
+     EXPECT_FP_EQ(1.0f, func(two, d));
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86AsmPrinter.cpp b/llvm/lib/Target/X86/X86AsmPrinter.cpp
+--- a/llvm/lib/Target/X86/X86AsmPrinter.cpp
++++ b/llvm/lib/Target/X86/X86AsmPrinter.cpp
+@@ -186,11 +186,12 @@
+   }
+ 
+   // Emit a function symbol for the type data to avoid unreachable instruction
+-  // warnings from binary validation tools, and use the same linkage as the
+-  // parent function. Note that using local linkage would result in duplicate
+-  // symbols for weak parent functions.
++  // warnings from binary validation tools, and use the same linkage and
++  // visibility as the parent function. Note that using local linkage would
++  // result in duplicate symbols for weak parent functions.
+   MCSymbol *FnSym = OutContext.getOrCreateSymbol("__cfi_" + MF.getName());
+   emitLinkage(&MF.getFunction(), FnSym);
++  emitVisibility(FnSym, F.getVisibility());
+   if (MAI.hasDotTypeDotSizeDirective())
+     OutStreamer->emitSymbolAttribute(FnSym, MCSA_ELF_TypeFunction);
+   OutStreamer->emitLabel(FnSym);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLoweringCall.cpp b/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
+--- a/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
++++ b/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
+@@ -2106,7 +2106,7 @@
+   bool HasNCSR = (CB && isa<CallInst>(CB) &&
+                   CB->hasFnAttr("no_caller_saved_registers"));
+   bool IsIndirectCall = (CB && isa<CallInst>(CB) && CB->isIndirectCall());
+-  bool IsCFICall = IsIndirectCall && CLI.CFIType;
++  bool IsCFICall = CB && CB->isIndirectCall() && CLI.CFIType;
+   const Module *M = MF.getFunction().getParent();
+ 
+   // If the indirect call target has the nocf_check attribute, the call needs
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/kcfi-invoke.ll b/llvm/test/CodeGen/X86/kcfi-invoke.ll
+--- a/llvm/test/CodeGen/X86/kcfi-invoke.ll
++++ b/llvm/test/CodeGen/X86/kcfi-invoke.ll
+@@ -0,0 +1,182 @@
++; RUN: llc -mtriple=x86_64-unknown-linux-gnu -verify-machineinstrs < %s | FileCheck %s --check-prefix=ASM
++; RUN: llc -mtriple=x86_64-unknown-linux-gnu -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefix=ASM-O0
++; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=finalize-isel < %s | FileCheck %s --check-prefixes=MIR,ISEL
++; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=kcfi < %s | FileCheck %s --check-prefixes=MIR,KCFI
++; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=kcfi -enable-new-pm < %s | FileCheck %s --check-prefixes=MIR,KCFI
++
++;; An indirect call that is an invoke has a KCFI check like any other, and the
++;; check is inside of the invoke's try-range. The landing pad does something
++;; before it resumes, or the invoke would be turned into a call before
++;; instruction selection.
++
++declare i32 @__gxx_personality_v0(...)
++declare void @cleanup()
++
++@g = external local_unnamed_addr global ptr, align 8
++
++define void @f1(ptr noundef %x) personality ptr @__gxx_personality_v0 {
++; ASM-LABEL: f1:
++; ASM:       .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-NEXT:    addl -4(%rdi), %r10d
++; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-NEXT:    ud2
++; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
++; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
++; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
++; ASM-NEXT:    .text
++; ASM-NEXT:  [[PASS]]:
++; ASM-NEXT:    callq *%rdi
++; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; ASM-O0-LABEL: f1:
++; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-O0-NEXT:    addl -4([[REG:%r[a-z0-9]+]]), %r10d
++; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-O0-NEXT:    ud2
++; ASM-O0:       [[PASS]]:
++; ASM-O0-NEXT:    callq *[[REG]]
++; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; MIR-LABEL: name: f1
++; MIR: body:
++
++; ISEL:       EH_LABEL
++; ISEL:       CALL64r %0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, cfi-type 12345678
++; ISEL:       EH_LABEL
++
++; KCFI:       EH_LABEL
++; KCFI-NEXT:  BUNDLE{{.*}} {
++; KCFI-NEXT:    KCFI_CHECK $rdi, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
++; KCFI-NEXT:    CALL64r killed $rdi, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp
++; KCFI-NEXT:  }
++; KCFI-NEXT:  EH_LABEL
++  invoke void %x() [ "kcfi"(i32 12345678) ]
++    to label %cont
++    unwind label %err
++cont:
++  ret void
++err:
++  %exn = landingpad { ptr, i32 }
++          cleanup
++  call void @cleanup()
++  resume { ptr, i32 } %exn
++}
++
++define void @f2() personality ptr @__gxx_personality_v0 {
++; ASM-LABEL: f2:
++; ASM:         movq g@GOTPCREL(%rip), %rax
++; ASM-NEXT:    movq (%rax), %rax
++; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-NEXT:    addl -4(%rax), %r10d
++; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-NEXT:    ud2
++; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
++; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
++; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
++; ASM-NEXT:    .text
++; ASM-NEXT:  [[PASS]]:
++; ASM-NEXT:    callq *%rax
++; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; ASM-O0-LABEL: f2:
++; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-O0-NEXT:    addl -4([[REG:%r[a-z0-9]+]]), %r10d
++; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-O0-NEXT:    ud2
++; ASM-O0:       [[PASS]]:
++; ASM-O0-NEXT:    callq *[[REG]]
++; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; MIR-LABEL: name: f2
++; MIR: body:
++
++; ISEL:       EH_LABEL
++; ISEL:       CALL64r %1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, cfi-type 12345678
++; ISEL:       EH_LABEL
++
++; KCFI:       renamable $rax = MOV64rm killed renamable $rax, 1, $noreg, 0, $noreg
++; KCFI-NEXT:  EH_LABEL
++; KCFI-NEXT:  BUNDLE{{.*}} {
++; KCFI-NEXT:    KCFI_CHECK $rax, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
++; KCFI-NEXT:    CALL64r killed $rax, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp
++; KCFI-NEXT:  }
++; KCFI-NEXT:  EH_LABEL
++  %1 = load ptr, ptr @g, align 8
++  invoke void %1() [ "kcfi"(i32 12345678) ]
++    to label %cont
++    unwind label %err
++cont:
++  ret void
++err:
++  %exn = landingpad { ptr, i32 }
++          cleanup
++  call void @cleanup()
++  resume { ptr, i32 } %exn
++}
++
++define void @f3(ptr noundef %x) #0 personality ptr @__gxx_personality_v0 {
++; ASM-LABEL: f3:
++; ASM:       .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-NEXT:    movq %rdi, %r11
++; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-NEXT:    addl -4(%r11), %r10d
++; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-NEXT:    ud2
++; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
++; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
++; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
++; ASM-NEXT:    .text
++; ASM-NEXT:  [[PASS]]:
++; ASM-NEXT:    callq __llvm_retpoline_r11
++; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; ASM-O0-LABEL: f3:
++; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
++; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
++; ASM-O0-NEXT:    addl -4(%r11), %r10d
++; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
++; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
++; ASM-O0-NEXT:    ud2
++; ASM-O0:       [[PASS]]:
++; ASM-O0-NEXT:    callq __llvm_retpoline_r11
++; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
++
++; MIR-LABEL: name: f3
++; MIR: body:
++
++; ISEL:       EH_LABEL
++; ISEL:       CALL64pcrel32 &__llvm_retpoline_r11, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit killed $r11, cfi-type 12345678
++; ISEL:       EH_LABEL
++
++; KCFI:       EH_LABEL
++; KCFI-NEXT:  $r11 = MOV64rr killed $rdi
++; KCFI-NEXT:  BUNDLE{{.*}} {
++; KCFI-NEXT:    KCFI_CHECK $r11, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
++; KCFI-NEXT:    CALL64pcrel32 &__llvm_retpoline_r11, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit internal $r11
++; KCFI-NEXT:  }
++; KCFI-NEXT:  EH_LABEL
++  invoke void %x() [ "kcfi"(i32 12345678) ]
++    to label %cont
++    unwind label %err
++cont:
++  ret void
++err:
++  %exn = landingpad { ptr, i32 }
++          cleanup
++  call void @cleanup()
++  resume { ptr, i32 } %exn
++}
++
++attributes #0 = { "target-features"="+retpoline-indirect-branches,+retpoline-indirect-calls" }
++
++!llvm.module.flags = !{!0}
++!0 = !{i32 4, !"kcfi", i32 1}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/kcfi.ll b/llvm/test/CodeGen/X86/kcfi.ll
+--- a/llvm/test/CodeGen/X86/kcfi.ll
++++ b/llvm/test/CodeGen/X86/kcfi.ll
+@@ -164,6 +164,16 @@
+ }
+ 
+ attributes #0 = { "target-features"="+retpoline-indirect-branches,+retpoline-indirect-calls" }
++
++;; __cfi_<fn> has the same visibility as <fn>.
++; ASM:       .globl __cfi_f10
++; ASM-NEXT:  .hidden __cfi_f10
++; ASM-NEXT:  .type __cfi_f10,@function
++; ASM-LABEL: __cfi_f10:
++define hidden void @f10() !kcfi_type !1 {
++; ASM-LABEL: {{^}}f10:
++  ret void
++}
+ 
+ !llvm.module.flags = !{!0}
+ !0 = !{i32 4, !"kcfi", i32 1}

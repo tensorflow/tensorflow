@@ -1,0 +1,29 @@
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -196,17 +196,20 @@
+       }
+       // The first scalar operand fills the high half of the packed result.
+       result = NVVM::ConvertF32x2ToF8x2Op::create(
+-          rewriter, loc, vec_ty(i8_ty, 2), hi, lo, NVVM::FPRoundingMode::RN,
+-          NVVM::SaturationMode::SATFINITE, false, dstTy);
++          rewriter, loc, vec_ty(i8_ty, 2), hi, lo, /*scale_factor=*/Value(),
++          NVVM::FPRoundingMode::RN, NVVM::SaturationMode::SATFINITE, false,
++          dstTy);
+     } else {
+       Value packed = packLLVector(loc, values, rewriter);
+       if (srcTy.isF16()) {
+         result = NVVM::ConvertF16x2ToF8x2Op::create(
+-            rewriter, loc, vec_ty(i8_ty, 2), packed, false, dstTy);
++            rewriter, loc, vec_ty(i8_ty, 2), packed, /*scale_factor=*/Value(),
++            NVVM::SaturationMode::NONE, false, dstTy);
+       } else if (srcTy.isBF16()) {
+         result = NVVM::ConvertBF16x2ToF8x2Op::create(
+-            rewriter, loc, vec_ty(i8_ty, 2), packed, NVVM::FPRoundingMode::RN,
+-            NVVM::SaturationMode::SATFINITE, false, dstTy);
++            rewriter, loc, vec_ty(i8_ty, 2), packed, /*scale_factor=*/Value(),
++            NVVM::FPRoundingMode::RN, NVVM::SaturationMode::SATFINITE, false,
++            dstTy);
+       } else {
+         result = NVVM::ConvertF8x2ToF16x2Op::create(
+             rewriter, loc, vec_ty(f16_ty, 2), packed, srcTy, false);
+
