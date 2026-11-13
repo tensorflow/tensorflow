@@ -307,6 +307,135 @@ TEST_F(FusionWrapperTest, NonEigenConvolutionWrapped) {
       wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
 }
 
+TEST_F(FusionWrapperTest, NaiveDotWrapped) {
+  // Small matmuls are lowered to a naive loop nest, so they are routed to the
+  // MLIR fusion emitter.
+  static constexpr absl::string_view hlo_string = R"hlo(
+  HloModule m
+    ENTRY e {
+      p0 = f32[3,3] parameter(0)
+      p1 = f32[3,3] parameter(1)
+      ROOT dot = f32[3,3] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+  // CHECK:       %[[COMPUTATION:.+]] ({{.*}}) -> f32[3,3] {
+  // CHECK-NEXT:    %[[PARAM0:.+]] = f32[3,3]{1,0} parameter(0)
+  // CHECK-NEXT:    %[[PARAM1:.+]] = f32[3,3]{1,0} parameter(1)
+  // CHECK-NEXT:    ROOT %{{.+}} = f32[3,3]{1,0} dot(%[[PARAM0]], %[[PARAM1]]),
+  // CHECK-SAME:      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  // CHECK:       ENTRY %{{.+}} ({{.*}}) -> f32[3,3] {
+  // CHECK-NEXT:    %[[P0:.+]] = f32[3,3]{1,0} parameter(0)
+  // CHECK-NEXT:    %[[P1:.+]] = f32[3,3]{1,0} parameter(1)
+  // CHECK-NEXT:    ROOT %{{.+}} = f32[3,3]{1,0} fusion(%[[P0]], %[[P1]]),
+  // CHECK-SAME:      kind=kLoop, calls=%[[COMPUTATION]]
+  )hlo";
+  RunAndFilecheckHloRewrite(
+      hlo_string, FusionWrapper(&target_machine_features_),
+      [this](HloModule* module) {
+        // A subsequent run should be a no-op -- the dot is already fused.
+        FusionWrapper wrapper(&target_machine_features_);
+        ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(module));
+        EXPECT_FALSE(changed);
+      });
+}
+
+TEST_F(FusionWrapperTest, NaiveBatchDotWrapped) {
+  // The strategy of a batch dot is the strategy of its inner dot.
+  static constexpr absl::string_view hlo_string = R"hlo(
+  HloModule m
+    ENTRY e {
+      p0 = f32[8,3,3] parameter(0)
+      p1 = f32[8,3,3] parameter(1)
+      ROOT dot = f32[8,3,3] dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={2},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_TRUE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, NaiveDotWithoutTargetMachineFeaturesNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"hlo(
+  HloModule m
+    ENTRY e {
+      p0 = f32[3,3] parameter(0)
+      p1 = f32[3,3] parameter(1)
+      ROOT dot = f32[3,3] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper;
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, MatrixVectorDotNotWrapped) {
+  // Lowered to the tiled LLVM IR GEMV implementation.
+  static constexpr absl::string_view hlo_string = R"hlo(
+  HloModule m
+    ENTRY e {
+      p0 = f32[64,32] parameter(0)
+      p1 = f32[32] parameter(1)
+      ROOT dot = f32[64] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
+TEST_F(FusionWrapperTest, MatrixMatrixDotNotWrapped) {
+  // Lowered to the tiled LLVM IR GEMM implementation or to an Eigen call.
+  for (int64_t size : {16, 512}) {
+    std::string hlo_string =
+        absl::StrFormat(R"hlo(
+    HloModule m
+      ENTRY e {
+        p0 = f32[%d,%d] parameter(0)
+        p1 = f32[%d,%d] parameter(1)
+        ROOT dot = f32[%d,%d] dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      }
+    )hlo",
+                        size, size, size, size, size, size);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    FusionWrapper wrapper(&target_machine_features_);
+    EXPECT_FALSE(wrapper.MustWrapInstruction(
+        *m->entry_computation()->root_instruction()))
+        << "Failed for size: " << size;
+  }
+}
+
+TEST_F(FusionWrapperTest, NaiveDotWithUnsupportedAlgorithmNotWrapped) {
+  static constexpr absl::string_view hlo_string = R"hlo(
+  HloModule m
+    ENTRY e {
+      p0 = f32[3,3] parameter(0)
+      p1 = f32[3,3] parameter(1)
+      ROOT dot = f32[3,3] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_tf32_tf32_f32
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  FusionWrapper wrapper(&target_machine_features_);
+  EXPECT_FALSE(
+      wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

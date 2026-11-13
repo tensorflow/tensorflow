@@ -15,15 +15,62 @@ limitations under the License.
 
 #include "xla/backends/cpu/transforms/fusion_wrapper.h"
 
+#include "absl/log/log.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/service/decision.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
+namespace {
+
+// Only dots that would otherwise be lowered to a naive LLVM IR loop nest
+// (`DotImplementationStrategy::kNaiveLlvmIr`) are wrapped. Tiled LLVM IR and
+// Eigen dots stay on the non-fusion path, where they perform better.
+Decision ShouldWrapDot(const HloInstruction& dot,
+                       const TargetMachineFeatures* target_machine_features) {
+  if (target_machine_features == nullptr) {
+    return Decision::Forbid("target machine features are not available");
+  }
+  if (dot.operand(0)->shape().element_type() != dot.shape().element_type() ||
+      dot.operand(1)->shape().element_type() != dot.shape().element_type()) {
+    return Decision::Forbid(
+        "mixed-precision dots are not supported by the elemental dot emitter");
+  }
+
+  // `GetDotImplementationStrategy` relies on the canonical form established by
+  // `DotDecomposer`. Leave anything else to `ThunkEmitter`, which reports it.
+  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
+  if (dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.rhs_contracting_dimensions_size() != 1) {
+    return Decision::Forbid("dot does not have one contracting dimension");
+  }
+  if (!algorithm_util::IsSupportedByElementalDotEmitter(
+          dot.precision_config().algorithm())) {
+    return Decision::Forbid(
+        "dot algorithm is not supported by the elemental dot emitter");
+  }
+  const HloModuleConfig& config = dot.GetModule() != nullptr
+                                      ? dot.GetModule()->config()
+                                      : HloModuleConfig();
+  if (GetDotImplementationStrategy(config, dot, *target_machine_features,
+                                   /*allow_runtime_calls=*/true) !=
+      DotImplementationStrategy::kNaiveLlvmIr) {
+    return Decision::Forbid("dot is not lowered to a naive LLVM IR loop nest");
+  }
+  return Decision::Allow();
+}
+
+}  // namespace
 
 bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
   const HloOpcode opcode = instruction.opcode();
@@ -116,11 +163,12 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kConvolution:
       return target_machine_features_ != nullptr &&
              !CanUseEigenConvolution(instruction, *target_machine_features_);
-    // The following ops are supported but the performance is not as good as the
-    // non-fusion path.
-    // TODO(willfroom): Remove this once the performance is improved.
-    case HloOpcode::kDot:
-      return false;
+    case HloOpcode::kDot: {
+      Decision decision = ShouldWrapDot(instruction, target_machine_features_);
+      VLOG(3) << "Wrapping " << instruction.name() << ": "
+              << decision.Explain();
+      return decision.IsAllowed();
+    }
     default:
       return false;
   }
