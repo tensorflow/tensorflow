@@ -300,6 +300,19 @@ class Conv2DTransposeTest(test.TestCase):
 
         self.assertAllClose(cache_values, value)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DTransposeInt64OutputShape(self):
+    x = constant_op.constant(1.0, shape=[2, 3, 3, 3])
+    f = constant_op.constant(1.0, shape=[3, 3, 2, 3])
+    expected = nn_ops.conv2d_transpose(
+        x, f, [2, 6, 6, 2], strides=2, padding="SAME")
+    for output_shape in (
+        np.array([2, 6, 6, 2], dtype=np.int64),
+        constant_op.constant([2, 6, 6, 2], dtype=dtypes.int64)):
+      output = nn_ops.conv2d_transpose(
+          x, f, output_shape, strides=2, padding="SAME")
+      self.assertAllEqual(self.evaluate(expected), self.evaluate(output))
+
   def testConv2DTransposeShapeInference(self):
     # Test case for 8972
     initializer = random_ops.truncated_normal(
@@ -381,7 +394,7 @@ class Conv2DTransposeTest(test.TestCase):
         )
         self.evaluate(op)
 
-  def testConv2DTransposeInvalidOutputShapeRank(self):
+  def testConv2DTransposeInvalidOutputShapeRankInSession(self):
     with self.session():
       with self.assertRaises((errors.InvalidArgumentError, ValueError)):
         op = nn_ops.conv2d_transpose(
