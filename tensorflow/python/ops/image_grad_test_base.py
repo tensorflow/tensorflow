@@ -1187,6 +1187,119 @@ class RGBToHSVOpTestBase(test.TestCase):
     self.assertAllClose(numerical_dummy, numerical, atol=1e-4)
 
 
+class HSVToRGBOpTestBase(test.TestCase):
+  """Tests the gradient of tf.image.hsv_to_rgb.
+
+  The op used to be registered as not differentiable, so anything that reached
+  the loss only through an HSV to RGB conversion got a `None` gradient.
+  """
+
+  TYPES = [np.float32, np.float64]
+
+  def _hsv_grid(self):
+    # Hues in the middle of the six sectors, away from the breakpoints at
+    # multiples of 1/6 where the kernel is not differentiable, crossed with a
+    # few saturation and value levels.
+    hues = (np.arange(6) + 0.5) / 6
+    saturations = [0.1, 0.55, 0.9]
+    values = [0.2, 0.7, 1.0]
+    grid = np.stack(np.meshgrid(hues, saturations, values, indexing="ij"), -1)
+    return grid.reshape([1, 6, 9, 3])
+
+  def testHSVToRGBGradMidSector(self):
+
+    def f(x):
+      return gen_image_ops.hsv_to_rgb(x)
+
+    for nptype in self.TYPES:
+      tol = 1e-3 if nptype == np.float32 else 1e-10
+      hsv_input_tensor = constant_op.constant(self._hsv_grid().astype(nptype))
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [hsv_input_tensor])
+      self.assertAllClose(numerical, analytical, atol=tol)
+
+  def testHSVToRGBGradRandomCase(self):
+
+    def f(x):
+      return gen_image_ops.hsv_to_rgb(x)
+
+    np.random.seed(0)
+    x = np.random.rand(2, 4, 5, 3).astype(np.float32)
+    # Keep every hue inside its sector so that the finite differences do not
+    # straddle a breakpoint.
+    sector = np.random.randint(6, size=x.shape[:-1])
+    x[..., 0] = (sector + 0.05 + 0.9 * x[..., 0]) / 6
+    hsv_input_tensor = constant_op.constant(x)
+    self.assertLess(
+        gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(f, [hsv_input_tensor])), 1e-3)
+
+  def testHSVToRGBGradMatchesSectorFormula(self):
+    # Checks the registered gradient against autodiff of the usual sector
+    # formulation of HSV to RGB, written with primitive ops.
+
+    def f(x):
+      return gen_image_ops.hsv_to_rgb(x)
+
+    def f_reference(x):
+      h = x[..., 0]
+      s = x[..., 1]
+      v = x[..., 2]
+      dh = h * 6
+      sector = math_ops.floor(dh)
+      fraction = dh - sector
+      p = v * (1 - s)
+      q = v * (1 - s * fraction)
+      t = v * (1 - s * (1 - fraction))
+      one_hot = array_ops.one_hot(
+          math_ops.cast(sector, dtypes.int32) % 6, 6, dtype=x.dtype)
+      r = math_ops.reduce_sum(
+          one_hot * array_ops_stack.stack([v, q, p, p, t, v], axis=-1), -1)
+      g = math_ops.reduce_sum(
+          one_hot * array_ops_stack.stack([t, v, v, q, p, p], axis=-1), -1)
+      b = math_ops.reduce_sum(
+          one_hot * array_ops_stack.stack([p, p, t, v, v, q], axis=-1), -1)
+      return array_ops_stack.stack([r, g, b], axis=-1)
+
+    hsv_input_tensor = constant_op.constant(self._hsv_grid())
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        f, [hsv_input_tensor])
+    analytical_reference, numerical_reference = (
+        gradient_checker_v2.compute_gradient(f_reference, [hsv_input_tensor]))
+    self.assertAllClose(numerical, analytical, atol=1e-8)
+    self.assertAllClose(analytical_reference, analytical, atol=1e-8)
+    self.assertAllClose(numerical_reference, numerical, atol=1e-8)
+
+  def testHSVToRGBGradInvertsRGBToHSVGrad(self):
+    # rgb -> hsv -> rgb is the identity away from the degenerate points, so the
+    # Jacobian of the round trip must be the identity matrix.
+    rgb = np.array([[0.2, 0.6, 0.9], [0.9, 0.2, 0.6], [0.6, 0.9, 0.2],
+                    [0.1, 0.8, 0.5], [0.5, 0.1, 0.8], [0.8, 0.5, 0.1]])
+    rgb_input_tensor = constant_op.constant(rgb.reshape([1, 2, 3, 3]))
+
+    def f(x):
+      return gen_image_ops.hsv_to_rgb(gen_image_ops.rgb_to_hsv(x))
+
+    analytical, _ = gradient_checker_v2.compute_gradient(f, [rgb_input_tensor])
+    self.assertAllClose(analytical[0], np.eye(rgb.size), atol=1e-8)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testHSVToRGBGradAtBreakpointsIsFinite(self):
+    # Hues exactly on the sector breakpoints, with saturation and value at the
+    # ends of their ranges. The kernel is not differentiable in hue there, so
+    # the gradient must be finite and use the zero subgradient for hue.
+    hues = np.arange(7) / 6
+    grid = np.stack(np.meshgrid(hues, [0., 1.], [0., 1.], indexing="ij"), -1)
+    hsv_input_tensor = constant_op.constant(
+        grid.reshape([1, 7, 4, 3]), dtypes.float32)
+    with backprop.GradientTape() as tape:
+      tape.watch(hsv_input_tensor)
+      rgb = gen_image_ops.hsv_to_rgb(hsv_input_tensor)
+    grad = self.evaluate(tape.gradient(rgb, hsv_input_tensor))
+    self.assertTrue(np.all(np.isfinite(grad)))
+    self.assertAllEqual(grad[..., 0], np.zeros(grad.shape[:-1]))
+
+
 class AdjustContrastOpTestBase(test.TestCase):
   """Tests the gradient of tf.image.adjust_contrast.
 
@@ -1218,6 +1331,165 @@ class AdjustContrastOpTestBase(test.TestCase):
       )
     max_error = gradient_checker_v2.max_error(analytical, numerical)
     self.assertLess(max_error, 1e-4)
+
+
+class AdjustHueOpTestBase(test.TestCase):
+  """Tests the gradient of tf.image.adjust_hue.
+
+  The op had no registered gradient, so anything that reached the loss only
+  through an `adjust_hue` op got a `None` gradient in eager mode and a
+  `LookupError` when the gradient was requested inside a `tf.function`.
+  """
+
+  def _interior_hues(self, delta, shape, margin=0.08):
+    # Hue samples that stay at least `margin` (in `h * 6` units) away from the
+    # sector breakpoints both before and after the `delta` shift, so that
+    # neither the kernel nor the finite differences straddle a breakpoint.
+    # The breakpoints move with the hue shift, so both positions have to be
+    # checked when `delta * 6` is not an integer.
+    np.random.seed(42)
+    hues = np.random.rand(*shape)
+    for _ in range(100):
+      shifted = (hues + delta) % 1.0
+      before = np.minimum((hues * 6) % 1.0, 1.0 - (hues * 6) % 1.0)
+      after = np.minimum((shifted * 6) % 1.0, 1.0 - (shifted * 6) % 1.0)
+      bad = (before < margin) | (after < margin)
+      if not bad.any():
+        return hues.astype(np.float32)
+      hues[bad] = np.random.rand(int(bad.sum()))
+    raise RuntimeError('could not sample hues away from the breakpoints')
+
+  def _hsv_to_rgb(self, hues, saturations, values):
+    # HSV to RGB away from the degenerate points is the identity on the hue,
+    # so this produces RGB pixels with the requested interior hues.
+    hsv = np.stack(np.broadcast_arrays(hues, saturations, values), axis=-1)
+    return gen_image_ops.hsv_to_rgb(
+        constant_op.constant(hsv.astype(np.float32), dtype=dtypes.float32))
+
+  def testAdjustHueGradMidSector(self):
+    # delta = 1/6 shifts the hue by exactly one sector, so a mid-sector grid
+    # stays mid-sector after the shift.
+    hues = (np.arange(6) + 0.5) / 6
+    grid = self._hsv_to_rgb(
+        *np.meshgrid(hues, [0.2, 0.55, 0.9], [0.2, 0.7, 1.0], indexing='ij'))
+    delta = constant_op.constant(1 / 6, dtype=dtypes.float32)
+
+    def f(image_tensor, delta_tensor):
+      return gen_image_ops.adjust_hue(image_tensor, delta_tensor)
+
+    analytical, numerical = gradient_checker_v2.compute_gradient(
+        f, [grid, delta])
+    self.assertLess(gradient_checker_v2.max_error(analytical, numerical),
+                    1e-3)
+
+  def testAdjustHueGradRandomCase(self):
+    for delta in [-0.9, -0.35, 0.27, 0.62, 0.95]:
+      hues = self._interior_hues(delta, [2, 4, 5])
+      images = self._hsv_to_rgb(
+          hues, 0.15 + 0.75 * np.random.RandomState(1).rand(2, 4, 5),
+          0.2 + 0.8 * np.random.RandomState(2).rand(2, 4, 5))
+      delta_tensor = constant_op.constant(delta, dtype=dtypes.float32)
+
+      def f(image_tensor, delta_tensor):
+        return gen_image_ops.adjust_hue(image_tensor, delta_tensor)
+
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [images, delta_tensor])
+      self.assertLess(
+          gradient_checker_v2.max_error(analytical, numerical), 2e-3,
+          'delta={}'.format(delta))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAdjustHueGradAtBreakpointsIsFinite(self):
+    # Hues exactly on the sector breakpoints, with saturation and value at the
+    # ends of their ranges. The kernel is not differentiable in the hue there,
+    # so the gradient must be finite and use the zero subgradient for the hue.
+    hues = np.arange(7) / 6
+    grid = np.stack(np.meshgrid(hues, [0., 1.], [0., 1.], indexing='ij'),
+                    -1)
+    images = constant_op.constant(
+        grid.reshape([1, 7, 4, 3]), dtype=dtypes.float32)
+    delta = constant_op.constant(0.27, dtype=dtypes.float32)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(images)
+      tape.watch(delta)
+      adjusted = gen_image_ops.adjust_hue(images, delta)
+      adjusted_sum = math_ops.reduce_sum(adjusted)
+    grad_images = self.evaluate(tape.gradient(adjusted_sum, images))
+    grad_delta = self.evaluate(tape.gradient(adjusted_sum, delta))
+    self.assertTrue(np.all(np.isfinite(grad_images)))
+    self.assertTrue(np.all(np.isfinite(grad_delta)))
+
+
+class AdjustSaturationOpTestBase(test.TestCase):
+  """Tests the gradient of tf.image.adjust_saturation.
+
+  The op had no registered gradient, so anything that reached the loss only
+  through an `adjust_saturation` op got a `None` gradient in eager mode and a
+  `LookupError` when the gradient was requested inside a `tf.function`.
+  """
+
+  def _hsv_to_rgb(self, hues, saturations, values):
+    hsv = np.stack(np.broadcast_arrays(hues, saturations, values), axis=-1)
+    return gen_image_ops.hsv_to_rgb(
+        constant_op.constant(hsv.astype(np.float32), dtype=dtypes.float32))
+
+  def testAdjustSaturationGradMidRange(self):
+    # Saturations scaled by the tested factors stay strictly inside (0, 1),
+    # away from the clamp ends.
+    hues = (np.arange(6) + 0.5) / 6
+    for scale_value in [0.7, 1.2]:
+      grid = self._hsv_to_rgb(
+          *np.meshgrid(hues, [0.2, 0.5, 0.75], [0.2, 0.7, 1.0],
+                       indexing='ij'))
+      scale = constant_op.constant(scale_value, dtype=dtypes.float32)
+
+      def f(image_tensor, scale_tensor):
+        return gen_image_ops.adjust_saturation(image_tensor, scale_tensor)
+
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [grid, scale])
+      self.assertLess(gradient_checker_v2.max_error(analytical, numerical),
+                      1e-3)
+
+  def testAdjustSaturationGradRandomCase(self):
+    np.random.seed(42)
+    for scale_value in [0.6, 1.2]:
+      hues = (np.arange(6) + 0.5) / 6
+      hue_grid = hues[np.random.randint(6, size=(2, 4, 5))]
+      images = self._hsv_to_rgb(
+          hue_grid, 0.15 + 0.6 * np.random.rand(2, 4, 5),
+          0.2 + 0.8 * np.random.rand(2, 4, 5))
+      scale = constant_op.constant(scale_value, dtype=dtypes.float32)
+
+      def f(image_tensor, scale_tensor):
+        return gen_image_ops.adjust_saturation(image_tensor, scale_tensor)
+
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [images, scale])
+      self.assertLess(
+          gradient_checker_v2.max_error(analytical, numerical), 2e-3,
+          'scale={}'.format(scale_value))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAdjustSaturationGradAtClampIsFinite(self):
+    # Saturations at the ends of their range. The clamp is not differentiable
+    # where `s * scale` is 0 or 1, so the gradient must be finite and the
+    # `scale` gradient must be zero there.
+    hues = (np.arange(6) + 0.5) / 6
+    images = self._hsv_to_rgb(
+        *np.meshgrid(hues, [0., 1.], [0.3, 0.7], indexing='ij'))
+    scale = constant_op.constant(1.0, dtype=dtypes.float32)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(images)
+      tape.watch(scale)
+      adjusted = gen_image_ops.adjust_saturation(images, scale)
+      adjusted_sum = math_ops.reduce_sum(adjusted)
+    grad_images = self.evaluate(tape.gradient(adjusted_sum, images))
+    grad_scale = self.evaluate(tape.gradient(adjusted_sum, scale))
+    self.assertTrue(np.all(np.isfinite(grad_images)))
+    self.assertTrue(np.all(np.isfinite(grad_scale)))
+    self.assertAllEqual(grad_scale, 0.0)
 
 
 _TRANSFORM_FILL_MODES = ['CONSTANT', 'NEAREST', 'REFLECT', 'WRAP']
