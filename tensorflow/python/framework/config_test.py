@@ -625,6 +625,18 @@ class DeviceTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
       context.context().get_memory_info('GPU:CPU')
 
+  @reset_eager
+  def testGetMemoryInfoInvalidDeviceType(self):
+    for bad_device in (None, 123):
+      with self.assertRaises(TypeError):
+        config.get_memory_info(bad_device)
+      with self.assertRaises(TypeError):
+        config.get_memory_usage(bad_device)
+      with self.assertRaises(TypeError):
+        context.context().get_memory_info(bad_device)
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      config.get_memory_info(b'unknown_device:0')
+
   @test_util.run_gpu_or_tpu
   @reset_eager
   def testPeakMemoryUsage(self, device_type):
@@ -681,6 +693,16 @@ class DeviceTest(test.TestCase):
       context.context().reset_memory_stats('GPU:')
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
       context.context().reset_memory_stats('GPU:CPU')
+
+  @reset_eager
+  def testResetMemoryStatsInvalidDeviceType(self):
+    for bad_device in (None, 123):
+      with self.assertRaises(TypeError):
+        config.reset_memory_stats(bad_device)
+      with self.assertRaises(TypeError):
+        context.context().reset_memory_stats(bad_device)
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      config.reset_memory_stats(b'unknown_device:0')
 
   @test_util.run_gpu_only
   @reset_eager
