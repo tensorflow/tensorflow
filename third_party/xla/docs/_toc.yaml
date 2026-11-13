@@ -111,6 +111,22 @@ toc:
     path: /xla/sparsecore_flags
   - title: Reporting JAX/XLA compile-time crashes on TPU
     path: /xla/jax_compile_crash
+    # TPU on-device debugging sub-section
+  - heading: TPU on-device debugging
+  - title: TPU on-device debugging overview
+    path: /xla/tpu_on_device_debugging/overview
+  - title: Analyze core dumps
+    path: /xla/tpu_on_device_debugging/analyze_core_dumps
+  - title: Debug callbacks
+    path: /xla/tpu_on_device_debugging/debug_callbacks
+  - title: Hang diagnostics
+    path: /xla/tpu_on_device_debugging/hang_diagnostics
+  - title: Debugging hangs: sync flag wait timeout
+    path: /xla/tpu_on_device_debugging/sync_flag_wait_timeout
+  - title: Debugging hangs: hierarchical program progress tracker
+    path: /xla/tpu_on_device_debugging/hierarchical_progress_tracker
+  - title: File a support case
+    path: /xla/tpu_on_device_debugging/file_support_case
     # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
