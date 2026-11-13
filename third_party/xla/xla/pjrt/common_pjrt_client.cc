@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_device_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
+#include "xla/pjrt/dynamic_pad_to_static.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"

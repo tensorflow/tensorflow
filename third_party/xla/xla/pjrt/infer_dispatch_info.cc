@@ -19,44 +19,33 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/pjrt/dynamic_pad_to_static.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -65,7 +54,6 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/device_assignment.h"
-#include "xla/service/hlo_value.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -91,172 +79,6 @@ std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
     }
   }
   return shapes;
-}
-
-namespace {
-
-bool IsPadRealToStaticOp(mlir::Operation* op) {
-  auto attr = op->getAttrOfType<mlir::StringAttr>("call_target_name");
-  return attr != nullptr && attr.getValue() == "PadRealToStatic";
-}
-
-// Returns true if `use` is the pad itself or a bitcast of the buffer.
-bool IsAllowedPadRealToStaticUse(const HloUse& use) {
-  const HloInstruction* user = use.instruction;
-  switch (user->opcode()) {
-    case HloOpcode::kCustomCall:
-      return user->IsCustomCall("PadRealToStatic") && use.operand_number == 0 &&
-             use.operand_index.empty();
-    case HloOpcode::kBitcast:
-      return true;
-    default:
-      return false;
-  }
-}
-
-absl::Status VerifyOnlyPadRealToStaticReadsValue(const HloValue& value) {
-  const HloInstruction* parameter = value.defining_instruction();
-  const ShapeIndex& leaf_index = value.defining_index();
-  auto format_error = [&](absl::string_view detail,
-                          absl::string_view via_name) {
-    return InvalidArgument(
-        "Entry parameter %d%s of module %s feeds PadRealToStatic and is also "
-        "%s (through %s). A dynamic parameter consumed by PadRealToStatic is "
-        "passed as a compact buffer without dynamic-shape metadata, which no "
-        "other instruction can read, so it must have no other users.",
-        parameter->parameter_number(),
-        leaf_index.empty() ? "" : absl::StrCat(" ", leaf_index.ToString()),
-        parameter->GetModule()->name(), detail, via_name);
-  };
-
-  for (const HloPosition& pos : value.positions()) {
-    if (pos.instruction->IsRoot()) {
-      return format_error(absl::StrCat("returned as a result of computation ",
-                                       pos.instruction->parent()->name()),
-                          pos.instruction->name());
-    }
-  }
-  for (const HloUse& use : value.GetUses()) {
-    if (!IsAllowedPadRealToStaticUse(use)) {
-      const HloInstruction* via = use.instruction->operand(use.operand_number);
-      return format_error(
-          absl::StrCat("used by ", use.instruction->ToString(),
-                       " in computation ", use.instruction->parent()->name()),
-          via->name());
-    }
-  }
-  return absl::OkStatus();
-}
-
-}  // namespace
-
-absl::Status ClearPadRealToStaticParameterMetadataPrefixes(
-    const HloModule& hlo_module, absl::Span<Shape> parameter_shapes) {
-  const HloComputation* entry_comp = hlo_module.entry_computation();
-
-  // Only pads in the entry computation are handled; offloaded pads live in
-  // other computations, are not traced here and keep the prefix.
-  std::vector<const HloInstruction*> pad_calls;
-  for (const HloInstruction* instruction : entry_comp->instructions()) {
-    if (instruction->IsCustomCall("PadRealToStatic") &&
-        instruction->operand_count() > 0 &&
-        instruction->operand(0)->shape().is_dynamic()) {
-      pad_calls.push_back(instruction);
-    }
-  }
-  if (pad_calls.empty()) {
-    return absl::OkStatus();
-  }
-
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                   HloDataflowAnalysis::Run(hlo_module));
-
-  const ComputationLayout& layout = hlo_module.entry_computation_layout();
-  const bool flattened_tuple_parameter =
-      layout.parameter_count() == 1 && layout.parameter_shape(0).IsTuple();
-
-  // Anything but an entry parameter (array copy, reshard, dynamic producer)
-  // would hand the pad a buffer that starts with the metadata prefix.
-  absl::flat_hash_set<HloValue::Id> seen_entry_values;
-  std::vector<const HloValue*> entry_parameter_values;
-  for (const HloInstruction* pad : pad_calls) {
-    const std::vector<const HloValue*>& values =
-        dataflow->GetValueSet(pad->operand(0), {}).values();
-    if (values.empty()) {
-      return InvalidArgument(
-          "Dynamic operand of PadRealToStatic (%s) in module %s does not "
-          "resolve to an entry computation parameter.",
-          pad->ToString(), hlo_module.name());
-    }
-    for (const HloValue* value : values) {
-      const HloInstruction* def = value->defining_instruction();
-      if (def->opcode() != HloOpcode::kParameter) {
-        return InvalidArgument(
-            "Dynamic operand of PadRealToStatic (%s) in module %s must come "
-            "from an entry computation parameter without being copied or "
-            "recomputed, but its value is defined by %s in computation %s.",
-            pad->ToString(), hlo_module.name(), def->ToString(),
-            def->parent()->name());
-      }
-      CHECK_EQ(def->parent(), entry_comp);
-      if (seen_entry_values.insert(value->id()).second) {
-        entry_parameter_values.push_back(value);
-      }
-    }
-  }
-
-  std::vector<const HloValue*> parameter_values;
-  parameter_values.reserve(entry_parameter_values.size());
-  for (const HloValue* value : entry_parameter_values) {
-    const HloInstruction* def = value->defining_instruction();
-    const Shape& leaf_shape =
-        ShapeUtil::GetSubshape(def->shape(), value->defining_index());
-    if (!leaf_shape.IsArray() || !leaf_shape.is_dynamic()) {
-      continue;
-    }
-    ABSL_RETURN_IF_ERROR(VerifyOnlyPadRealToStaticReadsValue(*value));
-    if (std::optional<ShapeIndex> aliased_output =
-            hlo_module.input_output_alias_config().GetAliasedOutput(
-                def->parameter_number(), value->defining_index());
-        aliased_output.has_value()) {
-      return InvalidArgument(
-          "Entry parameter %d%s of module %s feeds PadRealToStatic and is "
-          "aliased to output %s. A dynamic parameter consumed by "
-          "PadRealToStatic is passed as a compact runtime-sized buffer without "
-          "dynamic-shape metadata, so it cannot back an aliased or donated "
-          "output.",
-          def->parameter_number(),
-          value->defining_index().empty()
-              ? ""
-              : absl::StrCat(" ", value->defining_index().ToString()),
-          hlo_module.name(), aliased_output->ToString());
-    }
-    parameter_values.push_back(value);
-  }
-
-  // Mutate `parameter_shapes` only after all validations succeed so an error
-  // leaves `parameter_shapes` untouched.
-  for (const HloValue* value : parameter_values) {
-    int64_t shape_no = value->defining_instruction()->parameter_number();
-    ShapeIndex index = value->defining_index();
-    if (flattened_tuple_parameter) {
-      if (shape_no != 0 || index.empty()) {
-        continue;
-      }
-      shape_no = index.front();
-      index = ShapeIndex(index.begin() + 1, index.end());
-    }
-    if (shape_no < 0 || shape_no >= parameter_shapes.size() ||
-        !ShapeUtil::IndexIsValid(parameter_shapes[shape_no], index)) {
-      continue;
-    }
-    Shape* subshape =
-        ShapeUtil::GetMutableSubshape(&parameter_shapes[shape_no], index);
-    if (subshape->IsArray() && subshape->has_layout()) {
-      subshape->mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
-    }
-  }
-  return absl::OkStatus();
 }
 
 absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
@@ -430,31 +252,12 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
                      get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
 
-    // `PadRealToStatic` inputs carry no metadata prefix. Async compilation
-    // never reaches the HLO-based clearing, so mirror its checks here.
-    if (shape.is_dynamic()) {
-      mlir::BlockArgument arg = main.getArgument(i);
-      // Operand 0 is the data tensor; the other operands are the sizes.
-      const bool is_pad_real_to_static_input =
-          llvm::any_of(arg.getUses(), [](mlir::OpOperand& use) {
-            return use.getOperandNumber() == 0 &&
-                   IsPadRealToStaticOp(use.getOwner());
-          });
-      if (is_pad_real_to_static_input) {
-        if (!arg.hasOneUse()) {
-          return absl::InvalidArgumentError(absl::StrFormat(
-              "Entry argument %d feeds PadRealToStatic and has other users; "
-              "PadRealToStatic dynamic inputs have no metadata prefix and "
-              "must have no other users.",
-              i));
-        }
-        if (main.getArgAttr(i, "tf.aliasing_output") != nullptr) {
-          return absl::InvalidArgumentError(absl::StrFormat(
-              "Entry argument %d feeds PadRealToStatic and is aliased via "
-              "tf.aliasing_output; compact PadRealToStatic buffers cannot back "
-              "aliased or donated outputs.",
-              i));
-        }
+    // `PadRealToStatic` inputs carry no metadata prefix; mirror the HLO check
+    // here because async compilation never reaches `LoadInternal`.
+    if (shape.IsArray() && shape.is_dynamic()) {
+      ABSL_ASSIGN_OR_RETURN(bool clear_prefix,
+                       ShouldClearPadRealToStaticMetadataPrefix(main, i));
+      if (clear_prefix) {
         shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
         layout = std::make_shared<PjRtLayout>(shape.layout());
       }
