@@ -1764,6 +1764,14 @@ func.func @testConcatQuantized(%arg0: tensor<1x2x!quant.uniform<i8:f32, 0.1:128>
 
 // -----
 
+func.func @testConcatQuantizedInt16(%arg0: tensor<1x2x!quant.uniform<i16:f32, 0.1>>, %arg1: tensor<1x2x!quant.uniform<i16:f32, 0.1>>) -> tensor<2x2x!quant.uniform<i16:f32, 0.1>> {
+  // CHECK: "tfl.concatenation"(%arg0, %arg1) <{axis = 0 : i32, fused_activation_function = "NONE"}>
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<i16:f32, 0.1>>, tensor<1x2x!quant.uniform<i16:f32, 0.1>>) -> tensor<2x2x!quant.uniform<i16:f32, 0.1>>
+  func.return %0 : tensor<2x2x!quant.uniform<i16:f32, 0.1>>
+}
+
+// -----
+
 func.func @testConcatInvalidOutputElementalType(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
   // expected-error @+1 {{'tfl.concatenation' op failed to verify that values and output must have same element type}}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<?xf32>
