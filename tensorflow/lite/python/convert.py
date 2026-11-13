@@ -543,7 +543,7 @@ def build_conversion_flags(
     canonicalizing_inf_as_min_max_float=True,
     serialize_debug_metadata=False,
     unsafe_fuse_dynamic_shaped_broadcast=False,
-    rank_reduction=False,
+    rank_reduction=True,
     unsafe_gpu_compatibility=False,
     unsafe_single_batch_rank_reduction=False,
     enable_debug=False,

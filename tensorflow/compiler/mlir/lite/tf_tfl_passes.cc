@@ -689,6 +689,14 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateGpuCompatibilityPass());
   }
+  if (pass_config.rank_reduction || pass_config.unsafe_gpu_compatibility) {
+    // The two passes above run after SplitMergedOperandsPass, and their
+    // pattern drivers merge identical constants again. Stateful operands
+    // (e.g. the two state tensors of an LSTM, which start as identical
+    // constants) must not share a tensor, so split them once more.
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::CreateSplitMergedOperandsPass());
+  }
 
   if (pass_config.runtime_verification) {
     pass_manager->addNestedPass<mlir::func::FuncOp>(

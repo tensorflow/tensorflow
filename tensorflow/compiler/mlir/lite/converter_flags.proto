@@ -391,7 +391,7 @@ message ConverterFlags {
   // support few ops above rank 4. Previously
   // `unsafe_single_batch_rank_reduction`, which also enabled
   // `unsafe_gpu_compatibility`.
-  optional bool rank_reduction = 70 [default = false];
+  optional bool rank_reduction = 70 [default = true];
 
   // If true, fold 16-bit float (fp16/bf16) to 32-bit float (fp32) casts on
   // large resource constants.

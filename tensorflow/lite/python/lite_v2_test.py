@@ -261,15 +261,19 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
           **converter._get_base_converter_args()
       )
 
-    off = flags()
-    self.assertFalse(off.rank_reduction)
-    self.assertFalse(off.unsafe_gpu_compatibility)
+    # Rank reduction is on by default; GPU compatibility is not.
+    default = flags()
+    self.assertTrue(default.rank_reduction)
+    self.assertFalse(default.unsafe_gpu_compatibility)
 
-    rank_only = flags(_experimental_rank_reduction=True)
-    self.assertTrue(rank_only.rank_reduction)
-    self.assertFalse(rank_only.unsafe_gpu_compatibility)
+    no_rank = flags(_experimental_rank_reduction=False)
+    self.assertFalse(no_rank.rank_reduction)
+    self.assertFalse(no_rank.unsafe_gpu_compatibility)
 
-    gpu_only = flags(_experimental_unsafe_gpu_compatibility=True)
+    gpu_only = flags(
+        _experimental_rank_reduction=False,
+        _experimental_unsafe_gpu_compatibility=True,
+    )
     self.assertFalse(gpu_only.rank_reduction)
     self.assertTrue(gpu_only.unsafe_gpu_compatibility)
 
@@ -279,7 +283,14 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertTrue(legacy.unsafe_gpu_compatibility)
 
   @parameterized.named_parameters(
-      ('NeitherFlag', {}, False, False),
+      # Rank reduction runs by default; GPU compatibility does not.
+      ('Defaults', {}, True, False),
+      (
+          'NeitherPass',
+          {'_experimental_rank_reduction': False},
+          False,
+          False,
+      ),
       (
           'RankReductionOnly',
           {'_experimental_rank_reduction': True},
@@ -288,7 +299,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ),
       (
           'GpuCompatibilityOnly',
-          {'_experimental_unsafe_gpu_compatibility': True},
+          {
+              '_experimental_rank_reduction': False,
+              '_experimental_unsafe_gpu_compatibility': True,
+          },
           False,
           True,
       ),
@@ -4415,6 +4429,29 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
     # Check values from converted model.
+    expected_value = model.predict(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @parameterized.named_parameters(
+      ('RankReduction', '_experimental_rank_reduction'),
+      ('GpuCompatibility', '_experimental_unsafe_gpu_compatibility'),
+  )
+  @test_util.run_v2_only
+  def testKerasLSTMStatesStaySeparateWith(self, converter_attr):
+    # The fused LSTM op has two stateful operands that start as identical
+    # constants. A late pass that merges them makes both states one tensor.
+    input_data = tf.constant(
+        np.array(np.random.random_sample((4, 10, 10)), dtype=np.float32)
+    )
+    x = tf.keras.layers.Input(batch_shape=(4, 10, 10))
+    y = tf.keras.layers.LSTM(units=10, input_shape=(10, 10))(x)
+    model = tf.keras.Model(inputs=[x], outputs=[y])
+
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    setattr(converter, converter_attr, True)
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
