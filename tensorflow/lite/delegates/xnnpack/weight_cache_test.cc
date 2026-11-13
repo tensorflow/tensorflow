@@ -103,6 +103,7 @@ TEST_F(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -168,6 +169,7 @@ TEST_F(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -292,6 +294,7 @@ TEST_F(WeightCacheBuilderTest, FailedAppendDoesNotCorruptSchema) {
     const auto& header =
         *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
     ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+    ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
     const cache::schema::BufferList* const packed_weights =
         cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
     ASSERT_NE(packed_weights, nullptr);
@@ -406,6 +409,7 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -1321,6 +1325,24 @@ TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintMismatches) {
 
 TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintIsNotFound) {
   xnn_clear_fingerprints();
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenVersionMismatches) {
+  constexpr decltype(XNNPackCacheHeader::version) bad_version =
+      XNNPackCacheHeader::kInvalidHeader;
+  constexpr size_t version_offset = offsetof(XNNPackCacheHeader, version);
+  ASSERT_EQ(fd_.SetPos(version_offset), version_offset);
+  ASSERT_TRUE(fd_.Write(&bad_version, sizeof(bad_version)));
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenMagicValueMismatches) {
+  constexpr decltype(XNNPackCacheHeader::magic_value) bad_magic =
+      ~XNNPackCacheHeader::kMagicValue;
+  constexpr size_t magic_offset = offsetof(XNNPackCacheHeader, magic_value);
+  ASSERT_EQ(fd_.SetPos(magic_offset), magic_offset);
+  ASSERT_TRUE(fd_.Write(&bad_magic, sizeof(bad_magic)));
   EXPECT_FALSE(CallIsCompatibleCacheFile());
 }
 

@@ -102,6 +102,20 @@ bool CheckFingerprints(const cache::schema::BufferList* buffer_list) {
   return true;
 }
 
+bool IsValidHeader(const XNNPackCacheHeader& header) {
+  XNNPACK_RETURN_CHECK(
+      header.magic_value == XNNPackCacheHeader::kMagicValue,
+      "Cache header magic value is incorrect. Expected 0x%016" PRIx64
+      ", got 0x%016" PRIx64 ".",
+      XNNPackCacheHeader::kMagicValue, header.magic_value);
+  XNNPACK_RETURN_CHECK(header.version == XNNPackCacheHeader::kVersion,
+                       "Cache header version is incompatible. Expected %" PRIu64
+                       ", got %" PRIu64 ".",
+                       XNNPackCacheHeader::kVersion, header.version);
+  XNNPACK_RETURN_CHECK(!header.stale, "Cache file is stale.");
+  return true;
+}
+
 }  // namespace
 
 #define XNN_MOVE_CONSTRUCT_MEMBER(x) x(std::move(other.x))
@@ -306,7 +320,8 @@ bool WeightCacheBuilder::StopBuildStep() {
   XNNPACK_RETURN_CHECK(fd_.SetPos(layout_offset) != -1,
                        "could not move in the file: %s", strerror(errno));
 
-  XNNPackCacheHeader header{XNNPackCacheHeader::kVersion};
+  XNNPackCacheHeader header{XNNPackCacheHeader::kVersion,
+                            XNNPackCacheHeader::kMagicValue};
   header.buffer_list_offset = fd_.GetPos();
   header.buffer_list_size = builder.GetSize();
 
@@ -527,14 +542,7 @@ bool MMapWeightCacheProvider::Load() {
     return header;
   }();
 
-  XNNPACK_RETURN_CHECK(header.version == XNNPackCacheHeader::kVersion,
-                       "incompatible header version. Got %" PRIu64
-                       ", expected %" PRIu64 ". Cache needs to be built again.",
-                       header.version, XNNPackCacheHeader::kVersion);
-
-  XNNPACK_RETURN_CHECK(!header.stale,
-                       "cache file was marked as stale by a previous run. "
-                       "Cache needs to be built again.");
+  XNNPACK_RETURN_CHECK(IsValidHeader(header), "Cache needs to be built again.");
 
   XNNPACK_RETURN_CHECK(header.buffer_list_offset < mmap_handle.size(),
                        "invalid offset for buffer list descriptor.");
@@ -887,11 +895,7 @@ bool IsCompatibleCacheFile(FileDescriptorView fd) {
   XNNPackCacheHeader header;
   XNNPACK_RETURN_CHECK(fd.Read(&header, sizeof(header)),
                        "Couldn't read file header.");
-  XNNPACK_RETURN_CHECK(header.version == XNNPackCacheHeader::kVersion,
-                       "Cache header version is incompatible. Expected %" PRIu64
-                       ", got %" PRIu64 ".",
-                       XNNPackCacheHeader::kVersion, header.version);
-  XNNPACK_RETURN_CHECK(!header.stale, "Cache file is stale.");
+  XNNPACK_RETURN_CHECK(IsValidHeader(header));
 
   fd.SetPos(header.buffer_list_offset);
   auto buffer = std::make_unique<uint8_t[]>(header.buffer_list_size);
