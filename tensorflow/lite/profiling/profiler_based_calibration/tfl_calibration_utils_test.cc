@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -165,6 +166,124 @@ TEST_F(TflCalibrationUtilsTest, InvokeWithCalibrationInt32) {
   EXPECT_TRUE(stats.count("input_i32"));
   EXPECT_EQ(stats["input_i32"].min, -10.0f);
   EXPECT_EQ(stats["input_i32"].max, 20.0f);
+}
+
+TEST_F(TflCalibrationUtilsTest, FiltersNaNAndOutOfRangeFloats) {
+  const int input_idx = AddTensor("input", kTfLiteFloat32, {1, 7});
+  const int all_nan_idx = AddTensor("all_nan", kTfLiteFloat32, {1, 2});
+  const int all_below_idx = AddTensor("all_below", kTfLiteFloat32, {1, 2});
+  const int all_above_idx = AddTensor("all_above", kTfLiteFloat32, {1, 2});
+  const int both_out_idx = AddTensor("both_out", kTfLiteFloat32, {1, 2});
+  interpreter_->SetInputs(
+      {input_idx, all_nan_idx, all_below_idx, all_above_idx, both_out_idx});
+  AddNoOpNode(
+      {input_idx, all_nan_idx, all_below_idx, all_above_idx, both_out_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  constexpr float kInf = std::numeric_limits<float>::infinity();
+  constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+  // Include exact boundary values `-3e38f` and `3e38f` to verify the valid
+  // range `(-3e38, 3e38)` is exclusive.
+  const float in[] = {-3e38f, 3e38f, -kInf, kInf, kNaN, -2.5f, 3.5f};
+  const float nans[] = {kNaN, kNaN};
+  const float below[] = {-kInf, -3.1e38f};
+  const float above[] = {kInf, 3.1e38f};
+  const float both_out[] = {-3.1e38f, 3.1e38f};
+  PopulateTensor(input_idx, in);
+  PopulateTensor(all_nan_idx, nans);
+  PopulateTensor(all_below_idx, below);
+  PopulateTensor(all_above_idx, above);
+  PopulateTensor(both_out_idx, both_out);
+
+  auto status_or_stats = InvokeWithCalibration(interpreter_.get(), 0);
+  ASSERT_TRUE(status_or_stats.ok());
+  const auto& stats = *status_or_stats;
+  ASSERT_EQ(stats.count("input"), 1);
+  EXPECT_FLOAT_EQ(stats.at("input").min, -2.5f);
+  EXPECT_FLOAT_EQ(stats.at("input").max, 3.5f);
+  EXPECT_EQ(stats.count("all_nan"), 0);
+
+  // When every non-NaN value falls outside `(kValidFloatMin, kValidFloatMax)`,
+  // min/max falls back to the raw non-NaN min/max.
+  ASSERT_EQ(stats.count("all_below"), 1);
+  EXPECT_EQ(stats.at("all_below").min, -kInf);
+  EXPECT_FLOAT_EQ(stats.at("all_below").max, -3.1e38f);
+
+  ASSERT_EQ(stats.count("all_above"), 1);
+  EXPECT_FLOAT_EQ(stats.at("all_above").min, 3.1e38f);
+  EXPECT_EQ(stats.at("all_above").max, kInf);
+
+  ASSERT_EQ(stats.count("both_out"), 1);
+  EXPECT_FLOAT_EQ(stats.at("both_out").min, -3.1e38f);
+  EXPECT_FLOAT_EQ(stats.at("both_out").max, 3.1e38f);
+}
+
+TEST_F(TflCalibrationUtilsTest, SkipsEmptyAndUnnamedTensors) {
+  const int valid_idx = AddTensor("valid", kTfLiteFloat32, {1, 2});
+  const int unallocated_empty_idx = AddTensor("empty", kTfLiteFloat32, {1, 0});
+  const int zero_bytes_idx = AddTensor("zero_bytes_i32", kTfLiteInt32, {1, 0});
+  const int partial_bytes_idx =
+      AddTensor("partial_bytes_f32", kTfLiteFloat32, {1, 2});
+  const int unnamed_idx = AddTensor(nullptr, kTfLiteFloat32, {1, 2});
+  interpreter_->SetInputs({valid_idx, unallocated_empty_idx, zero_bytes_idx,
+                           partial_bytes_idx, unnamed_idx});
+  AddNoOpNode({valid_idx, unallocated_empty_idx, zero_bytes_idx,
+               partial_bytes_idx, unnamed_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  const float valid_data[] = {-1.5f, 2.5f};
+  const float partial_data[] = {-7.0f, 7.0f};
+  const float unnamed_data[] = {-4.0f, 4.0f};
+  PopulateTensor(valid_idx, valid_data);
+  PopulateTensor(partial_bytes_idx, partial_data);
+  PopulateTensor(unnamed_idx, unnamed_data);
+  // Point `zero_bytes_idx` at a non-null buffer while `bytes` remains 0, and
+  // shrink `partial_bytes_idx` below one float, so tensors without a complete
+  // element are skipped independently of `data.raw`.
+  int32_t dummy_i32 = 42;
+  interpreter_->tensor(zero_bytes_idx)->data.raw =
+      reinterpret_cast<char*>(&dummy_i32);
+  interpreter_->tensor(partial_bytes_idx)->bytes = sizeof(float) - 1;
+
+  auto status_or_stats = InvokeWithCalibration(interpreter_.get(), 0);
+  ASSERT_TRUE(status_or_stats.ok());
+  const auto& stats = *status_or_stats;
+  EXPECT_EQ(stats.size(), 1);
+  ASSERT_EQ(stats.count("valid"), 1);
+  EXPECT_FLOAT_EQ(stats.at("valid").min, -1.5f);
+  EXPECT_FLOAT_EQ(stats.at("valid").max, 2.5f);
+}
+
+TEST_F(TflCalibrationUtilsTest, MergesRangesAcrossSameNamedTensors) {
+  const int f0_idx = AddTensor("shared_f32", kTfLiteFloat32, {1, 2});
+  const int f1_idx = AddTensor("shared_f32", kTfLiteFloat32, {1, 2});
+  const int f2_idx = AddTensor("shared_f32", kTfLiteFloat32, {1, 2});
+  const int i0_idx = AddTensor("shared_i32", kTfLiteInt32, {1, 2});
+  const int i1_idx = AddTensor("shared_i32", kTfLiteInt32, {1, 2});
+  interpreter_->SetInputs({f0_idx, f1_idx, f2_idx, i0_idx, i1_idx});
+  AddNoOpNode({f0_idx, f1_idx, f2_idx, i0_idx, i1_idx});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  const float f0[] = {-2.0f, 4.0f};
+  const float f1[] = {-5.0f, 1.0f};
+  const float f2[] = {0.0f, 8.0f};
+  const int32_t i0[] = {-3, 10};
+  const int32_t i1[] = {-12, 4};
+  PopulateTensor(f0_idx, f0);
+  PopulateTensor(f1_idx, f1);
+  PopulateTensor(f2_idx, f2);
+  PopulateTensor(i0_idx, i0);
+  PopulateTensor(i1_idx, i1);
+
+  auto status_or_stats = InvokeWithCalibration(interpreter_.get(), 0);
+  ASSERT_TRUE(status_or_stats.ok());
+  const auto& stats = *status_or_stats;
+  ASSERT_EQ(stats.count("shared_f32"), 1);
+  EXPECT_FLOAT_EQ(stats.at("shared_f32").min, -5.0f);
+  EXPECT_FLOAT_EQ(stats.at("shared_f32").max, 8.0f);
+  ASSERT_EQ(stats.count("shared_i32"), 1);
+  EXPECT_FLOAT_EQ(stats.at("shared_i32").min, -12.0f);
+  EXPECT_FLOAT_EQ(stats.at("shared_i32").max, 10.0f);
 }
 
 TEST_F(TflCalibrationUtilsTest, SkipsConstantTensors) {

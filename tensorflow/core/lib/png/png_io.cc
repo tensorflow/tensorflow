@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "png.h"  // from @png
+#include "tensorflow/core/lib/png/fast_png.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
@@ -358,7 +359,18 @@ bool WriteImageToBuffer(
   CHECK_NOTNULL(png_string);
   // Although this case is checked inside png.cc and issues an error message,
   // that error causes memory corruption.
-  if (width == 0 || height == 0) return false;
+  if (width <= 0 || height <= 0 || (channel_bits != 8 && channel_bits != 16) ||
+      num_channels < 1 || num_channels > 4 ||
+      row_bytes <
+          static_cast<int64_t>(width) * num_channels * (channel_bits / 8)) {
+    return false;
+  }
+
+  if ((metadata == nullptr || metadata->empty()) &&
+      TryFastEncodePng(image, width, height, row_bytes, num_channels,
+                       channel_bits, compression, png_string)) {
+    return true;
+  }
 
   png_string->resize(0);
   png_infop info_ptr = nullptr;

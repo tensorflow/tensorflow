@@ -121,6 +121,7 @@ filegroup(
         "@curl//:COPYING",
         "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
+        "@fpnge//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@jpegxl//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
