@@ -500,7 +500,8 @@ def _SegmentProdGrad(op: ops.Operation, grad):
   3) A segment contains at least two zeros. The gradient is zero for all
      segment inputs.
   """
-  data = op.inputs[0]
+  # For complex inputs, the gradient is in the conjugate direction.
+  data = math_ops.conj(op.inputs[0])
   segment_ids = op.inputs[1]
   is_zero = math_ops.equal(data, 0)
   num_zeros = gen_math_ops.segment_sum(
@@ -512,7 +513,7 @@ def _SegmentProdGrad(op: ops.Operation, grad):
   # replace all zeros with ones and compute the segment_prod
   non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(data), data)
   non_zero_prod = gen_math_ops.segment_prod(non_zero_data, segment_ids)
-  gathered_prod = array_ops.gather(op.outputs[0], segment_ids)
+  gathered_prod = array_ops.gather(math_ops.conj(op.outputs[0]), segment_ids)
   gathered_non_zero_prod = array_ops.gather(non_zero_prod, segment_ids)
   prod_divided_by_el = gathered_prod / non_zero_data
   # Now fetch the individual results for segments containing 0 and those that
@@ -620,9 +621,11 @@ def _UnsortedSegmentProdGrad(op: ops.Operation, grad):
   3) A segment contains at least two zeros. The gradient is zero for all
      segment inputs.
   """
+  # For complex inputs, the gradient is in the conjugate direction.
+  data = math_ops.conj(op.inputs[0])
   # Note that unsorted_segment_sum will filter out the negative indices,
   # so we don't need to do a logical_and with is_positive here
-  is_zero = math_ops.equal(op.inputs[0], 0)
+  is_zero = math_ops.equal(data, 0)
   num_zeros = gen_math_ops.unsorted_segment_sum(
       math_ops.cast(is_zero, dtype=dtypes.int32), op.inputs[1], op.inputs[2])
   # handle case 3 and set the gradient to 0 for segments with more than one
@@ -630,16 +633,16 @@ def _UnsortedSegmentProdGrad(op: ops.Operation, grad):
   grad = array_ops.where_v2(
       math_ops.greater(num_zeros, 1), array_ops.zeros_like(grad), grad)
   # replace all zeros with ones and compute the unsorted_segment_prod
-  non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(op.inputs[0]),
-                                     op.inputs[0])
+  non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(data), data)
   non_zero_prod = gen_math_ops.unsorted_segment_prod(non_zero_data,
                                                      op.inputs[1], op.inputs[2])
   # clip the indices for gather to be positive
   zero_clipped_indices = math_ops.maximum(op.inputs[1],
                                           array_ops.zeros_like(op.inputs[1]))
-  gathered_prod = array_ops.gather(op.outputs[0], zero_clipped_indices)
+  gathered_prod = array_ops.gather(
+      math_ops.conj(op.outputs[0]), zero_clipped_indices)
   gathered_non_zero_prod = array_ops.gather(non_zero_prod, zero_clipped_indices)
-  prod_divided_by_el = gathered_prod / op.inputs[0]  # May contain nan/inf.
+  prod_divided_by_el = gathered_prod / data  # May contain nan/inf.
   # Now fetch the individual results for segments containing 0 and those that
   # don't. is_zero will also fetch results for entries with negative index
   # but the following gather_drop_negatives sets the corresponding entry in
@@ -788,6 +791,9 @@ def _XLogyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    # For complex inputs, the gradient is in the conjugate direction.
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
     # The gradient of xlogy w.r.t. x is log(y) for all x (including x=0),
     # because d/dx x*log(y) = log(y). The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
@@ -806,6 +812,9 @@ def _XLog1pyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    # For complex inputs, the gradient is in the conjugate direction.
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
     # The gradient of xlog1py w.r.t. x is log1p(y) for all x (including x=0),
     # because d/dx x*log1p(y) = log1p(y). The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
@@ -824,6 +833,9 @@ def _XDivyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    # For complex inputs, the gradient is in the conjugate direction.
+    x = math_ops.conj(x)
+    y = math_ops.conj(y)
     # The gradient of xdivy w.r.t. x is 1 / y for all x (including x=0),
     # because d/dx (x / y) = 1 / y. The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
@@ -1473,14 +1485,17 @@ def _MulNoNanGrad(op: ops.Operation, grad):
   """The gradient of scalar multiplication with NaN-suppression."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # For complex inputs, the gradient is in the conjugate direction.
+  cx = math_ops.conj(x)
+  cy = math_ops.conj(y)
   if isinstance(grad, tensor.Tensor) and _ShapesFullySpecifiedAndEqual(
       x, y, grad
   ):
-    return gen_math_ops.mul_no_nan(grad, y), gen_math_ops.mul_no_nan(x, grad)
+    return gen_math_ops.mul_no_nan(grad, cy), gen_math_ops.mul_no_nan(cx, grad)
 
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
-  gx = gen_math_ops.mul_no_nan(grad, y)
-  gy = gen_math_ops.mul_no_nan(x, grad)
+  gx = gen_math_ops.mul_no_nan(grad, cy)
+  gy = gen_math_ops.mul_no_nan(cx, grad)
   return _ReduceGradientArgs(x, y, gx, gy)
 
 
@@ -2080,7 +2095,8 @@ def _CumsumGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("Cumprod")
 def _CumprodGrad(op: ops.Operation, grad):
-  x = op.inputs[0]
+  # For complex inputs, the gradient is in the conjugate direction.
+  x = math_ops.conj(op.inputs[0])
   axis = op.inputs[1]
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")

@@ -29,6 +29,10 @@
 
 ### Bug Fixes and Other Changes
 
+*   `tf.math.multiply_no_nan`, `tf.math.xlogy`, `tf.math.xlog1py`,
+    `tf.math.xdivy`, `tf.math.cumprod`, `tf.math.segment_prod` and
+    `tf.math.unsorted_segment_prod` now return correct gradients for complex
+    inputs. They used to return the complex conjugate of the gradient.
 *   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
     number of rows or columns of the input are now clamped to the matrix
     dimensions instead of raising an `InvalidArgumentError`. This matches the
