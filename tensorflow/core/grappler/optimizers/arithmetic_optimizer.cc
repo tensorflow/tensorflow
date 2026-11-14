@@ -1432,7 +1432,9 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   ~RemoveNegationStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return (IsAdd(*node) || IsSub(*node)) && !IsInPreserveSet(*node);
+    return (IsAdd(*node) || IsSub(*node)) && node->input_size() >= 2 &&
+           !IsControlInput(node->input(0)) && !IsControlInput(node->input(1)) &&
+           !IsInPreserveSet(*node);
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -1442,14 +1444,15 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     bool updated = false;
-    if (IsNeg(*y)) {
+    if (IsNeg(*y) && y->input_size() >= 1 && !IsControlInput(y->input(0))) {
       // a - (-b) = a + b or  a + (-b) = a - b
       ForwardControlDependencies(node, {y});
       ctx().node_map->UpdateInput(node->name(), node->input(1), y->input(0));
       node->set_op(IsAdd(*node) ? "Sub" : "AddV2");
       node->set_input(1, y->input(0));
       updated = true;
-    } else if (IsAdd(*node) && IsNeg(*x)) {
+    } else if (IsAdd(*node) && IsNeg(*x) && x->input_size() >= 1 &&
+               !IsControlInput(x->input(0))) {
       // (-a) + b = b - a
       ForwardControlDependencies(node, {x});
       ctx().node_map->UpdateInput(node->name(), node->input(0), x->input(0));
@@ -3489,12 +3492,16 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
   ~ConvertExpm1Stage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsSub(*node)) return false;
+    if (!IsSub(*node) || node->input_size() < 2 ||
+        IsControlInput(node->input(0)) || IsControlInput(node->input(1))) {
+      return false;
+    }
 
     NodeDef* input;
     if (!GetInputNode(node->input(0), &input).ok()) return false;
 
-    return IsExp(*input);
+    return IsExp(*input) && input->input_size() >= 1 &&
+           !IsControlInput(input->input(0));
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -3533,6 +3540,9 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
     }
     NodeDef* exp;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &exp));
+    if (exp->input_size() < 1 || IsControlInput(exp->input(0))) {
+      return absl::OkStatus();
+    }
     NodeDef *exp_input, *ones;
     TF_RETURN_IF_ERROR(GetInputNode(exp->input(0), &exp_input));
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));
