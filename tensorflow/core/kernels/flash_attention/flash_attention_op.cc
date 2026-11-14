@@ -252,7 +252,7 @@ class FlashAttentionGradOp : public OpKernel {
         functor::FlashAttentionGradFunctor<Device, T>::WorkspaceBytes(
             B, H, S_q, S_kv, D_qk, D_v, deterministic);
     TensorShape workspace_shape;
-    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape({workspace_bytes}, 
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape({workspace_bytes},
                                                           &workspace_shape));
     OP_REQUIRES_OK(
         context, context->allocate_temp(DT_INT8, workspace_shape,
