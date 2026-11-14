@@ -251,6 +251,28 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cleanup",
+    hdrs = ["cleanup.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+)
+
+xla_cc_test(
+    name = "cleanup_test",
+    size = "small",
+    srcs = ["cleanup_test.cc"],
+    deps = [
+        ":cleanup",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "client_impl_util",
     srcs = ["client_impl_util.cc"],
     hdrs = ["client_impl_util.h"],
