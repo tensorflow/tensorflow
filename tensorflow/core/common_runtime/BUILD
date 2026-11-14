@@ -797,6 +797,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
