@@ -492,10 +492,12 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:gradients",
