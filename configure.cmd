@@ -11,6 +11,12 @@
 :: WARRANTIES OR CONDITIONS OF ANY KIND< either express or implied.  See the
 :: License for the specific language governing permissions and limitations under
 :: the License.
+::
+:: Usage:
+::   configure.cmd                   (Interactive configuration)
+::   configure.cmd -y                (Non-interactive unattended configuration)
+::   configure.cmd --non-interactive (Non-interactive unattended configuration)
+::   configure.cmd --help            (Display all supported build flags)
 
 @echo off
 
@@ -18,3 +24,4 @@ set configure_dir=%~dp0
 set configure_dir=%configure_dir:~0,-1%
 python "%configure_dir%\configure.py" %* || ( exit /b )
 echo Configuration finished
+
