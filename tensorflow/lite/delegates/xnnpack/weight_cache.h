@@ -225,6 +225,9 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
+  // True when `schema_` and `build_segment_start_` already reflect the current
+  // buffer list on disk (e.g., after an empty build step that wrote nothing).
+  bool buffer_list_loaded_ = false;
   // File descriptor view.
   FileDescriptorView fd_;
   std::string file_path_;
