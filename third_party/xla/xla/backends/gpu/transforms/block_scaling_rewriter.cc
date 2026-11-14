@@ -771,6 +771,7 @@ HloComputation* BuildCudnnScaledDotFusionComputation(
   HloComputation::Builder builder(
       absl::StrCat(scaled_dot->name(), "_cudnn_fusion"));
   std::vector<HloInstruction*> parameters;
+  parameters.reserve(fusion_operands.size());
   for (int i = 0; i < fusion_operands.size(); ++i) {
     parameters.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, fusion_operands[i]->shape(), absl::StrCat("parameter_", i))));
