@@ -79,10 +79,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-static llvm::codegen::RegisterCodeGenFlags CGF;
-}
-
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
 void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeCore(*pass_registry);
@@ -96,6 +92,23 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeTarget(*pass_registry);
   llvm::initializeCodeGenPrepareLegacyPassPass(*pass_registry);
 }
+
+namespace {
+
+// Makes the global command-line parser (e.g. the XLA LLVM options) accept the
+// CodeGen tool options such as --frame-pointer and -mcpu, which LLVM declares
+// in TableGen instead of registering them as cl::opt.
+struct RegisterCodeGenToolOptions {
+  RegisterCodeGenToolOptions() {
+    for (const llvm::cl::LibraryOptions* options :
+         llvm::codegen::getToolOptions()) {
+      llvm::cl::addLibraryOptions(*options);
+    }
+  }
+};
+static RegisterCodeGenToolOptions CGTO;
+
+}  // namespace
 
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
@@ -134,8 +147,10 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple, llvm_ir::AsStringRef(cpu_name), llvm_ir::AsStringRef(feature_str),
-      target_options, llvm::codegen::getExplicitRelocModel(),
-      llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
+      target_options,
+      llvm::codegen::getExplicitRelocModel(llvm::cl::LibraryOptionsContext()),
+      llvm::codegen::getExplicitCodeModel(llvm::cl::LibraryOptionsContext()),
+      codegen_opt_level));
 }
 
 // Returns whether the module could use any device bitcode library functions.
