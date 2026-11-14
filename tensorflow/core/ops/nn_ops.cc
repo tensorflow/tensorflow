@@ -3386,9 +3386,31 @@ REGISTER_OP("IsotonicRegression")
     .Output("segments: int32")
     .Attr("T: realnumbertype")
     .Attr("output_dtype: {half, bfloat16, float, double} = DT_FLOAT")
-    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
-      context->set_output(0, context->input(0));
-      context->set_output(1, context->input(0));
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("FusedLinearCrossEntropy")
+    .Input("x: T")
+    .Input("w: T")
+    .Input("labels: T")
+    .Output("loss: T")
+    .Attr("T: {float, double, bfloat16}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &x));
+      shape_inference::ShapeHandle w;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &w));
+      shape_inference::ShapeHandle labels;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &labels));
+      shape_inference::DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(x, 1), c->Dim(w, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(x, 0), c->Dim(labels, 0), &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(w, 1), c->Dim(labels, 1), &unused));
+        
+      c->set_output(0, c->Vector(c->Dim(x, 0)));
       return absl::OkStatus();
     });
 

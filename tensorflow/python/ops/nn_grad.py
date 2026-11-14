@@ -26,7 +26,6 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 
-
 @ops.RegisterGradient("Conv2DBackpropInput")
 def _Conv2DBackpropInputGrad(op: ops.Operation, grad):
   """The derivatives for deconvolution.
@@ -90,7 +89,26 @@ def _Conv2DBackpropFilterGrad(op: ops.Operation, grad):
           data_format=op.get_attr("data_format").decode())
   ]
 
+@ops.RegisterGradient("FusedLinearCrossEntropy")
+def _FusedLinearCrossEntropyGrad(op, grad_loss):
+  """Gradient for FusedLinearCrossEntropy operation."""
+  # Retrieve inputs from the forward op
+  x = op.inputs[0]
+  w = op.inputs[1]
+  labels = op.inputs[2]
+  
+  logits = math_ops.matmul(x, w)
+  probs = gen_nn_ops.softmax(logits)
+  
+  # Compute gradients for x and w
+  grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
+  
+  grad_x = math_ops.matmul(grad_logits, w, transpose_b=True)
+  grad_w = math_ops.matmul(x, grad_logits, transpose_a=True)
+  grad_labels = None  # Labels do not require gradients
 
+  return grad_x, grad_w, grad_labels
+  
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputGrad(op: ops.Operation, grad):
   """The derivatives for deconvolution.
