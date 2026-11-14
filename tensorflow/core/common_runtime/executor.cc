@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
@@ -91,6 +92,13 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// A step may run multiple executors concurrently. Temporary variables must be
+// isolated by executor invocation, not just by step or by cached executor.
+int64_t NextTemporaryVariableContainerId() {
+  static std::atomic<int64_t> next_id{0};
+  return next_id.fetch_add(1, std::memory_order_relaxed);
+}
 
 #if defined(__aarch64__) && defined(__linux__)
 // Returns a fixed-point scale factor to convert CNTVCT_EL0 virtual timer
@@ -421,6 +429,7 @@ class ExecutorState {
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
+  std::unique_ptr<ScopedStepContainer> temporary_variable_container_;
   StepStatsCollectorInterface* const stats_collector_;
   Context context_;
 
@@ -488,6 +497,16 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       run_all_kernels_inline_(args.run_all_kernels_inline),
       propagator_(immutable_state, step_id_, vlog_),
       num_outstanding_ops_(0) {
+  if (immutable_state_.has_temporary_variables()) {
+    ResourceMgr* resource_mgr =
+        immutable_state_.params().device->resource_manager();
+    temporary_variable_container_ = std::make_unique<ScopedStepContainer>(
+        NextTemporaryVariableContainerId(),
+        [resource_mgr](const std::string& name) {
+          resource_mgr->Cleanup(name).IgnoreError();
+        },
+        "executor_temporary_variables");
+  }
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = immutable_state_.params().device;
     user_device_ = RenamedDevice::NewRenamedDevice(
@@ -951,6 +970,13 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
       // Set up compute params.
       params->op_kernel = item.kernel;
+      // Eager functions can share a step container across calls. An aborted
+      // execution may never reach DestroyTemporaryVariable, so keep these
+      // resources in a container owned by this ExecutorState. Other per-step
+      // resources (e.g. TensorArray and Stack) retain their existing lifetime.
+      params->step_container = item.is_temporary_variable
+                                   ? temporary_variable_container_.get()
+                                   : step_container_;
       params->frame_iter = propagator_.GetFrameAndIter(tagged_node);
       params->is_input_dead = is_input_dead;
       params->output_attr_array = item.output_attrs();

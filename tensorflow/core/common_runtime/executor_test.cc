@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -199,6 +201,56 @@ TEST_F(ExecutorTest, SimpleAdd) {
   TF_ASSERT_OK(
       rendez_->Recv(Key(BOB, kIncarnation, ALICE, "c"), args, &out, &is_dead));
   EXPECT_EQ(2.0, V(out));  // out = 1.0 + 1.0 = 2.0
+}
+
+TEST_F(ExecutorTest, TemporaryVariablesCleanedUpAfterSuccess) {
+  Scope root = Scope::NewRootScope();
+  ops::TemporaryVariable(root.WithOpName("temporary"), {16}, DT_FLOAT);
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  Create(std::move(graph));
+
+  ResourceMgr* resource_mgr = device_->resource_manager();
+  const std::string original_resources = resource_mgr->DebugString();
+  ScopedStepContainer shared_container(
+      0, [resource_mgr](const std::string& name) {
+        resource_mgr->Cleanup(name).IgnoreError();
+      });
+  Executor::Args args;
+  args.runner = runner_;
+  args.step_container = &shared_container;
+  for (int i = 0; i < 2; ++i) {
+    TF_ASSERT_OK(exec_->Run(args));
+    // No DestroyTemporaryVariable was executed, but the invocation owns the
+    // resource and must release it before notifying the caller.
+    EXPECT_EQ(original_resources, resource_mgr->DebugString());
+  }
+}
+
+TEST_F(ExecutorTest, TemporaryVariablesCleanedUpAfterError) {
+  Scope root = Scope::NewRootScope();
+  auto temporary =
+      ops::TemporaryVariable(root.WithOpName("temporary"), {16}, DT_FLOAT);
+  ops::CheckNumerics(root.WithControlDependencies(temporary),
+                     ops::Const(root, std::numeric_limits<float>::quiet_NaN()),
+                     "expected failure after temporary creation");
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  Create(std::move(graph));
+
+  ResourceMgr* resource_mgr = device_->resource_manager();
+  const std::string original_resources = resource_mgr->DebugString();
+  ScopedStepContainer shared_container(
+      0, [resource_mgr](const std::string& name) {
+        resource_mgr->Cleanup(name).IgnoreError();
+      });
+  Executor::Args args;
+  args.runner = runner_;
+  args.step_container = &shared_container;
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_TRUE(absl::IsInvalidArgument(exec_->Run(args)));
+    EXPECT_EQ(original_resources, resource_mgr->DebugString());
+  }
 }
 
 TEST_F(ExecutorTest, StepStatsNumerical) {
