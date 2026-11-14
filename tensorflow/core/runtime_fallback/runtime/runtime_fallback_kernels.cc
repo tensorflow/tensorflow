@@ -391,7 +391,7 @@ static absl::Status PrepareAttributes(EagerOperation* eager_op,
           // The int type is just a placeholder and doesn't matter.
           std::vector<int> dummy_attr;
           eager_op->MutableAttrs()->Set(
-              entry.name, gtl::ArraySlice<const int>(dummy_attr.data(), 0));
+              entry.name, absl::Span<const const int>(dummy_attr.data(), 0));
           return;
         }
 
