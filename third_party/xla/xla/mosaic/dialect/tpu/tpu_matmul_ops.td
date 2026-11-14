@@ -16,6 +16,27 @@ limitations under the License.
 #ifndef TPU_MATMUL_OPS_
 #define TPU_MATMUL_OPS_
 
-// Placeholder for TPU matmul operations.
+// TODO(apaszke): Think hard about precision
+def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$lhs,
+    AnyVectorOfNonZeroRank:$rhs,
+    AnyVectorOfNonZeroRank:$acc,
+    // These flags are deprecated - if dimension_numbers are defined,
+    // these flags are ignored. They will always be false after canonicalize.
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_lhs,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_rhs,
+    OptionalAttr<TPU_ContractPrecisionEnum>:$precision,
+    // NOTE: User-level optional, once canonicalized, always present.
+    OptionalAttr<TPU_DotDimensionNumbersAttr>:$dimension_numbers,
+    // Hint to compilers whether to fuse the transposed LHS in the matmul.
+    BoolAttr:$transpose_lhs_hint
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $lhs `,` $rhs `,` $acc prop-dict attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+  }];
+  let hasVerifier = 1;
+}
 
 #endif  // TPU_MATMUL_OPS_

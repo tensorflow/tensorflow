@@ -1284,6 +1284,8 @@ LogicalResult MatmulOp::verify() {
     return failure();
   }
 
+#include "xla/mosaic/dialect/tpu/tpu_matmul_ops_verify.inc"
+
   if (getDimensionNumbers().has_value()) {
     auto dimension_numbers = getDimensionNumbers().value();
     auto lhs_contracting_dims = dimension_numbers.getLhsContractingDims();

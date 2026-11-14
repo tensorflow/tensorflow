@@ -865,15 +865,20 @@ LogicalResult reinterpret_cast_downgrade(Operation* op, int version) {
   return success();
 }
 
+#include "xla/mosaic/dialect/tpu/transforms/tpu_matmul_serde.inc"
+
 LogicalResult matmul_upgrade(Operation* op, int version, bool&) {
   if (version < 13) {
     op->setAttr("transpose_lhs_hint",
                 mlir::BoolAttr::get(op->getContext(), false));
   }
-  return success();
+  return matmul_extensions_upgrade(op, version);
 }
 
 LogicalResult matmul_downgrade(Operation* op, int version) {
+  if (failed(matmul_extensions_downgrade(op, version))) {
+    return failure();
+  }
   if (version < 13) {
     auto transpose_lhs_hint_attr =
         op->getAttrOfType<BoolAttr>("transpose_lhs_hint");

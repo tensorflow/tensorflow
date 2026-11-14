@@ -31,6 +31,7 @@ cc_library(
     name = "tpu_dialect",
     srcs = [
         "dialect/tpu/tpu_dialect.cc",
+        "dialect/tpu/tpu_matmul_ops_verify.inc",
         "dialect/tpu/tpu_ops.cc",
         "dialect/tpu/util.cc",
     ],
@@ -65,7 +66,10 @@ cc_library(
 
 cc_library(
     name = "tpu_serde_pass",
-    srcs = ["dialect/tpu/transforms/serde.cc"],
+    srcs = [
+        "dialect/tpu/transforms/serde.cc",
+        "dialect/tpu/transforms/tpu_matmul_serde.inc",
+    ],
     hdrs = ["dialect/tpu/transforms/serde.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
