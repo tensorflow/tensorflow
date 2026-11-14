@@ -63,7 +63,7 @@ class HloPassOptions {
       } else if constexpr (std::is_integral_v<T>) {
         value.set_int_val(val);
       } else if constexpr (std::is_convertible_v<T, absl::string_view>) {
-        value.set_string_val(absl::string_view(val));
+        value.set_string_val(val);
       } else {
         static_assert(sizeof(T) == 0, "Unsupported HloPassOptions type");
       }
