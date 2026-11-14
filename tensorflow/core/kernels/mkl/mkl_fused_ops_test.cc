@@ -892,9 +892,15 @@ class MklFusedMatMulOpTest : public OpsTestBase {
   void VerifyFusedMatMul(const int kBatch, const int kInputChannel,
                          const int kOutputChannel,
                          const std::vector<string>& fused_ops) {
+    using random_gen = Eigen::internal::NormalRandomGenerator<T>;
+    Tensor add_tensor(DataTypeToEnum<T>::v(), {kBatch, kOutputChannel});
+    add_tensor.flat<T>() =
+        add_tensor.flat<T>().template setRandom<random_gen>();
+
     const FusedMatMulRunner run_default =
-        [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
-               const std::vector<string>& fused_ops, Tensor* output) {
+        [this, &add_tensor, kInputChannel, kOutputChannel](
+            const Tensor& input, const Tensor& weight, const Tensor& bias,
+            const std::vector<string>& fused_ops, Tensor* output) {
           auto root = tensorflow::Scope::NewRootScope();
           auto input_op =
               ops::Const(root.WithOpName("input"), Input::Initializer(input));
@@ -944,7 +950,12 @@ class MklFusedMatMulOpTest : public OpsTestBase {
           if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
               fused_ops.end()) {
             last_op = "with_add";
-            next_op = ops::Add(root.WithOpName("with_add"), next_op, input_op);
+            Output addend =
+                (kInputChannel == kOutputChannel)
+                    ? input_op
+                    : ops::Const(root.WithOpName("addend"),
+                                 Input::Initializer(add_tensor));
+            next_op = ops::Add(root.WithOpName("with_add"), next_op, addend);
           }
 
           if (std::find(fused_ops.begin(), fused_ops.end(), "LeakyRelu") !=
@@ -958,12 +969,14 @@ class MklFusedMatMulOpTest : public OpsTestBase {
         };
 
     const FusedMatMulRunner run_fused =
-        [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
-               const std::vector<string>& fused_ops, Tensor* output) {
+        [this, &add_tensor, kInputChannel, kOutputChannel](
+            const Tensor& input, const Tensor& weight, const Tensor& bias,
+            const std::vector<string>& fused_ops, Tensor* output) {
           std::vector<Tensor> fused_input = {bias};
           if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
               fused_ops.end()) {
-            fused_input.push_back(input);
+            fused_input.push_back(
+                (kInputChannel == kOutputChannel) ? input : add_tensor);
           }
           RunMklFusedMatMulOp(input, weight, fused_input, fused_ops, output);
         };
@@ -1047,15 +1060,58 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndLeakyRelu) {
                           {"BiasAdd", "LeakyRelu"});
 }
 
-REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
-                            WithBias,              //
-                            WithBiasAndRelu,       //
-                            WithBiasAndRelu6,      //
-                            WithBiasAndElu,        //
-                            WithBiasAndTanh,       //
-                            WithBiasAndLeakyRelu,  //
-                            WithBiasAndSigmoid,    //
-                            WithBiasAndAdd);
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroOutputChannel) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 0;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel, {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroBatch) {
+  const int batch = 0;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel, {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroInputChannel) {
+  this->VerifyFusedMatMul(3, 0, 5, {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroInputChannelWithRelu) {
+  this->VerifyFusedMatMul(3, 0, 5, {"BiasAdd", "Relu"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroInputChannelWithElu) {
+  this->VerifyFusedMatMul(3, 0, 5, {"BiasAdd", "Elu"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroInputChannelWithTanh) {
+  this->VerifyFusedMatMul(3, 0, 5, {"BiasAdd", "Tanh"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroInputChannelWithAdd) {
+  this->VerifyFusedMatMul(3, 0, 5, {"BiasAdd", "Add"});
+}
+
+REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,      //
+                            WithBias,                  //
+                            WithBiasAndRelu,           //
+                            WithBiasAndRelu6,          //
+                            WithBiasAndElu,            //
+                            WithBiasAndTanh,           //
+                            WithBiasAndLeakyRelu,      //
+                            WithBiasAndSigmoid,        //
+                            WithBiasAndAdd,            //
+                            ZeroOutputChannel,         //
+                            ZeroBatch,                 //
+                            ZeroInputChannel,          //
+                            ZeroInputChannelWithRelu,  //
+                            ZeroInputChannelWithElu,   //
+                            ZeroInputChannelWithTanh,  //
+                            ZeroInputChannelWithAdd);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,

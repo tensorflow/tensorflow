@@ -1873,6 +1873,86 @@ TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
+TEST_F(RemapperFuseMatMulWithBiasTest, DoNotFuseZeroDim) {
+  using ::tensorflow::ops::Placeholder;
+
+  auto check_no_fusion = [&](const std::vector<int64_t>& lhs_dims,
+                             const std::vector<int64_t>& rhs_dims,
+                             const std::vector<int64_t>& bias_dims,
+                             bool with_relu = false,
+                             bool is_conv2d = false) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    Output lhs, rhs, bias, contract;
+    if (is_conv2d) {
+      lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(lhs_dims)));
+      rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(rhs_dims)));
+      contract = ops::Conv2D(s.WithOpName("conv2d"), lhs, rhs, {1, 1, 1, 1},
+                             "VALID");
+    } else {
+      lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(lhs_dims)));
+      rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(rhs_dims)));
+      contract = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
+    }
+    bias = Placeholder(s.WithOpName("bias"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape(bias_dims)));
+
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), contract, bias);
+    Output root = bias_add;
+    if (with_relu) {
+      root = ops::Relu(s.WithOpName("relu"), bias_add);
+    }
+    auto fetch = ops::Identity(s.WithOpName("fetch"), root);
+
+    auto lhs_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(lhs_dims));
+    auto rhs_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(rhs_dims));
+    auto bias_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(bias_dims));
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    const std::string device = "/device:CPU:0";
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device(device);
+    }
+
+    Remapper optimizer(RewriterConfig::AGGRESSIVE);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    // Contraction and bias_add should NOT be fused when any dimension is 0.
+    for (const NodeDef& node : output.node()) {
+      EXPECT_NE(node.op(), "_FusedMatMul");
+      EXPECT_NE(node.op(), "_FusedConv2D");
+      if (node.name() == "bias_add") {
+        EXPECT_EQ(node.op(), "BiasAdd");
+      }
+    }
+  };
+
+  // Case 1: zero output channel (Dense(0) weight [32, 0], bias [0])
+  check_no_fusion({8, 32}, {32, 0}, {0});
+  // Case 2: zero batch size with non-empty bias
+  check_no_fusion({0, 32}, {32, 64}, {64});
+  // Case 3: zero contraction reduction dimension (k == 0) with non-empty bias
+  check_no_fusion({8, 0}, {0, 64}, {64});
+  // Case 4: zero dimension with fused activation (Relu) and non-empty bias
+  check_no_fusion({0, 32}, {32, 64}, {64}, /*with_relu=*/true);
+  // Case 5: Conv2D with zero filter channel and zero bias
+  check_no_fusion({2, 5, 5, 3}, {1, 1, 3, 0}, {0}, /*with_relu=*/false,
+                  /*is_conv2d=*/true);
+  // Case 6: Conv2D with zero batch and non-empty bias (reaches
+  // IsCpuCompatibleConv2D)
+  check_no_fusion({0, 5, 5, 3}, {1, 1, 3, 4}, {4}, /*with_relu=*/false,
+                  /*is_conv2d=*/true);
+}
+
 // TODO(b/161005848): Fix flaky test.
 TEST_F(RemapperTest, DISABLED_FuseConv2DWithBiasAndActivationOnGPU) {
 #if !(GOOGLE_CUDA)

@@ -396,10 +396,30 @@ bool IsGpuCompatibleDataFormat(const RemapperContext& ctx,
   return data_format == "NHWC" || data_format == "NCHW";
 }
 
+bool HasZeroDimension(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) return false;
+  for (const auto& dim : shape.dim()) {
+    if (IsKnown(dim) && dim.size() == 0) return true;
+  }
+  return false;
+}
+
 bool IsCpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
-  return NodeIsOnCpu(conv2d) && IsCpuCompatibleDataType(conv2d) &&
-         IsCpuCompatibleDataFormat(ctx, conv2d);
+  if (!NodeIsOnCpu(conv2d) || !IsCpuCompatibleDataType(conv2d) ||
+      !IsCpuCompatibleDataFormat(ctx, conv2d)) {
+    return false;
+  }
+  if (ctx.graph_properties.HasInputProperties(conv2d->name())) {
+    const auto& input_props =
+        ctx.graph_properties.GetInputProperties(conv2d->name());
+    if (input_props.size() >= 2 &&
+        (HasZeroDimension(input_props[0].shape()) ||
+         HasZeroDimension(input_props[1].shape()))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool IsCpuCompatibleConv3D(const RemapperContext& ctx, const NodeDef* conv3d) {
@@ -438,7 +458,20 @@ bool IsGpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul,
 
 bool IsCpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-  return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
+  if (!NodeIsOnCpu(matmul) || !IsCpuCompatibleDataType(matmul)) {
+    return false;
+  }
+  if (ctx.graph_properties.HasInputProperties(matmul->name())) {
+    const auto& input_props =
+        ctx.graph_properties.GetInputProperties(matmul->name());
+    if (input_props.size() >= 2) {
+      if (HasZeroDimension(input_props[0].shape()) ||
+          HasZeroDimension(input_props[1].shape())) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 bool IsCpuCompatibleDepthwiseConv2dNative(const NodeDef* dw_conv2d) {
@@ -790,6 +823,15 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
       IsInPreserveSet(ctx, contraction_node_def))
     return false;
 
+  if (ctx.graph_properties.HasInputProperties(node_def->name())) {
+    const auto& bias_props =
+        ctx.graph_properties.GetInputProperties(node_def->name());
+    if (bias_props.size() > bias_port &&
+        HasZeroDimension(bias_props[bias_port].shape())) {
+      return false;
+    }
+  }
+
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAdd pattern{contraction_node_view->node_index(),
                                        node_index, bias_port};
@@ -1002,10 +1044,9 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
     return false;
   }
 
-  if (!IsConv2D(*conv2d_node_def) || !NodeIsOnCpu(conv2d_node_def) ||
+  if (!IsConv2D(*conv2d_node_def) ||
       !HaveSameDataType(node_def, conv2d_node_def) ||
-      !IsCpuCompatibleDataType(conv2d_node_def) ||
-      !IsCpuCompatibleDataFormat(ctx, conv2d_node_def) ||
+      !IsCpuCompatibleConv2D(ctx, conv2d_node_def) ||
       HasControlFaninOrFanout(*conv2d_node_view) ||
       !HasAtMostOneFanoutAtPort0(*conv2d_node_view) ||
       IsInPreserveSet(ctx, conv2d_node_def))
@@ -4996,17 +5037,38 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
     return true;
   };
 
+  const auto is_cpu_contraction_fusion_candidate = [&]() -> bool {
+    if (!NodeIsOnCpu(node_def)) return false;
+    if (IsBiasAdd(*node_def) || IsFusedBatchNorm(*node_def)) return true;
+    if (IsSupportedActivation(*node_def, cluster) &&
+        node_view->NumRegularFanins() >= 1) {
+      const auto* fanin_0_node_def =
+          node_view->GetRegularFanin(0).node_view()->node();
+      if (IsBiasAdd(*fanin_0_node_def) || IsAdd(*fanin_0_node_def) ||
+          IsFusedBatchNorm(*fanin_0_node_def)) {
+        return true;
+      }
+    }
+    if (IsMKLEnabled() &&
+        IsMatchedMatMulBiasAddAndGeluExact(
+            const_cast<RemapperContext&>(ctx), node_index)) {
+      return true;
+    }
+    return false;
+  };
+
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
-           is_act_biasadd_conv_candidate() || IsBiasAdd(*node_def) ||
-           IsTranspose(*node_def);
+           is_act_biasadd_conv_candidate() ||
+           is_cpu_contraction_fusion_candidate() || IsTranspose(*node_def);
 
   return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate() ||
          is_matmul_gelu_exact_fusion_candidate() ||
-         is_act_biasadd_matmul_candidate();
+         is_act_biasadd_matmul_candidate() ||
+         is_cpu_contraction_fusion_candidate();
 }
 
 inline bool IsXlaCpuGlobalJitOn() {
