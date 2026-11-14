@@ -278,6 +278,7 @@ cuda_py_strict_test(
     name = "scan_ops_test",
     size = "medium",
     srcs = ["scan_ops_test.py"],
+    shard_count = 4,  # b/585851473
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
