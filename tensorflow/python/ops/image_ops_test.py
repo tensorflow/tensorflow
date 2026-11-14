@@ -4039,6 +4039,58 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
 
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
+  @test_util.run_gpu_only
+  @test_util.disable_xla("Tests GPU kernel 64-bit indexing directly")
+  def testLargeTensorNoInt32OverflowOnGPU(self):
+    # 65536 * 33400 = 2,188,902,400 > INT32_MAX (2,147,483,647).
+    height, width = 65536, 33400
+    modes = [
+        (True, False, 65408, 25050),
+        (False, False, 65280, 16700),
+        (False, True, 65535, 33399),
+    ]
+    try:
+      with test_util.force_gpu():
+        img = array_ops.ones([1, height, width, 1], dtype=dtypes.float16)
+        for half_pixel, align_corners, _, _ in modes:
+          out = self.evaluate(
+              gen_image_ops.resize_nearest_neighbor(
+                  img,
+                  [256, 2],
+                  align_corners=align_corners,
+                  half_pixel_centers=half_pixel,
+              )
+          )
+          self.assertAllEqual(out, np.ones((1, 256, 2, 1), dtype=np.float16))
+
+        # Zero-copy alias exercises backward in_height > INT32_MAX.
+        reshaped = array_ops.reshape(img, [1, height * width, 1, 1])
+        dx_tall = self.evaluate(
+            gen_image_ops.resize_nearest_neighbor_grad(
+                reshaped,
+                [1 << 21, 1],
+                align_corners=False,
+                half_pixel_centers=True,
+            )
+        )
+        self.assertEqual(dx_tall.shape, (1, 1 << 21, 1, 1))
+        self.assertEqual(np.sum(dx_tall, dtype=np.float64), height * width)
+        del reshaped, img
+
+        grad = array_ops.ones([1, 256, 2, 1], dtype=dtypes.float16)
+        for half_pixel, align_corners, target_y, target_x in modes:
+          dx = gen_image_ops.resize_nearest_neighbor_grad(
+              grad,
+              [height, width],
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel,
+          )
+          val = self.evaluate(dx[0, target_y, target_x, 0])
+          self.assertEqual(val, np.float16(1.0))
+          del dx
+    except errors.ResourceExhaustedError as e:
+      self.skipTest(f"Insufficient GPU memory for >2B-element test: {e}")
+
 
 def _assertNoExtraPaddingFromRounding(test, resize_image_with_pad):
   """Checks resized size and centering when float32 rounding used to be off.
