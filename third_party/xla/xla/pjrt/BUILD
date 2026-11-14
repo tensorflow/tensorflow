@@ -70,6 +70,8 @@ cc_library(
         "//xla:future",
         "//xla:literal",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_raw_client_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/runtime:device_id",

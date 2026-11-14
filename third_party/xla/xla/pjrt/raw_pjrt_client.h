@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_raw_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -163,12 +164,178 @@ class PjRtExecutableLoadState
                     int attempt) = 0;
 };
 
+class PjRtRawClientInterface;
+
+struct PjRtRawClientDeleter {
+  void operator()(PjRtRawClientInterface* client) const;
+};
+using PjRtRawClientRef =
+    std::unique_ptr<PjRtRawClientInterface, PjRtRawClientDeleter>;
+
+class PjRtRawClientInterface : public PJRT_RawClient {
+ public:
+  using PjRtFulfillAliasRawBufferCallback =
+      absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
+  using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
+      absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
+
+  struct CrossHostTransferSpec {
+    GlobalDeviceId src_global_device_id;
+    GlobalDeviceId dst_global_device_id;
+    PjRtRawBufferRef raw_buffer;
+    // Source and destination task incarnations, in that order. nullopt when
+    // the caller has no GetAliveTasks snapshot.
+    // TODO: Revisit making this non-optional once older jaxlib versions
+    // are no longer supported and the missing-snapshot fallback in
+    // CopyArraysForCrossHost is no longer needed.
+    std::optional<std::array<IncarnationId, 2>> incarnations;
+  };
+
+  void Quiesce();
+
+  AsyncWorkRunner* async_work_runner() const;
+
+  PjRtEventTracker* event_tracker() const;
+
+  bool ShouldCreateAsyncAllocationEvent(int memory_kind_id) const;
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after);
+
+  absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom);
+
+  absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
+  AllocateRawBuffersForExecute(PJRT_Memory* memory_space,
+                               absl::Span<const size_t> on_device_bytes_counts,
+                               bool retry_on_oom);
+
+  absl::StatusOr<std::pair<PjRtRawBufferRef, PjRtFulfillAliasRawBufferCallback>>
+  CreateRawBufferChannel(PJRT_Memory* memory_space,
+                         size_t on_device_bytes_count);
+
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
+                           absl::string_view debug_info);
+
+  absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
+      LocalDeviceId local_device_id, int memory_kind_id, Future<> dependency);
+
+  absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
+      LocalDeviceId local_device_id, std::intptr_t stream);
+
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const;
+
+  absl::Status DmaMap(void* data, size_t size);
+
+  absl::Status DmaUnmap(void* data);
+
+  bool IsDmaMapped(const void* data, int64_t transfer_size) const;
+
+  HostMemoryAllocator* GetHostMemoryAllocator() const;
+
+  int GetNumaNode(LocalDeviceId local_device_id) const;
+
+  absl::StatusOr<size_t> GetDeviceAddressAlignment() const;
+
+  size_t GetDmaHostAlignment() const;
+
+  std::optional<size_t> GetDmaSizeAlignment() const;
+
+  void LaunchOnDevice(LocalDeviceId device_id,
+                      absl::AnyInvocable<void()> execute_fn) const;
+
+  void CallOomHandlers() const;
+
+  bool ShouldRetryOnOom(int attempts, LocalDeviceId local_device_id,
+                        PjRtExecutableLoadState* load_state,
+                        absl::Status prepare_status);
+
+  void UpdateGlobalProcessInfo(absl::Span<xla::coordination::TaskInfo> infos);
+
+  void RecordMemoryStats();
+
+  void RecordLinearizeBytes(bool is_h2d, size_t bytes);
+
+  absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
+      PJRT_Memory* memory_space, void* device_ptr, size_t size,
+      absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable);
+
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
+      const;
+
+  tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
+      std::shared_ptr<PjRtExecutable> executable) const;
+
+  std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+            PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const;
+
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options);
+
+  absl::StatusOr<GlobalDeviceId> TranslateSubsliceDeviceId(
+      int64_t subslice_device_id, const PjRtExecutable* executable,
+      const PjRtDeviceDimensions& computation_origin) const;
+
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      LocalDeviceId local_device_id, absl::string_view description) const;
+
+  absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
+                                       int32_t launch_id, absl::Status error);
+
+  bool CanRecoverDonation(const absl::Status& status) const;
+
+  absl::Status TransferToInfeed(LocalDeviceId local_device_id,
+                                const LiteralSlice& literal);
+
+  absl::Status TransferFromOutfeed(LocalDeviceId local_device_id,
+                                   MutableBorrowingLiteral literal);
+
+  absl::Status WaitOnStream(LocalDeviceId local_device_id,
+                            PjRtDeviceEventRef event, std::intptr_t stream);
+
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents(
+      LocalDeviceId local_device_id) const;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats(
+      LocalDeviceId local_device_id) const;
+
+  absl::Status ClearMemoryStats(LocalDeviceId local_device_id);
+
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtRawBufferInterface::RemoteSendCallback on_done);
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
+      absl::Span<const PjRtRawBufferRef> buffers,
+      PjRtCrossHostRecvNotifier notifier,
+      PjRtDeviceEventSpan transfer_dependency_avs);
+
+  absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
+      std::vector<CrossHostTransferSpec> transfer_specs);
+
+  template <typename T>
+  T* down_cast();
+
+  template <typename T>
+  const T* down_cast() const;
+};
+
 // PjRtRawClient provides an interface for directly enqueuing fundamental
 // operations (d2h, h2d, execute, allocation) in a platform agnostic way.
 // These operations are all performed on raw buffers (PjRtRawBuffer) and
 // chained through PjRtDeviceEvent dependencies.
-class PjRtRawClient {
+class PjRtRawClient : public PjRtRawClientInterface {
  public:
+  PjRtRawClient();
   virtual ~PjRtRawClient() = default;
 
   // Quiesces any background work that may reference the owning
@@ -188,7 +355,7 @@ class PjRtRawClient {
   }
 
   using PjRtFulfillAliasRawBufferCallback =
-      absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
+      PjRtRawClientInterface::PjRtFulfillAliasRawBufferCallback;
 
   // Allocates a raw buffer of a particular size after an optional
   // allocate_after. Backends may support retrying allocation on oom which
@@ -333,8 +500,8 @@ class PjRtRawClient {
   virtual tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const = 0;
 
-  using PjRtFulfillAsyncExecutableCallback = absl::AnyInvocable<void(
-      absl::StatusOr<tsl::AsyncValueRef<PjRtExecutable>>) &&>;
+  using PjRtFulfillAsyncExecutableCallback =
+      PjRtRawClientInterface::PjRtFulfillAsyncExecutableCallback;
 
   virtual std::pair<tsl::AsyncValueRef<PjRtExecutable>,
                     PjRtFulfillAsyncExecutableCallback>
@@ -441,17 +608,7 @@ class PjRtRawClient {
   // Takes in a vector of transfer dependencies and transfer specs, and launches
   // the data transfers specified by the transfer specs so that they occur after
   // all transfer dependencies are complete.
-  struct CrossHostTransferSpec {
-    GlobalDeviceId src_global_device_id;
-    GlobalDeviceId dst_global_device_id;
-    PjRtRawBufferRef raw_buffer;
-    // Source and destination task incarnations, in that order. nullopt when
-    // the caller has no GetAliveTasks snapshot.
-    // TODO: Revisit making this non-optional once older jaxlib versions
-    // are no longer supported and the missing-snapshot fallback in
-    // CopyArraysForCrossHost is no longer needed.
-    std::optional<std::array<IncarnationId, 2>> incarnations;
-  };
+  using CrossHostTransferSpec = PjRtRawClientInterface::CrossHostTransferSpec;
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
       PjRtDeviceEventRefVector transfer_dependencies,
@@ -459,7 +616,31 @@ class PjRtRawClient {
     return absl::UnimplementedError(
         "CrossHostTransferBuffers is not implemented.");
   }
+
+ private:
+  friend class PjRtRawClientInterface;
+  static const PJRT_RawClient_FunctionTable kRawClientVtable;
 };
+
+template <typename T>
+T* PjRtRawClientInterface::down_cast() {
+  if (vtable != &PjRtRawClient::kRawClientVtable) {
+    return nullptr;
+  }
+  auto* cpp_client =
+      static_cast<PjRtRawClient*>(static_cast<PJRT_RawClient*>(this));
+  return dynamic_cast<T*>(cpp_client);
+}
+
+template <typename T>
+const T* PjRtRawClientInterface::down_cast() const {
+  if (vtable != &PjRtRawClient::kRawClientVtable) {
+    return nullptr;
+  }
+  auto* cpp_client = static_cast<const PjRtRawClient*>(
+      static_cast<const PJRT_RawClient*>(this));
+  return dynamic_cast<const T*>(cpp_client);
+}
 
 }  // namespace xla
 
