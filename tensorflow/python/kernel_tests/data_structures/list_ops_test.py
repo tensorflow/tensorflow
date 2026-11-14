@@ -609,6 +609,24 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def testScatterIntoExistingListFailsWithIncompatibleElementShape(self):
+    # TensorListStack/TensorListGather size their output from a fully defined
+    # list element_shape, so an element of a different shape must be rejected
+    # here, as TensorListScatter and TensorListSetItem already do.
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[2]
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Tried to scatter tensors with incompatible shape into a list. "
+        r"Item element shape: \[3\] list shape: \[2\]",
+    ):
+      self.evaluate(
+          list_ops.tensor_list_scatter(
+              tensor=[[1.0, 2.0, 3.0]], indices=[0], input_handle=l
+          )
+      )
+
   def testScatterRejectsUnrepresentableLength(self):
     # Mirror TensorListScatterIntoExistingList: index INT32_MAX must not reach
     # the signed `highest_index + 1` resize (undefined behavior).
@@ -1750,6 +1768,15 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         r"Unused values in tensor. Length of tensor: 2 Values used: 1"):
       l = list_ops.tensor_list_split([1., 2.], element_shape=None, lengths=[1])
       self.evaluate(l)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Attempting to slice \[1, 1 \+ 9223372036854775807\] from "
+        r"tensor with length 2"):
+      l = list_ops.tensor_list_split(
+          [1., 2.],
+          element_shape=None,
+          lengths=[1, np.iinfo(np.int64).max])
+      self.evaluate(l)
 
   @test_util.run_deprecated_v1
   def testSkipEagerSplitWithScalarElementShapeFails(self):
@@ -1801,6 +1828,23 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_split([[1.], [2.]],
                                    element_shape=[1],
                                    lengths=[1, 1])
+
+  def testSplitWithLengthIncompatibleWithElementShapeFails(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Length 1 at index 0 is not compatible with element_shape \[2,1\]"):
+      l = list_ops.tensor_list_split([[1.], [2.], [3.]],
+                                     element_shape=[2, 1],
+                                     lengths=[1, 2])
+      self.evaluate(l)
+
+  def testSplitWithLengthMatchingElementShape(self):
+    l = list_ops.tensor_list_split([[1.], [2.], [3.], [4.]],
+                                   element_shape=[2, 1],
+                                   lengths=[2, 2])
+    self.assertAllEqual(
+        list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
+        [[[1.], [2.]], [[3.], [4.]]])
 
   def testResizeGrow(self):
     l = list_ops.tensor_list_from_tensor([1., 2.], element_shape=[])
