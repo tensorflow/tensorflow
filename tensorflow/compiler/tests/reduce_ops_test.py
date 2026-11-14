@@ -128,8 +128,45 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_min, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
-  def testReduceMax(self, index_dtype):
+  def testReduceMinNaN(self, index_dtype):
+    if self.device in ('CPU', 'XLA_CPU'):
+      self.skipTest('XLA:CPU fast min/max drops NaN (#118077).')
+    float_types = set(self.float_types).intersection([
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ])
+    for dtype in float_types:
+      test_input = np.array(
+          [
+              [1.0, 2.0, 3.0],
+              [np.nan, 7.0, -2.5],
+              [7.0, np.nan, -2.5],
+              [7.0, -2.5, np.nan],
+          ],
+          dtype=dtype,
+      )
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype, shape=test_input.shape)
+          index = array_ops.placeholder(index_dtype)
+          const_ax = constant_op.constant([1], dtype=index_dtype)
+          out_dyn = math_ops.reduce_min(a, index)
+          out_const = math_ops.reduce_min(a, const_ax)
+          out_all = math_ops.reduce_min(a)
+        res_ax0 = sess.run(out_dyn, {a: test_input, index: [0]})
+        res_ax1, res_const, res_all = sess.run(
+            [out_dyn, out_const, out_all],
+            {a: test_input, index: [1]},
+        )
+        self.assertAllEqual(np.isnan(res_ax0), [True, True, True])
+        for res in (res_ax1, res_const):
+          self.assertAllClose(res[0], 1.0)
+          self.assertAllEqual(np.isnan(res[1:]), [True, True, True])
+        self.assertTrue(np.isnan(res_all))
 
+  def testReduceMax(self, index_dtype):
     def reference_max(dtype, inp, axis):
       """Wrapper around np.amax that returns -infinity for an empty input."""
       if inp.shape[axis] == 0:
@@ -145,6 +182,44 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       self._testReduction(math_ops.reduce_max,
                           functools.partial(reference_max, dtype), dtype,
                           self.REAL_DATA, index_dtype)
+
+  def testReduceMaxNaN(self, index_dtype):
+    if self.device in ('CPU', 'XLA_CPU'):
+      self.skipTest('XLA:CPU fast min/max drops NaN (#118077).')
+    float_types = set(self.float_types).intersection([
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ])
+    for dtype in float_types:
+      test_input = np.array(
+          [
+              [11.0, 2.0, 3.0],
+              [np.nan, 7.0, -2.5],
+              [7.0, np.nan, -2.5],
+              [7.0, -2.5, np.nan],
+          ],
+          dtype=dtype,
+      )
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype, shape=test_input.shape)
+          index = array_ops.placeholder(index_dtype)
+          const_ax = constant_op.constant([1], dtype=index_dtype)
+          out_dyn = math_ops.reduce_max(a, index)
+          out_const = math_ops.reduce_max(a, const_ax)
+          out_all = math_ops.reduce_max(a)
+        res_ax0 = sess.run(out_dyn, {a: test_input, index: [0]})
+        res_ax1, res_const, res_all = sess.run(
+            [out_dyn, out_const, out_all],
+            {a: test_input, index: [1]},
+        )
+        self.assertAllEqual(np.isnan(res_ax0), [True, True, True])
+        for res in (res_ax1, res_const):
+          self.assertAllClose(res[0], 11.0)
+          self.assertAllEqual(np.isnan(res[1:]), [True, True, True])
+        self.assertTrue(np.isnan(res_all))
 
   def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
