@@ -2757,14 +2757,19 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
   ~ReduceUpsamplingDims() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
+    // Reshape and Tile take two regular data inputs, and a GraphDef handed to
+    // Grappler has not necessarily been validated against op definitions.
+    return IsReshape(*node) && node->input_size() >= 2 &&
+           !IsControlInput(node->input(0)) && !IsControlInput(node->input(1)) &&
+           !IsInPreserveSet(*node);
   }
 
   absl::Status TrySimplify(NodeDef* node,
                            std::string* simplified_node_name) override {
     NodeDef* tile;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &tile));
-    if (!IsTile(*tile) || IsInPreserveSet(*tile)) {
+    if (!IsTile(*tile) || IsInPreserveSet(*tile) || tile->input_size() < 2 ||
+        IsControlInput(tile->input(0)) || IsControlInput(tile->input(1))) {
       return absl::OkStatus();
     }
 
@@ -2777,7 +2782,9 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
 
     NodeDef* reshape;
     TF_RETURN_IF_ERROR(GetInputNode(tile->input(0), &reshape));
-    if (!IsReshape(*reshape) || IsInPreserveSet(*reshape)) {
+    if (!IsReshape(*reshape) || IsInPreserveSet(*reshape) ||
+        reshape->input_size() < 2 || IsControlInput(reshape->input(0)) ||
+        IsControlInput(reshape->input(1))) {
       return absl::OkStatus();
     }
 
