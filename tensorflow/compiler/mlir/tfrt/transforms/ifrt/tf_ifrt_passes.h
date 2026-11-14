@@ -65,6 +65,11 @@ CreateTfRestorePruningPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateLowerToIfrtRestoreVariablePass();
 
+// Creates a pass that prunes variable self-update cycles (e.g. Keras metric
+// accumulators) whose value is provably never observed.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTfPruneUnobservedVariableUpdatesPass();
+
 // Creates a pass that cleans up device attributes from all ops.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfDeviceCleanupPass();
