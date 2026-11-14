@@ -2114,6 +2114,7 @@ absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp() {
       "DynamicInfeedDequeueTupleOp",
       "DynamicStitch",
       "DynamicPartition",
+      "Eig",
       "Einsum",
       "EmptyTensorList",
       "EnsureShape",
