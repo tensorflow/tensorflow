@@ -42,7 +42,15 @@ TfLiteStatus DefineBinaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                               TensorToValueIdMap& tensor_to_value_id,
                               const NodeInfo& node);
 
-// Ternary operations (Clamp)
+TfLiteStatus IsNotEqualSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context);
+
+TfLiteStatus DefineNotEqualNode(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node);
+
+// Ternary operations (Clamp, SelectV2)
 TfLiteStatus IsStablehloClampSupported(const TfLiteRegistration* registration,
                                        const TfLiteNode* node,
                                        TfLiteContext* context);
@@ -51,6 +59,14 @@ TfLiteStatus DefineStablehloClampNode(TfLiteContext* context,
                                       ynn_subgraph_t subgraph,
                                       TensorToValueIdMap& tensor_to_value_id,
                                       const NodeInfo& node);
+
+TfLiteStatus IsSelectV2Supported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context);
+
+TfLiteStatus DefineSelectV2Node(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                TensorToValueIdMap& tensor_to_value_id,
+                                const NodeInfo& node);
 
 // Quantize/Dequantize operations
 TfLiteStatus IsQuantizeSupported(const TfLiteRegistration* registration,
