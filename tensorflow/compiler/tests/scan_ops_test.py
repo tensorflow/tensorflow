@@ -136,8 +136,6 @@ class CumsumTest(xla_test.XLATestCase):
     x = np.arange(0, 10).reshape([2, 5])
     for dtype in (np.int8, np.int16, np.uint8, np.uint16, np.uint32,
                   np.uint64):
-      if dtype not in self.int_types:
-        continue
       for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
@@ -324,8 +322,6 @@ class CumprodTest(xla_test.XLATestCase):
     x = np.arange(1, 7).reshape([2, 3])
     for dtype in (np.int8, np.int16, np.uint8, np.uint16, np.uint32,
                   np.uint64):
-      if dtype not in self.int_types:
-        continue
       for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
