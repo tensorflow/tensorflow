@@ -113,7 +113,7 @@ size_t TfLiteVarArrayGetSizeInBytes(const int size) {
 template <class T, class U>
 int TfLiteVarArrayEqualsArray(const T* const a, const int b_size,
                               const U* const b_data) {
-  static_assert(std::is_same<decltype(a->data[0]), const U&>::value,
+  static_assert(std::is_same_v<decltype(a->data[0]), const U&>,
                 "TfLiteVarArrayEqualsArray can only compare same type arrays");
   if (a == nullptr) {
     return b_size == 0;
