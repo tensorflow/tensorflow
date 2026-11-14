@@ -340,7 +340,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES(context,
                 (depth_window == 1 || (window_rows == 1 && window_cols == 1)),
                 absl::UnimplementedError(
-                    "MaxPooling supports exactly one of pooling across depth "
+                    "Pooling supports exactly one of pooling across depth "
                     "or pooling across width/height."));
   } else {
     // Pool3D
