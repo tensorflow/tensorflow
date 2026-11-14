@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
@@ -555,14 +556,18 @@ class CSVDatasetOp : public DatasetOpKernel {
             pos_++;
             if (next == dataset()->delim_) {
               parse_result.Update(QuotedFieldToOutput(
-                  ctx, absl::string_view(&buffer_[start], pos_ - 1 - start),
+                  ctx,
+                  absl::string_view(buffer_.data(), buffer_.size())
+                      .substr(start, pos_ - 1 - start),
                   out_tensors, earlier_pieces, include));
               return parse_result;
 
             } else if (next == '\n' || next == '\r') {
               *end_of_record = true;
               parse_result.Update(QuotedFieldToOutput(
-                  ctx, absl::string_view(&buffer_[start], pos_ - 1 - start),
+                  ctx,
+                  absl::string_view(buffer_.data(), buffer_.size())
+                      .substr(start, pos_ - 1 - start),
                   out_tensors, earlier_pieces, include));
               if (next == '\r') SkipNewLineIfNecessary();
               return parse_result;
@@ -614,8 +619,9 @@ class CSVDatasetOp : public DatasetOpKernel {
         // the opening quotation mark of the quoted field.
         bool skip_next_quote = true;
         for (const Piece& p : earlier_pieces) {
-          AppendUnescapedPiece(absl::string_view(&p.buffer[p.start], p.len),
-                               &field_complete, &skip_next_quote);
+          AppendUnescapedPiece(
+              absl::string_view(p.buffer).substr(p.start, p.len),
+              &field_complete, &skip_next_quote);
         }
         AppendUnescapedPiece(field, &field_complete, &skip_next_quote);
         absl::string_view result = absl::string_view(field_complete);
@@ -665,7 +671,9 @@ class CSVDatasetOp : public DatasetOpKernel {
               // Whatever we have is the last field of the last record
               *end_of_record = true;
               parse_result.Update(UnquotedFieldToOutput(
-                  ctx, absl::string_view(&buffer_[start], pos_ - start),
+                  ctx,
+                  absl::string_view(buffer_.data(), buffer_.size())
+                      .substr(start, pos_ - start),
                   out_tensors, earlier_pieces, include));
               return parse_result;
             } else if (!s.ok()) {
@@ -677,7 +685,9 @@ class CSVDatasetOp : public DatasetOpKernel {
 
           if (ch == dataset()->delim_) {
             parse_result.Update(UnquotedFieldToOutput(
-                ctx, absl::string_view(&buffer_[start], pos_ - start),
+                ctx,
+                absl::string_view(buffer_.data(), buffer_.size())
+                    .substr(start, pos_ - start),
                 out_tensors, earlier_pieces, include));
             pos_++;
             return parse_result;
@@ -686,7 +696,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             // need special case to skip over first \n of record if the line
             // breaks are \r\n
             parse_result.Update(UnquotedFieldToOutput(
-                ctx, absl::string_view(&buffer_[start], pos_ - start),
+                ctx,
+                absl::string_view(buffer_.data(), buffer_.size())
+                    .substr(start, pos_ - start),
                 out_tensors, earlier_pieces, include));
             *end_of_record = true;
             pos_++;
