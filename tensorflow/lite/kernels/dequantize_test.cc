@@ -66,7 +66,7 @@ std::vector<float> Float8Values(const std::vector<uint8_t>& bytes) {
 
 class DequantizeOpModel : public SingleOpModel {
  public:
-  explicit DequantizeOpModel() {}
+  explicit DequantizeOpModel() = default;
 
   DequantizeOpModel(TensorType type, std::initializer_list<int> shape,
                     float scale, int32_t zero_point, int version) {
