@@ -1987,6 +1987,22 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "conv_grad_ops_3d_test",
+    size = "small",
+    srcs = ["conv_grad_ops_3d_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "conv_ops_benchmark_test",
     size = "medium",
