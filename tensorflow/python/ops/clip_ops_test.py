@@ -66,6 +66,23 @@ class ClipOpsTest(test.TestCase):
     result, expected = self.evaluate([clipped, dense_clipped])
     self.assertAllClose(result, expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16NormIntermediateOverflow(self):
+    values = constant_op.constant([4.0] * 4096, dtype=dtypes.float16)
+    norm = clip_ops.global_norm([values])
+    clipped = clip_ops.clip_by_norm(values, 1.0)
+    global_clipped, returned_norm = clip_ops.clip_by_global_norm(
+        [values], 1.0)
+    self.assertEqual(norm.dtype, dtypes.float16)
+    self.assertEqual(clipped.dtype, dtypes.float16)
+    self.assertEqual(global_clipped[0].dtype, dtypes.float16)
+    self.assertEqual(returned_norm.dtype, dtypes.float16)
+    expected = np.full(4096, 0.015625, dtype=np.float16)
+    self.assertAllClose(self.evaluate([norm, returned_norm]),
+                        [256.0, 256.0])
+    self.assertAllClose(self.evaluate(clipped), expected)
+    self.assertAllClose(self.evaluate(global_clipped[0]), expected)
+
   @test_util.run_deprecated_v1
   def testClipTensorByNorm(self):
     # Simple example
