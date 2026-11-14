@@ -159,5 +159,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

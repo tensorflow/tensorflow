@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1037,10 +1038,13 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
             Env::Default(), "restore_large_tensor", thread_pool_size);
 
         for (int i = 0; i < thread_pool_size; ++i) {
-          reader_pool->Schedule([&, i]() {
-            int64_t offset = i * section_size;
-            int64_t size = i == thread_pool_size - 1 ? entry.size() - offset
-                                                     : section_size;
+          // A small entry can have fewer non-empty sections than threads.
+          // Skip the sections that start at or past the end of the entry so
+          // that no section reads or writes outside of [0, entry.size()).
+          const int64_t offset = i * section_size;
+          if (offset >= entry.size()) break;
+          const int64_t size = std::min(section_size, entry.size() - offset);
+          reader_pool->Schedule([&, i, offset, size]() {
             std::unique_ptr<RandomAccessFile> section_reader = nullptr;
             absl::string_view sp;
             if (auto file_status = env_->NewRandomAccessFile(
@@ -1055,7 +1059,9 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
             auto status = section_reader->Read(
                 entry.offset() + offset, sp,
                 absl::MakeSpan(backing_buffer_current_pos, size));
-            if (sp.data() != backing_buffer_current_pos) {
+            // Only copy when the read succeeded: after a failed or short read
+            // `sp` may be empty or point at unrelated memory.
+            if (status.ok() && sp.data() != backing_buffer_current_pos) {
               memmove(backing_buffer_current_pos, sp.data(), size);
             }
             statuses[i] = std::move(status);
