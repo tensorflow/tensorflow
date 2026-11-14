@@ -91,6 +91,63 @@ class InTopKTest(test.TestCase):
     k = constant_op.constant(3)
     self._validateInTopK(predictions, target, k, [False, True])
 
+  def testInTopKUnrelatedNaNInPredictions(self):
+    predictions = constant_op.constant(
+        [[0.5, float("nan"), 0.7, 0.6]], dtype=dtypes.float32
+    )
+    target = constant_op.constant([2], dtype=dtypes.int32)
+    self._validateInTopK(predictions, target, 1, [False])
+
+    @def_function.function(jit_compile=True)
+    def jit_in_top_k(p, t):
+      return nn_ops.in_top_k(p, t, 1)
+
+    self.assertAllEqual(
+        self.evaluate(jit_in_top_k(predictions, target)), [False]
+    )
+
+  def testInTopKUnrelatedInfInPredictions(self):
+    predictions = constant_op.constant(
+        [[0.5, float("inf"), 0.7, 0.6]], dtype=dtypes.float32
+    )
+    target = constant_op.constant([2], dtype=dtypes.int32)
+    self._validateInTopK(predictions, target, 2, [False])
+
+    @def_function.function(jit_compile=True)
+    def jit_in_top_k(p, t):
+      return nn_ops.in_top_k(p, t, 2)
+
+    self.assertAllEqual(
+        self.evaluate(jit_in_top_k(predictions, target)), [False]
+    )
+
+  def testXlaInTopKNaNParity(self):
+    predictions = constant_op.constant(
+        [
+            [0.5, float("nan"), 0.7, 0.6],
+            [0.1, 0.2, 0.3, 0.4],
+            [0.1, 0.2, 0.3, 0.4],
+            [float("nan"), 0.2, 0.3, 0.4],
+            [0.1, float("-inf"), 0.3, 0.4],
+        ],
+        dtype=dtypes.float32,
+    )
+    expected = [False, True, False, False, False]
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      targets = constant_op.constant([2, 3, 0, 0, 3], dtype=dtype)
+      self.assertAllEqual(
+          self.evaluate(nn_ops.in_top_k(predictions, targets, 1)), expected
+      )
+
+      @def_function.function(jit_compile=True)
+      def compiled_fn(p, t):
+        return nn_ops.in_top_k(p, t, 1)
+
+      self.assertAllEqual(
+          self.evaluate(compiled_fn(predictions, targets)), expected
+      )
+
 
 if __name__ == "__main__":
   test.main()

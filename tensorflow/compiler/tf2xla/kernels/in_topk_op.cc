@@ -108,9 +108,14 @@ class InTopKOp : public XlaOpKernel {
         one_hot_r2, zero_r0,
         xla::CreateScalarAddComputation(xla::S32, xla_builder), {1});
 
+    xla::XlaOp all_finite_r1 = xla::Reduce(
+        xla::IsFinite(predictions_r2),
+        xla::ConstantR0<bool>(xla_builder, true),
+        xla::CreateScalarAndComputation(xla::PRED, xla_builder), {1});
+
     xla::XlaOp result = xla::And(
         xla::And(xla::Lt(num_gt_r1, xla::ConstantR0<int32_t>(xla_builder, k)),
-                 xla::IsFinite(targets_values_r1)),
+                 all_finite_r1),
         valid_target_r1);
 
     context->SetOutput(0, result);
