@@ -25,10 +25,8 @@ limitations under the License.
 namespace {
 
 void FuzzTest(const std::vector<std::string> ss) {
-  const std::string all = ss[0] + ss[1] + ss[2];
-
   int n[4] = {-1, -1, -1, -1};
-  const std::string ret = tensorflow::strings::Printf(
+  [[maybe_unused]] const std::string ret = tensorflow::strings::Printf(
       "%n%s%n%s%n%s%n", absl::FormatCountCapture(&n[0]), ss[0].c_str(),
       absl::FormatCountCapture(&n[1]), ss[1].c_str(),
       absl::FormatCountCapture(&n[2]), ss[2].c_str(),

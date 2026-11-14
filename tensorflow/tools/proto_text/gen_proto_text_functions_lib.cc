@@ -447,7 +447,8 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
     Print(GetCppClass(*value_type), " map_value;");
     Print("bool set_map_value = false;");
   }
-  Print("std::vector<bool> has_seen(", md.field_count(), ", false);");
+  Print("[[maybe_unused]] std::vector<bool> has_seen(", md.field_count(),
+        ", false);");
   Print("while(true) {").Nest();
   Print("ProtoSpaceAndComments(scanner);");
 
