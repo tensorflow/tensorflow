@@ -31,14 +31,14 @@ namespace fuzzing {
 class FuzzConcat : public FuzzSession<Tensor, Tensor, int32_t> {
   void BuildGraph(const Scope& scope) override {
     auto value1 =
-        tensorflow::ops::Placeholder(scope.WithOpName("value1"), DT_INT32);
+        MakePlaceholder(scope, "value1", DT_INT32);
     Input value1_input(value1);
     auto value2 =
-        tensorflow::ops::Placeholder(scope.WithOpName("value2"), DT_INT32);
+        MakePlaceholder(scope, "value2", DT_INT32);
     Input value2_input(value2);
     InputList values_input_list({value1_input, value2_input});
     auto axis =
-        tensorflow::ops::Placeholder(scope.WithOpName("axis"), DT_INT32);
+        MakePlaceholder(scope, "axis", DT_INT32);
     tensorflow::ops::Concat(scope.WithOpName("output"), values_input_list,
                             axis);
   }

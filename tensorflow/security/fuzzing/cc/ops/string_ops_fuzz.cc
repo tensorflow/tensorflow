@@ -26,9 +26,9 @@ namespace fuzzing {
 class FuzzStringOpsStringSplit : public FuzzSession<std::string, std::string> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
+        MakePlaceholder(scope, "input", DT_STRING);
     auto op_node2 =
-        tensorflow::ops::Placeholder(scope.WithOpName("delimiter"), DT_STRING);
+        MakePlaceholder(scope, "delimiter", DT_STRING);
 
     tensorflow::ops::StringSplit(scope.WithOpName("output"), op_node, op_node2);
   }
@@ -61,9 +61,9 @@ class FuzzStringOpsStringSplitV2
     : public FuzzSession<std::string, std::string> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
+        MakePlaceholder(scope, "input", DT_STRING);
     auto op_node2 =
-        tensorflow::ops::Placeholder(scope.WithOpName("separator"), DT_STRING);
+        MakePlaceholder(scope, "separator", DT_STRING);
 
     tensorflow::ops::StringSplitV2(scope.WithOpName("output"), op_node,
                                    op_node2);
@@ -96,7 +96,7 @@ FUZZ_TEST_F(FuzzStringOpsStringSplitV2, Fuzz)
 class FuzzStringOpsStringUpper : public FuzzSession<std::string> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
+        MakePlaceholder(scope, "input", DT_STRING);
 
     tensorflow::ops::StringUpper(scope.WithOpName("output"), op_node);
   }

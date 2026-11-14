@@ -30,11 +30,11 @@ namespace fuzzing {
 // Creates FuzzBincount class that wraps a single operation node session.
 class FuzzBincount : public FuzzSession<Tensor, int32_t, Tensor> {
   void BuildGraph(const Scope& scope) override {
-    auto arr = tensorflow::ops::Placeholder(scope.WithOpName("arr"), DT_INT32);
+    auto arr = MakePlaceholder(scope, "arr", DT_INT32);
     auto size =
-        tensorflow::ops::Placeholder(scope.WithOpName("size"), DT_INT32);
+        MakePlaceholder(scope, "size", DT_INT32);
     auto weights =
-        tensorflow::ops::Placeholder(scope.WithOpName("weights"), DT_INT32);
+        MakePlaceholder(scope, "weights", DT_INT32);
     tensorflow::ops::Bincount(scope.WithOpName("output"), arr, size, weights);
   }
   void FuzzImpl(const Tensor& arr, const int32_t& nbins,

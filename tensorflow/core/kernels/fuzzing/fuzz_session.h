@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"  // IWYU pragma: keep
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/public/session.h"
 
 // Standard invoking function macro to dispatch to a fuzzer class.
@@ -35,16 +36,30 @@ limitations under the License.
 #define STANDARD_TF_FUZZ_FUNCTION(FuzzerClass)
 #endif
 
-// Standard builder for hooking one placeholder to one op.
+// Standard builder for hooking one placeholder to one op. The
+// tensorflow::ops::Placeholder C++ wrapper was removed, but the runtime
+// op still exists: build the feed node directly via NodeBuilder (same
+// pattern as tensorflow/cc/ops/const_op.h).
 #define SINGLE_INPUT_OP_BUILDER(dtype, opName)                          \
   void BuildGraph(const Scope& scope) override {                        \
-    auto op_node =                                                      \
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), dtype); \
+    auto op_node = tensorflow::fuzzing::MakePlaceholder(                \
+        scope, "input", dtype);                                         \
     (void)tensorflow::ops::opName(scope.WithOpName("output"), op_node); \
   }
 
 namespace tensorflow {
 namespace fuzzing {
+
+// Constructs a Placeholder feed node without the removed cc/ops wrapper.
+inline Output MakePlaceholder(const Scope& scope, const std::string& name,
+                              DataType dtype) {
+  NodeBuilder builder(name, "Placeholder");
+  builder.Attr("dtype", dtype);
+  scope.UpdateBuilder(&builder);
+  Node* node = nullptr;
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &node));
+  return Output(node, 0);
+}
 
 // Create a TensorFlow session using a specific GraphDef created
 // by BuildGraph(), and make it available for fuzzing.
