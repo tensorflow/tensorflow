@@ -479,6 +479,138 @@ collection_def {
   EXPECT_EQ(shape.dim(1).size(), 32);
 }
 
+// Builds a MetaGraphDef with a Placeholder "x" and a signature whose only
+// input is `input`. If `coo_sparse` is true, it also adds the "i" and "s"
+// Placeholders that the CooSparse input in the tests below refers to.
+MetaGraphDef MetaGraphWithSignatureInput(const TensorInfo& input,
+                                         bool coo_sparse = false) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
+  auto y = ops::Identity(s.WithOpName("y"), x);
+  if (coo_sparse) {
+    ops::Placeholder(s.WithOpName("i"), DT_INT64);
+    ops::Placeholder(s.WithOpName("s"), DT_INT64);
+  }
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  TensorInfo output;
+  output.set_name("y");
+  SignatureDef serving_signature;
+  (*serving_signature.mutable_inputs())["input"] = input;
+  (*serving_signature.mutable_outputs())["output"] = output;
+  (*meta_graph.mutable_signature_def())["serving"] = serving_signature;
+  return meta_graph;
+}
+
+TEST_F(GrapplerItemBuilderTest, SignatureInputAcceptsSupportedDtypes) {
+  for (DataType dtype : {DT_FLOAT, DT_INT32, DT_INT64, DT_STRING}) {
+    TensorInfo input;
+    input.set_name("x");
+    input.set_dtype(dtype);
+    MetaGraphDef meta_graph = MetaGraphWithSignatureInput(input);
+
+    std::unique_ptr<GrapplerItem> item =
+        GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+    ASSERT_TRUE(item != nullptr) << DataType_Name(dtype);
+    ASSERT_EQ(item->feed.size(), 1) << DataType_Name(dtype);
+    EXPECT_EQ(item->feed[0].first, "x");
+    EXPECT_EQ(item->feed[0].second.dtype(), dtype);
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, SignatureCooSparseInt64ValuesValidControl) {
+  TensorInfo input;
+  input.mutable_coo_sparse()->set_values_tensor_name("x");
+  input.mutable_coo_sparse()->set_indices_tensor_name("i");
+  input.mutable_coo_sparse()->set_dense_shape_tensor_name("s");
+  input.set_dtype(DT_INT64);
+  MetaGraphDef meta_graph =
+      MetaGraphWithSignatureInput(input, /*coo_sparse=*/true);
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item != nullptr);
+  ASSERT_EQ(item->feed.size(), 3);
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->feed[0].second.dtype(), DT_INT64);
+  EXPECT_EQ(item->feed[1].first, "i");
+  EXPECT_EQ(item->feed[1].second.dtype(), DT_INT64);
+  EXPECT_EQ(item->feed[2].first, "s");
+  EXPECT_EQ(item->feed[2].second.dtype(), DT_INT64);
+}
+
+TEST_F(GrapplerItemBuilderTest, SignatureInputRejectsUnsupportedDtype) {
+  // DT_INVALID is the proto3 default when the dtype field is absent.
+  // DT_FLOAT_REF is a reference type and is not a valid Tensor dtype.
+  for (DataType dtype : {DT_INVALID, DT_FLOAT_REF}) {
+    TensorInfo input;
+    input.set_name("x");
+    if (dtype != DT_INVALID) input.set_dtype(dtype);
+    MetaGraphDef meta_graph = MetaGraphWithSignatureInput(input);
+
+    std::unique_ptr<GrapplerItem> item =
+        GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+    EXPECT_TRUE(item == nullptr) << DataType_Name(dtype);
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, PlaceholderRejectsUnsupportedDtype) {
+  TensorInfo input;
+  input.set_name("x");
+  input.set_dtype(DT_FLOAT);
+  for (DataType dtype : {DT_INVALID, DT_FLOAT_REF}) {
+    MetaGraphDef meta_graph = MetaGraphWithSignatureInput(input);
+    NodeDef* placeholder = nullptr;
+    for (NodeDef& node : *meta_graph.mutable_graph_def()->mutable_node()) {
+      if (node.name() == "x") placeholder = &node;
+    }
+    ASSERT_TRUE(placeholder != nullptr);
+    (*placeholder->mutable_attr())["dtype"].set_type(dtype);
+
+    std::unique_ptr<GrapplerItem> item =
+        GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+    EXPECT_TRUE(item == nullptr) << DataType_Name(dtype);
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, SignatureCooSparseInputDtype) {
+  TensorInfo input;
+  input.mutable_coo_sparse()->set_values_tensor_name("x");
+  input.mutable_coo_sparse()->set_indices_tensor_name("i");
+  input.mutable_coo_sparse()->set_dense_shape_tensor_name("s");
+  input.set_dtype(DT_FLOAT);
+  MetaGraphDef meta_graph =
+      MetaGraphWithSignatureInput(input, /*coo_sparse=*/true);
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+  ASSERT_TRUE(item != nullptr);
+  ASSERT_EQ(item->feed.size(), 3);
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->feed[0].second.dtype(), DT_FLOAT);
+  EXPECT_EQ(item->feed[1].first, "i");
+  EXPECT_EQ(item->feed[1].second.dtype(), DT_INT64);
+  EXPECT_EQ(item->feed[2].first, "s");
+  EXPECT_EQ(item->feed[2].second.dtype(), DT_INT64);
+}
+
+TEST_F(GrapplerItemBuilderTest, SignatureCooSparseRejectsUnsupportedDtype) {
+  for (DataType dtype : {DT_INVALID, DT_FLOAT_REF}) {
+    TensorInfo input;
+    input.mutable_coo_sparse()->set_values_tensor_name("x");
+    input.mutable_coo_sparse()->set_indices_tensor_name("i");
+    input.mutable_coo_sparse()->set_dense_shape_tensor_name("s");
+    if (dtype != DT_INVALID) input.set_dtype(dtype);
+    MetaGraphDef meta_graph =
+        MetaGraphWithSignatureInput(input, /*coo_sparse=*/true);
+
+    std::unique_ptr<GrapplerItem> item =
+        GrapplerItemFromMetaGraphDef("0", meta_graph, ItemConfig());
+    EXPECT_TRUE(item == nullptr) << DataType_Name(dtype);
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
