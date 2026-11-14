@@ -981,6 +981,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/util:einsum_op_util",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -56,6 +56,23 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       this->SanityCheckInput(context, input_tensor, dnn_shape_input);
       if (!context->status().ok()) return;
 
+      bool int8_forward_inference =
+          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+      if (int8_forward_inference) {
+        const Tensor& min_input_t = MklGetInput(context, 1);
+        const Tensor& max_input_t = MklGetInput(context, 2);
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "min_input shape must be rank 0 but is rank ",
+                        min_input_t.dims(), ", received shape: ",
+                        min_input_t.shape().DebugString())));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "max_input shape must be rank 0 but is rank ",
+                        max_input_t.dims(), ", received shape: ",
+                        max_input_t.shape().DebugString())));
+      }
+
       MklDnnData<T> dnn_data_input(&cpu_engine_);
       MklDnnData<T> dnn_data_output(&cpu_engine_);
 
@@ -77,23 +94,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Get the input tensor and initialize the pooling parameters
       TensorShape input_tensor_shape = input_tensor.shape();
-      TensorShape logical_shape = dnn_shape_input.IsMklTensor()
-                                      ? dnn_shape_input.GetTfShape()
-                                      : input_tensor_shape;
-      if (input_tensor.NumElements() != 0 && this->padding_ == Padding::VALID) {
-        const int ksize_size = this->ksize_.size();
-        for (int i = 0; i < ksize_size; i++) {
-          OP_REQUIRES(
-              context,
-              logical_shape.dims() > i &&
-                  logical_shape.dim_size(i) >= this->ksize_[i],
-              absl::InvalidArgumentError(absl::StrCat(
-                  "The ksize dimension ", i, " (value ", this->ksize_[i], ")",
-                  " is larger than the input tensor dimension ", i, " (value ",
-                  logical_shape.dims() > i ? logical_shape.dim_size(i) : -1,
-                  ").")));
-        }
-      }
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
                                   input_tensor_shape);
       OP_REQUIRES_OK(context, context->status());
@@ -105,13 +105,13 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // If input is an empty tensor, allocate an empty output tensor and return
-      if (input_tensor.NumElements() == 0) {
+      TensorShape out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+      if (input_tensor.NumElements() == 0 ||
+          out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
-        bool int8_forward_inference =
-            std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+        OP_REQUIRES_OK(context, context->status());
 
         // Allocate an empty workspace tensor if not Quantized MaxPooling
         // Because Quantized MaxPooling does not have backward pass
@@ -122,6 +122,9 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
           this->AllocateEmptyOutputTensor(context, kOutputWorkspaceIndex,
                                           &pool_params, output_dims_mkl_order,
                                           &output_ws_tensor);
+          OP_REQUIRES_OK(context, context->status());
+        } else {
+          ForwardMinMaxToOutputs(context);
         }
         return;
       }
@@ -156,8 +159,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       // Get a pooling op from the cached pool
       MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
       prop_kind pooling_prop_kind;
-      bool int8_forward_inference =
-          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (int8_forward_inference)
         pooling_prop_kind = prop_kind::forward_inference;
       else
@@ -196,34 +197,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       if (int8_forward_inference) {
         // Execute pooling op
         pooling_fwd->Execute(src_data, dst_data, nullptr, fwd_cpu_stream);
-
-        // Pass min, max from input to output.
-        const Tensor& min_input_t = MklGetInput(context, 1);
-        const Tensor& max_input_t = MklGetInput(context, 2);
-        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "min_input shape must be rank 0 but is rank ",
-                        min_input_t.dims(), ", received shape: ",
-                        min_input_t.shape().DebugString())));
-        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "max_input shape must be rank 0 but is rank ",
-                        max_input_t.dims(), ", received shape: ",
-                        max_input_t.shape().DebugString())));
-        const float min_input = min_input_t.scalar<float>()();
-        const float max_input = max_input_t.scalar<float>()();
-
-        Tensor* output_min = nullptr;
-        Tensor* output_max = nullptr;
-        MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
-        output_min_mkl_shape.SetMklTensor(false);
-        output_max_mkl_shape.SetMklTensor(false);
-        AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                  output_min_mkl_shape, this->native_format_);
-        AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                  output_max_mkl_shape, this->native_format_);
-        output_min->scalar<float>()() = min_input;
-        output_max->scalar<float>()() = max_input;
+        ForwardMinMaxToOutputs(context);
       } else {
         MklDnnData<uint8> dnn_data_wksp(&cpu_engine_);
         AllocateWorkspaceTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
@@ -247,6 +221,26 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
  private:
   const int kOutputTensorIndexWorkspace = 1;
   engine cpu_engine_ = engine(engine::kind::cpu, 0);
+
+  void ForwardMinMaxToOutputs(OpKernelContext* context) {
+    // Pass min, max from input to output.
+    const float min_input = MklGetInput(context, 1).scalar<float>()();
+    const float max_input = MklGetInput(context, 2).scalar<float>()();
+
+    Tensor* output_min = nullptr;
+    Tensor* output_max = nullptr;
+    MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+    output_min_mkl_shape.SetMklTensor(false);
+    output_max_mkl_shape.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, 1, &output_min, {}, output_min_mkl_shape,
+                              this->native_format_);
+    OP_REQUIRES_OK(context, context->status());
+    AllocateOutputSetMklShape(context, 2, &output_max, {}, output_max_mkl_shape,
+                              this->native_format_);
+    OP_REQUIRES_OK(context, context->status());
+    output_min->scalar<float>()() = min_input;
+    output_max->scalar<float>()() = max_input;
+  }
 
   void AllocateWorkspaceTensor(
       OpKernelContext* context,
