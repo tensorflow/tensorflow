@@ -189,7 +189,7 @@ struct CastFunctor {
 };
 
 template <typename I>
-typename std::enable_if<sizeof(I) == 8, void>::type EIGEN_DEVICE_FUNC
+std::enable_if_t<sizeof(I) == 8, void> EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
@@ -200,7 +200,7 @@ typename std::enable_if<sizeof(I) == 8, void>::type EIGEN_DEVICE_FUNC
 }
 
 template <typename I>
-typename std::enable_if<sizeof(I) == 4, void>::type EIGEN_DEVICE_FUNC
+std::enable_if_t<sizeof(I) == 4, void> EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
@@ -211,7 +211,7 @@ typename std::enable_if<sizeof(I) == 4, void>::type EIGEN_DEVICE_FUNC
 }
 
 template <typename I>
-typename std::enable_if<sizeof(I) == 2, void>::type EIGEN_DEVICE_FUNC
+std::enable_if_t<sizeof(I) == 2, void> EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
@@ -222,7 +222,7 @@ typename std::enable_if<sizeof(I) == 2, void>::type EIGEN_DEVICE_FUNC
 }
 
 template <typename I>
-typename std::enable_if<sizeof(I) == 1, void>::type EIGEN_DEVICE_FUNC
+std::enable_if_t<sizeof(I) == 1, void> EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.

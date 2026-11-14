@@ -783,9 +783,9 @@ struct BatchNarrowMatrixTransposeDispatcher {
 template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
     T, TileLongSide, TileShortSide, conjugate,
-    typename std::enable_if<TileSizeOnNonLongSideFrontier(
-                                TileLongSide, TileShortSide, sizeof(T)),
-                            void>::type> {
+    std::enable_if_t<TileSizeOnNonLongSideFrontier(TileLongSide, TileShortSide,
+                                                   sizeof(T)),
+                     void>> {
   static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
                    int total_tiles_count, const T* input,
                    const Dimension<3>& input_dims, T* output) {
@@ -819,9 +819,9 @@ struct BatchNarrowMatrixTransposeDispatcher<
 template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
     T, TileLongSide, TileShortSide, conjugate,
-    typename std::enable_if<TileSizeOnLongSideFrontier(
-                                TileLongSide, TileShortSide, sizeof(T)),
-                            void>::type> {
+    std::enable_if_t<TileSizeOnLongSideFrontier(TileLongSide, TileShortSide,
+                                                sizeof(T)),
+                     void>> {
   static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
                    int total_tiles_count, const T* input,
                    const Dimension<3>& input_dims, T* output) {
