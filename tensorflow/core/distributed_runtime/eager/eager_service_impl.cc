@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <new>
 #include <optional>
@@ -26,10 +26,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/fixed_array.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/map.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
@@ -48,8 +55,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
@@ -60,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
 namespace tensorflow {
 namespace eager {
 
