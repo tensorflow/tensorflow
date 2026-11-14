@@ -1365,6 +1365,10 @@ _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
     _get_opt_einsum_contract_path)
 
 
+_EINSUM_V2_EQUATION_RE = re.compile('^([a-zA-Z,]*)(->[a-zA-Z]*)?$')
+_EINSUM_V2_EQUATION_ELLIPSIS_RE = re.compile('^([a-zA-Z0,]*)(->[a-zA-Z0]*)?$')
+
+
 def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):
   """Helper which validates einsum equation and resolves input shapes."""
   resolved_equation = equation.replace(' ', '')
@@ -1382,11 +1386,10 @@ def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):
   # Ensure there are no non-alphanumeric characters in the equation, including
   # periods (`.`) outside of ellipses, in the equation. This is not a hard
   # requirement; except we use a special character '0' for ellipsis.
-  allowed_labels = 'a-zA-Z'
   if ellipsis_label:
-    allowed_labels += ellipsis_label
-  match = re.match('^([{0},]*)(->[{0}]*)?$'.format(allowed_labels),
-                   resolved_equation)
+    match = _EINSUM_V2_EQUATION_ELLIPSIS_RE.match(resolved_equation)
+  else:
+    match = _EINSUM_V2_EQUATION_RE.match(resolved_equation)
   if not match:
     raise ValueError(
         'Subscripts have incorrect format: {}'.format(resolved_equation))
