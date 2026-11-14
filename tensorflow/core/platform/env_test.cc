@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -86,7 +87,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
   absl::string_view result;
   char scratch[3];
   EXPECT_EQ(error::OUT_OF_RANGE,
-            f->Read(0, result, absl::MakeSpan(scratch, 3)).code());
+            f->Read(0, result, absl::MakeSpan(scratch)).code());
   EXPECT_EQ(input, result);
 
   // Exact read to EOF works.
