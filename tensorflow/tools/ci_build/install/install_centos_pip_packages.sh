@@ -30,10 +30,6 @@ pip3 install --upgrade setuptools==39.1.0
 pip2 install virtualenv
 pip3 install virtualenv
 
-# Install six.
-pip2 install --upgrade six==1.12.0
-pip3 install --upgrade six==1.12.0
-
 # Install absl-py.
 pip2 install --upgrade absl-py
 pip3 install --upgrade absl-py

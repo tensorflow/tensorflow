@@ -246,7 +246,6 @@ use_repo(
     "org_xprof",
     "person_detect_data",
     "ruy",
-    "six_archive",
     "skcms",
     "sobol_data",
     "speech_commands",
