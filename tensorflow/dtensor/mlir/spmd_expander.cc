@@ -173,8 +173,7 @@ absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     } else {
       *output = op;
     }
-    SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
-                               computed_layout.data(), computed_layout.size()));
+    SetLayoutOnOp(*output, absl::MakeSpan(computed_layout));
     return absl::OkStatus();
   }
 
@@ -205,8 +204,7 @@ absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   TF_ASSIGN_OR_RETURN(*output, this->ExpandOp(op));
 
   // TODO(hthu): Use ToString() instead.
-  SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
-                             computed_layout.data(), computed_layout.size()));
+  SetLayoutOnOp(*output, absl::MakeSpan(computed_layout));
 
   // Verify the local shape of the expanded operation matches the shape expected
   // from the layout. Note that this does **not** catch all errors. When tensor
