@@ -26,7 +26,7 @@ diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.md b/clang/docs/ReleaseN
  #### C++2c Feature Support
  
  - `#embed` ([P1967R14](https://wg21.link/P1967R14)) is no longer diagnosed as
-@@ -826,8 +820,6 @@
+@@ -830,8 +824,6 @@
    (#GH227392)
  - Clang will now no longer assert or miscompile on a constructor that has more than 65535 base and member initializers. (#GH219366)
  
@@ -369,7 +369,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Parse/Parser.cpp b/clang/lib/Parse/Par
 diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
 --- a/clang/lib/Sema/SemaChecking.cpp
 +++ b/clang/lib/Sema/SemaChecking.cpp
-@@ -14872,7 +14872,7 @@
+@@ -14898,7 +14898,7 @@
    };
  
    /// An object for which we can track unsequenced uses.
@@ -378,7 +378,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema
  
    /// Different flavors of object usage which we track. We only track the
    /// least-sequenced usage of each kind.
-@@ -14891,17 +14891,6 @@
+@@ -14917,17 +14917,6 @@
      UK_Count = UK_ModAsSideEffect + 1
    };
  
@@ -396,7 +396,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema
    /// Bundle together a sequencing region and the expression corresponding
    /// to a specific usage. One Usage is stored for each usage kind in UsageInfo.
    struct Usage {
-@@ -15044,9 +15033,10 @@
+@@ -15070,9 +15059,10 @@
    /// Check whether a modification or use of an object \p O in an expression
    /// \p UsageExpr conflicts with a prior usage of kind \p OtherKind. \p UI is
    /// the \p UsageInfo for the object \p O as obtained via the \p UsageMap.
@@ -409,7 +409,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema
      if (UI.Diagnosed)
        return;
  
-@@ -15058,23 +15048,12 @@
+@@ -15084,23 +15074,12 @@
      const Expr *ModOrUse = UsageExpr;
      if (OtherKind == UK_Use)
        std::swap(Mod, ModOrUse);
@@ -436,7 +436,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema
      UI.Diagnosed = true;
    }
  
-@@ -15107,28 +15086,27 @@
+@@ -15133,28 +15112,27 @@
    void notePreUse(Object O, const Expr *UseExpr) {
      UsageInfo &UI = UsageMap[O];
      // Uses conflict with other modifications.
@@ -475,7 +475,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema
 diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
 --- a/clang/lib/Sema/SemaDeclCXX.cpp
 +++ b/clang/lib/Sema/SemaDeclCXX.cpp
-@@ -6928,9 +6928,6 @@
+@@ -6895,9 +6895,6 @@
    FunctionDecl::DefaultedFunctionKind DFK = FD->getDefaultedFunctionKind();
    if (DFK.isComparison())
      return S.DefineDefaultedComparison(DefaultLoc, FD, DFK.asComparison());
@@ -485,7 +485,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  
    switch (DFK.asSpecialMember()) {
    case CXXSpecialMemberKind::DefaultConstructor:
-@@ -7807,11 +7804,6 @@
+@@ -7774,11 +7771,6 @@
                                          FunctionDecl *FD,
                                          DefaultedComparisonKind DCK);
  
@@ -497,7 +497,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  static Sema::ImplicitExceptionSpecification
  computeImplicitExceptionSpec(Sema &S, SourceLocation Loc, FunctionDecl *FD) {
    auto DFK = FD->getDefaultedFunctionKind();
-@@ -7821,9 +7813,6 @@
+@@ -7788,9 +7780,6 @@
    if (DFK.isComparison())
      return ComputeDefaultedComparisonExceptionSpec(S, Loc, FD,
                                                     DFK.asComparison());
@@ -507,7 +507,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  
    auto *CD = cast<CXXConstructorDecl>(FD);
    assert(CD->getInheritedConstructor() &&
-@@ -7881,13 +7870,6 @@
+@@ -7848,13 +7837,6 @@
        }
      }
    }
@@ -521,7 +521,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  
    if (DefKind.isSpecialMember()
            ? CheckExplicitlyDefaultedSpecialMember(cast<CXXMethodDecl>(FD),
-@@ -8585,8 +8567,9 @@
+@@ -8552,8 +8534,9 @@
                   diag::note_defaulted_comparison_not_rewritten_callee)
                << FD;
          } else {
@@ -533,7 +533,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
            S.NoteDeletedFunction(Best->Function);
          }
        }
-@@ -9395,79 +9378,65 @@
+@@ -9362,79 +9345,65 @@
    popCodeSynthesisContext();
  }
  
@@ -632,7 +632,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  
      // Pretend to synthesize the function body in an unevaluated context.
      // Note that we can't actually just go ahead and define the function here:
-@@ -9476,9 +9445,14 @@
+@@ -9443,9 +9412,14 @@
      EnterExpressionEvaluationContext Context(
          S, Sema::ExpressionEvaluationContext::Unevaluated);
  
@@ -648,7 +648,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
      if (!Body.isInvalid())
        ExceptSpec.CalledStmt(Body.get());
  
-@@ -9490,519 +9464,6 @@
+@@ -9457,519 +9431,6 @@
  
    return ExceptSpec;
  }
@@ -1168,7 +1168,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
  
  void Sema::CheckDelayedMemberExceptionSpecs() {
    decltype(DelayedOverridingExceptionSpecChecks) Overriding;
-@@ -10683,12 +10144,6 @@
+@@ -10650,12 +10111,6 @@
    if (DFK.isSpecialMember()) {
      ShouldDeleteSpecialMember(cast<CXXMethodDecl>(FD), DFK.asSpecialMember(),
                                nullptr, /*Diagnose=*/true);
@@ -1181,7 +1181,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
    } else {
      DefaultedComparisonAnalyzer(
          *this, cast<CXXRecordDecl>(FD->getLexicalDeclContext()), FD,
-@@ -19513,30 +18968,21 @@
+@@ -19480,30 +18935,21 @@
    Fn->setDeletedAsWritten(true, Message);
  }
  
@@ -1217,7 +1217,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
      return;
    }
  
-@@ -19549,12 +18995,8 @@
+@@ -19516,12 +18962,8 @@
        (!FD->isDependentContext() ||
         (!isa<CXXConstructorDecl>(FD) &&
          FD->getDeclName().getCXXOverloadedOperator() != OO_Equal))) {
@@ -1232,7 +1232,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
      return;
    }
  
-@@ -19564,36 +19006,22 @@
+@@ -19531,36 +18973,22 @@
        DefKind.asComparison() != DefaultedComparisonKind::ThreeWay) {
      DiagCompat(DefaultLoc, diag_compat::defaulted_comparison);
    }
@@ -1272,7 +1272,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
      // lexical class context, we have to do the checking when complete.
      if (auto const *RD = dyn_cast<CXXRecordDecl>(FD->getLexicalDeclContext()))
        if (!RD->isCompleteDefinition())
-@@ -19628,13 +19056,6 @@
+@@ -19595,13 +19023,6 @@
        FD->setInvalidDecl();
      else
        DefineDefaultedComparison(DefaultLoc, FD, DefKind.asComparison());
@@ -1286,7 +1286,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/
    } else {
      auto *MD = cast<CXXMethodDecl>(FD);
  
-@@ -19666,13 +19087,13 @@
+@@ -19633,13 +19054,13 @@
  }
  
  void Sema::SetFunctionBodyKind(Decl *D, SourceLocation Loc, FnBodyKind BodyKind,
@@ -1364,7 +1364,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/cla
 diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
 --- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
 +++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
-@@ -6264,13 +6264,6 @@
+@@ -6269,13 +6269,6 @@
  
    if (PatternDecl->isDefaulted()) {
      RebuildTypeSourceInfoForDefaultSpecialMembers();
@@ -3521,240 +3521,111 @@ diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/powf_test.cpp b/libc/te
      volatile float two = 2.0f;
      volatile float d = min_denormal;
      EXPECT_FP_EQ(1.0f, func(two, d));
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86AsmPrinter.cpp b/llvm/lib/Target/X86/X86AsmPrinter.cpp
---- a/llvm/lib/Target/X86/X86AsmPrinter.cpp
-+++ b/llvm/lib/Target/X86/X86AsmPrinter.cpp
-@@ -186,11 +186,12 @@
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp b/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
+--- a/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
+@@ -5378,7 +5378,10 @@
+       }
+     });
+ 
+-    return CallBase::removeOperandBundle(&Call, LLVMContext::OB_kcfi);
++    CallBase *NewCall =
++        CallBase::removeOperandBundle(&Call, LLVMContext::OB_kcfi);
++    NewCall->copyMetadata(Call);
++    return NewCall;
    }
  
-   // Emit a function symbol for the type data to avoid unreachable instruction
--  // warnings from binary validation tools, and use the same linkage as the
--  // parent function. Note that using local linkage would result in duplicate
--  // symbols for weak parent functions.
-+  // warnings from binary validation tools, and use the same linkage and
-+  // visibility as the parent function. Note that using local linkage would
-+  // result in duplicate symbols for weak parent functions.
-   MCSymbol *FnSym = OutContext.getOrCreateSymbol("__cfi_" + MF.getName());
-   emitLinkage(&MF.getFunction(), FnSym);
-+  emitVisibility(FnSym, F.getVisibility());
-   if (MAI.hasDotTypeDotSizeDirective())
-     OutStreamer->emitSymbolAttribute(FnSym, MCSA_ELF_TypeFunction);
-   OutStreamer->emitLabel(FnSym);
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLoweringCall.cpp b/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
---- a/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
-+++ b/llvm/lib/Target/X86/X86ISelLoweringCall.cpp
-@@ -2106,7 +2106,7 @@
-   bool HasNCSR = (CB && isa<CallInst>(CB) &&
-                   CB->hasFnAttr("no_caller_saved_registers"));
-   bool IsIndirectCall = (CB && isa<CallInst>(CB) && CB->isIndirectCall());
--  bool IsCFICall = IsIndirectCall && CLI.CFIType;
-+  bool IsCFICall = CB && CB->isIndirectCall() && CLI.CFIType;
-   const Module *M = MF.getFunction().getParent();
+   if (isRemovableAlloc(&Call, &TLI))
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/kcfi-operand-bundles.ll b/llvm/test/Transforms/InstCombine/kcfi-operand-bundles.ll
+--- a/llvm/test/Transforms/InstCombine/kcfi-operand-bundles.ll
++++ b/llvm/test/Transforms/InstCombine/kcfi-operand-bundles.ll
+@@ -1,47 +1,58 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
+ ; RUN: opt < %s -passes=instcombine -S | FileCheck %s
  
-   // If the indirect call target has the nocf_check attribute, the call needs
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/kcfi-invoke.ll b/llvm/test/CodeGen/X86/kcfi-invoke.ll
---- a/llvm/test/CodeGen/X86/kcfi-invoke.ll
-+++ b/llvm/test/CodeGen/X86/kcfi-invoke.ll
-@@ -0,0 +1,182 @@
-+; RUN: llc -mtriple=x86_64-unknown-linux-gnu -verify-machineinstrs < %s | FileCheck %s --check-prefix=ASM
-+; RUN: llc -mtriple=x86_64-unknown-linux-gnu -O0 -verify-machineinstrs < %s | FileCheck %s --check-prefix=ASM-O0
-+; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=finalize-isel < %s | FileCheck %s --check-prefixes=MIR,ISEL
-+; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=kcfi < %s | FileCheck %s --check-prefixes=MIR,KCFI
-+; RUN: llc -mtriple=x86_64-unknown-linux-gnu -stop-after=kcfi -enable-new-pm < %s | FileCheck %s --check-prefixes=MIR,KCFI
-+
-+;; An indirect call that is an invoke has a KCFI check like any other, and the
-+;; check is inside of the invoke's try-range. The landing pad does something
-+;; before it resumes, or the invoke would be turned into a call before
-+;; instruction selection.
-+
-+declare i32 @__gxx_personality_v0(...)
-+declare void @cleanup()
-+
-+@g = external local_unnamed_addr global ptr, align 8
-+
-+define void @f1(ptr noundef %x) personality ptr @__gxx_personality_v0 {
-+; ASM-LABEL: f1:
-+; ASM:       .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-NEXT:    addl -4(%rdi), %r10d
-+; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    ud2
-+; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
-+; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
-+; ASM-NEXT:    .text
-+; ASM-NEXT:  [[PASS]]:
-+; ASM-NEXT:    callq *%rdi
-+; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; ASM-O0-LABEL: f1:
-+; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-O0-NEXT:    addl -4([[REG:%r[a-z0-9]+]]), %r10d
-+; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-O0-NEXT:    ud2
-+; ASM-O0:       [[PASS]]:
-+; ASM-O0-NEXT:    callq *[[REG]]
-+; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; MIR-LABEL: name: f1
-+; MIR: body:
-+
-+; ISEL:       EH_LABEL
-+; ISEL:       CALL64r %0, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, cfi-type 12345678
-+; ISEL:       EH_LABEL
-+
-+; KCFI:       EH_LABEL
-+; KCFI-NEXT:  BUNDLE{{.*}} {
-+; KCFI-NEXT:    KCFI_CHECK $rdi, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
-+; KCFI-NEXT:    CALL64r killed $rdi, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp
-+; KCFI-NEXT:  }
-+; KCFI-NEXT:  EH_LABEL
-+  invoke void %x() [ "kcfi"(i32 12345678) ]
-+    to label %cont
-+    unwind label %err
-+cont:
-+  ret void
-+err:
-+  %exn = landingpad { ptr, i32 }
-+          cleanup
-+  call void @cleanup()
-+  resume { ptr, i32 } %exn
-+}
-+
-+define void @f2() personality ptr @__gxx_personality_v0 {
-+; ASM-LABEL: f2:
-+; ASM:         movq g@GOTPCREL(%rip), %rax
-+; ASM-NEXT:    movq (%rax), %rax
-+; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-NEXT:    addl -4(%rax), %r10d
-+; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    ud2
-+; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
-+; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
-+; ASM-NEXT:    .text
-+; ASM-NEXT:  [[PASS]]:
-+; ASM-NEXT:    callq *%rax
-+; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; ASM-O0-LABEL: f2:
-+; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-O0-NEXT:    addl -4([[REG:%r[a-z0-9]+]]), %r10d
-+; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-O0-NEXT:    ud2
-+; ASM-O0:       [[PASS]]:
-+; ASM-O0-NEXT:    callq *[[REG]]
-+; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; MIR-LABEL: name: f2
-+; MIR: body:
-+
-+; ISEL:       EH_LABEL
-+; ISEL:       CALL64r %1, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, cfi-type 12345678
-+; ISEL:       EH_LABEL
-+
-+; KCFI:       renamable $rax = MOV64rm killed renamable $rax, 1, $noreg, 0, $noreg
-+; KCFI-NEXT:  EH_LABEL
-+; KCFI-NEXT:  BUNDLE{{.*}} {
-+; KCFI-NEXT:    KCFI_CHECK $rax, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
-+; KCFI-NEXT:    CALL64r killed $rax, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp
-+; KCFI-NEXT:  }
-+; KCFI-NEXT:  EH_LABEL
-+  %1 = load ptr, ptr @g, align 8
-+  invoke void %1() [ "kcfi"(i32 12345678) ]
-+    to label %cont
-+    unwind label %err
-+cont:
-+  ret void
-+err:
-+  %exn = landingpad { ptr, i32 }
-+          cleanup
-+  call void @cleanup()
-+  resume { ptr, i32 } %exn
-+}
-+
-+define void @f3(ptr noundef %x) #0 personality ptr @__gxx_personality_v0 {
-+; ASM-LABEL: f3:
-+; ASM:       .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-NEXT:    movq %rdi, %r11
-+; ASM-NEXT:    movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-NEXT:    addl -4(%r11), %r10d
-+; ASM-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    ud2
-+; ASM-NEXT:    .section .kcfi_traps,"ao",@progbits,.text
-+; ASM-NEXT:  [[ENTRY:.Ltmp[0-9]+]]:
-+; ASM-NEXT:    .long [[TRAP]]-[[ENTRY]]
-+; ASM-NEXT:    .text
-+; ASM-NEXT:  [[PASS]]:
-+; ASM-NEXT:    callq __llvm_retpoline_r11
-+; ASM-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; ASM-O0-LABEL: f3:
-+; ASM-O0:       .Ltmp{{[0-9]+}}: # EH_LABEL
-+; ASM-O0:         movl $4282621618, %r10d # imm = 0xFF439EB2
-+; ASM-O0-NEXT:    addl -4(%r11), %r10d
-+; ASM-O0-NEXT:    je [[PASS:.Ltmp[0-9]+]]
-+; ASM-O0-NEXT:  [[TRAP:.Ltmp[0-9]+]]:
-+; ASM-O0-NEXT:    ud2
-+; ASM-O0:       [[PASS]]:
-+; ASM-O0-NEXT:    callq __llvm_retpoline_r11
-+; ASM-O0-NEXT:  .Ltmp{{[0-9]+}}: # EH_LABEL
-+
-+; MIR-LABEL: name: f3
-+; MIR: body:
-+
-+; ISEL:       EH_LABEL
-+; ISEL:       CALL64pcrel32 &__llvm_retpoline_r11, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit killed $r11, cfi-type 12345678
-+; ISEL:       EH_LABEL
-+
-+; KCFI:       EH_LABEL
-+; KCFI-NEXT:  $r11 = MOV64rr killed $rdi
-+; KCFI-NEXT:  BUNDLE{{.*}} {
-+; KCFI-NEXT:    KCFI_CHECK $r11, 12345678, implicit-def $r10, implicit-def $r11, implicit-def $eflags
-+; KCFI-NEXT:    CALL64pcrel32 &__llvm_retpoline_r11, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit internal $r11
-+; KCFI-NEXT:  }
-+; KCFI-NEXT:  EH_LABEL
-+  invoke void %x() [ "kcfi"(i32 12345678) ]
-+    to label %cont
-+    unwind label %err
-+cont:
-+  ret void
-+err:
-+  %exn = landingpad { ptr, i32 }
-+          cleanup
-+  call void @cleanup()
-+  resume { ptr, i32 } %exn
-+}
-+
-+attributes #0 = { "target-features"="+retpoline-indirect-branches,+retpoline-indirect-calls" }
-+
-+!llvm.module.flags = !{!0}
-+!0 = !{i32 4, !"kcfi", i32 1}
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/kcfi.ll b/llvm/test/CodeGen/X86/kcfi.ll
---- a/llvm/test/CodeGen/X86/kcfi.ll
-+++ b/llvm/test/CodeGen/X86/kcfi.ll
-@@ -164,6 +164,16 @@
+ define void @f1() #0 prefix i32 10 {
++; CHECK-LABEL: define void @f1(
++; CHECK-SAME: ) #[[ATTR0:[0-9]+]] prefix i32 10 {
++; CHECK-NEXT:    ret void
++;
+   ret void
  }
  
- attributes #0 = { "target-features"="+retpoline-indirect-branches,+retpoline-indirect-calls" }
-+
-+;; __cfi_<fn> has the same visibility as <fn>.
-+; ASM:       .globl __cfi_f10
-+; ASM-NEXT:  .hidden __cfi_f10
-+; ASM-NEXT:  .type __cfi_f10,@function
-+; ASM-LABEL: __cfi_f10:
-+define hidden void @f10() !kcfi_type !1 {
-+; ASM-LABEL: {{^}}f10:
-+  ret void
-+}
+ declare void @f2() #0 prefix i32 11
  
- !llvm.module.flags = !{!0}
- !0 = !{i32 4, !"kcfi", i32 1}
+-; CHECK-LABEL: define void @g(ptr noundef %x) #0
++; The kcfi operand bundle must be dropped from direct calls and kept on
++; indirect calls.
+ define void @g(ptr noundef %x) #0 {
+-  ; CHECK: call void %x() [ "kcfi"(i32 10) ]
++; CHECK-LABEL: define void @g(
++; CHECK-SAME: ptr noundef [[X:%.*]]) #[[ATTR0]] {
++; CHECK-NEXT:    call void [[X]]() [ "kcfi"(i32 10) ]
++; CHECK-NEXT:    call void @f1()
++; CHECK-NEXT:    call void @f2()
++; CHECK-NEXT:    ret void
++;
+   call void %x() [ "kcfi"(i32 10) ]
+-
+-  ; COM: Must drop the kcfi operand bundle from direct calls.
+-  ; CHECK: call void @f1()
+-  ; CHECK-NOT: [ "kcfi"(i32 10) ]
+   call void @f1() [ "kcfi"(i32 10) ]
+-
+-  ; CHECK: call void @f2()
+-  ; CHECK-NOT: [ "kcfi"(i32 10) ]
+-  call void @f2() [ "kcfi"(i32 10) ]
++  call void @f2() [ "kcfi"(i32 11) ]
+   ret void
+ }
+ 
+-; FIXME: The metadata of a call is dropped along with its kcfi operand bundle.
+-; CHECK-LABEL: define void @h() #0 personality ptr @__gxx_personality_v0
++; The metadata of a call must be kept when its kcfi operand bundle is dropped.
+ define void @h() #0 personality ptr @__gxx_personality_v0 {
+-  ; CHECK: call void @f1(){{$}}
++; CHECK-LABEL: define void @h(
++; CHECK-SAME: ) #[[ATTR0]] personality ptr @__gxx_personality_v0 {
++; CHECK-NEXT:    call void @f1(), !prof [[PROF0:![0-9]+]], !callsite [[META1:![0-9]+]]
++; CHECK-NEXT:    [[TMP1:%.*]] = call ptr @f3(), !memprof [[META2:![0-9]+]], !callsite [[META1]]
++; CHECK-NEXT:    invoke void @f2()
++; CHECK-NEXT:            to label %[[OK:.*]] unwind label %[[LPAD:.*]], !prof [[PROF0]]
++; CHECK:       [[OK]]:
++; CHECK-NEXT:    ret void
++; CHECK:       [[LPAD]]:
++; CHECK-NEXT:    [[LP:%.*]] = landingpad { ptr, i32 }
++; CHECK-NEXT:            cleanup
++; CHECK-NEXT:    resume { ptr, i32 } [[LP]]
++;
+   call void @f1() [ "kcfi"(i32 10) ], !prof !0, !callsite !1
+-
+-  ; CHECK: call ptr @f3(){{$}}
+   call ptr @f3() [ "kcfi"(i32 12) ], !memprof !2, !callsite !1
+-
+-  ; CHECK: invoke void @f2()
+-  ; CHECK-NEXT: to label %ok unwind label %lpad{{$}}
+   invoke void @f2() [ "kcfi"(i32 11) ]
+-          to label %ok unwind label %lpad, !prof !0
++  to label %ok unwind label %lpad, !prof !0
+ 
+ ok:
+   ret void
+ 
+ lpad:
+   %lp = landingpad { ptr, i32 }
+-          cleanup
++  cleanup
+   resume { ptr, i32 } %lp
+ }
+ 
+@@ -56,3 +67,10 @@
+ !2 = !{!3}
+ !3 = !{!4, !"notcold"}
+ !4 = !{i64 123, i64 456}
++;.
++; CHECK: [[PROF0]] = !{!"branch_weights", i32 1000}
++; CHECK: [[META1]] = !{i64 123}
++; CHECK: [[META2]] = !{[[META3:![0-9]+]]}
++; CHECK: [[META3]] = !{[[META4:![0-9]+]], !"notcold"}
++; CHECK: [[META4]] = !{i64 123, i64 456}
++;.
