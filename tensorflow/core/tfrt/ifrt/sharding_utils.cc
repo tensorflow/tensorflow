@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -183,19 +184,19 @@ SplitAndCreateArraysFromHostBuffer(
       auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
           *device_iter, xla::ifrt::MemoryKind());
 
-      TF_ASSIGN_OR_RETURN(auto array,
-                          ifrt_client.MakeArrayFromHostBuffer(
-                              tensor.data(), dtype,
-                              xla::ifrt::Shape(tensor.shape().dim_sizes()),
-                              GetByteStrides(tensor_data_type, tensor.shape()),
-                              std::move(single_device_sharding), layout,
-                              xla::ifrt::Client::HostBufferSemantics::
-                                  kImmutableUntilTransferCompletes,
-                              [tensor, slice_idx]() {
-                                // Keep tensor alive
-                                VLOG(2) << "Done with host buffer for slice "
-                                        << slice_idx << " at " << tensor.data();
-                              }));
+      TF_ASSIGN_OR_RETURN(
+          auto array, ifrt_client.MakeArrayFromHostBuffer(
+                          tensor.data(), dtype,
+                          xla::ifrt::Shape(tensor.shape().dim_sizes()),
+                          GetByteStrides(tensor_data_type, tensor.shape()),
+                          std::move(single_device_sharding), layout,
+                          xla::ifrt::Client::HostBufferSemantics::
+                              kImmutableUntilTransferCompletes,
+                          xla::ifrt::MakeSharedCleanup([tensor, slice_idx]() {
+                            // Keep tensor alive
+                            VLOG(2) << "Done with host buffer for slice "
+                                    << slice_idx << " at " << tensor.data();
+                          })));
       arrays.push_back(std::move(array));
       device_iter++;
     }
@@ -368,11 +369,11 @@ absl::StatusOr<xla::ifrt::ArrayRef> CreateArrayFromHostTensorForSingleDevice(
       GetByteStrides(tensor.dtype(), tensor.shape()),
       std::move(single_device_sharding), xla_input_layout,
       xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-      [tensor]() {
+      xla::ifrt::MakeSharedCleanup([tensor]() {
         // Keep tensor alive
         VLOG(2) << "Done with single device host buffer for slice " << " at "
                 << tensor.data();
-      });
+      }));
 }
 
 absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
@@ -773,8 +774,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
         std::move(sharding), /*layout=*/xla_input_layout,
         xla::ifrt::Client::HostBufferSemantics::
             kImmutableUntilTransferCompletes,
-        [input_tensor]() {  // keep tensor alive
-        });
+        xla::ifrt::MakeSharedCleanup([input_tensor]() {  // keep tensor alive
+        }));
   }
 
   return MakeAssembledArrayFromHostBuffer(ifrt_client, input_tensor,

@@ -243,11 +243,11 @@ absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     LayoutRef layout, xla::ifrt::Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::shared_ptr<const void> host_buffer_hold) {
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), std::move(layout), semantics,
-      std::move(on_done_with_host_buffer));
+      std::move(host_buffer_hold));
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>

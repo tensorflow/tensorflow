@@ -51,6 +51,7 @@
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -118,9 +119,10 @@ absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
       data, dtype, std::move(shape), byte_strides, std::move(sharding),
       /*layout=*/nullptr,
       xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-      /*on_done_with_host_buffer=*/
-      [host_buffer = std::move(host_buffer),
-       string_host_buffer = std::move(string_host_buffer)]() {});
+      /*host_buffer_hold=*/
+      MakeSharedCleanup(
+          [host_buffer = std::move(host_buffer),
+           string_host_buffer = std::move(string_host_buffer)]() {}));
 }
 
 // Parses a `MakeArraysFromHostBufferShardsRequest::ShardIndices` proto to
@@ -159,7 +161,7 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
       host_buffer_store->Lookup(host_buffer_proto.host_buffer_handle(),
                                 /*timeout=*/absl::InfiniteDuration()));
   const void* data;
-  std::function<void()> on_done_with_host_buffer;
+  std::shared_ptr<const void> host_buffer_hold;
   if (dtype.kind() == DType::kString) {
     ABSL_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
                      DeserializeStringHostBufferFromString(*host_buffer));
@@ -170,29 +172,23 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
           " elements but shape requires ", num_elements, " elements"));
     }
     data = string_host_buffer.data();
-    on_done_with_host_buffer = [host_buffer = std::move(host_buffer),
-                                string_host_buffer =
-                                    std::move(string_host_buffer)]() mutable {
-      string_host_buffer.clear();
-      host_buffer.reset();
-    };
+    host_buffer_hold = MakeSharedCleanup(
+        [host_buffer = std::move(host_buffer),
+         string_host_buffer = std::move(string_host_buffer)]() {});
   } else if (dtype.kind() == DType::kToken) {
     data = nullptr;
-    on_done_with_host_buffer = []() {};
+    host_buffer_hold = nullptr;
   } else {
     ABSL_ASSIGN_OR_RETURN(const auto mem_region,
                      ArrayMemRegion::FromMinimalMemRegion(*host_buffer, dtype,
                                                           shape, byte_strides));
     data = mem_region.zeroth_element();
-    on_done_with_host_buffer = [host_buffer =
-                                    std::move(host_buffer)]() mutable {
-      host_buffer.reset();
-    };
+    host_buffer_hold = std::move(host_buffer);
   }
 
   return xla::ifrt::Client::HostBuffer{data, dtype, std::move(shape),
                                        std::move(byte_strides),
-                                       std::move(on_done_with_host_buffer)};
+                                       std::move(host_buffer_hold)};
 }
 
 // Returns a string_view that is guaranteed to be valid and constant until this
@@ -934,14 +930,13 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
     ABSL_ASSIGN_OR_RETURN(const auto mem_region,
                      ArrayMemRegion::FromMinimalMemRegion(*host_buffer, dtype,
                                                           shape, byte_strides));
-    ABSL_ASSIGN_OR_RETURN(
-        array,
-        client_->MakeArrayFromHostBuffer(
-            mem_region.zeroth_element(), dtype, std::move(shape),
-            std::move(byte_strides), std::move(sharding), std::move(layout),
-            xla::ifrt::Client::HostBufferSemantics::
-                kImmutableUntilTransferCompletes,
-            [hold = std::move(host_buffer)]() mutable { hold.reset(); }));
+    ABSL_ASSIGN_OR_RETURN(array, client_->MakeArrayFromHostBuffer(
+                                mem_region.zeroth_element(), dtype,
+                                std::move(shape), std::move(byte_strides),
+                                std::move(sharding), std::move(layout),
+                                xla::ifrt::Client::HostBufferSemantics::
+                                    kImmutableUntilTransferCompletes,
+                                std::move(host_buffer)));
   }
 
   std::unique_ptr<IfrtResponse> response =

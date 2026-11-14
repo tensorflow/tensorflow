@@ -96,7 +96,7 @@ TEST(NanoIfrtClientTest, BigResult) {
   auto a_array = client->MakeArrayFromHostBuffer(
       &a, dtype, shape, std::nullopt, client->default_sharding(),
       /*layout=*/nullptr, ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/nullptr);
+      /*host_buffer_hold=*/nullptr);
   CHECK_OK(a_array);
 
   auto result =
@@ -156,14 +156,14 @@ absl::StatusOr<ifrt::ArrayRef> ExecuteTransposed3dProgram(
           arg0_data.data(), dtype, ifrt::Shape({2, 1, 4}), std::nullopt,
           client->default_sharding(), /*layout=*/nullptr,
           ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
   ABSL_ASSIGN_OR_RETURN(
       auto arg1_array,
       client->MakeArrayFromHostBuffer(
           arg1_data.data(), dtype, ifrt::Shape({3, 4, 1}), std::nullopt,
           client->default_sharding(), /*layout=*/nullptr,
           ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   // Execution is synchronous, so the argument buffers only need to stay alive
   // for the duration of this call.
@@ -285,7 +285,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()), /*byte_strides=*/std::nullopt,
       std::move(sharding),
       /*layout=*/nullptr, ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/nullptr);
+      /*host_buffer_hold=*/nullptr);
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {
@@ -455,6 +455,9 @@ int main(int argc, char** argv) {
       "-ArrayImplTest.CopyMixedSourceDevices:"
       // String arrays are not supported in NanoIfrtClient.
       "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithString:"
+      "ArrayImplTest."
+      "MakeArrayFromHostBufferWithStringReleasesCaptureDuringCall:"
+      "ArrayImplTest.MakeArrayFromHostBufferWithStringNullOnDone:"
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // Custom layouts are not supported in NanoIfrtClient.

@@ -289,6 +289,7 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -684,6 +685,7 @@ cc_library(
         ":internal",
     ]),
     deps = [
+        ":cleanup",
         ":ifrt",
         ":test_util",
         ":user_context",

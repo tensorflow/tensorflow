@@ -123,7 +123,7 @@ class NanoIfrtClient
       std::optional<absl::Span<const int64_t>> byte_strides,
       ifrt::ShardingRef sharding, ifrt::LayoutRef layout,
       HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
+      std::shared_ptr<const void> host_buffer_hold) override;
   // Expose the base class's `MakeArrayFromHostBuffer` overloads.
   using xla::ifrt::Client::MakeArrayFromHostBuffer;
 

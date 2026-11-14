@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -93,8 +94,7 @@ MakeBuffersAndOnDoneWithBuffer(
   }
   buffers.push_back(*strings);
 
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [strings = std::move(strings)]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = std::move(strings);
 
   return std::make_pair(std::move(buffers), std::move(on_done_with_buffer));
 }
@@ -156,8 +156,8 @@ TEST(BasicStringArrayTest, Destruction) {
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
 
   absl::Notification on_done_with_buffer_called;
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = MakeSharedCleanup(
+      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); });
 
   auto [array_creation_promise, array_creation_future] = tsl::MakePromise<>();
 
@@ -192,8 +192,9 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
   buffers.push_back(*shard0_data);
   buffers.push_back(*shard1_data);
 
-  auto on_done_with_buffer = [shard0_data = std::move(shard0_data),
-                              shard1_data = std::move(shard1_data)]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
+      MakeSharedCleanup([shard0_data = std::move(shard0_data),
+                         shard1_data = std::move(shard1_data)]() {});
 
   // Make a single device array that is not ready at the time of creation.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -218,8 +219,8 @@ TEST(BasicStringArrayTest, Delete) {
   BasicStringArray::Buffers buffers;
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
   absl::Notification on_done_with_buffer_called;
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = MakeSharedCleanup(
+      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); });
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
@@ -234,6 +235,25 @@ TEST(BasicStringArrayTest, Delete) {
 
   // IsDeleted should return true.
   EXPECT_TRUE(array->IsDeleted());
+}
+
+TEST(BasicStringArrayTest, DeleteReleasesOnDoneWithBufferImmediately) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  BasicStringArray::Buffers buffers;
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
+  auto hold = std::make_shared<int>(42);
+  int call_count = 0;
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
+      MakeSharedCleanup([hold, &call_count]() { ++call_count; });
+
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array,
+      CreateTestArray(client.get(),
+                      tsl::Future<BasicStringArray::Buffers>(buffers),
+                      std::move(on_done_with_buffer)));
+  ASSERT_OK(array->Delete().Await());
+  EXPECT_EQ(call_count, 1);
+  EXPECT_EQ(hold.use_count(), 1);
 }
 
 TEST(GetReadyFutureTest, SuccessCase) {
@@ -290,13 +310,12 @@ TEST(MakeArrayFromHostBufferTest, SuccessCase) {
   strings->push_back(absl::Cord("abc"));
   strings->push_back(absl::Cord("def"));
   const void* data = strings->data();
-  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   TF_ASSERT_OK(client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
       /*byte_strides=*/std::nullopt, std::move(sharding),
       /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      std::move(on_done_with_host_buffer)));
+      std::move(strings)));
 }
 
 TEST(MakeArrayFromHostBufferTest, FailureCases) {
@@ -309,7 +328,6 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   strings->push_back(absl::Cord("abc"));
   strings->push_back(absl::Cord("def"));
   const void* data = strings->data();
-  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   // MakeArrayFromHostBuffer should check and fail if `byte_strides` in not
   // nullopt.
@@ -319,9 +337,9 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
           /*byte_strides=*/std::optional<absl::Span<const int64_t>>({8}),
           single_device_sharding,
           /*layout=*/nullptr,
-          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          on_done_with_host_buffer),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall, strings),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(strings.use_count(), 1);
 
   // MakeArrayFromHostBuffer should check and fail if the sharding is not a
   // SingleDeviceSharding.
@@ -329,13 +347,14 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
                           client->MakeDeviceList({device}));
   ShardingRef opaque_sharding =
       OpaqueSharding::Create(std::move(device_list), MemoryKind());
-  EXPECT_THAT(client->MakeArrayFromHostBuffer(
-                  data, DType(DType::kString), shape,
-                  /*byte_strides=*/std::nullopt, opaque_sharding,
-                  /*layout=*/nullptr,
-                  Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                  on_done_with_host_buffer),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      client->MakeArrayFromHostBuffer(
+          data, DType(DType::kString), shape,
+          /*byte_strides=*/std::nullopt, opaque_sharding,
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall, strings),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(strings.use_count(), 1);
 
   // MakeArrayFromHostBuffer should check and fail if the requested
   // HostBufferSemantics is not supported.
@@ -347,9 +366,9 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
     EXPECT_THAT(client->MakeArrayFromHostBuffer(
                     data, DType(DType::kString), shape,
                     /*byte_strides=*/std::nullopt, single_device_sharding,
-                    /*layout=*/nullptr, host_buffer_semantics,
-                    on_done_with_host_buffer),
+                    /*layout=*/nullptr, host_buffer_semantics, strings),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_EQ(strings.use_count(), 1);
   }
 }
 
@@ -366,13 +385,12 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceStringTestArray(
     strings->push_back(absl::Cord(content));
   }
   const void* data = strings->data();
-  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   return client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
       /*byte_strides=*/std::nullopt, std::move(sharding),
       /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      std::move(on_done_with_host_buffer));
+      std::move(strings));
 }
 
 // Makes a single device sharded test array containing floats on the given
@@ -389,7 +407,7 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceFloatTestArray(Client* client,
       data->data(), dtype, shape,
       /*byte_strides=*/std::nullopt, sharding,
       /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      /*on_done_with_host_buffer=*/nullptr);
+      /*host_buffer_hold=*/nullptr);
 }
 
 // Makes a sharded string array with four shards in total and two addressable
@@ -1076,7 +1094,7 @@ TEST(CopytoHostBufferTest,
   ASSERT_GE(devices.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
-                                        /*on_done_with_buffer=*/[]() {}));
+                                        /*on_done_with_buffer=*/nullptr));
   auto array = ret.first;
   auto promise = std::move(ret.second);
 

@@ -418,6 +418,7 @@ cc_library(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:pjrt_layout",
         "@xla//xla/python/ifrt",
+        "@xla//xla/python/ifrt:cleanup",
         "@xla//xla/python/pjrt_ifrt",
         "@xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@xla//xla/tsl/concurrency:future",

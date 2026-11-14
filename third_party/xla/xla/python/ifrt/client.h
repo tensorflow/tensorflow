@@ -102,26 +102,25 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // The runtime may not hold references to `data` after the call to
   // `MakeArrayFromHostBuffer` completes. The caller promises that `data` is
   // immutable and will not be freed only for the duration of the
-  // `MakeArrayFromHostBuffer` call. `on_done_with_host_buffer` will be called
-  // before `MakeArrayFromHostBuffer` returns.
+  // `MakeArrayFromHostBuffer` call. `host_buffer_hold` is released before
+  // `MakeArrayFromHostBuffer` returns.
 
   // kImmutableUntilTransferCompletes:
   // The runtime may hold onto `data` after the call to
   // `MakeArrayFromHostBuffer` returns while the runtime completes transfers to
   // devices. The caller promises not to mutate or free `data` until the
-  // transfer completes, at which point the runtime will call
-  // `on_done_with_host_buffer`. It is also correct to wait (directly or
-  // indirectly) for the `Array`'s ready event. The runtime does not promise a
-  // certain ordering between an `on_done_with_host_buffer` call and the
-  // `Array`'s ready event.
+  // transfer completes, at which point the runtime releases `host_buffer_hold`.
+  // It is also correct to wait (directly or indirectly) for the `Array`'s ready
+  // event. The runtime does not promise a certain ordering between releasing
+  // `host_buffer_hold` and the `Array`'s ready event.
 
   // kZeroCopy:
   // The `Array` may alias `data` internally and the runtime may use the `data`
   // contents as long as the buffer is alive. The caller promises to keep `data`
   // alive and not to mutate its contents as long as the buffer is alive; to
-  // notify the caller that the buffer may be freed, the runtime will call
-  // `on_done_with_host_buffer` when the `Array` is freed. The implementation is
-  // free to make a copy and downgrade the semantics to
+  // notify the caller that the buffer may be freed, the runtime releases
+  // `host_buffer_hold` when the `Array` is freed. The implementation is free to
+  // make a copy and downgrade the semantics to
   // `kImmutableUntilTransferCompletes`. Many non-CPU runtimes will make a copy
   // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
@@ -136,19 +135,19 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // in major-to-minor order. The runtime may return `UNIMPLEMENTED` if
   // `byte_strides` does not equate to a reordering of the dimensions.
   //
-  // `layout` specifies the layout of the array. If `layout` is nullptr, the a
-  // device-default layout used.
+  // `layout` specifies the layout of the array. If `layout` is nullptr, a
+  // device-default layout is used.
   //
-  // `on_done_with_host_buffer` is optional and may be null.
-  // `on_done_with_host_buffer` will be called iff OK is returned.
-  //
-  // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `tsl::Future<>` for consistency with other IFRT APIs.
+  // `host_buffer_hold` is optional and may be null. Ownership transfers
+  // unconditionally to `MakeArrayFromHostBuffer`, which releases its reference
+  // once the runtime no longer accesses `data` on both success and failure. See
+  // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup callback
+  // when needed.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) = 0;
+      std::shared_ptr<const void> host_buffer_hold) = 0;
 
   // Represents a host buffer.
   //
@@ -174,17 +173,17 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
     using ByteStrides = std::vector<int64_t>;
     std::optional<ByteStrides> byte_strides;
 
-    // `on_done` is optional and may be null. `on_done` will be called when the
-    // host buffer is no longer used by the runtime. It will not be called if
-    // the API processing the host buffer has returned an error. For simple and
-    // robust cleanup, it is strongly recommended to capture RAII objects in the
-    // closure of the callback and leave the callback's function body empty.
+    // `on_done` is optional and may be null. APIs that consume `HostBuffer`
+    // take ownership of `on_done` unconditionally and release it once the host
+    // buffer is no longer used by the runtime on both success and failure. See
+    // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup
+    // callback when needed.
     //
-    // If a host buffer is used with a zero-copy semantics, the host buffer data
-    // should not be accessed by the user until `on_done` is called; the data
+    // If a host buffer is used with zero-copy semantics, the host buffer data
+    // should not be accessed by the user until `on_done` is released; the data
     // may be read by the runtime throughout the life of the array created with
-    // the host buffer, and it may be even mutated.
-    std::function<void()> on_done;
+    // the host buffer, and it may even be mutated.
+    std::shared_ptr<const void> on_done;
   };
 
   // Represents the specification of creating an array following an array spec
@@ -209,7 +208,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // created from a host buffer shard. The resulting array will match the array
   // spec.
   //
-  // `specs` may be consumed by the implementation.
+  // `specs` is consumed by the call on both success and failure.
   //
   // All resulting arrays should use the same device list and memory kind. i.e.,
   // `specs[i].sharding->devices()` and `specs[i].sharding->memory_kind()` must
