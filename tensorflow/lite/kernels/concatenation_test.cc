@@ -35,7 +35,7 @@ class BaseConcatenationOpModel : public SingleOpModel {
  public:
   // TODO(ahentz): Also test different activation types, axis, input
   // dimensions.
-  BaseConcatenationOpModel() {}
+  BaseConcatenationOpModel() = default;
   BaseConcatenationOpModel(const std::vector<TensorData>& input_template,
                            int axis, int num_inputs,
                            const TensorData& output_template) {
