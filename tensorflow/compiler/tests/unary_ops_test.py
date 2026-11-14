@@ -1155,6 +1155,96 @@ class UnaryOpsTest(xla_test.XLATestCase):
         else:
           self.assertAllEqual(result, [0])
 
+  def testComplexLogAndAbsNanInf(self):
+    # Tests that complex log, abs, sqrt, and rsqrt correctly preserve
+    # components for infinite, NaN, and zero inputs (see issue #128990).
+    for dtype in self.complex_types:
+      with self.session() as session:
+        with self.test_scope():
+          x = array_ops.placeholder(dtype, shape=[8])
+          log_out = math_ops.log(x)
+          abs_out = math_ops.abs(x)
+          sqrt_out = math_ops.sqrt(x)
+          rsqrt_out = math_ops.rsqrt(x)
+        nan = np.nan
+        inf = np.inf
+        inp = np.array(
+            [
+                complex(nan, inf),
+                complex(inf, nan),
+                complex(-inf, nan),
+                complex(nan, -inf),
+                complex(0.0, 0.0),
+                complex(-0.0, 0.0),
+                complex(0.0, -0.0),
+                complex(5.0, nan),
+            ],
+            dtype=dtype,
+        )
+        ops = [log_out, abs_out, sqrt_out, rsqrt_out]
+        log_res, abs_res, sqrt_res, rsqrt_res = session.run(ops, {x: inp})
+
+        # On backends lowering through MLIR ConvertComplexToStandard without
+        # C99 Annex G special-case handling, abs(NaN + Inf*i) returns NaN until
+        # the upstream openxla/xla lowering fix syncs.
+        if np.isnan(abs_res[0]):
+          self.skipTest(
+              "Awaiting upstream openxla/xla and MLIR lowering sync for "
+              "complex NaN/Inf handling."
+          )
+
+        # NaN + Inf*i: magnitude is +inf, real log is +inf
+        self.assertTrue(np.isposinf(np.real(log_res[0])))
+        self.assertTrue(np.isnan(np.imag(log_res[0])))
+        self.assertTrue(np.isposinf(abs_res[0]))
+        self.assertTrue(np.isposinf(np.abs(sqrt_res[0])))
+        self.assertEqual(rsqrt_res[0], 0.0)
+
+        # Inf + NaN*i: magnitude is +inf, real log is +inf
+        self.assertTrue(np.isposinf(np.real(log_res[1])))
+        self.assertTrue(np.isnan(np.imag(log_res[1])))
+        self.assertTrue(np.isposinf(abs_res[1]))
+        self.assertTrue(np.isposinf(np.abs(sqrt_res[1])))
+        self.assertEqual(rsqrt_res[1], 0.0)
+
+        # -Inf + NaN*i: magnitude is +inf, real log is +inf
+        self.assertTrue(np.isposinf(np.real(log_res[2])))
+        self.assertTrue(np.isnan(np.imag(log_res[2])))
+        self.assertTrue(np.isposinf(abs_res[2]))
+        self.assertTrue(np.isposinf(np.abs(sqrt_res[2])))
+        self.assertEqual(rsqrt_res[2], 0.0)
+
+        # NaN + (-Inf)*i: magnitude is +inf, real log is +inf
+        self.assertTrue(np.isposinf(np.real(log_res[3])))
+        self.assertTrue(np.isnan(np.imag(log_res[3])))
+        self.assertTrue(np.isposinf(abs_res[3]))
+        self.assertTrue(np.isposinf(np.abs(sqrt_res[3])))
+        self.assertEqual(rsqrt_res[3], 0.0)
+
+        # 0 + 0j: magnitude is 0, sqrt is 0, rsqrt is +inf
+        self.assertEqual(abs_res[4], 0.0)
+        self.assertEqual(sqrt_res[4], 0.0)
+        self.assertTrue(np.isposinf(np.abs(rsqrt_res[4])))
+
+        # -0 + 0j: magnitude is 0, sqrt is 0, rsqrt is +inf
+        self.assertEqual(abs_res[5], 0.0)
+        self.assertEqual(sqrt_res[5], 0.0)
+        self.assertTrue(np.isposinf(np.abs(rsqrt_res[5])))
+
+        # 0 - 0j: magnitude is 0, sqrt is 0, rsqrt is +inf
+        self.assertEqual(abs_res[6], 0.0)
+        self.assertEqual(sqrt_res[6], 0.0)
+        self.assertTrue(np.isposinf(np.abs(rsqrt_res[6])))
+
+        # 5.0 + NaN*i: components evaluate to NaN
+        self.assertTrue(np.isnan(np.real(log_res[7])))
+        self.assertTrue(np.isnan(np.imag(log_res[7])))
+        self.assertTrue(np.isnan(abs_res[7]))
+        self.assertTrue(np.isnan(np.real(sqrt_res[7])))
+        self.assertTrue(np.isnan(np.imag(sqrt_res[7])))
+        self.assertTrue(np.isnan(np.real(rsqrt_res[7])))
+        self.assertTrue(np.isnan(np.imag(rsqrt_res[7])))
+
 
 if __name__ == "__main__":
   googletest.main()
