@@ -113,9 +113,22 @@ static xla::XlaOp MulNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(MulNoNan,
                 MulNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
+// Computes floormod(x, y) for already-broadcasted operands of type `dtype`.
+static xla::XlaOp FloorModNoBroadcast(xla::XlaBuilder* b, DataType dtype,
+                                      xla::XlaOp x, xla::XlaOp y) {
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto trunc_mod = xla::Rem(x, y);
+  auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
+  auto do_plus = xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
+                          trunc_mod_not_zero);
+  return xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
+}
+
 // Implementation of FloorDiv.
 //
-// For floating-point values, simply returns floor(x / y).  For integers, does:
+// For floating-point values, promotes BF16/F16 to F32 and refines floor(x / y)
+// using the division identity residual err = (q * y - x) + r. For integers,
+// does:
 //
 // z = x / y
 // if (z * y != x && (x < 0) != (y < 0)) {
@@ -127,17 +140,34 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   if (DataTypeIsFloating(dtype)) {
-    if (dtype == DataType::DT_BFLOAT16) {
-      // The result of a BF16 division may produce the Ceil of what was
-      // computed by F32 division, so avoid end user confusion by doing the
-      // intermediate divide in F32.
-      return xla::ConvertElementType(
-          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F32),
-                              xla::ConvertElementType(y, xla::F32))),
-          xla::BF16);
-    } else {
-      return xla::Floor(xla::Div(x, y));
+    DataType compute_dtype = dtype;
+    bool needs_cast =
+        (dtype == DataType::DT_BFLOAT16 || dtype == DataType::DT_HALF);
+    if (needs_cast) {
+      compute_dtype = DataType::DT_FLOAT;
+      x = xla::ConvertElementType(x, xla::F32);
+      y = xla::ConvertElementType(y, xla::F32);
     }
+    auto zero = XlaHelpers::Zero(b, compute_dtype);
+    auto q = xla::Floor(xla::Div(x, y));
+    auto r = FloorModNoBroadcast(b, compute_dtype, x, y);
+
+    // Refine q using err = (q * y - x) + r so high-order bits cancel in
+    // q * y - x before adding r, avoiding double rounding at ulp(x).
+    auto err = xla::Add(xla::Sub(xla::Mul(q, y), x), r);
+    auto step = xla::RoundNearestEven(xla::Div(err, y));
+    auto q_refined = xla::Sub(q, step);
+
+    auto use_refined =
+        xla::And(xla::Ne(step, zero), xla::IsFinite(q_refined));
+    auto res = xla::Select(use_refined, q_refined, q);
+
+    if (needs_cast) {
+      xla::PrimitiveType target_type =
+          (dtype == DataType::DT_BFLOAT16) ? xla::BF16 : xla::F16;
+      return xla::ConvertElementType(res, target_type);
+    }
+    return res;
   }
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
@@ -187,12 +217,7 @@ XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = XlaHelpers::Zero(b, dtype);
-  auto trunc_mod = xla::Rem(x, y);
-  auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
-  auto do_plus = xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
-                          trunc_mod_not_zero);
-  return xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
+  return FloorModNoBroadcast(b, dtype, x, y);
 }
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));
