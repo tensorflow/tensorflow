@@ -11,6 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cmath>
 #include <cstdint>
 
 #include "absl/status/status.h"
@@ -153,6 +154,14 @@ static void rgb_to_hv_range(float r, float g, float b, float* h, float* v_min,
 // Helper function to convert from H-and-V-range to RGB.
 static void hv_range_to_rgb(float h, float v_min, float v_max, float* r,
                             float* g, float* b) {
+  if (Eigen::numext::isnan(h) || Eigen::numext::isnan(v_min) ||
+      Eigen::numext::isnan(v_max)) {
+    const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+    *r = nan_val;
+    *g = nan_val;
+    *b = nan_val;
+    return;
+  }
   int h_category = static_cast<int>(h);
   float ratio = h - h_category;
   bool increase = ((h_category & 0x1) == 0);
@@ -211,7 +220,10 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
     const int64_t channel_count = options.channel_count;
     static const int kChannelSize = 3;
     auto input_data = input->shaped<float, 2>({channel_count, kChannelSize});
-    const float delta_h = delta->scalar<float>()();
+    float delta_h = delta->scalar<float>()();
+    if (Eigen::numext::isfinite(delta_h) && std::abs(delta_h) > 1.0f) {
+      delta_h = std::fmod(delta_h, 1.0f);
+    }
     auto output_data = output->shaped<float, 2>({channel_count, kChannelSize});
     const int kCostPerChannel = 10;
     const DeviceBase::CpuWorkerThreads& worker_threads =
@@ -222,7 +234,26 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
                                                int64_t end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
-            for (int i = start_channel; i < end_channel; i++) {
+            const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+            if (!Eigen::numext::isfinite(delta_h)) {
+              for (int64_t i = start_channel; i < end_channel; ++i) {
+                q[0] = nan_val;
+                q[1] = nan_val;
+                q[2] = nan_val;
+                q += kChannelSize;
+              }
+              return;
+            }
+            for (int64_t i = start_channel; i < end_channel; ++i) {
+              if (Eigen::numext::isnan(p[0]) || Eigen::numext::isnan(p[1]) ||
+                  Eigen::numext::isnan(p[2])) {
+                q[0] = nan_val;
+                q[1] = nan_val;
+                q[2] = nan_val;
+                p += kChannelSize;
+                q += kChannelSize;
+                continue;
+              }
               float h, v_min, v_max;
               // Convert the RGB color to Hue/V-range.
               internal::rgb_to_hv_range(p[0], p[1], p[2], &h, &v_min, &v_max);
