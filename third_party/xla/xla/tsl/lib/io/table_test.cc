@@ -704,9 +704,10 @@ TEST(TableTest, DataBlockHandlePastEndOfFileIsRejected) {
   builder.Add("k01", std::string(1 << 20, 'x'));
   ASSERT_TRUE(builder.Finish().ok());
   const std::string& table_contents = sink.contents();
-  absl::string_view footer_input(
-      table_contents.data() + table_contents.size() - Footer::kEncodedLength,
-      Footer::kEncodedLength);
+  absl::string_view footer_input =
+      absl::string_view(table_contents)
+          .substr(table_contents.size() - Footer::kEncodedLength,
+                  Footer::kEncodedLength);
   Footer footer;
   ASSERT_TRUE(footer.DecodeFrom(&footer_input).ok());
   const BlockHandle& index_handle = footer.index_handle();
