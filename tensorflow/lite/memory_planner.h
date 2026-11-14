@@ -25,7 +25,7 @@ namespace tflite {
 // memory-related operations that are necessary in TF Lite.
 class MemoryPlanner {
  public:
-  virtual ~MemoryPlanner() {}
+  virtual ~MemoryPlanner() = default;
 
   // Plans the necessary memory allocations. This is the MemoryPlanner's
   // pre-processing step and is called when the graph structure is known but
