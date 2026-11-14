@@ -17,6 +17,10 @@
 
 load("//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
+def _rbe_config_ext_impl(mctx):
+    initialize_rbe_configs()  # Generates `@ml_build_config_platform`
+    return mctx.extension_metadata(reproducible = True)
+
 rbe_config_ext = module_extension(
-    implementation = lambda mctx: initialize_rbe_configs(),  # Generates `@ml_build_config_platform`
+    implementation = _rbe_config_ext_impl,
 )

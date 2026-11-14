@@ -70,7 +70,7 @@ load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
 
-def _third_party_ext_impl(mctx):  # @unused
+def _third_party_ext_impl(mctx):
     # go/keep-sorted start
     FP16()
     benchmark()
@@ -127,7 +127,9 @@ def _third_party_ext_impl(mctx):  # @unused
     triton()
     uv()
     xnnpack()
+
     # go/keep-sorted end
+    return mctx.extension_metadata(reproducible = True)
 
 third_party_ext = module_extension(
     implementation = _third_party_ext_impl,

@@ -17,6 +17,10 @@
 
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 
+def _tensorrt_configure_ext_impl(mctx):
+    tensorrt_configure(name = "local_config_tensorrt")
+    return mctx.extension_metadata(reproducible = True)
+
 tensorrt_configure_ext = module_extension(
-    implementation = lambda mctx: tensorrt_configure(name = "local_config_tensorrt"),
+    implementation = _tensorrt_configure_ext_impl,
 )
