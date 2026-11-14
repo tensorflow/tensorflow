@@ -87,6 +87,13 @@ absl::Status CredentialsFactory::CreateClientCredentials(
   return absl::OkStatus();
 }
 
+absl::Status CredentialsFactory::Authorize(
+    absl::string_view protocol, const ::grpc::AuthContext* auth_context) {
+  CredentialsFactory* factory;
+  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
+  return factory->Authorize(auth_context);
+}
+
 bool CredentialsFactory::Exists(absl::string_view protocol) {
   mutex_lock l(*get_lock());
   return credentials_factories().find(std::string(protocol)) !=
