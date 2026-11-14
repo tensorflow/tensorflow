@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
@@ -1315,6 +1316,205 @@ class MathTest(test.TestCase, parameterized.TestCase):
       self.match(
           np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
       )
+
+  def testKron(self):
+    operands = [
+        # baseline 1D and 2D checks
+        ([1, 2], [3, 4]),
+        ([[1.0, -2.0], [3.0, 4.0]], [[5.0, 6.0], [-7.0, 8.0]]),
+        # 4D vs 3D
+        (np.arange(100).reshape(2, 5, 2, 5), np.arange(24).reshape(2, 3, 4)),
+        # 5D vs 5D
+        (
+            np.arange(8).reshape(2, 1, 2, 1, 2),
+            np.arange(4).reshape(1, 2, 1, 2, 1),
+        ),
+        # complex 3D vs 2D structural padding
+        ([[[0, 1], [2, 3]]], [[1, 2]]),
+        # extreme rank asymmetry (1D vs 4D)
+        ([2, 3], [[[[1, 2]]]]),
+        # dimensions containing size 1 (Broadcasting verification)
+        ([[[1]]], [[1, 2], [3, 4]]),
+        # scalar (Rank 0) vs N-Dimensional Array
+        (5, [[1, 2], [3, 4]]),
+        ([[1, 2], [3, 4]], 3.5),
+        # zero-element / Empty Tensors (Size 0 handling)
+        (
+            np.zeros((2, 0, 2), dtype=np.float32),
+            np.ones((1, 3), dtype=np.float32),
+        ),
+        (
+            np.ones((2, 2), dtype=np.int32),
+            np.zeros((0, 3, 4), dtype=np.int32),
+        ),
+        # scalar (Rank 0) vs Empty Tensor
+        (5, np.zeros((0, 3))),
+        # Rank 0 vs Rank 0
+        (5, np.array(3.5)),
+    ]
+
+    self._testBinaryOp(
+        np_math_ops.kron,
+        np.kron,
+        'kron',
+        operands=operands,
+    )
+
+  def testKronOtherDtypes(self):
+    operands = [
+        ([1, 0, 1], [1, 1]),
+        ([[1, 0], [1, 1]], [[[0, 1]], [[1, 1]]]),
+        (1, [[1, 0], [0, 1]]),
+    ]
+    for dtype in [np.bool_, np.complex64, np.complex128]:
+      for a, b in operands:
+        a = np.asarray(a).astype(dtype)
+        b = np.asarray(b).astype(dtype)
+        if dtype != np.bool_:
+          a = a * (1 + 2j)
+          b = b * (3 - 1j)
+        res = np_math_ops.kron(a, b)
+        expected = np.kron(a, b)
+        self.assertEqual(res.dtype, expected.dtype)
+        self.assertAllEqual(res, expected)
+
+  def testKronStaticShape(self):
+
+    @def_function.function
+    def f(a, b):
+      res = np_math_ops.kron(a, b)
+      self.assertTrue(res.shape.is_fully_defined())
+      return res
+
+    a = np.arange(6).reshape(2, 3)
+    b = np.arange(8).reshape(2, 2, 2)
+    res = f(a, b)
+    self.assertEqual(res.shape.as_list(), [2, 4, 6])
+    self.assertAllClose(res, np.kron(a, b))
+
+    a = np.array([1, 2, 3])
+    b = np.array([4, 5])
+    self.assertAllClose(f(a, b), np.kron(a, b))
+
+  def testKronScalarWithPartialShape(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=[None, 3], dtype=dtypes.int32),
+    ])
+    def f(a, b):
+      res = np_math_ops.kron(a, b)
+      self.assertEqual(res.shape.as_list(), [None, 3])
+      return res
+
+    a = np.array(2, dtype=np.int32)
+    b = np.arange(6, dtype=np.int32).reshape(2, 3)
+    self.assertAllClose(f(a, b), np.kron(a, b))
+
+  @parameterized.named_parameters(
+      ('1d', [None], [2], (3,), (2,), [None]),
+      ('equal_rank', [None, 3], [2, 4], (2, 3), (2, 4), [None, 12]),
+      ('a_rank_lt_nd', [3], [None, 2], (3,), (4, 2), [None, 6]),
+      ('b_rank_lt_nd', [None, 2], [3], (4, 2), (3,), [None, 6]),
+      ('zero_size_dim', [None, 3], [2, 4], (0, 3), (2, 4), [None, 12]),
+  )
+  def testKronPartialShape(
+      self, a_spec, b_spec, a_shape, b_shape, expected_static_shape
+  ):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=a_spec, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=b_spec, dtype=dtypes.int32),
+    ])
+    def f(a, b):
+      res = np_math_ops.kron(a, b)
+      self.assertEqual(res.shape.as_list(), expected_static_shape)
+      return res
+
+    a = np.arange(np.prod(a_shape), dtype=np.int32).reshape(a_shape)
+    b = np.arange(np.prod(b_shape), dtype=np.int32).reshape(b_shape) + 1
+    expected = np.kron(a, b)
+    res = f(a, b)
+    self.assertEqual(res.shape, expected.shape)
+    self.assertAllEqual(res, expected)
+
+  def testKronDynamicRank(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+    ])
+    def f(a, b):
+      return np_math_ops.kron(a, b)
+
+    operands = [
+        ([1, 2], [3, 4]),
+        (np.arange(6).reshape(2, 3), np.arange(8).reshape(2, 2, 2)),
+        ([2, 3], [[[[1, 2]]]]),
+        (
+            np.arange(8).reshape(2, 1, 2, 1, 2),
+            np.arange(4).reshape(1, 2, 1, 2, 1),
+        ),
+        # runtime scalar
+        (5, [[1, 2]]),
+        # empty tensor
+        (np.zeros((2, 0, 2), dtype=np.int32), [[1, 2]]),
+    ]
+    for a, b in operands:
+      a = np.asarray(a, dtype=np.int32)
+      b = np.asarray(b, dtype=np.int32)
+      expected = np.kron(a, b)
+      res = f(a, b)
+      self.assertEqual(res.shape, expected.shape)
+      self.assertAllEqual(res, expected)
+
+    # mixed static and dynamic rank
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[2, 3], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+    ])
+    def g(a, b):
+      return np_math_ops.kron(a, b)
+
+    a = np.arange(6, dtype=np.int32).reshape(2, 3)
+    for b in [
+        np.array([1, 2], dtype=np.int32),
+        np.arange(8, dtype=np.int32).reshape(2, 2, 2),
+    ]:
+      self.assertAllEqual(g(a, b), np.kron(a, b))
+
+  def testKronXLA(self):
+
+    @def_function.function(jit_compile=True)
+    def f(a, b):
+      return np_math_ops.kron(a, b)
+
+    operands = [
+        (
+            np.arange(6, dtype=np.float32).reshape(2, 3),
+            np.arange(8, dtype=np.float32).reshape(2, 2, 2),
+        ),
+        (
+            np.arange(100, dtype=np.float32).reshape(2, 5, 2, 5),
+            np.arange(24, dtype=np.float32).reshape(2, 3, 4),
+        ),
+    ]
+    for a, b in operands:
+      self.assertAllClose(f(a, b), np.kron(a, b))
+
+    @def_function.function(
+        jit_compile=True,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None, 3], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=[2, 2, 2], dtype=dtypes.float32),
+        ],
+    )
+    def g(a, b):
+      return np_math_ops.kron(a, b)
+
+    a = np.arange(6, dtype=np.float32).reshape(2, 3)
+    b = np.arange(8, dtype=np.float32).reshape(2, 2, 2)
+    self.assertAllClose(g(a, b), np.kron(a, b))
 
 
 if __name__ == '__main__':
