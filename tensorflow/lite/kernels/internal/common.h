@@ -448,15 +448,14 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
+  static_assert(std::is_unsigned_v<T>, "Only unsigned integer types handled.");
   if (integer_input == 0) {
     return std::numeric_limits<T>::digits;
   }
 #if defined(__GNUC__)
-  if (std::is_same<T, uint32_t>::value) {
+  if (std::is_same_v<T, uint32_t>) {
     return __builtin_clz(integer_input);
-  } else if (std::is_same<T, uint64_t>::value) {
+  } else if (std::is_same_v<T, uint64_t>) {
     return __builtin_clzll(integer_input);
   }
 #endif
@@ -472,12 +471,12 @@ int CountLeadingZeros(T integer_input) {
 
 template <typename T>
 inline int CountLeadingSignBits(T integer_input) {
-  static_assert(std::is_signed<T>::value, "Only signed integer types handled.");
+  static_assert(std::is_signed_v<T>, "Only signed integer types handled.");
 #if defined(__GNUC__) && !defined(__clang__)
   return integer_input ? __builtin_clrsb(integer_input)
                        : std::numeric_limits<T>::digits;
 #else
-  using U = typename std::make_unsigned<T>::type;
+  using U = std::make_unsigned_t<T>;
   return integer_input >= 0
              ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
          : integer_input != std::numeric_limits<T>::min()
@@ -489,8 +488,8 @@ inline int CountLeadingSignBits(T integer_input) {
 // Use "count leading zeros" helper functions to do a fast Floor(log_2(x)).
 template <typename Integer>
 inline Integer FloorLog2(Integer n) {
-  static_assert(std::is_integral<Integer>::value, "");
-  static_assert(std::is_signed<Integer>::value, "");
+  static_assert(std::is_integral_v<Integer>, "");
+  static_assert(std::is_signed_v<Integer>, "");
   static_assert(sizeof(Integer) == 4 || sizeof(Integer) == 8, "");
   TFLITE_CHECK_GT(n, 0);
   if (sizeof(Integer) == 4) {
@@ -506,19 +505,18 @@ namespace detail {
 // extra parameters to the transform function pointer. const void* is used
 // instead of std::function to be compatible with TFLite Micro
 template <typename FloatT, typename Func>
-inline typename std::enable_if<std::is_same<Func, FloatT (*)(FloatT)>::value,
-                               FloatT>::type
+inline std::enable_if_t<std::is_same_v<Func, FloatT (*)(FloatT)>, FloatT>
 LUTTransform(Func transform, const void* /*transform_params*/, FloatT value) {
-  static_assert(std::is_floating_point<FloatT>::value,
+  static_assert(std::is_floating_point_v<FloatT>,
                 "FloatT must be a floating-point type.");
   return transform(value);
 }
 
 template <typename FloatT, typename Func>
-inline typename std::enable_if<
-    std::is_same<Func, FloatT (*)(FloatT, const void*)>::value, FloatT>::type
+inline std::enable_if_t<std::is_same_v<Func, FloatT (*)(FloatT, const void*)>,
+                        FloatT>
 LUTTransform(Func transform, const void* transform_params, FloatT value) {
-  static_assert(std::is_floating_point<FloatT>::value,
+  static_assert(std::is_floating_point_v<FloatT>,
                 "FloatT must be a floating-point type.");
   return transform(value, transform_params);
 }
@@ -532,9 +530,8 @@ inline void LUTPopulateInt8(float input_scale, int32_t input_zero_point,
                             float output_scale, int32_t output_zero_point,
                             Func transform, const void* transform_params,
                             T* lut) {
-  static_assert(
-      std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value,
-      "T must be an uint8 or int8 type.");
+  static_assert(std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>,
+                "T must be an uint8 or int8 type.");
   uint8_t* lut_uint8 = reinterpret_cast<uint8_t*>(lut);
   const float inverse_scale = 1 / output_scale;
   int32_t maxval = std::numeric_limits<T>::max();
@@ -558,7 +555,7 @@ inline void LUTPopulateInt16(FloatT input_scale, int32_t input_zero_point,
                              FloatT output_scale, int32_t output_zero_point,
                              Func transform, const void* transform_params,
                              int16_t* lut) {
-  static_assert(std::is_floating_point<FloatT>::value,
+  static_assert(std::is_floating_point_v<FloatT>,
                 "FloatT must be a floating-point type.");
   const FloatT input_min =
       input_scale * (std::numeric_limits<int16_t>::min() - input_zero_point);
@@ -613,9 +610,8 @@ inline void LUTPopulateInt16(FloatT input_scale, int32_t input_zero_point,
 }  // namespace detail
 
 template <typename T>
-inline typename std::enable_if<std::is_same<T, uint8_t>::value ||
-                                   std::is_same<T, int8_t>::value,
-                               void>::type
+inline std::enable_if_t<std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>,
+                        void>
 LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
             int32_t output_zero_point, float (*transform)(float), T* lut) {
   detail::LUTPopulateInt8(input_scale, input_zero_point, output_scale,
@@ -623,9 +619,8 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
 }
 
 template <typename T>
-inline typename std::enable_if<std::is_same<T, uint8_t>::value ||
-                                   std::is_same<T, int8_t>::value,
-                               void>::type
+inline std::enable_if_t<std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>,
+                        void>
 LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
             int32_t output_zero_point, float (*transform)(float, const void*),
             const void* transform_params, T* lut) {
@@ -634,18 +629,18 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
 }
 
 template <typename T>
-inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
-LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
-            int32_t output_zero_point, float (*transform)(float), T* lut) {
+inline std::enable_if_t<std::is_same_v<T, int16_t>, void> LUTPopulate(
+    float input_scale, int32_t input_zero_point, float output_scale,
+    int32_t output_zero_point, float (*transform)(float), T* lut) {
   detail::LUTPopulateInt16<float>(input_scale, input_zero_point, output_scale,
                                   output_zero_point, transform, nullptr, lut);
 }
 
 template <typename T>
-inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
-LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
-            int32_t output_zero_point, float (*transform)(float, const void*),
-            const void* transform_params, T* lut) {
+inline std::enable_if_t<std::is_same_v<T, int16_t>, void> LUTPopulate(
+    float input_scale, int32_t input_zero_point, float output_scale,
+    int32_t output_zero_point, float (*transform)(float, const void*),
+    const void* transform_params, T* lut) {
   detail::LUTPopulateInt16<float>(input_scale, input_zero_point, output_scale,
                                   output_zero_point, transform,
                                   transform_params, lut);
@@ -654,9 +649,9 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
 // Deprecated, avoid usage and prefer the float version. Kept for
 // backward-compatiblity.
 template <typename T>
-inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
-LUTPopulate(double input_scale, int32_t input_zero_point, double output_scale,
-            int32_t output_zero_point, double (*transform)(double), T* lut) {
+inline std::enable_if_t<std::is_same_v<T, int16_t>, void> LUTPopulate(
+    double input_scale, int32_t input_zero_point, double output_scale,
+    int32_t output_zero_point, double (*transform)(double), T* lut) {
   detail::LUTPopulateInt16<double>(input_scale, input_zero_point, output_scale,
                                    output_zero_point, transform, nullptr, lut);
 }
@@ -668,14 +663,11 @@ LUTPopulate(double input_scale, int32_t input_zero_point, double output_scale,
 // to interpolate the last value.
 template <typename T>
 constexpr int LUTSize() {
-  static_assert(std::is_same<T, uint8_t>::value ||
-                    std::is_same<T, int8_t>::value ||
-                    std::is_same<T, int16_t>::value,
+  static_assert(std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> ||
+                    std::is_same_v<T, int16_t>,
                 "Only LUTs with uint8, int8 or int16 inputs are supported.");
   // As per c++11: constexpr methods cannot have more than one return statement.
-  return (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value)
-             ? 256
-             : 513;
+  return (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>) ? 256 : 513;
 }
 
 // int16_t -> int16_t table lookup with interpolation
@@ -747,7 +739,7 @@ static const uint16_t sigmoid_table_uint16[256] = {
 // TODO(b/77858996): Add these to gemmlowp.
 template <typename IntegerType>
 IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
+  static_assert(std::is_same_v<IntegerType, void>, "unimplemented");
   return a;
 }
 
@@ -773,7 +765,7 @@ gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingAddNonGemmlowp(
 
 template <typename IntegerType>
 IntegerType SaturatingSub(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
+  static_assert(std::is_same_v<IntegerType, void>, "unimplemented");
   return a;
 }
 
@@ -1269,7 +1261,7 @@ inline void NdArrayDescsForElementwiseBroadcast(
 //   }
 // }
 template <int N, int DIM, typename Calc>
-typename std::enable_if<DIM != N - 1, void>::type NDOpsHelperImpl(
+std::enable_if_t<DIM != N - 1, void> NDOpsHelperImpl(
     const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
   for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
     NDOpsHelperImpl<N, DIM + 1, Calc>(output, calc, indexes);
@@ -1277,7 +1269,7 @@ typename std::enable_if<DIM != N - 1, void>::type NDOpsHelperImpl(
 }
 
 template <int N, int DIM, typename Calc>
-typename std::enable_if<DIM == N - 1, void>::type NDOpsHelperImpl(
+std::enable_if_t<DIM == N - 1, void> NDOpsHelperImpl(
     const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
   for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
     calc(indexes);
