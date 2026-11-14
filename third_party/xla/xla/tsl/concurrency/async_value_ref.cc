@@ -38,7 +38,7 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status) {
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message) {
   // Converting to `absl::string_view` because implicit conversion is not
   // supported in android builds.
-  absl::string_view message_view(message.data(), message.size());
+  absl::string_view message_view = message;
   return MakeErrorAsyncValueRef(absl::InternalError(message_view));
 }
 
