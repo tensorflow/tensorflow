@@ -2167,7 +2167,9 @@ def _compute_sampled_logits(weights,
           [array_ops.shape(labels)[:1],
            array_ops.expand_dims(num_sampled, 0)], 0)
       if sampled_logits.dtype != acc_weights.dtype:
-        acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
+        # The weights are the lowest float32 value. A plain cast turns them
+        # into -inf in float16 and bfloat16, which makes the losses NaN.
+        acc_weights = math_ops.saturate_cast(acc_weights, sampled_logits.dtype)
       sampled_logits += gen_sparse_ops.sparse_to_dense(
           sparse_indices,
           sampled_logits_shape,
@@ -2177,8 +2179,16 @@ def _compute_sampled_logits(weights,
 
     if subtract_log_q:
       # Subtract log of Q(l), prior probability that l appears in sampled.
-      true_logits -= math_ops.log(true_expected_count)
-      sampled_logits -= math_ops.log(sampled_expected_count)
+      # The candidate samplers return float32 expected counts. Take the log
+      # before casting so that small counts keep their precision in float16.
+      true_log_q = math_ops.log(true_expected_count)
+      sampled_log_q = math_ops.log(sampled_expected_count)
+      if true_log_q.dtype != true_logits.dtype:
+        true_log_q = math_ops.cast(true_log_q, true_logits.dtype)
+      if sampled_log_q.dtype != sampled_logits.dtype:
+        sampled_log_q = math_ops.cast(sampled_log_q, sampled_logits.dtype)
+      true_logits -= true_log_q
+      sampled_logits -= sampled_log_q
 
     # Construct output logits and labels. The true labels/logits start at col 0.
     out_logits = array_ops.concat([true_logits, sampled_logits], 1)
