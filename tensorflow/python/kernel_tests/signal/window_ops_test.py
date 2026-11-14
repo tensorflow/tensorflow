@@ -351,6 +351,27 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be even'):
       window_ops.kaiser_bessel_derived_window(window_length)
 
+  @parameterized.parameters(
+      itertools.product(
+          (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.vorbis_window, window_ops.kaiser_window,
+           window_ops.kaiser_bessel_derived_window),
+          (np.float32, np.dtype('float64'), 'float32', 'float16')))
+  def test_numpy_dtype_spec(self, window_fn, dtype):
+    """`dtype` may be given as a NumPy dtype, NumPy type or dtype string."""
+    expected_dtype = dtypes.as_dtype(dtype)
+    expected = window_fn(8, dtype=expected_dtype)
+    actual = window_fn(8, dtype=dtype)
+    self.assertEqual(expected_dtype, actual.dtype)
+    self.assertAllEqual(self.evaluate(expected), self.evaluate(actual))
+
+  @parameterized.parameters(np.int32, 'int32', np.dtype('bool'))
+  def test_numpy_dtype_spec_not_floating(self, dtype):
+    with self.assertRaisesRegex(ValueError, 'floating point'):
+      window_ops.hann_window(8, dtype=dtype)
+    with self.assertRaisesRegex(ValueError, 'floating point'):
+      window_ops.vorbis_window(8, dtype=dtype)
+
 
 if __name__ == '__main__':
   test.main()

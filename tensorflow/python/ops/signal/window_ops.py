@@ -43,6 +43,7 @@ def _check_params(window_length, dtype):
     ValueError: If `dtype` is not a floating point type or window_length is not
       a scalar.
   """
+  dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Found %s' % dtype)
   window_length = ops.convert_to_tensor(window_length, dtype=dtypes.int32)
@@ -263,6 +264,7 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     ValueError: If `dtype` is not a floating point type or `window_length` is
       not scalar or `periodic` is not scalar.
   """
+  dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Found %s' % dtype)
 
