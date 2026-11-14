@@ -561,6 +561,25 @@ class FunctionTest(xla_test.XLATestCase):
           y = f(x)
           tape.gradient(y, x)
 
+  @test_util.disable_mlir_bridge('TensorArray support not implemented')
+  def testErrorMessagePassingTensorArrayWithVariableNoAbort(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      v = variables.Variable(3.14)
+
+      @polymorphic_function.function(jit_compile=True)
+      def f(x):
+        ta = tensor_array_ops.TensorArray(
+            dtype=dtypes.float32, size=1, element_shape=[])
+        ta = ta.write(0, v * x)
+        y = ta.read(0)
+        return y
+
+      x = constant_op.constant(2.0)
+      with backprop.GradientTape():
+        with self.assertRaisesRegex(errors.UnimplementedError,
+                                    'TensorList crossing the XLA/TF boundary'):
+          f(x)
+
   @test_util.disable_mlir_bridge('TODO(b/162281863): MLIR bridge errors out'
                                  ' lowering TensorListConcatV2')
   def testTensorListConcatV2(self):
