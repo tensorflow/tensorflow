@@ -505,6 +505,39 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
   }
 }
 
+TEST_F(MemoryOptimizerTest, NoAccumulationRewritesInEagerMode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::RandomNormal(s.WithOpName("a").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output b = ops::RandomNormal(s.WithOpName("b").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output c = ops::RandomNormal(s.WithOpName("c").WithDevice("/cpu:0"),
+                               {128, 128, 8}, DT_FLOAT);
+  Output d = ops::AddN(s.WithOpName("d").WithDevice("/cpu:0"), {a, b, c});
+  Output e = ops::Square(s.WithOpName("e").WithDevice("/cpu:0"), d);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e"};
+  item.optimization_options().is_eager_mode = true;
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+  MemoryOptimizer optimizer(RewriterConfig::SCHEDULING_HEURISTICS);
+  GraphDef output;
+  absl::Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  int count = 0;
+  for (const auto& node : output.node()) {
+    EXPECT_NE("TemporaryVariable", node.op());
+    if (node.name() == "d") {
+      EXPECT_EQ("AddN", node.op());
+      count++;
+    }
+  }
+  EXPECT_EQ(1, count);
+}
+
 class RelaxAllocatorConstraintsTest : public GrapplerTest {};
 
 TEST_F(RelaxAllocatorConstraintsTest, SameDevice) {
