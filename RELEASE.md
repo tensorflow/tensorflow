@@ -54,6 +54,10 @@
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
+*   `tf.vectorized_map` / `parallel_for`: `tf.gather` with loop-dependent
+    indices and loop-invariant params now handles negative `batch_dims` and
+    symbolic `axis` tensors instead of raising shape errors or
+    `OperatorNotAllowedInGraphError`.
 
 ## Thanks to our Contributors
 

@@ -2605,9 +2605,13 @@ def _convert_gather(pfor_input: _PforInput):
     axis = math_ops.cast(pfor_input.unstacked_input(2), dtypes.int32)
     axis_value = tensor_util.constant_value(axis)
     if axis_value is not None:
-      axis = axis_value
+      axis = int(axis_value)
   if indices_stacked and not param_stacked:
-    if indices is pfor_input.pfor.all_indices and axis == 0:
+    if (
+        indices is pfor_input.pfor.all_indices
+        and isinstance(axis, int)
+        and axis == 0
+    ):
       param_shape0 = tensor_shape.dimension_value(param.shape[0])
       indices_shape0 = tensor_shape.dimension_value(indices.shape[0])
       if param_shape0 is not None and indices_shape0 == param_shape0:
@@ -2618,20 +2622,32 @@ def _convert_gather(pfor_input: _PforInput):
 
     if batch_dims != 0:
       # Convert `batch_dims` to its positive equivalent if necessary.
+      # Note: indices is stacked, so its rank is 1 higher than in loop body.
       batch_dims_pos = batch_dims
       if batch_dims < 0:
-        batch_dims_pos += array_ops.rank(indices)
+        if indices.shape.rank is None:
+          raise ConversionNotImplementedError(
+              "Negative batch_dims is not supported when the rank of "
+              "indices is unknown statically."
+          )
+        batch_dims_pos += indices.shape.rank - 1
       # In order to maintain
       #   indices.shape[:batch_dims] == params.shape[:batch_dims]
       # with stacked indices, we move the first dimension of `indices` to the
       # `batch_dims + 1`th position. The (non-batch) index dimensions will be
       # inserted into the shape of `output` at the `axis` dimension, which is
       # then transposed to the front (below).
-      order = array_ops.concat([
-          math_ops.range(1, batch_dims_pos + 1),
-          [0],
-          math_ops.range(batch_dims_pos + 1, array_ops.rank(indices))], axis=0)
-      indices = array_ops.transpose(indices, order)
+      if batch_dims_pos != 0:
+        order = array_ops.concat(
+            [
+                math_ops.range(1, batch_dims_pos + 1),
+                [0],
+                math_ops.range(batch_dims_pos + 1, array_ops.rank(indices)),
+            ],
+            axis=0,
+        )
+        indices = array_ops.transpose(indices, order)
+      batch_dims = batch_dims_pos
 
     output = array_ops.gather(
         param,
@@ -2640,18 +2656,37 @@ def _convert_gather(pfor_input: _PforInput):
         axis=axis,
         batch_dims=batch_dims,
     )
-    if axis != 0:
+    if isinstance(axis, int) and axis < 0 and param.shape.rank is not None:
+      axis += param.shape.rank
+    if isinstance(axis, int) and axis >= 0:
+      if axis != 0:
+        order = array_ops.concat(
+            [
+                [axis],
+                math_ops.range(axis),
+                math_ops.range(axis + 1, array_ops.rank(output)),
+            ],
+            axis=0,
+        )
+        output = array_ops.transpose(output, order)
+    else:
       axis = smart_cond.smart_cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
                                    lambda: ops.convert_to_tensor(axis))
-      order = array_ops.concat(
-          [[axis],
-           math_ops.range(axis),
-           math_ops.range(axis + 1, array_ops.rank(output))],
-          axis=0)
+      def _transpose_output():
+        order = array_ops.concat(
+            [
+                [axis],
+                math_ops.range(axis),
+                math_ops.range(axis + 1, array_ops.rank(output)),
+            ],
+            axis=0,
+        )
+        return array_ops.transpose(output, order)
+
       output = smart_cond.smart_cond(
-          math_ops.equal(axis, 0), lambda: output,
-          lambda: array_ops.transpose(output, order))
+          math_ops.equal(axis, 0), lambda: output, _transpose_output
+      )
     return wrap(output, True)
   # At least one input must be stacked for the converter to be invoked. Since
   # the unstacked param case was handled above, param must be stacked here.
