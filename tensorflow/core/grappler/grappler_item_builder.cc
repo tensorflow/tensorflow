@@ -177,7 +177,13 @@ absl::Status UpdatePlaceholderShape(
     }
   }
 
-  Tensor fake_input(type, shape);
+  Tensor fake_input;
+  absl::Status build_status = Tensor::BuildTensor(type, shape, &fake_input);
+  if (!build_status.ok()) {
+    return absl::InternalError(
+        absl::StrCat("Invalid dtype for placeholder ", node->name(), ": ",
+                     build_status.ToString(), ", skipping this input"));
+  }
   InitializeTensor(type, &fake_input);
 
   if (cfg.feed_nodes.empty()) {
@@ -342,7 +348,15 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         if (gtl::InsertIfNotPresent(
                 &signature_feed_nodes,
                 NodeName(input.coo_sparse().values_tensor_name()))) {
-          Tensor value_tensor(input.dtype(), shape_1d);
+          Tensor value_tensor;
+          absl::Status build_status =
+              Tensor::BuildTensor(input.dtype(), shape_1d, &value_tensor);
+          if (!build_status.ok()) {
+            LOG(ERROR) << "Invalid dtype for signature input "
+                       << input.coo_sparse().values_tensor_name() << ": "
+                       << build_status << ", skipping this input";
+            return nullptr;
+          }
           InitializeTensor(input.dtype(), &value_tensor);
           new_item->feed.emplace_back(
               NodeName(input.coo_sparse().values_tensor_name()), value_tensor);
@@ -351,7 +365,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                 &signature_feed_nodes,
                 NodeName(input.coo_sparse().indices_tensor_name()))) {
           Tensor indices_tensor(DT_INT64, shape_2d);
-          InitializeTensor(input.dtype(), &indices_tensor);
+          InitializeTensor(DT_INT64, &indices_tensor);
           new_item->feed.emplace_back(
               NodeName(input.coo_sparse().indices_tensor_name()),
               indices_tensor);
@@ -360,7 +374,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                 &signature_feed_nodes,
                 NodeName(input.coo_sparse().dense_shape_tensor_name()))) {
           Tensor dense_shape_tensor(DT_INT64, shape_1d);
-          InitializeTensor(input.dtype(), &dense_shape_tensor);
+          InitializeTensor(DT_INT64, &dense_shape_tensor);
           new_item->feed.emplace_back(
               NodeName(input.coo_sparse().dense_shape_tensor_name()),
               dense_shape_tensor);
@@ -378,7 +392,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
             return nullptr;
           }
 
-          Tensor fake_input(input.dtype(), shape);
+          Tensor fake_input;
+          absl::Status build_status =
+              Tensor::BuildTensor(input.dtype(), shape, &fake_input);
+          if (!build_status.ok()) {
+            LOG(ERROR) << "Invalid dtype for signature input " << input.name()
+                       << ": " << build_status << ", skipping this input";
+            return nullptr;
+          }
           InitializeTensor(input.dtype(), &fake_input);
           new_item->feed.emplace_back(NodeName(input.name()), fake_input);
         }
