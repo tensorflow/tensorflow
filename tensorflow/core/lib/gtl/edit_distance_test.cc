@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -93,7 +94,7 @@ TEST_F(LevenshteinDistanceTest, DifferentComparisons) {
   ASSERT_EQ(LevenshteinDistance(lower_, upper_, std::equal_to<char>()), 5);
   ASSERT_EQ(LevenshteinDistance(upper_, lower_, std::equal_to<char>()), 5);
   ASSERT_EQ(
-      LevenshteinDistance(absl::Span<const char>(lower_.data(), lower_.size()),
+      LevenshteinDistance(absl::MakeConstSpan(lower_),
                           absl::Span<const char>(upper_.data(), upper_.size()),
                           std::equal_to<char>()),
       5);
@@ -127,8 +128,8 @@ static void BM_EditDistanceHelper(::testing::benchmark::State& state, int len,
     }
   }
   for (auto s : state) {
-    LevenshteinDistance(absl::Span<const char>(a.data(), len),
-                        absl::Span<const char>(b.data(), len),
+    LevenshteinDistance(absl::MakeConstSpan(a).first(len),
+                        absl::MakeConstSpan(b).first(len),
                         std::equal_to<char>());
   }
 }
