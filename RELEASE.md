@@ -29,6 +29,9 @@
 
 ### Bug Fixes and Other Changes
 
+*   `tf.linalg.sqrtm` and `tf.linalg.tridiagonal_solve` now return correct
+    gradients for complex inputs. They used to build the backward pass from
+    the transpose instead of the conjugate transpose.
 *   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
     number of rows or columns of the input are now clamped to the matrix
     dimensions instead of raising an `InvalidArgumentError`. This matches the

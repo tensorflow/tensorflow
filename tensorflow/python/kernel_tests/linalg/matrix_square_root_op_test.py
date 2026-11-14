@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
@@ -84,6 +85,23 @@ class SquareRootOpTest(test.TestCase):
     # 3x3
     identity = np.array([[1., 0, 0], [0, 1., 0], [0, 0, 1.]])
     self._verifySquareRootReal(identity)
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_without_tensor_float_32(
+      "The gradient solves a linear system, which can use TensorFloat-32 for "
+      "complex64")
+  def testGradient(self):
+    # A well-conditioned matrix close to the identity, so that the finite
+    # differences stay on the principal branch of the square root.
+    matrix = np.array([[2.2, 0.3, -0.1], [0.1, 1.8, 0.4], [-0.2, 0.2, 2.5]])
+    imag = np.array([[0.3, -0.2, 0.1], [0.2, 0.1, -0.3], [-0.1, 0.4, 0.2]])
+    for np_type in [np.float64, np.complex64, np.complex128]:
+      x = matrix + 1j * imag if np.iscomplexobj(np_type(0)) else matrix
+      tol = 1e-3 if np_type == np.complex64 else 1e-5
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          gen_linalg_ops.matrix_square_root,
+          [constant_op.constant(x.astype(np_type))])
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   @test_util.run_without_tensor_float_32
   def testEmpty(self):
