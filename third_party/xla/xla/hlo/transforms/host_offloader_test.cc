@@ -51,6 +51,11 @@ namespace m = ::xla::match;
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
+using ::testing::AllOf;
+using ::testing::HasSubstr;
+using ::testing::Not;
+
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunHostOffloader(HloModule* module) const {
@@ -5411,6 +5416,164 @@ ENTRY main {
   TestShapeHasMemorySpace(
       loop->while_body()->parameter_instruction(0)->shape().tuple_shapes(1),
       Layout::kHostMemorySpace);
+}
+
+TEST_F(HostOffloaderTest, StreamedHostComputeIntoDeviceLoopStateIsRejected) {
+  // The sliding window at tuple index 2 starts in device memory, while each
+  // iteration slices streamed host data without MoveToDevice and concatenates
+  // it into the window. HostOffloader must reject the inconsistent loop state
+  // with an actionable InvalidArgument and Python source location.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, entry_computation_layout={(f32[16,256]{1,0:S(5)}, f32[2,256]{1,0}, f32[1,256]{1,0})->f32[1,256]{1,0}}
+
+while_condition {
+  cond_param = (s32[], f32[16,256], f32[2,256], f32[1,256]) parameter(0)
+  cond_i = s32[] get-tuple-element(cond_param), index=0
+  limit = s32[] constant(16)
+  ROOT lt = pred[] compare(cond_i, limit), direction=LT
+}
+
+while_body {
+  body_param = (s32[], f32[16,256], f32[2,256], f32[1,256]) parameter(0)
+  i = s32[] get-tuple-element(body_param), index=0
+  host_data = f32[16,256] get-tuple-element(body_param), index=1
+  window = f32[2,256] get-tuple-element(body_param), index=2
+  acc = f32[1,256] get-tuple-element(body_param), index=3
+  zero = s32[] constant(0)
+  row = f32[1,256] dynamic-slice(host_data, i, zero), dynamic_slice_sizes={1,256}
+  newest = f32[1,256] slice(window), slice={[1:2], [0:256]}
+  new_window = f32[2,256] concatenate(newest, row), dimensions={0}, metadata={op_name="jit(step)/while/body/concatenate" source_file="step.py" source_line=42}
+  oldest = f32[1,256] slice(window), slice={[0:1], [0:256]}
+  new_acc = f32[1,256] add(acc, oldest)
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ROOT body_root = (s32[], f32[16,256], f32[2,256], f32[1,256]) tuple(next_i, host_data, new_window, new_acc)
+}
+
+ENTRY main {
+  data = f32[16,256] parameter(0)
+  window_init = f32[2,256] parameter(1)
+  acc_init = f32[1,256] parameter(2)
+  start = s32[] constant(0)
+  init = (s32[], f32[16,256], f32[2,256], f32[1,256]) tuple(start, data, window_init, acc_init)
+  loop = (s32[], f32[16,256], f32[2,256], f32[1,256]) while(init), condition=while_condition, body=while_body
+  ROOT result = f32[1,256] get-tuple-element(loop), index=3
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(
+      RunHostOffloader(module.get()),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          AllOf(HasSubstr("Host memory or host compute value \"new_window\""),
+                HasSubstr("jit(step)/while/body/concatenate"),
+                HasSubstr("body computation \"while_body\""),
+                HasSubstr("while loop \"loop\" at tuple index {2}"),
+                HasSubstr("jax.device_put"),
+                HasSubstr("Suspected Python Code Location:"),
+                HasSubstr("step.py:42"))));
+}
+
+TEST_F(HostOffloaderTest,
+       HostComputeDynamicUpdateSliceAtWhileBodyRootIsRejected) {
+  // When an unannotated host-to-device DynamicUpdateSlice is directly the root
+  // of a single-array while_body, HandleDynamicUpdateSlices() marks it as host
+  // compute while leaving its output memory space in device memory, whereas the
+  // walk marks the caller while instruction as host memory.
+  // ValidateWhileLoopMemorySpaces() must still reject the loop. The body root
+  // has an op_name but no source location, so the error must fall back to the
+  // while instruction's source location rather than "<no source information>".
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, entry_computation_layout={(f32[4,256]{1,0})->f32[4,256]{1,0}}
+
+while_condition {
+  cond_param = f32[4,256] parameter(0)
+  zero = s32[] constant(0)
+  elem = f32[1,1] dynamic-slice(cond_param, zero, zero), dynamic_slice_sizes={1,1}
+  scalar = f32[] reshape(elem)
+  limit = f32[] constant(10)
+  ROOT lt = pred[] compare(scalar, limit), direction=LT
+}
+
+while_body {
+  window = f32[4,256] parameter(0)
+  zero = s32[] constant(0)
+  row = f32[1,256] slice(window), slice={[0:1], [0:256]}
+  to_host = f32[1,256] custom-call(row), custom_call_target="MoveToHost"
+  scaled_row = f32[1,256] add(to_host, to_host)
+  ROOT updated = f32[4,256] dynamic-update-slice(window, scaled_row, zero, zero), metadata={op_name="jit(sim)/while/body/dynamic_update_slice"}
+}
+
+ENTRY main {
+  window_init = f32[4,256] parameter(0)
+  loop = f32[4,256] while(window_init), condition=while_condition, body=while_body, metadata={source_file="sim.py" source_line=99}
+  ROOT result = f32[4,256] custom-call(loop), custom_call_target="MoveToDevice"
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(
+      RunHostOffloader(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               AllOf(HasSubstr("Host memory or host compute value \"updated\""),
+                     HasSubstr("jit(sim)/while/body/dynamic_update_slice"),
+                     HasSubstr("for while loop \"loop\", whose initial value"),
+                     Not(HasSubstr("tuple index")),
+                     HasSubstr("Suspected Python Code Location:"),
+                     HasSubstr("sim.py:99"),
+                     Not(HasSubstr("<no source information>")))));
+}
+
+TEST_F(HostOffloaderTest, DeviceValueIntoHostLoopStateIsRejected) {
+  // The loop state at tuple index 1 starts in host memory, but each iteration
+  // moves it to device, computes on device, and returns the device result at
+  // the body root. HostOffloader must reject the loop rather than leave the
+  // while operand in host memory and the body root in device memory.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, entry_computation_layout={(f32[8,256]{1,0:S(5)})->f32[8,256]{1,0}}
+
+while_condition {
+  cond_param = (s32[], f32[8,256]) parameter(0)
+  cond_i = s32[] get-tuple-element(cond_param), index=0
+  limit = s32[] constant(2)
+  ROOT lt = pred[] compare(cond_i, limit), direction=LT
+}
+
+while_body {
+  body_param = (s32[], f32[8,256]) parameter(0)
+  i = s32[] get-tuple-element(body_param), index=0
+  host_buf = f32[8,256] get-tuple-element(body_param), index=1
+  to_device = f32[8,256] custom-call(host_buf), custom_call_target="MoveToDevice"
+  dev_next = f32[8,256] add(to_device, to_device), metadata={op_name="jit(step)/while/body/add" source_file="step.py" source_line=7}
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ROOT body_root = (s32[], f32[8,256]) tuple(next_i, dev_next)
+}
+
+ENTRY main {
+  data = f32[8,256] parameter(0)
+  start = s32[] constant(0)
+  init = (s32[], f32[8,256]) tuple(start, data)
+  loop = (s32[], f32[8,256]) while(init), condition=while_condition, body=while_body
+  ROOT result = f32[8,256] get-tuple-element(loop), index=1
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(
+      RunHostOffloader(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               AllOf(HasSubstr("Device memory value \"dev_next\""),
+                     HasSubstr("jit(step)/while/body/add"),
+                     HasSubstr("while loop \"loop\" at tuple index {1}"),
+                     HasSubstr("initial value is in host memory"),
+                     HasSubstr("jax.memory.Space.Host"),
+                     HasSubstr("Suspected Python Code Location:"),
+                     HasSubstr("step.py:7"))));
 }
 
 }  // namespace

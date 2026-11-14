@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/error/error_codes.h"
+#include "xla/error_util.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -106,6 +108,110 @@ void PrintTrace(InstructionAndShapeIndex instruction_and_shape_index,
   for (const auto& instruction_and_shape_index : trace) {
     VLOG(1) << "  " << instruction_and_shape_index.ToString();
   }
+}
+
+bool IsLeafInHostMemory(const HloInstruction* instruction,
+                        const ShapeIndex& index) {
+  const Shape& subshape = ShapeUtil::GetSubshape(instruction->shape(), index);
+  return subshape.has_layout() &&
+         subshape.layout().memory_space() == Layout::kHostMemorySpace;
+}
+
+// Returns true if `instr` carries a stack trace or file-and-line location,
+// avoiding `GetStackTraceStringFromMetadata()`'s "<no source information>"
+// placeholder when only `op_name` or empty metadata is present.
+bool HasSourceLocation(const HloInstruction* instr) {
+  return instr->has_metadata() &&
+         (!instr->GetStackTraceFromMetadata().empty() ||
+          (!instr->metadata().source_file().empty() &&
+           instr->metadata().source_line() != 0));
+}
+
+// Returns an InvalidArgument error if any while loop array leaf has a different
+// memory space at the while output or body root than at its initial operand,
+// in either direction (host values entering device loop state, or device
+// values entering host loop state). Checks both the while instruction and body
+// root because an unannotated host-to-device DynamicUpdateSlice root keeps its
+// output in device memory even when the caller while is marked as host memory.
+absl::Status ValidateWhileLoopMemorySpaces(
+    const HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+      const HloInstruction* init = instruction->operand(0);
+      const HloComputation* body = instruction->while_body();
+      const HloInstruction* root = body->root_instruction();
+      ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+          instruction->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+            if (!subshape.IsArray()) {
+              return absl::OkStatus();
+            }
+            const bool init_in_host = IsLeafInHostMemory(init, index);
+            if (IsLeafInHostMemory(instruction, index) == init_in_host &&
+                IsLeafInHostMemory(root, index) == init_in_host) {
+              return absl::OkStatus();
+            }
+            const HloInstruction* value = root;
+            for (int64_t tuple_index : index) {
+              if (value->opcode() != HloOpcode::kTuple) {
+                break;
+              }
+              value = value->operand(tuple_index);
+            }
+            const std::string value_description =
+                (value->has_metadata() && !value->metadata().op_name().empty())
+                    ? absl::StrFormat("\"%s\" (op_name=\"%s\")", value->name(),
+                                      value->metadata().op_name())
+                    : absl::StrFormat("\"%s\"", value->name());
+            const std::string location =
+                index.empty()
+                    ? ""
+                    : absl::StrFormat(" at tuple index %s", index.ToString());
+            absl::Status status;
+            if (init_in_host) {
+              status = InvalidArgument(
+                  "Device memory value %s reaches the root of body computation "
+                  "\"%s\" for while loop \"%s\"%s, whose initial value is in "
+                  "host memory. While loop state must stay in a consistent "
+                  "memory space across iterations; move the body output to "
+                  "host memory (for example, with jax.device_put(..., "
+                  "jax.memory.Space.Host)) or initialize that loop state in "
+                  "device memory.",
+                  value_description, body->name(), instruction->name(),
+                  location);
+            } else {
+              status = InvalidArgument(
+                  "Host memory or host compute value %s reaches the root of "
+                  "body computation \"%s\" for while loop \"%s\"%s, whose "
+                  "initial value is in device memory. While loop state must "
+                  "stay in a consistent memory space across iterations; move "
+                  "host inputs or the body output to device memory (for "
+                  "example, with jax.device_put(..., jax.memory.Space.Device)) "
+                  "or initialize that loop state in host memory.",
+                  value_description, body->name(), instruction->name(),
+                  location);
+            }
+            const HloInstruction* const candidates[] = {value, root,
+                                                        instruction};
+            for (const HloInstruction* candidate : candidates) {
+              if (HasSourceLocation(candidate)) {
+                status = WrapWithPythonStacktrace(
+                    std::move(status),
+                    candidate->GetStackTraceStringFromMetadata(/*indent=*/2));
+                break;
+              }
+            }
+            return status;
+          }));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1586,6 +1692,10 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
   // propagation can we know what to do with the DynamicUpdateSlice.
   ABSL_ASSIGN_OR_RETURN(bool any_dus_changed, HandleDynamicUpdateSlices());
   changed = changed || any_dus_changed;
+
+  // Run only after all host-memory propagation (including
+  // HandleDynamicUpdateSlices) has marked every host-resident while operand.
+  ABSL_RETURN_IF_ERROR(ValidateWhileLoopMemorySpaces(module, execution_threads));
 
   // Remove all MoveToDevice custom calls.
   for (HloComputation* computation :
