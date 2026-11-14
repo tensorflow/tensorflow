@@ -602,26 +602,38 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(grad, [])
 
   def testSparseFillEmptyRowsGradInvalidReverseIndexMap(self):
-    # On CPU, invalid indices raise assertion.  On GPU, invalid indices
-    # are simply ignored, for performance reasons.
     with test_util.use_gpu():
-      if test_util.is_gpu_available():
-        grad, _ = self.evaluate(
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"Elements in reverse index must be in \[0, 0\) but got -1",
+      ):
+        self.evaluate(
             sparse_ops.sparse_fill_empty_rows_grad(
                 reverse_index_map=[-1, 3], grad_values=[]
             )
         )
-        self.assertAllEqual(grad, [0.0, 0.0])
-      else:
-        with self.assertRaisesRegex(
-            (ValueError, errors.InvalidArgumentError),
-            "Elements in reverse index must be in .*",
-        ):
-          self.evaluate(
-              sparse_ops.sparse_fill_empty_rows_grad(
-                  reverse_index_map=[-1, 3], grad_values=[]
-              )
-          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseFillEmptyRowsNegativeDenseShape(self):
+    with test_util.use_gpu():
+      # Only output_indices is fetched, so in graph mode the kernel does not
+      # allocate empty_row_indicator, which used to catch the negative shape.
+      indices = array_ops.placeholder_with_default(
+          np.zeros([0, 2], dtype=np.int64), shape=None)
+      values = array_ops.placeholder_with_default(
+          np.zeros([0], dtype=np.float32), shape=None)
+      dense_shape = array_ops.placeholder_with_default(
+          np.array([-1, 2], dtype=np.int64), shape=None)
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          "Expected shape dimensions to be non-negative, got -1",
+      ):
+        output_indices, _, _, _ = gen_sparse_ops.sparse_fill_empty_rows(
+            indices=indices,
+            values=values,
+            dense_shape=dense_shape,
+            default_value=np.float32(0))
+        self.evaluate(output_indices)
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):

@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FILL_EMPTY_ROWS_OP_H_
 #define TENSORFLOW_CORE_KERNELS_FILL_EMPTY_ROWS_OP_H_
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -58,15 +63,15 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
 
     const Tindex N = indices_t.shape().dim_size(0);
     const Tindex dense_rows = dense_shape(0);
+    TensorShape dense_rows_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShape::BuildTensorShape({dense_rows}, &dense_rows_shape));
 
     bool* empty_row_indicator = nullptr;
     if (context->output_required(kEmptyRowIndicatorOutput)) {
       Tensor* empty_row_indicator_t = nullptr;
-      TensorShape output_shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape({dense_rows}, &output_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
-          kEmptyRowIndicatorOutput, output_shape, &empty_row_indicator_t));
+          kEmptyRowIndicatorOutput, dense_rows_shape, &empty_row_indicator_t));
       empty_row_indicator = empty_row_indicator_t->vec<bool>().data();
     }
     Tindex* reverse_index_map = nullptr;
@@ -212,11 +217,13 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
 
 template <typename Device, typename T, typename Tindex>
 struct FillEmptyRowsGrad {
+  // Note that the done callback is only used by the GPU implementation.
   absl::Status operator()(OpKernelContext* context,
                           typename TTypes<Tindex>::ConstVec reverse_index_map,
                           typename TTypes<T>::ConstVec grad_values,
                           typename TTypes<T>::Vec d_values,
-                          typename TTypes<T>::Scalar d_default_value);
+                          typename TTypes<T>::Scalar d_default_value,
+                          typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
 template <typename T, typename Tindex>
@@ -225,7 +232,9 @@ struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
                           typename TTypes<Tindex>::ConstVec reverse_index_map,
                           typename TTypes<T>::ConstVec grad_values,
                           typename TTypes<T>::Vec d_values,
-                          typename TTypes<T>::Scalar d_default_value) {
+                          typename TTypes<T>::Scalar d_default_value,
+                          typename AsyncOpKernel::DoneCallback done) {
+    (void)done;  // Unused (only used in GPU implementation)
     const CPUDevice& device = context->eigen_device<CPUDevice>();
     const Tindex N = reverse_index_map.dimension(0);
     const Tindex N_full = grad_values.dimension(0);
@@ -265,6 +274,60 @@ struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
 };
 
 }  // namespace functor
+
+template <typename Device, typename T, typename Tindex>
+void FillEmptyRowsGradOpImpl(OpKernelContext* context,
+                             AsyncOpKernel::DoneCallback done = nullptr) {
+  // Note that setting this empty lambda as the default parameter value directly
+  // can cause strange compiler/linker errors, so we do it like this instead.
+  if (!done) {
+    done = [] {};
+  }
+
+  const Tensor* reverse_index_map_t;
+  const Tensor* grad_values_t;
+  OP_REQUIRES_OK_ASYNC(
+      context, context->input("reverse_index_map", &reverse_index_map_t), done);
+  OP_REQUIRES_OK_ASYNC(context, context->input("grad_values", &grad_values_t),
+                       done);
+
+  OP_REQUIRES_ASYNC(context,
+                    TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "reverse_index_map must be a vector, saw: ",
+                        reverse_index_map_t->shape().DebugString())),
+                    done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(grad_values_t->shape()),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("grad_values must be a vector, saw: ",
+                                     grad_values_t->shape().DebugString())),
+                    done);
+
+  const auto reverse_index_map = reverse_index_map_t->vec<Tindex>();
+  const auto grad_values = grad_values_t->vec<T>();
+
+  const Tindex N = reverse_index_map_t->shape().dim_size(0);
+
+  Tensor* d_values_t;
+  OP_REQUIRES_OK_ASYNC(
+      context,
+      context->allocate_output("d_values", TensorShape({N}), &d_values_t),
+      done);
+  auto d_values = d_values_t->vec<T>();
+  Tensor* d_default_value_t;
+  OP_REQUIRES_OK_ASYNC(
+      context,
+      context->allocate_output("d_default_value", TensorShape({}),
+                               &d_default_value_t),
+      done);
+  auto d_default_value = d_default_value_t->scalar<T>();
+
+  using FunctorType = functor::FillEmptyRowsGrad<Device, T, Tindex>;
+  OP_REQUIRES_OK_ASYNC(context,
+                       FunctorType()(context, reverse_index_map, grad_values,
+                                     d_values, d_default_value, done),
+                       done);
+}
 
 }  // namespace tensorflow
 

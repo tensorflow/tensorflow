@@ -5543,6 +5543,8 @@ tf_kernel_library(
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
