@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -539,17 +541,28 @@ absl::StatusOr<std::string> GraphDefExporter::GetEdgeName(Value value,
 // Get the segment size of an op's output.
 static absl::StatusOr<unsigned int> GetOutputSegmentSize(
     Operation *op, const OpDef::ArgDef &arg) {
+  // `getAttr` returns a null attribute when the op does not have the attr, so
+  // the casts below must accept null.
   if (!arg.type_list_attr().empty()) {
-    if (auto v = mlir::dyn_cast<ArrayAttr>(op->getAttr(arg.type_list_attr())))
+    if (auto v = mlir::dyn_cast_or_null<ArrayAttr>(
+            op->getAttr(arg.type_list_attr())))
       return v.size();
     return absl::InvalidArgumentError(
         absl::StrCat("Type attr not found: ", arg.type_list_attr()));
   }
   if (arg.number_attr().empty()) return 1;
-  if (auto v = mlir::dyn_cast<IntegerAttr>(op->getAttr(arg.number_attr())))
-    return v.getValue().getZExtValue();
+  if (auto v =
+          mlir::dyn_cast_or_null<IntegerAttr>(op->getAttr(arg.number_attr()))) {
+    std::optional<int64_t> size = v.getValue().trySExtValue();
+    if (!size || *size < 0 || *size > std::numeric_limits<int32_t>::max()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Value for number attr ", arg.number_attr(),
+                       " is negative or does not fit in int32"));
+    }
+    return static_cast<unsigned int>(*size);
+  }
   return absl::InvalidArgumentError(
-      absl::StrCat("Type attr not found: ", arg.number_attr()));
+      absl::StrCat("Number attr not found: ", arg.number_attr()));
 }
 
 absl::StatusOr<StringRef> GraphDefExporter::GetFunctionOutputName(
