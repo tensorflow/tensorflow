@@ -46,7 +46,7 @@ using ::tsl::testing::StatusIs;
 class Resource : public ResourceBase {
  public:
   explicit Resource(const std::string& label) : label_(label) {}
-  ~Resource() override {}
+  ~Resource() override = default;
 
   std::string DebugString() const override {
     return absl::StrCat("R/", label_);
@@ -59,7 +59,7 @@ class Resource : public ResourceBase {
 class Other : public ResourceBase {
  public:
   explicit Other(const std::string& label) : label_(label) {}
-  ~Other() override {}
+  ~Other() override = default;
 
   std::string DebugString() const override {
     return absl::StrCat("O/", label_);

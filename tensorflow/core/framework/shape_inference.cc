@@ -100,7 +100,7 @@ InferenceContext::InferenceContext(
   PostInputInit(std::move(input_handle_shapes_and_types));
 }
 
-InferenceContext::~InferenceContext() {}
+InferenceContext::~InferenceContext() = default;
 
 absl::Status InferenceContext::Run(
     const std::function<absl::Status(shape_inference::InferenceContext* c)>&
@@ -1343,7 +1343,7 @@ bool InferenceContext::RelaxInputHandleShapesAndMergeTypes(
 // -----------------------------------------------------------------------------
 // ShapeManager
 // -----------------------------------------------------------------------------
-InferenceContext::ShapeManager::ShapeManager() {}
+InferenceContext::ShapeManager::ShapeManager() = default;
 InferenceContext::ShapeManager::~ShapeManager() {
   for (auto* s : all_shapes_) delete s;
   for (auto* d : all_dims_) delete d;

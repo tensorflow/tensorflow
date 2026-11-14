@@ -117,7 +117,7 @@ class Dimension {
  private:
   Dimension();
   Dimension(int64_t value);
-  ~Dimension() {}
+  ~Dimension() = default;
 
   const int64_t value_;
 
@@ -129,7 +129,7 @@ class Dimension {
 
 class DimensionHandle {
  public:
-  DimensionHandle() {}
+  DimensionHandle() = default;
   bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
   std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
@@ -156,7 +156,7 @@ class Shape {
  private:
   Shape();
   Shape(const std::vector<DimensionHandle>& dims);
-  ~Shape() {}
+  ~Shape() = default;
 
   const int32_t rank_;
   const std::vector<DimensionHandle> dims_;
@@ -170,7 +170,7 @@ class Shape {
 
 class ShapeHandle {
  public:
-  ShapeHandle() {}
+  ShapeHandle() = default;
   bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
   std::size_t Handle() const { return reinterpret_cast<std::size_t>(ptr_); }
 
@@ -208,7 +208,7 @@ struct DimensionOrConstant {
 };
 
 struct ShapeAndType {
-  ShapeAndType() {}
+  ShapeAndType() = default;
   ShapeAndType(ShapeHandle s, DataType t) : shape(s), dtype(t) {}
   // TODO(mdan): Remove dtype from constructor, and use type_ instead.
   // dtype is kept here for backward compatibiity. Its information should
