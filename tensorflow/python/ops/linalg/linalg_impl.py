@@ -822,11 +822,13 @@ def _convert_with_float32_hint(value, name):
 
 
 def _maybe_validate_matrix(a, validate_args):
-  """Checks that input is a `float` matrix."""
+  """Checks that input is a `float` or `complex` matrix."""
   assertions = []
-  if not a.dtype.is_floating:
-    raise TypeError('Input `a` must have `float`-like `dtype` '
-                    '(saw {}).'.format(a.dtype.name))
+  if not (a.dtype.is_floating or a.dtype.is_complex):
+    raise TypeError(
+        'Input `a` must have `float`-like or `complex`-like `dtype` '
+        '(saw {}).'.format(a.dtype.name)
+    )
   if a.shape is not None and a.shape.rank is not None:
     if a.shape.rank < 2:
       raise ValueError('Input `a` must have at least 2 dimensions '
@@ -844,8 +846,8 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
   """Compute the matrix rank of one or more matrices.
 
   Args:
-    a: (Batch of) `float`-like matrix-shaped `Tensor`(s) which are to be
-      pseudo-inverted.
+    a: (Batch of) `float`-like or `complex`-like matrix-shaped `Tensor`(s) which
+      are to be pseudo-inverted.
     tol: Threshold below which the singular value is counted as 'zero'.
       Default value: `None` (i.e., `eps * max(rows, cols) * max(singular_val)`).
     validate_args: When `True`, additional assertions might be embedded in the
@@ -865,15 +867,22 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
       with ops.control_dependencies(assertions):
         a = array_ops.identity(a)
     s = svd(a, compute_uv=False)
+    real_dtype = a.dtype.real_dtype
     if tol is None:
       if (a.shape[-2:]).is_fully_defined():
         m = np.max(a.shape[-2:].as_list())
       else:
         m = math_ops.reduce_max(array_ops.shape(a)[-2:])
-      eps = np.finfo(a.dtype.as_numpy_dtype).eps
+      eps = np.finfo(real_dtype.as_numpy_dtype).eps
       tol = (
-          eps * math_ops.cast(m, a.dtype) *
+          eps * math_ops.cast(m, real_dtype) *
           math_ops.reduce_max(s, axis=-1, keepdims=True))
+    else:
+      tol = ops.convert_to_tensor(tol, dtype_hint=real_dtype, name='tol')
+      if tol.dtype.is_complex:
+        tol = math_ops.real(tol)
+      if tol.dtype != real_dtype:
+        tol = math_ops.cast(tol, real_dtype)
     return math_ops.reduce_sum(math_ops.cast(s > tol, dtypes.int32), axis=-1)
 
 
@@ -899,12 +908,13 @@ def pinv(a, rcond=None, validate_args=False, name=None):
   `10. * max(num_rows, num_cols) * np.finfo(dtype).eps`.
 
   Args:
-    a: (Batch of) `float`-like matrix-shaped `Tensor`(s) which are to be
-      pseudo-inverted.
+    a: (Batch of) `float`-like or `complex`-like matrix-shaped `Tensor`(s) which
+      are to be pseudo-inverted.
     rcond: `Tensor` of small singular value cutoffs.  Singular values smaller
       (in modulus) than `rcond` * largest_singular_value (again, in modulus) are
       set to zero. Must broadcast against `tf.shape(a)[:-2]`.
-      Default value: `10. * max(num_rows, num_cols) * np.finfo(a.dtype).eps`.
+      Default value:
+        `10. * max(num_rows, num_cols) * np.finfo(a.dtype.real_dtype).eps`.
     validate_args: When `True`, additional assertions might be embedded in the
       graph.
       Default value: `False` (i.e., no graph assertions are added).
@@ -916,7 +926,8 @@ def pinv(a, rcond=None, validate_args=False, name=None):
       rightmost two dimensions are transposed.
 
   Raises:
-    TypeError: if input `a` does not have `float`-like `dtype`.
+    TypeError: if input `a` does not have `float`-like or `complex`-like
+      `dtype`.
     ValueError: if input `a` has fewer than 2 dimensions.
 
   #### Examples
@@ -949,14 +960,14 @@ def pinv(a, rcond=None, validate_args=False, name=None):
        Inc., 1980, pp. 139-142.
   """
   with ops.name_scope(name or 'pinv'):
-    a = ops.convert_to_tensor(a, name='a')
+    a = _convert_with_float32_hint(a, name='a')
 
     assertions = _maybe_validate_matrix(a, validate_args)
     if assertions:
       with ops.control_dependencies(assertions):
         a = array_ops.identity(a)
 
-    dtype = a.dtype.as_numpy_dtype
+    real_dtype = a.dtype.real_dtype
 
     if rcond is None:
 
@@ -972,10 +983,15 @@ def pinv(a, rcond=None, validate_args=False, name=None):
         max_rows_cols = float(max(num_rows, num_cols))
       else:
         max_rows_cols = math_ops.cast(
-            math_ops.maximum(num_rows, num_cols), dtype)
-      rcond = 10. * max_rows_cols * np.finfo(dtype).eps
-
-    rcond = ops.convert_to_tensor(rcond, dtype=dtype, name='rcond')
+            math_ops.maximum(num_rows, num_cols), real_dtype)
+      rcond = 10. * max_rows_cols * np.finfo(real_dtype.as_numpy_dtype).eps
+      rcond = ops.convert_to_tensor(rcond, dtype=real_dtype, name='rcond')
+    else:
+      rcond = ops.convert_to_tensor(rcond, dtype_hint=real_dtype, name='rcond')
+      if rcond.dtype.is_complex:
+        rcond = math_ops.real(rcond)
+      if rcond.dtype != real_dtype:
+        rcond = math_ops.cast(rcond, real_dtype)
 
     # Calculate pseudo inverse via SVD.
     # Note: if a is Hermitian then u == v. (We might observe additional
@@ -987,17 +1003,22 @@ def pinv(a, rcond=None, validate_args=False, name=None):
     ] = svd(
         a, full_matrices=False, compute_uv=True)
 
-    # Saturate small singular values to inf. This has the effect of make
+    # Saturate small singular values to inf. This has the effect of making
     # `1. / s = 0.` while not resulting in `NaN` gradients.
     cutoff = rcond * math_ops.reduce_max(singular_values, axis=-1)
     singular_values = array_ops.where_v2(
         singular_values > array_ops.expand_dims_v2(cutoff, -1), singular_values,
-        np.array(np.inf, dtype))
+        np.array(np.inf, real_dtype.as_numpy_dtype))
 
     # By the definition of the SVD, `a == u @ s @ v^H`, and the pseudo-inverse
     # is defined as `pinv(a) == v @ inv(s) @ u^H`.
+    scaled_right_singular_vectors = (
+        right_singular_vectors
+        * array_ops.expand_dims_v2(
+            math_ops.cast(math_ops.reciprocal(singular_values), a.dtype), -2)
+    )
     a_pinv = math_ops.matmul(
-        right_singular_vectors / array_ops.expand_dims_v2(singular_values, -2),
+        scaled_right_singular_vectors,
         left_singular_vectors,
         adjoint_b=True)
 
