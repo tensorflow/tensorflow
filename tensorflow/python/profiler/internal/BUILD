@@ -123,7 +123,6 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
@@ -144,8 +143,6 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/core/profiler:internal",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
