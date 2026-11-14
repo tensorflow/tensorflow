@@ -649,6 +649,43 @@ class NNTest(PForTestCase):
         self.evaluate(tape.jacobian(y, x)),
     )
 
+  def test_transpose_negative_perm(self):
+    x = random_ops.random_uniform([3, 4, 5, 6])
+
+    for perm in ([-1, -2, -3], [-1, 0, 1], [0, -1, -2], [-2, -1, 0]):
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        # pylint: disable=cell-var-from-loop
+        return array_ops.transpose(x_i, perm=perm)
+
+      self._test_loop_fn(loop_fn, 3)
+
+  def test_conjugate_transpose_negative_perm(self):
+    real = random_ops.random_uniform([3, 4, 5])
+    imag = random_ops.random_uniform([3, 4, 5])
+    x = math_ops.complex(real, imag)
+
+    for perm in ([-1, -2], [0, -1], [-1, 0]):
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        # pylint: disable=cell-var-from-loop
+        return array_ops.transpose(x_i, perm=perm, conjugate=True)
+
+      self._test_loop_fn(loop_fn, 3)
+
+  def test_transpose_negative_perm_jacobian(self):
+    x = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = array_ops.transpose(x, [-1, -2]) * [[1.0, 10.0], [100.0, 1000.0]]
+    expected = [
+        [[[1.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [10.0, 0.0]]],
+        [[[0.0, 100.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 1000.0]]],
+    ]
+    self.assertAllClose(expected, self.evaluate(tape.jacobian(y, x)))
+
   def test_avg_pool(self):
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 2, 12, 12, 3])
