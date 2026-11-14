@@ -991,6 +991,26 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "concat_shape_fns_test",
+    size = "small",
+    srcs = ["concat_shape_fns_test.cc"],
+    deps = [
+        ":common_shape_fns",
+        ":node_def_proto_cc",
+        ":op_def_proto_cc",
+        ":shape_inference",
+        ":tensor",
+        ":tensor_shape",
+        ":tensor_testutil",
+        ":types_proto_cc",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/public:version",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 cc_library(
     name = "attr_value_util",
     srcs = ["attr_value_util.cc"],
