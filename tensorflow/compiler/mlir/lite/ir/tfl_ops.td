@@ -3437,6 +3437,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
     BuildSelectV2Op(&$_builder, $_state, cond, x, y);
   }]>];
 
+  let hasFolder = 1;
   let hasOptions = 1;
 }
 
