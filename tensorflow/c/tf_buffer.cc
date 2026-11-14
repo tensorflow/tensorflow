@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 
