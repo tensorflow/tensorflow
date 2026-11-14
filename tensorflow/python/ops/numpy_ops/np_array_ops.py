@@ -731,19 +731,39 @@ def _reduce(
   return tf_fn(input_tensor=a, axis=axis, keepdims=keepdims)
 
 
-# TODO (DarrenZhang01): Add `axis` support to the `size` API.
 @tf_export.tf_export('experimental.numpy.size', v1=[])
 @np_utils.np_doc('size')
 def size(x, axis=None):  # pylint: disable=missing-docstring
-  if axis is not None:
-    raise NotImplementedError(
-        'axis argument is not supported in the current `np.size` implementation'
+  if axis is not None and not isinstance(axis, (int, np.integer)):
+    raise TypeError(
+        f"'{type(axis).__name__}' object cannot be interpreted as an integer"
     )
-  if isinstance(x, (int, float, np.int32, np.int64, np.float32, np.float64)):
+  if axis is None and isinstance(
+      x, (int, float, complex, np.number, np.bool_)
+  ):
     return 1
   x = asarray(x)
+  rank = x.shape.rank
+  if axis is not None:
+    if rank is not None:
+      normalized_axis = axis + rank if axis < 0 else axis
+      if normalized_axis < 0 or normalized_axis >= rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {rank}.'
+        )
+      axis = normalized_axis
+    else:
+      if axis < 0:
+        axis = axis + array_ops.rank(x)
+
+    if x.shape.is_fully_defined():
+      return int(x.shape.as_list()[axis])
+    else:
+      return array_ops.shape_v2(x)[axis]
+
   if x.shape.is_fully_defined():
-    return np.prod(x.shape.as_list(), dtype=int)
+    return int(np.prod(x.shape.as_list(), dtype=int))
   else:
     return array_ops.size_v2(x)
 

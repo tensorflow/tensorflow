@@ -1876,24 +1876,52 @@ def append(arr, values, axis=None):
 @tf_export.tf_export('experimental.numpy.average', v1=[])
 @np_utils.np_doc('average')
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
-  if axis is not None and not isinstance(axis, int):
-    # TODO(wangpeng): Support tuple of ints as `axis`
-    raise ValueError(
-        'Argument `axis` must be an integer. '
-        f'Received axis={axis} (of type {type(axis)})'
+  if axis is not None and not isinstance(axis, (int, np.integer, tuple)):
+    raise TypeError(
+        'Argument `axis` must be an integer or tuple of integers. '
+        f'Received axis={axis} (of type {type(axis).__name__})'
     )
   a = np_array_ops.array(a)
-  # NumPy raises AxisError for out-of-bounds axes instead of letting the
-  # backend kernel fail with a confusing error.
   maybe_rank = a.shape.rank
-  if axis is not None and maybe_rank is not None:
-    if not (-maybe_rank <= axis < maybe_rank):
-      raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input of rank {maybe_rank}.'
-      )
-    if axis < 0:
-      axis += maybe_rank
+
+  if axis is not None:
+    if isinstance(axis, (int, np.integer)):
+      axis = int(axis)
+      if maybe_rank is not None:
+        if not (-maybe_rank <= axis < maybe_rank):
+          raise ValueError(
+              f'Argument `axis` (received axis={axis}) is out of bounds '
+              f'for input of rank {maybe_rank}.'
+          )
+        if axis < 0:
+          axis += maybe_rank
+    elif isinstance(axis, tuple):
+      normalized_axes = []
+      for ax in axis:
+        if not isinstance(ax, (int, np.integer)):
+          raise TypeError(
+              f"'{type(ax).__name__}' object cannot be interpreted as an"
+              ' integer'
+          )
+        ax = int(ax)
+        if maybe_rank is not None:
+          if not (-maybe_rank <= ax < maybe_rank):
+            raise ValueError(
+                f'Argument `axis` (received axis={ax}) is out of bounds '
+                f'for input of rank {maybe_rank}.'
+            )
+          norm_ax = ax + maybe_rank if ax < 0 else ax
+          if norm_ax in normalized_axes:
+            raise ValueError(f"duplicate value in 'axis': {ax}")
+          normalized_axes.append(norm_ax)
+        else:
+          if ax in normalized_axes:
+        else:
+          if ax in normalized_axes:
+            raise ValueError(f"duplicate value in 'axis': {ax}")
+          normalized_axes.append(ax)
+      axis = tuple(normalized_axes)
+
   default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
@@ -1904,6 +1932,23 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     if returned:
       if axis is None:
         weights_sum = array_ops.size(a)
+      elif isinstance(axis, tuple):
+        if not axis:
+          weights_sum = constant_op.constant(1, dtype=dtypes.int32)
+        elif a.shape.is_fully_defined():
+          weights_sum = int(
+              np.prod([a.shape.as_list()[i] for i in axis], dtype=int)
+          )
+        else:
+          rank = array_ops.rank(a)
+          axes_tensor = array_ops.stack(
+              [ax + rank if ax < 0 else ax for ax in axis]
+        else:
+          rank = array_ops.rank(a)
+          axes_tensor = array_ops.stack([ax + rank if ax < 0 else ax for ax in axis])
+          weights_sum = math_ops.reduce_prod(
+              array_ops.gather(array_ops.shape(a), axes_tensor)
+          )
       else:
         weights_sum = array_ops.shape(a)[axis]
       weights_sum = math_ops.cast(weights_sum, a.dtype)
@@ -1933,6 +1978,11 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     else:
 
       def rank_not_equal_case():
+        if isinstance(axis, tuple):
+          raise ValueError(
+              'Shape of weights must be consistent with shape of a along '
+              'specified axis.'
+          )
         control_flow_assert.Assert(
             array_ops.rank(weights) == 1, [array_ops.rank(weights)]
         )

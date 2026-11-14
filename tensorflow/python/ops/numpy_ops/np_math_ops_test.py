@@ -706,6 +706,59 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testAverageTupleAxis(self):
+    x = np.arange(24, dtype=np.float32).reshape([2, 3, 4])
+    self.match(np_math_ops.average(x, axis=(0, 2)), np.average(x, axis=(0, 2)))
+    self.match(np_math_ops.average(x, axis=(1, 2)), np.average(x, axis=(1, 2)))
+    self.match(
+        np_math_ops.average(x, axis=(0, 1, 2)),
+        np.average(x, axis=(0, 1, 2)),
+    )
+    self.match(
+        np_math_ops.average(x, axis=(-3, -1)),
+        np.average(x, axis=(-3, -1)),
+    )
+    self.match(np_math_ops.average(x, axis=()), np.average(x, axis=()))
+
+    # With returned=True
+    avg_tf, w_tf = np_math_ops.average(x, axis=(0, 2), returned=True)
+    avg_np, w_np = np.average(x, axis=(0, 2), returned=True)
+    self.match(avg_tf, avg_np)
+    self.match(w_tf, w_np)
+
+    # With weights matching shape
+    w = np.arange(24, dtype=np.float32).reshape([2, 3, 4]) + 1.0
+    self.match(
+        np_math_ops.average(x, axis=(0, 1), weights=w),
+        np.average(x, axis=(0, 1), weights=w),
+    )
+    avg_w_tf, sum_w_tf = np_math_ops.average(
+        x, axis=(0, 1), weights=w, returned=True
+    )
+    avg_w_np, sum_w_np = np.average(x, axis=(0, 1), weights=w, returned=True)
+    self.match(avg_w_tf, avg_w_np)
+    self.match(sum_w_tf, sum_w_np)
+
+    # Out of bounds in tuple raises ValueError
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=(0, 3))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.average(x, axis=(-4, 1))
+
+    # Duplicate axis in tuple raises ValueError
+    with self.assertRaisesRegex(ValueError, 'duplicate'):
+      np_math_ops.average(x, axis=(0, 0))
+    with self.assertRaisesRegex(ValueError, 'duplicate'):
+      np_math_ops.average(x, axis=(0, -3))
+
+    # 1D weights with tuple axis raises ValueError
+    with self.assertRaisesRegex(ValueError, 'consistent'):
+      np_math_ops.average(x, axis=(0, 1), weights=np.ones([2]))
+
+    # Non-integer in tuple raises TypeError
+    with self.assertRaises(TypeError):
+      np_math_ops.average(x, axis=(0, 1.5))
+
   def testSpacesDestinationAxisOutOfBounds(self):  # pylint: disable=invalid-name
     # NumPy raises AxisError for out-of-bounds destination axes instead of
     # letting the backend fail with a confusing error.

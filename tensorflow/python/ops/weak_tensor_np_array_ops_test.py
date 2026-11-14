@@ -968,8 +968,9 @@ class ArrayMethodsTest(test.TestCase, parameterized.TestCase):
     run_test(np_array_ops.ones((3, 2, 1)))
     run_test(constant_op.constant(5))
     run_test(constant_op.constant([1, 1, 1]))
-    self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
-                      1)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=0)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=1)
+    run_test(np_array_ops.ones((2, 3, 4)), axis=-1)
 
     @def_function.function(
         input_signature=[
@@ -980,7 +981,17 @@ class ArrayMethodsTest(test.TestCase, parameterized.TestCase):
       arr = np_array_ops.asarray(arr)
       return np_array_ops.size(arr)
 
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(dtype=dtypes.float32, shape=None)
+        ]
+    )
+    def f_axis(arr):
+      arr = np_array_ops.asarray(arr)
+      return np_array_ops.size(arr, axis=1)
+
     self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
+    self.assertEqual(f_axis(np_array_ops.ones((3, 2))).numpy(), 2)
 
   def testRavel(self):
 
