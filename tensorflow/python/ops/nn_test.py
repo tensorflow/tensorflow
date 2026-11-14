@@ -2163,6 +2163,17 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
         ])
     self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
 
+  @test_util.run_v2_only
+  def test_unknown_rank(self):
+    x = constant_op.constant([[0, 6, 2, 8, 4], [5, 1, 7, 3, 9]],
+                             dtype=dtypes.float64)
+    fn = def_function.function(
+        lambda x: nn_ops.isotonic_regression(x, decreasing=True, axis=0),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)])
+    y, segments = fn(x)
+    self.assertAllClose(y, [[2.5, 6, 4.5, 8, 6.5], [2.5, 1, 4.5, 3, 6.5]])
+    self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
   @parameterized.product(
       shape=[(3,), (2, 3), (2, 2, 3)],
       axis=[0, -1],
