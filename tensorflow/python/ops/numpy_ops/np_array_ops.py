@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
@@ -623,6 +624,57 @@ _TO_INT_ = 0
 _TO_FLOAT = 1
 
 
+def _raise_if_empty_reduction(a, axis, op_name):
+  """Raises like NumPy when a reduction without an identity spans an empty axis.
+
+  `max` and `min` have no identity element, so NumPy raises a `ValueError` when
+  a reduced axis has size 0 instead of returning +/-inf. Only statically known
+  shapes and axes are checked: if the rank, a relevant dimension or the axis
+  can't be resolved (e.g. unknown dimensions while tracing a `tf.function`), or
+  the axis is invalid, this returns and the TensorFlow reduction decides.
+
+  Args:
+    a: the array being reduced.
+    axis: the `axis` argument. May be `None`, an integer, a sequence of
+      integers, or a Tensor or array holding either.
+    op_name: 'maximum' or 'minimum', to match NumPy's error message.
+  """
+  rank = a.shape.rank
+  if rank is None or rank == 0:
+    return
+  dims = a.shape.as_list()
+  # Fast path: without a zero-size dimension no reduction can be empty.
+  if 0 not in dims:
+    return
+  message = (
+      f'zero-size array to reduction operation {op_name} which has no identity'
+  )
+  if axis is None:
+    raise ValueError(message)
+
+  if isinstance(axis, tensor_lib.Tensor):
+    axis = tensor_util.constant_value(axis)
+    if axis is None:
+      return
+  if isinstance(axis, np.ndarray):
+    axis = axis.item() if axis.ndim == 0 else tuple(axis.tolist())
+  axes = axis if isinstance(axis, (list, tuple, range)) else (axis,)
+
+  # Validate every axis before looking at dimensions, so that invalid axes are
+  # reported by the regular axis checks rather than masked by this one.
+  normalized_axes = []
+  for ax in axes:
+    if isinstance(ax, bool) or not isinstance(ax, (int, np.integer)):
+      return
+    ax = int(ax)
+    if ax < -rank or ax >= rank:
+      return
+    normalized_axes.append(ax + rank if ax < 0 else ax)
+
+  if builtins.any(dims[ax] == 0 for ax in normalized_axes):
+    raise ValueError(message)
+
+
 def _reduce(
     tf_fn,
     a,
@@ -632,6 +684,7 @@ def _reduce(
     promote_int=_TO_INT_,
     tf_bool_fn=None,
     preserve_bool=False,
+    empty_reduction_name=None,
 ):
   """A general reduction function.
 
@@ -652,6 +705,10 @@ def _reduce(
     preserve_bool: a flag to control whether to use `tf_bool_fn` if `a`'s dtype
       is `np.bool_` (some reductions such as np.sum convert bools to integers,
       while others such as np.max preserve bools.
+    empty_reduction_name: (optional) set for reductions that have no identity
+      element (e.g. 'maximum'), in which case reducing over a zero-size axis
+      raises a `ValueError` like NumPy does, instead of returning the
+      underlying TF reduction's neutral value.
 
   Returns:
     An ndarray.
@@ -685,6 +742,8 @@ def _reduce(
               f'Argument `axis` (received axis={ax}) is out of bounds '
               f'for input of rank {maybe_rank}.'
           )
+  if empty_reduction_name is not None:
+    _raise_if_empty_reduction(a, axis, empty_reduction_name)
   if (
       dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
   ) and tf_bool_fn is not None:
@@ -803,6 +862,7 @@ def amax(a, axis=None, out=None, keepdims=None):
       promote_int=None,
       tf_bool_fn=math_ops.reduce_any,
       preserve_bool=True,
+      empty_reduction_name='maximum',
   )
 
 
@@ -820,6 +880,7 @@ def amin(a, axis=None, out=None, keepdims=None):
       promote_int=None,
       tf_bool_fn=math_ops.reduce_all,
       preserve_bool=True,
+      empty_reduction_name='minimum',
   )
 
 
