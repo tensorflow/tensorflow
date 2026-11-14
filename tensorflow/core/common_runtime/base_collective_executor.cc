@@ -131,7 +131,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
   }
 
   // Number of T elements in a particular chunk.
-  inline int64_t ChunkElts(int i) const {
+  int64_t ChunkElts(int i) const {
     DCHECK_LT(i, num_chunks_);
     const T* chunk_start = std::min(data_end_, data_start_ + i * chunk_elts_);
     const T* chunk_end = std::min(data_end_, chunk_start + chunk_elts_);

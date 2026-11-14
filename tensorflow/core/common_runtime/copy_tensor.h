@@ -43,11 +43,10 @@ class CopyTensor {
   static void ViaDMA(absl::string_view edge_name,
                      DeviceContext* send_dev_context,
                      DeviceContext* recv_dev_context, Device* src, Device* dst,
-                     const AllocatorAttributes src_alloc_attr,
-                     const AllocatorAttributes dst_alloc_attr,
-                     const Tensor* input, Tensor* output,
-                     int dev_to_dev_stream_index, StatusCallback done,
-                     bool sync_dst_compute = true);
+                     AllocatorAttributes src_alloc_attr,
+                     AllocatorAttributes dst_alloc_attr, const Tensor* input,
+                     Tensor* output, int dev_to_dev_stream_index,
+                     StatusCallback done, bool sync_dst_compute = true);
 
   // Object used to call Register() at static-initialization time.
   // Note: This should only ever be used as a global-static object; no stack
