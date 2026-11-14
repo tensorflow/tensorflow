@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -2298,7 +2299,9 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
   ~FoldMultiplyIntoConv() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsConv2D(*node) || IsConv3D(*node);
+    // Activations and weights are read from the two regular data inputs.
+    return (IsConv2D(*node) || IsConv3D(*node)) &&
+           HasExactLeadingNonControlInputs(*node, 2);
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -2307,6 +2310,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
   if ((__VA_ARGS__)) return OkStatus()
 
     NodeDef* conv = node;
+    TF_RETURN_IF_TRUE(!HasExactLeadingNonControlInputs(*conv, 2));
 
     NodeDef* weights;
     TF_RETURN_IF_ERROR(GetInputNode(conv->input(1), &weights));
@@ -2326,18 +2330,30 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     TF_RETURN_IF_TRUE(ctx().node_map->NodeExists(scaled_weights_node_name));
 
-    // Find the tail of value preserving chain entering the Conv node.
-    NodeDef* tail = GetTailOfValuePreservingChain(*conv, *ctx().node_map,
-                                                  *ctx().nodes_to_preserve);
-
-    NodeDef* source;
-    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
+    // Validate each chain node before following its first data input. Bound
+    // this first traversal as well, since malformed graphs may contain cycles.
+    NodeDef* tail = conv;
+    NodeDef* source = nullptr;
+    int remaining = ctx().optimized_graph->node_size();
+    while (true) {
+      TF_RETURN_IF_TRUE(remaining-- == 0);
+      TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
+      if (IsInPreserveSet(*source) || !IsValuePreserving(*source) ||
+          NumNonControlOutputs(*source, *ctx().node_map) != 1) {
+        break;
+      }
+      TF_RETURN_IF_TRUE(!HasExactLeadingNonControlInputs(
+          *source, RequiredValuePreservingDataInputs(*source)));
+      tail = source;
+    }
 
     // Check that value preserving chain is the only consumer of the Mul output.
     TF_RETURN_IF_TRUE(!IsAnyMul(*source));
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
     // And that Mul is not in the preserve set.
     TF_RETURN_IF_TRUE(IsInPreserveSet(*source));
+    // The activations and scale are read from the two regular data inputs.
+    TF_RETURN_IF_TRUE(!HasExactLeadingNonControlInputs(*source, 2));
 
     const NodeDef* mul = source;
     int input_idx = 0;
@@ -2354,6 +2370,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_TRUE(!IsConstant(*scale));
 
     // Check that one of the inputs to mul is a constant scalar.
+    TF_RETURN_IF_TRUE(!HasNodeAttr(*scale, "value"));
     const TensorProto& scale_tensor = scale->attr().at("value").tensor();
     bool scale_is_a_scalar = scale_tensor.has_tensor_shape() &&
                              scale_tensor.tensor_shape().dim_size() == 0;
@@ -2398,6 +2415,57 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     return absl::OkStatus();
 #undef TF_RETURN_IF_TRUE
+  }
+
+ private:
+  static bool HasExactLeadingNonControlInputs(const NodeDef& node,
+                                              int64_t expected_non_control) {
+    if (expected_non_control < 1 || node.input_size() < expected_non_control) {
+      return false;
+    }
+    for (int64_t i = 0; i < expected_non_control; ++i) {
+      if (IsControlInput(node.input(i))) {
+        return false;
+      }
+    }
+    for (int64_t i = expected_non_control; i < node.input_size(); ++i) {
+      if (!IsControlInput(node.input(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static int64_t RequiredValuePreservingDataInputs(const NodeDef& node) {
+    const OpDef* op_def = nullptr;
+    if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
+        op_def == nullptr) {
+      return -1;
+    }
+    int64_t required = 0;
+    for (const OpDef::ArgDef& arg : op_def->input_arg()) {
+      int64_t arg_inputs = 1;
+      if (!arg.number_attr().empty()) {
+        if (!GetNodeAttr(node, arg.number_attr(), &arg_inputs).ok() ||
+            arg_inputs < 0) {
+          return -1;
+        }
+      } else if (!arg.type_list_attr().empty()) {
+        const AttrValue* list_attr = AttrSlice(node).Find(arg.type_list_attr());
+        if (list_attr == nullptr ||
+            !AttrValueHasType(*list_attr, "list(type)").ok()) {
+          return -1;
+        }
+        arg_inputs = list_attr->list().type_size();
+      }
+      // Keep arithmetic and work bounded by storage on the NodeDef itself.
+      if (arg_inputs > node.input_size() ||
+          required > node.input_size() - arg_inputs) {
+        return -1;
+      }
+      required += arg_inputs;
+    }
+    return required;
   }
 };
 
