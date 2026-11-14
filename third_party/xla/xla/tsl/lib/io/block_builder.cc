@@ -113,12 +113,12 @@ void BlockBuilder::Add(absl::string_view key, absl::string_view value) {
   core::PutVarint32(&buffer_, static_cast<uint32_t>(value.size()));
 
   // Add string delta to buffer_ followed by value
-  buffer_.append(key.data() + shared, non_shared);
+  buffer_.append(key, shared, non_shared);
   buffer_.append(value.data(), static_cast<uint32_t>(value.size()));
 
   // Update state
   last_key_.resize(shared);
-  last_key_.append(key.data() + shared, non_shared);
+  last_key_.append(key, shared, non_shared);
   assert(absl::string_view(last_key_) == key);
   counter_++;
 }
