@@ -15,6 +15,7 @@ limitations under the License.
 
 // This library contains test kernels needed by fallback unit tests.
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -60,17 +61,20 @@ static void CreateTensorHandleWithDelayedAsyncTensor(
       StringHostTensor::MakeConstructedAsyncValueRef(metadata, host);
   tensor_ref.get().strings()[0] = kTestString;
 
+  // Create the handle and log before EnqueueWork: the worker also writes to
+  // llvm::errs(), and convert_tensorhandle_to_fallback_tensor.mlir checks
+  // "Created TensorHandle" before the worker's lines.
+  output_tensors[0] = MakeAvailableAsyncValueRef<TensorHandle>(
+      host->GetHostDeviceRef(), metadata, tensor_ref.CopyRef());
+  TFRT_LOG(INFO) << "Created TensorHandle (" << kTestString << ")";
+
   // Mark the AsyncTensor available after the sleep.
-  EnqueueWork(exec_ctx, [sleep_time_us, tensor_ref = tensor_ref.CopyRef()]() {
+  EnqueueWork(exec_ctx, [sleep_time_us, tensor_ref = std::move(tensor_ref)]() {
     Env::Default()->SleepForMicroseconds(sleep_time_us);
     TFRT_LOG(INFO) << "Slept for " << sleep_time_us << " microseconds";
     tensor_ref.SetStateConcrete();
     TFRT_LOG(INFO) << "Marked AsyncTensor available.";
   });
-
-  output_tensors[0] = MakeAvailableAsyncValueRef<TensorHandle>(
-      host->GetHostDeviceRef(), metadata, std::move(tensor_ref));
-  TFRT_LOG(INFO) << "Created TensorHandle (" << kTestString << ")";
 }
 
 }  // namespace
