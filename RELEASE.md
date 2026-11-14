@@ -54,6 +54,10 @@
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
+*   `tf.nn.softmax_cross_entropy_with_logits`: second derivatives are now
+    correct when `labels` depend on the same variables as `logits` (e.g.
+    distillation losses whose targets come from a softmax). The gradient term
+    that flows back through `labels` used to be dropped.
 
 ## Thanks to our Contributors
 
