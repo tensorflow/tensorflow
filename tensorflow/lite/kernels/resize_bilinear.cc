@@ -47,6 +47,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 const TfLiteTensor* size,
                                 TfLiteTensor* output) {
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
   const int32* size_data = GetTensorData<int32>(size);
   // Sanity check, the up/down sampling size should always be positive.
   TF_LITE_ENSURE(context, size_data[0] > 0);
@@ -73,6 +75,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): Our current implementations rely on the inputs being 4D.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
 

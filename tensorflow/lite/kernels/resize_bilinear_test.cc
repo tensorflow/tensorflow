@@ -488,5 +488,54 @@ TEST(ResizeBilinearOpTest, ModelWithIncorrectSizeTensorShapeIsRejected) {
 #endif
 }
 
+class ResizeBilinearOpModelUnallocated : public SingleOpModel {
+ public:
+  explicit ResizeBilinearOpModelUnallocated(
+      const TensorData& input, std::initializer_list<int> size_data,
+      TestType test_type) {
+    bool const_size = (test_type == TestType::kConst);
+
+    input_ = AddInput(input);
+    if (const_size) {
+      size_ = AddConstInput(TensorType_INT32, size_data, {2});
+    } else {
+      size_ = AddInput({TensorType_INT32, {2}});
+    }
+    output_ = AddOutput(input.type);
+    SetBuiltinOp(
+        BuiltinOperator_RESIZE_BILINEAR, BuiltinOptions_ResizeBilinearOptions,
+        CreateResizeBilinearOptions(builder_, false, false).Union());
+    if (const_size) {
+      BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false,
+                       /*allocate_and_delegate=*/false);
+    } else {
+      BuildInterpreter({GetShape(input_), GetShape(size_)}, /*num_threads=*/-1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false,
+                       /*allocate_and_delegate=*/false);
+      PopulateTensor(size_, size_data);
+    }
+  }
+
+ private:
+  int input_;
+  int size_;
+  int output_;
+};
+
+TEST(ResizeBilinearOpTest, ModelWithZeroInputHeightIsRejected) {
+  ResizeBilinearOpModelUnallocated m(
+      {TensorType_FLOAT32, {1, 0, 5, 3}}, {5, 5}, TestType::kConst);
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(ResizeBilinearOpTest, ModelWithZeroInputWidthIsRejected) {
+  ResizeBilinearOpModelUnallocated m(
+      {TensorType_FLOAT32, {1, 5, 0, 3}}, {5, 5}, TestType::kConst);
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
