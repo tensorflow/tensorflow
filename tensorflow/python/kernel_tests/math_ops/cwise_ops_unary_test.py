@@ -815,6 +815,137 @@ class UnaryOpTest(test.TestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  def testComplexLogVectorizedLargeMagnitude(self):
+    """Regression test for #118034: complex log overflow and branch cuts."""
+    for dtype, large_val, diag_val in [
+        (np.complex64, 1e20, 3e38),
+        (np.complex128, 1e160, 1e308),
+    ]:
+      for length in [1, 2, 4, 8, 16]:
+        z_vals = np.array([1.0 + 0.0j] * length, dtype=dtype)
+        z_vals[0] = large_val + 0.0j
+        if length > 1:
+          z_vals[1] = 0.0 + large_val * 1.0j
+        if length > 2:
+          z_vals[2] = diag_val + diag_val * 1.0j
+
+        result = self.evaluate(math_ops.log(constant_op.constant(z_vals)))
+        expected = np.empty_like(z_vals)
+        for i, z in enumerate(z_vals):
+          re, im = np.float64(z.real), np.float64(z.imag)
+          if abs(re) > 1e37 or abs(im) > 1e37:
+            mag = np.hypot(re * 0.5, im * 0.5)
+            exp_re = np.log(mag) + np.log(2.0)
+            exp_im = np.arctan2(im, re)
+            expected[i] = dtype(complex(exp_re, exp_im))
+          else:
+            expected[i] = dtype(np.log(complex(re, im)))
+
+        self.assertFalse(
+            np.any(np.isnan(result)),
+            msg=f"log(z) produced NaN for dtype={dtype.__name__}",
+        )
+        self.assertAllClose(
+            result,
+            expected,
+            rtol=1e-5 if dtype == np.complex64 else 1e-12,
+            msg=f"log(z) incorrect for dtype={dtype.__name__}",
+        )
+
+    # Test signed zero branch cuts:
+    for dtype in [np.complex64, np.complex128]:
+      z_neg_zero = np.array([complex(-0.0, 0.0)], dtype=dtype)
+      res_neg_zero = self.evaluate(
+          math_ops.log(constant_op.constant(z_neg_zero))
+      )
+      self.assertTrue(np.isneginf(res_neg_zero[0].real))
+      self.assertAllClose(res_neg_zero[0].imag, np.pi, rtol=1e-5)
+
+      z_neg_imag = np.array([complex(0.0, -0.0)], dtype=dtype)
+      res_neg_imag = self.evaluate(
+          math_ops.log(constant_op.constant(z_neg_imag))
+      )
+      self.assertTrue(np.isneginf(res_neg_imag[0].real))
+      self.assertTrue(np.signbit(res_neg_imag[0].imag))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexLog1pVectorizedLargeMagnitude(self):
+    """Regression test for #118034: complex log1p overflow and small inputs."""
+    for dtype, large_val, diag_val in [
+        (np.complex64, 1e20, 3e38),
+        (np.complex128, 1e160, 1e308),
+    ]:
+      for length in [1, 2, 4, 8, 16]:
+        z_vals = np.array([1.0 + 0.0j] * length, dtype=dtype)
+        z_vals[0] = large_val + 0.0j
+        if length > 1:
+          z_vals[1] = 0.0 + large_val * 1.0j
+        if length > 2:
+          z_vals[2] = diag_val + diag_val * 1.0j
+
+        result = self.evaluate(math_ops.log1p(constant_op.constant(z_vals)))
+        expected = np.empty_like(z_vals)
+        for i, z in enumerate(z_vals):
+          re, im = np.float64(z.real), np.float64(z.imag)
+          if abs(re) > 1e37 or abs(im) > 1e37:
+            re1 = re + 1.0
+            mag = np.hypot(re1 * 0.5, im * 0.5)
+            exp_re = np.log(mag) + np.log(2.0)
+            exp_im = np.arctan2(im, re1)
+            expected[i] = dtype(complex(exp_re, exp_im))
+          else:
+            expected[i] = dtype(np.log1p(complex(re, im)))
+
+        self.assertFalse(
+            np.any(np.isnan(result)),
+            msg=f"log1p(z) produced NaN for dtype={dtype.__name__}",
+        )
+        self.assertAllClose(
+            result,
+            expected,
+            rtol=1e-5 if dtype == np.complex64 else 1e-12,
+            msg=f"log1p(z) incorrect for dtype={dtype.__name__}",
+        )
+
+    # Test small log1p inputs (|re| < 0.5 and |im| < 0.5 branch):
+    small_cases = [
+        1e-10 + 1e-10j,
+        1e-4j,
+        1e-7 + 0.0j,
+        0.1 - 0.2j,
+        -0.3 + 0.4j,
+    ]
+    for dtype in [np.complex64, np.complex128]:
+      z_small = np.array(small_cases, dtype=dtype)
+      result = self.evaluate(math_ops.log1p(constant_op.constant(z_small)))
+      expected = np.empty_like(z_small)
+      for i, z in enumerate(z_small):
+        re, im = np.float64(z.real), np.float64(z.imag)
+        if im == 0.0:
+          exp_re = np.log1p(re)
+          exp_im = im
+        else:
+          norm_m1 = 2.0 * re + (re * re + im * im)
+          exp_re = 0.5 * np.log1p(norm_m1)
+          exp_im = np.arctan2(im, 1.0 + re)
+        expected[i] = dtype(complex(exp_re, exp_im))
+
+      self.assertAllClose(
+          result,
+          expected,
+          rtol=1e-5 if dtype == np.complex64 else 1e-12,
+          msg=f"small log1p incorrect for dtype={dtype.__name__}",
+      )
+
+      # Signed zero branch cut: log1p(complex(-1.0, -0.0)) == (-inf, -0.0)
+      z_neg_one = np.array([complex(-1.0, -0.0)], dtype=dtype)
+      res_neg_one = self.evaluate(
+          math_ops.log1p(constant_op.constant(z_neg_one))
+      )
+      self.assertTrue(np.isneginf(res_neg_one[0].real))
+      self.assertTrue(np.signbit(res_neg_one[0].imag))
+
+  @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
