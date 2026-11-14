@@ -1316,6 +1316,74 @@ class MathTest(test.TestCase, parameterized.TestCase):
           np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
       )
 
+  def testCov(self):
+    # 1D array
+    x = np.array([0.0, 1.0, 2.0], dtype=np.float32)
+    self.match(np_math_ops.cov(x), np.cov(x))
+
+    # 2D array
+    m = np.array([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], dtype=np.float32)
+    self.match(np_math_ops.cov(m), np.cov(m))
+    self.match(np_math_ops.cov(m, rowvar=False), np.cov(m, rowvar=False))
+
+    # Two inputs x and y
+    y = np.array([2.0, 1.0, 0.0], dtype=np.float32)
+    self.match(np_math_ops.cov(x, y), np.cov(x, y))
+
+    # Integer and float64 dtypes
+    m_int = np.array([[1, 2, 3], [3, 2, 1]], dtype=np.int32)
+    self.match(np_math_ops.cov(m_int), np.cov(m_int))
+
+    m_f64 = np.array([[1.0, 2.0, 4.0], [2.0, 3.0, 5.0]], dtype=np.float64)
+    self.match(np_math_ops.cov(m_f64), np.cov(m_f64))
+
+    # Complex dtypes
+    c_arr = np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]],
+                     dtype=np.complex128)
+    self.match(np_math_ops.cov(c_arr), np.cov(c_arr))
+
+    # Bias and ddof
+    self.match(np_math_ops.cov(m, bias=True), np.cov(m, bias=True))
+    self.match(np_math_ops.cov(m, ddof=2), np.cov(m, ddof=2))
+
+    # Frequency and observation weights
+    fw = np.array([1, 2, 1], dtype=np.int32)
+    aw = np.array([0.5, 1.0, 0.5], dtype=np.float32)
+    self.match(
+        np_math_ops.cov(x, fweights=fw), np.cov(x, fweights=fw)
+    )
+    self.match(
+        np_math_ops.cov(x, aweights=aw), np.cov(x, aweights=aw)
+    )
+    self.match(
+        np_math_ops.cov(x, fweights=fw, aweights=aw),
+        np.cov(x, fweights=fw, aweights=aw),
+    )
+
+    # Error handling
+    with self.assertRaises(ValueError):
+      np_math_ops.cov(np.ones((2, 2, 2)))
+    with self.assertRaises(ValueError):
+      np_math_ops.cov(5.0)
+
+  def testCorrcoef(self):
+    # 1D array
+    x = np.array([0.0, 1.0, 2.0], dtype=np.float32)
+    self.match(np_math_ops.corrcoef(x), np.corrcoef(x))
+
+    # 2D array
+    m = np.array([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], dtype=np.float32)
+    self.match(np_math_ops.corrcoef(m), np.corrcoef(m))
+
+    # Two inputs
+    y = np.array([2.0, 1.0, 0.0], dtype=np.float32)
+    self.match(np_math_ops.corrcoef(x, y), np.corrcoef(x, y))
+
+    # Complex dtypes
+    c_arr = np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]],
+                     dtype=np.complex128)
+    self.match(np_math_ops.corrcoef(c_arr), np.corrcoef(c_arr))
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
