@@ -61,22 +61,39 @@ template <typename T, typename Index>
 struct SparseXentFunctor<GPUDevice, T, Index> {
   void operator()(OpKernelContext* ctx, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<Index>::ConstVec labels,
-                  typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
+                  typename TTypes<T>::Vec scratch,
+                  typename TTypes<T>::Vec scratch_other,
+                  typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    SparseXentEigenImpl<GPUDevice, T, Index>::Compute(ctx, logits, labels,
-                                                      scratch, loss, backprop);
+    SparseXentEigenImpl<GPUDevice, T, Index>::Compute(
+        ctx, logits, labels, scratch, scratch_other, loss, backprop);
   }
 };
 }  // end namespace functor
 
 // Instantiate the GPU implementation for float.
-#define REGISTER(Index)                                                      \
-  template struct functor::SparseXentFunctor<GPUDevice, float, Index>;       \
-  template class generator::SparseXentGradGenerator<float, Index>;           \
-  template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>; \
-  template class generator::SparseXentGradGenerator<Eigen::half, Index>;     \
-  template struct functor::SparseXentFunctor<GPUDevice, Eigen::bfloat16,     \
-                                             Index>;                         \
+#define REGISTER(Index)                                                       \
+  template struct functor::SparseXentFunctor<GPUDevice, float, Index>;        \
+  template class generator::SparseXentShiftedLabelGenerator<float, Index>;    \
+  template class generator::NonLabelExpGenerator<float, Index>;               \
+  template class generator::SparseXentTotalSumGenerator<float, Index>;        \
+  template class generator::SparseXentLossGenerator<float, Index>;            \
+  template class generator::SparseXentGradGenerator<float, Index>;            \
+  template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>;  \
+  template class generator::SparseXentShiftedLabelGenerator<Eigen::half,      \
+                                                            Index>;           \
+  template class generator::NonLabelExpGenerator<Eigen::half, Index>;         \
+  template class generator::SparseXentTotalSumGenerator<Eigen::half, Index>;  \
+  template class generator::SparseXentLossGenerator<Eigen::half, Index>;      \
+  template class generator::SparseXentGradGenerator<Eigen::half, Index>;      \
+  template struct functor::SparseXentFunctor<GPUDevice, Eigen::bfloat16,      \
+                                             Index>;                          \
+  template class generator::SparseXentShiftedLabelGenerator<Eigen::bfloat16,  \
+                                                            Index>;           \
+  template class generator::NonLabelExpGenerator<Eigen::bfloat16, Index>;     \
+  template class generator::SparseXentTotalSumGenerator<Eigen::bfloat16,      \
+                                                         Index>;              \
+  template class generator::SparseXentLossGenerator<Eigen::bfloat16, Index>;  \
   template class generator::SparseXentGradGenerator<Eigen::bfloat16, Index>;
 REGISTER(int32_t)
 REGISTER(int64_t)
