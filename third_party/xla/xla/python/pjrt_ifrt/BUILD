@@ -894,6 +894,7 @@ xla_cc_test(
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla:future",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:cleanup",
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",

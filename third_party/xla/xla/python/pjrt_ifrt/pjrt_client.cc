@@ -636,16 +636,17 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
   for (int i = 0; i < num_elements; ++i, ++element) {
     strings->push_back(*element);
   }
-  std::move(on_done_with_host_buffer)();
+  if (on_done_with_host_buffer) {
+    std::move(on_done_with_host_buffer)();
+  }
 
   BasicStringArray::Buffers buffers;
   buffers.push_back(*strings);
-  auto buffer_releaser = [strings = std::move(strings)]() {};
 
   return BasicStringArray::Create(
       client, std::move(shape), std::move(sharding),
       tsl::Future<BasicStringArray::Buffers>(std::move(buffers)),
-      std::move(buffer_releaser));
+      std::move(strings));
 }
 
 absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
@@ -679,7 +680,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
   };
   auto buffer_backing_store =
       std::make_shared<BufferBackingStore>(sharding->devices()->size());
-  auto on_done_with_buffer = [buffer_holder = buffer_backing_store]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = buffer_backing_store;
 
   struct BufferCopyingState {
     BufferCopyingState(int num_buffers_to_copy,
@@ -1164,7 +1165,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
                        BasicStringArray::Create(
                            this, array_spec.shape, array_spec.sharding,
                            tsl::Future<BasicStringArray::Buffers>(error),
-                           /*on_done_with_buffer=*/[]() {}));
+                           /*on_done_with_buffer=*/nullptr));
       continue;
     }
 

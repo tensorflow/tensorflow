@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -93,8 +94,7 @@ MakeBuffersAndOnDoneWithBuffer(
   }
   buffers.push_back(*strings);
 
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [strings = std::move(strings)]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = std::move(strings);
 
   return std::make_pair(std::move(buffers), std::move(on_done_with_buffer));
 }
@@ -156,8 +156,8 @@ TEST(BasicStringArrayTest, Destruction) {
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
 
   absl::Notification on_done_with_buffer_called;
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = MakeSharedCleanup(
+      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); });
 
   auto [array_creation_promise, array_creation_future] = tsl::MakePromise<>();
 
@@ -192,8 +192,9 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
   buffers.push_back(*shard0_data);
   buffers.push_back(*shard1_data);
 
-  auto on_done_with_buffer = [shard0_data = std::move(shard0_data),
-                              shard1_data = std::move(shard1_data)]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
+      MakeSharedCleanup([shard0_data = std::move(shard0_data),
+                         shard1_data = std::move(shard1_data)]() {});
 
   // Make a single device array that is not ready at the time of creation.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -218,8 +219,8 @@ TEST(BasicStringArrayTest, Delete) {
   BasicStringArray::Buffers buffers;
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
   absl::Notification on_done_with_buffer_called;
-  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = MakeSharedCleanup(
+      [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); });
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
@@ -234,6 +235,25 @@ TEST(BasicStringArrayTest, Delete) {
 
   // IsDeleted should return true.
   EXPECT_TRUE(array->IsDeleted());
+}
+
+TEST(BasicStringArrayTest, DeleteReleasesOnDoneWithBufferImmediately) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  BasicStringArray::Buffers buffers;
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
+  auto hold = std::make_shared<int>(42);
+  int call_count = 0;
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
+      MakeSharedCleanup([hold, &call_count]() { ++call_count; });
+
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array,
+      CreateTestArray(client.get(),
+                      tsl::Future<BasicStringArray::Buffers>(buffers),
+                      std::move(on_done_with_buffer)));
+  ASSERT_OK(array->Delete().Await());
+  EXPECT_EQ(call_count, 1);
+  EXPECT_EQ(hold.use_count(), 1);
 }
 
 TEST(GetReadyFutureTest, SuccessCase) {
@@ -1076,7 +1096,7 @@ TEST(CopytoHostBufferTest,
   ASSERT_GE(devices.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
-                                        /*on_done_with_buffer=*/[]() {}));
+                                        /*on_done_with_buffer=*/nullptr));
   auto array = ret.first;
   auto promise = std::move(ret.second);
 
