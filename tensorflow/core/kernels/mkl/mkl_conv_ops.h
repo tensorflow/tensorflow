@@ -66,17 +66,20 @@ class MklDnnConvUtil {
   TensorFormat data_format_;
 
  public:
+  // The filter may overhang the padded input by up to the stride, which gives
+  // a zero-sized output.
   static absl::Status CheckWindowFitsInput(int64_t input, int64_t filter,
-                                           int64_t dilation, int64_t pad_before,
+                                           int64_t dilation, int64_t stride,
+                                           int64_t pad_before,
                                            int64_t pad_after, Padding padding) {
     if (padding != Padding::VALID && padding != Padding::EXPLICIT) {
       return absl::OkStatus();
     }
     const int64_t effective_filter_size = (filter - 1) * dilation + 1;
     const int64_t padded = input + pad_before + pad_after;
-    if (padded < effective_filter_size) {
+    if (padded + stride < effective_filter_size) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "input_size + padding (", padded,
+          "input_size + padding + stride (", padded + stride,
           ") must be at least effective_filter_size (", effective_filter_size,
           ") for ", padding == Padding::VALID ? "VALID" : "EXPLICIT",
           " padding."));
@@ -480,10 +483,12 @@ class MklDnnConvUtil {
                          padding_type, &out_cols, &pad_left, &pad_right));
       OP_REQUIRES_OK(context_, MklDnnConvUtil::CheckWindowFitsInput(
                                    input_rows, filter_rows, dilation_rows,
-                                   pad_top, pad_bottom, padding_type));
+                                   stride_rows, pad_top, pad_bottom,
+                                   padding_type));
       OP_REQUIRES_OK(context_, MklDnnConvUtil::CheckWindowFitsInput(
                                    input_cols, filter_cols, dilation_cols,
-                                   pad_left, pad_right, padding_type));
+                                   stride_cols, pad_left, pad_right,
+                                   padding_type));
     } else {
       Padding padding_type;
       if (pad_enabled) {
@@ -511,13 +516,16 @@ class MklDnnConvUtil {
                          padding_type, &out_cols, &pad_left, &pad_right));
       OP_REQUIRES_OK(context_, MklDnnConvUtil::CheckWindowFitsInput(
                                    input_planes, filter_planes, dilation_planes,
-                                   pad_front, pad_back, padding_type));
+                                   stride_planes, pad_front, pad_back,
+                                   padding_type));
       OP_REQUIRES_OK(context_, MklDnnConvUtil::CheckWindowFitsInput(
                                    input_rows, filter_rows, dilation_rows,
-                                   pad_top, pad_bottom, padding_type));
+                                   stride_rows, pad_top, pad_bottom,
+                                   padding_type));
       OP_REQUIRES_OK(context_, MklDnnConvUtil::CheckWindowFitsInput(
                                    input_cols, filter_cols, dilation_cols,
-                                   pad_left, pad_right, padding_type));
+                                   stride_cols, pad_left, pad_right,
+                                   padding_type));
     }
 
     if (is_conv2d) {

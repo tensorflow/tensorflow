@@ -224,21 +224,22 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
         (static_cast<int64_t>(filter_rows) - 1) * dilation_rows + 1;
     const int64_t effective_filter_cols =
         (static_cast<int64_t>(filter_cols) - 1) * dilation_cols + 1;
-    // For VALID padding all pads are 0.
+    // For VALID padding all pads are 0. The filter may overhang the padded
+    // input by up to the stride, which gives a zero-sized output.
     const int64_t padded_rows = input_rows + pad_rows_before + pad_rows_after;
     const int64_t padded_cols = input_cols + pad_cols_before + pad_cols_after;
     const char* padding_name =
         params.padding == Padding::VALID ? "VALID" : "EXPLICIT";
     TF_REQUIRES(
-        padded_rows >= effective_filter_rows,
+        padded_rows + stride_rows >= effective_filter_rows,
         absl::InvalidArgumentError(absl::StrCat(
-            "input_rows + padding (", padded_rows,
+            "input_rows + padding + stride (", padded_rows + stride_rows,
             ") must be at least effective_filter_size (", effective_filter_rows,
             ") for ", padding_name, " padding.")));
     TF_REQUIRES(
-        padded_cols >= effective_filter_cols,
+        padded_cols + stride_cols >= effective_filter_cols,
         absl::InvalidArgumentError(absl::StrCat(
-            "input_cols + padding (", padded_cols,
+            "input_cols + padding + stride (", padded_cols + stride_cols,
             ") must be at least effective_filter_size (", effective_filter_cols,
             ") for ", padding_name, " padding.")));
   }
