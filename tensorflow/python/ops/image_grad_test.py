@@ -23,6 +23,7 @@ ResizeBicubicOpTest = test_base.ResizeBicubicOpTestBase
 ScaleAndTranslateOpTest = test_base.ScaleAndTranslateOpTestBase
 CropAndResizeOpTest = test_base.CropAndResizeOpTestBase
 RGBToHSVOpTest = test_base.RGBToHSVOpTestBase
+HSVToRGBOpTest = test_base.HSVToRGBOpTestBase
 AdjustContrastOpTest = test_base.AdjustContrastOpTestBase
 ImageProjectiveTransformOpTest = test_base.ImageProjectiveTransformOpTestBase
 

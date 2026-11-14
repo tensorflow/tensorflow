@@ -29,6 +29,9 @@
 
 ### Bug Fixes and Other Changes
 
+*   `tf.image.hsv_to_rgb` now has a gradient. It used to be registered as not
+    differentiable, so `tf.GradientTape` returned `None` for anything that
+    reached the loss only through an HSV to RGB conversion.
 *   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
     number of rows or columns of the input are now clamped to the matrix
     dimensions instead of raising an `InvalidArgumentError`. This matches the

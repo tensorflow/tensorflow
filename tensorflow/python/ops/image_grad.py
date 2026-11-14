@@ -457,3 +457,54 @@ def _RGBToHSVGrad(op: ops.Operation, grad):
 
   gradient_input = math_ops.add(math_ops.add(dv_drgb, ds_drgb), dh_drgb)
   return gradient_input
+
+
+@ops.RegisterGradient("HSVToRGB")
+def _HSVToRGBGrad(op: ops.Operation, grad):
+  """The gradients for the `hsv_to_rgb` operation.
+
+  The kernel computes, with `dh = 6 * h`,
+
+    r = v * (1 - s * (1 - clip(|dh - 3| - 1, 0, 1)))
+    g = v * (1 - s * (1 - clip(2 - |dh - 2|, 0, 1)))
+    b = v * (1 - s * (1 - clip(2 - |dh - 4|, 0, 1)))
+
+  which is linear in `v`, linear in `s` and piecewise linear in `h`. The hue
+  derivative of each clipped term is +-6 on the two ramps of its hue sector and
+  zero where the term is clipped. At the breakpoints between those pieces the
+  function is not differentiable and the zero subgradient is used.
+
+  Args:
+    op: The `hsv_to_rgb` `Operation` that we are differentiating.
+    grad: Gradient with respect to the output of the `hsv_to_rgb` op.
+
+  Returns:
+    Gradients with respect to the input of `hsv_to_rgb`.
+  """
+  hsv = op.inputs[0]
+  dtype = hsv.dtype
+  hue, saturation, value = array_ops_stack.unstack(hsv, num=3, axis=-1)
+  grad_r, grad_g, grad_b = array_ops_stack.unstack(grad, num=3, axis=-1)
+
+  dh = hue * 6
+
+  def _ramp(distance, offset, sign):
+    """Returns `clip(sign * (|distance| - offset), 0, 1)` and its hue slope."""
+    ramp_arg = sign * (math_ops.abs(distance) - offset)
+    ramp = math_ops.minimum(math_ops.maximum(ramp_arg, 0), 1)
+    on_ramp = math_ops.cast((ramp_arg > 0) & (ramp_arg < 1), dtype)
+    ramp_slope = 6 * sign * math_ops.sign(distance) * on_ramp
+    return ramp, ramp_slope
+
+  dr, dr_dh = _ramp(dh - 3, 1, 1)
+  dg, dg_dh = _ramp(dh - 2, 2, -1)
+  db, db_dh = _ramp(dh - 4, 2, -1)
+
+  grad_h = value * saturation * (grad_r * dr_dh + grad_g * dg_dh +
+                                 grad_b * db_dh)
+  grad_s = value * ((dr - 1) * grad_r + (dg - 1) * grad_g + (db - 1) * grad_b)
+  grad_v = ((1 - saturation * (1 - dr)) * grad_r +
+            (1 - saturation * (1 - dg)) * grad_g +
+            (1 - saturation * (1 - db)) * grad_b)
+
+  return array_ops_stack.stack([grad_h, grad_s, grad_v], axis=-1)
