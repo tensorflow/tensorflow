@@ -166,7 +166,7 @@ TEST_F(GpuRunnerTest, Basic) {
   // Construct GpuRunInputs.
   GpuRunInputs run_inputs;
 
-  Tensor tensor1 = CreateTensor<int32>(TensorShape({1, 2}), {1, 2});
+  Tensor tensor1 = CreateTensor<int32_t>(TensorShape({1, 2}), {1, 2});
   Tensor tensor2 = CreateTensor<int32>(TensorShape({1, 2}), {3, 4});
   run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor1));
   run_inputs.args.push_back(tfrt_stub::FallbackTensor(tensor2));
