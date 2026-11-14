@@ -755,7 +755,7 @@ TYPED_TEST(StablehloReduceWindowTest, FuzzyTest) {
     ReduceWindowOpModel<TypeParam> model;
     // To avoid reduction overflows, we only test mul with floating point types.
     Body body = Body::GetRandomSupported(
-        bitgen, /*allow_mul=*/std::is_floating_point<TypeParam>::value);
+        bitgen, /*allow_mul=*/std::is_floating_point_v<TypeParam>);
     model.SetInput(
         /*shape=*/RandomVector<int64_t>(bitgen, rank, /*min=*/1, /*max=*/10),
         bitgen, /*min=*/-5, /*max=*/5);
