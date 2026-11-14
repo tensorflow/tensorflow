@@ -1337,5 +1337,69 @@ class SparsePlaceholderTest(test.TestCase):
     self.assertAllEqual([None, None], foo.indices.get_shape().as_list())
 
 
+class SparseExpandDimsTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testExpandDims(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [2, 3]], values=[1.0, 2.0], dense_shape=[4, 5]
+    )
+
+    # axis=0: shape becomes [1, 4, 5]
+    sp_0 = sparse_ops.sparse_expand_dims(sp, axis=0)
+    self.assertAllEqual([[0, 0, 1], [0, 2, 3]], self.evaluate(sp_0.indices))
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_0.values))
+    self.assertAllEqual([1, 4, 5], self.evaluate(sp_0.dense_shape))
+
+    # axis=1: shape becomes [4, 1, 5]
+    sp_1 = sparse_ops.sparse_expand_dims(sp, axis=1)
+    self.assertAllEqual([[0, 0, 1], [2, 0, 3]], self.evaluate(sp_1.indices))
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_1.values))
+    self.assertAllEqual([4, 1, 5], self.evaluate(sp_1.dense_shape))
+
+    # axis=-1 (default): shape becomes [4, 5, 1]
+    sp_default = sparse_ops.sparse_expand_dims(sp)
+    self.assertAllEqual(
+        [[0, 1, 0], [2, 3, 0]], self.evaluate(sp_default.indices)
+    )
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_default.values))
+    self.assertAllEqual([4, 5, 1], self.evaluate(sp_default.dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testExpandDimsSparseTensorValue(self):
+    sp_input = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 1], [2, 3]]),
+        values=np.array([1.0, 2.0]),
+        dense_shape=np.array([4, 5]),
+    )
+    sp_expanded = sparse_ops.sparse_expand_dims(sp_input, axis=0)
+    self.assertAllEqual(
+        [[0, 0, 1], [0, 2, 3]], self.evaluate(sp_expanded.indices)
+    )
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_expanded.values))
+    self.assertAllEqual([1, 4, 5], self.evaluate(sp_expanded.dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testExpandDimsInvalidInput(self):
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_expand_dims([[1, 2], [3, 4]], axis=0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testExpandDimsInvalidAxis(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 1]], values=[1.0], dense_shape=[2, 2]
+    )
+    with self.assertRaisesRegex(
+        TypeError, "axis must be an integer value"
+    ):
+      sparse_ops.sparse_expand_dims(sp, axis="invalid")
+
+  @test_util.run_deprecated_v1
+  def testExpandDimsUnknownRank(self):
+    sp = array_ops.sparse_placeholder(dtypes.float32, shape=None)
+    out = sparse_ops.sparse_expand_dims(sp, axis=0)
+    self.assertIsNone(out.get_shape().rank)
+
+
 if __name__ == "__main__":
   googletest.main()
