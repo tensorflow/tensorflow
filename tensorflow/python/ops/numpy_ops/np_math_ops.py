@@ -1340,10 +1340,16 @@ def nanstd(  # pylint: disable=missing-docstring
 ):
   if out is not None:
     raise ValueError('Setting out is not supported.')
+  v_dtype = dtype
+  if dtype is not None and not dtypes.as_dtype(dtype).is_floating and not dtypes.as_dtype(dtype).is_complex:
+    v_dtype = None
   v = nanvar(
-      a, axis=axis, dtype=dtype, ddof=ddof, keepdims=keepdims, where=where
+      a, axis=axis, dtype=v_dtype, ddof=ddof, keepdims=keepdims, where=where
   )
-  return math_ops.sqrt(v)
+  res = math_ops.sqrt(v)
+  if dtype is not None and v_dtype is None:
+    res = math_ops.cast(res, dtype)
+  return res
 
 
 @tf_export.tf_export('experimental.numpy.isfinite', v1=[])
