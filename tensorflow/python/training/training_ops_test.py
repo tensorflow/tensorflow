@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
@@ -742,6 +743,91 @@ class TrainingOpsTest(TensorFlowTestCase):
               delta=grad,
           )
       )
+
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseApplyOpsRejectIndexOverflow(self):
+    # Shape [2147483648, 0] has dim_size(0) > INT32_MAX but NumElements() == 0,
+    # so no memory is allocated. ValidateSparseApplyIndexRange rejects calls
+    # on all devices when var.dim_size(0) or indices.dim_size(0) exceeds the
+    # range of Tindex (and on GPU when var or grad NumElements() overflows).
+    var, accum, accum2 = [
+        variables.Variable(
+            array_ops.zeros([2147483648, 0], dtype=dtypes.float32)
+        )
+        for _ in range(3)
+    ]
+    with ops.device("/cpu:0"):
+      cpu_var, cpu_accum, cpu_accum2 = [
+          variables.Variable(
+              array_ops.zeros([2147483648, 0], dtype=dtypes.float32)
+          )
+          for _ in range(3)
+      ]
+      cpu_s = constant_op.constant(0.1, dtype=dtypes.float32)
+      cpu_step = constant_op.constant(1, dtype=dtypes.int64)
+      cpu_grad = array_ops.zeros([1, 0], dtype=dtypes.float32)
+      cpu_idx = constant_op.constant([0], dtype=dtypes.int32)
+    self.evaluate(variables.global_variables_initializer())
+    s = constant_op.constant(0.1, dtype=dtypes.float32)
+    neg_half = constant_op.constant(-0.5, dtype=dtypes.float32)
+    grad = array_ops.zeros([1, 0], dtype=dtypes.float32)
+    idx = constant_op.constant([0], dtype=dtypes.int32)
+    g = gen_training_ops
+    cases = [
+        lambda: g.resource_sparse_apply_adadelta(
+            var.handle, accum.handle, accum2.handle, s, s, s, grad, idx
+        ),
+        lambda: g.resource_sparse_apply_adagrad(
+            var.handle, accum.handle, s, grad, idx
+        ),
+        lambda: g.resource_sparse_apply_adagrad_v2(
+            var.handle, accum.handle, s, s, grad, idx
+        ),
+        lambda: g.resource_sparse_apply_proximal_adagrad(
+            var.handle, accum.handle, s, s, s, grad, idx
+        ),
+        lambda: g.resource_sparse_apply_ftrl(
+            var.handle, accum.handle, accum2.handle, grad, idx,
+            s, s, s, neg_half
+        ),
+        lambda: g.resource_sparse_apply_keras_momentum(
+            var.handle, accum.handle, s, grad, idx, s
+        ),
+    ]
+    for apply_op in cases:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "exceeds the range of Tindex"
+      ):
+        self.evaluate(apply_op())
+    with ops.device("/cpu:0"):
+      cpu_cases = [
+          lambda: g.resource_sparse_apply_proximal_gradient_descent(
+              cpu_var.handle, cpu_s, cpu_s, cpu_s, cpu_grad, cpu_idx
+          ),
+          lambda: g.resource_sparse_apply_adagrad_da(
+              cpu_var.handle, cpu_accum.handle, cpu_accum2.handle,
+              cpu_grad, cpu_idx, cpu_s, cpu_s, cpu_s, cpu_step
+          ),
+          lambda: g.resource_sparse_apply_momentum(
+              cpu_var.handle, cpu_accum.handle, cpu_s,
+              cpu_grad, cpu_idx, cpu_s
+          ),
+          lambda: g.resource_sparse_apply_rms_prop(
+              cpu_var.handle, cpu_accum.handle, cpu_accum2.handle,
+              cpu_s, cpu_s, cpu_s, cpu_s, cpu_grad, cpu_idx
+          ),
+          lambda: g.resource_sparse_apply_centered_rms_prop(
+              cpu_var.handle, cpu_accum.handle, cpu_accum.handle,
+              cpu_accum2.handle, cpu_s, cpu_s, cpu_s, cpu_s,
+              cpu_grad, cpu_idx
+          ),
+      ]
+      for apply_op in cpu_cases:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "exceeds the range of Tindex"
+        ):
+          self.evaluate(apply_op())
 
 
 if __name__ == '__main__':
