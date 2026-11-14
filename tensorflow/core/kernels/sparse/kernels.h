@@ -168,7 +168,7 @@ class CSRSparseMatrixMatVec {
 // with a different sparsity pattern.
 template <typename Device, typename T>
 struct CSRStructureModifyingFunctor {
-  virtual ~CSRStructureModifyingFunctor() {}
+  virtual ~CSRStructureModifyingFunctor() = default;
 
   virtual absl::Status Initialize() = 0;
 
@@ -235,7 +235,7 @@ struct CSRSparseMatrixSoftmaxGrad {
 template <typename Device, typename T>
 class CSRSparseMatrixMulScalar {
  public:
-  explicit CSRSparseMatrixMulScalar() {}
+  explicit CSRSparseMatrixMulScalar() = default;
 
   absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
                        typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c);
@@ -244,7 +244,7 @@ class CSRSparseMatrixMulScalar {
 template <typename Device, typename T>
 class CSRSparseMatrixBatchMulVec {
  public:
-  explicit CSRSparseMatrixBatchMulVec() {}
+  explicit CSRSparseMatrixBatchMulVec() = default;
 
   absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
                        typename TTypes<T>::ConstFlat b, CSRSparseMatrix* c);

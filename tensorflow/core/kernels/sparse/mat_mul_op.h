@@ -108,7 +108,7 @@ class CSRMatMulOp : public OpKernel {
     }
   }
 
-  ~CSRMatMulOp() override {}
+  ~CSRMatMulOp() override = default;
 
   absl::Status ValidateInputs(const CSRSparseMatrix& sparse_matrix_a,
                               const Tensor& dense_tensor_b, int* rank,
@@ -174,7 +174,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   explicit CSRMatMulCPUOp(OpKernelConstruction* c)
       : CSRMatMulOp<CPUDevice, T>(c) {}
 
-  ~CSRMatMulCPUOp() override {}
+  ~CSRMatMulCPUOp() override = default;
 
   void Compute(OpKernelContext* ctx) final {
     const CSRSparseMatrix* sparse_matrix_a;
@@ -512,7 +512,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
   explicit CSRMatMulGPUOp(OpKernelConstruction* c)
       : CSRMatMulOp<GPUDevice, T>(c) {}
 
-  ~CSRMatMulGPUOp() override {}
+  ~CSRMatMulGPUOp() override = default;
 
   void Compute(OpKernelContext* ctx) final {
     const CSRSparseMatrix* a_matrix;
