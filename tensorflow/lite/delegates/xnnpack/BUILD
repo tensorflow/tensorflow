@@ -1388,6 +1388,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
+        "@XNNPACK",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:runtime_cc",
     ],
