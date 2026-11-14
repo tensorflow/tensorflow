@@ -2379,6 +2379,76 @@ class StringArrayTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(b.numpy(), bytes)
     self.assertEqual(b.numpy(), b'')
 
+  def testUnravelIndex(self):
+    # Scalar index
+    actual = np_array_ops.unravel_index(1621, (6, 7, 8, 9))
+    expected = np.unravel_index(1621, (6, 7, 8, 9))
+    for a, e in zip(actual, expected):
+      self.assertEqual(a.numpy(), e)
+
+    # 1D array of indices
+    actual = np_array_ops.unravel_index([22, 41, 37], (7, 6))
+    expected = np.unravel_index([22, 41, 37], (7, 6))
+    for a, e in zip(actual, expected):
+      self.assertAllEqual(a.numpy(), e)
+
+    # 2D array of indices
+    idx_2d = np.array([[2, 5], [7, 8]])
+    actual = np_array_ops.unravel_index(idx_2d, (3, 3))
+    expected = np.unravel_index(idx_2d, (3, 3))
+    for a, e in zip(actual, expected):
+      self.assertAllEqual(a.numpy(), e)
+
+    # Fortran order
+    actual = np_array_ops.unravel_index([22, 41, 37], (7, 6), order='F')
+    expected = np.unravel_index([22, 41, 37], (7, 6), order='F')
+    for a, e in zip(actual, expected):
+      self.assertAllEqual(a.numpy(), e)
+
+    # Error handling
+    with self.assertRaises(ValueError):
+      np_array_ops.unravel_index(-1, (3, 3))
+    with self.assertRaises(ValueError):
+      np_array_ops.unravel_index(9, (3, 3))
+    with self.assertRaises(ValueError):
+      np_array_ops.unravel_index(0, (3, 3), order='X')
+
+  def testRavelMultiIndex(self):
+    # 1D coordinates
+    coords = ([3, 6, 6], [4, 5, 1])
+    actual = np_array_ops.ravel_multi_index(coords, (7, 6))
+    expected = np.ravel_multi_index(coords, (7, 6))
+    self.assertAllEqual(actual.numpy(), expected)
+
+    # Fortran order
+    actual = np_array_ops.ravel_multi_index(coords, (7, 6), order='F')
+    expected = np.ravel_multi_index(coords, (7, 6), order='F')
+    self.assertAllEqual(actual.numpy(), expected)
+
+    # Wrap and clip modes
+    coords_oob = ([-1, 7], [0, 6])
+    actual_wrap = np_array_ops.ravel_multi_index(
+        coords_oob, (7, 6), mode='wrap'
+    )
+    expected_wrap = np.ravel_multi_index(coords_oob, (7, 6), mode='wrap')
+    self.assertAllEqual(actual_wrap.numpy(), expected_wrap)
+
+    actual_clip = np_array_ops.ravel_multi_index(
+        coords_oob, (7, 6), mode='clip'
+    )
+    expected_clip = np.ravel_multi_index(coords_oob, (7, 6), mode='clip')
+    self.assertAllEqual(actual_clip.numpy(), expected_clip)
+
+    # Error handling
+    with self.assertRaises(ValueError):
+      np_array_ops.ravel_multi_index(coords_oob, (7, 6), mode='raise')
+    with self.assertRaises(ValueError):
+      np_array_ops.ravel_multi_index(([1],), (7, 6))
+    with self.assertRaises(ValueError):
+      np_array_ops.ravel_multi_index(coords, (7, 6), order='Z')
+    with self.assertRaises(ValueError):
+      np_array_ops.ravel_multi_index(coords, (7, 6), mode='bad_mode')
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

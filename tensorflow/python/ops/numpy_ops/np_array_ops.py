@@ -929,6 +929,82 @@ def ravel(a):  # pylint: disable=missing-docstring
   return array_ops.reshape(a, [-1])
 
 
+@tf_export.tf_export('experimental.numpy.unravel_index', v1=[])
+@np_utils.np_doc('unravel_index')
+def unravel_index(indices, shape, order='C'):  # pylint: disable=missing-docstring
+  if order not in ('C', 'F'):
+    raise ValueError(f"order must be 'C' or 'F', got {order}")
+  indices = asarray(indices)
+  total_size = 1
+  for d in shape:
+    total_size *= d
+
+  if math_ops.reduce_any(indices < 0) or math_ops.reduce_any(
+      indices >= total_size
+  ):
+    raise ValueError('index is out of bounds')
+
+  coords = []
+  rem = indices
+  if order == 'C':
+    for d in reversed(shape):
+      coords.append(rem % d)
+      rem = rem // d
+    coords.reverse()
+  else:
+    for d in shape:
+      coords.append(rem % d)
+      rem = rem // d
+
+  return tuple(asarray(c) for c in coords)
+
+
+@tf_export.tf_export('experimental.numpy.ravel_multi_index', v1=[])
+@np_utils.np_doc('ravel_multi_index')
+def ravel_multi_index(  # pylint: disable=missing-docstring
+    multi_index, dims, mode='raise', order='C'
+):
+  if order not in ('C', 'F'):
+    raise ValueError(f"order must be 'C' or 'F', got {order}")
+  if len(multi_index) != len(dims):
+    raise ValueError('multi_index and dims must have the same length')
+  if isinstance(mode, str):
+    modes = [mode] * len(dims)
+  else:
+    modes = list(mode)
+
+  arrays = [asarray(x) for x in multi_index]
+  processed = []
+  for arr, d, m in zip(arrays, dims, modes):
+    if m == 'raise':
+      if math_ops.reduce_any(arr < 0) or math_ops.reduce_any(arr >= d):
+        raise ValueError('invalid entry in coordinates array')
+      processed.append(arr)
+    elif m == 'wrap':
+      processed.append(arr % d)
+    elif m == 'clip':
+      processed.append(
+          clip_ops.clip_by_value(
+              arr, math_ops.cast(0, arr.dtype), math_ops.cast(d - 1, arr.dtype)
+          )
+      )
+    else:
+      raise ValueError(f'unknown mode: {m}')
+
+  if order == 'C':
+    flat = processed[0]
+    for arr, d in zip(processed[1:], dims[1:]):
+      flat = flat * d + arr
+  else:
+    flat = processed[0]
+    mult = 1
+    for arr, d in zip(processed[1:], dims[:-1]):
+      mult *= d
+      flat = flat + arr * mult
+
+  return flat
+
+
 @tf_export.tf_export('experimental.numpy.real', v1=[])
 @np_utils.np_doc('real')
 def real(val):
