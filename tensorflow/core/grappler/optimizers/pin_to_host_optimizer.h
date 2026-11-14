@@ -38,10 +38,10 @@ std::string TryFindHostDevice(const gtl::FlatSet<std::string>& devices,
 // gpu->gpu->gpu may have been better/faster. We should probably fix this.
 class PinToHostOptimizer : public GraphOptimizer {
  public:
-  PinToHostOptimizer() {}
+  PinToHostOptimizer() = default;
   explicit PinToHostOptimizer(RewriterConfig::Toggle opt_level) {}
 
-  ~PinToHostOptimizer() override {}
+  ~PinToHostOptimizer() override = default;
 
   std::string name() const override { return "pin_to_host_optimizer"; };
 

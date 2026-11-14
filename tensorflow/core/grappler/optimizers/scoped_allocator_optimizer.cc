@@ -377,7 +377,7 @@ void ScopedAllocatorOptimizer::ExtendNodeAttr(
 
 class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
  public:
-  ~UnaryElementwiseRewriter() override {}
+  ~UnaryElementwiseRewriter() override = default;
 
   // Return non-OK if any input is an op that does not use the
   // AllocatorAttributes set by executor to allocate its output.
