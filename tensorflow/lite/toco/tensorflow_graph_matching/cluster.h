@@ -39,7 +39,7 @@ namespace toco {
 // subclasses of the base Cluster class.
 class Cluster {
  public:
-  virtual ~Cluster() {}
+  virtual ~Cluster() = default;
 
   virtual void CreateNodes() = 0;
 
@@ -87,7 +87,7 @@ class Cluster {
 // into a cluster using a name-based pattern matching approach.
 class ClusterFactoryInterface {
  public:
-  virtual ~ClusterFactoryInterface() {}
+  virtual ~ClusterFactoryInterface() = default;
 
   // Creates a cluster of nodes using a name-based pattern matching approach. It
   // uses a node as a seed and if its name matches a certain pattern, then it
