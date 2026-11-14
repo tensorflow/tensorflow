@@ -399,6 +399,172 @@ TEST_F(ArithmeticOptimizerTest, ReduceUpsamplingDims) {
   }
 }
 
+namespace {
+
+// Builds the Reshape -> Tile -> Reshape upsampling graph that
+// ReduceUpsamplingDims rewrites. Each of the three Reshape/Tile nodes keeps
+// only its first `*_inputs` inputs, and the result is round-tripped through the
+// wire format so that a node holds exactly that many inputs, as in a decoded
+// GraphDef.
+GraphDef UpsamplingGraphWithInputCounts(int inner_reshape_inputs,
+                                        int tile_inputs,
+                                        int outer_reshape_inputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                                  ops::Placeholder::Shape({1, 22, 48, 64}));
+  Output reshape_a = ops::Reshape(
+      s.WithOpName("reshape_a"), input,
+      ops::Const(s.WithOpName("shape_a"), {1, 22, 1, 48, 1, 64}, {6}));
+  Output tile =
+      ops::Tile(s.WithOpName("tile"), reshape_a,
+                ops::Const(s.WithOpName("multiples"), {1, 1, 2, 1, 2, 1}, {6}));
+  Output reshape_b =
+      ops::Reshape(s.WithOpName("reshape_b"), tile,
+                   ops::Const(s.WithOpName("shape_b"), {1, 44, 96, 64}));
+  Output output = ops::Identity(s.WithOpName("output"), reshape_b);
+
+  GraphDef full;
+  TF_CHECK_OK(s.ToGraphDef(&full));
+  auto keep_first_inputs = [](NodeDef* node, int count) {
+    if (count < node->input_size()) {
+      node->mutable_input()->DeleteSubrange(count, node->input_size() - count);
+    }
+  };
+  for (NodeDef& node : *full.mutable_node()) {
+    if (node.name() == "reshape_a") {
+      keep_first_inputs(&node, inner_reshape_inputs);
+    } else if (node.name() == "tile") {
+      keep_first_inputs(&node, tile_inputs);
+    } else if (node.name() == "reshape_b") {
+      keep_first_inputs(&node, outer_reshape_inputs);
+    }
+  }
+  GraphDef graph;
+  CHECK(graph.ParseFromString(full.SerializeAsString()));
+  return graph;
+}
+
+}  // namespace
+
+class ReduceUpsamplingDimsInputCountTest : public ArithmeticOptimizerTest {
+ protected:
+  GraphDef OptimizeGraphWithInputCounts(int inner_reshape_inputs,
+                                        int tile_inputs,
+                                        int outer_reshape_inputs,
+                                        GraphDef* original) {
+    GrapplerItem item;
+    item.graph = UpsamplingGraphWithInputCounts(
+        inner_reshape_inputs, tile_inputs, outer_reshape_inputs);
+    item.fetch = {"output"};
+    *original = item.graph;
+
+    GraphDef optimized;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyReduceUpsamplingDims(&optimizer);
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &optimized));
+    return optimized;
+  }
+
+  // Optimize returns the nodes topologically sorted, so match them by name.
+  void ExpectSameNodes(const GraphDef& expected, GraphDef* actual) {
+    ASSERT_EQ(expected.node_size(), actual->node_size());
+    NodeMap actual_by_name(actual);
+    for (const NodeDef& want : expected.node()) {
+      const NodeDef* got = actual_by_name.GetNode(want.name());
+      ASSERT_NE(got, nullptr) << want.name();
+      EXPECT_EQ(want.op(), got->op()) << want.name();
+      ASSERT_EQ(want.input_size(), got->input_size()) << want.name();
+      for (int i = 0; i < want.input_size(); ++i) {
+        EXPECT_EQ(want.input(i), got->input(i)) << want.name();
+      }
+    }
+  }
+
+  // The stage must skip a Reshape/Tile node that lacks a regular input and
+  // leave the graph as it was.
+  void ExpectGraphUntouched(int inner_reshape_inputs, int tile_inputs,
+                            int outer_reshape_inputs) {
+    GraphDef original;
+    GraphDef optimized = OptimizeGraphWithInputCounts(
+        inner_reshape_inputs, tile_inputs, outer_reshape_inputs, &original);
+    ExpectSameNodes(original, &optimized);
+  }
+
+  void ExpectControlInputsUntouched(const std::string& target_node,
+                                    bool convert_first_input_too) {
+    GrapplerItem item;
+    item.graph = UpsamplingGraphWithInputCounts(2, 2, 2);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == target_node) {
+        if (convert_first_input_too) {
+          node.set_input(0, absl::StrCat("^", node.input(0)));
+        }
+        node.set_input(1, absl::StrCat("^", node.input(1)));
+      }
+    }
+    item.fetch = {"output"};
+    GraphDef original = item.graph;
+
+    GraphDef optimized;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyReduceUpsamplingDims(&optimizer);
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &optimized));
+    ExpectSameNodes(original, &optimized);
+  }
+};
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, AllInputsPresentControlIsRewritten) {
+  // Control: the same graph builder with every input present is rewritten.
+  GraphDef original;
+  GraphDef optimized = OptimizeGraphWithInputCounts(2, 2, 2, &original);
+  NodeMap node_map(&optimized);
+  EXPECT_NE(node_map.GetNode(
+                "ArithmeticOptimizer/ReduceUpsamplingDims_Reshape_reshape_b"),
+            nullptr);
+  EXPECT_NE(node_map.GetNode(
+                "ArithmeticOptimizer/ReduceUpsamplingDims_Tile_reshape_b"),
+            nullptr);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, OuterReshapeWithoutInputs) {
+  ExpectGraphUntouched(2, 2, 0);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, OuterReshapeWithoutShapeInput) {
+  ExpectGraphUntouched(2, 2, 1);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, TileWithoutInputs) {
+  ExpectGraphUntouched(2, 0, 2);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, TileWithoutMultiplesInput) {
+  ExpectGraphUntouched(2, 1, 2);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, InnerReshapeWithoutInputs) {
+  ExpectGraphUntouched(0, 2, 2);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, InnerReshapeWithoutShapeInput) {
+  ExpectGraphUntouched(1, 2, 2);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, OuterReshapeControlInputsIgnored) {
+  ExpectControlInputsUntouched("reshape_b", /*convert_first_input_too=*/false);
+  ExpectControlInputsUntouched("reshape_b", /*convert_first_input_too=*/true);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, TileControlInputsIgnored) {
+  ExpectControlInputsUntouched("tile", /*convert_first_input_too=*/false);
+  ExpectControlInputsUntouched("tile", /*convert_first_input_too=*/true);
+}
+
+TEST_F(ReduceUpsamplingDimsInputCountTest, InnerReshapeControlInputsIgnored) {
+  ExpectControlInputsUntouched("reshape_a", /*convert_first_input_too=*/false);
+  ExpectControlInputsUntouched("reshape_a", /*convert_first_input_too=*/true);
+}
+
 TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
