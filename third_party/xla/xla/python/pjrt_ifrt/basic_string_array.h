@@ -62,12 +62,12 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   static constexpr int kBuffersInlineSize = 1;
   using Buffers = absl::InlinedVector<Buffer, kBuffersInlineSize>;
 
-  // Called when this object is done with the string buffer provided at the
+  // Released when this object is done with the string buffer provided at
   // construction time.
-  using OnDoneWithBuffer = std::function<void()>;
+  using OnDoneWithBuffer = std::shared_ptr<const void>;
 
   // General array construction. The `buffers` and their elements
-  // (absl::Cords) must live until the `on_done_with_buffer` is called.
+  // (absl::Cords) must live until `on_done_with_buffer` is released.
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(

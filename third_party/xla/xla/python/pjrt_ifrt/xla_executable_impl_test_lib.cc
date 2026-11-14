@@ -420,7 +420,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
                       /*byte_strides=*/std::nullopt, sharding,
                       /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/{}));
+                      /*host_buffer_hold=*/{}));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
@@ -481,7 +481,7 @@ TEST_P(LoadedExecutableImplTest,
             data.data(), dtype, shape,
             /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/{}));
+            /*host_buffer_hold=*/{}));
     input_values.push_back(array);
   }
 
@@ -560,7 +560,7 @@ TEST_P(LoadedExecutableImplTest,
             data.data(), dtype, shape,
             /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/{}));
+            /*host_buffer_hold=*/{}));
     input_arrays.push_back(array);
   }
 
@@ -652,7 +652,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
                       /*byte_strides=*/std::nullopt, std::move(sharding),
                       /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/{}));
+                      /*host_buffer_hold=*/{}));
 
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList({device}));
@@ -707,7 +707,7 @@ TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
   TF_ASSERT_OK_AND_ASSIGN(
       ArrayRef pjrt_incompatible_array,
       BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
-                               /*on_done_with_buffer=*/[]() {}));
+                               /*on_done_with_buffer=*/nullptr));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
@@ -749,7 +749,7 @@ TEST_P(LoadedExecutableImplTest, CancelExecution) {
                       /*byte_strides=*/std::nullopt, sharding,
                       /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/{}));
+                      /*host_buffer_hold=*/{}));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
@@ -805,7 +805,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
                       /*byte_strides=*/std::nullopt, sharding,
                       /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/{}));
+                      /*host_buffer_hold=*/{}));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = false;
@@ -896,7 +896,7 @@ module @add_sub {
               /*byte_strides=*/std::nullopt, sharding,
               /*layout=*/nullptr,
               Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-              /*on_done_with_host_buffer=*/{}));
+              /*host_buffer_hold=*/{}));
     }
   }
 
@@ -996,7 +996,7 @@ module @add {
           data.data(), dtype, shape, /*byte_strides=*/std::nullopt, sharding,
           /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/{}));
+          /*host_buffer_hold=*/{}));
 
   ASSERT_OK_AND_ASSIGN(std::vector<ArrayRef> shards,
                        array->DisassembleIntoSingleDeviceArrays(
@@ -1287,7 +1287,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
           /*byte_strides=*/std::nullopt, shard_sharding0,
           /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/{}));
+          /*host_buffer_hold=*/{}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto array_shard1,
       client->MakeArrayFromHostBuffer(
@@ -1295,7 +1295,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
           /*byte_strides=*/std::nullopt, shard_sharding1,
           /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/{}));
+          /*host_buffer_hold=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
   TF_ASSERT_OK_AND_ASSIGN(
       input_arrays.emplace_back(),
@@ -1316,7 +1316,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
           /*byte_strides=*/std::nullopt, input2_sharding,
           /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;

@@ -87,7 +87,7 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(
         /*dtype=*/dtype,
         /*shape=*/shard_shape,
         /*byte_strides=*/std::nullopt,
-        /*on_done=*/[sliced]() {},
+        /*on_done=*/std::move(sliced),
     };
     spec.buffers.push_back({{i}, std::move(host_buffer)});
   }

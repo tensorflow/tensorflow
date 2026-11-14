@@ -140,14 +140,15 @@ bool BasicStringArray::IsDeleted() const {
 }
 
 void BasicStringArray::DeleteInternal() {
-  absl::MutexLock lock(mu_);
-  if (is_deleted_) {
-    return;
+  OnDoneWithBuffer on_done_with_buffer;
+  {
+    absl::MutexLock lock(mu_);
+    if (is_deleted_) {
+      return;
+    }
+    on_done_with_buffer = std::move(on_done_with_buffer_);
+    is_deleted_ = true;
   }
-  if (on_done_with_buffer_) {
-    std::move(on_done_with_buffer_)();
-  }
-  is_deleted_ = true;
 }
 
 absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
@@ -224,8 +225,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
 
     auto current_shard_strings = std::make_shared<PerShardStringStore>();
     per_shard_strings.push_back(current_shard_strings);
-    on_done_with_buffer_callbacks.push_back(
-        [data = std::move(current_shard_strings)]() {});
+    on_done_with_buffer_callbacks.push_back(std::move(current_shard_strings));
   }
 
   // When the buffers become ready, copy each of the per-shard data into the
@@ -333,7 +333,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
   };
 
   auto string_store = std::make_shared<StringStore>();
-  auto on_done_with_buffer = [string_store]() {};
+  OnDoneWithBuffer on_done_with_buffer = string_store;
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),
@@ -382,7 +382,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
   };
 
   auto string_store = std::make_shared<StringStore>();
-  auto on_done_with_buffer = [string_store]() {};
+  OnDoneWithBuffer on_done_with_buffer = string_store;
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),

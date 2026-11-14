@@ -200,7 +200,7 @@ class CompileOnlyIfRtClient final
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, xla::ifrt::LayoutRef layout,
       HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override {
+      std::shared_ptr<const void> host_buffer_hold) override {
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
@@ -210,6 +210,11 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics) override {
+    for (MakeArraysFromHostBufferShardsSpec& spec : specs) {
+      for (auto& [shard_indices, host_buffer] : spec.buffers) {
+        host_buffer.on_done.reset();
+      }
+    }
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");
