@@ -393,7 +393,7 @@ class AsyncDumpWriter {
   }
 
   // Cheap no-op when no writer was ever created.
-  static void DrainIfCreated() {
+  static void DrainIfInitialized() {
     if (AsyncDumpWriter* writer = created_.load(std::memory_order_acquire)) {
       writer->Drain();
     }
@@ -734,7 +734,7 @@ static std::vector<std::string> DumpHloModuleImpl(
   }
   if (!defer_html_writes) {
     // Named dump points are barriers for earlier deferred writes.
-    AsyncDumpWriter::DrainIfCreated();
+    AsyncDumpWriter::DrainIfInitialized();
   }
   return dumped_file_paths;
 }
