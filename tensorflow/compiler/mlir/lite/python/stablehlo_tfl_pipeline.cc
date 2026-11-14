@@ -69,8 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -217,20 +215,18 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createStablehloFuseConvolutionPass());
 
-  // Build StableHLO composite from PyTorch mark_tensor ops before MHLO bridge
+  // Build StableHLO composite from PyTorch mark_tensor ops.
   pass_manager.addPass(mlir::odml::createBuildStableHLOCompositePass());
   pass_manager.addPass(mlir::createInlinerPass());
 
-  // StableHLO -> MHLO bridge
-  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-
-  // Composite lowering when IR is in MHLO
+  // Composite lowering.
   pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
 
-  // MHLO algebraic optimizations
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeEinsumToDotGeneralPass());
+  // StableHLO algebraic optimizations. (No einsum -> dot_general legalization:
+  // JAX and PyTorch lower einsum to dot_general themselves; stablehlo.einsum is
+  // only produced from TF, which goes through
+  // AddCoreStablehloOptimizationPasses.)
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createOptimizePass());
 
@@ -244,10 +240,6 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   // HLO -> TFLite legalization
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateUniformQuantizedStableHloToTflPass());
-  // TODO(markoristic): Temporary. PrepareHlo and the HLO->TFL legalization
-  // consume StableHLO while the preceding passes still produce MHLO. Remove
-  // once the whole pipeline runs on StableHLO.
-  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   // Fold and simplify StableHLO into the canonical form the legalization
   // expects (MHLO did this through its folders and canonicalizations).
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -259,8 +251,6 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
   pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
 
-  // Legalize remaining MHLO ops to StableHLO
-  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::createLegalizeCompositeToCustomOpPass());
 }
@@ -478,7 +468,7 @@ absl::Status ConvertStableHloToTFLite(
   mlir::MLIRContext* context = module->getContext();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
-  registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect,
+  registry.insert<mlir::TFL::TensorFlowLiteDialect,
                   mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
                   mlir::quant::QuantDialect,
                   mlir::quantfork::QuantizationForkDialect>();

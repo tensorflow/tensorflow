@@ -208,15 +208,18 @@ cc_library(
     deps = [
         ":drop_savedmodel_semantics",
         ":drop_shape_assertions",
+        ":legalize_einsum_to_dot_general",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
+        ":legalize_torch_index_select_to_gather",
         ":optimize",
+        ":prepare_hlo",
         ":smuggle_disallowed_ops",
+        ":stablehlo_fold_broadcast",
         ":stablehlo_fuse_convolution_pass",
         ":stablehlo_unfuse_batch_norm_pass",
         ":unfold_splat_constant_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
-        "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
         "//tensorflow/compiler/mlir/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/stablehlo:tf_stablehlo",
@@ -226,7 +229,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
-        "@xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
 
@@ -392,6 +394,54 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "legalize_torch_index_select_to_gather",
+    srcs = [
+        "transforms/legalize_torch_index_select_to_gather.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "stablehlo_fold_broadcast",
+    srcs = [
+        "transforms/stablehlo_fold_broadcast.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -573,7 +623,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -839,8 +889,9 @@ td_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
-        "@xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -855,7 +906,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -939,7 +990,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = True,
 )
@@ -976,8 +1027,9 @@ gentbl_cc_library(
         ":composite_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
-        "@xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -1044,10 +1096,12 @@ tf_cc_binary(
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
+        ":legalize_torch_index_select_to_gather",
         ":legalize_vhlo_quant_custom_calls",
         ":optimize",
         ":passes_inc_gen",
         ":prepare_hlo",
+        ":stablehlo_fold_broadcast",
         ":stablehlo_fuse_convolution_pass",
         ":stablehlo_unfuse_batch_norm_pass",
         ":tf_legalize_hlo",

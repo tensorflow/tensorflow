@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -176,6 +177,16 @@ int main(int argc, char **argv) {
     } else {
       module = mlir::OwningOpRef<mlir::ModuleOp>(
           mlir::parseSourceString<mlir::ModuleOp>(content, context.get()));
+    }
+    // The HLO importers produce MHLO, but the converter pipeline expects
+    // StableHLO. Legalize any MHLO to StableHLO (a no-op for StableHLO input).
+    if (module.ok() && *module) {
+      mlir::PassManager pm(context.get());
+      pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+      if (mlir::failed(pm.run(module->get()))) {
+        llvm::errs() << "Failed to legalize MHLO to StableHLO.\n";
+        return kTrFailure;
+      }
     }
   } else {
     // Graphdef import path.

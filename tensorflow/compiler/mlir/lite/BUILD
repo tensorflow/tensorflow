@@ -2238,6 +2238,7 @@ tf_cc_binary(
         "@stablehlo//:stablehlo_ops",
         "@xla//xla/hlo/translate/hlo_to_mhlo:translate",
         "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
 
@@ -2290,7 +2291,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_passes",
-        "@xla//xla/mlir_hlo:mhlo_passes",
         "@xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )

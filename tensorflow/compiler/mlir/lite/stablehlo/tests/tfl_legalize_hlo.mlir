@@ -499,6 +499,34 @@ func.func @argmax_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
 
 // -----
 
+// Integer argmax as emitted by JAX: the reduction keeps the redundant
+// `or(GT, NE(lhs, lhs))` NaN check, which is always false for integers.
+// CHECK-LABEL: argmax_int_unfolded_nan_check
+func.func @argmax_int_unfolded_nan_check(%arg0: tensor<8xi32>) -> tensor<i64> {
+  %0 = stablehlo.constant dense<-2147483648> : tensor<i32>
+  %1 = stablehlo.constant dense<0> : tensor<i64>
+  %2 = stablehlo.iota dim = 0 : tensor<8xi64>
+  %3:2 = stablehlo.reduce(%arg0 init: %0), (%2 init: %1) across dimensions = [0] : (tensor<8xi32>, tensor<8xi64>, tensor<i32>, tensor<i64>) -> (tensor<i32>, tensor<i64>)
+    reducer(%arg1: tensor<i32>, %arg3: tensor<i32>) (%arg2: tensor<i64>, %arg4: tensor<i64>)  {
+    %4 = stablehlo.compare  GT, %arg1, %arg3,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %5 = stablehlo.compare  NE, %arg1, %arg1,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %6 = stablehlo.or %4, %5 : tensor<i1>
+    %7 = stablehlo.select %6, %arg1, %arg3 : tensor<i1>, tensor<i32>
+    %8 = stablehlo.compare  EQ, %arg1, %arg3,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %9 = stablehlo.compare  LT, %arg2, %arg4,  SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    %10 = stablehlo.and %8, %9 : tensor<i1>
+    %11 = stablehlo.or %6, %10 : tensor<i1>
+    %12 = stablehlo.select %11, %arg2, %arg4 : tensor<i1>, tensor<i64>
+    stablehlo.return %7, %12 : tensor<i32>, tensor<i64>
+  }
+  return %3#1 : tensor<i64>
+}
+
+// CHECK-NOT: stablehlo.reduce
+// CHECK: "tfl.arg_max"(%arg0, %{{.*}}) : (tensor<8xi32>, tensor<1xi32>) -> tensor<i64>
+
+// -----
+
 // CHECK-LABEL: argmin
 func.func @argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32xi32>) {
   %0 = stablehlo.constant dense<0x7F800000> : tensor<f32>

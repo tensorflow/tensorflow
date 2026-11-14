@@ -110,8 +110,8 @@ def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
 }
 
 def CompositeLoweringPass : Pass<"composite-lowering", "ModuleOp"> {
-  let summary = "Lowers mhlo composites directly to tflite ops (when possible).";
-  let dependentDialects = ["mlir::mhlo::MhloDialect", "TFL::TensorFlowLiteDialect"];
+  let summary = "Lowers stablehlo composites directly to tflite ops (when possible).";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TFL::TensorFlowLiteDialect"];
   let constructor = "mlir::odml::CreateCompositeLoweringPass()";
 }
 
@@ -215,6 +215,34 @@ def LegalizeStablehloEinsumToDotGeneralPass
     diagonals) and einsums using ellipsis are left untouched.
     `stablehlo.unary_einsum` is not handled; run
     `-stablehlo-legalize-deprecated-ops` first to upgrade it to a binary einsum.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def LegalizeStablehloTorchIndexSelectToGatherPass
+    : Pass<"stablehlo-legalize-torch-index-select-to-gather", "mlir::func::FuncOp"> {
+  let summary = "Legalizes stablehlo.torch_index_select ops to stablehlo.gather ops.";
+  let constructor = "mlir::odml::CreateLegalizeStablehloTorchIndexSelectToGatherPass()";
+  let description = [{
+    StableHLO port of MHLO's `-mhlo-legalize-torch-index-select-to-gather`
+    pass. Rewrites `stablehlo.torch_index_select` (e.g. from the TF->StableHLO
+    legalization of `tf.GatherV2`) into an equivalent `stablehlo.gather`. Ops
+    with dynamic shapes, non-integer indices, or `dim < batch_dims` are left
+    untouched.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def StablehloFoldBroadcastPass
+    : Pass<"stablehlo-fold-broadcast", "mlir::func::FuncOp"> {
+  let summary = "Constant folds broadcast_in_dim ops feeding multiply ops.";
+  let constructor = "mlir::odml::CreateStablehloFoldBroadcastPass()";
+  let description = [{
+    StableHLO port of `-constant-fold-broadcast-pass`
+    (tensorflow/compiler/mlir/stablehlo/transforms/fold_broadcast_pass.cc),
+    which only handles MHLO. Folds `stablehlo.broadcast_in_dim` of a constant
+    into a constant when it feeds a `stablehlo.multiply` whose other operand is
+    a constant, and constant folds such multiplies regardless of their size.
   }];
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }

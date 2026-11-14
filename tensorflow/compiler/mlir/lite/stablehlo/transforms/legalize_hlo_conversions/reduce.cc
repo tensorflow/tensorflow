@@ -121,7 +121,9 @@ LogicalResult MatchReduceToArgMinMaxType2(stablehlo::ReduceOp reduce_op,
 // %7 = or(%2, %6)
 // %8 = select(%7, %lhs_index, %rhs_index)
 // return %3, %8
-// Also note that %1 may be folded if %lhs_value is of integer types.
+// For integer %lhs_value, %1 is always false, so %0 may be used directly in
+// place of %2. Both forms are accepted: MHLO used to fold %1/%2 away, while
+// StableHLO (e.g. as emitted by JAX) keeps them.
 LogicalResult MatchReduceToArgMinMaxType1(stablehlo::ReduceOp reduce_op,
                                           bool is_float, bool is_argmax) {
   Block& body = reduce_op.getBody().front();
@@ -139,37 +141,29 @@ LogicalResult MatchReduceToArgMinMaxType1(stablehlo::ReduceOp reduce_op,
 
   auto compare_direction = is_argmax ? stablehlo::ComparisonDirection::GT
                                      : stablehlo::ComparisonDirection::LT;
-  if (is_float) {
-    stablehlo::OrOp value_or = llvm::dyn_cast_or_null<stablehlo::OrOp>(
-        value_select.getOperand(0).getDefiningOp());
-    if (!value_or) return failure();
-
-    stablehlo::CompareOp value_gt =
-        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
-            value_or.getLhs().getDefiningOp());
-    if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
-        value_gt.getLhs() != body.getArgument(0) ||
-        value_gt.getRhs() != body.getArgument(2))
-      return failure();
-
-    stablehlo::CompareOp value_ne =
-        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
-            value_or.getRhs().getDefiningOp());
+  Value value_pred = value_select.getOperand(0);
+  // Look through `or(%0, compare{NE}(%lhs, %lhs))`, which is required for
+  // floats and optional (redundant) for integers.
+  if (auto value_or =
+          llvm::dyn_cast_or_null<stablehlo::OrOp>(value_pred.getDefiningOp())) {
+    auto value_ne = llvm::dyn_cast_or_null<stablehlo::CompareOp>(
+        value_or.getRhs().getDefiningOp());
     if (!value_ne ||
         value_ne.getComparisonDirection() !=
             stablehlo::ComparisonDirection::NE ||
         value_ne.getLhs() != body.getArgument(0) ||
         value_ne.getRhs() != body.getArgument(0))
       return failure();
-  } else {
-    stablehlo::CompareOp value_gt =
-        llvm::dyn_cast_or_null<stablehlo::CompareOp>(
-            value_select.getOperand(0).getDefiningOp());
-    if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
-        value_gt.getLhs() != body.getArgument(0) ||
-        value_gt.getRhs() != body.getArgument(2))
-      return failure();
+    value_pred = value_or.getLhs();
+  } else if (is_float) {
+    return failure();
   }
+  stablehlo::CompareOp value_gt =
+      llvm::dyn_cast_or_null<stablehlo::CompareOp>(value_pred.getDefiningOp());
+  if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
+      value_gt.getLhs() != body.getArgument(0) ||
+      value_gt.getRhs() != body.getArgument(2))
+    return failure();
 
   stablehlo::SelectOp index_select =
       llvm::dyn_cast_or_null<stablehlo::SelectOp>(

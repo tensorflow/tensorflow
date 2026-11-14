@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -59,13 +61,85 @@ class SimplifyHloPass : public impl::SimplifyHloPassBase<SimplifyHloPass> {
   void runOnOperation() override;
 };
 
+// transpose(broadcast_in_dim(x)) -> broadcast_in_dim(x) with permuted
+// broadcast dimensions, like MHLO's `EliminateBroadcastInDimTranspose`
+// canonicalization. StableHLO instead rewrites such transposes into reshapes
+// when they only move unit dimensions (`TransposeIsReshape`), which then block
+// merging the broadcast with following broadcasts and leave a
+// `tfl.broadcast_to` that can't be fused into its users. Given a higher benefit
+// so that it is tried before `TransposeIsReshape`.
+//
+// The TFL legalization of `broadcast_in_dim` requires increasing broadcast
+// dimensions, so this only applies when the result can be expressed that way:
+// the transpose must keep the relative order of the operand's non-unit
+// dimensions. Unit dimensions that it moves are reordered with a reshape of
+// the operand.
+struct TransposeOfBroadcastInDim
+    : public OpRewritePattern<stablehlo::TransposeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto broadcast =
+        op.getOperand().getDefiningOp<stablehlo::BroadcastInDimOp>();
+    if (!broadcast) return failure();
+    Value operand = broadcast.getOperand();
+    auto operand_type = llvm::cast<RankedTensorType>(operand.getType());
+    ArrayRef<int64_t> operand_shape = operand_type.getShape();
+    ArrayRef<int64_t> permutation = op.getPermutation();
+
+    // Broadcast dimensions after the transpose, per operand dimension.
+    SmallVector<int64_t> broadcast_dims;
+    for (int64_t dim : broadcast.getBroadcastDimensions()) {
+      broadcast_dims.push_back(llvm::find(permutation, dim) -
+                               permutation.begin());
+    }
+
+    // Operand dimensions ordered by their broadcast dimension.
+    SmallVector<int64_t> order =
+        llvm::to_vector(llvm::seq<int64_t>(0, operand_type.getRank()));
+    llvm::sort(order, [&](int64_t a, int64_t b) {
+      return broadcast_dims[a] < broadcast_dims[b];
+    });
+
+    int64_t last_non_unit_dim = -1;
+    SmallVector<int64_t> sorted_shape;
+    SmallVector<int64_t> sorted_broadcast_dims;
+    for (int64_t dim : order) {
+      if (operand_shape[dim] != 1) {
+        if (dim < last_non_unit_dim) {
+          return rewriter.notifyMatchFailure(
+              op, "transpose reorders non-unit dimensions of the operand");
+        }
+        last_non_unit_dim = dim;
+      }
+      sorted_shape.push_back(operand_shape[dim]);
+      sorted_broadcast_dims.push_back(broadcast_dims[dim]);
+    }
+
+    if (ArrayRef<int64_t>(sorted_shape) != operand_shape) {
+      if (!operand_type.hasStaticShape()) {
+        return rewriter.notifyMatchFailure(
+            op, "can't reorder unit dimensions of a dynamic operand");
+      }
+      operand = stablehlo::ReshapeOp::create(
+          rewriter, op.getLoc(), operand_type.clone(sorted_shape), operand);
+    }
+    rewriter.replaceOpWithNewOp<stablehlo::BroadcastInDimOp>(
+        op, op.getType(), operand, sorted_broadcast_dims);
+    return success();
+  }
+};
+
 void SimplifyHloPass::runOnOperation() {
   MLIRContext* context = &getContext();
   RewritePatternSet patterns(context);
 
-  // Folder float rewrites that may change numerics are disabled.
+  // Fold float constants too, as MHLO's folders did (e.g. the `sign`,
+  // `compare` and `select` on constants in JAX's floor_divide lowering, which
+  // the floor_div legalization patterns expect to be folded).
   stablehlo::StablehloAggressiveFolderPassOptions folder_options;
-  folder_options.optimizeFloat = false;
+  folder_options.optimizeFloat = true;
   stablehlo::populateStablehloAggressiveFolderPatterns(context, &patterns,
                                                        folder_options);
 
@@ -88,6 +162,7 @@ void SimplifyHloPass::runOnOperation() {
   }
 
   stablehlo::populateStablehloCanonicalizationPatterns(context, &patterns);
+  patterns.add<TransposeOfBroadcastInDim>(context, /*benefit=*/10);
 
   if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     signalPassFailure();

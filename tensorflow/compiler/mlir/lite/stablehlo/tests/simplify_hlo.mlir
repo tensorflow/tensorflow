@@ -30,18 +30,114 @@ func.func @fold_integer_add() -> tensor<2xi32> {
 
 // -----
 
-// Float arithmetic is not rewritten (`optimizeFloat` is disabled).
+// Float constant arithmetic is folded too, as MHLO's folders did.
 
-// CHECK-LABEL: no_fold_float_add
-func.func @no_fold_float_add() -> tensor<2xf32> {
+// CHECK-LABEL: fold_float_add
+func.func @fold_float_add() -> tensor<2xf32> {
   %0 = stablehlo.constant dense<[1.0, 2.0]> : tensor<2xf32>
   %1 = stablehlo.constant dense<[3.0, 4.0]> : tensor<2xf32>
   %2 = stablehlo.add %0, %1 : tensor<2xf32>
   func.return %2 : tensor<2xf32>
 }
 
-// CHECK: %[[ADD:.*]] = stablehlo.add
-// CHECK: return %[[ADD]]
+// CHECK:     %[[CST:.*]] = stablehlo.constant dense<[4.000000e+00, 6.000000e+00]> : tensor<2xf32>
+// CHECK-NOT: stablehlo.add
+// CHECK:     return %[[CST]]
+
+// -----
+
+// JAX's floor_divide by a constant: the `x2 == 0` select, `sign(x2)` and the
+// broadcasts of the constants are folded, leaving the form the floor_div
+// legalization patterns match.
+
+// CHECK-LABEL: fold_floor_div_by_constant
+func.func @fold_floor_div_by_constant(%arg0: tensor<12xf32>) -> tensor<12xf32> {
+  %c2 = stablehlo.constant dense<2.000000e+00> : tensor<f32>
+  %two = stablehlo.broadcast_in_dim %c2, dims = [] : (tensor<f32>) -> tensor<12xf32>
+  %c0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %zero = stablehlo.broadcast_in_dim %c0, dims = [] : (tensor<f32>) -> tensor<12xf32>
+  %c1 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+  %one = stablehlo.broadcast_in_dim %c1, dims = [] : (tensor<f32>) -> tensor<12xf32>
+  %mod = stablehlo.remainder %arg0, %two : tensor<12xf32>
+  %is_zero = stablehlo.compare EQ, %two, %zero, FLOAT : (tensor<12xf32>, tensor<12xf32>) -> tensor<12xi1>
+  %sub = stablehlo.subtract %arg0, %mod : tensor<12xf32>
+  %x1 = stablehlo.select %is_zero, %arg0, %sub : tensor<12xi1>, tensor<12xf32>
+  %div = stablehlo.divide %x1, %two : tensor<12xf32>
+  %mod_ne_0 = stablehlo.compare NE, %mod, %zero, FLOAT : (tensor<12xf32>, tensor<12xf32>) -> tensor<12xi1>
+  %sign_two = stablehlo.sign %two : tensor<12xf32>
+  %sign_mod = stablehlo.sign %mod : tensor<12xf32>
+  %signs_ne = stablehlo.compare NE, %sign_two, %sign_mod, FLOAT : (tensor<12xf32>, tensor<12xf32>) -> tensor<12xi1>
+  %ind = stablehlo.and %mod_ne_0, %signs_ne : tensor<12xi1>
+  %div_m1 = stablehlo.subtract %div, %one : tensor<12xf32>
+  %sel = stablehlo.select %ind, %div_m1, %div : tensor<12xi1>, tensor<12xf32>
+  %r = stablehlo.round_nearest_afz %sel : tensor<12xf32>
+  func.return %r : tensor<12xf32>
+}
+
+// CHECK-DAG: %[[ONE:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<12xf32>
+// CHECK-DAG: %[[ZERO:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<12xf32>
+// CHECK-DAG: %[[TWO:.*]] = stablehlo.constant dense<2.000000e+00> : tensor<12xf32>
+// CHECK:     %[[MOD:.*]] = stablehlo.remainder %arg0, %[[TWO]]
+// CHECK:     %[[SUB:.*]] = stablehlo.subtract %arg0, %[[MOD]]
+// CHECK:     %[[DIV:.*]] = stablehlo.divide %[[SUB]], %[[TWO]]
+// CHECK:     stablehlo.compare NE, %[[MOD]], %[[ZERO]]
+// CHECK:     %[[SIGN_MOD:.*]] = stablehlo.sign %[[MOD]]
+// CHECK:     stablehlo.compare NE, %[[ONE]], %[[SIGN_MOD]]
+// CHECK-NOT: stablehlo.broadcast_in_dim
+// CHECK:     stablehlo.round_nearest_afz
+
+// -----
+
+// transpose(broadcast_in_dim(x)) is merged into a single broadcast_in_dim
+// (instead of becoming a reshape), so it can merge with a following
+// broadcast_in_dim.
+
+// CHECK-LABEL: merge_transpose_of_broadcast_in_dim
+func.func @merge_transpose_of_broadcast_in_dim(%arg0: tensor<1x1x1x36xi1>) -> tensor<1x2x36x36xi1> {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1, 2, 3] : (tensor<1x1x1x36xi1>) -> tensor<1x36x1x36xi1>
+  %1 = stablehlo.transpose %0, dims = [0, 2, 1, 3] : (tensor<1x36x1x36xi1>) -> tensor<1x1x36x36xi1>
+  %2 = stablehlo.broadcast_in_dim %1, dims = [0, 1, 2, 3] : (tensor<1x1x36x36xi1>) -> tensor<1x2x36x36xi1>
+  func.return %2 : tensor<1x2x36x36xi1>
+}
+
+// CHECK:     %[[BCAST:.*]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1, 2, 3] : (tensor<1x1x1x36xi1>) -> tensor<1x2x36x36xi1>
+// CHECK-NOT: stablehlo.transpose
+// CHECK-NOT: stablehlo.reshape
+// CHECK:     return %[[BCAST]]
+
+// -----
+
+// When the transpose moves a unit dimension of the broadcast operand past a
+// non-unit one, the operand is reshaped so that the merged broadcast_in_dim
+// keeps increasing broadcast dimensions (which the TFL legalization requires).
+
+// CHECK-LABEL: merge_transpose_of_broadcast_in_dim_with_reshape
+func.func @merge_transpose_of_broadcast_in_dim_with_reshape(%arg0: tensor<1x5xf32>) -> tensor<5x3xf32> {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<1x5xf32>) -> tensor<3x5xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] : (tensor<3x5xf32>) -> tensor<5x3xf32>
+  func.return %1 : tensor<5x3xf32>
+}
+
+// CHECK:     %[[RESHAPE:.*]] = stablehlo.reshape %arg0 : (tensor<1x5xf32>) -> tensor<5x1xf32>
+// CHECK:     %[[BCAST:.*]] = stablehlo.broadcast_in_dim %[[RESHAPE]], dims = [0, 1] : (tensor<5x1xf32>) -> tensor<5x3xf32>
+// CHECK-NOT: stablehlo.transpose
+// CHECK:     return %[[BCAST]]
+
+// -----
+
+// A transpose that reorders non-unit dimensions of the broadcast operand is
+// not merged: the result would need non-increasing broadcast dimensions.
+
+// CHECK-LABEL: no_merge_transpose_of_broadcast_in_dim_reordering_non_unit_dims
+func.func @no_merge_transpose_of_broadcast_in_dim_reordering_non_unit_dims(%arg0: tensor<8x16xf32>) -> tensor<2x16x8xf32> {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1, 2] : (tensor<8x16xf32>) -> tensor<2x8x16xf32>
+  %1 = stablehlo.transpose %0, dims = [0, 2, 1] : (tensor<2x8x16xf32>) -> tensor<2x16x8xf32>
+  func.return %1 : tensor<2x16x8xf32>
+}
+
+// CHECK: %[[BCAST:.*]] = stablehlo.broadcast_in_dim %arg0, dims = [1, 2] : (tensor<8x16xf32>) -> tensor<2x8x16xf32>
+// CHECK: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[BCAST]], dims = [0, 2, 1]
+// CHECK: return %[[TRANSPOSE]]
 
 // -----
 

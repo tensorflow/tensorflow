@@ -80,6 +80,13 @@ CreateLegalizeVhloQuantCustomCallsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateLegalizeStablehloEinsumToDotGeneralPass();
 
+// Legalizes stablehlo.torch_index_select ops to stablehlo.gather.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLegalizeStablehloTorchIndexSelectToGatherPass();
+
+// Constant folds stablehlo.broadcast_in_dim ops feeding stablehlo.multiply ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateStablehloFoldBroadcastPass();
+
 #define GEN_PASS_DECL
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 

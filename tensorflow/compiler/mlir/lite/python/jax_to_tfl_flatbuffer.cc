@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
@@ -40,8 +41,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/stablehlo.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -127,7 +130,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
   if (model_flags.hlo_file_type() == tflite::ModelFlags::HLO_TEXT) {
     TF_ASSIGN_OR_RETURN(auto hlo_module,
                         xla::ParseAndReturnUnverifiedModule(content));
-    TF_ASSIGN_OR_RETURN(auto module,
+    TF_ASSIGN_OR_RETURN(module,
                         xla::ConvertHloToStablehlo(*context, hlo_module.get()));
   } else if (model_flags.hlo_file_type() == tflite::ModelFlags::HLO_PROTO) {
     TF_ASSIGN_OR_RETURN(xla::HloProto hlo_proto, LoadHloProto(content));
@@ -135,6 +138,22 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
                                     *context, hlo_proto.mutable_hlo_module()));
   } else {
     return absl::InvalidArgumentError("Unknown hlo format type");
+  }
+
+  // ConvertHloToStablehlo keeps XLA-only ops without a StableHLO equivalent
+  // (e.g. mhlo.topk) as MHLO. Legalize them to their StableHLO encodings
+  // (custom calls that chlo-recompose-ops turns back into CHLO ops) so that the
+  // converter pipeline, which no longer handles MHLO, only sees StableHLO.
+  // Scoped so that the pass manager and the diagnostic handler are destroyed
+  // before `context` is handed off (and freed) below.
+  {
+    mlir::PassManager pm(context.get());
+    pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+    mlir::StatusScopedDiagnosticHandler diag_handler(context.get());
+    if (mlir::failed(pm.run(*module))) {
+      return diag_handler.Combine(
+          absl::InternalError("Failed to legalize MHLO to StableHLO."));
+    }
   }
 
   // Set the input names.
