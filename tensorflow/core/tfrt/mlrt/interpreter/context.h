@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
@@ -268,7 +270,38 @@ class ExecutionContext {
         loaded_executable_(loaded_executable) {}
 
   void set_exit_handler(absl::AnyInvocable<void() &&> exit_handler) {
+    absl::MutexLock lock(deferred_ops_mu_);
     exit_handler_ = std::move(exit_handler);
+    finish_when_deferred_ops_done_ = false;
+  }
+
+  // Increments the count of in-flight asynchronous operations (such as
+  // AsyncOpKernels or BatchTasks) that reference this ExecutionContext or its
+  // request-scoped UserContexts. If execution finishes or unwinds on error
+  // while `num_deferred_ops_ > 0`, `exit_handler_` is deferred until the last
+  // in-flight operation calls DecNumDeferredOps().
+  void IncNumDeferredOps() {
+    absl::MutexLock lock(deferred_ops_mu_);
+    ++num_deferred_ops_;
+  }
+
+  // Decrements the count of in-flight asynchronous operations. If execution
+  // has already finished or unwound on error and this was the last in-flight
+  // operation, invokes `exit_handler_`.
+  void DecNumDeferredOps() {
+    absl::AnyInvocable<void() &&> exit_handler;
+    {
+      absl::MutexLock lock(deferred_ops_mu_);
+      DCHECK_GT(num_deferred_ops_, 0);
+      --num_deferred_ops_;
+      if (num_deferred_ops_ == 0 && finish_when_deferred_ops_done_) {
+        finish_when_deferred_ops_done_ = false;
+        exit_handler = std::move(exit_handler_);
+      }
+    }
+    if (exit_handler) {
+      std::move(exit_handler)();
+    }
   }
 
   tfrt::ConcurrentWorkQueue* work_queue() const { return work_queue_; }
@@ -496,6 +529,22 @@ class ExecutionContext {
   State state() const { return state_; }
 
  private:
+  void FinishExecution() {
+    absl::AnyInvocable<void() &&> exit_handler;
+    {
+      absl::MutexLock lock(deferred_ops_mu_);
+      if (num_deferred_ops_ > 0) {
+        finish_when_deferred_ops_done_ = true;
+        return;
+      }
+      exit_handler = std::move(exit_handler_);
+    }
+    // Context may no longer be valid after exit_handler is called.
+    if (exit_handler) {
+      std::move(exit_handler)();
+    }
+  }
+
   absl::InlinedVector<FunctionContext, 2> function_stack_;
 
   State state_ = State::kReady;
@@ -506,7 +555,11 @@ class ExecutionContext {
   // that resumes the execution (or error handling).
   absl::AnyInvocable<void(absl::AnyInvocable<void() &&> resume) &&>
       suspend_handler_;
-  absl::AnyInvocable<void() &&> exit_handler_;
+
+  absl::Mutex deferred_ops_mu_;
+  int num_deferred_ops_ ABSL_GUARDED_BY(deferred_ops_mu_) = 0;
+  bool finish_when_deferred_ops_done_ ABSL_GUARDED_BY(deferred_ops_mu_) = false;
+  absl::AnyInvocable<void() &&> exit_handler_ ABSL_GUARDED_BY(deferred_ops_mu_);
 
   tfrt::ConcurrentWorkQueue* work_queue_ = nullptr;
 

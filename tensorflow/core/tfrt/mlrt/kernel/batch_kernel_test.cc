@@ -25,6 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
@@ -606,6 +609,395 @@ TEST(KernelTest, SplitBatchesProduceDisjointXProfEventGroups) {
   ASSERT_EQ(num_process_batch_events, 2);
   ASSERT_EQ(execute_group_ids.size(), 2);
   EXPECT_NE(execute_group_ids[0], execute_group_ids[1]);
+}
+
+TEST(KernelTest, SetFallbackRequestStateUpdatesOpKernelContextParams) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner_1 =
+      [](const std::function<void()>& f) { f(); };
+  std::function<void(std::function<void()>)> runner_2 =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tensorflow::CancellationManager cancellation_manager_2;
+
+  constexpr int64_t kStepId1 = 11;
+  constexpr int64_t kStepId2 = 22;
+  tfd::KernelFallbackCompatRequestState fallback_request_state_1(
+      &runner_1, &fallback_state->device_manager(), kStepId1, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+  tfd::KernelFallbackCompatRequestState fallback_request_state_2(
+      &runner_2, &fallback_state->device_manager(), kStepId2, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+  fallback_request_state_2.set_cancellation_manager(&cancellation_manager_2);
+
+  tfrt::ResourceContext resource_context;
+  Context context_1(&fallback_request_state_1, &resource_context);
+  Context copied_context(context_1);
+  copied_context.set_fallback_request_state(&fallback_request_state_2);
+
+  EXPECT_EQ(copied_context.params().step_id,
+            fallback_request_state_2.step_id());
+  EXPECT_EQ(copied_context.params().runner, &runner_2);
+  EXPECT_EQ(copied_context.params().step_container,
+            fallback_request_state_2.step_container());
+  EXPECT_EQ(copied_context.params().session_metadata,
+            &fallback_request_state_2.session_metadata());
+  EXPECT_EQ(copied_context.params().cancellation_manager,
+            &cancellation_manager_2);
+  EXPECT_EQ(copied_context.op_kernel_context().step_id(),
+            fallback_request_state_2.step_id());
+  EXPECT_EQ(copied_context.op_kernel_context().step_container(),
+            fallback_request_state_2.step_container());
+  EXPECT_EQ(copied_context.op_kernel_context().cancellation_manager(),
+            &cancellation_manager_2);
+}
+
+// Creates an executable where `main` launches `tf_mlrt.batch_function.device`
+// and then immediately executes `tf_mlrt.tensor_to_int32` on a rank-1 tensor,
+// which fails synchronously before `tf_mlrt.await` is reached.
+mlrt::bc::Buffer CreateExecutableForBatchFunctionErrorBeforeAwait() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> kernel_names = {
+      "tf_mlrt.createop",        "tf_mlrt.executeop",
+      "tf_mlrt.tensor_to_int32", "tf_mlrt.batch_function.device",
+      "tf_mlrt.await",           "return"};
+
+  executable_ctor.construct_kernel_names(kernel_names.size())
+      .Assign(kernel_names);
+  kernels.Def(kernel_names);
+
+  mlrt::testing::AttributeTable attributes(
+      executable_ctor.construct_attributes(5));
+  attributes.Add("node_def_str",
+                 R"pb(name: "AddV2"
+                      op: "AddV2"
+                      input: "dummy_arg"
+                      input: "dummy_arg"
+                      device: "/job:localhost/replica:0/task:0/device:CPU:0"
+                      attr {
+                        key: "T"
+                        value { type: DT_INT32 }
+                      })pb");
+  attributes.Add("op_key", 0);
+  attributes.Add("func_idx", 1);
+  attributes.Add("batch_node_def_str",
+                 R"pb(name: "BatchFunction"
+                      op: "MlrtBatchFunction"
+                      input: "dummy_arg"
+                      input: "dummy_arg"
+                      device: "/job:localhost/replica:0/task:0/device:CPU:0"
+                      attr {
+                        key: "num_batch_threads"
+                        value: { i: 2 }
+                      }
+                      attr {
+                        key: "max_batch_size"
+                        value { i: 1 }
+                      }
+                      attr {
+                        key: "allowed_batch_sizes"
+                        value { list { i: 1 } }
+                      }
+                      attr {
+                        key: "batch_timeout_micros"
+                        value { i: 0 }
+                      }
+                      attr {
+                        key: "container"
+                        value { s: "container" }
+                      }
+                      attr {
+                        key: "shared_name"
+                        value { s: "shared_name_error_before_await" }
+                      }
+                      attr {
+                        key: "batching_queue"
+                        value { s: "batching_queue_error_before_await" }
+                      }
+                      attr {
+                        key: "enable_large_batch_splitting"
+                        value { b: false }
+                      }
+                      attr {
+                        key: "Tin"
+                        value { list { type: DT_INT32 type: DT_INT32 } }
+                      }
+                      attr {
+                        key: "Tcaptured"
+                        value { list {} }
+                      }
+                      attr {
+                        key: "Tout"
+                        value { list { type: DT_INT32 } }
+                      })pb");
+  attributes.Add("device", "/device:CPU:0");
+
+  auto functions_ctor = executable_ctor.construct_functions(2);
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("main");
+
+    mlrt::testing::SymbolTable regs;
+    function_ctor.construct_input_regs(2).Assign(
+        {regs.Def("custom_device"), regs.Def("input")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(5);
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.createop"));
+      kernel_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("node_def_str"),
+           attributes.GetHandle("op_key")});
+    }
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.batch_function.device"));
+      kernel_ctor.construct_arguments(3).Assign(
+          regs.Use({"custom_device", "input", "input"}));
+      kernel_ctor.construct_results(1).Assign({regs.Def("result_future")});
+      kernel_ctor.construct_attributes(3).Assign(
+          {attributes.GetHandle("device"), attributes.GetHandle("func_idx"),
+           attributes.GetHandle("batch_node_def_str")});
+      kernel_ctor.construct_last_uses(3).Assign({0, 0, 0});
+    }
+
+    // Synchronous op between `tf_mlrt.batch_function.device` and
+    // `tf_mlrt.await` that fails because `input` has shape `{1}` (non-scalar).
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(2);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.tensor_to_int32"));
+      kernel_ctor.construct_arguments(1).Assign(regs.Use({"input"}));
+      kernel_ctor.construct_results(1).Assign({regs.Def("bad_scalar")});
+      kernel_ctor.construct_last_uses(1).Assign({0});
+    }
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(3);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.await"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result_future")});
+      kernel_ctor.construct_last_uses(1).Assign({true});
+      kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+    }
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(4);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+  }
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(1);
+    function_ctor.construct_name("batch_function");
+
+    mlrt::testing::SymbolTable regs;
+    function_ctor.construct_input_regs(2).Assign(
+        regs.Def(absl::Span<const std::string>{"input_0", "input_1"}));
+
+    auto kernels_ctor = function_ctor.construct_kernels(2);
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.executeop"));
+      kernel_ctor.construct_arguments(2).Assign(
+          regs.Use({"input_0", "input_1"}));
+      kernel_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("node_def_str"),
+           attributes.GetHandle("op_key")});
+      kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+      kernel_ctor.construct_last_uses(2).Assign({0, 0});
+    }
+
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+  }
+
+  return buffer;
+}
+
+TEST(KernelTest, BatchFunctionWaitsForInFlightBatchOnErrorUnwind) {
+  auto buffer = CreateExecutableForBatchFunctionErrorBeforeAwait();
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  RegisterTfMlrtBatchKernels(registry);
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfrt::ResourceContext resource_context;
+
+  struct LifetimeTracker {
+    absl::Mutex mu;
+    bool caller_destroyed ABSL_GUARDED_BY(mu) = false;
+    bool accessed_after_caller_destroyed ABSL_GUARDED_BY(mu) = false;
+    int allocator_uses ABSL_GUARDED_BY(mu) = 0;
+    int copied_contexts_alive ABSL_GUARDED_BY(mu) = 0;
+    absl::Notification batch_started;
+    absl::Notification allow_batch_finish;
+  };
+
+  class LifetimeTrackingUserContext
+      : public mlrt::UserContext<LifetimeTrackingUserContext> {
+   public:
+    explicit LifetimeTrackingUserContext(LifetimeTracker* tracker)
+        : tracker_(tracker), is_copy_(false) {}
+
+    LifetimeTrackingUserContext(const LifetimeTrackingUserContext& other)
+        : tracker_(other.tracker_), is_copy_(true) {
+      {
+        absl::MutexLock lock(tracker_->mu);
+        if (tracker_->caller_destroyed) {
+          tracker_->accessed_after_caller_destroyed = true;
+        }
+        ++tracker_->copied_contexts_alive;
+      }
+      tracker_->batch_started.Notify();
+      tracker_->allow_batch_finish.WaitForNotification();
+    }
+
+    ~LifetimeTrackingUserContext() override {
+      if (is_copy_) {
+        absl::MutexLock lock(tracker_->mu);
+        if (tracker_->caller_destroyed) {
+          tracker_->accessed_after_caller_destroyed = true;
+        }
+        --tracker_->copied_contexts_alive;
+      }
+    }
+
+   private:
+    LifetimeTracker* tracker_;
+    bool is_copy_;
+  };
+
+  class LifetimeTrackingDevice : public tfrt_stub::DeviceWithCustomAllocator {
+   public:
+    using Base = tfrt_stub::DeviceWithCustomAllocator;
+    LifetimeTrackingDevice(tensorflow::Device* device,
+                           tensorflow::Allocator* allocator,
+                           LifetimeTracker* tracker)
+        : Base(device, allocator), tracker_(tracker) {}
+
+    Allocator* GetAllocator(AllocatorAttributes attr) override {
+      {
+        absl::MutexLock lock(tracker_->mu);
+        if (tracker_->caller_destroyed) {
+          tracker_->accessed_after_caller_destroyed = true;
+        }
+        ++tracker_->allocator_uses;
+      }
+      return Base::GetAllocator(attr);
+    }
+
+   private:
+    LifetimeTracker* tracker_;
+  };
+
+  LifetimeTracker tracker;
+
+  auto fallback_request_state =
+      std::make_unique<tfd::KernelFallbackCompatRequestState>(
+          &runner, &fallback_state->device_manager(), /*step_id=*/0,
+          &runner_table, &resource_array, /*user_intra_op_threadpool=*/nullptr,
+          /*model_metadata=*/std::nullopt,
+          &fallback_state->process_function_library_runtime());
+
+  auto execution_context =
+      std::make_unique<mlrt::ExecutionContext>(&loaded_executable);
+  execution_context->set_work_queue(work_queue.get());
+  execution_context->AddUserContext(std::make_unique<Context>(
+      fallback_request_state.get(), &resource_context));
+  execution_context->AddUserContext(
+      std::make_unique<LifetimeTrackingUserContext>(&tracker));
+
+  auto test_device = std::make_shared<LifetimeTrackingDevice>(
+      fallback_request_state->cpu_device(),
+      fallback_request_state->cpu_device()->GetAllocator({}), &tracker);
+
+  std::vector<mlrt::Value> args;
+  args.push_back(mlrt::Value(std::shared_ptr<Device>(test_device)));
+  tensorflow::Tensor input_tensor(tensorflow::DT_INT32, {1});
+  input_tensor.flat<int32_t>()(0) = 100;
+  args.push_back(
+      mlrt::Value(tfrt_stub::FallbackTensor(std::move(input_tensor))));
+  mlrt::Value result;
+
+  absl::Notification notification;
+  execution_context->set_exit_handler([&]() {
+    {
+      absl::MutexLock lock(tracker.mu);
+      EXPECT_EQ(tracker.copied_contexts_alive, 0);
+      tracker.caller_destroyed = true;
+    }
+    notification.Notify();
+  });
+
+  std::vector<uint8_t> last_uses = {true, true};
+  execution_context->Call(executable.functions()[0], last_uses,
+                          absl::MakeSpan(args), absl::MakeSpan(&result, 1));
+  mlrt::Execute(*execution_context);
+
+  // Wait until `ProcessFuncBatchImpl` is running on the batch thread and verify
+  // that `FinishExecution()` deferred `exit_handler` while the batch is in
+  // flight.
+  tracker.batch_started.WaitForNotification();
+  EXPECT_FALSE(notification.HasBeenNotified());
+  tracker.allow_batch_finish.Notify();
+
+  notification.WaitForNotification();
+  EXPECT_FALSE(execution_context->status().ok());
+
+  // Immediately tear down caller request state once `exit_handler` fires,
+  // matching `RunMlrtFunction` in `graph_executor.cc`.
+  execution_context.reset();
+  fallback_request_state.reset();
+
+  // The in-flight batch must have already completed before `exit_handler`
+  // fired, and must never access caller state after teardown.
+  {
+    absl::MutexLock lock(tracker.mu);
+    EXPECT_GT(tracker.allocator_uses, 0);
+    EXPECT_EQ(tracker.copied_contexts_alive, 0);
+    EXPECT_FALSE(tracker.accessed_after_caller_destroyed);
+  }
 }
 
 }  // namespace

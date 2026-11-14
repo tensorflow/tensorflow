@@ -131,9 +131,7 @@ void Execute(ExecutionContext& ctx) {
         tsl::profiler::TraceMe trace_me("Execute::Return");
         context.function_stack_.pop_back();
         if (context.function_stack_.empty()) {
-          if (context.exit_handler_) {
-            std::move(context.exit_handler_)();
-          }
+          context.FinishExecution();
           break;
         }
         DCHECK(current_execution_info.ready_context == nullptr);
@@ -264,10 +262,8 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
       " for context: ", absl::Hex(reinterpret_cast<std::uintptr_t>(&context)),
       " at state ", context.state_)));
 
-  // Context may no longer be valid after exit_handler_ is called.
-  if (context.exit_handler_) {
-    std::move(context.exit_handler_)();
-  }
+  // Context may no longer be valid after FinishExecution() is called.
+  context.FinishExecution();
 }
 
 }  // namespace execute_internal

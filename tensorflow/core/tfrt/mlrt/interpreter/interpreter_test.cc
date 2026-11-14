@@ -640,6 +640,85 @@ TEST(InterpreterTest, Fail) {
       absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
+TEST(InterpreterTest, DeferredOpsDelayExitHandlerOnNormalReturn) {
+  auto buffer = CreateSequentialAddExecutable(1);
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry kernel_registry;
+  RegisterBuiltinKernels(kernel_registry);
+  kernel_registry.Register<AddI32Kernel>();
+
+  LoadedExecutable loaded_executable(executable, kernel_registry);
+
+  int exit_handler_calls = 0;
+  ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_exit_handler([&]() { ++exit_handler_calls; });
+
+  execution_context.IncNumDeferredOps();
+  execution_context.IncNumDeferredOps();
+
+  int32_t v = 1;
+  mlrt::Value arg(v);
+  mlrt::Value result;
+
+  auto function = loaded_executable.GetFunction("main");
+  ASSERT_TRUE(function);
+
+  std::vector<uint8_t> last_uses = {true};
+  execution_context.Call(function, last_uses, absl::Span<Value>(&arg, 1),
+                         absl::Span<Value>(&result, 1));
+  Execute(execution_context);
+
+  TF_EXPECT_OK(execution_context.status());
+  EXPECT_EQ(result.Get<int32_t>(), 2);
+  EXPECT_EQ(exit_handler_calls, 0);
+
+  execution_context.DecNumDeferredOps();
+  EXPECT_EQ(exit_handler_calls, 0);
+
+  execution_context.DecNumDeferredOps();
+  EXPECT_EQ(exit_handler_calls, 1);
+}
+
+TEST(InterpreterTest, DeferredOpsDelayExitHandlerOnErrorUnwind) {
+  auto buffer = CreateFailExecutable();
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry kernel_registry;
+  RegisterBuiltinKernels(kernel_registry);
+  kernel_registry.Register("fail", &Fail);
+
+  LoadedExecutable loaded_executable(executable, kernel_registry);
+
+  int exit_handler_calls = 0;
+  ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_exit_handler([&]() { ++exit_handler_calls; });
+
+  execution_context.IncNumDeferredOps();
+  execution_context.IncNumDeferredOps();
+
+  auto function = loaded_executable.GetFunction("main");
+  ASSERT_TRUE(function);
+
+  std::vector<uint8_t> last_uses;
+  execution_context.Call(function, last_uses, absl::Span<Value>(),
+                         absl::Span<Value>());
+  Execute(execution_context);
+
+  EXPECT_THAT(
+      execution_context.status(),
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+  EXPECT_EQ(exit_handler_calls, 0);
+
+  execution_context.DecNumDeferredOps();
+  EXPECT_EQ(exit_handler_calls, 0);
+
+  execution_context.DecNumDeferredOps();
+  EXPECT_EQ(exit_handler_calls, 1);
+}
+
 bc::Buffer CreateAwaitExecutable() {
   bc::Buffer buffer;
   bc::Allocator allocator(&buffer);
