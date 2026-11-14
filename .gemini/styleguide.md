@@ -120,6 +120,10 @@ standards, API stability, and consistent behavior across supported environments.
 
 ### 9. Idiomatic TensorFlow & Model Training
 
+Apply these checks when reviewing model-training code and only when they fit
+the change's context. Do not request training infrastructure for changes that
+do not train or evaluate a model.
+
 *   **Data Pipelines:** Flag raw in-memory tensor training when dataset size or
     scalability is a concern. \
     Prefer `tf.data.Dataset` with `.batch()`, `.prefetch(tf.data.AUTOTUNE)`, and
@@ -134,19 +138,20 @@ standards, API stability, and consistent behavior across supported environments.
     Prefer batched/model-level operations (`model(x)` instead of per-sample
     calls).
 
-*   **Reproducibility:** Require explicit seeds in data creation and model
-    initialization:
+*   **Reproducibility:** When deterministic or repeatable results matter, check
+    that data creation and model initialization use explicit seeds:
 
     ```python
     np.random.seed(0)
     tf.random.set_seed(0)
     ```
 
-*   **Observability:** Require validation data (`validation_split` or validation
-    dataset) and meaningful metrics (e.g., `mae`, `accuracy`) to monitor
-    training and detect overfitting.
+*   **Observability:** For training workflows, check for suitable validation
+    data (`validation_split` or a validation dataset) and meaningful metrics
+    (e.g., `mae`, `accuracy`) to monitor training and detect overfitting.
 
-*   **Callbacks:** Encourage use of `tf.keras.callbacks.EarlyStopping` and
+*   **Callbacks:** When appropriate for the training workflow, encourage
+    `tf.keras.callbacks.EarlyStopping` and
     `tf.keras.callbacks.ModelCheckpoint` for stable and efficient training.
 
 ## Out of Scope (Do Not Comment)
