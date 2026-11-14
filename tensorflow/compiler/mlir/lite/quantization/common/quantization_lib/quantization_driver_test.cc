@@ -165,5 +165,18 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
           .getElementType()));
 }
 
+TEST_F(ApplyQuantizationParamsPropagationTest,
+       DownCastScalePreservesUniformZeroPointForSymmetricRange) {
+  auto uq_type = quant::UniformQuantizedType::get(
+      quant::QuantizationFlags::Signed, builder_.getIntegerType(8),
+      builder_.getF32Type(), /*scale=*/0.1, /*zeroPoint=*/5,
+      /*storageTypeMin=*/-127, /*storageTypeMax=*/127);
+  auto downcast =
+      llvm::dyn_cast<quant::UniformQuantizedType>(mlir::TFL::DownCastScale(
+          uq_type, /*min=*/-1.0, /*max=*/1.0, builder_.getUnknownLoc()));
+  ASSERT_NE(downcast, nullptr);
+  EXPECT_EQ(downcast.getZeroPoint(), 5);
+}
+
 }  // namespace
 }  // namespace mlir::TFL
