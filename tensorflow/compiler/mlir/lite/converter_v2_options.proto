@@ -1,0 +1,57 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+syntax = "proto2";
+
+package tflite;
+
+import "tensorflow/compiler/mlir/lite/debug/debug_options.proto";
+
+// Options of the Converter V2 path, which converts StableHLO programs exported
+// by PyTorch and JAX to a TFLite flatbuffer.
+//
+// The V2 path always adheres to the QDQ annotations of the source model
+// (strict QDQ mode) and always lowers composites directly to TFLite ops, so
+// neither is configurable.
+//
+// Next ID: 7
+message ConverterV2Options {
+  // If true, skip the batch matmul optimization round on the legalized model
+  // (`OptimizeBatchMatmulPass` and the constant folding and `OptimizePass`
+  // around it), which e.g. turns batch matmuls with a constant rank 2 rhs into
+  // fully_connected ops.
+  optional bool unfold_batchmatmul = 1 [default = false];
+
+  // If true, fold the f16 -> f32 cast feeding a float fully_connected and the
+  // f32 -> f16 cast consuming it into the fully_connected, which then takes
+  // and produces f16 activations while keeping its weights unchanged. The
+  // resulting mixed precision fully_connected requires runtime support.
+  optional bool fold_fp16_casts_into_fully_connected = 2 [default = false];
+
+  // If false, downcast 64-bit tensors and inputs to 32 bits.
+  optional bool enable_x64 = 3 [default = true];
+
+  // If true, enable debugging facilities: pass timing, IR printing around the
+  // passes `debug_options.print_ir_before` and `debug_options.print_ir_after`
+  // match, and module dumps in the failure report written to `debug_dir`.
+  optional bool enable_debug = 4 [default = false];
+
+  // Directory for failure reports and debug artifacts. If empty, a new
+  // directory under /tmp is used.
+  optional string debug_dir = 5;
+
+  // Options that control IR dumping, IR printing and pass timing. If
+  // `enable_debug` is true, only `print_ir_before`, `print_ir_after` and
+  // `elide_elementsattrs_if_larger` are honored.
+  optional tensorflow.converter.DebugOptions debug_options = 6;
+}

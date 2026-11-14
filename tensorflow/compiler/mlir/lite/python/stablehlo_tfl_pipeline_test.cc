@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -42,10 +43,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_v2_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 
@@ -80,14 +79,10 @@ class StableHloTflPipelineTest : public ::testing::Test {
       return {};
     }
 
-    tflite::ConverterFlags converter_flags;
-    mlir::TFL::QuantizationSpecs quant_specs;
-    mlir::TFL::PassConfig pass_config(quant_specs);
-
     llvm::SmallString<4096> buffer;
     llvm::raw_svector_ostream export_stream(buffer);
-    absl::Status status = ConvertStableHloToTFLite(*module, converter_flags,
-                                                   pass_config, export_stream);
+    absl::Status status = ConvertStableHloToTFLite(
+        *module, tflite::ConverterV2Options(), export_stream);
     EXPECT_TRUE(status.ok()) << status;
     if (!status.ok()) {
       return {};
@@ -428,12 +423,9 @@ TEST_F(StableHloTflPipelineTest, PreservesIrLocationsWithoutMutation) {
       mlir::parseSourceString<mlir::ModuleOp>(kMlir, &context_);
   ASSERT_TRUE(static_cast<bool>(module));
 
-  tflite::ConverterFlags converter_flags;
-  mlir::TFL::QuantizationSpecs quant_specs;
-  mlir::TFL::PassConfig pass_config(quant_specs);
   llvm::SmallString<4096> buffer;
   llvm::raw_svector_ostream export_stream(buffer);
-  ASSERT_TRUE(ConvertStableHloToTFLite(*module, converter_flags, pass_config,
+  ASSERT_TRUE(ConvertStableHloToTFLite(*module, tflite::ConverterV2Options(),
                                        export_stream)
                   .ok());
 
@@ -471,17 +463,20 @@ class PreserveRegionPipelineTest : public ::testing::Test {
 
   // Converts `ir` and returns the flatbuffer, or an empty buffer on failure.
   llvm::SmallString<0> Convert(llvm::StringRef ir, bool enable_x64 = true) {
+    tflite::ConverterV2Options options;
+    options.set_enable_x64(enable_x64);
+    return Convert(ir, options);
+  }
+
+  llvm::SmallString<0> Convert(llvm::StringRef ir,
+                               const tflite::ConverterV2Options& options) {
     llvm::SmallString<0> buffer;
     OwningOpRef<ModuleOp> module = parseSourceString<ModuleOp>(ir, &context_);
     EXPECT_TRUE(module);
     if (!module) return buffer;
 
-    tflite::ConverterFlags converter_flags;
-    converter_flags.set_enable_x64(enable_x64);
-    PassConfig pass_config{QuantizationSpecs()};
     llvm::raw_svector_ostream stream(buffer);
-    absl::Status status =
-        ConvertStableHloToTFLite(*module, converter_flags, pass_config, stream);
+    absl::Status status = ConvertStableHloToTFLite(*module, options, stream);
     EXPECT_TRUE(status.ok()) << status;
     if (!status.ok()) buffer.clear();
     return buffer;
@@ -761,12 +756,10 @@ module {
 )mlir",
                                                              &context_);
   ASSERT_TRUE(module);
-  tflite::ConverterFlags converter_flags;
-  PassConfig pass_config{QuantizationSpecs()};
   llvm::SmallString<0> buffer;
   llvm::raw_svector_ostream stream(buffer);
   absl::Status status =
-      ConvertStableHloToTFLite(*module, converter_flags, pass_config, stream);
+      ConvertStableHloToTFLite(*module, tflite::ConverterV2Options(), stream);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("but decomposition has type"));
 }
@@ -820,6 +813,55 @@ module {
   ASSERT_FALSE(flatbuffer.empty());
   const tflite::Model* model = tflite::GetModel(flatbuffer.data());
   EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_RESHAPE));
+}
+
+// End-to-end tests for the pipeline options in `ConverterV2Options`.
+using ConverterV2OptionsPipelineTest = PreserveRegionPipelineTest;
+
+// A batch matmul with a rank 2 constant rhs.
+constexpr llvm::StringLiteral kBatchMatmulWithConstantRhs = R"mlir(
+module {
+  func.func @main(%arg0: tensor<2x4x8xf32>) -> tensor<2x4x16xf32> {
+    %rhs = stablehlo.constant dense<1.0> : tensor<8x16xf32>
+    %0 = stablehlo.custom_call @tfl.batch_matmul(%arg0, %rhs) {backend_config = "{}"} : (tensor<2x4x8xf32>, tensor<8x16xf32>) -> tensor<2x4x16xf32>
+    return %0 : tensor<2x4x16xf32>
+  }
+}
+)mlir";
+
+// By default the batch matmul optimizations turn the batch matmul into a
+// fully_connected.
+TEST_F(ConverterV2OptionsPipelineTest, BatchMatmulIsOptimizedByDefault) {
+  llvm::SmallString<0> flatbuffer =
+      Convert(kBatchMatmulWithConstantRhs, tflite::ConverterV2Options());
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), Contains(tflite::BuiltinOperator_FULLY_CONNECTED));
+  EXPECT_THAT(Ops(model), Not(Contains(tflite::BuiltinOperator_BATCH_MATMUL)));
+}
+
+// `unfold_batchmatmul` skips the batch matmul optimizations.
+TEST_F(ConverterV2OptionsPipelineTest, UnfoldBatchMatmulKeepsBatchMatmul) {
+  tflite::ConverterV2Options options;
+  options.set_unfold_batchmatmul(true);
+  llvm::SmallString<0> flatbuffer =
+      Convert(kBatchMatmulWithConstantRhs, options);
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_BATCH_MATMUL));
+}
+
+// `enable_debug` writes the pass timing log to `debug_dir`.
+TEST_F(ConverterV2OptionsPipelineTest, EnableDebugWritesPassTimingToDebugDir) {
+  std::string debug_dir = absl::StrCat(::testing::TempDir(), "/v2_debug");
+  tflite::ConverterV2Options options;
+  options.set_enable_debug(true);
+  options.set_debug_dir(debug_dir);
+  llvm::SmallString<0> flatbuffer =
+      Convert(kBatchMatmulWithConstantRhs, options);
+  ASSERT_FALSE(flatbuffer.empty());
+  EXPECT_TRUE(
+      llvm::sys::fs::exists(absl::StrCat(debug_dir, "/mlir_pass_timing.log")));
 }
 
 }  // namespace

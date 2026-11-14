@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_v2_options.pb.h"
 
 // Entry points of the Converter V2 path, which converts StableHLO programs
 // exported by PyTorch and JAX (MLIR bytecode plus decoupled weights, see
@@ -31,13 +31,13 @@ namespace tensorflow::internal {
 // Converts the slim model in `model_dir` to a TFLite flatbuffer streamed
 // directly to `export_stream`.
 absl::Status ConvertMlirBytecodeToTFLite(
-    const tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    const tflite::ConverterV2Options& options, absl::string_view model_dir,
     llvm::raw_pwrite_stream& export_stream);
 
 // Converts the slim model in `model_dir` to a TFLite flatbuffer written to
 // `output_file_path`.
 absl::Status ConvertMlirBytecodeToTFLite(
-    const tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    const tflite::ConverterV2Options& options, absl::string_view model_dir,
     absl::string_view output_file_path);
 
 }  // namespace tensorflow::internal

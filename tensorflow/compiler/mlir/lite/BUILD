@@ -2564,6 +2564,17 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+# Options of the Converter V2 path (python:mlir_bytecode_to_tflite).
+# Not header-only, like metrics:converter_error_data_proto: it is only linked via
+# python:mlir_bytecode_to_tflite and python:converter_python_api. Do not link it
+# into targets in multiple shared objects.
+tf_proto_library(
+    name = "converter_v2_options_proto",
+    srcs = ["converter_v2_options.proto"],
+    protodeps = ["//tensorflow/compiler/mlir/lite/debug:debug_options_proto"],
+    visibility = [":__subpackages__"],
+)
+
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "types_py_proto",

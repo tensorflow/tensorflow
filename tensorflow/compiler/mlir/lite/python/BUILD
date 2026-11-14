@@ -142,8 +142,7 @@ cc_library(
         ":preserve_regions",
         "//tensorflow/compiler/mlir/lite:cast_bf16_ops_to_f32",
         "//tensorflow/compiler/mlir/lite:cleanup_optimization_barrier",  # build_cleaner: keep (pass declared in tfl_passes.h)
-        "//tensorflow/compiler/mlir/lite:common",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
         "//tensorflow/compiler/mlir/lite:downcast_x64",
         "//tensorflow/compiler/mlir/lite:large_constant_fold",
         "//tensorflow/compiler/mlir/lite:legalize_jax_random",  # build_cleaner: keep (pass declared in tfl_passes.h)
@@ -158,6 +157,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tfl_passes",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/export",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -206,10 +206,8 @@ cc_library(
     deps = [
         ":slim_model_importer",
         ":stablehlo_tfl_pipeline",
-        "//tensorflow/compiler/mlir/lite:common",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
-        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -222,15 +220,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "converter_flags_to_v2_options",
+    srcs = ["converter_flags_to_v2_options.cc"],
+    hdrs = ["converter_flags_to_v2_options.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "converter_flags_to_v2_options_test",
+    srcs = ["converter_flags_to_v2_options_test.cc"],
+    deps = [
+        ":converter_flags_to_v2_options",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "stablehlo_tfl_pipeline_test",
     srcs = ["stablehlo_tfl_pipeline_test.cc"],
     deps = [
         ":stablehlo_tfl_pipeline",
-        "//tensorflow/compiler/mlir/lite:common",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "@com_google_absl//absl/status",
@@ -466,6 +485,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
+        ":converter_flags_to_v2_options",
         ":flatbuffer_to_mlir",
         ":graphdef_to_tfl_flatbuffer",
         ":jax_to_tfl_flatbuffer",

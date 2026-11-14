@@ -32,17 +32,15 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/converter_v2_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/python/slim_model_importer.h"
 #include "tensorflow/compiler/mlir/lite/python/stablehlo_tfl_pipeline.h"
-#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 
 namespace tensorflow::internal {
 
 absl::Status ConvertMlirBytecodeToTFLite(
-    const tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    const tflite::ConverterV2Options& options, absl::string_view model_dir,
     llvm::raw_pwrite_stream& export_stream) {
   mlir::DialectRegistry registry;
   registry
@@ -56,23 +54,11 @@ absl::Status ConvertMlirBytecodeToTFLite(
   if (!module_or.ok()) return module_or.status();
   auto module = std::move(module_or).value();
 
-  mlir::TFL::QuantizationSpecs quant_specs;
-  quant_specs.qdq_conversion_mode = mlir::TFL::QDQConversionMode::kQDQStrict;
-
-  mlir::TFL::PassConfig pass_config(quant_specs);
-  pass_config.model_origin_framework = converter_flags.model_origin_framework();
-  pass_config.fold_fp16_resource_casts =
-      converter_flags.fold_fp16_resource_casts();
-  pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
-  pass_config.fold_fp16_casts_into_fully_connected =
-      converter_flags.fold_fp16_casts_into_fully_connected();
-
-  return mlir::TFL::ConvertStableHloToTFLite(*module, converter_flags,
-                                             pass_config, export_stream);
+  return mlir::TFL::ConvertStableHloToTFLite(*module, options, export_stream);
 }
 
 absl::Status ConvertMlirBytecodeToTFLite(
-    const tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
+    const tflite::ConverterV2Options& options, absl::string_view model_dir,
     absl::string_view output_file_path) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_file_path, &error_msg);
@@ -80,8 +66,7 @@ absl::Status ConvertMlirBytecodeToTFLite(
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to open output file: ", error_msg));
   }
-  auto status =
-      ConvertMlirBytecodeToTFLite(converter_flags, model_dir, output->os());
+  auto status = ConvertMlirBytecodeToTFLite(options, model_dir, output->os());
   if (!status.ok()) return status;
   output->os().close();
   if (output->os().has_error()) {
