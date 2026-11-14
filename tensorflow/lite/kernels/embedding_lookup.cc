@@ -75,9 +75,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(lookup), 1);
   TF_LITE_ENSURE_EQ(context, lookup->type, kTfLiteInt32);
 
+  // LINT.IfChange(table_input)
   const TfLiteTensor* value;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
   TF_LITE_ENSURE(context, NumDimensions(value) >= 2);
+  // LINT.ThenChange(Google-internal path:embedding_lookup_table)
 
   if (const TfLiteBlockwiseQuantizationV2* params =
           dequantize::GetBlockwiseQuantizationV2(value)) {
@@ -139,6 +141,7 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
     // Propagate empty output tensor if lookup has zero elements.
     return kTfLiteOk;
   }
+  // LINT.IfChange(row_address)
   const int row_size = SizeOfDimension(value, 0);
   TF_LITE_ENSURE(context, row_size > 0);
   const size_t row_bytes = value->bytes / row_size;
@@ -154,6 +157,7 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                   value_raw + static_cast<size_t>(idx) * row_bytes, row_bytes);
     }
   }
+  // LINT.ThenChange(Google-internal path:embedding_lookup_row_address)
   return kTfLiteOk;
 }
 
@@ -212,6 +216,7 @@ void Unpack2Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
   }
 }
 
+// LINT.IfChange(packed_row_address)
 template <typename T>
 void UnpackSubByteElements(TfLiteType type, float scaling_factor,
                            size_t num_elements, size_t elem_offset,
@@ -224,6 +229,7 @@ void UnpackSubByteElements(TfLiteType type, float scaling_factor,
                output_ptr);
   }
 }
+// LINT.ThenChange(Google-internal path:embedding_lookup_row_address)
 
 TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* lookup,
