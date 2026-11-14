@@ -95,6 +95,8 @@ TEST_F(RaggedFillEmptyRowsOpTest, GradInvalidReverseIndexMap) {
 
   const auto status = RunOpKernel();
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "Elements in reverse index must be in [0, 4) but got 10");
 }
 
 }  // namespace
