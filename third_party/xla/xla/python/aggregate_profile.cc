@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -29,24 +30,26 @@ namespace xla {
 void AggregateProfiledInstructionsProto(
     absl::Span<const tensorflow::profiler::ProfiledInstructionsProto> profiles,
     int percentile,
-    tensorflow::profiler::ProfiledInstructionsProto *result_profile) {
+    tensorflow::profiler::ProfiledInstructionsProto* result_profile) {
   if (percentile < 0 || percentile > 100) {
     return;
   }
 
   absl::flat_hash_map<std::string, HloLatencyInfo> hlo_latency_info;
   // Store costs information from each profile to the hash map.
-  for (const auto &profile : profiles) {
-    for (const auto &cost : profile.costs()) {
+  for (const auto& profile : profiles) {
+    for (const auto& cost : profile.costs()) {
       hlo_latency_info[cost.name()].durations.emplace_back(cost.cost_us());
     }
   }
-  for (const auto &iter : hlo_latency_info) {
-    auto *cost = result_profile->add_costs();
+  Comparison cmp(Comparison::Direction::kLt, F64, Comparison::Order::kTotal);
+  for (const auto& iter : hlo_latency_info) {
+    auto* cost = result_profile->add_costs();
     std::vector<double> durations = iter.second.durations;
     int index = 0;
     if (durations.size() > 1) {
-      std::sort(durations.begin(), durations.end());
+      std::sort(durations.begin(), durations.end(),
+                [&](double l, double r) { return cmp.Compare(l, r); });
       index = percentile / 100.0 * (durations.size() - 1);
     }
 
