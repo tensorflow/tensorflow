@@ -1250,6 +1250,31 @@ bool AnyTensorOfTypeResource(const std::vector<TfLiteTensor>& tensors,
   return false;
 }
 
+// Returns an extra sentence for the "unresolved custom op" error when
+// `custom_name` is one of the custom ops that ship with MediaPipe
+// (mediapipe/util/tflite/operations), or "" otherwise. Models distributed for
+// MediaPipe Tasks use these ops, and a plain interpreter cannot resolve them.
+const char* UnresolvedCustomOpHint(const char* custom_name) {
+  static constexpr const char* kMediaPipeCustomOps[] = {
+      "Convolution2DTransposeBias",
+      "Landmarks2TransformMatrix",
+      "MaxPoolingWithArgmax2D",
+      "MaxUnpooling2D",
+      "Resampler",
+      "TransformLandmarks",
+      "TransformTensor",
+      "TransformTensorBilinear",
+  };
+  if (custom_name == nullptr) return "";
+  for (const char* name : kMediaPipeCustomOps) {
+    if (strcmp(custom_name, name) == 0) {
+      return " This is a MediaPipe custom op. Run the model with MediaPipe "
+             "Tasks, or register MediaPipe's custom ops with the interpreter.";
+    }
+  }
+  return "";
+}
+
 }  // namespace
 
 bool Subgraph::OpMightHaveSideEffect(
@@ -1434,9 +1459,11 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
       if (referenced_registration->prepare == nullptr) {
         if (IsUnresolvedCustomOp(op_reg)) {
           ReportError(
-              "Encountered unresolved custom op: %s.\nSee instructions: "
-              "https://www.tensorflow.org/lite/guide/ops_custom ",
-              op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+              "Encountered unresolved custom op: %s.%s\nSee instructions: "
+              "https://developers.google.com/edge/litert/conversion/"
+              "tensorflow/ops_custom ",
+              op_reg.custom_name ? op_reg.custom_name : "UnknownOp",
+              UnresolvedCustomOpHint(op_reg.custom_name));
           return kTfLiteUnresolvedOps;
         } else {
           // Resolved ops can have a null Prepare function.
@@ -1469,12 +1496,15 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
             "delegate before inference. For the Android, it can be resolved by "
             "adding \"org.tensorflow:tensorflow-lite-select-tf-ops\" "
             "dependency. See instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_select");
+            "https://developers.google.com/edge/litert/conversion/"
+            "tensorflow/ops_select");
       } else {
         ReportError(
-            "Encountered unresolved custom op: %s.\nSee instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_custom ",
-            op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+            "Encountered unresolved custom op: %s.%s\nSee instructions: "
+            "https://developers.google.com/edge/litert/conversion/"
+            "tensorflow/ops_custom ",
+            op_reg.custom_name ? op_reg.custom_name : "UnknownOp",
+            UnresolvedCustomOpHint(op_reg.custom_name));
       }
       return kTfLiteUnresolvedOps;
     }
