@@ -1192,9 +1192,11 @@ def isrealobj(x):
 def isnan(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_complex:
-    return math_ops.logical_or(
-        _scalar(math_ops.is_nan, math_ops.real(x), True),
-        _scalar(math_ops.is_nan, math_ops.imag(x), True),
+    return np_array_ops.asarray(
+        math_ops.logical_or(
+            _scalar(math_ops.is_nan, math_ops.real(x), True),
+            _scalar(math_ops.is_nan, math_ops.imag(x), True),
+        )
     )
   return _scalar(math_ops.is_nan, x, True)
 
