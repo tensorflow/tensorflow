@@ -1098,6 +1098,61 @@ class CropAndResizeOpTestBase(test.TestCase):
           )
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla('Tests raw GPU kernel >INT32_MAX indexing')
+  def testLargeImageInt32IndexOverflowOnGpu(self):
+    if (
+        not test_util.is_gpu_available()
+        or config.is_op_determinism_enabled()
+    ):
+      self.skipTest('Requires non-deterministic GPU execution')
+    # 46342 * 46342 = 2,147,580,964 > INT32_MAX; pixel (46341, 46341) has
+    # flat offset 46341 * 46342 + 46341 = 2,147,580,963 > INT32_MAX.
+    height = 46342
+    width = 46342
+    image_shape = [1, 46342, 46342, 1]
+    try:
+      with test_util.device(use_gpu=True):
+        grads = constant_op.constant([[[[3.0]]]], dtype=dtypes.float32)
+        boxes = constant_op.constant(
+            [[1.0, 1.0, 1.0, 1.0]], dtype=dtypes.float32
+        )
+        box_ind = constant_op.constant([0], dtype=dtypes.int32)
+        image_size = constant_op.constant(image_shape, dtype=dtypes.int32)
+
+        image = None
+        for method in ('bilinear', 'nearest'):
+          del image
+          image = gen_image_ops.crop_and_resize_grad_image(
+              grads=grads,
+              boxes=boxes,
+              box_ind=box_ind,
+              image_size=image_size,
+              T=dtypes.float16,
+              method=method,
+          )
+          corner_val, origin_val = self.evaluate([
+              image[0, height - 1, width - 1, 0],
+              image[0, 0, 0, 0],
+          ])
+          self.assertAllClose(corner_val, 3.0)
+          self.assertAllClose(origin_val, 0.0)
+
+        for method in ('bilinear', 'nearest'):
+          crop = image_ops.crop_and_resize(
+              image, boxes, box_ind, [1, 1], method=method
+          )
+          self.assertAllClose(self.evaluate(crop), [[[[3.0]]]])
+
+        grad_boxes = gen_image_ops.crop_and_resize_grad_boxes(
+            grads=grads, image=image, boxes=boxes, box_ind=box_ind
+        )
+        self.assertAllClose(
+            self.evaluate(grad_boxes), [[0.0, 0.0, 0.0, 0.0]]
+        )
+    except errors_impl.ResourceExhaustedError:
+      self.skipTest('Insufficient GPU memory for large image test')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RGBToHSVOpTestBase(test.TestCase):
