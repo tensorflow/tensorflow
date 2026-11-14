@@ -55,6 +55,7 @@ do_external_licenses_check(){
 @com_github_googlecloudplatform_google_cloud_cpp//google
 @grpc//src/compiler
 @com_google_protobuf//upb_generator
+@llvm-project//libc/src/__support/math
 @llvm-project//third-party/siphash
 @platforms//os
 @ml_dtypes_py//ml_dtypes
