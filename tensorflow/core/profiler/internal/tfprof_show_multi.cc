@@ -16,18 +16,23 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <map>
-#include <memory>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "third_party/re2/re2.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_scope.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
