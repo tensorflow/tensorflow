@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/runtime/raft_select_k_utils.h"
 #include "xla/backends/gpu/runtime/select_k_exec_raft_impl.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -27,35 +28,7 @@ namespace raft_internal {
 template <>
 SelectAlgo choose_select_k_algorithm<uint64_t>(uint32_t rows, uint32_t cols,
                                                uint32_t k) {
-  if (k > 129) {
-    if (cols > 20215) {
-      if (rows > 1013) {
-        return SelectAlgo::kRadix11bitsExtraPass;
-      } else {
-        return SelectAlgo::kRadix11bits;
-      }
-    } else {
-      if (k > 256) {
-        return SelectAlgo::kRadix8bits;
-      } else {
-        return SelectAlgo::kWarpFiltered;
-      }
-    }
-  } else {
-    if (k > 1) {
-      if (cols > 22089) {
-        return SelectAlgo::kWarpDistributedShm;
-      } else {
-        if (rows > 341) {
-          return SelectAlgo::kWarpDistributedShm;
-        } else {
-          return SelectAlgo::kWarpImmediate;
-        }
-      }
-    } else {
-      return SelectAlgo::kWarpImmediate;
-    }
-  }
+  return ToRaftSelectAlgo(choose_select_k_algorithm_uint64(rows, cols, k));
 }
 
 }  // namespace raft_internal

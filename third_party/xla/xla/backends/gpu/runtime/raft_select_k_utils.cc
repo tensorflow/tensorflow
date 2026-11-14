@@ -616,6 +616,47 @@ RaftSelectKAlgo choose_select_k_algorithm_bfloat16(uint32_t rows, uint32_t cols,
   }
 }
 
+// ============================================================================
+// choose_select_k_algorithm_uint64
+//
+// Notes:
+//   - Generated from the RAFT select_k benchmark/heuristic workflow in
+//     choose_select_k_algorithm_float for uint64_t inputs.
+// ============================================================================
+
+RaftSelectKAlgo choose_select_k_algorithm_uint64(uint32_t rows, uint32_t cols,
+                                                 uint32_t k) {
+  if (k > 129) {
+    if (cols > 20215) {
+      if (rows > 1013) {
+        return RaftSelectKAlgo::kRadix11bitsExtraPass;
+      } else {
+        return RaftSelectKAlgo::kRadix11bits;
+      }
+    } else {
+      if (k > 256) {
+        return RaftSelectKAlgo::kRadix8bits;
+      } else {
+        return RaftSelectKAlgo::kWarpFiltered;
+      }
+    }
+  } else {
+    if (k > 1) {
+      if (cols > 22089) {
+        return RaftSelectKAlgo::kWarpDistributedShm;
+      } else {
+        if (rows > 341) {
+          return RaftSelectKAlgo::kWarpDistributedShm;
+        } else {
+          return RaftSelectKAlgo::kWarpImmediate;
+        }
+      }
+    } else {
+      return RaftSelectKAlgo::kWarpImmediate;
+    }
+  }
+}
+
 absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesFloat(
     uint32_t batch, uint32_t n, uint32_t k, int sm_count,
     RaftScratchPhaseMode phase_mode) {
@@ -630,6 +671,14 @@ absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesBFloat16(
   return EstimateRaftSelectKScratchBytesImpl(
       sizeof(uint16_t), batch, n, k, sm_count, phase_mode,
       choose_select_k_algorithm_bfloat16);
+}
+
+absl::StatusOr<int64_t> EstimateRaftSelectKScratchBytesUInt64(
+    uint32_t batch, uint32_t n, uint32_t k, int sm_count,
+    RaftScratchPhaseMode phase_mode) {
+  return EstimateRaftSelectKScratchBytesImpl(sizeof(uint64_t), batch, n, k,
+                                             sm_count, phase_mode,
+                                             choose_select_k_algorithm_uint64);
 }
 
 }  // namespace xla::gpu

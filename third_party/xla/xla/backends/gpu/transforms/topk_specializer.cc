@@ -56,10 +56,6 @@ namespace xla::gpu {
 
 namespace {
 
-// Fallback scratch memory (32 MB) for U64 RAFT select_k until its
-// scratch-size formula is integrated.
-constexpr int64_t kDefaultRaftScratchSize = 32 * 1024 * 1024;
-
 // Broadcast a 32-bit scalar to a target shape.
 HloInstruction* BroadcastU32(HloComputation* comp, const Shape& target_shape,
                              uint32_t value) {
@@ -281,13 +277,19 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
     return false;  // Only F32 and BF16 are supported for now.
   }
 
-  bool has_batch = data_shape.dimensions().size() == 2;
+  size_t rank = data_shape.dimensions().size();
+  if (rank < 1 || rank > 2) {
+    return false;
+  }
+
+  bool has_batch = rank == 2;
   size_t batch = has_batch ? data_shape.dimensions(0) : 1;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
 
-  // For small N, sort + slice is faster than RAFT select_k
-  if (n < 1024) {
+  // Skip degenerate zero-sized batches and small N (where sort + slice is
+  // faster than RAFT select_k).
+  if (batch == 0 || n < 1024 || k == 0) {
     return false;
   }
 
@@ -316,26 +318,41 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
 }
 
 absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
-    HloCustomCallInstruction* topk) {
+    HloCustomCallInstruction* topk, int sm_count) {
   HloComputation* comp = topk->parent();
   HloInstruction* data = topk->mutable_operand(0);
-  PrimitiveType original_type = data->shape().element_type();
+  const Shape& data_shape = data->shape();
+  PrimitiveType original_type = data_shape.element_type();
 
   // 1. Pack
   // If BF16, upcast to F32 first to match F32 bitmath logic.
   if (original_type == BF16) {
     data = comp->AddInstruction(HloInstruction::CreateConvert(
-        ShapeUtil::ChangeElementType(data->shape(), F32), data));
+        ShapeUtil::ChangeElementType(data_shape, F32), data));
   }
   ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
   ABSL_ASSIGN_OR_RETURN(HloInstruction * packed_u64,
                    BuildPackF32ToU64(data, order, comp));
 
   // 2. Create the specialized __gpu$TopK custom call
+  const bool has_batch = data_shape.dimensions().size() == 2;
+  const uint32_t batch =
+      static_cast<uint32_t>(has_batch ? data_shape.dimensions(0) : 1);
+  const uint32_t n =
+      static_cast<uint32_t>(data_shape.dimensions(has_batch ? 1 : 0));
+  const uint32_t k = static_cast<uint32_t>(
+      topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0));
+  // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
+  // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
+  // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
+  ABSL_ASSIGN_OR_RETURN(
+      const int64_t scratch_bytes,
+      EstimateRaftSelectKScratchBytesUInt64(
+          batch, n, k, sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
   Shape k_shape =
       ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
   Shape idx_shape = topk->shape().tuple_shapes(1);
-  Shape scratch_shape = ShapeUtil::MakeShape(U8, {kDefaultRaftScratchSize});
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_bytes});
   Shape new_cc_shape =
       ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
@@ -434,7 +451,7 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
           "TopK batch * k exceeds RAFT uint32 limit (batch=%zu, k=%zu)", batch,
           k);
     }
-    int64_t scratch_bytes = kDefaultRaftScratchSize;
+    int64_t scratch_bytes = 0;
     // TODO(b/409009349): Switch to RaftScratchPhaseMode::kMaxAcrossPhases
     // after 2026-11-24 once the 14-day GPU AOT forward-compatibility window
     // for FixedBufferDeviceMemoryResource phase reclamation has elapsed.
@@ -450,6 +467,9 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
                            static_cast<uint32_t>(batch),
                            static_cast<uint32_t>(n), static_cast<uint32_t>(k),
                            sm_count, RaftScratchPhaseMode::kSumAcrossPhases));
+    } else {
+      return InvalidArgument("Invalid Dtype: %s",
+                             primitive_util::LowercasePrimitiveTypeName(dtype));
     }
     Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_bytes});
     cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
@@ -490,7 +510,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
         ShouldRewriteStableTopKToUint64(topk)) {
       VLOG(2) << "Rewriting stable TopK to RAFT select_k via Uint64 adapter";
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
-                       RewriteStableTopKToUint64(topk));
+                       RewriteStableTopKToUint64(topk, sm_count_));
       return ReplaceInstruction(topk, new_topk);
     }
 

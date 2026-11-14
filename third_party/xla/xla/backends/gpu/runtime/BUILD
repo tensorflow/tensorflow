@@ -1731,6 +1731,7 @@ cuda_library(
     ],
     tags = ["cuda-only"],
     deps = [
+        ":raft_select_k_utils",
         ":select_k_exec_raft_impl",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",

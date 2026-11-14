@@ -197,7 +197,18 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
                        TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
-  const char* check_pattern = R"(
+  const se::CudaComputeCapability* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  ASSERT_NE(cuda_cc, nullptr);
+  const int expected_sm_count =
+      GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+  ASSERT_OK_AND_ASSIGN(const int64_t expected_scratch_bytes,
+                       EstimateRaftSelectKScratchBytesUInt64(
+                           /*batch=*/8, /*n=*/1024, /*k=*/32, expected_sm_count,
+                           RaftScratchPhaseMode::kSumAcrossPhases));
+
+  const std::string check_pattern = absl::Substitute(
+      R"(
 // CHECK-LABEL: ENTRY %top_k
 // CHECK: %[[ARG:[^ ]+]] = f32[8,1024]{{.*}} parameter(0)
 
@@ -218,8 +229,8 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 // CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,1024]{{.*}} subtract({{.*}}, %[[IOTA]])
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
-// 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
+// 4. CustomCall (__gpu$$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[$0]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -234,7 +245,8 @@ TEST_F(TopkTest, RewriteStableTopKF32ToUint64) {
 
 // 7. Tuple output
 // CHECK: ROOT {{.*}} tuple({{.*}}%[[F32_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
-  )";
+  )",
+      expected_scratch_bytes);
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                        RunFileCheck(module->ToString(), check_pattern));
@@ -273,7 +285,19 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
                        TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
-  const char* check_pattern = R"(
+  const se::CudaComputeCapability* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  ASSERT_NE(cuda_cc, nullptr);
+  const int expected_sm_count =
+      GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+  ASSERT_OK_AND_ASSIGN(
+      const int64_t expected_scratch_bytes,
+      EstimateRaftSelectKScratchBytesUInt64(
+          /*batch=*/8, /*n=*/65540, /*k=*/32, expected_sm_count,
+          RaftScratchPhaseMode::kSumAcrossPhases));
+
+  const std::string check_pattern = absl::Substitute(
+      R"(
 // CHECK-LABEL: ENTRY %top_k
 // CHECK: %[[ARG:[^ ]+]] = bf16[8,65540]{{.*}} parameter(0)
 
@@ -295,8 +319,8 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 // CHECK: %[[SUBTRACT:[^ ]+]] = u32[8,65540]{{.*}} subtract({{.*}}, %[[IOTA]])
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], {{.*}})
 
-// 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
+// 4. CustomCall (__gpu$$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[$0]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "TOTAL"}
 
 // 5. Unpack U64 -> U32
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -312,7 +336,8 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
 // 7. Convert F32 -> BF16 and Tuple output
 // CHECK: %[[BF16_OUT:[^ ]+]] = bf16[8,32]{{.*}} convert(%[[F32_OUT]])
 // CHECK: ROOT {{.*}} tuple({{.*}}%[[BF16_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
-  )";
+  )",
+      expected_scratch_bytes);
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                        RunFileCheck(module->ToString(), check_pattern));
@@ -389,7 +414,18 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKF32ToUint64) {
                        TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
-  const char* check_pattern = R"(
+  const se::CudaComputeCapability* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  ASSERT_NE(cuda_cc, nullptr);
+  const int expected_sm_count =
+      GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+  ASSERT_OK_AND_ASSIGN(const int64_t expected_scratch_bytes,
+                       EstimateRaftSelectKScratchBytesUInt64(
+                           /*batch=*/8, /*n=*/1024, /*k=*/32, expected_sm_count,
+                           RaftScratchPhaseMode::kSumAcrossPhases));
+
+  const std::string check_pattern = absl::Substitute(
+      R"(
 // CHECK-LABEL: ENTRY %top_k
 // CHECK: %[[ARG:[^ ]+]] = f32[8,1024]{{.*}} parameter(0)
 
@@ -416,8 +452,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKF32ToUint64) {
 // CHECK: %[[LOW_U64:[^ ]+]] = u64[8,1024]{{.*}} convert(%[[LOW_U32]])
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,1024]{{.*}} or(%[[SHIFT_LEFT]], %[[LOW_U64]])
 
-// 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "PARTIAL"}
+// 4. CustomCall (__gpu$$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[$0]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "PARTIAL"}
 
 // 5. Unpack U64 -> U32 and restore -0.0f radix key
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -435,7 +471,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKF32ToUint64) {
 
 // 7. Tuple output
 // CHECK: ROOT {{.*}} tuple({{.*}}%[[F32_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
-  )";
+  )",
+      expected_scratch_bytes);
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                        RunFileCheck(module->ToString(), check_pattern));
@@ -474,7 +511,19 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKBF16ToUint64) {
                        TopkSpecializer(device_description()).Run(module.get()));
   ASSERT_TRUE(changed);
 
-  const char* check_pattern = R"(
+  const se::CudaComputeCapability* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  ASSERT_NE(cuda_cc, nullptr);
+  const int expected_sm_count =
+      GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+  ASSERT_OK_AND_ASSIGN(
+      const int64_t expected_scratch_bytes,
+      EstimateRaftSelectKScratchBytesUInt64(
+          /*batch=*/8, /*n=*/65540, /*k=*/32, expected_sm_count,
+          RaftScratchPhaseMode::kSumAcrossPhases));
+
+  const std::string check_pattern = absl::Substitute(
+      R"(
 // CHECK-LABEL: ENTRY %top_k
 // CHECK: %[[ARG:[^ ]+]] = bf16[8,65540]{{.*}} parameter(0)
 
@@ -502,8 +551,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKBF16ToUint64) {
 // CHECK: %[[LOW_U64:[^ ]+]] = u64[8,65540]{{.*}} convert(%[[LOW_U32]])
 // CHECK: %[[PACKED:[^ ]+]] = u64[8,65540]{{.*}} or(%[[SHIFT_LEFT]], %[[LOW_U64]])
 
-// 4. CustomCall (__gpu$TopK)
-// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[33554432]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "PARTIAL"}
+// 4. CustomCall (__gpu$$TopK)
+// CHECK: %[[CUSTOM_CALL:[^ ]+]] = (u64[8,32]{{.*}}, s32[8,32]{{.*}}, u8[$0]{{.*}}) custom-call(%[[PACKED]]), custom_call_target="__gpu$$TopK", api_version=API_VERSION_TYPED_FFI, backend_config={is_stable = false, order = "PARTIAL"}
 
 // 5. Unpack U64 -> U32 and restore -0.0f radix key
 // CHECK: %[[SRL:[^ ]+]] = u64[8,32]{{.*}} shift-right-logical(%[[CUSTOM_CALL]]#0, {{.*}})
@@ -522,7 +571,8 @@ TEST_F(TopkTest, RewriteStablePartialOrderTopKBF16ToUint64) {
 // 7. Convert F32 -> BF16 and Tuple output
 // CHECK: %[[BF16_OUT:[^ ]+]] = bf16[8,32]{{.*}} convert(%[[F32_OUT]])
 // CHECK: ROOT {{.*}} tuple({{.*}}%[[BF16_OUT]], {{.*}}%[[CUSTOM_CALL]]#1)
-  )";
+  )",
+      expected_scratch_bytes);
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                        RunFileCheck(module->ToString(), check_pattern));
@@ -776,6 +826,117 @@ TEST_F(TopkTest, UnstableBFloat16TopKUsesEstimatedScratchSize) {
     EXPECT_TRUE(RunAndCompareTwoModules(
         std::move(topk_module), std::move(reference_module), std::nullopt));
   }
+}
+
+TEST_F(TopkTest, StableTopKViaUint64UsesEstimatedScratchSize) {
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  // Verify HLO scratch sizing across WarpImmediate (f32[8,1024], k=32),
+  // WarpFiltered (f32[64,16384], k=256), and Radix11bits (f32[64,32768],
+  // k=256), and verify end-to-end GPU execution on the WarpSort shapes.
+  struct TestCase {
+    int batch;
+    int n;
+    int k;
+  };
+  // TODO(b/409009349): Add TestCase{64, 32768, 256} (Radix11bits) once
+  // https://github.com/rapidsai/raft/pull/3212 is backported.
+  for (const TestCase& tc : {TestCase{8, 1024, 32}, TestCase{64, 16384, 256}}) {
+    const std::string hlo = absl::Substitute(
+        R"hlo(
+      HloModule m
+
+      %compare-gt.1 {
+        p.1.lhs = s32[] parameter(2)
+        p.1.rhs = s32[] parameter(3)
+        p.0.lhs = f32[] parameter(0)
+        p.0.rhs = f32[] parameter(1)
+        ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+      }
+
+      ENTRY top_k {
+        arg = f32[$0,$1] parameter(0)
+        ROOT topk = (f32[$0,$2], s32[$0,$2]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+      }
+    )hlo",
+        tc.batch, tc.n, tc.k);
+
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                         ParseAndReturnVerifiedModule(hlo, config));
+    std::unique_ptr<HloModule> reference_module =
+        topk_module->Clone("reference");
+
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        TopkSpecializer(device_description()).Run(topk_module.get()));
+    ASSERT_TRUE(changed);
+
+    const se::CudaComputeCapability* cuda_cc =
+        device_description().gpu_compute_capability().cuda_compute_capability();
+    ASSERT_NE(cuda_cc, nullptr);
+    const int expected_sm_count =
+        GetRaftSelectKMaxSmCount(*cuda_cc, device_description().core_count());
+    ASSERT_OK_AND_ASSIGN(int64_t expected_scratch_bytes,
+                         EstimateRaftSelectKScratchBytesUInt64(
+                             tc.batch, tc.n, tc.k, expected_sm_count,
+                             RaftScratchPhaseMode::kSumAcrossPhases));
+
+    const HloInstruction* root =
+        topk_module->entry_computation()->root_instruction();
+    const HloInstruction* custom_call = root->operand(1)->operand(0);
+    EXPECT_EQ(custom_call->custom_call_target(), "__gpu$TopK");
+    ASSERT_EQ(custom_call->shape().tuple_shapes().size(), 3);
+    EXPECT_EQ(custom_call->shape().tuple_shapes(0).element_type(), U64);
+    EXPECT_EQ(custom_call->shape().tuple_shapes(2).dimensions(0),
+              expected_scratch_bytes);
+
+    ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(reference_module.get()));
+    ASSERT_TRUE(changed);
+    reference_module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_disable_hlo_passes("topk-rewriter");
+
+    EXPECT_TRUE(RunAndCompareTwoModules(
+        std::move(topk_module), std::move(reference_module), std::nullopt));
+  }
+}
+
+TEST_F(TopkTest, RejectsZeroBatchStableTopKForRaftU64) {
+  const char* hlo = R"hlo(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[0,1024] parameter(0)
+      ROOT result = (f32[0,32], s32[0,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
+
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(TopkTest, CrossSkuAndMigCompileExecutesSafelyOnFullGpu) {

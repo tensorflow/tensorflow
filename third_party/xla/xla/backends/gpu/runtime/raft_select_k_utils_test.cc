@@ -264,6 +264,32 @@ TEST(RaftSelectKUtilsTest,
             RaftSelectKAlgo::kWarpImmediate);
 }
 
+TEST(RaftSelectKUtilsTest, ChooseSelectKAlgorithmUInt64Branches) {
+  // k == 1
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1024, 100000, 1),
+            RaftSelectKAlgo::kWarpImmediate);
+
+  // 1 < k <= 129
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1, 22090, 2),
+            RaftSelectKAlgo::kWarpDistributedShm);
+  EXPECT_EQ(choose_select_k_algorithm_uint64(342, 22089, 129),
+            RaftSelectKAlgo::kWarpDistributedShm);
+  EXPECT_EQ(choose_select_k_algorithm_uint64(341, 22089, 129),
+            RaftSelectKAlgo::kWarpImmediate);
+
+  // k > 129, cols > 20215
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1014, 20216, 130),
+            RaftSelectKAlgo::kRadix11bitsExtraPass);
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1013, 20216, 130),
+            RaftSelectKAlgo::kRadix11bits);
+
+  // k > 129, cols <= 20215
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1024, 20215, 257),
+            RaftSelectKAlgo::kRadix8bits);
+  EXPECT_EQ(choose_select_k_algorithm_uint64(1024, 20215, 256),
+            RaftSelectKAlgo::kWarpFiltered);
+}
+
 TEST(RaftSelectKUtilsTest, EstimateScratchBytesRejectsInvalidInputs) {
   EXPECT_THAT(EstimateRaftSelectKScratchBytesFloat(0, 1024, 8),
               StatusIs(absl::StatusCode::kInvalidArgument,
@@ -305,6 +331,22 @@ TEST(RaftSelectKUtilsTest, EstimateScratchBytesRejectsInvalidInputs) {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("n exceeds int32_t max")));
   EXPECT_THAT(EstimateRaftSelectKScratchBytesBFloat16(1u << 22, 2048, 1024),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("batch * k exceeds uint32_t max")));
+
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(0, 1024, 8),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must be positive")));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(1, 32, 64),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires k <= n")));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(kOverInt32Max, 1024, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("batch exceeds int32_t max")));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(1, kOverInt32Max, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("n exceeds int32_t max")));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(1u << 22, 2048, 1024),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("batch * k exceeds uint32_t max")));
 }
@@ -469,6 +511,94 @@ TEST(RaftSelectKUtilsTest, EstimateScratchBytesBFloat16WarpSortAndRadixShapes) {
               IsOkAndHolds(Eq(WithExpectedSafetyMargin(4203776 + 2048))));
 }
 
+TEST(RaftSelectKUtilsTest, EstimateScratchBytesUInt64WarpSortAndRadixShapes) {
+  // Tiny single-block WarpImmediate: n=64 <= 2*32=64 => num_of_block=1 =>
+  // base = Align256(8) + Align256(4) = 512, + 4 KB safety floor = 4,608.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(1, 64, 1, /*sm_count=*/18),
+              IsOkAndHolds(Eq(4608)));
+
+  // Large-batch single-block WarpFiltered (batch=1024, n=16384, k=256,
+  // sm_count=18): num_of_block=1 =>
+  // tmp_val = 1024 * 256 * 8 = 2,097,152, tmp_idx = 1024 * 256 * 4 = 1,048,576,
+  // base = 3,145,728.
+  EXPECT_THAT(
+      EstimateRaftSelectKScratchBytesUInt64(1024, 16384, 256, /*sm_count=*/18),
+      IsOkAndHolds(Eq(WithExpectedSafetyMargin(3145728))));
+
+  // Large-batch single-block WarpDistributedShm (batch=1024, n=262144, k=128,
+  // sm_count=18): num_of_block=1 =>
+  // tmp_val = 1,048,576, tmp_idx = 524,288, base = 1,572,864.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(1024, 262144, 128,
+                                                    /*sm_count=*/18),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(1572864))));
+
+  // Radix8bits one-block with n = 1024 < 1536 => buf_len = (1024 / 24) & ~63
+  // = 42 & ~63 = 0 => Phase 1 = 0,
+  // Phase 2 = 256 + 2 * 131,072 + 2 * 65,536 + 256 = 393,728.
+  EXPECT_THAT(
+      EstimateRaftSelectKScratchBytesUInt64(32, 1024, 512, /*sm_count=*/18),
+      IsOkAndHolds(Eq(WithExpectedSafetyMargin(393728))));
+
+  // Radix8bits one-block (batch=512, n=16384, k=512, sm_count=18):
+  //   buf_len = (16384 / 24) & ~63 = 640,
+  //   row_buf_bytes = 640 * 2 * (8 + 4) = 15,360,
+  //   chunk_one = min(512, 10*18*4) = 512 => Phase 1 = 7,864,320,
+  //   Phase 2 = 2304 + 2 * 2,097,152 + 2 * 1,048,576 + 256 = 6,294,016.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  512, 16384, 512, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kMaxAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(7864320))));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  512, 16384, 512, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kSumAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(7864320 + 6294016))));
+
+  // Radix11bits multi-block (batch=16, n=262144, k=1024, sm_count=18):
+  //   buf_len = (262144 / 24) & ~63 = 10,880, row_buf_bytes = 10880 * 24 =
+  //   261,120, chunk_multi = 16 => counters = 10,240, histograms = 131,072,
+  //   bufs = 4,177,920 => Phase 1 = 4,319,232;
+  //   Phase 2 = 256 + 2 * 131,072 + 2 * 65,536 + 256 = 393,728.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  16, 262144, 1024, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kMaxAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(4319232))));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  16, 262144, 1024, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kSumAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(4319232 + 393728))));
+
+  // Radix11bitsExtraPass (batch=1024, n=262144, k=256, sm_count=18):
+  //   chunk_one = 720 => Phase 1 (one_block) = 720 * 261,120 = 188,006,400;
+  //   chunk_multi = 45 => Phase 1 (multi_block) = 12,147,840;
+  //   Phase 1 = 188,006,400, Phase 2 = 6,296,064.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  1024, 262144, 256, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kMaxAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(188006400))));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  1024, 262144, 256, /*sm_count=*/18,
+                  RaftScratchPhaseMode::kSumAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(188006400 + 6296064))));
+
+  // Radix11bits multi-block where n > 2^24 rounds UP in IEEE-754 float inside
+  // RAFT's `calc_buf_len<uint64_t, uint32_t, float>(len)`:
+  //   batch=1, n=16,777,727, k=130, sm_count=148:
+  //   float(16777727u) = 16777728.0f => 16777728.0f / 24.0f = 699,072
+  //   (64 elements = 1,536 bytes/row larger than integer (n / 24) & ~63 =
+  //   699,008).
+  //   chunk_multi = 1 => counters = 768, histograms = 8,192,
+  //   bufs = 699,072 * 24 = 16,777,728 => Phase 1 = 16,786,688;
+  //   Phase 2 = 256 + 2 * 1,280 + 2 * 768 + 256 = 4,608.
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  1, 16777727, 130, /*sm_count=*/148,
+                  RaftScratchPhaseMode::kMaxAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(16786688))));
+  EXPECT_THAT(EstimateRaftSelectKScratchBytesUInt64(
+                  1, 16777727, 130, /*sm_count=*/148,
+                  RaftScratchPhaseMode::kSumAcrossPhases),
+              IsOkAndHolds(Eq(WithExpectedSafetyMargin(16786688 + 4608))));
+}
+
 TEST(RaftSelectKUtilsTest, NonPositiveSmCountUsesConservativeDefault) {
   absl::StatusOr<int64_t> default_bytes =
       EstimateRaftSelectKScratchBytesFloat(16, 65536, 512);
@@ -541,6 +671,31 @@ TEST(RaftSelectKUtilsTest, SweepInvariantsAlignmentAndPhaseMonotonicity) {
         EXPECT_EQ(*bf16_max_phase % 256, 0);
         EXPECT_EQ(*bf16_sum_phase % 256, 0);
         EXPECT_EQ(*bf16_full_die_sum_phase % 256, 0);
+
+        absl::StatusOr<int64_t> u64_mig_sum_phase =
+            EstimateRaftSelectKScratchBytesUInt64(
+                batch, n, k, /*sm_count=*/18,
+                RaftScratchPhaseMode::kSumAcrossPhases);
+        absl::StatusOr<int64_t> u64_max_phase =
+            EstimateRaftSelectKScratchBytesUInt64(
+                batch, n, k, /*sm_count=*/148,
+                RaftScratchPhaseMode::kMaxAcrossPhases);
+        absl::StatusOr<int64_t> u64_sum_phase =
+            EstimateRaftSelectKScratchBytesUInt64(
+                batch, n, k, /*sm_count=*/148,
+                RaftScratchPhaseMode::kSumAcrossPhases);
+        absl::StatusOr<int64_t> u64_full_die_sum_phase =
+            EstimateRaftSelectKScratchBytesUInt64(
+                batch, n, k, /*sm_count=*/160,
+                RaftScratchPhaseMode::kSumAcrossPhases);
+        ASSERT_THAT(u64_mig_sum_phase, IsOkAndHolds(Ge(4608)));
+        ASSERT_THAT(u64_max_phase, IsOkAndHolds(Ge(4608)));
+        ASSERT_THAT(u64_sum_phase, IsOkAndHolds(Ge(*u64_max_phase)));
+        ASSERT_THAT(u64_sum_phase, IsOkAndHolds(Ge(*u64_mig_sum_phase)));
+        ASSERT_THAT(u64_full_die_sum_phase, IsOkAndHolds(Ge(*u64_sum_phase)));
+        EXPECT_EQ(*u64_max_phase % 256, 0);
+        EXPECT_EQ(*u64_sum_phase % 256, 0);
+        EXPECT_EQ(*u64_full_die_sum_phase % 256, 0);
       }
     }
   }
