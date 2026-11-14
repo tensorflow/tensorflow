@@ -17,3 +17,5 @@ vim
 wget
 jq
 file
+clang-18
+llvm-18
