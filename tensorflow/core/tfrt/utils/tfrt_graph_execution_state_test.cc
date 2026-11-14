@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "testing/base/public/benchmark.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
@@ -893,6 +895,126 @@ TEST_F(ExtendGraphTest, ExtendGraph) {
   ASSERT_NE(graph_execution_state->original_graph_def(), nullptr);
   CompareGraphs(expected, *graph_execution_state->original_graph_def());
 }
+
+TEST_F(OptimizeGraphTest,
+       SharesFunctionRecordsAndPrunesUnreachableFunctionsByDefault) {
+  GraphDef graphdef;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice(
+        "/job:localhost/replica:0/task:0/device:CPU:0");
+
+    auto used_fdef = tensorflow::FunctionDefHelper::Create(
+        "UsedIdentity", {"x: float"}, {"y: float"}, {},
+        {{{"id"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+        {{"y", "id:output:0"}});
+    auto unused_fdef = tensorflow::FunctionDefHelper::Create(
+        "UnusedIdentity", {"x: float"}, {"y: float"}, {},
+        {{{"id"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+        {{"y", "id:output:0"}});
+
+    *fdef_lib.add_function() = used_fdef;
+    *fdef_lib.add_function() = unused_fdef;
+    TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+
+    Output a = ops::Const(scope.WithOpName("a"), 2.0f, {1, 1});
+    tensorflow::NameAttrList func_attr;
+    func_attr.set_name("UsedIdentity");
+    auto pcall = ops::PartitionedCall(scope, {a}, {DT_FLOAT}, func_attr);
+    Output c = ops::Identity(scope.WithOpName("c"), pcall.output.front());
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::CreateWithCpuDevice({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
+
+  // Verify FunctionRecord pointer sharing across FallbackState,
+  // TfrtGraphExecutionState::flib_def(), and TfrtGraphExecutionState::graph().
+  auto fallback_rec = fallback_state->func_lib_def().FindRecord("UsedIdentity");
+  ASSERT_NE(fallback_rec.get(), nullptr);
+  EXPECT_EQ(graph_execution_state->flib_def().FindRecord("UsedIdentity").get(),
+            fallback_rec.get());
+  EXPECT_EQ(graph_execution_state->graph()
+                .flib_def()
+                .FindRecord("UsedIdentity")
+                .get(),
+            fallback_rec.get());
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"c"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  EXPECT_EQ(optimized_graph.graph->flib_def().Find("UnusedIdentity"), nullptr);
+}
+
+void BM_CreateAndOptimizeGraphWithFunctions(benchmark::State& state) {
+  GraphDef graphdef;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice(
+        "/job:localhost/replica:0/task:0/device:CPU:0");
+    const Tensor kConst = test::AsScalar<float>(2.0);
+    for (int i = 0; i < 32; ++i) {
+      auto fdef = tensorflow::FunctionDefHelper::Create(
+          "Func_" + std::to_string(i), {"x: float"}, {"y: float"}, {},
+          {{{"c1"}, "Const", {}, {{"dtype", DT_FLOAT}, {"value", kConst}}},
+           {{"add1"}, "Add", {"x", "c1:output:0"}, {{"T", DT_FLOAT}}},
+           {{"mul1"}, "Mul", {"add1:z:0", "x"}, {{"T", DT_FLOAT}}}},
+          {{"y", "mul1:z:0"}});
+      *fdef_lib.add_function() = std::move(fdef);
+    }
+    TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+
+    Output a = ops::Const(scope.WithOpName("a"), 2.0f, {1, 1});
+    tensorflow::NameAttrList func_attr;
+    func_attr.set_name("Func_0");
+    auto pcall = ops::PartitionedCall(scope, {a}, {DT_FLOAT}, func_attr);
+    Output c = ops::Identity(scope.WithOpName("c"), pcall.output.front());
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::CreateWithCpuDevice({}, fdef_lib));
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"c"};
+
+  for (auto s : state) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto graph_execution_state,
+        TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto optimized_graph,
+        graph_execution_state->CreateOptimizedGraph(graph_import_config));
+    ::testing::DoNotOptimize(optimized_graph);
+  }
+}
+BENCHMARK(BM_CreateAndOptimizeGraphWithFunctions);
 
 }  // namespace
 }  // namespace tfrt_stub
