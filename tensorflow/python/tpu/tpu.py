@@ -257,7 +257,7 @@ class XLAOptions(
       cls,
       use_spmd_for_xla_partitioning=True,
       enable_xla_dynamic_padder=True,
-      use_shardy_partitioner=False,
+      use_shardy_partitioner=True,
   ):
     return super(XLAOptions, cls).__new__(
         cls,

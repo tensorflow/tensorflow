@@ -852,7 +852,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   xla_compile_options.executable_build_options.set_use_spmd_partitioning(
       original_compile_metadata_.use_spmd_for_xla_partitioning());
   xla_compile_options.executable_build_options.set_use_shardy_partitioner(
-      compile_metadata.use_shardy_partitioner());
+      compile_metadata.use_shardy_partitioner() &&
+      tf2hlo_result.hlo_module_proto.frontend_attributes().map().contains(
+          "xla.sdy.meshes"));
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
   if (UsePortableExecution()) {
