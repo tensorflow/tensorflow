@@ -8741,12 +8741,26 @@ tf_kernel_library(
     deps = ["//tensorflow/core/kernels/linalg:einsum_op"],
 )
 
+cc_library(
+    name = "isotonic_regression_op_header",
+    hdrs = ["isotonic_regression_op.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "isotonic_regression_op",
     srcs = [
         "isotonic_regression_op.cc",
     ],
+    hdrs = [
+        "isotonic_regression_op.h",
+    ],
     deps = [
+        ":isotonic_regression_op_header",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@eigen_archive//:eigen3",
