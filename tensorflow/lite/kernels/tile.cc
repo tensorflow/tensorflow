@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <tuple>
 #include <utility>
@@ -42,6 +43,14 @@ struct OpData {
 };
 
 template <typename T>
+T LoadUnaligned(const T* data, int index = 0) {
+  T value;
+  std::memcpy(&value, reinterpret_cast<const char*>(data) + index * sizeof(T),
+              sizeof(T));
+  return value;
+}
+
+template <typename T>
 TfLiteStatus MultiplyShapeDims(TfLiteContext* context,
                                const TfLiteIntArray& shape,
                                const TfLiteTensor* multipliers,
@@ -56,7 +65,7 @@ TfLiteStatus MultiplyShapeDims(TfLiteContext* context,
   }
   for (int i = 0; i < num_dimensions; ++i) {
     int64_t shape_data = static_cast<int64_t>(shape.data[i]);
-    int64_t multiplier = static_cast<int64_t>(multipliers_v[i]);
+    int64_t multiplier = static_cast<int64_t>(LoadUnaligned(multipliers_v, i));
 
     if (multiplier < 0) {
       TfLiteIntArrayFree(temp_shape);
@@ -119,10 +128,11 @@ template <typename T, typename M>
 void CopyMultipleTimes(const T* in_data, int32_t in_size, M multiplier,
                        T* out_data) {
   for (M i = 0; i < multiplier; ++i) {
-    const T* in_end = in_data + in_size;
-    T* new_out_data = std::copy(in_data, in_end, out_data);
+    if (in_size > 0) {
+      std::memcpy(out_data, in_data, in_size * sizeof(T));
+    }
     in_data = out_data;
-    out_data = new_out_data;
+    out_data += in_size;
   }
 }
 
@@ -145,17 +155,16 @@ std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
   if (in_dimensions.size == 0) {
     // If input tensor is a scalar, then just copy it to output (no need to
     // multiply).
-    *out_data = *in_data;
+    std::memcpy(out_data, in_data, sizeof(T));
     return std::make_pair(0, 0);
   }
 
   const int dimension_size = in_dimensions.data[dimension];
+  const M multiplier = LoadUnaligned(multipliers, dimension);
   if (dimension == in_dimensions.size - 1) {
-    CopyMultipleTimes(in_data, dimension_size, multipliers[dimension],
-                      out_data);
-    return std::make_pair(
-        dimension_size,
-        dimension_size * static_cast<int>(multipliers[dimension]));
+    CopyMultipleTimes(in_data, dimension_size, multiplier, out_data);
+    return std::make_pair(dimension_size,
+                          dimension_size * static_cast<int>(multiplier));
   }
   int total_stride_size = 0, total_tiled_stride_size = 0;
   const T* copy_from_data = in_data;
@@ -170,12 +179,10 @@ std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
     total_stride_size += stride_size;
     total_tiled_stride_size += tiled_stride_size;
   }
-  CopyMultipleTimes(out_data, total_tiled_stride_size,
-                    multipliers[dimension] - 1,
+  CopyMultipleTimes(out_data, total_tiled_stride_size, multiplier - 1,
                     out_data + total_tiled_stride_size);
-  return std::make_pair(
-      total_stride_size,
-      total_tiled_stride_size * static_cast<int>(multipliers[dimension]));
+  return std::make_pair(total_stride_size,
+                        total_tiled_stride_size * static_cast<int>(multiplier));
 }
 
 template <typename M>
@@ -191,11 +198,11 @@ std::pair<int, int> TileStringOneDimension(
   }
 
   const int dimension_size = in_dimensions.data[dimension];
+  const M multiplier = LoadUnaligned(multipliers, dimension);
   if (dimension == in_dimensions.size - 1) {
-    CopyStringMultipleTimes(in_data, in_data_index, dimension_size,
-                            multipliers[dimension], buffer);
-    return {dimension_size,
-            dimension_size * static_cast<int>(multipliers[dimension])};
+    CopyStringMultipleTimes(in_data, in_data_index, dimension_size, multiplier,
+                            buffer);
+    return {dimension_size, dimension_size * static_cast<int>(multiplier)};
   }
 
   int total_stride_size = 0, total_tiled_stride_size = 0;
@@ -211,10 +218,10 @@ std::pair<int, int> TileStringOneDimension(
 
   buffer->WriteToTensor(out_data, /*new_shape=*/nullptr);
   CopyStringMultipleTimes(out_data, buffer_index, total_tiled_stride_size,
-                          multipliers[dimension] - 1, buffer);
+                          multiplier - 1, buffer);
 
   return {total_stride_size,
-          total_tiled_stride_size * static_cast<int>(multipliers[dimension])};
+          total_tiled_stride_size * static_cast<int>(multiplier)};
 }
 
 template <typename T>
