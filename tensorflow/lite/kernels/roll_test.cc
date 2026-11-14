@@ -52,29 +52,27 @@ class BaseRollOpModel : public SingleOpModel {
   }
 
   template <typename T>
-  inline typename std::enable_if<is_small_integer<T>::value, void>::type
-  SetInput(const std::initializer_list<float>& data) {
+  inline std::enable_if_t<is_small_integer<T>::value, void> SetInput(
+      const std::initializer_list<float>& data) {
     QuantizeAndPopulate<T>(input_, data);
   }
 
   template <typename T>
-  inline typename std::enable_if<!is_small_integer<T>::value, void>::type
-  SetInput(std::initializer_list<T> data) {
+  inline std::enable_if_t<!is_small_integer<T>::value, void> SetInput(
+      std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
 
   template <typename T>
-  inline typename std::enable_if<is_small_integer<T>::value,
-                                 std::vector<float>>::type
+  inline std::enable_if_t<is_small_integer<T>::value, std::vector<float>>
   GetOutput() {
     return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
                          GetZeroPoint(output_));
   }
 
   template <typename T>
-  inline
-      typename std::enable_if<!is_small_integer<T>::value, std::vector<T>>::type
-      GetOutput() {
+  inline std::enable_if_t<!is_small_integer<T>::value, std::vector<T>>
+  GetOutput() {
     return ExtractVector<T>(output_);
   }
 
