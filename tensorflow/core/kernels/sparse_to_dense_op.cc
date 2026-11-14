@@ -20,6 +20,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <cstdint>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -239,6 +241,25 @@ class SparseToDenseGPU : public AsyncOpKernel {
                                                      output_shape_vec.size(),
                                                      &output_tensor_shape),
                          done);
+    const int64_t num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+    OP_REQUIRES_ASYNC(
+        c,
+        output_tensor_shape.num_elements() <=
+            std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "SparseToDense: output_shape requires more than INT32_MAX elements "
+            "which is unsupported on GPU: ",
+            output_tensor_shape.DebugString())),
+        done);
+    OP_REQUIRES_ASYNC(
+        c,
+        num_elems <= std::numeric_limits<int32_t>::max() &&
+            indices.NumElements() <= std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "SparseToDense: indices has more than INT32_MAX elements or rows "
+            "which is unsupported on GPU: ",
+            indices.shape().DebugString())),
+        done);
     Tensor* output = nullptr;
     OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, output_tensor_shape, &output),
                          done);
