@@ -1190,6 +1190,12 @@ def isrealobj(x):
 @tf_export.tf_export('experimental.numpy.isnan', v1=[])
 @np_utils.np_doc('isnan')
 def isnan(x):
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return math_ops.logical_or(
+        _scalar(math_ops.is_nan, math_ops.real(x), True),
+        _scalar(math_ops.is_nan, math_ops.imag(x), True),
+    )
   return _scalar(math_ops.is_nan, x, True)
 
 
@@ -1233,6 +1239,111 @@ def nanmean(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=missing
       nan_mask, axis=axis, dtype=dtype, keepdims=keepdims
   )
   return nansum(a, axis=axis, dtype=dtype, keepdims=keepdims) / normalizer
+
+
+@tf_export.tf_export('experimental.numpy.nanmin', v1=[])
+@np_utils.np_doc('nanmin')
+def nanmin(a, axis=None, out=None, keepdims=False, initial=None, where=None):  # pylint: disable=missing-docstring
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if where is not None:
+    raise ValueError('Setting where is not supported.')
+  a = np_array_ops.array(a)
+  if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
+    res = np_array_ops.amin(a, axis=axis, keepdims=keepdims)
+    if initial is not None:
+      res = math_ops.minimum(res, math_ops.cast(initial, res.dtype))
+    return res
+  nan_mask = isnan(a)
+  all_nan = math_ops.reduce_all(nan_mask, axis=axis, keepdims=keepdims)
+  pos_inf = math_ops.cast(np.inf, a.dtype)
+  safe_a = array_ops.where_v2(nan_mask, pos_inf, a)
+  min_val = np_array_ops.amin(safe_a, axis=axis, keepdims=keepdims)
+  if initial is not None:
+    min_val = math_ops.minimum(
+        min_val, math_ops.cast(initial, min_val.dtype)
+    )
+  nan_val = math_ops.cast(np.nan, a.dtype)
+  return array_ops.where_v2(all_nan, nan_val, min_val)
+
+
+@tf_export.tf_export('experimental.numpy.nanmax', v1=[])
+@np_utils.np_doc('nanmax')
+def nanmax(a, axis=None, out=None, keepdims=False, initial=None, where=None):  # pylint: disable=missing-docstring
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if where is not None:
+    raise ValueError('Setting where is not supported.')
+  a = np_array_ops.array(a)
+  if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
+    res = np_array_ops.amax(a, axis=axis, keepdims=keepdims)
+    if initial is not None:
+      res = math_ops.maximum(res, math_ops.cast(initial, res.dtype))
+    return res
+  nan_mask = isnan(a)
+  all_nan = math_ops.reduce_all(nan_mask, axis=axis, keepdims=keepdims)
+  neg_inf = math_ops.cast(-np.inf, a.dtype)
+  safe_a = array_ops.where_v2(nan_mask, neg_inf, a)
+  max_val = np_array_ops.amax(safe_a, axis=axis, keepdims=keepdims)
+  if initial is not None:
+    max_val = math_ops.maximum(
+        max_val, math_ops.cast(initial, max_val.dtype)
+    )
+  nan_val = math_ops.cast(np.nan, a.dtype)
+  return array_ops.where_v2(all_nan, nan_val, max_val)
+
+
+@tf_export.tf_export('experimental.numpy.nanvar', v1=[])
+@np_utils.np_doc('nanvar')
+def nanvar(  # pylint: disable=missing-docstring
+    a, axis=None, dtype=None, out=None, ddof=0, keepdims=None, where=None
+):
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if where is not None:
+    raise ValueError('Setting where is not supported.')
+  a = np_array_ops.array(a)
+  if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
+    return np_array_ops.var(
+        a, axis=axis, dtype=dtype, ddof=ddof, keepdims=keepdims
+    )
+  if dtype is not None:
+    working_dtype = np_utils.result_type(a, dtype)
+    a = math_ops.cast(a, working_dtype)
+  nan_mask = isnan(a)
+  valid_mask = math_ops.logical_not(nan_mask)
+  count = math_ops.reduce_sum(
+      math_ops.cast(valid_mask, dtypes.int64), axis=axis, keepdims=keepdims
+  )
+  mean = nanmean(a, axis=axis, keepdims=True)
+  diff = a - mean
+  if a.dtype in (dtypes.complex64, dtypes.complex128):
+    squared = math_ops.real(diff * math_ops.conj(diff))
+  else:
+    squared = math_ops.square(diff)
+  squared_zeroed = array_ops.where_v2(
+      nan_mask, array_ops.zeros_like(squared), squared
+  )
+  sum_sq = math_ops.reduce_sum(squared_zeroed, axis=axis, keepdims=keepdims)
+  dof = math_ops.cast(count, sum_sq.dtype) - math_ops.cast(ddof, sum_sq.dtype)
+  nan_val = math_ops.cast(np.nan, sum_sq.dtype)
+  var_val = array_ops.where_v2(dof > 0, math_ops.divide(sum_sq, dof), nan_val)
+  if dtype is not None:
+    var_val = math_ops.cast(var_val, dtype)
+  return var_val
+
+
+@tf_export.tf_export('experimental.numpy.nanstd', v1=[])
+@np_utils.np_doc('nanstd')
+def nanstd(  # pylint: disable=missing-docstring
+    a, axis=None, dtype=None, out=None, ddof=0, keepdims=None, where=None
+):
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  v = nanvar(
+      a, axis=axis, dtype=dtype, ddof=ddof, keepdims=keepdims, where=where
+  )
+  return math_ops.sqrt(v)
 
 
 @tf_export.tf_export('experimental.numpy.isfinite', v1=[])

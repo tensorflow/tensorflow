@@ -1316,6 +1316,102 @@ class MathTest(test.TestCase, parameterized.TestCase):
           np_math_ops.fabs(arg), np.fabs(arg), msg='fabs({})'.format(arg)
       )
 
+  def testNanMinMax(self):
+    arrays = [
+        np.array([1.0, np.nan, 3.0, 2.0], dtype=np.float32),
+        np.array([1.0, np.nan, 3.0, 2.0], dtype=np.float64),
+        np.array([[1.0, np.nan, 5.0], [np.nan, np.nan, np.nan]],
+                 dtype=np.float32),
+        np.array([[4.0, 2.0], [1.0, 3.0]], dtype=np.float32),
+        np.array([1, 2, 3, 4], dtype=np.int32),
+        np.array([True, False, True], dtype=bool),
+    ]
+    for arr in arrays:
+      for axis in [None, 0, -1]:
+        if arr.ndim == 1 and axis not in (None, 0, -1):
+          continue
+        for keepdims in [False, True]:
+          actual_min = np_math_ops.nanmin(arr, axis=axis, keepdims=keepdims)
+          expected_min = np.nanmin(arr, axis=axis, keepdims=keepdims)
+          self.match(actual_min, expected_min)
+
+          actual_max = np_math_ops.nanmax(arr, axis=axis, keepdims=keepdims)
+          expected_max = np.nanmax(arr, axis=axis, keepdims=keepdims)
+          self.match(actual_max, expected_max)
+
+    # Initial parameter
+    arr = np.array([5.0, np.nan, 10.0], dtype=np.float32)
+    self.match(
+        np_math_ops.nanmin(arr, initial=20.0), np.nanmin(arr, initial=20.0)
+    )
+    self.match(
+        np_math_ops.nanmin(arr, initial=1.0), np.nanmin(arr, initial=1.0)
+    )
+    self.match(
+        np_math_ops.nanmax(arr, initial=2.0), np.nanmax(arr, initial=2.0)
+    )
+    self.match(
+        np_math_ops.nanmax(arr, initial=15.0), np.nanmax(arr, initial=15.0)
+    )
+
+    # Error handling
+    with self.assertRaises(ValueError):
+      np_math_ops.nanmin(arr, out=1)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanmin(arr, where=True)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanmax(arr, out=1)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanmax(arr, where=True)
+
+  def testNanVarStd(self):
+    arrays = [
+        np.array([1.0, np.nan, 5.0, 2.0], dtype=np.float32),
+        np.array([1.0, np.nan, 5.0, 2.0], dtype=np.float64),
+        np.array([[1.0, np.nan, 5.0], [2.0, 4.0, np.nan]], dtype=np.float32),
+        np.array([[1.0, np.nan, 5.0], [np.nan, np.nan, np.nan]],
+                 dtype=np.float32),
+        np.array([1, 2, 3, 4, 5], dtype=np.int32),
+        np.array([1 + 2j, np.nan, 3 + 4j], dtype=np.complex128),
+    ]
+    for arr in arrays:
+      for axis in [None, 0, -1]:
+        if arr.ndim == 1 and axis not in (None, 0, -1):
+          continue
+        for ddof in [0, 1]:
+          for keepdims in [False, True]:
+            actual_var = np_math_ops.nanvar(
+                arr, axis=axis, ddof=ddof, keepdims=keepdims
+            )
+            expected_var = np.nanvar(
+                arr, axis=axis, ddof=ddof, keepdims=keepdims
+            )
+            self.match(actual_var, expected_var)
+
+            actual_std = np_math_ops.nanstd(
+                arr, axis=axis, ddof=ddof, keepdims=keepdims
+            )
+            expected_std = np.nanstd(
+                arr, axis=axis, ddof=ddof, keepdims=keepdims
+            )
+            self.match(actual_std, expected_std)
+
+    # Error handling
+    arr = np.array([1.0, 2.0])
+    with self.assertRaises(ValueError):
+      np_math_ops.nanvar(arr, out=1)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanvar(arr, where=True)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanstd(arr, out=1)
+    with self.assertRaises(ValueError):
+      np_math_ops.nanstd(arr, where=True)
+
+  def testIsNanComplex(self):
+    c = np.array([1 + 2j, np.nan, complex(1, np.nan), 3 + 4j],
+                 dtype=np.complex128)
+    self.match(np_math_ops.isnan(c), np.isnan(c))
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
