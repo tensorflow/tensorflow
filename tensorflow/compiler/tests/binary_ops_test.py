@@ -860,7 +860,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(result, expected)
       self.assertAllEqual(np.signbit(result), np.signbit(expected))
 
-    for dtype in self.float_types & {np.float32, np.float64}:
+    for dtype in self.float_types & {np.float16, np.float32, np.float64}:
       self._testBinary(
           gen_math_ops.floor_mod,
           np.array([3, -3, 0], dtype=dtype),
