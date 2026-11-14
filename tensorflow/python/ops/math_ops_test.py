@@ -1815,6 +1815,47 @@ class ScalarCoercionTest(test_util.TensorFlowTestCase):
       self.assertAllClose(mul_rev_xla(x1), [5.0, 10.0, 15.0, 20.0])
       self.assertAllClose(pow_rev_xla(x2), [16.0, 25.0, 36.0, 49.0])
 
+  def testPowScalarCoercion(self):
+    x = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+
+    @def_function.function
+    def pow_fn(t):
+      return math_ops.pow(2, t)
+
+    @def_function.function
+    def pow_reverse_fn(t):
+      return math_ops.pow(t, 2)
+
+    self.assertAllClose(self.evaluate(pow_fn(x)), [2.0, 4.0, 8.0])
+    self.assertAllClose(self.evaluate(pow_reverse_fn(x)), [1.0, 4.0, 9.0])
+
+    @def_function.function
+    def pow_list_fn(t):
+      return math_ops.pow([2, 2, 2], t)
+
+    self.assertAllClose(self.evaluate(pow_list_fn(x)), [2.0, 4.0, 8.0])
+
+    # Positive test: NumPy scalar and array coercion
+    self.assertAllClose(
+        self.evaluate(math_ops.pow(np.int32(2), x)), [2.0, 4.0, 8.0]
+    )
+    self.assertAllClose(
+        self.evaluate(math_ops.pow(np.array([2, 2, 2], dtype=np.int32), x)),
+        [2.0, 4.0, 8.0],
+    )
+
+    # Negative test: Mismatched tensor dtypes must still raise
+    # TypeError or InvalidArgumentError.
+    y_int = constant_op.constant(2, dtype=dtypes.int32)
+    with self.assertRaises((errors.InvalidArgumentError, TypeError)):
+      self.evaluate(math_ops.pow(y_int, x))
+
+    # Negative test: Incompatible non-numeric type raises ValueError/TypeError.
+    with self.assertRaises(
+        (errors.InvalidArgumentError, TypeError, ValueError)
+    ):
+      self.evaluate(math_ops.pow("invalid", x))
+
 
 if __name__ == "__main__":
   googletest.main()
