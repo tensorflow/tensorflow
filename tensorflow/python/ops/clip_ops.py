@@ -296,8 +296,10 @@ def global_norm(t_list, name=None):
             name="t_%d" % i) if t is not None else t
         for i, t in enumerate(t_list)
     ]
-    original_dtype = next(
-        (v.dtype for v in values if v is not None), None)
+    all_fp16 = (
+        any(v is not None for v in values)
+        and all(v.dtype == dtypes.float16 for v in values if v is not None)
+    )
     half_squared_norms = []
     for v in values:
       if v is not None:
@@ -313,8 +315,8 @@ def global_norm(t_list, name=None):
         half_squared_norm *
         constant_op.constant(2.0, dtype=half_squared_norm.dtype),
         name="global_norm")
-    if original_dtype == dtypes.float16:
-      norm = math_ops.cast(norm, original_dtype)
+    if all_fp16:
+      norm = math_ops.cast(norm, dtypes.float16)
 
   return norm
 

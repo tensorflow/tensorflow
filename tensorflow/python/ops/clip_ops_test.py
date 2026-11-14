@@ -83,6 +83,20 @@ class ClipOpsTest(test.TestCase):
     self.assertAllClose(self.evaluate(clipped), expected)
     self.assertAllClose(self.evaluate(global_clipped[0]), expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGlobalNormMixedFloat16Float32Order(self):
+    small = constant_op.constant([1.0], dtype=dtypes.float16)
+    large = constant_op.constant([65536.0], dtype=dtypes.float32)
+    for values in ([small, large], [large, small]):
+      norm = clip_ops.global_norm(values)
+      clipped, returned_norm = clip_ops.clip_by_global_norm(values, 1.0)
+      self.assertEqual(norm.dtype, dtypes.float32)
+      self.assertEqual(returned_norm.dtype, dtypes.float32)
+      self.assertAllClose(self.evaluate(norm), 65536.0)
+      self.assertAllClose(self.evaluate(returned_norm), 65536.0)
+      self.assertAllClose(
+          self.evaluate(clipped[1] if values[0] is small else clipped[0]), [1.0])
+
   @test_util.run_deprecated_v1
   def testClipTensorByNorm(self):
     # Simple example
