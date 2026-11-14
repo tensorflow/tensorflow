@@ -2522,7 +2522,14 @@ class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
   ~FoldConjugateIntoTranspose() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsConj(*node) || IsTranspose(*node) || IsConjugateTranspose(*node);
+    if (IsConj(*node)) {
+      return node->input_size() >= 1 && !IsControlInput(node->input(0));
+    }
+    if (IsTranspose(*node) || IsConjugateTranspose(*node)) {
+      return node->input_size() >= 2 && !IsControlInput(node->input(0)) &&
+             !IsControlInput(node->input(1));
+    }
+    return false;
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -2540,6 +2547,12 @@ class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
 
     if ((IsTranspose(*transpose_op) || IsConjugateTranspose(*transpose_op)) &&
         IsConj(*conj_op)) {
+      if (transpose_op->input_size() < 2 ||
+          IsControlInput(transpose_op->input(0)) ||
+          IsControlInput(transpose_op->input(1)) || conj_op->input_size() < 1 ||
+          IsControlInput(conj_op->input(0))) {
+        return absl::OkStatus();
+      }
       NodeDef* new_op = AddCopyNode(optimized_node_name, transpose_op);
 
       // Flip the type of transpose op to absorb the conjugation.

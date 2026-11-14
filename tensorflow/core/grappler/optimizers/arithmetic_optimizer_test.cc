@@ -1225,6 +1225,181 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
   test::ExpectTensorEqual<complex64>(tensors[0], tensors_expected[0]);
 }
 
+namespace {
+
+// Adds a node without attributes to `graph`. The Conj/Transpose folding stage
+// only reads names, ops and inputs, so the nodes need no dtype attributes.
+void AddRawNode(GraphDef* graph, const std::string& name, const std::string& op,
+                const std::vector<std::string>& inputs) {
+  NodeDef* node = graph->add_node();
+  node->set_name(name);
+  node->set_op(op);
+  for (const std::string& input : inputs) {
+    node->add_input(input);
+  }
+}
+
+// Checks that every node of `expected` is in `actual` with the same op and
+// inputs, and that `actual` has no other node.
+void ExpectSameNodesByName(const GraphDef& expected, const GraphDef& actual) {
+  ASSERT_EQ(actual.node_size(), expected.node_size());
+  for (const NodeDef& want : expected.node()) {
+    const NodeDef* got = nullptr;
+    for (const NodeDef& candidate : actual.node()) {
+      if (candidate.name() == want.name()) got = &candidate;
+    }
+    ASSERT_NE(got, nullptr) << want.name();
+    EXPECT_EQ(got->op(), want.op()) << want.name();
+    ASSERT_EQ(got->input_size(), want.input_size()) << want.name();
+    for (int i = 0; i < want.input_size(); ++i) {
+      EXPECT_EQ(got->input(i), want.input(i)) << want.name();
+    }
+  }
+}
+
+}  // namespace
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldConjugateIntoTransposeIgnoresNodesWithMissingOrControlInputs) {
+  GrapplerItem item;
+  AddRawNode(&item.graph, "z", "Placeholder", {});
+  AddRawNode(&item.graph, "perm", "Placeholder", {});
+  AddRawNode(&item.graph, "ctrl", "Placeholder", {});
+  AddRawNode(&item.graph, "conj_without_input", "Conj", {});
+  AddRawNode(&item.graph, "conj_only_ctrl", "Conj", {"^ctrl"});
+  AddRawNode(&item.graph, "transpose_without_input", "Transpose", {});
+  AddRawNode(&item.graph, "transpose_missing_perm", "Transpose", {"z"});
+  AddRawNode(&item.graph, "transpose_ctrl_data", "Transpose", {"^z", "perm"});
+  AddRawNode(&item.graph, "transpose_ctrl_perm", "Transpose", {"z", "^ctrl"});
+  AddRawNode(&item.graph, "conjugate_transpose_without_input",
+             "ConjugateTranspose", {});
+  AddRawNode(&item.graph, "conjugate_transpose_missing_perm",
+             "ConjugateTranspose", {"z"});
+  AddRawNode(&item.graph, "conjugate_transpose_ctrl_data", "ConjugateTranspose",
+             {"^z", "perm"});
+  AddRawNode(&item.graph, "conjugate_transpose_ctrl_perm", "ConjugateTranspose",
+             {"z", "^ctrl"});
+  for (const std::string& name :
+       {"conj_without_input", "conj_only_ctrl", "transpose_without_input",
+        "transpose_missing_perm", "transpose_ctrl_data", "transpose_ctrl_perm",
+        "conjugate_transpose_without_input", "conjugate_transpose_missing_perm",
+        "conjugate_transpose_ctrl_data", "conjugate_transpose_ctrl_perm"}) {
+    AddRawNode(&item.graph, absl::StrCat(name, "_output"), "Identity", {name});
+    item.fetch.push_back(absl::StrCat(name, "_output"));
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldConjugateIntoTranspose(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  // The graph is returned unchanged.
+  ExpectSameNodesByName(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldConjugateIntoTransposeIgnoresNeighborWithMissingOrControlInputs) {
+  GrapplerItem item;
+  AddRawNode(&item.graph, "z", "Placeholder", {});
+  AddRawNode(&item.graph, "perm", "Placeholder", {});
+  AddRawNode(&item.graph, "ctrl", "Placeholder", {});
+  AddRawNode(&item.graph, "valid_transpose", "Transpose", {"z", "perm"});
+  AddRawNode(&item.graph, "valid_conj", "Conj", {"z"});
+  AddRawNode(&item.graph, "transpose_without_input", "Transpose", {});
+  AddRawNode(&item.graph, "transpose_missing_perm", "Transpose", {"z"});
+  AddRawNode(&item.graph, "transpose_ctrl_data", "Transpose", {"^z", "perm"});
+  AddRawNode(&item.graph, "transpose_ctrl_perm", "Transpose", {"z", "^ctrl"});
+  AddRawNode(&item.graph, "conj_transpose_missing_perm", "ConjugateTranspose",
+             {"z"});
+  AddRawNode(&item.graph, "conj_transpose_ctrl_perm", "ConjugateTranspose",
+             {"z", "^ctrl"});
+  AddRawNode(&item.graph, "conj_without_input", "Conj", {});
+  AddRawNode(&item.graph, "conj_only_ctrl", "Conj", {"^ctrl"});
+
+  AddRawNode(&item.graph, "conj_of_transpose_no_input", "Conj",
+             {"transpose_without_input"});
+  AddRawNode(&item.graph, "conj_of_transpose_no_perm", "Conj",
+             {"transpose_missing_perm"});
+  AddRawNode(&item.graph, "conj_of_transpose_ctrl_data", "Conj",
+             {"transpose_ctrl_data"});
+  AddRawNode(&item.graph, "conj_of_transpose_ctrl_perm", "Conj",
+             {"transpose_ctrl_perm"});
+  AddRawNode(&item.graph, "conj_of_conj_transpose_no_perm", "Conj",
+             {"conj_transpose_missing_perm"});
+  AddRawNode(&item.graph, "conj_of_conj_transpose_ctrl_perm", "Conj",
+             {"conj_transpose_ctrl_perm"});
+  AddRawNode(&item.graph, "conj_ctrl_edge_to_transpose", "Conj",
+             {"^valid_transpose"});
+  AddRawNode(&item.graph, "transpose_of_conj_no_input", "Transpose",
+             {"conj_without_input", "perm"});
+  AddRawNode(&item.graph, "transpose_of_conj_only_ctrl", "Transpose",
+             {"conj_only_ctrl", "perm"});
+  AddRawNode(&item.graph, "transpose_ctrl_edge_to_conj", "Transpose",
+             {"^valid_conj", "perm"});
+  AddRawNode(&item.graph, "conj_transpose_of_conj_only_ctrl",
+             "ConjugateTranspose", {"conj_only_ctrl", "perm"});
+
+  for (const std::string& name :
+       {"conj_of_transpose_no_input", "conj_of_transpose_no_perm",
+        "conj_of_transpose_ctrl_data", "conj_of_transpose_ctrl_perm",
+        "conj_of_conj_transpose_no_perm", "conj_of_conj_transpose_ctrl_perm",
+        "conj_ctrl_edge_to_transpose", "transpose_of_conj_no_input",
+        "transpose_of_conj_only_ctrl", "transpose_ctrl_edge_to_conj",
+        "conj_transpose_of_conj_only_ctrl"}) {
+    AddRawNode(&item.graph, absl::StrCat(name, "_output"), "Identity", {name});
+    item.fetch.push_back(absl::StrCat(name, "_output"));
+  }
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldConjugateIntoTranspose(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  // The graph is returned unchanged.
+  ExpectSameNodesByName(item.graph, output);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       FoldConjugateIntoTransposeControlPairIsStillFolded) {
+  GrapplerItem item;
+  AddRawNode(&item.graph, "z", "Placeholder", {});
+  AddRawNode(&item.graph, "perm", "Placeholder", {});
+  AddRawNode(&item.graph, "conj", "Conj", {"z"});
+  AddRawNode(&item.graph, "trans", "Transpose", {"conj", "perm"});
+  AddRawNode(&item.graph, "trans_output", "Identity", {"trans"});
+  item.fetch.push_back("trans_output");
+  // Malformed nodes in the same graph must not stop the well formed pair from
+  // being folded.
+  AddRawNode(&item.graph, "transpose_missing_perm", "Transpose", {"z"});
+  AddRawNode(&item.graph, "conj_of_transpose", "Conj",
+             {"transpose_missing_perm"});
+  AddRawNode(&item.graph, "conj_of_transpose_output", "Identity",
+             {"conj_of_transpose"});
+  item.fetch.push_back("conj_of_transpose_output");
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFoldConjugateIntoTranspose(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* folded =
+      node_map.GetNode("ArithmeticOptimizer/FoldConjugateIntoTranspose_trans");
+  ASSERT_NE(folded, nullptr);
+  EXPECT_EQ(folded->op(), "ConjugateTranspose");
+  ASSERT_EQ(folded->input_size(), 2);
+  EXPECT_EQ(folded->input(0), "z");
+  EXPECT_EQ(folded->input(1), "perm");
+  const NodeDef* malformed = node_map.GetNode("transpose_missing_perm");
+  ASSERT_NE(malformed, nullptr);
+  ASSERT_EQ(malformed->input_size(), 1);
+  EXPECT_EQ(malformed->input(0), "z");
+  const NodeDef* conj = node_map.GetNode("conj_of_transpose");
+  ASSERT_NE(conj, nullptr);
+  ASSERT_EQ(conj->input_size(), 1);
+  EXPECT_EQ(conj->input(0), "transpose_missing_perm");
+}
+
 TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
   for (const std::string matmul_type :
        {"MatMul", "SparseMatMul", "BatchMatMul", "BatchMatMulV2"}) {
