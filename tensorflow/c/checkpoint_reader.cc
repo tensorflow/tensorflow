@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/checkpoint_reader.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
@@ -50,6 +54,16 @@ CheckpointReader::CheckpointReader(const std::string& filename,
       return;
     }
     auto result = BuildV2VarMaps();
+    if (!v2_reader_->status().ok()) {
+      tsl::Set_TF_Status_from_Status(status, v2_reader_->status());
+      return;
+    }
+    if (result.first == nullptr || result.second == nullptr) {
+      tsl::Set_TF_Status_from_Status(
+          status,
+          absl::DataLossError("Corrupt checkpoint entry in V2 variable map."));
+      return;
+    }
     var_to_shape_map_.swap(result.first);
     var_to_data_type_map_.swap(result.second);
   } else {
@@ -126,17 +140,30 @@ CheckpointReader::BuildV2VarMaps() {
   absl::flat_hash_set<std::string> filtered_keys;
   BundleEntryProto entry;
   v2_reader_->Seek(kHeaderEntryKey);
+  if (!v2_reader_->Valid()) {
+    return std::make_pair(nullptr, nullptr);
+  }
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
-    CHECK(entry.ParseFromString(v2_reader_->value()))
-        << entry.InitializationErrorString();
+    if (!entry.ParseFromString(v2_reader_->value())) {
+      return std::make_pair(nullptr, nullptr);
+    }
     for (int i = 0; i < entry.slices_size(); ++i) {
       const auto& slice_proto = entry.slices(i);
-      CHECK(filtered_keys
-                .insert(EncodeTensorNameSlice(
-                    std::string(v2_reader_->key()) /* full var's name */,
-                    TensorSlice(slice_proto)))
-                .second);
+      TensorSlice slice_spec;
+      if (!TensorSlice::BuildTensorSlice(slice_proto, &slice_spec).ok()) {
+        return std::make_pair(nullptr, nullptr);
+      }
+      if (!filtered_keys
+               .insert(EncodeTensorNameSlice(
+                   std::string(v2_reader_->key()) /* full var's name */,
+                   slice_spec))
+               .second) {
+        return std::make_pair(nullptr, nullptr);
+      }
     }
+  }
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
   }
 
   // Second pass: adds the entries, ignoring the filtered keys.
@@ -145,13 +172,24 @@ CheckpointReader::BuildV2VarMaps() {
   std::unique_ptr<TensorSliceReader::VarToDataTypeMap> var_to_data_type_map(
       new TensorSliceReader::VarToDataTypeMap);
   v2_reader_->Seek(kHeaderEntryKey);
+  if (!v2_reader_->Valid()) {
+    return std::make_pair(nullptr, nullptr);
+  }
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
     if (filtered_keys.count(v2_reader_->key()) > 0) continue;
-    CHECK(entry.ParseFromString(v2_reader_->value()))
-        << entry.InitializationErrorString();
+    if (!entry.ParseFromString(v2_reader_->value())) {
+      return std::make_pair(nullptr, nullptr);
+    }
+    TensorShape shape;
+    if (!TensorShape::BuildTensorShape(entry.shape(), &shape).ok()) {
+      return std::make_pair(nullptr, nullptr);
+    }
     std::string key(v2_reader_->key());
-    (*var_to_shape_map)[key] = TensorShape(entry.shape());
+    (*var_to_shape_map)[key] = std::move(shape);
     (*var_to_data_type_map)[key] = DataType(entry.dtype());
+  }
+  if (!v2_reader_->status().ok()) {
+    return std::make_pair(nullptr, nullptr);
   }
   // The returned pointers are owned by the caller.
   return std::make_pair(std::move(var_to_shape_map),

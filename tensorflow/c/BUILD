@@ -740,7 +740,28 @@ tf_cuda_library(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "checkpoint_reader_test",
+    srcs = ["checkpoint_reader_test.cc"],
+    deps = [
+        ":checkpoint_reader",
+        ":tf_status",
+        ":tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:naming",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -1421,12 +1421,21 @@ std::string BundleReader::DebugString() {
   std::string shape_str;
   BundleEntryProto entry;
   Seek(kHeaderEntryKey);
+  if (!Valid()) {
+    return shape_str;
+  }
   for (Next(); Valid(); Next()) {
-    CHECK(entry.ParseFromString(value()));
+    if (!entry.ParseFromString(value())) {
+      break;
+    }
     if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
 
+    TensorShape shape;
+    if (!TensorShape::BuildTensorShape(entry.shape(), &shape).ok()) {
+      break;
+    }
     strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
-                       ") ", TensorShape(entry.shape()).DebugString());
+                       ") ", shape.DebugString());
     absl::StrAppend(&shape_str, "\n");
   }
   return shape_str;

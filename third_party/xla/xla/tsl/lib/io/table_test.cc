@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/coding.h"
 #include "tsl/platform/snappy.h"
 
 namespace tsl {
@@ -748,6 +749,127 @@ TEST(TableTest, SeekToFirstKeyDoesNotReadTooMuch) {
   // Make sure we don't read the big second block when just trying to
   // retrieve the data in the first key
   EXPECT_LT(c.BytesRead(), 200);
+}
+
+class FailingStringSource : public StringSource {
+ public:
+  explicit FailingStringSource(absl::string_view contents)
+      : StringSource(contents), fail_reads_(false) {}
+
+  void set_fail_reads(bool fail) { fail_reads_ = fail; }
+
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
+                    char* scratch) const override {
+    if (fail_reads_) {
+      return absl::DeadlineExceededError("simulated read timeout");
+    }
+    return StringSource::Read(offset, n, result, scratch);
+  }
+
+ private:
+  bool fail_reads_;
+};
+
+TEST(TableTest, TwoLevelIteratorNextWhenInvalid) {
+  StringSink sink;
+  Options options;
+  TableBuilder builder(options, &sink);
+  builder.Add("k01", "v01");
+  builder.Add("k02", "v02");
+  ASSERT_TRUE(builder.Finish().ok());
+
+  FailingStringSource source(sink.contents());
+  Table* table = nullptr;
+  ASSERT_TRUE(
+      Table::Open(options, &source, sink.contents().size(), &table).ok());
+
+  // Fail subsequent data block reads after Table::Open has read the index.
+  source.set_fail_reads(true);
+
+  Iterator* iter = table->NewIterator();
+  iter->Seek("");
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_TRUE(absl::IsDeadlineExceeded(iter->status())) << iter->status();
+
+  // Calling Next() on an invalid TwoLevelIterator must not crash and must
+  // preserve the error status.
+  iter->Next();
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_TRUE(absl::IsDeadlineExceeded(iter->status())) << iter->status();
+
+  delete iter;
+  delete table;
+}
+
+TEST(TableTest, BlockCorruptDecodeEntryOverflow) {
+  // Craft a block whose entry has non_shared = 0x80000000 and
+  // value_length = 0x80000000, which overflows uint32_t addition to 0.
+  std::string raw;
+  core::PutVarint32(&raw, 0);            // shared = 0
+  core::PutVarint32(&raw, 0x80000000u);  // non_shared = 2^31
+  core::PutVarint32(&raw, 0x80000000u);  // value_length = 2^31
+  core::PutFixed32(&raw, 0);             // restarts[0] = 0
+  core::PutFixed32(&raw, 1);             // num_restarts = 1
+
+  BlockContents contents;
+  contents.data = raw;
+  contents.cacheable = false;
+  contents.heap_allocated = false;
+  Block block(contents);
+  Iterator* iter = block.NewIterator();
+
+  iter->SeekToFirst();
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_TRUE(absl::IsDataLoss(iter->status())) << iter->status();
+
+  iter->Next();
+  EXPECT_FALSE(iter->Valid());
+  delete iter;
+}
+
+TEST(TableTest, BlockCorruptRestartPointOutOfBounds) {
+  // Craft a block with 2 restart points where restarts[1] points past the
+  // end of the data region.
+  std::string raw;
+  core::PutVarint32(&raw, 0);  // shared = 0
+  core::PutVarint32(&raw, 1);  // non_shared = 1
+  core::PutVarint32(&raw, 1);  // value_length = 1
+  raw.append("kv");
+  core::PutFixed32(&raw, 0);     // restarts[0] = 0
+  core::PutFixed32(&raw, 1000);  // restarts[1] = 1000 (out of bounds)
+  core::PutFixed32(&raw, 2);     // num_restarts = 2
+
+  BlockContents contents;
+  contents.data = raw;
+  contents.cacheable = false;
+  contents.heap_allocated = false;
+  Block block(contents);
+  Iterator* iter = block.NewIterator();
+
+  iter->Seek("z");
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_TRUE(absl::IsDataLoss(iter->status())) << iter->status();
+
+  delete iter;
+
+  // Also test SeekToFirst() when restarts[0] is out of bounds.
+  std::string raw_first;
+  raw_first.append("kv");
+  core::PutFixed32(&raw_first, 1000);  // restarts[0] = 1000 (out of bounds)
+  core::PutFixed32(&raw_first, 1);     // num_restarts = 1
+
+  BlockContents contents_first;
+  contents_first.data = raw_first;
+  contents_first.cacheable = false;
+  contents_first.heap_allocated = false;
+  Block block_first(contents_first);
+  Iterator* iter_first = block_first.NewIterator();
+
+  iter_first->SeekToFirst();
+  EXPECT_FALSE(iter_first->Valid());
+  EXPECT_TRUE(absl::IsDataLoss(iter_first->status())) << iter_first->status();
+
+  delete iter_first;
 }
 
 }  // namespace table

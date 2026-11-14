@@ -1948,6 +1948,22 @@ TEST(TensorBundleTest, VersionTest) {
   }
 }
 
+TEST(TensorBundleTest, DebugStringHandlesInvalidShapeGracefully) {
+  const std::string prefix = Prefix("debug_string_corrupt");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_EXPECT_OK(writer.Add("valid_var", Constant_2x3<float>(1.0f)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  TF_ASSERT_OK(RewriteEntry(prefix, "valid_var", [](BundleEntryProto* entry) {
+    entry->mutable_shape()->add_dim()->set_size(-1);
+  }));
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  // DebugString() should not CHECK-crash on an invalid shape proto.
+  EXPECT_EQ(reader.DebugString(), "");
+}
+
 TEST(TensorBundleTest, LargeVariableLoadingTest) {
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));

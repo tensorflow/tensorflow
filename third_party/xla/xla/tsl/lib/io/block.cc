@@ -18,6 +18,8 @@ limitations under the License.
 #include "xla/tsl/lib/io/block.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 
 #include "absl/status/status.h"
 #include "xla/tsl/lib/io/format.h"
@@ -82,7 +84,8 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
       return nullptr;
   }
 
-  if (static_cast<uint32_t>(limit - p) < (*non_shared + *value_length)) {
+  if (static_cast<uint64_t>(limit - p) <
+      static_cast<uint64_t>(*non_shared) + *value_length) {
     return nullptr;
   }
   return p;
@@ -116,14 +119,19 @@ class Block::Iter : public Iterator {
     return core::DecodeFixed32(data_ + restarts_ + index * sizeof(uint32_t));
   }
 
-  void SeekToRestartPoint(uint32_t index) {
+  bool SeekToRestartPoint(uint32_t index) {
     key_.clear();
     restart_index_ = index;
     // current_ will be fixed by ParseNextKey();
 
     // ParseNextKey() starts at the end of value_, so set value_ accordingly
     uint32_t offset = GetRestartPoint(index);
+    if (offset > restarts_ || (offset == restarts_ && restarts_ > 0)) {
+      CorruptionError();
+      return false;
+    }
     value_ = absl::string_view(data_ + offset, 0);
+    return true;
   }
 
  public:
@@ -132,7 +140,8 @@ class Block::Iter : public Iterator {
         restarts_(restarts),
         num_restarts_(num_restarts),
         current_(restarts_),
-        restart_index_(num_restarts_) {
+        restart_index_(num_restarts_),
+        value_(data_ + restarts_, 0) {
     assert(num_restarts_ > 0);
   }
 
@@ -140,15 +149,17 @@ class Block::Iter : public Iterator {
   absl::Status status() const override { return status_; }
   absl::string_view key() const override {
     assert(Valid());
+    if (!Valid()) return absl::string_view();
     return key_;
   }
   absl::string_view value() const override {
     assert(Valid());
+    if (!Valid()) return absl::string_view();
     return value_;
   }
 
   void Next() override {
-    assert(Valid());
+    if (!Valid()) return;
     ParseNextKey();
   }
 
@@ -160,6 +171,10 @@ class Block::Iter : public Iterator {
     while (left < right) {
       uint32_t mid = left + (right - left + 1) / 2;
       uint32_t region_offset = GetRestartPoint(mid);
+      if (region_offset >= restarts_) {
+        CorruptionError();
+        return;
+      }
       uint32_t shared, non_shared, value_length;
       const char* key_ptr =
           DecodeEntry(data_ + region_offset, data_ + restarts_, &shared,
@@ -181,7 +196,9 @@ class Block::Iter : public Iterator {
     }
 
     // Linear search (within restart block) for first key >= target
-    SeekToRestartPoint(left);
+    if (!SeekToRestartPoint(left)) {
+      return;
+    }
     while (true) {
       if (!ParseNextKey()) {
         return;
@@ -193,7 +210,9 @@ class Block::Iter : public Iterator {
   }
 
   void SeekToFirst() override {
-    SeekToRestartPoint(0);
+    if (!SeekToRestartPoint(0)) {
+      return;
+    }
     ParseNextKey();
   }
 
@@ -203,7 +222,7 @@ class Block::Iter : public Iterator {
     restart_index_ = num_restarts_;
     status_ = absl::DataLossError("bad entry in block");
     key_.clear();
-    value_ = absl::string_view();
+    value_ = absl::string_view(data_ + restarts_, 0);
   }
 
   bool ParseNextKey() {

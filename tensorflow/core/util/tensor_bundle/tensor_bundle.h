@@ -223,8 +223,10 @@ class BundleReader {
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
-  // the metadata).
-  absl::Status status() const { return status_; }
+  // the metadata) and the internal iterator has not encountered an error.
+  absl::Status status() const {
+    return status_.ok() && iter_ != nullptr ? iter_->status() : status_;
+  }
 
   // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
   // internally, so this call invalidates the reader's current position.
