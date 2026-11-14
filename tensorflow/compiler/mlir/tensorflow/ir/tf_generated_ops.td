@@ -6921,6 +6921,9 @@ is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
 Gamma function.
+
+CPU and GPU kernels support only `float32` and `float64` (`bfloat16` and `half`
+are supported only with XLA).
   }];
 
   let arguments = (ins
@@ -6970,6 +6973,9 @@ is the upper incomplete Gamma function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
 Gamma function.
+
+CPU and GPU kernels support only `float32` and `float64` (`bfloat16` and `half`
+are supported only with XLA).
   }];
 
   let arguments = (ins
