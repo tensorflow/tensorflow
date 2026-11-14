@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_XENT_OP_H_
 // Functor definition for XentOp, must be compilable by nvcc.
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/tensor_types.h"
@@ -31,16 +33,16 @@ struct XentFunctor {
   //
   // logits: batch_size, num_classes.
   // labels: batch_size, num_classes.
-  // scratch: temporary tensor, dims: batch_size, 1
+  // scratch_storage: temporary tensor, dims: batch_size (twice for double), 1.
   // loss: output tensor for the loss, dims: batch_size.
   // backprop: output tensor for the backprop, dims: batch_size, num_classes.
-  void operator()(const Device &d,
-                  const Eigen::DSizes<Eigen::DenseIndex, 2> &shape,
-                  const Eigen::array<Eigen::DenseIndex, 2> &logits_bcast,
-                  const Eigen::array<Eigen::DenseIndex, 2> &labels_bcast,
+  void operator()(const Device& d,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
+                  const Eigen::array<Eigen::DenseIndex, 2>& logits_bcast,
+                  const Eigen::array<Eigen::DenseIndex, 2>& labels_bcast,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<T>::ConstMatrix labels,
-                  typename TTypes<T>::Matrix scratch,
+                  typename TTypes<T>::Matrix scratch_storage,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop);
 };
@@ -50,13 +52,13 @@ struct XentFunctor {
 // specializations for both device types.
 template <typename Device, typename T>
 struct XentEigenImpl {
-  static void Compute(const Device &d,
-                      const Eigen::DSizes<Eigen::DenseIndex, 2> &shape,
-                      const Eigen::array<Eigen::DenseIndex, 2> &logits_bcast,
-                      const Eigen::array<Eigen::DenseIndex, 2> &labels_bcast,
+  static void Compute(const Device& d,
+                      const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
+                      const Eigen::array<Eigen::DenseIndex, 2>& logits_bcast,
+                      const Eigen::array<Eigen::DenseIndex, 2>& labels_bcast,
                       typename TTypes<T>::ConstMatrix logits,
                       typename TTypes<T>::ConstMatrix labels,
-                      typename TTypes<T>::Matrix scratch,
+                      typename TTypes<T>::Matrix scratch_storage,
                       typename TTypes<T>::Vec loss,
                       typename TTypes<T>::Matrix backprop) {
     // NOTE(touts): This duplicates some of the computations in softmax_op
@@ -68,9 +70,11 @@ struct XentEigenImpl {
 
     const int batch_size = shape[kBatchDim];
     const int num_classes = shape[kClassDim];
+    // The first batch_size elements hold the row maximum, then denominator.
+    typename TTypes<T>::Matrix scratch(scratch_storage.data(), batch_size, 1);
 
-// These arrays are used to reduce along the class dimension, and broadcast
-// the resulting value to all classes.
+    // These arrays are used to reduce along the class dimension, and broadcast
+    // the resulting value to all classes.
     Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
     Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
     batch_by_one.set(0, batch_size);
@@ -102,8 +106,49 @@ struct XentEigenImpl {
                          .eval()
                          .sum(along_class);
 
-    // backprop: prob - labels, where
-    //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
+    // Near a unit float64 denominator, subtracting a unit label loses the tail
+    // gradient. Sum small terms separately to retain that signal.
+    if constexpr (std::is_same_v<T, double>) {
+      bool needs_tail = scratch_storage.size() == 2 * scratch.size();
+      if constexpr (std::is_same_v<Device, Eigen::ThreadPoolDevice>) {
+        // Avoid extra full-tensor passes when no CPU row needs correction.
+        if (needs_tail) {
+          needs_tail = false;
+          for (int i = 0; i < batch_size; ++i) {
+            if (scratch(i, 0) < T(1) + T(1e-14)) {
+              needs_tail = true;
+              break;
+            }
+          }
+        }
+      }
+      if (needs_tail) {
+        // The packed second half may not be aligned when batch_size is odd.
+        T* tail_data = scratch_storage.data() + batch_size;
+        typename TTypes<T>::UnalignedVec tail(tail_data, batch_size);
+        backprop.device(d) = backprop.exp();
+        tail.device(d) =
+            (backprop < backprop.constant(T(0.5)))
+                .select(backprop, backprop.constant(T(0)))
+                .sum(along_class) /
+            scratch.reshape(batch_only);
+
+        const auto labels_broadcast = labels.broadcast(labels_bcast);
+        const auto denominator = scratch.broadcast(one_by_class);
+        const auto tail_ratio_bcast =
+            tail.reshape(batch_by_one).broadcast(one_by_class);
+        backprop.device(d) =
+            ((scratch < scratch.constant(T(1) + T(1e-14)))
+                 .broadcast(one_by_class) &&
+             (backprop.constant(T(0.5)) < backprop))
+                .select((labels_broadcast.constant(T(1)) - labels_broadcast) -
+                            tail_ratio_bcast,
+                        backprop / denominator - labels_broadcast);
+        return;
+      }
+    }
+    // Preserve the original path for non-double types, CPU batches that need no
+    // correction, and callers that provide only a single-column scratch tensor.
     backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
                          labels.broadcast(labels_bcast);
   }
