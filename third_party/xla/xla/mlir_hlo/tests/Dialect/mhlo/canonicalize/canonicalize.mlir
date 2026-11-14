@@ -655,6 +655,34 @@ func.func @simplify_real_dynamic_slice_to_dynamic_slice(%arg0: tensor<?x4xf32>, 
   // CHECK-NEXT: return [[RESULT]] : tensor<1x4xf32>
 }
 
+// CHECK-LABEL: @simplify_real_dynamic_slice_to_dynamic_slice_discardable_attrs
+func.func @simplify_real_dynamic_slice_to_dynamic_slice_discardable_attrs(%arg0: tensor<?x4xf32>, %arg1: tensor<2xi32>) -> tensor<1x4xf32> {
+  %0 = mhlo.constant dense<[1, 4]> : tensor<2xi32>
+  %1 = mhlo.add %arg1, %0 : tensor<2xi32>
+  %2 = mhlo.constant dense<[1, 1]> : tensor<2xi32>
+  %3 = mhlo.real_dynamic_slice %arg0, %arg1, %1, %2 {mhlo.frontend_attributes = {MUST_FUSE = "foo"}} : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  return %3 : tensor<1x4xf32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_slice"(%arg0, {{.*}}, {{.*}})
+  // CHECK-DAG-SAME: slice_sizes = dense<[1, 4]> : tensor<2xi64>
+  // CHECK-DAG-SAME: mhlo.frontend_attributes = {MUST_FUSE = "foo"}
+  // CHECK: return %[[RESULT]] : tensor<1x4xf32>
+}
+
+// CHECK-LABEL: @simplify_real_dynamic_slice_to_slice_discardable_attrs
+func.func @simplify_real_dynamic_slice_to_slice_discardable_attrs(%arg0: tensor<8x4xf32>) -> tensor<1x4xf32> {
+  %c_start = mhlo.constant dense<[2, 0]> : tensor<2xi32>
+  %c_limit = mhlo.constant dense<[3, 4]> : tensor<2xi32>
+  %c_strides = mhlo.constant dense<[1, 1]> : tensor<2xi32>
+  %0 = mhlo.real_dynamic_slice %arg0, %c_start, %c_limit, %c_strides {mhlo.frontend_attributes = {MUST_FUSE = "foo"}} : (tensor<8x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+  return %0 : tensor<1x4xf32>
+  // CHECK: %[[RESULT:.*]] = "mhlo.slice"(%arg0)
+  // CHECK-DAG-SAME: limit_indices = dense<[3, 4]> : tensor<2xi64>
+  // CHECK-DAG-SAME: mhlo.frontend_attributes = {MUST_FUSE = "foo"}
+  // CHECK-DAG-SAME: start_indices = dense<[2, 0]> : tensor<2xi64>
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<2xi64>
+  // CHECK: return %[[RESULT]] : tensor<1x4xf32>
+}
+
 ////////
 // ReshapeOp
 
@@ -770,6 +798,17 @@ func.func @dynamic_slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
   %1 = "mhlo.dynamic_slice"(%arg0, %0) <{slice_sizes = dense<2> : tensor<1xi64>}> : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
   func.return %1 : tensor<2xi32>
 }
+
+// CHECK-LABEL: dynamic_slice_constant_start_discardable_attrs
+func.func @dynamic_slice_constant_start_discardable_attrs(%arg0: tensor<4xi32>) -> tensor<2xi32> {
+  // CHECK: %[[RESULT:.*]] =  "mhlo.slice"(%arg0)
+  // CHECK-DAG-SAME: mhlo.frontend_attributes = {MUST_FUSE = "0"}
+  // CHECK: return %[[RESULT]] : tensor<2xi32>
+  %0 = mhlo.constant dense<1> : tensor<i64>
+  %1 = "mhlo.dynamic_slice"(%arg0, %0) <{slice_sizes = dense<2> : tensor<1xi64>}> {mhlo.frontend_attributes = {MUST_FUSE = "0"}} : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
+  func.return %1 : tensor<2xi32>
+}
+
 
 // CHECK-LABEL: dynamic_slice_constant_start_dynamic_shape
 func.func @dynamic_slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
