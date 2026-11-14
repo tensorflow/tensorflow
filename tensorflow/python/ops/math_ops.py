@@ -5733,8 +5733,12 @@ def polyval(coeffs, x, name=None):
     x = ops.convert_to_tensor(x, name="x")
     if len(coeffs) < 1:
       return array_ops.zeros_like(x, name=name)
+    # Python numbers take the dtype of x, as they do in `c + p * x`, so that
+    # e.g. integer coefficients can be used with a float x.
     coeffs = [
-        ops.convert_to_tensor(coeff, name=("coeff_%d" % index))
+        ops.convert_to_tensor(
+            coeff, dtype_hint=x.dtype, name=("coeff_%d" % index)
+        )
         for index, coeff in enumerate(coeffs)
     ]
     p = coeffs[0]
