@@ -42,6 +42,9 @@ from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import tf_export
 
+# The installed NumPy version does not change while the process runs.
+_NP_2_0_OR_LATER = np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0'
+
 
 pi = np.pi
 tf_export.tf_export('experimental.numpy.pi', v1=[]).export_constant(
@@ -1532,7 +1535,7 @@ def linspace(  # pylint: disable=missing-docstring
     dtype = np_utils.result_type(dtype)
   # In numpy 2.x, the result type of np.linspace is based off of `start` and
   # `end`. We mimic the behavior.
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+  if _NP_2_0_OR_LATER:
     computation_dtype = np_utils.result_type(start, stop)
     if not (computation_dtype.is_floating or computation_dtype.is_complex):
       computation_dtype = np_utils.result_type(float)
