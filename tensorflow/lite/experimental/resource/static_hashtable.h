@@ -36,7 +36,7 @@ class StaticHashtable : public tflite::resource::LookupInterface {
  public:
   explicit StaticHashtable(TfLiteType key_type, TfLiteType value_type)
       : key_type_(key_type), value_type_(value_type) {}
-  ~StaticHashtable() override {}
+  ~StaticHashtable() override = default;
 
   // Finds the corresponding value of the given keys tensor in the map and
   // copies the result data to the given values tensor. If there is no matching

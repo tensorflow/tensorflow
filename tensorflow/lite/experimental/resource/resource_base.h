@@ -39,8 +39,8 @@ class ResourceBase {
     kInitializationStatus = 3,
   };
 
-  explicit ResourceBase() {}
-  virtual ~ResourceBase() {}
+  explicit ResourceBase() = default;
+  virtual ~ResourceBase() = default;
 
   virtual ResourceType GetResourceType() const = 0;
 
