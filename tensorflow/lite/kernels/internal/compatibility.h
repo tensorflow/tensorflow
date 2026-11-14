@@ -119,4 +119,7 @@ using uint32 = std::uint32_t;
 #define TFLITE_DEPRECATED(message)
 #endif
 
+// TODO(b/545334370): Only include when TFLITE_WITH_RUY is defined.
+#include "ruy/profiler/instrumentation.h"  // from @ruy
+
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_COMPATIBILITY_H_

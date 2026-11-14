@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
