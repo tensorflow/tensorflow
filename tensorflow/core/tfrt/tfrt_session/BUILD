@@ -84,7 +84,6 @@ cc_library(
     ] + if_google([
         "//learning/brain/tfrt/tpu:tfrttpu_alwayslink",
         "//learning/brain/tfrt/tpu/fused_kernel:tpu_fused_kernel_alwayslink",
-        "//learning/brain/tfrt/support:export_mlir",
     ]),
     alwayslink = 1,
 )
