@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdio>
 #include <cstring>
 #include <numeric>
-#include <optional>
 #include <vector>
 
 #include "ynnpack/composites/composites.h"  // from @XNNPACK
@@ -40,78 +39,186 @@ namespace ynnpack {
 
 namespace {
 
-struct QuantParamsInfo {
-  int32_t scale_idx = -1;
-  int32_t zp_idx = -1;
-  int32_t block_size = 0;
+bool IsAllZero(const TfLiteTensor& tensor) {
+  const int count = tflite::NumElements(&tensor);
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      return std::all_of(tensor.data.f, tensor.data.f + count,
+                         [](float v) { return v == 0.0f; });
+    case kTfLiteInt32:
+      return std::all_of(tensor.data.i32, tensor.data.i32 + count,
+                         [](int32_t v) { return v == 0; });
+    case kTfLiteInt8:
+      return std::all_of(tensor.data.int8, tensor.data.int8 + count,
+                         [](int8_t v) { return v == 0; });
+    case kTfLiteUInt8:
+      return std::all_of(tensor.data.uint8, tensor.data.uint8 + count,
+                         [](uint8_t v) { return v == 0; });
+    case kTfLiteFloat16:
+    case kTfLiteBFloat16: {
+      const auto* data = reinterpret_cast<const uint16_t*>(tensor.data.raw);
+      return std::all_of(data, data + count,
+                         [](uint16_t bits) { return (bits & 0x7fff) == 0; });
+    }
+    default:
+      return false;
+  }
+}
+
+struct MatMulWeightQuantization {
+  // Tensor indices for tensor-backed quantization (Blockwise, MultiAxis,
+  // BlockwiseV2); -1 for Affine/legacy or unquantized.
+  int scale_tensor_index = -1;
+  int zp_tensor_index = -1;
+  // > 0 when quantization varies along K and needs ynn::define_blockwise_dot.
+  int block_size = 0;
+  // True when scale/zp tensors are rank-N in weights' dimension order
+  // (per-channel Affine or BlockwiseV2), rather than scalar or
+  // [..., N, num_blocks] (Blockwise v1 / MultiAxis).
+  bool has_weight_layout = false;
 };
 
-std::optional<QuantParamsInfo> GetBlockwiseOrMultiAxisQuantParams(
-    const TfLiteTensor& tensor) {
-  if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
-    const auto* quant_params = static_cast<const TfLiteBlockwiseQuantization*>(
-        tensor.quantization.params);
-    if (!quant_params) return std::nullopt;
-    return QuantParamsInfo{quant_params->scale, quant_params->zero_point,
-                           quant_params->blocksize};
-  } else if (tensor.quantization.type == kTfLiteMultiAxisQuantization) {
-    const auto* quant_params = static_cast<const TfLiteMultiAxisQuantization*>(
-        tensor.quantization.params);
-    if (!quant_params) return std::nullopt;
-    return QuantParamsInfo{quant_params->scales, quant_params->zero_points,
-                           quant_params->blocksize};
+// Validates and parses quantization parameters for matmul weights reduced along
+// `k_axis`. When `options` is non-null, enforces
+// `enable_blockwise_quantization` if quantization varies along `k_axis`.
+TfLiteStatus GetMatMulWeightQuantization(
+    TfLiteContext* context, const TfLiteTensor& weights, int k_axis,
+    const TfLiteYNNPackDelegateOptions* options,
+    MatMulWeightQuantization* info) {
+  *info = {};
+  if (!IsQuantized(weights)) return kTfLiteOk;
+  TF_LITE_ENSURE(context, weights.dims != nullptr && weights.dims->size >= 2);
+  const int rank = weights.dims->size;
+  const int n_axis = (k_axis == rank - 1) ? rank - 2 : rank - 1;
+
+  auto validate_param_tensor = [&](int index) -> TfLiteStatus {
+    TF_LITE_ENSURE(context, index >= 0 && index < context->tensors_size);
+    const TfLiteTensor& t = context->tensors[index];
+    TF_LITE_ENSURE(context, IsConstant(t) && t.data.raw != nullptr &&
+                                t.dims != nullptr && IsTensorTypeSupported(t) &&
+                                t.type != kTfLiteFloat64 &&
+                                YnnTypeElementCount(GetYnnType(t.type)) == 1);
+    return kTfLiteOk;
+  };
+
+  switch (weights.quantization.type) {
+    case kTfLiteNoQuantization:
+    case kTfLiteAffineQuantization: {
+      TF_LITE_ENSURE(context, IsSupportedQuantization(
+                                  weights, /*allow_per_channel=*/true));
+      if (weights.quantization.type == kTfLiteAffineQuantization) {
+        const auto* params = static_cast<const TfLiteAffineQuantization*>(
+            weights.quantization.params);
+        if (params->scale->size > 1) {
+          TF_LITE_ENSURE_EQ(context, params->quantized_dimension, n_axis);
+          TF_LITE_ENSURE_EQ(context, params->scale->size,
+                            weights.dims->data[n_axis]);
+          info->has_weight_layout = true;
+        }
+      }
+      return kTfLiteOk;
+    }
+    case kTfLiteBlockwiseQuantization:
+    case kTfLiteMultiAxisQuantization: {
+      int scale_idx = -1;
+      int zp_idx = -1;
+      int blocksize = 0;
+      if (weights.quantization.type == kTfLiteBlockwiseQuantization) {
+        const auto* params = static_cast<const TfLiteBlockwiseQuantization*>(
+            weights.quantization.params);
+        TF_LITE_ENSURE(context, params != nullptr && params->blocksize > 0);
+        scale_idx = params->scale;
+        zp_idx = params->zero_point;
+        blocksize = params->blocksize;
+      } else {
+        const auto* params = static_cast<const TfLiteMultiAxisQuantization*>(
+            weights.quantization.params);
+        TF_LITE_ENSURE(context, params != nullptr && params->blocksize >= 0);
+        scale_idx = params->scales;
+        zp_idx = params->zero_points;
+        blocksize = params->blocksize;
+      }
+      TF_LITE_ENSURE_STATUS(validate_param_tensor(scale_idx));
+      if (zp_idx >= 0) {
+        TF_LITE_ENSURE_STATUS(validate_param_tensor(zp_idx));
+      }
+      if (blocksize > 0) {
+        if (options) {
+          TF_LITE_ENSURE(context, options->enable_blockwise_quantization);
+        }
+        TF_LITE_ENSURE_EQ(context, weights.dims->data[k_axis] % blocksize, 0);
+        info->block_size = blocksize;
+      }
+      info->scale_tensor_index = scale_idx;
+      if (zp_idx >= 0 && !IsAllZero(context->tensors[zp_idx])) {
+        info->zp_tensor_index = zp_idx;
+      }
+      return kTfLiteOk;
+    }
+    case kTfLiteBlockwiseQuantizationV2: {
+      const auto* params = static_cast<const TfLiteBlockwiseQuantizationV2*>(
+          weights.quantization.params);
+      TF_LITE_ENSURE(context,
+                     params != nullptr && params->block_shape != nullptr);
+      TF_LITE_ENSURE_EQ(context, params->block_shape->size, rank);
+      TF_LITE_ENSURE_STATUS(validate_param_tensor(params->scale));
+      const TfLiteTensor& scale_tensor = context->tensors[params->scale];
+      TF_LITE_ENSURE_EQ(context, scale_tensor.dims->size, rank);
+      const TfLiteTensor* zp_tensor = nullptr;
+      if (params->zero_point >= 0) {
+        TF_LITE_ENSURE_STATUS(validate_param_tensor(params->zero_point));
+        zp_tensor = &context->tensors[params->zero_point];
+        TF_LITE_ENSURE_EQ(context, zp_tensor->dims->size, rank);
+      }
+      const bool has_zp = zp_tensor != nullptr && !IsAllZero(*zp_tensor);
+      for (int d = 0; d < rank; ++d) {
+        const int dim = weights.dims->data[d];
+        const int block = params->block_shape->data[d];
+        TF_LITE_ENSURE(context, block > 0);
+        const int num_blocks = (dim == 0) ? 0 : 1 + (dim - 1) / block;
+        const int scale_extent = scale_tensor.dims->data[d];
+        TF_LITE_ENSURE(context,
+                       scale_extent == 1 || scale_extent == num_blocks);
+        int zp_extent = 1;
+        if (zp_tensor != nullptr) {
+          zp_extent = zp_tensor->dims->data[d];
+          TF_LITE_ENSURE(context, zp_extent == 1 || zp_extent == num_blocks);
+        }
+        const bool varies = scale_extent > 1 || (has_zp && zp_extent > 1);
+        if (!varies) continue;
+        if (d == k_axis) {
+          if (options) {
+            TF_LITE_ENSURE(context, options->enable_blockwise_quantization);
+          }
+          TF_LITE_ENSURE(context, block < dim && dim % block == 0);
+          info->block_size = block;
+        } else {
+          TF_LITE_ENSURE_EQ(context, block, 1);
+        }
+      }
+      info->scale_tensor_index = params->scale;
+      info->zp_tensor_index = has_zp ? params->zero_point : -1;
+      info->has_weight_layout = true;
+      return kTfLiteOk;
+    }
+    default:
+      return kTfLiteError;
   }
-  return std::nullopt;
 }
 
-TfLiteStatus ValidateScaleAndZeroPointTensors(TfLiteContext* context,
-                                              int32_t scale_idx,
-                                              int32_t zp_idx) {
-  TF_LITE_ENSURE(context, scale_idx >= 0 && scale_idx < context->tensors_size);
-  const TfLiteTensor& scale_tensor = context->tensors[scale_idx];
-  TF_LITE_ENSURE(context, IsTensorSupported(scale_tensor));
-  if (zp_idx >= 0) {
-    TF_LITE_ENSURE(context, zp_idx < context->tensors_size);
-    const TfLiteTensor& zp_tensor = context->tensors[zp_idx];
-    TF_LITE_ENSURE(context, IsTensorSupported(zp_tensor));
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus DefineQuantizedDot(
-    TfLiteContext* context, ynn_subgraph_t subgraph, int rank_a, int rank_b,
-    absl::Span<const int32_t> a_reduce_axes,
-    absl::Span<const int32_t> b_reduce_axes, uint32_t a_id, uint32_t a_scale_id,
-    uint32_t a_zp_id, uint32_t b_id, uint32_t b_scale_id, uint32_t b_zp_id,
-    uint32_t bias_id, int bias_rank, uint32_t out_scale_id, uint32_t out_zp_id,
-    bool is_per_channel, bool is_conv, ynn_type output_ynn_type,
-    uint32_t* output_id, uint32_t dot_flags) {
-  TF_LITE_ENSURE_EQ(context, a_reduce_axes.size(), b_reduce_axes.size());
-  int num_k_dims = a_reduce_axes.size();
+TfLiteStatus DefineQuantizedDot(TfLiteContext* context, ynn_subgraph_t subgraph,
+                                int num_k_dims, uint32_t a_id,
+                                uint32_t a_scale_id, uint32_t a_zp_id,
+                                uint32_t b_id, uint32_t b_scale_id,
+                                uint32_t b_zp_id, uint32_t bias_id,
+                                uint32_t out_scale_id, uint32_t out_zp_id,
+                                ynn_type output_ynn_type, uint32_t* output_id,
+                                uint32_t dot_flags,
+                                uint32_t float_bias_id = YNN_INVALID_VALUE_ID) {
   // We assume a_id and b_id are quantized (int8 or uint8).
   // Accumulator will be int32.
 
-  int rank = rank_a - num_k_dims + 1;
   bool is_dynamically_quantized = (out_scale_id == YNN_INVALID_VALUE_ID);
-
-  // If grouped (rank_b == 5) and per-channel, expand b_scale and b_zp to rank 3
-  // [G, 1, CO_pg].
-  if (is_conv && rank_b == 5 && is_per_channel) {
-    if (b_scale_id != YNN_INVALID_VALUE_ID) {
-      uint32_t expanded_scale_id = YNN_INVALID_VALUE_ID;
-      int32_t axes[] = {1};
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-          subgraph, 1, axes, b_scale_id, &expanded_scale_id, 0));
-      b_scale_id = expanded_scale_id;
-    }
-    if (b_zp_id != YNN_INVALID_VALUE_ID) {
-      uint32_t expanded_zp_id = YNN_INVALID_VALUE_ID;
-      int32_t axes[] = {1};
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-          subgraph, 1, axes, b_zp_id, &expanded_zp_id, 0));
-      b_zp_id = expanded_zp_id;
-    }
-  }
 
   // Compute zero point and scale of the dot product.
   uint32_t dot_zp_id = YNN_INVALID_VALUE_ID;
@@ -120,176 +227,54 @@ TfLiteStatus DefineQuantizedDot(
       subgraph, num_k_dims, a_id, a_zp_id, a_scale_id, b_id, b_zp_id,
       b_scale_id, dot_zp_id, dot_scale_id));
 
-  uint32_t accum_init_id = YNN_INVALID_VALUE_ID;
+  // Define the dot product and subtract zero-point contribution afterward so
+  // floating-point zero points are not truncated to the integer accumulator.
+  uint32_t accum_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, num_k_dims, a_id, b_id,
+                                           bias_id, &accum_id, dot_flags));
 
   if (dot_zp_id != YNN_INVALID_VALUE_ID) {
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_unary(subgraph, ynn_unary_negate,
-                                               dot_zp_id, &accum_init_id, 0));
+    uint32_t adjusted_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_subtract, accum_id, dot_zp_id, &adjusted_id, 0));
+    accum_id = adjusted_id;
   }
 
-  if (bias_id != YNN_INVALID_VALUE_ID) {
-    if (accum_init_id == YNN_INVALID_VALUE_ID) {
-      accum_init_id = bias_id;
-    } else {
-      uint32_t sub_id = YNN_INVALID_VALUE_ID;
-      uint32_t broadcasted_bias_id = bias_id;
-      TF_LITE_ENSURE_STATUS(
-          ImplementMutualBroadcasting(context, subgraph, rank, bias_rank, 0, 0,
-                                      accum_init_id, broadcasted_bias_id));
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_binary(subgraph, ynn_binary_add, accum_init_id,
-                            broadcasted_bias_id, &sub_id, 0));
-      accum_init_id = sub_id;
-    }
-  }
-
-  // Now define the dot product.
-  uint32_t accum_id = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(
-      subgraph, num_k_dims, a_id, b_id, accum_init_id, &accum_id, dot_flags));
-
-  uint32_t accum_scale_id = dot_scale_id;
-
-  if (is_dynamically_quantized) {
+  if (is_dynamically_quantized && float_bias_id == YNN_INVALID_VALUE_ID) {
     // Dequantize accumulator directly to output.
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dequantize(subgraph, accum_id, YNN_INVALID_VALUE_ID,
-                              accum_scale_id, ynn_type_fp32, output_id, 0));
-  } else {
-    // Dequantize accumulator to float.
-    uint32_t float_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_dequantize(subgraph, accum_id, YNN_INVALID_VALUE_ID,
-                              accum_scale_id, ynn_type_fp32, &float_id, 0));
+                              dot_scale_id, output_ynn_type, output_id, 0));
+    return kTfLiteOk;
+  }
 
+  // Dequantize accumulator to float.
+  uint32_t float_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn_define_dequantize(subgraph, accum_id, YNN_INVALID_VALUE_ID,
+                            dot_scale_id, ynn_type_fp32, &float_id, 0));
+
+  if (float_bias_id != YNN_INVALID_VALUE_ID) {
+    const bool direct_fp32_out =
+        is_dynamically_quantized && output_ynn_type == ynn_type_fp32;
+    uint32_t biased_id = direct_fp32_out ? *output_id : YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
+        subgraph, ynn_binary_add, float_id, float_bias_id, &biased_id, 0));
+    if (direct_fp32_out) {
+      *output_id = biased_id;
+      return kTfLiteOk;
+    }
+    float_id = biased_id;
+  }
+
+  if (is_dynamically_quantized) {
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_convert(subgraph, float_id, output_ynn_type, output_id, 0));
+  } else {
     // Quantize back to output.
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_quantize(subgraph, float_id,
                                                   output_ynn_type, out_zp_id,
                                                   out_scale_id, output_id, 0));
-  }
-
-  return kTfLiteOk;
-}
-
-TfLiteStatus DefineBlockwiseQuantizedMatMul(
-    TfLiteContext* context, ynn_subgraph_t subgraph,
-    TensorToValueIdMap& tensor_to_value_id, int rank_a, int rank_b,
-    uint32_t a_id, uint32_t b_id, uint32_t bias_id, bool adj_x, bool adj_y,
-    bool mutual_broadcast, const TfLiteTensor& input_a_tensor,
-    const TfLiteTensor& input_b_tensor, const TfLiteTensor& output_tensor,
-    uint32_t* output_id) {
-  auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b_tensor);
-  TF_LITE_ENSURE(context, quant_params.has_value());
-  TF_LITE_ENSURE(context, quant_params->block_size > 0);
-  int32_t b_scale_idx = quant_params->scale_idx;
-  int32_t b_zp_idx = quant_params->zp_idx;
-  int32_t block_size = quant_params->block_size;
-
-  bool is_input_a_quantized = IsQuantized(input_a_tensor);
-  bool is_output_quantized = IsQuantized(output_tensor);
-
-  uint32_t current_a_id = a_id;
-  uint32_t current_b_id = b_id;
-
-  uint32_t a_scale_id = YNN_INVALID_VALUE_ID;
-  uint32_t a_zp_id = YNN_INVALID_VALUE_ID;
-
-  if (is_input_a_quantized) {
-    TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
-        context, subgraph, input_a_tensor, &a_scale_id, &a_zp_id));
-  } else {
-    // 1. Reduce min_max. Last axis is K (axis -1 or -2 depending on adj_x).
-    int32_t reduce_axis = adj_x ? -2 : -1;
-    uint32_t min_max_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_reduce(
-        subgraph, ynn_reduce_min_max, 1, &reduce_axis, current_a_id,
-        YNN_INVALID_VALUE_ID, &min_max_id, YNN_NODE_FLAG_KEEP_DIMS));
-
-    // 2. Define dynamic quantization params.
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_dynamic_quantization(
-        subgraph, min_max_id, ynn_type_int8, &a_zp_id, &a_scale_id, 0));
-
-    // 3. Quantize input.
-    uint32_t quantized_a_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_quantize(subgraph, current_a_id, ynn_type_int8, a_zp_id,
-                            a_scale_id, &quantized_a_id, 0));
-
-    current_a_id = quantized_a_id;
-  }
-
-  auto transpose = [&](int rank, uint32_t& val_id) -> TfLiteStatus {
-    if (val_id == YNN_INVALID_VALUE_ID) return kTfLiteOk;
-    uint32_t transposed_id = YNN_INVALID_VALUE_ID;
-    const int32_t perm[] = {-1, -2};
-
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 2, perm, val_id, &transposed_id, YNN_NODE_FLAG_KEEP_DIMS));
-    val_id = transposed_id;
-    return kTfLiteOk;
-  };
-
-  if (adj_x) {
-    TF_LITE_ENSURE_STATUS(transpose(rank_a, current_a_id));
-    if (a_zp_id != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_STATUS(transpose(rank_a, a_zp_id));
-    }
-    if (a_scale_id != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_STATUS(transpose(rank_a, a_scale_id));
-    }
-  }
-  if (adj_y) {
-    TF_LITE_ENSURE_STATUS(transpose(rank_b, current_b_id));
-  }
-
-  if (mutual_broadcast) {
-    TF_LITE_ENSURE_STATUS(ImplementMutualBroadcasting(
-        context, subgraph, rank_a, rank_b, /*exclude_a=*/2, /*exclude_b=*/2,
-        current_a_id, current_b_id));
-  }
-
-  // Scale and Zero Point for B.
-  uint32_t raw_b_scale_id =
-      GetOrCreateValueId(context, subgraph, tensor_to_value_id, b_scale_idx);
-  TF_LITE_ENSURE(context, raw_b_scale_id != YNN_INVALID_VALUE_ID);
-
-  uint32_t raw_b_zp_id = YNN_INVALID_VALUE_ID;
-  if (b_zp_idx >= 0) {
-    raw_b_zp_id =
-        GetOrCreateValueId(context, subgraph, tensor_to_value_id, b_zp_idx);
-    TF_LITE_ENSURE(context, raw_b_zp_id != YNN_INVALID_VALUE_ID);
-  }
-
-  uint32_t dot_flags = 0;
-  if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor) &&
-      raw_b_zp_id == YNN_INVALID_VALUE_ID) {
-    dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
-  }
-
-  uint32_t dot_output_id = YNN_INVALID_VALUE_ID;
-  TF_LITE_ENSURE_YNN_STATUS(ynn::define_blockwise_dot(
-      subgraph, current_a_id, a_zp_id, a_scale_id, current_b_id, raw_b_zp_id,
-      raw_b_scale_id, block_size, bias_id, ynn_type_fp32, dot_output_id,
-      dot_flags));
-
-  if (is_output_quantized) {
-    uint32_t out_scale_id = YNN_INVALID_VALUE_ID;
-    uint32_t out_zp_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
-        context, subgraph, output_tensor, &out_scale_id, &out_zp_id));
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_quantize(
-        subgraph, dot_output_id, GetYnnType(output_tensor.type), out_zp_id,
-        out_scale_id, output_id, 0));
-  } else if (GetYnnType(output_tensor.type) != ynn_type_fp32) {
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_convert(
-        subgraph, dot_output_id, GetYnnType(output_tensor.type), output_id, 0));
-  } else {
-    if (*output_id != YNN_INVALID_VALUE_ID && *output_id != dot_output_id) {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_convert(
-          subgraph, dot_output_id, ynn_type_fp32, output_id, 0));
-    } else {
-      *output_id = dot_output_id;
-    }
   }
 
   return kTfLiteOk;
@@ -300,17 +285,16 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
                           int rank_b, uint32_t a_id, uint32_t b_id,
                           uint32_t bias_id, bool adj_x, bool adj_y,
                           bool mutual_broadcast,
+                          bool asymmetric_quantize_inputs,
                           const TfLiteTensor& input_a_tensor,
                           const TfLiteTensor& input_b_tensor,
                           const TfLiteTensor& output_tensor,
-                          uint32_t* output_id) {
-  auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b_tensor);
-  if (quant_params && quant_params->block_size > 0) {
-    return DefineBlockwiseQuantizedMatMul(
-        context, subgraph, tensor_to_value_id, rank_a, rank_b, a_id, b_id,
-        bias_id, adj_x, adj_y, mutual_broadcast, input_a_tensor, input_b_tensor,
-        output_tensor, output_id);
-  }
+                          uint32_t* output_id, int bias_tensor_index = -1) {
+  MatMulWeightQuantization weight_quant;
+  const int k_axis = adj_y ? rank_b - 1 : rank_b - 2;
+  TF_LITE_ENSURE_STATUS(GetMatMulWeightQuantization(
+      context, input_b_tensor, k_axis, /*options=*/nullptr, &weight_quant));
+  const bool is_blockwise = weight_quant.block_size > 0;
 
   bool is_input_a_quantized = IsQuantized(input_a_tensor);
   bool is_input_b_quantized = IsQuantized(input_b_tensor);
@@ -327,8 +311,19 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t out_scale_id = YNN_INVALID_VALUE_ID;
   uint32_t out_zp_id = YNN_INVALID_VALUE_ID;
 
-  TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
-      context, subgraph, input_b_tensor, &b_scale_id, &b_zp_id));
+  if (weight_quant.scale_tensor_index >= 0) {
+    b_scale_id = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
+                                    weight_quant.scale_tensor_index);
+    TF_LITE_ENSURE(context, b_scale_id != YNN_INVALID_VALUE_ID);
+    if (weight_quant.zp_tensor_index >= 0) {
+      b_zp_id = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
+                                   weight_quant.zp_tensor_index);
+      TF_LITE_ENSURE(context, b_zp_id != YNN_INVALID_VALUE_ID);
+    }
+  } else {
+    TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
+        context, subgraph, input_b_tensor, &b_scale_id, &b_zp_id));
+  }
   TF_LITE_ENSURE_STATUS(DefineQuantizationParams(
       context, subgraph, output_tensor, &out_scale_id, &out_zp_id));
 
@@ -344,8 +339,9 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
         YNN_INVALID_VALUE_ID, &min_max_id, YNN_NODE_FLAG_KEEP_DIMS));
 
     // 2. Define dynamic quantization params.
+    uint32_t* a_zp_ptr = asymmetric_quantize_inputs ? &a_zp_id : nullptr;
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_dynamic_quantization(
-        subgraph, min_max_id, ynn_type_int8, &a_zp_id, &a_scale_id, 0));
+        subgraph, min_max_id, ynn_type_int8, a_zp_ptr, &a_scale_id, 0));
 
     // 3. Quantize input.
     uint32_t quantized_a_id = YNN_INVALID_VALUE_ID;
@@ -360,6 +356,7 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
   }
 
   auto transpose = [&](uint32_t& val_id) -> TfLiteStatus {
+    if (val_id == YNN_INVALID_VALUE_ID) return kTfLiteOk;
     uint32_t transposed_id = YNN_INVALID_VALUE_ID;
     const int32_t perm[2] = {-1, -2};
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
@@ -378,6 +375,14 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
   if (adj_y) {
     TF_LITE_ENSURE_STATUS(transpose(current_b_id));
   }
+  // Per-channel Affine and BlockwiseV2 scales and zero points are in B's
+  // layout. For regular dots, they need to be transposed like B (`adj_y`). For
+  // blockwise dots, ynn::define_blockwise_dot expects [..., N, num_blocks],
+  // which is the opposite of B's layout after `adj_y`.
+  if (weight_quant.has_weight_layout && (is_blockwise ? !adj_y : adj_y)) {
+    TF_LITE_ENSURE_STATUS(transpose(b_scale_id));
+    TF_LITE_ENSURE_STATUS(transpose(b_zp_id));
+  }
 
   if (mutual_broadcast) {
     TF_LITE_ENSURE_STATUS(ImplementMutualBroadcasting(
@@ -387,50 +392,74 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
     rank_b = rank_a;
   }
 
-  // Broadcast bias if present (only for float and fully quantized cases).
-  uint32_t broadcasted_bias_id = bias_id;
+  uint32_t dot_flags = 0;
+  if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor) &&
+      b_zp_id == YNN_INVALID_VALUE_ID) {
+    // In TFlite, quantized int8 weights are in the range [-127, 127] (see
+    // quantization_spec.md for reference).
+    dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
+  }
 
-  if (is_quantized || is_dynamically_quantized) {
-    uint32_t dot_output_id = *output_id;
-    if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
-      // We need intermediate output for dot before adding bias.
-      dot_output_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_tensor(subgraph, ynn_type_fp32,
-                                                  rank_a, nullptr, nullptr, 0,
-                                                  &dot_output_id));
+  if (is_blockwise) {
+    if (bias_id != YNN_INVALID_VALUE_ID && bias_tensor_index >= 0) {
+      uint32_t float_bias_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_STATUS(
+          DequantizeIfNeeded(context, subgraph, tensor_to_value_id,
+                             bias_tensor_index, bias_id, &float_bias_id));
+      bias_id = float_bias_id;
     }
 
-    uint32_t dot_flags = 0;
-    if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor) &&
-        b_zp_id == YNN_INVALID_VALUE_ID) {
-      // In TFlite, quantized int8 weights are in the range [-127, 127] (see
-      // quantization_spec.md for reference).
-      dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
-    }
-
-    TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
-        context, subgraph, rank_a, rank_b, {rank_a - 1}, {rank_b - 2},
-        current_a_id, a_scale_id, a_zp_id, current_b_id, b_scale_id, b_zp_id,
-        is_dynamically_quantized ? YNN_INVALID_VALUE_ID : broadcasted_bias_id,
-        rank_a - 1, out_scale_id, out_zp_id, /*is_per_channel=*/false,
-        /*is_conv=*/false, GetYnnType(output_tensor.type), &dot_output_id,
+    ynn_type output_ynn_type = GetYnnType(output_tensor.type);
+    uint32_t dot_output_id =
+        is_output_quantized ? YNN_INVALID_VALUE_ID : *output_id;
+    TF_LITE_ENSURE_YNN_STATUS(ynn::define_blockwise_dot(
+        subgraph, current_a_id, a_zp_id, a_scale_id, current_b_id, b_zp_id,
+        b_scale_id, weight_quant.block_size, bias_id,
+        is_output_quantized ? ynn_type_fp32 : output_ynn_type, dot_output_id,
         dot_flags));
 
-    if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
-          subgraph, ynn_binary_add, dot_output_id, bias_id, output_id, 0));
+    if (is_output_quantized) {
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_quantize(subgraph, dot_output_id, output_ynn_type,
+                              out_zp_id, out_scale_id, output_id, 0));
     } else {
       *output_id = dot_output_id;
     }
+    return kTfLiteOk;
+  }
+
+  if (is_quantized || is_dynamically_quantized) {
+    // Blockwise weights do not share a single scale with the dot accumulator,
+    // so quantized biases are dequantized and added in float.
+    const bool bias_uses_float_add =
+        is_dynamically_quantized ||
+        input_b_tensor.quantization.type == kTfLiteBlockwiseQuantization ||
+        input_b_tensor.quantization.type == kTfLiteBlockwiseQuantizationV2;
+    uint32_t int_bias_id = bias_uses_float_add ? YNN_INVALID_VALUE_ID : bias_id;
+    uint32_t float_bias_id = YNN_INVALID_VALUE_ID;
+    if (bias_uses_float_add && bias_id != YNN_INVALID_VALUE_ID) {
+      if (bias_tensor_index >= 0) {
+        TF_LITE_ENSURE_STATUS(
+            DequantizeIfNeeded(context, subgraph, tensor_to_value_id,
+                               bias_tensor_index, bias_id, &float_bias_id));
+      } else {
+        float_bias_id = bias_id;
+      }
+    }
+
+    TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
+        context, subgraph, /*num_k_dims=*/1, current_a_id, a_scale_id, a_zp_id,
+        current_b_id, b_scale_id, b_zp_id, int_bias_id, out_scale_id, out_zp_id,
+        GetYnnType(output_tensor.type), output_id, dot_flags, float_bias_id));
   } else {
     if (*output_id == YNN_INVALID_VALUE_ID) {
       TF_LITE_ENSURE_YNN_STATUS(
           ynn_define_tensor(subgraph, GetYnnType(output_tensor.type), 0,
                             nullptr, nullptr, 0, output_id));
     }
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_dot(subgraph, /*num_k_dims=*/1, current_a_id, current_b_id,
-                       broadcasted_bias_id, output_id, 0));
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_dot(subgraph, /*num_k_dims=*/1,
+                                             current_a_id, current_b_id,
+                                             bias_id, output_id, 0));
   }
 
   return kTfLiteOk;
@@ -454,10 +483,7 @@ TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, tflite::NumElements(&input_b) > 0);
 
   TF_LITE_ENSURE(context, IsTensorSupported(input_a));
-  TF_LITE_ENSURE(
-      context, IsTensorSupported(
-                   input_b, /*allow_per_channel=*/true,
-                   /*allow_blockwise=*/options.enable_blockwise_quantization));
+  TF_LITE_ENSURE(context, IsTensorTypeSupported(input_b));
   TF_LITE_ENSURE(context, IsTensorSupported(output));
 
   auto is_float_type = [](TfLiteType type) {
@@ -476,15 +502,6 @@ TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
       TF_LITE_ENSURE(context, input_b.type == kTfLiteInt8 ||
                                   input_b.type == kTfLiteInt4 ||
                                   input_b.type == kTfLiteInt2);
-      if (!is_runtime_bmm) {
-        const auto* params =
-            static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
-        TF_LITE_ENSURE(context,
-                       params != nullptr && params->asymmetric_quantize_inputs);
-      } else {
-        // odml.runtime_bmm just assumes that float x int is dynamically
-        // quantized...?
-      }
     }
     TF_LITE_ENSURE(context, is_float_type(output.type));
   } else {
@@ -506,26 +523,18 @@ TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, input_a.dims->size <= YNN_MAX_TENSOR_RANK);
   TF_LITE_ENSURE(context, input_b.dims->size <= YNN_MAX_TENSOR_RANK);
 
-  if (auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b)) {
-    if (input_b.quantization.type == kTfLiteBlockwiseQuantization) {
-      TF_LITE_ENSURE(context, quant_params->block_size > 0);
-    }
-    if (quant_params->block_size > 0) {
-      bool adj_y = false;
-      if (!is_runtime_bmm) {
-        const auto* params =
-            static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
-        if (params) adj_y = params->adj_y;
-      } else {
-        adj_y = true;
-      }
-      const size_t k_dim = adj_y ? input_b.dims->data[input_b.dims->size - 1]
-                                 : input_b.dims->data[input_b.dims->size - 2];
-      TF_LITE_ENSURE_EQ(context, k_dim % quant_params->block_size, 0);
-    }
-    TF_LITE_ENSURE_STATUS(ValidateScaleAndZeroPointTensors(
-        context, quant_params->scale_idx, quant_params->zp_idx));
+  bool adj_y = false;
+  if (!is_runtime_bmm) {
+    const auto* params =
+        static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
+    if (params) adj_y = params->adj_y;
+  } else {
+    adj_y = true;
   }
+  const int k_axis = adj_y ? input_b.dims->size - 1 : input_b.dims->size - 2;
+  MatMulWeightQuantization weight_quant;
+  TF_LITE_ENSURE_STATUS(GetMatMulWeightQuantization(context, input_b, k_axis,
+                                                    &options, &weight_quant));
 
   return kTfLiteOk;
 }
@@ -575,10 +584,7 @@ TfLiteStatus IsFullyConnectedSupported(
   bool has_bias = node->inputs->size == 3 && node->inputs->data[2] >= 0;
 
   TF_LITE_ENSURE(context, IsTensorSupported(input));
-  TF_LITE_ENSURE(
-      context, IsTensorSupported(
-                   weights, /*allow_per_channel=*/true,
-                   /*allow_blockwise=*/options.enable_blockwise_quantization));
+  TF_LITE_ENSURE(context, IsTensorTypeSupported(weights));
   TF_LITE_ENSURE(context, IsTensorSupported(output));
   if (has_bias) {
     const TfLiteTensor& bias = context->tensors[node->inputs->data[2]];
@@ -628,17 +634,9 @@ TfLiteStatus IsFullyConnectedSupported(
   TF_LITE_ENSURE_EQ(context, weights.dims->size, 2);
   TF_LITE_ENSURE(context, input.dims->size <= YNN_MAX_TENSOR_RANK);
 
-  if (auto quant_params = GetBlockwiseOrMultiAxisQuantParams(weights)) {
-    if (weights.quantization.type == kTfLiteBlockwiseQuantization) {
-      TF_LITE_ENSURE(context, quant_params->block_size > 0);
-    }
-    if (quant_params->block_size > 0) {
-      const size_t input_channels = weights.dims->data[1];
-      TF_LITE_ENSURE_EQ(context, input_channels % quant_params->block_size, 0);
-    }
-    TF_LITE_ENSURE_STATUS(ValidateScaleAndZeroPointTensors(
-        context, quant_params->scale_idx, quant_params->zp_idx));
-  }
+  MatMulWeightQuantization weight_quant;
+  TF_LITE_ENSURE_STATUS(GetMatMulWeightQuantization(
+      context, weights, /*k_axis=*/1, &options, &weight_quant));
 
   const auto* params =
       static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
@@ -686,8 +684,8 @@ TfLiteStatus DefineBatchMatMulNode(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(DefineMatMul(
       context, subgraph, tensor_to_value_id, rank_a, rank_b, input_a_val_id,
       input_b_val_id, YNN_INVALID_VALUE_ID, params->adj_x, params->adj_y,
-      /*mutual_broadcast=*/true, input_a_tensor, input_b_tensor, output_tensor,
-      &output_val_id));
+      /*mutual_broadcast=*/true, params->asymmetric_quantize_inputs,
+      input_a_tensor, input_b_tensor, output_tensor, &output_val_id));
 
   tensor_to_value_id[output_tensor_index] = output_val_id;
   return kTfLiteOk;
@@ -727,6 +725,7 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
 
   bool adj_x = false;
   bool adj_y = false;
+  bool asymmetric_quantize_inputs = true;
   bool is_src = false;
   if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
     const auto* params =
@@ -734,6 +733,7 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
     if (params) {
       adj_x = params->adj_x;
       adj_y = params->adj_y;
+      asymmetric_quantize_inputs = params->asymmetric_quantize_inputs;
     }
   } else {
     const flexbuffers::Map flexbuffer_map = GetFlexBufferMap(node);
@@ -766,8 +766,8 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
       TF_LITE_ENSURE_STATUS(DefineMatMul(
           context, subgraph, tensor_to_value_id, rank_a, rank_b,
           current_a_val_id, current_b_val_id, YNN_INVALID_VALUE_ID, adj_x,
-          /*adj_y=*/true, /*mutual_broadcast=*/true, input_a_tensor,
-          input_b_tensor, output_tensor, &full_matmul_val_id));
+          /*adj_y=*/true, /*mutual_broadcast=*/true, asymmetric_quantize_inputs,
+          input_a_tensor, input_b_tensor, output_tensor, &full_matmul_val_id));
 
       int seq_axis_out = rank_a - 1;
       size_t full_dims_out[YNN_MAX_TENSOR_RANK];
@@ -832,14 +832,15 @@ TfLiteStatus DefineRuntimeBatchedMatMulNode(
           context, subgraph, tensor_to_value_id, rank_a, rank_b,
           current_a_val_id, current_b_val_id, YNN_INVALID_VALUE_ID,
           /*adj_x=*/false, /*adj_y=*/true, /*mutual_broadcast=*/true,
-          input_a_tensor, input_b_tensor, output_tensor, &output_val_id));
+          asymmetric_quantize_inputs, input_a_tensor, input_b_tensor,
+          output_tensor, &output_val_id));
     }
   } else {
-    TF_LITE_ENSURE_STATUS(
-        DefineMatMul(context, subgraph, tensor_to_value_id, rank_a, rank_b,
-                     current_a_val_id, current_b_val_id, YNN_INVALID_VALUE_ID,
-                     adj_x, adj_y, /*mutual_broadcast=*/true, input_a_tensor,
-                     input_b_tensor, output_tensor, &output_val_id));
+    TF_LITE_ENSURE_STATUS(DefineMatMul(
+        context, subgraph, tensor_to_value_id, rank_a, rank_b, current_a_val_id,
+        current_b_val_id, YNN_INVALID_VALUE_ID, adj_x, adj_y,
+        /*mutual_broadcast=*/true, asymmetric_quantize_inputs, input_a_tensor,
+        input_b_tensor, output_tensor, &output_val_id));
   }
 
   tensor_to_value_id[output_tensor_index] = output_val_id;
@@ -902,12 +903,13 @@ TfLiteStatus DefineFullyConnectedNode(TfLiteContext* context,
                                   ? YNN_INVALID_VALUE_ID
                                   : output_val_id;
 
-  TF_LITE_ENSURE_STATUS(
-      DefineMatMul(context, subgraph, tensor_to_value_id, rank_a, rank_b,
-                   reshaped_input_val_id, weights_val_id, bias_val_id,
-                   /*adj_x=*/false, /*adj_y=*/true,
-                   /*mutual_broadcast=*/false, input_tensor, weights_tensor,
-                   output_tensor, &matmul_output_id));
+  TF_LITE_ENSURE_STATUS(DefineMatMul(
+      context, subgraph, tensor_to_value_id, rank_a, rank_b,
+      reshaped_input_val_id, weights_val_id, bias_val_id,
+      /*adj_x=*/false, /*adj_y=*/true,
+      /*mutual_broadcast=*/false, params->asymmetric_quantize_inputs,
+      input_tensor, weights_tensor, output_tensor, &matmul_output_id,
+      bias_tensor_index));
 
   if (params->activation != kTfLiteActNone) {
     TF_LITE_ENSURE_STATUS(ApplyActivation(
@@ -1091,16 +1093,12 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
   int kernel_width = filter_tensor.dims->data[2];
 
   bool is_per_channel = false;
-  if (is_quantized) {
-    if (filter_tensor.quantization.type == kTfLiteAffineQuantization) {
-      const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
-          filter_tensor.quantization.params);
-      is_per_channel =
-          quant_params && quant_params->scale && quant_params->scale->size > 1;
-    } else if (filter_tensor.quantization.type ==
-               kTfLiteMultiAxisQuantization) {
-      is_per_channel = true;
-    }
+  if (is_quantized &&
+      filter_tensor.quantization.type == kTfLiteAffineQuantization) {
+    const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
+        filter_tensor.quantization.params);
+    is_per_channel =
+        quant_params && quant_params->scale && quant_params->scale->size > 1;
   }
 
   float padding_value = 0.0f;
@@ -1126,6 +1124,21 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t current_b_scale_id = b_scale_id;
   uint32_t current_b_zp_id = b_zp_id;
 
+  if (is_per_channel) {
+    // Reshape filter scales and zero points to match dot output channels:
+    // [co], or [g, 1, co/g] for grouped convolutions.
+    const size_t dot_dims[] = {groups, 1, group_output_channels};
+    const size_t rank = (groups == 1) ? 1 : 3;
+    const size_t* dims = (groups == 1) ? &dot_dims[2] : dot_dims;
+    for (uint32_t* id : {&current_b_scale_id, &current_b_zp_id}) {
+      if (*id == YNN_INVALID_VALUE_ID) continue;
+      uint32_t reshaped_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_reshape(
+          subgraph, rank, dims, *id, &reshaped_id, 0));
+      *id = reshaped_id;
+    }
+  }
+
   if (groups != 1) {
     // Split input: [n, h, w, kh, kw, ci] -> [n, h, w, kh, kw, g, 1, ci/g]
     uint32_t split_input_id = YNN_INVALID_VALUE_ID;
@@ -1148,24 +1161,6 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(
           subgraph, 0, 3, bias_split, current_bias_id, &split_bias_id, 0));
       current_bias_id = split_bias_id;
-    }
-
-    if (is_quantized && is_per_channel) {
-      if (current_b_scale_id != YNN_INVALID_VALUE_ID) {
-        uint32_t split_scale_id = YNN_INVALID_VALUE_ID;
-        const size_t scale_split[] = {groups, group_output_channels};
-        TF_LITE_ENSURE_YNN_STATUS(
-            ynn_define_split_dim(subgraph, 0, 2, scale_split,
-                                 current_b_scale_id, &split_scale_id, 0));
-        current_b_scale_id = split_scale_id;
-      }
-      if (current_b_zp_id != YNN_INVALID_VALUE_ID) {
-        uint32_t split_zp_id = YNN_INVALID_VALUE_ID;
-        const size_t zp_split[] = {groups, group_output_channels};
-        TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(
-            subgraph, 0, 2, zp_split, current_b_zp_id, &split_zp_id, 0));
-        current_b_zp_id = split_zp_id;
-      }
     }
 
     // Transpose input: [n, h, w, kh, kw, g, 1, ci/g] -> [n, h, w, g, 1, kh, kw,
@@ -1200,11 +1195,6 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
       (groups == 1) ? conv_output_id : YNN_INVALID_VALUE_ID;
 
   if (is_quantized) {
-    int32_t a_reduce_axes[3];
-    int32_t b_reduce_axes[3];
-    std::iota(a_reduce_axes, a_reduce_axes + 3, groups == 1 ? 3 : 5);
-    std::iota(b_reduce_axes, b_reduce_axes + 3, groups == 1 ? 0 : 1);
-
     uint32_t dot_flags = 0;
     if (filter_tensor.type == kTfLiteInt8 && IsConstant(filter_tensor) &&
         current_b_zp_id == YNN_INVALID_VALUE_ID) {
@@ -1214,14 +1204,10 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
     }
 
     TF_LITE_ENSURE_STATUS(DefineQuantizedDot(
-        context, subgraph,
-        /*rank_a=*/(groups == 1) ? 6 : 8,
-        /*rank_b=*/(groups == 1) ? 4 : 5, a_reduce_axes, b_reduce_axes,
-        current_input_id, a_scale_id, a_zp_id, transposed_filter_id,
-        current_b_scale_id, current_b_zp_id, current_bias_id,
-        (groups == 1) ? 1 : 3, out_scale_id, out_zp_id, is_per_channel,
-        /*is_conv=*/true, GetYnnType(output_tensor.type), &dot_output_id,
-        dot_flags));
+        context, subgraph, /*num_k_dims=*/3, current_input_id, a_scale_id,
+        a_zp_id, transposed_filter_id, current_b_scale_id, current_b_zp_id,
+        current_bias_id, out_scale_id, out_zp_id,
+        GetYnnType(output_tensor.type), &dot_output_id, dot_flags));
   } else {
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, 3, current_input_id, transposed_filter_id,

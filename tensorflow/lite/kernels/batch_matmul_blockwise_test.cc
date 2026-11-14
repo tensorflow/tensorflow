@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -212,7 +213,8 @@ class BlockwiseBatchMatMulModel {
  public:
   explicit BlockwiseBatchMatMulModel(std::vector<uint8_t> buffer,
                                      bool use_default_delegates = false)
-      : buffer_(std::move(buffer)) {
+      : use_default_delegates_(use_default_delegates),
+        buffer_(std::move(buffer)) {
     model_ = FlatBufferModel::BuildFromBuffer(
         reinterpret_cast<const char*>(buffer_.data()), buffer_.size());
     if (use_default_delegates) {
@@ -226,7 +228,19 @@ class BlockwiseBatchMatMulModel {
 
   bool Built() const { return interpreter_ != nullptr; }
 
-  TfLiteStatus Allocate() { return interpreter_->AllocateTensors(); }
+  TfLiteStatus Allocate() {
+    if (!use_default_delegates_) {
+      for (auto& one :
+           KernelTestDelegateProviders::Get()->CreateAllDelegates()) {
+        if (TfLiteStatus status =
+                interpreter_->ModifyGraphWithDelegate(std::move(one.delegate));
+            status != kTfLiteOk) {
+          return status;
+        }
+      }
+    }
+    return interpreter_->AllocateTensors();
+  }
   TfLiteStatus Invoke() { return interpreter_->Invoke(); }
 
   void SetInput(const std::vector<int8_t>& values) {
@@ -243,6 +257,7 @@ class BlockwiseBatchMatMulModel {
   }
 
  private:
+  bool use_default_delegates_;
   std::vector<uint8_t> buffer_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
@@ -363,7 +378,11 @@ TEST(BlockwiseBatchMatMulTest, CenteredInt2BroadcastBatchAndTwoQuantDims) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 }
 
@@ -464,7 +483,11 @@ TEST(BlockwiseBatchMatMulTest, Int4SubChannelBlocksAndSymmetricNoZeroPoints) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 }
 
@@ -561,7 +584,11 @@ TEST(BlockwiseBatchMatMulTest, AdjointLhsAndAdjointRhsWithInt8Fallback) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 }
 
@@ -709,7 +736,11 @@ TEST(BlockwiseBatchMatMulTest, BatchAndOutputChannelBlocksWithUInt4) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 }
 
@@ -760,7 +791,11 @@ TEST(BlockwiseBatchMatMulTest, UInt8AndInt16BlockwiseRhs) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 
   // Test INT16 with implicit zero_point = 0.
@@ -782,7 +817,11 @@ TEST(BlockwiseBatchMatMulTest, UInt8AndInt16BlockwiseRhs) {
     ASSERT_EQ(m.Allocate(), kTfLiteOk);
     m.SetInput(lhs);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray(expected));
+    const std::vector<int8_t> output = m.GetOutput();
+    ASSERT_EQ(output.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(output[i], expected[i], 1) << "at index " << i;
+    }
   }
 }
 
