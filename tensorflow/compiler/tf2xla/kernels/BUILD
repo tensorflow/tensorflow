@@ -2373,6 +2373,7 @@ tf_kernel_library(
         "@xla//xla/hlo/builder/lib:constants",
         "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
         "@xla//xla/hlo/builder/lib:loops",
+        "@xla//xla/hlo/builder/lib:math",
         "@xla//xla/hlo/builder/lib:sorting",
     ],
 )
