@@ -80,9 +80,9 @@ template <typename T>
 inline float GetTolerance(float min, float max) {
   float kQuantizedTolerance = (max - min) / (std::numeric_limits<T>::max() -
                                              std::numeric_limits<T>::min());
-  if (std::is_same<T, int8_t>::value) {
+  if (std::is_same_v<T, int8_t>) {
     kQuantizedTolerance += (max - min) / 256.0f;
-  } else if (std::is_same<T, int16_t>::value) {
+  } else if (std::is_same_v<T, int16_t>) {
     kQuantizedTolerance += (max - min) / 512.0f;
   }
 

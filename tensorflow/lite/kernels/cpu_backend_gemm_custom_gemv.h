@@ -286,15 +286,15 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
   // This partial template specialization is less generic than its declaration
   // implies: it assumes the following constraints on its free template
   // parameters. We guard these assumptions in the following static_assert's.
-  static_assert(std::is_same<LhsScalar, std::uint8_t>::value ||
-                    std::is_same<LhsScalar, std::int8_t>::value,
+  static_assert(std::is_same_v<LhsScalar, std::uint8_t> ||
+                    std::is_same_v<LhsScalar, std::int8_t>,
                 "");
-  static_assert(std::is_same<RhsScalar, std::uint8_t>::value ||
-                    std::is_same<RhsScalar, std::int8_t>::value,
+  static_assert(std::is_same_v<RhsScalar, std::uint8_t> ||
+                    std::is_same_v<RhsScalar, std::int8_t>,
                 "");
-  static_assert(std::is_same<DstScalar, std::uint8_t>::value ||
-                    std::is_same<DstScalar, std::int8_t>::value ||
-                    std::is_same<DstScalar, std::int16_t>::value,
+  static_assert(std::is_same_v<DstScalar, std::uint8_t> ||
+                    std::is_same_v<DstScalar, std::int8_t> ||
+                    std::is_same_v<DstScalar, std::int16_t>,
                 "");
   static_assert(quantization_flavor ==
                         QuantizationFlavor::kIntegerWithUniformMultiplier ||
