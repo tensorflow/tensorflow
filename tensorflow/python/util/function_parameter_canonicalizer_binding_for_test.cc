@@ -38,7 +38,8 @@ class FunctionParameterCanonicalizerWrapper {
   tensorflow::FunctionParameterCanonicalizer function_parameter_canonicalizer_;
 };
 
-PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
+PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m,
+                pybind11::mod_gil_not_used()) {
   py::class_<FunctionParameterCanonicalizerWrapper>(
       m, "FunctionParameterCanonicalizer")
       .def(py::init([](std::vector<std::string> arg_names, py::tuple defaults) {
@@ -48,7 +49,7 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
 
         tensorflow::Safe_PyObjectPtr defaults_fast(
             PySequence_Fast(defaults.ptr(), "Expected tuple"));
-        if (!defaults) throw py::error_already_set();
+        if (!defaults_fast) throw py::error_already_set();
         PyObject** default_items = PySequence_Fast_ITEMS(defaults_fast.get());
         return new FunctionParameterCanonicalizerWrapper(
             absl::MakeSpan(arg_names_c_str),
@@ -68,10 +69,10 @@ PYBIND11_MODULE(_function_parameter_canonicalizer_binding_for_test, m) {
           throw py::error_already_set();
         }
 
-        py::list result;
+        py::list result_list;
         for (const auto& obj : result_raw) {
-          result.append(py::handle(obj.get()));
+          result_list.append(py::handle(obj.get()));
         }
-        return result;
+        return result_list;
       });
 }
