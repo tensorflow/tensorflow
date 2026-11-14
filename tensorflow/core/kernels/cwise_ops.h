@@ -470,8 +470,8 @@ struct google_floor_fmod {
                                                      const T& y) const {
     // EIGEN_STATIC_ASSERT(NUMERIC_TYPE_MUST_BE_REAL);
     T trunc_mod = scalar_fmod_op<T>()(x, y);
-    return trunc_mod != T(0) && (y < T(0) != trunc_mod < T(0)) ? trunc_mod + y
-                                                               : trunc_mod;
+    if (trunc_mod == T(0)) return y < T(0) ? -T(0) : T(0);
+    return (y < T(0) != trunc_mod < T(0)) ? trunc_mod + y : trunc_mod;
   }
 };
 

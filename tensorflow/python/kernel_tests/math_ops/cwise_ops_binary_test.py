@@ -1069,6 +1069,16 @@ class BinaryOpTest(test.TestCase):
 
       self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
 
+  def testFloorModZeroSignMatchesNumpy(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = np.array([3, 0, -0., -3, 6, -6, -0., 5, -5, 5, -5], dtype=dtype)
+      y = np.array([-3, -3, 3, 3, -3, 3, -3, 3, 3, -3, -3], dtype=dtype)
+      expected = np.mod(x, y)
+      with test_util.force_cpu():
+        result = self.evaluate(math_ops.floormod(x, y))
+      self.assertAllEqual(result, expected)
+      self.assertAllEqual(np.signbit(result), np.signbit(expected))
+
 
 class ComparisonOpTest(test.TestCase):
 

@@ -883,6 +883,19 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       self._testRemainder(dtype)
 
+  def testFloatRemainderZeroSign(self):
+    def equal_with_sign(result, expected, rtol, atol):
+      self.assertAllEqual(result, expected)
+      self.assertAllEqual(np.signbit(result), np.signbit(expected))
+
+    for dtype in self.float_types & {np.float32, np.float64}:
+      self._testBinary(
+          gen_math_ops.floor_mod,
+          np.array([3, -3, 0], dtype=dtype),
+          np.array([-3, 3, -3], dtype=dtype),
+          expected=np.array([-0., 0., -0.], dtype=dtype),
+          equality_test=equal_with_sign)
+
   def testLogicalOps(self):
     self._testBinary(
         math_ops.logical_and,
