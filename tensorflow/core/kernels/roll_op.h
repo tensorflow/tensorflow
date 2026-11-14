@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
 #define TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include <cstdint>
+
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 namespace functor {
