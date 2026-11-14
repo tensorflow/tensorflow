@@ -55,7 +55,7 @@ cc_library(
         ":devicedb",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_googlesource_code_re2//:re2",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -65,6 +65,7 @@ cc_test(
     deps = [
         ":canonicalize_value",
         ":devicedb",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
