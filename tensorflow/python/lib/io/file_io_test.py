@@ -569,6 +569,30 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     self.assertItemsEqual(all_subdirs, [])
     self.assertItemsEqual(all_files, [])
 
+  def testWalkFailureCallsOnerror(self):
+    dir_path = file_io.join(self._base_dir, "test_dir")
+    errs = []
+    # Walking a directory that wasn't created reports the error to `onerror`
+    # and stops, as `os.walk` does.
+    walked = list(file_io.walk_v2(dir_path, onerror=errs.append))
+    self.assertEqual([], walked)
+    self.assertLen(errs, 1)
+    self.assertIsInstance(errs[0], errors.NotFoundError)
+
+  def testWalkSubdirectoryFailureCallsOnerror(self):
+    dir_path = file_io.join(self._base_dir, "test_dir")
+    self._setupWalkDirectories(dir_path)
+    errs = []
+    walked = file_io.walk_v2(dir_path, onerror=errs.append)
+    first = next(walked)
+    self.assertEqual(dir_path, first[0])
+    # Remove a subdirectory before the walk descends into it.
+    file_io.delete_recursively(file_io.join(dir_path, "subdir1_3"))
+    remaining = [w_dir for (w_dir, _, _) in walked]
+    self.assertLen(errs, 1)
+    self.assertNotIn(file_io.join(dir_path, "subdir1_3"), remaining)
+    self.assertIn(file_io.join(dir_path, "subdir1_1"), remaining)
+
   @run_all_path_types
   def testStat(self, join):
     file_path = join(self._base_dir, "temp_file")
