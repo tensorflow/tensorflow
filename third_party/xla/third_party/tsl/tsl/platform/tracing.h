@@ -44,7 +44,7 @@ const char* GetEventCategoryName(EventCategory);
 // Interface for CPU profiler events.
 class EventCollector {
  public:
-  virtual ~EventCollector() {}
+  virtual ~EventCollector() = default;
   virtual void RecordEvent(uint64_t arg) const = 0;
   virtual void StartRegion(uint64_t arg) const = 0;
   virtual void StopRegion() const = 0;

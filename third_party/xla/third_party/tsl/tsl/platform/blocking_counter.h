@@ -32,7 +32,7 @@ class BlockingCounter {
     DCHECK_EQ((initial_count << 1) >> 1, initial_count);
   }
 
-  ~BlockingCounter() {}
+  ~BlockingCounter() = default;
 
   inline void DecrementCount() {
     unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
