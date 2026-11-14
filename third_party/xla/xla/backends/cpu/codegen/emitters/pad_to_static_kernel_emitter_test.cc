@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -93,6 +94,11 @@ class PadToStaticKernelEmitterTest : public HloHardwareIndependentTestBase {
     ABSL_RETURN_IF_ERROR(jit.AddModule(std::move(llvm_source).thread_safe_module()));
     return std::move(jit).Compile(
         {FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel_name)});
+  }
+
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI static XLA_CPU_KernelError* CallKernel(
+      FunctionLibrary::Kernel* kernel, XLA_CPU_KernelCallFrame* frame) {
+    return (*kernel)(frame);
   }
 };
 
@@ -166,7 +172,7 @@ TEST_F(PadToStaticKernelEmitterTest, EmitsAndExecutesUnalignedF16) {
   XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
   XLA_CPU_KernelCallFrame frame = {&num_workgroups, &workgroup_id, args.size(),
                                    args.data()};
-  EXPECT_EQ((*kernel)(&frame), nullptr);
+  EXPECT_EQ(CallKernel(kernel, &frame), nullptr);
 
   EXPECT_EQ(output_dim, 3);
   EXPECT_THAT(std::vector<half>(output_vals.begin(), output_vals.begin() + 3),
@@ -232,7 +238,7 @@ TEST_F(PadToStaticKernelEmitterTest, EmitsAndExecutesMultiDimNonDefaultLayout) {
   XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
   XLA_CPU_KernelCallFrame frame = {&num_workgroups, &workgroup_id, args.size(),
                                    args.data()};
-  EXPECT_EQ((*kernel)(&frame), nullptr);
+  EXPECT_EQ(CallKernel(kernel, &frame), nullptr);
 
   EXPECT_THAT(output_dims, ElementsAre(3, 2, 1));
   // Output static shape [3,3,2] with layout {2,0,1}: offset(i0,i1,i2) = i2 +
@@ -294,7 +300,7 @@ TEST_F(PadToStaticKernelEmitterTest, EmitsAndExecutesSubByteS4) {
   XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
   XLA_CPU_KernelCallFrame frame = {&num_workgroups, &workgroup_id, args.size(),
                                    args.data()};
-  EXPECT_EQ((*kernel)(&frame), nullptr);
+  EXPECT_EQ(CallKernel(kernel, &frame), nullptr);
 
   EXPECT_EQ(output_dim, 3);
   EXPECT_EQ(output_bytes[0], 0x21);

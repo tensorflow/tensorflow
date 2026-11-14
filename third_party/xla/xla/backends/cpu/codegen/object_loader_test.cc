@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/attributes.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -94,7 +95,15 @@ struct ObjectLoaderTestParams {
 };
 
 class ObjectLoaderTest
-    : public ::testing::TestWithParam<ObjectLoaderTestParams> {};
+    : public ::testing::TestWithParam<ObjectLoaderTestParams> {
+ protected:
+  using ScalarFn = void(float*);
+
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI static void CallScalarFn(ScalarFn* fn,
+                                                          float* value) {
+    fn(value);
+  }
+};
 
 TEST_P(ObjectLoaderTest, Load) {
   const ObjectLoaderTestParams& params = GetParam();
@@ -177,11 +186,11 @@ TEST_P(ObjectLoaderTest, Load) {
   constexpr float kExpectedOutput = kInputValue + kInputValue;
 
   float compiled_function_input = kInputValue;
-  add_in_place_compiled(&compiled_function_input);
+  CallScalarFn(add_in_place_compiled, &compiled_function_input);
   EXPECT_EQ(compiled_function_input, kExpectedOutput);
 
   float loaded_function_input = 1.0f;
-  loaded_add_in_place(&loaded_function_input);
+  CallScalarFn(loaded_add_in_place, &loaded_function_input);
   EXPECT_EQ(loaded_function_input, compiled_function_input);
 }
 
