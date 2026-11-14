@@ -987,6 +987,52 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
         self.evaluate(res)
 
+  def testSparseReduceWithSparseTensorValue(self):
+    st_val = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [0, 2], [1, 1]],
+        values=[1, 2, 3],
+        dense_shape=[2, 3])
+    # Test v1 functions
+    sum_res = sparse_ops.sparse_reduce_sum(st_val)
+    max_res = sparse_ops.sparse_reduce_max(st_val)
+    sum_sparse_res = sparse_ops.sparse_reduce_sum_sparse(st_val)
+    max_sparse_res = sparse_ops.sparse_reduce_max_sparse(st_val)
+    self.assertEqual(self.evaluate(sum_res), 6)
+    self.assertEqual(self.evaluate(max_res), 3)
+    self.assertIsInstance(sum_sparse_res, sparse_tensor.SparseTensor)
+    self.assertIsInstance(max_sparse_res, sparse_tensor.SparseTensor)
+    self.assertAllEqual(self.evaluate(sum_sparse_res.values), [6])
+    self.assertAllEqual(self.evaluate(max_sparse_res.values), [3])
+
+    # Test v2 functions
+    sum_v2_res = sparse_ops.sparse_reduce_sum_v2(st_val)
+    max_v2_res = sparse_ops.sparse_reduce_max_v2(st_val)
+    sum_v2_sparse = sparse_ops.sparse_reduce_sum_v2(
+        st_val, output_is_sparse=True)
+    max_v2_sparse = sparse_ops.sparse_reduce_max_v2(
+        st_val, output_is_sparse=True)
+    self.assertEqual(self.evaluate(sum_v2_res), 6)
+    self.assertEqual(self.evaluate(max_v2_res), 3)
+    self.assertIsInstance(sum_v2_sparse, sparse_tensor.SparseTensor)
+    self.assertIsInstance(max_v2_sparse, sparse_tensor.SparseTensor)
+    self.assertAllEqual(self.evaluate(sum_v2_sparse.values), [6])
+    self.assertAllEqual(self.evaluate(max_v2_sparse.values), [3])
+
+  def testSparseReduceInvalidInputs(self):
+    for bad_input in [[1, 2], np.array([1, 2]), 42, None]:
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_sum(bad_input)
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_max(bad_input)
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_sum_v2(bad_input)
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_max_v2(bad_input)
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_sum_sparse(bad_input)
+      with self.assertRaises(TypeError):
+        sparse_ops.sparse_reduce_max_sparse(bad_input)
+
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
