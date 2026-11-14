@@ -1106,6 +1106,70 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.diff(a, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
+    # Scalar `prepend`/`append` values expand to length 1 along `axis` and
+    # all other dimensions of `a`, then the differences run.
+    self.match(np_math_ops.diff(a, prepend=3), np.diff(a, prepend=3))
+    self.match(
+        np_math_ops.diff(a, append=9, axis=0), np.diff(a, append=9, axis=0)
+    )
+    self.match(
+        np_math_ops.diff(a, n=2, prepend=1, append=0),
+        np.diff(a, n=2, prepend=1, append=0),
+    )
+    # Array `prepend`/`append` values are concatenated as-is after dtype
+    # promotion; their dimensions must match `a` except along `axis`.
+    self.match(
+        np_math_ops.diff(a, prepend=[[0, 0, 0]], axis=0),
+        np.diff(a, prepend=np.array([[0, 0, 0]]), axis=0),
+    )
+    self.match(
+        np_math_ops.diff(a, append=[[9], [9]], axis=1),
+        np.diff(a, append=np.array([[9], [9]]), axis=1),
+    )
+    # A dimension not matching `a` outside `axis` raises NumPy's ValueError.
+    with self.assertRaisesRegex(
+        ValueError,
+        'all the input array dimensions except for the concatenation axis '
+        'must match exactly',
+    ):
+      np_math_ops.diff(a, prepend=[[0, 0, 0]])
+    # Mixed dtypes are promoted like NumPy's concatenate would.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([1, 2, 3], dtype=np.int32), prepend=1.5
+        ),
+        np.diff(np.array([1, 2, 3], dtype=np.int32), prepend=1.5),
+    )
+    # Non-scalar `prepend`/`append` with mixed dtypes promote both sides.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+        np.diff(
+            np.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+    )
+    # Non-scalar `prepend`/`append` with wrong rank raises ValueError.
+    with self.assertRaisesRegex(
+        ValueError, 'all the input arrays must have same number of dimensions'
+    ):
+      np_math_ops.diff(a, prepend=[0, 0, 0], axis=0)
+    # n=0 returns `a` unchanged even when `prepend`/`append` are provided.
+    self.match(
+        np_math_ops.diff(a, n=0, prepend=3, append=9),
+        np.diff(a, n=0, prepend=3, append=9),
+    )
+    # Boolean inputs keep the boolean semantics with a boolean boundary.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([True, False, True]), append=True
+        ),
+        np.diff(np.array([True, False, True]), append=True),
+    )
 
   def testTrace(self):
     a = np.arange(6).reshape(2, 3)
