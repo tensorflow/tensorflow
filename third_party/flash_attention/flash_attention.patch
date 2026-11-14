@@ -1,0 +1,94 @@
+# Fixes for building FlashAttention-2 with clang CUDA:
+# - Force-inline the kernel bodies. nvcc inlines them anyway; clang doesn't, and
+#   ptxas then fails to fit the out-of-line functions in its register limit.
+# - Add a 'typename' that clang requires for a dependent type.
+diff -ru a/src/flash_bwd_kernel.h b/src/flash_bwd_kernel.h
+--- a/src/flash_bwd_kernel.h
++++ b/src/flash_bwd_kernel.h
+@@ -78,7 +78,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Is_first, bool Is_last, bool Seq_parallel=false, typename Params>
+-inline __device__ void compute_dq_dk_dv_1colblock(const Params &params, const int bidb, const int bidh, const int n_block) {
++__forceinline__ __device__ void compute_dq_dk_dv_1colblock(const Params &params, const int bidb, const int bidh, const int n_block) {
+ 
+     using Element = typename Kernel_traits::Element;
+     using ElementAccum = typename Kernel_traits::ElementAccum;
+@@ -548,7 +548,7 @@
+             : FLASH_NAMESPACE::convert_type_relu<Element>(acc_s);
+         // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_N, MMA_N / 2)
+         // if using m16n8k16 or (4, MMA_N, MMA_N) if using m16n8k8.
+-        Tensor tPrP = make_tensor(rP.data(), FLASH_NAMESPACE::convert_layout_acc_Aregs<Kernel_traits::TiledMmaSdP>(rP.layout()));
++        Tensor tPrP = make_tensor(rP.data(), FLASH_NAMESPACE::convert_layout_acc_Aregs<typename Kernel_traits::TiledMmaSdP>(rP.layout()));
+         Tensor tPaP = smem_thr_copy_PdS.retile_S(tPrP);     // ((Atom,AtomNum), MMA_N, MMA_N)
+         cute::copy(smem_tiled_copy_PdS, tPaP, tPsP);
+         // if (cute::thread0()) { print(tPaP); }
+@@ -795,7 +795,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Has_alibi, bool Is_even_M, bool Is_even_K, typename Params>
+-inline __device__ void compute_dq_dk_dv(const Params &params) {
++__forceinline__ __device__ void compute_dq_dk_dv(const Params &params) {
+ 
+     // The block index for the batch.
+     const int bidb = blockIdx.x;
+@@ -822,7 +822,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, typename Params>
+-inline __device__ void compute_dq_dk_dv_seqk_parallel(const Params &params) {
++__forceinline__ __device__ void compute_dq_dk_dv_seqk_parallel(const Params &params) {
+ 
+     // The block index for the batch.
+     const int bidb = blockIdx.y;
+diff -ru a/src/flash_bwd_preprocess_kernel.h b/src/flash_bwd_preprocess_kernel.h
+--- a/src/flash_bwd_preprocess_kernel.h
++++ b/src/flash_bwd_preprocess_kernel.h
+@@ -55,7 +55,7 @@
+ // Just compute dot(do, o) and write the result (softmax_d) to global memory as a separate kernel.
+ // This is used in the case where we want to parallelize the backward across seqlen_k.
+ template<bool Clear_dQaccum=true, typename Kernel_traits, typename Params>
+-inline __device__ void compute_dot_do_o(const Params &params) {
++__forceinline__ __device__ void compute_dot_do_o(const Params &params) {
+     using Element = typename Kernel_traits::Element;
+     using ElementAccum = typename Kernel_traits::ElementAccum;
+     using index_t = typename Kernel_traits::index_t;
+diff -ru a/src/flash_fwd_kernel.h b/src/flash_fwd_kernel.h
+--- a/src/flash_fwd_kernel.h
++++ b/src/flash_fwd_kernel.h
+@@ -49,7 +49,7 @@
+ 
+ 
+ template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Return_softmax, typename Params>
+-inline __device__ void compute_attn_1rowblock(const Params &params, const int bidb, const int bidh, const int m_block) {
++__forceinline__ __device__ void compute_attn_1rowblock(const Params &params, const int bidb, const int bidh, const int m_block) {
+ 
+     using Element = typename Kernel_traits::Element;
+     using ElementAccum = typename Kernel_traits::ElementAccum;
+@@ -496,7 +496,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
+-inline __device__ void compute_attn_1rowblock_splitkv(const Params &params, const int bidb, const int bidh, const int m_block, const int n_split_idx, const int num_n_splits) {
++__forceinline__ __device__ void compute_attn_1rowblock_splitkv(const Params &params, const int bidb, const int bidh, const int m_block, const int n_split_idx, const int num_n_splits) {
+ 
+     using Element = typename Kernel_traits::Element;
+     using ElementAccum = typename Kernel_traits::ElementAccum;
+@@ -1073,7 +1073,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_dropout, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Return_softmax, typename Params>
+-inline __device__ void compute_attn(const Params &params) {
++__forceinline__ __device__ void compute_attn(const Params &params) {
+     const int m_block = blockIdx.x;
+     // The block index for the batch.
+     const int bidb = blockIdx.y;
+@@ -1094,7 +1094,7 @@
+ ////////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ template<typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
+-inline __device__ void compute_attn_splitkv(const Params &params) {
++__forceinline__ __device__ void compute_attn_splitkv(const Params &params) {
+     const int m_block = blockIdx.x;
+     // The block index for the batch.
+     const int bidb = Split ? blockIdx.z / params.h : blockIdx.y;

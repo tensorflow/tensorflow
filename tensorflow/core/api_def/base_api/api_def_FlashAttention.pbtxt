@@ -1,0 +1,76 @@
+op {
+  graph_op_name: "FlashAttention"
+  visibility: HIDDEN
+  in_arg {
+    name: "query"
+    description: <<END
+A `[batch, seq_q, heads, dim]` tensor.
+END
+  }
+  in_arg {
+    name: "key"
+    description: <<END
+A `[batch, seq_kv, heads, dim]` tensor.
+END
+  }
+  in_arg {
+    name: "value"
+    description: <<END
+A `[batch, seq_kv, heads, dim_v]` tensor.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+A scalar `uint64`. Seed for the dropout mask.
+END
+  }
+  in_arg {
+    name: "offset"
+    description: <<END
+A scalar `uint64`. Offset into the random stream for the dropout mask.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A `[batch, seq_q, heads, dim_v]` tensor, `softmax(query @ key^T * scale) @ value`
+for each batch entry and head.
+END
+  }
+  out_arg {
+    name: "softmax_lse"
+    description: <<END
+A `[batch, heads, seq_q]` float tensor holding the log-sum-exp of each row of
+the scaled attention logits (`-inf` if `seq_kv == 0`). Used by
+`FlashAttentionGrad`.
+END
+  }
+  attr {
+    name: "scale"
+    description: <<END
+Multiplier applied to `query @ key^T` before the softmax.
+END
+  }
+  attr {
+    name: "dropout_rate"
+    description: <<END
+Probability of dropping each attention weight, in `[0, 1)`.
+END
+  }
+  attr {
+    name: "is_causal"
+    description: <<END
+If true, query position `i` only attends to key positions `<= i`. Requires
+`seq_q == seq_kv`.
+END
+  }
+  summary: "Fused scaled dot-product attention."
+  description: <<END
+Computes attention without materializing the `[seq_q, seq_kv]` attention
+matrix. On NVIDIA GPUs with compute capability 8.0 or newer, `half` and
+`bfloat16` inputs with `dim == dim_v`, `dim % 8 == 0` and `dim <= 256` run the
+FlashAttention-2 kernels. Other inputs use memory-efficient fallback kernels,
+which support `dim, dim_v <= 128`.
+END
+}
