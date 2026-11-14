@@ -1962,6 +1962,139 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
   return avg
 
 
+@tf_export.tf_export('experimental.numpy.cov', v1=[])
+@np_utils.np_doc('cov')
+def cov(  # pylint: disable=missing-docstring
+    m,
+    y=None,
+    rowvar=True,
+    bias=False,
+    ddof=None,
+    fweights=None,
+    aweights=None,
+    dtype=None,
+):
+  m = np_array_ops.array(m)
+  if m.ndim > 2:
+    raise ValueError('m has more than 2 dimensions')
+  if m.ndim < 1:
+    raise ValueError('m has 0 dimensions')
+  if m.ndim == 1:
+    m = (
+        array_ops.reshape(m, [1, -1])
+        if rowvar
+        else array_ops.reshape(m, [-1, 1])
+    )
+  if not rowvar and m.ndim == 2:
+    m = np_array_ops.transpose(m)
+  if y is not None:
+    y = np_array_ops.array(y)
+    if y.ndim > 2:
+      raise ValueError('y has more than 2 dimensions')
+    if y.ndim < 1:
+      raise ValueError('y has 0 dimensions')
+    if y.ndim == 1:
+      y = (
+          array_ops.reshape(y, [1, -1])
+          if rowvar
+          else array_ops.reshape(y, [-1, 1])
+      )
+    if not rowvar and y.ndim == 2:
+      y = np_array_ops.transpose(y)
+    m = array_ops.concat([m, y], axis=0)
+
+  if dtype is None:
+    dtype = np_utils.result_type(m, float)
+  m = math_ops.cast(m, dtype)
+  real_dtype = m.dtype.real_dtype
+
+  if ddof is None:
+    ddof = 0 if bias else 1
+
+  num_obs = array_ops.shape(m)[1]
+  w = None
+  if fweights is not None:
+    fweights = np_array_ops.array(fweights)
+    if fweights.ndim != 1:
+      raise ValueError('fweights must be 1D')
+    fweights = math_ops.cast(fweights, real_dtype)
+    w = fweights
+  if aweights is not None:
+    aweights = np_array_ops.array(aweights)
+    if aweights.ndim != 1:
+      raise ValueError('aweights must be 1D')
+    aweights = math_ops.cast(aweights, real_dtype)
+    w = aweights if w is None else w * aweights
+
+  if w is None:
+    avg = math_ops.reduce_mean(m, axis=1, keepdims=True)
+    dev = m - avg
+    fact = math_ops.cast(num_obs - ddof, real_dtype)
+    fact = array_ops.where_v2(
+        fact > 0, fact, math_ops.cast(np.nan, real_dtype)
+    )
+    c = math_ops.matmul(dev, dev, adjoint_b=True) / math_ops.cast(fact, dtype)
+  else:
+    w_sum = math_ops.reduce_sum(w)
+    avg = (
+        math_ops.reduce_sum(
+            m * math_ops.cast(w, dtype), axis=1, keepdims=True
+        )
+        / math_ops.cast(w_sum, dtype)
+    )
+    dev = m - avg
+    if aweights is None:
+      fact = w_sum - math_ops.cast(ddof, real_dtype)
+    elif not bias:
+      fact = (
+          w_sum
+          - math_ops.cast(ddof, real_dtype)
+          * math_ops.reduce_sum(w * aweights)
+          / w_sum
+      )
+    else:
+      fact = w_sum
+    fact = array_ops.where_v2(
+        fact > 0, fact, math_ops.cast(np.nan, real_dtype)
+    )
+    c = math_ops.matmul(
+        dev * math_ops.cast(w, dtype), dev, adjoint_b=True
+    ) / math_ops.cast(fact, dtype)
+
+  c = np_array_ops.array(c)
+  if c.shape == (1, 1):
+    return array_ops.squeeze(c)
+  return c
+
+
+@tf_export.tf_export('experimental.numpy.corrcoef', v1=[])
+@np_utils.np_doc('corrcoef')
+def corrcoef(  # pylint: disable=missing-docstring
+    x, y=None, rowvar=True, bias=None, ddof=None, dtype=None
+):
+  del bias, ddof
+  c = cov(x, y, rowvar=rowvar, dtype=dtype)
+  if c.shape.rank == 0 or c.shape == (1, 1):
+    return math_ops.cast(1.0, c.dtype)
+  d = array_ops.matrix_diag_part(c)
+  stddev = math_ops.sqrt(math_ops.real(d))
+  stddev_outer = stddev[:, array_ops.newaxis] * stddev[array_ops.newaxis, :]
+  c = c / math_ops.cast(stddev_outer, c.dtype)
+  if c.dtype in (dtypes.complex64, dtypes.complex128):
+    real_dtype = math_ops.real(c).dtype
+    real_part = clip_ops.clip_by_value(
+        math_ops.real(c),
+        math_ops.cast(-1.0, real_dtype),
+        math_ops.cast(1.0, real_dtype),
+    )
+    c = math_ops.complex(real_part, math_ops.imag(c))
+  else:
+    c = clip_ops.clip_by_value(
+        c, math_ops.cast(-1.0, c.dtype), math_ops.cast(1.0, c.dtype)
+    )
+  return c
+
+
 @tf_export.tf_export('experimental.numpy.trace', v1=[])
 @np_utils.np_doc('trace')
 def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
