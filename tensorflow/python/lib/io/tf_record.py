@@ -164,7 +164,8 @@ def tf_record_iterator(path, options=None):
     IOError: If `path` cannot be opened for reading.
   """
   compression_type = TFRecordOptions.get_compression_type_string(options)
-  return _pywrap_record_io.RecordIterator(path, compression_type)
+  return _pywrap_record_io.RecordIterator(
+      compat.path_to_bytes(path), compression_type)
 
 
 def tf_record_random_reader(path):
@@ -205,7 +206,7 @@ def tf_record_random_reader(path):
   Raises:
     IOError: If `path` cannot be opened for reading.
   """
-  return _pywrap_record_io.RandomRecordReader(path)
+  return _pywrap_record_io.RandomRecordReader(compat.path_to_bytes(path))
 
 
 @tf_export(
@@ -293,7 +294,7 @@ class TFRecordWriter(_pywrap_record_io.RecordWriter):
 
     # pylint: disable=protected-access
     super(TFRecordWriter, self).__init__(
-        compat.as_bytes(path), options._as_record_writer_options())
+        compat.path_to_bytes(path), options._as_record_writer_options())
     # pylint: enable=protected-access
 
   # TODO(slebedev): The following wrapper methods are there to compensate

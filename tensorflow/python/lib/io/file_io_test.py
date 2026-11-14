@@ -348,6 +348,21 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     self.assertItemsEqual(
         file_io.get_matching_files(glob_pattern), expected_match)
 
+  def testGetMatchingFilesPathLikeAndBytes(self):
+    dir_path = file_io.join(self._base_dir, "glob_dir")
+    file_io.create_dir(dir_path)
+    files = ["file1.txt", "file2.txt"]
+    for name in files:
+      file_io.FileIO(file_io.join(dir_path, name), mode="w").write("testing")
+    expected_match = [file_io.join(dir_path, name) for name in files]
+    glob_pattern = file_io.join(dir_path, "*.txt")
+    for pattern in (PathLike(glob_pattern), glob_pattern.encode("utf-8")):
+      self.assertItemsEqual(file_io.get_matching_files(pattern), expected_match)
+      self.assertItemsEqual(
+          file_io.get_matching_files_v2(pattern), expected_match)
+      self.assertItemsEqual(
+          file_io.get_matching_files_v2([pattern]), expected_match)
+
   @run_all_path_types
   def testCreateRecursiveDir(self, join):
     dir_path = join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
