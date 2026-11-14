@@ -74,7 +74,7 @@ class PeriodicFunction {
   // Provides the ability to customize several aspects of the PeriodicFunction.
   // Passed to constructor of PeriodicFunction.
   struct Options {
-    Options() {}
+    Options() = default;
 
     // Any standard thread options, such as stack size, should
     // be passed via "thread_options".
