@@ -543,6 +543,8 @@ def build_conversion_flags(
     canonicalizing_inf_as_min_max_float=True,
     serialize_debug_metadata=False,
     unsafe_fuse_dynamic_shaped_broadcast=False,
+    rank_reduction=False,
+    unsafe_gpu_compatibility=False,
     unsafe_single_batch_rank_reduction=False,
     enable_debug=False,
     debug_dir=None,
@@ -618,10 +620,10 @@ def build_conversion_flags(
       in the flatbuffer model to reduce size.
     fold_fp16_resource_casts: Whether to fold 16-bit float (fp16/bf16) resource
       casts.
-    fold_fp16_casts_into_fully_connected: Whether to fold
-      `cast(f32 -> f16)(fully_connected(cast(f16 -> f32)(x), ...))` into a
-      fully_connected with f16 activations (StableHLO -> TFLite pipeline used
-      for MLIR bytecode conversion only; needs runtime support).
+    fold_fp16_casts_into_fully_connected: Whether to fold `cast(f32 ->
+      f16)(fully_connected(cast(f16 -> f32)(x), ...))` into a fully_connected
+      with f16 activations (StableHLO -> TFLite pipeline used for MLIR bytecode
+      conversion only; needs runtime support).
     supported_backends: List of TFLite backends which needs to check
       compatibility.
     disable_per_channel_quantization: Disable per-channel quantized weights for
@@ -690,8 +692,14 @@ def build_conversion_flags(
       when output shape has dynamic dimensions, but it may cause incorrect
       results when broadcasting ops are introduced by explicit broadcasting in
       the source model.
-    unsafe_single_batch_rank_reduction: When set to true, enable the unsafe
-      single batch rank reduction.
+    rank_reduction: When set to true, run the rank reduction pass, which folds
+      unit dimensions out of ops over tensors of rank > 4 on the assumption that
+      the model keeps the batch size it was exported with.
+    unsafe_gpu_compatibility: When set to true, run the GPU compatibility pass,
+      which rewrites ops the TFLite GPU delegates reject into forms they accept.
+      Materializes broadcasts without a size bound; GPU-only.
+    unsafe_single_batch_rank_reduction: Deprecated. Former name of the two flags
+      above, which it enabled together; setting it enables both.
     enable_debug: When set to true, enable debug mode.
     debug_dir: Directory to save debug output.
     **_: Additional unused keyword arguments.
@@ -839,8 +847,11 @@ def build_conversion_flags(
   conversion_flags.unsafe_fuse_dynamic_shaped_broadcast = (
       unsafe_fuse_dynamic_shaped_broadcast
   )
-  conversion_flags.unsafe_single_batch_rank_reduction = (
-      unsafe_single_batch_rank_reduction
+  conversion_flags.rank_reduction = (
+      rank_reduction or unsafe_single_batch_rank_reduction
+  )
+  conversion_flags.unsafe_gpu_compatibility = (
+      unsafe_gpu_compatibility or unsafe_single_batch_rank_reduction
   )
 
   return conversion_flags
