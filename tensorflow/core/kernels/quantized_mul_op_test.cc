@@ -249,6 +249,33 @@ void TestVectorTimesTensor() {
   TestMulShape({5, 2}, {2, 5, 2});
 }
 
+// Only "vector * tensor" broadcasts are implemented for rank 2. Other
+// broadcasts must fail instead of returning a partially written output.
+void TestUnsupportedBroadcast() {
+  const std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>>
+      shapes = {{{3, 1}, {1, 4}}, {{1, 4}, {3, 1}}, {{4, 6}, {4, 1}}};
+  for (const auto& [x_shape, y_shape] : shapes) {
+    Scope root = Scope::NewRootScope();
+    Tensor x_tensor(DT_QUINT8, TensorShape(x_shape));
+    x_tensor.flat<quint8>().setConstant(10);
+    Tensor y_tensor(DT_QUINT8, TensorShape(y_shape));
+    y_tensor.flat<quint8>().setConstant(20);
+    Output x = Const(root.WithOpName("x"), Input::Initializer(x_tensor));
+    Output y = Const(root.WithOpName("y"), Input::Initializer(y_tensor));
+    Output min = Const(root.WithOpName("min"), 0.0f);
+    Output max = Const(root.WithOpName("max"), 255.0f);
+    ops::QuantizedMul op =
+        ops::QuantizedMul(root.WithOpName("mul"), x, y, min, max, min, max);
+    TF_EXPECT_OK(root.status());
+
+    ClientSession session(root);
+    std::vector<Tensor> outputs;
+    const absl::Status status =
+        session.Run(ClientSession::FeedType(), {op.z}, &outputs);
+    EXPECT_TRUE(errors::IsUnimplemented(status)) << status;
+  }
+}
+
 void BenchmarkTensorScalar() {
   TimeMul({200}, {1}, 10000);
   TimeMul({10000}, {1}, 1000);
@@ -286,6 +313,7 @@ RUN_TEST(TestManualVectorTimesTensor);
 RUN_TEST(TestScalar);
 RUN_TEST(TestVector);
 RUN_TEST(TestVectorTimesTensor);
+RUN_TEST(TestUnsupportedBroadcast);
 
 #if defined(__ANDROID__)
 
