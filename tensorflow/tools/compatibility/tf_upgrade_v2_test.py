@@ -30,6 +30,8 @@ from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
+import sys
+import unittest
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
 
@@ -72,6 +74,7 @@ def get_func_and_args_from_str(call_str):
   return function_name, args
 
 
+@unittest.skipIf(sys.version_info >= (3, 14), "pasta is broken on Python 3.14+")
 class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test various APIs that have been changed in 2.0.
 
