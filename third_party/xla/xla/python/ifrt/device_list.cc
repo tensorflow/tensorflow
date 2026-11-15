@@ -104,6 +104,7 @@ uint64_t DeviceList::fingerprint() const {
   FingerprintPrinter printer;
   for (Device* device : devices()) {
     printer.Append(device->Id().value());
+    printer.Append(",");
   }
   return std::move(printer).Fingerprint();
 }

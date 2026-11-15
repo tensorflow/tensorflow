@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context_test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
@@ -33,6 +34,25 @@ namespace {
 TEST(BasicUserContextTest, DebugString) {
   UserContextRef context = BasicUserContext::Create("test message");
   EXPECT_EQ(context->DebugString(), "test message");
+}
+
+TEST(BasicUserContextTest, DistinctInstancesHaveDistinctIds) {
+  UserContextRef context1 = BasicUserContext::Create("test message");
+  UserContextRef context2 = BasicUserContext::Create("test message");
+
+  EXPECT_NE(context1->Id(), context2->Id());
+}
+
+TEST(BasicUserContextTest, RttiDistinguishesSubclasses) {
+  UserContextRef basic = BasicUserContext::Create("basic");
+  UserContextRef annotated = AnnotatedUserContext::Create(basic, "; note");
+  UserContextRef chained = ChainedUserContext::Create({basic});
+  UserContextRef fused = FusedUserContext::Create({basic});
+
+  EXPECT_TRUE(isa<BasicUserContext>(basic.get()));
+  EXPECT_FALSE(isa<BasicUserContext>(annotated.get()));
+  EXPECT_FALSE(isa<BasicUserContext>(chained.get()));
+  EXPECT_FALSE(isa<BasicUserContext>(fused.get()));
 }
 
 TEST(AnnotatedUserContextTest, Id) {
@@ -130,14 +150,20 @@ TEST(UserContextScopeTest, NullContext) {
 TEST(UserContextScopeTest, SingleScope) {
   const UserContextId kUserContextId(100);
   UserContextRef context = TestUserContext::Create(kUserContextId);
-  UserContextScope scope(context);
-  EXPECT_EQ(UserContextScope::current(), context);
+  {
+    UserContextScope scope(context);
+    EXPECT_EQ(UserContextScope::current(), context);
+  }
+  EXPECT_EQ(UserContextScope::current(), nullptr);
 }
 
 TEST(UserContextScopeTest, SingleScopeWithInlineContextCreation) {
   const UserContextId kUserContextId(100);
-  UserContextScope scope(TestUserContext::Create(kUserContextId));
-  EXPECT_EQ(UserContextScope::current()->Id(), kUserContextId);
+  {
+    UserContextScope scope(TestUserContext::Create(kUserContextId));
+    EXPECT_EQ(UserContextScope::current()->Id(), kUserContextId);
+  }
+  EXPECT_EQ(UserContextScope::current(), nullptr);
 }
 
 TEST(UserContextScopeTest, NestedScopes) {
@@ -145,13 +171,26 @@ TEST(UserContextScopeTest, NestedScopes) {
   const UserContextId kUserContextId2(200);
   UserContextRef context1 = TestUserContext::Create(kUserContextId1);
   UserContextRef context2 = TestUserContext::Create(kUserContextId2);
-  UserContextScope scope1(context1);
-  EXPECT_EQ(UserContextScope::current(), context1);
   {
-    UserContextScope scope2(context2);
-    EXPECT_EQ(UserContextScope::current(), context2);
+    UserContextScope scope1(context1);
+    EXPECT_EQ(UserContextScope::current(), context1);
+    {
+      UserContextScope scope2(context2);
+      EXPECT_EQ(UserContextScope::current(), context2);
+    }
+    EXPECT_EQ(UserContextScope::current(), context1);
   }
-  EXPECT_EQ(UserContextScope::current(), context1);
+  EXPECT_EQ(UserContextScope::current(), nullptr);
+}
+
+TEST(UserContextScopeTest, ExplicitNullScopeClearsOuterContext) {
+  UserContextRef context = TestUserContext::Create(UserContextId(100));
+  UserContextScope outer_scope(context);
+  {
+    UserContextScope inner_null_scope{UserContextRef()};
+    EXPECT_EQ(UserContextScope::current(), nullptr);
+  }
+  EXPECT_EQ(UserContextScope::current(), context);
 }
 
 TEST(UserContextScopeTest, ThreadLocalScopes) {
