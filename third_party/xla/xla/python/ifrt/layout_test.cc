@@ -185,6 +185,57 @@ TEST(LayoutTest, NulloptByteSizeStatic) {
   }
 }
 
+TEST(LayoutTest, ByteSizeWithDefaultLayoutReturnsNulloptForToken) {
+  auto client = std::make_unique<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  auto device = std::make_unique<MockDevice>();
+  ON_CALL(*device, client()).WillByDefault(Return(client.get()));
+  EXPECT_CALL(*client, GetDefaultLayout(_, _, _)).Times(0);
+  ShardingRef sharding =
+      SingleDeviceSharding::Create(device.get(), MemoryKind());
+
+  EXPECT_THAT(Layout::ByteSize(DType(DType::kToken), Shape({}), sharding,
+                               /*layout=*/nullptr),
+              IsOkAndHolds(std::nullopt));
+}
+
+TEST(LayoutTest, ByteSizeWithDefaultLayoutReturnsNulloptForOpaque) {
+  auto client = std::make_unique<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  auto device = std::make_unique<MockDevice>();
+  ON_CALL(*device, client()).WillByDefault(Return(client.get()));
+  EXPECT_CALL(*client, GetDefaultLayout(_, _, _)).Times(0);
+  ShardingRef sharding =
+      SingleDeviceSharding::Create(device.get(), MemoryKind());
+
+  EXPECT_THAT(Layout::ByteSize(DType(DType::kOpaque), Shape({}), sharding,
+                               /*layout=*/nullptr),
+              IsOkAndHolds(std::nullopt));
+}
+
+TEST(LayoutTest, ByteSizeWithDefaultLayoutReturnsNulloptForString) {
+  auto client = std::make_unique<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  auto device = std::make_unique<MockDevice>();
+  ON_CALL(*device, client()).WillByDefault(Return(client.get()));
+  EXPECT_CALL(*client, GetDefaultLayout(_, _, _)).Times(0);
+  ShardingRef sharding =
+      SingleDeviceSharding::Create(device.get(), MemoryKind());
+
+  EXPECT_THAT(Layout::ByteSize(DType(DType::kString), Shape({2}), sharding,
+                               /*layout=*/nullptr),
+              IsOkAndHolds(std::nullopt));
+}
+
 TEST(LayoutTest, EquivalentLayouts) {
   auto client = std::make_unique<MockClient>();
   ON_CALL(*client, MakeDeviceList)

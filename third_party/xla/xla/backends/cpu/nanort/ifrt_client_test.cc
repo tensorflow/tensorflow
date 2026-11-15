@@ -455,6 +455,7 @@ int main(int argc, char** argv) {
       "-ArrayImplTest.CopyMixedSourceDevices:"
       // String arrays are not supported in NanoIfrtClient.
       "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithString:"
+      "ArrayImplTest.StringArrayByteSizeReturnsNullopt:"
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // Custom layouts are not supported in NanoIfrtClient.

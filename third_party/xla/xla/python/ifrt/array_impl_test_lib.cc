@@ -1217,6 +1217,30 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
   }
 }
 
+TEST(ArrayImplTest, StringArrayByteSizeReturnsNullopt) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  std::vector<Device*> string_devices =
+      GetAddressableDevicesForString(client.get());
+  if (string_devices.empty()) {
+    GTEST_SKIP() << "This test requires at least 1 device that can store "
+                    "strings.";
+  }
+
+  std::vector<absl::Cord> cords = {absl::Cord("hello"), absl::Cord("world")};
+  ShardingRef sharding = SingleDeviceSharding::Create(
+      string_devices.front(),
+      MemoryKind(absl::GetFlag(FLAGS_ifrt_test_memory_kind_for_string)));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array, client->MakeArrayFromHostBuffer(
+                          cords.data(), DType(DType::kString), Shape({2}),
+                          /*byte_strides=*/std::nullopt, std::move(sharding),
+                          /*layout=*/nullptr,
+                          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                          /*on_done_with_host_buffer=*/nullptr));
+
+  EXPECT_THAT(array->ByteSize(), IsOkAndHolds(std::nullopt));
+}
+
 TEST(ArrayImplTest,
      MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());

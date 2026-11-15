@@ -51,6 +51,9 @@ char CompactLayout::ID = 0;
 absl::StatusOr<std::optional<int64_t>> Layout::ByteSize(
     DType dtype, const Shape& shape, const ShardingRef& sharding,
     const LayoutRef& layout) {
+  if (!dtype.bit_size().has_value()) {
+    return std::nullopt;
+  }
   std::optional<absl::StatusOr<Shape>> shard_shape;
   const Shape* shard_shape_ptr;
   if (sharding->IsFullyReplicated()) {
