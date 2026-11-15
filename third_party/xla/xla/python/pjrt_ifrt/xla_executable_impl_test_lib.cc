@@ -78,6 +78,7 @@ using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::Optional;
 using ::testing::SizeIs;
@@ -203,6 +204,38 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       ->DeserializeLoadedExecutable(
           absl::Cord(std::move(serialized_executable)), std::move(options))
       .Await();
+}
+
+absl::StatusOr<ArrayRef> MakeF32TwoByThreeArray(Client* client,
+                                                Device* device) {
+  std::vector<float> data(6, 1.0f);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  return client->MakeArrayFromHostBuffer(
+      data.data(), DType(DType::kF32), Shape({2, 3}),
+      /*byte_strides=*/std::nullopt, std::move(sharding), /*layout=*/nullptr,
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*on_done_with_host_buffer=*/nullptr);
+}
+
+absl::Status CompileAndExecuteBundleWithOutputSliceSizes(
+    Client* client, Compiler* compiler, Device* device, bool serialize,
+    std::vector<int> outputs_bundle_slice_sizes) {
+  ABSL_ASSIGN_OR_RETURN(ArrayRef array, MakeF32TwoByThreeArray(client, device));
+  std::vector<ValueRef> input_values = {array, array, array};
+  ABSL_ASSIGN_OR_RETURN(BundleRef input_bundle,
+                   client->Bundle(absl::MakeSpan(input_values),
+                                  ArrayCopySemantics::kReuseInput));
+  ABSL_ASSIGN_OR_RETURN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client, compiler, module_three_inputs_outputs, {device},
+                       /*replicated=*/false, serialize,
+                       std::move(outputs_bundle_slice_sizes)));
+  LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  ABSL_ASSIGN_OR_RETURN(LoadedExecutable::ExecuteBundleResult result,
+                   loaded_executable->ExecuteBundle(
+                       absl::MakeSpan(&input_bundle, 1), execute_options));
+  return result.status.Await();
 }
 
 class LoadedExecutableImplTest
@@ -1044,6 +1077,113 @@ module @f attributes {mhlo.num_partitions = 2 : i32, mhlo.num_replicas = 1 : i32
                        /*replicated=*/false, /*serialize=*/GetParam()));
 }
 
+TEST_P(LoadedExecutableImplTest, ExecuteWithTooFewArgsFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client.get(), compiler, module_add_one, {device},
+                       /*replicated=*/false, /*serialize=*/GetParam()));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(loaded_executable->Execute({}, execute_options,
+                                         /*devices=*/std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest, ExecuteWithTooManyArgsFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client.get(), compiler, module_add_one, {device},
+                       /*replicated=*/false, /*serialize=*/GetParam()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), device));
+  std::vector<ArrayRef> two_args = {array, array};
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(
+      loaded_executable->Execute(absl::MakeSpan(two_args), execute_options,
+                                 /*devices=*/std::nullopt),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest, CompileAndExecuteBundleWithTooFewArgsFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_executable,
+                       CompileOnDevices(client.get(), compiler,
+                                        module_three_inputs_outputs, {device},
+                                        /*replicated=*/false,
+                                        /*serialize=*/GetParam()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), device));
+  std::vector<ValueRef> two_values = {array, array};
+  ASSERT_OK_AND_ASSIGN(BundleRef two_value_bundle,
+                       client->Bundle(absl::MakeSpan(two_values),
+                                      ArrayCopySemantics::kReuseInput));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(loaded_executable->ExecuteBundle(
+                  absl::MakeSpan(&two_value_bundle, 1), execute_options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest, CompileAndExecuteBundleWithTooManyArgsFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_executable,
+                       CompileOnDevices(client.get(), compiler,
+                                        module_three_inputs_outputs, {device},
+                                        /*replicated=*/false,
+                                        /*serialize=*/GetParam()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), device));
+  std::vector<ValueRef> two_values = {array, array};
+  ASSERT_OK_AND_ASSIGN(BundleRef two_value_bundle,
+                       client->Bundle(absl::MakeSpan(two_values),
+                                      ArrayCopySemantics::kReuseInput));
+  std::vector<BundleRef> four_total_args = {two_value_bundle, two_value_bundle};
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(loaded_executable->ExecuteBundle(absl::MakeSpan(four_total_args),
+                                               execute_options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest,
+       CompileAndExecuteBundleWithTooFewOutputSlicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  EXPECT_THAT(
+      CompileAndExecuteBundleWithOutputSliceSizes(
+          client.get(), client->GetDefaultCompiler(),
+          client->addressable_devices().at(0),
+          /*serialize=*/GetParam(), /*outputs_bundle_slice_sizes=*/{1, 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest,
+       CompileAndExecuteBundleWithTooManyOutputSlicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  EXPECT_THAT(
+      CompileAndExecuteBundleWithOutputSliceSizes(
+          client.get(), client->GetDefaultCompiler(),
+          client->addressable_devices().at(0),
+          /*serialize=*/GetParam(), /*outputs_bundle_slice_sizes=*/{2, 2}),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     LoadedExecutableImplTest, LoadedExecutableImplTest,
     /*serialize=*/testing::Bool(),
@@ -1564,6 +1704,32 @@ TEST(ExecutableTest, UnloadedExecutableSerialization) {
     ASSERT_TRUE(metadata.parameter_specs(i).has_shape());
     EXPECT_THAT(metadata.parameter_specs(i).shape().dims(), ElementsAre(2, 3));
   }
+}
+
+TEST(ExecutableTest,
+     CompileAndExecuteBundleWithZeroOutputsAndEmptySliceSizesReturnsNoBundles) {
+  static constexpr absl::string_view kModule = R"mlir(
+module @nop {
+  func.func @main() {
+    return
+  }
+})mlir";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, /*serialize=*/false,
+                       /*outputs_bundle_slice_sizes=*/std::vector<int>{}));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                       executable->ExecuteBundle({}, execute_options));
+
+  EXPECT_OK(result.status.Await());
+  EXPECT_THAT(result.outputs, IsEmpty());
 }
 
 }  // namespace

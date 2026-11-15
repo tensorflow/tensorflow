@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/basic_bundle.h"
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -59,8 +60,12 @@ absl::Status ValidateArrayCopySemantics(ArrayCopySemantics semantics) {
 // Checks if the given `slice_sizes` are valid for the given `num_values`.
 absl::Status ValidateSliceSizes(int num_values,
                                 absl::Span<const int> slice_sizes) {
-  int total_size = 0;
+  int64_t total_size = 0;
   for (int size : slice_sizes) {
+    if (size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Slice size must be non-negative: ", size));
+    }
     total_size += size;
   }
   if (total_size != num_values) {

@@ -111,8 +111,60 @@ class ReshardTestBase : public testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(client_, test_util::GetClient());
   }
 
+  absl::StatusOr<ArraySpec> MakeReplicatedArraySpec() {
+    ABSL_ASSIGN_OR_RETURN(const DeviceListRef device_list,
+                     client_->MakeDeviceList(client_->devices()));
+    ShardingRef sharding = HloSharding::Create(device_list, MemoryKind(),
+                                               xla::HloSharding::Replicate());
+    return ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({4, 8}),
+        /*sharding=*/std::move(sharding),
+    };
+  }
+
+  absl::StatusOr<ArrayRef> MakeArbitraryReplicatedArray() {
+    ABSL_ASSIGN_OR_RETURN(const ArraySpec spec, MakeReplicatedArraySpec());
+    ABSL_ASSIGN_OR_RETURN(
+        const xla::Literal literal,
+        test_util::CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+    return test_util::MakeArrayFromLiteral(client_.get(), literal,
+                                           spec.sharding);
+  }
+
   std::shared_ptr<Client> client_;
 };
+
+TEST_F(ReshardTestBase, ReshardArraysWithEmptyArraysAndNonEmptySpecsFails) {
+  ASSERT_OK_AND_ASSIGN(const ArraySpec dst_spec, MakeReplicatedArraySpec());
+
+  EXPECT_THAT(
+      client_->ReshardArrays({}, {dst_spec}, ArrayCopySemantics::kDonateInput),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(ReshardTestBase, ReshardArraysWithMismatchedSpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(ArrayRef src_array, MakeArbitraryReplicatedArray());
+  ASSERT_OK_AND_ASSIGN(const ArraySpec dst_spec, MakeReplicatedArraySpec());
+
+  EXPECT_THAT(client_->ReshardArrays(absl::MakeSpan(&src_array, 1),
+                                     {dst_spec, dst_spec},
+                                     ArrayCopySemantics::kDonateInput),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(ReshardTestBase, BundleReshardArraysWithMismatchedSpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(ArrayRef src_array, MakeArbitraryReplicatedArray());
+  ASSERT_OK_AND_ASSIGN(const ArraySpec dst_spec, MakeReplicatedArraySpec());
+  std::vector<ValueRef> values = {src_array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client_->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->ReshardArrays({dst_spec, dst_spec},
+                                    ArrayCopySemantics::kDonateInput),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
 
 class ReshardTest : public ReshardTestBase,
                     public testing::WithParamInterface<

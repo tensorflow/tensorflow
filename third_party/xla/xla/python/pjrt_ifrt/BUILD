@@ -495,6 +495,7 @@ cc_library(
         ":array_test_util",
         ":xla_ifrt",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo_sharding",

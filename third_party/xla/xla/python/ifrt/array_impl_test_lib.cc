@@ -1457,6 +1457,24 @@ TEST(ArrayImplTest, HostBufferTokens) {
   }
 }
 
+TEST(ArrayImplTest, TokenArrayByteSizeReturnsNullopt) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().front();
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  absl::StatusOr<ArrayRef> token = client->MakeArrayFromHostBuffer(
+      /*data=*/nullptr, DType(DType::kToken), Shape({}),
+      /*byte_strides=*/std::nullopt, std::move(sharding), /*layout=*/nullptr,
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*on_done_with_host_buffer=*/nullptr);
+  if (absl::IsUnimplemented(token.status()) ||
+      absl::IsInternal(token.status())) {
+    GTEST_SKIP() << "Token arrays are not supported.";
+  }
+  ASSERT_OK(token.status());
+
+  EXPECT_THAT((*token)->ByteSize(), IsOkAndHolds(std::nullopt));
+}
+
 TEST(ArrayImplTest, MakeErrorArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2754,6 +2772,114 @@ TEST(ArrayImplTest, CopyArraysWithPartialReuse) {
   }
 }
 
+TEST(ArrayImplTest, CopyArraysWithFewerDestinationDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<float> data = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef two_devices,
+                       client->MakeDeviceList(devices.subspan(0, 2)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef one_device,
+                       client->MakeDeviceList(devices.subspan(0, 1)));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      std::move(two_devices), MemoryKind(), Shape({2}),
+      /*shard_shape=*/Shape({2}), /*is_fully_replicated=*/true);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef two_device_array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, std::move(sharding),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  EXPECT_THAT(client->CopyArrays(absl::MakeSpan(&two_device_array, 1),
+                                 std::move(one_device), MemoryKind(),
+                                 ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ArrayImplTest, CopyArraysWithMoreDestinationDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<float> data = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef two_devices,
+                       client->MakeDeviceList(devices.subspan(0, 2)));
+  ShardingRef sharding = SingleDeviceSharding::Create(devices[0], MemoryKind());
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef single_device_array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, std::move(sharding),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  EXPECT_THAT(client->CopyArrays(absl::MakeSpan(&single_device_array, 1),
+                                 std::move(two_devices), MemoryKind(),
+                                 ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ArrayImplTest, CopyArraysAfterPoisonedArraySucceedsForHealthyArray) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+  Device* const dst_device = client->addressable_devices().back();
+  ShardingRef src_sharding =
+      SingleDeviceSharding::Create(src_device, MemoryKind());
+
+  ArraySpec error_spec = {
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({2}),
+      /*sharding=*/src_sharding,
+  };
+  absl::StatusOr<std::vector<ArrayRef>> poisoned_arrays =
+      client->MakeErrorArrays(absl::InternalError("injected error"),
+                              {error_spec});
+  if (absl::IsUnimplemented(poisoned_arrays.status())) {
+    GTEST_SKIP() << "MakeErrorArrays is not supported.";
+  }
+  ASSERT_OK(poisoned_arrays.status());
+
+  std::vector<float> healthy_data = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef healthy_array,
+      client->MakeArrayFromHostBuffer(
+          healthy_data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, std::move(src_sharding),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef dst_devices,
+                       client->MakeDeviceList({dst_device}));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> copied_poisoned,
+      client->CopyArrays(absl::MakeSpan(*poisoned_arrays), dst_devices,
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> copied_healthy,
+      client->CopyArrays(absl::MakeSpan(&healthy_array, 1), dst_devices,
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
+
+  EXPECT_THAT(copied_poisoned[0]->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal));
+  std::vector<float> out_data(2);
+  ASSERT_OK(copied_healthy[0]
+                ->CopyToHostBuffer(out_data.data(),
+                                   /*byte_strides=*/std::nullopt,
+                                   ArrayCopySemantics::kAlwaysCopy)
+                .Await());
+  EXPECT_THAT(out_data, ElementsAre(1.0f, 2.0f));
+}
+
 class ArrayImplHashTest : public ::testing::TestWithParam<Client::HashMode> {};
 
 TEST_P(ArrayImplHashTest, HashValuesDifferentData) {
@@ -2999,6 +3125,67 @@ INSTANTIATE_TEST_SUITE_P(
           return "Logical";
       }
     });
+
+TEST(ArrayImplTest,
+     LogicalHashMatchesAcrossSingleDeviceAndPartitionedShardings) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test needs at least 2 devices";
+  }
+
+  std::vector<float> full_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> shard0_data = {1.0f, 2.0f};
+  std::vector<float> shard1_data = {3.0f, 4.0f};
+
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef single_device_array,
+      client->MakeArrayFromHostBuffer(
+          full_data.data(), DType(DType::kF32), Shape({4}),
+          /*byte_strides=*/std::nullopt,
+          SingleDeviceSharding::Create(devices[0], MemoryKind()),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
+  std::vector<IndexDomain> index_domains = {
+      IndexDomain(Index({0}), Shape({2})),
+      IndexDomain(Index({2}), Shape({2})),
+  };
+  ShardingRef partitioned_sharding = ConcreteSharding::Create(
+      std::move(device_list), MemoryKind(), Shape({4}),
+      /*shard_shapes=*/{Shape({2}), Shape({2})}, std::move(index_domains));
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs = {{
+      /*buffers=*/{{{0},
+                    {shard0_data.data(), DType(DType::kF32), Shape({2}),
+                     /*byte_strides=*/std::nullopt, /*on_done=*/nullptr}},
+                   {{1},
+                    {shard1_data.data(), DType(DType::kF32), Shape({2}),
+                     /*byte_strides=*/std::nullopt, /*on_done=*/nullptr}}},
+      /*array_spec=*/
+      {DType(DType::kF32), Shape({4}), std::move(partitioned_sharding),
+       /*layout=*/nullptr},
+  }};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> partitioned_arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs),
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+
+  std::vector<ValueRef> values = {single_device_array,
+                                  partitioned_arrays.front()};
+  absl::StatusOr<std::vector<uint64_t>> hashes =
+      client->HashValues(values, Client::HashMode::kLogical).Await();
+  if (absl::IsUnimplemented(hashes.status())) {
+    GTEST_SKIP() << "HashValues not implemented";
+  }
+  ASSERT_OK(hashes.status());
+  ASSERT_THAT(*hashes, SizeIs(2));
+  EXPECT_EQ((*hashes)[0], (*hashes)[1]);
+}
 
 TEST(ArrayImplTest, GetReadyFuture) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());

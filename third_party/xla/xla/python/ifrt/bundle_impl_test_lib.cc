@@ -20,6 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
@@ -27,12 +30,14 @@ limitations under the License.
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -42,9 +47,22 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::SizeIs;
+
+absl::StatusOr<ArrayRef> MakeArbitrarySingleDeviceArray(Client* client) {
+  std::vector<float> data = {1.0f, 2.0f};
+  Device* const device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  return client->MakeArrayFromHostBuffer(
+      data.data(), DType(DType::kF32), Shape({2}),
+      /*byte_strides=*/std::nullopt, std::move(sharding), /*layout=*/nullptr,
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*on_done_with_host_buffer=*/nullptr);
+}
 
 void CheckArrayContents(Array* lhs, Array* rhs) {
   ASSERT_EQ(lhs->dtype(), rhs->dtype());
@@ -705,6 +723,144 @@ TEST(BundleImplTest, CopyArraysDifferentDeviceLists) {
     ASSERT_OK(future.Await());
     EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
   }
+}
+
+TEST(BundleImplTest, BundleCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  ASSERT_NE(bundle->user_context(), nullptr);
+  EXPECT_EQ(bundle->user_context()->Id(), UserContextId(100));
+}
+
+TEST(BundleImplTest, ConcatBundlesCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values1 = {array1};
+  std::vector<ValueRef> values2 = {array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle1,
+      client->Bundle(absl::MakeSpan(values1), ArrayCopySemantics::kReuseInput));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle2,
+      client->Bundle(absl::MakeSpan(values2), ArrayCopySemantics::kReuseInput));
+  std::vector<BundleRef> bundles = {bundle1, bundle2};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(200));
+  ASSERT_OK_AND_ASSIGN(BundleRef concat_bundle,
+                       client->ConcatBundles(absl::MakeSpan(bundles),
+                                             ArrayCopySemantics::kReuseInput));
+
+  ASSERT_NE(concat_bundle->user_context(), nullptr);
+  EXPECT_EQ(concat_bundle->user_context()->Id(), UserContextId(200));
+}
+
+TEST(BundleImplTest, SliceCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array1, array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(300));
+  ASSERT_OK_AND_ASSIGN(std::vector<BundleRef> slices,
+                       bundle->Slice({1, 1}, ArrayCopySemantics::kReuseInput));
+
+  ASSERT_THAT(slices, SizeIs(2));
+  ASSERT_NE(slices[0]->user_context(), nullptr);
+  EXPECT_EQ(slices[0]->user_context()->Id(), UserContextId(300));
+  ASSERT_NE(slices[1]->user_context(), nullptr);
+  EXPECT_EQ(slices[1]->user_context()->Id(), UserContextId(300));
+}
+
+TEST(BundleImplTest, CopyArraysCapturesCurrentUserContext) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceListRef dst_devices,
+      client->MakeDeviceList({client->addressable_devices().at(0)}));
+  std::vector<Bundle::CopySpec> specs = {{
+      /*devices=*/std::move(dst_devices),
+      /*memory_kind=*/MemoryKind(),
+  }};
+
+  UserContextScope user_context_scope(test_util::MakeUserContext(400));
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef copied_bundle,
+      bundle->CopyArrays({1}, specs, ArrayCopySemantics::kAlwaysCopy));
+
+  ASSERT_NE(copied_bundle->user_context(), nullptr);
+  EXPECT_EQ(copied_bundle->user_context()->Id(), UserContextId(400));
+}
+
+TEST(BundleImplTest, SliceWithNegativeSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array2,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array1, array2};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->Slice({-1, 3}, ArrayCopySemantics::kReuseInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithFewerDestinationDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<float> data = {1.0f, 2.0f};
+  ASSERT_OK_AND_ASSIGN(DeviceListRef two_devices,
+                       client->MakeDeviceList(devices.subspan(0, 2)));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef one_device,
+                       client->MakeDeviceList(devices.subspan(0, 1)));
+  ShardingRef two_device_sharding = ConcreteEvenSharding::Create(
+      std::move(two_devices), MemoryKind(), Shape({2}),
+      /*shard_shape=*/Shape({2}), /*is_fully_replicated=*/true);
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef two_device_array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, std::move(two_device_sharding),
+          /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+  std::vector<ValueRef> values = {two_device_array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {{
+      /*devices=*/std::move(one_device),
+      /*memory_kind=*/MemoryKind(),
+  }};
+
+  EXPECT_THAT(bundle->CopyArrays({1}, specs, ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

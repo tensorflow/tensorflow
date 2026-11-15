@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -661,6 +663,85 @@ TEST_F(ArraySliceTest, UpdateSliceRejectsMismatchedLayout) {
                                          absl::MakeSpan(slices),
                                          absl::MakeSpan(&origin, 1)),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(ArraySliceTest, CopySliceAfterPoisonedInputSucceedsForHealthyArray) {
+  xla::ifrt::ShardingRef sharding = xla::ifrt::SingleDeviceSharding::Create(
+      client_->addressable_devices()[0], xla::ifrt::MemoryKind("pinned_host"));
+  const xla::Literal healthy_literal =
+      xla::LiteralUtil::CreateFullWithDescendingLayout({16, 128}, int32_t{7});
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::ArrayRef healthy_array,
+                       test_util::MakeArrayFromLiteral(
+                           client_.get(), healthy_literal, sharding));
+  xla::ifrt::ArraySpec poisoned_spec = {
+      /*dtype=*/xla::ifrt::DType(xla::ifrt::DType::kS32),
+      /*shape=*/Shape({16, 128}),
+      /*sharding=*/sharding,
+  };
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<xla::ifrt::ArrayRef> poisoned_arrays,
+      client_->MakeErrorArrays(absl::InternalError("injected error"),
+                               absl::MakeSpan(&poisoned_spec, 1)));
+  IndexDomain domain(Index({8, 0}), Shape({8, 128}));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<xla::ifrt::ArrayRef> sliced_poisoned,
+                       client_->CopyArraySlices(absl::MakeSpan(poisoned_arrays),
+                                                absl::MakeSpan(&domain, 1)));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<xla::ifrt::ArrayRef> sliced_healthy,
+      client_->CopyArraySlices(absl::MakeSpan(&healthy_array, 1),
+                               absl::MakeSpan(&domain, 1)));
+
+  EXPECT_THAT(sliced_poisoned[0]->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal));
+  const xla::Literal expected_slice =
+      xla::LiteralUtil::CreateFullWithDescendingLayout({8, 128}, int32_t{7});
+  EXPECT_THAT(test_util::CopyArrayToLiteral(sliced_healthy[0]),
+              IsOkAndHolds(Eq(std::cref(expected_slice))));
+}
+
+TEST_F(ArraySliceTest, UpdateSliceAfterPoisonedSliceSucceedsForHealthyArray) {
+  xla::ifrt::ShardingRef sharding = xla::ifrt::SingleDeviceSharding::Create(
+      client_->addressable_devices()[0], xla::ifrt::MemoryKind("pinned_host"));
+  const xla::Literal initial_literal =
+      xla::LiteralUtil::CreateFullWithDescendingLayout({8, 128}, int32_t{1});
+  const xla::Literal slice_literal =
+      xla::LiteralUtil::CreateFullWithDescendingLayout({8, 128}, int32_t{9});
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::ArrayRef target0,
+                       test_util::MakeArrayFromLiteral(
+                           client_.get(), initial_literal, sharding));
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::ArrayRef target1,
+                       test_util::MakeArrayFromLiteral(
+                           client_.get(), initial_literal, sharding));
+  ASSERT_OK_AND_ASSIGN(
+      xla::ifrt::ArrayRef healthy_slice,
+      test_util::MakeArrayFromLiteral(client_.get(), slice_literal, sharding));
+  xla::ifrt::ArraySpec poisoned_slice_spec = {
+      /*dtype=*/xla::ifrt::DType(xla::ifrt::DType::kS32),
+      /*shape=*/Shape({8, 128}),
+      /*sharding=*/sharding,
+  };
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<xla::ifrt::ArrayRef> poisoned_slices,
+      client_->MakeErrorArrays(absl::InternalError("injected error"),
+                               absl::MakeSpan(&poisoned_slice_spec, 1)));
+  Index origin({0, 0});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<xla::ifrt::ArrayRef> updated_poisoned,
+      client_->UpdateArraySlices(absl::MakeSpan(&target0, 1),
+                                 absl::MakeSpan(poisoned_slices),
+                                 absl::MakeSpan(&origin, 1)));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<xla::ifrt::ArrayRef> updated_healthy,
+      client_->UpdateArraySlices(absl::MakeSpan(&target1, 1),
+                                 absl::MakeSpan(&healthy_slice, 1),
+                                 absl::MakeSpan(&origin, 1)));
+
+  EXPECT_THAT(updated_poisoned[0]->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(test_util::CopyArrayToLiteral(updated_healthy[0]),
+              IsOkAndHolds(Eq(std::cref(slice_literal))));
 }
 
 }  // namespace
