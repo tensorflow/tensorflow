@@ -1859,6 +1859,10 @@ def _argminmax(fn, a, axis=None, keepdims=False):
     # for dynamically shaped inputs.
     if a_rank is None:
       a_rank = array_ops.rank(a)
+    if isinstance(a_rank, int):
+      # A static rank lets TF infer the reshaped shape directly instead of
+      # materializing a shape tensor.
+      return array_ops.reshape(result, [1] * a_rank)
     return array_ops.reshape(
         result, array_ops.ones([a_rank], dtype=dtypes.int32)
     )
