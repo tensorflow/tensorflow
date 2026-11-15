@@ -830,7 +830,6 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
   params->call_frame = call_frame_;
   params->function_library = immutable_state_.params().function_library;
   params->resource_manager = device->resource_manager();
-  params->step_container = step_container_;
   params->slice_reader_cache = slice_reader_cache_;
   params->runner = &runner_;
   params->run_all_kernels_inline = run_all_kernels_inline_;
