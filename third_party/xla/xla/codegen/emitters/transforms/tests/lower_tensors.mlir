@@ -446,15 +446,14 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
-// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU: %[[MASK:.*]] = llvm.xor %{{.*}}, %{{.*}}
+// CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %[[MASK]]
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i16
-// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i16) -> i16
-// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i16
+// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 2> : f16, !llvm.ptr
 
 // -----
 
@@ -472,15 +471,14 @@ func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
 // CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
-// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-GPU: %[[MASK:.*]] = llvm.xor %{{.*}}, %{{.*}}
+// CHECK-GPU-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-GPU-NEXT: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK-GPU-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
-// CHECK-GPU-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-GPU-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %[[MASK]]
 // CHECK-GPU-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-GPU-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
-// CHECK-CPU-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
-// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
-// CHECK-CPU-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
+// CHECK-CPU-NEXT: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 1> : i8, !llvm.ptr
 
 // -----
 
@@ -533,6 +531,28 @@ func.func @shared_f16() -> tensor<3xf16> {
 // Six bytes of f16 are padded to eight.
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<4 x f16>
 // CHECK-LABEL: @shared_f16
+
+// -----
+
+func.func @shared_reinterpreted_transfer_alignment(%v: vector<2xf64>)
+    -> (tensor<2xf64>, vector<2xf64>, vector<8xi8>) {
+  %c0 = arith.constant 0 : index
+  %f0 = arith.constant 0.0 : f64
+  %i0 = arith.constant 0 : i8
+  %narrow = xla_gpu.allocate_shared : tensor<16xi8>
+  %as_f64 = builtin.unrealized_conversion_cast %narrow : tensor<16xi8> to tensor<2xf64>
+  %r0 = vector.transfer_read %as_f64[%c0], %f0 {in_bounds = [true]} : tensor<2xf64>, vector<2xf64>
+  %w = vector.transfer_write %v, %as_f64[%c0] {in_bounds = [true]} : vector<2xf64>, tensor<2xf64>
+  %wide = xla_gpu.allocate_shared : tensor<2xf64>
+  %as_i8 = builtin.unrealized_conversion_cast %wide : tensor<2xf64> to tensor<16xi8>
+  %r1 = vector.transfer_read %as_i8[%c0], %i0 {in_bounds = [true]} : tensor<16xi8>, vector<8xi8>
+  return %w, %r0, %r1 : tensor<2xf64>, vector<2xf64>, vector<8xi8>
+}
+// Shared buffer alignment follows the allocation element type, not a cast view.
+// CHECK-LABEL: @shared_reinterpreted_transfer_alignment
+// CHECK:         llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<2xf64>
+// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 4> : vector<2xf64>, !llvm.ptr
+// CHECK:         llvm.load %{{.*}} <alignment = 8> : !llvm.ptr -> vector<8xi8>
 
 // -----
 
@@ -826,8 +846,7 @@ func.func @direct_atomic_rmw_fsub_swapped_f32(%in: tensor<8xf32>,
 
 // -----
 
-// The subf result is not the value yielded by the atomic body. This test
-// relies on lower-tensors running before any DCE, so the dead subf stays.
+// Yielding %current folds away even when dead operations remain in the body.
 func.func @no_direct_atomic_rmw_fsub_not_yielded(%in: tensor<8xf32>,
   %i: index, %x: f32) -> (tensor<8xf32>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
@@ -838,36 +857,69 @@ func.func @no_direct_atomic_rmw_fsub_not_yielded(%in: tensor<8xf32>,
   return %ret : tensor<8xf32>
 }
 // CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fsub_not_yielded
-// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
-// CHECK-AMPERE: llvm.cmpxchg
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE-NOT: llvm.cmpxchg
+// CHECK-AMPERE: return
 
 // CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fsub_not_yielded
-// CHECK-HOPPER-NOT: llvm.atomicrmw fadd
-// CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER-NOT: llvm.cmpxchg
+// CHECK-HOPPER: return
 
 // -----
 
-// The addf result is not the value yielded by the atomic body.
+// A dead addf alongside a yielded mulf must fall back to cmpxchg.
 func.func @no_direct_atomic_rmw_fadd_not_yielded(%in: tensor<8xf32>,
-  %i: index, %x: f32) -> (tensor<8xf32>) {
+  %i: index, %x: f32, %y: f32) -> (tensor<8xf32>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
     ^bb0(%current : f32):
       %sum = arith.addf %current, %x : f32
-      xla.yield %current : f32
+      %prod = arith.mulf %current, %y : f32
+      xla.yield %prod : f32
   }
   return %ret : tensor<8xf32>
 }
 // CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fadd_not_yielded
-// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
+// CHECK-AMPERE-NOT: llvm.atomicrmw
 // CHECK-AMPERE: llvm.cmpxchg
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE: return
 
 // CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fadd_not_yielded
-// CHECK-HOPPER-NOT: llvm.atomicrmw fadd
+// CHECK-HOPPER-NOT: llvm.atomicrmw
 // CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER: return
 
 // -----
 
-// Neither addf operand is the atomic body argument.
+// A dead subf alongside a yielded mulf must fall back to cmpxchg.
+func.func @no_direct_atomic_rmw_dead_fsub_with_mulf(%in: tensor<8xf32>,
+  %i: index, %x: f32, %y: f32) -> (tensor<8xf32>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
+    ^bb0(%current : f32):
+      %sub = arith.subf %current, %x : f32
+      %prod = arith.mulf %current, %y : f32
+      xla.yield %prod : f32
+  }
+  return %ret : tensor<8xf32>
+}
+// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_dead_fsub_with_mulf
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE: llvm.cmpxchg
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE: return
+
+// CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_dead_fsub_with_mulf
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER: return
+
+// -----
+
+// Neither addf operand is the atomic body argument, so the sum is hoisted and
+// the update becomes an atomic store.
 func.func @no_direct_atomic_rmw_fadd_no_current(%in: tensor<8xf32>,
   %i: index, %x: f32, %y: f32) -> (tensor<8xf32>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
@@ -878,12 +930,22 @@ func.func @no_direct_atomic_rmw_fadd_no_current(%in: tensor<8xf32>,
   return %ret : tensor<8xf32>
 }
 // CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fadd_no_current
-// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
-// CHECK-AMPERE: llvm.cmpxchg
+// CHECK-AMPERE: %[[SUM:.*]] = arith.addf
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE-NOT: llvm.cmpxchg
+// CHECK-AMPERE: llvm.store %[[SUM]], %{{.*}} atomic unordered <alignment = 4>
+// CHECK-AMPERE-NOT: llvm.atomicrmw
+// CHECK-AMPERE-NOT: llvm.cmpxchg
+// CHECK-AMPERE: return
 
 // CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fadd_no_current
-// CHECK-HOPPER-NOT: llvm.atomicrmw fadd
-// CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER: %[[SUM:.*]] = arith.addf
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER-NOT: llvm.cmpxchg
+// CHECK-HOPPER: llvm.store %[[SUM]], %{{.*}} atomic unordered <alignment = 4>
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER-NOT: llvm.cmpxchg
+// CHECK-HOPPER: return
 
 // -----
 
@@ -1146,9 +1208,9 @@ func.func @direct_atomic_rmw_fsub_bf16_widened(%in: tensor<8xbf16>,
 
 // -----
 
-// The subtracted value is computed inside the atomic body. It cannot be used
-// as the modifier of a direct atomic after the body is erased.
-func.func @no_direct_atomic_rmw_fsub_bf16_widened_in_body(%in: tensor<8xbf16>,
+// The subtracted value does not depend on %current, so it hoists out of the
+// atomic body and lowers to a direct atomic fadd on targets with bf16 atomics.
+func.func @direct_atomic_rmw_fsub_bf16_widened_in_body(%in: tensor<8xbf16>,
     %i: index, %arg: bf16) -> (tensor<8xbf16>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
     ^bb0(%current : bf16):
@@ -1163,21 +1225,29 @@ func.func @no_direct_atomic_rmw_fsub_bf16_widened_in_body(%in: tensor<8xbf16>,
   }
   return %ret : tensor<8xbf16>
 }
-// CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_in_body
-// CHECK-HOPPER-NOT: arith.negf
-// CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER-LABEL: @direct_atomic_rmw_fsub_bf16_widened_in_body
+// CHECK-HOPPER: %[[SQ_BF16:.*]] = arith.truncf %{{.*}} : f32 to bf16
+// CHECK-HOPPER: %[[NEG:.*]] = arith.negf %[[SQ_BF16]] : bf16
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %[[NEG]] monotonic
 
-// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_in_body
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_fsub_bf16_widened_in_body
 // CHECK-AMPERE-NOT: arith.negf
+// CHECK-AMPERE: %[[SQ_BF16:.*]] = arith.truncf %{{.*}} : f32 to bf16
+// CHECK-AMPERE-NOT: arith.negf
+// CHECK-AMPERE: %[[SQ_F32:.*]] = arith.extf %[[SQ_BF16]] : bf16 to f32
+// CHECK-AMPERE-NOT: arith.negf
+// CHECK-AMPERE: scf.while
+// CHECK-AMPERE: arith.subf %{{.*}}, %[[SQ_F32]] : f32
 // CHECK-AMPERE: llvm.cmpxchg
 
-// CHECK-GFX942-MI300-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_in_body
-// CHECK-GFX942-MI300-NOT: arith.negf
-// CHECK-GFX942-MI300: llvm.cmpxchg
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_fsub_bf16_widened_in_body
+// CHECK-GFX942-MI300: %[[SQ_BF16:.*]] = arith.truncf %{{.*}} : f32 to bf16
+// CHECK-GFX942-MI300: %[[NEG:.*]] = arith.negf %[[SQ_BF16]] : bf16
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
 
 // -----
 
-func.func @no_direct_atomic_rmw_fsub_bf16_widened_nested_in_body(
+func.func @direct_atomic_rmw_fsub_bf16_widened_nested_in_body(
     %in: tensor<8xbf16>, %i: index, %arg: bf16) -> (tensor<8xbf16>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
     ^bb0(%current : bf16):
@@ -1195,13 +1265,387 @@ func.func @no_direct_atomic_rmw_fsub_bf16_widened_nested_in_body(
   }
   return %ret : tensor<8xbf16>
 }
-// CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_nested_in_body
+// CHECK-HOPPER-LABEL: @direct_atomic_rmw_fsub_bf16_widened_nested_in_body
+// CHECK-HOPPER: %[[NEG:.*]] = arith.negf %{{.*}} : bf16
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %[[NEG]] monotonic
+
+// CHECK-AMPERE-LABEL: @direct_atomic_rmw_fsub_bf16_widened_nested_in_body
+// CHECK-AMPERE-NOT: arith.negf
+// CHECK-AMPERE: llvm.cmpxchg
+
+// -----
+
+// When the subtracted value genuinely depends on %current, it cannot be hoisted
+// and must fall back to cmpxchg.
+func.func @no_direct_atomic_rmw_fsub_bf16_widened_dependent_in_body(
+    %in: tensor<8xbf16>, %i: index, %arg: bf16) -> (tensor<8xbf16>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
+    ^bb0(%current : bf16):
+      %ext0 = arith.extf %current : bf16 to f32
+      %ext1 = arith.extf %arg : bf16 to f32
+      %prod = arith.mulf %ext0, %ext1 : f32
+      %prod_bf16 = arith.truncf %prod : f32 to bf16
+      %prod_f32 = arith.extf %prod_bf16 : bf16 to f32
+      %sub = arith.subf %ext0, %prod_f32 : f32
+      %res = arith.truncf %sub : f32 to bf16
+      xla.yield %res : bf16
+  }
+  return %ret : tensor<8xbf16>
+}
+// CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_dependent_in_body
 // CHECK-HOPPER-NOT: arith.negf
 // CHECK-HOPPER: llvm.cmpxchg
 
-// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_nested_in_body
-// CHECK-AMPERE-NOT: arith.negf
-// CHECK-AMPERE: llvm.cmpxchg
+// CHECK-GFX942-MI300-LABEL: @no_direct_atomic_rmw_fsub_bf16_widened_dependent_in_body
+// CHECK-GFX942-MI300-NOT: arith.negf
+// CHECK-GFX942-MI300: llvm.cmpxchg
+
+// -----
+
+// A widened bf16 addition with an f32 constant that is exact in bf16 recovers
+// the narrow bf16 constant and emits a direct atomic fadd.
+func.func @direct_atomic_rmw_fadd_bf16_widened_exact_cst(
+    %in: tensor<8xbf16>, %i: index) -> (tensor<8xbf16>) {
+  %c2 = arith.constant 2.0 : f32
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
+    ^bb0(%current : bf16):
+      %ext0 = arith.extf %current : bf16 to f32
+      %add = arith.addf %ext0, %c2 : f32
+      %res = arith.truncf %add : f32 to bf16
+      xla.yield %res : bf16
+  }
+  return %ret : tensor<8xbf16>
+}
+// CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16_widened_exact_cst
+// CHECK-HOPPER: %[[C2_BF16:.*]] = arith.constant 2.000000e+00 : bf16
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %[[C2_BF16]] monotonic
+
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_fadd_bf16_widened_exact_cst
+// CHECK-GFX942-MI300: %[[C2_BF16:.*]] = arith.constant 2.000000e+00 : bf16
+// CHECK-GFX942-MI300: llvm.bitcast %[[C2_BF16]] : bf16 to i16
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
+// -----
+
+// An f32 constant that is not exact in bf16 must not be narrowed to bf16.
+func.func @no_direct_atomic_rmw_fadd_bf16_widened_inexact_cst(
+    %in: tensor<8xbf16>, %i: index) -> (tensor<8xbf16>) {
+  %c_inexact = arith.constant 0.1 : f32
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
+    ^bb0(%current : bf16):
+      %ext0 = arith.extf %current : bf16 to f32
+      %add = arith.addf %ext0, %c_inexact : f32
+      %res = arith.truncf %add : f32 to bf16
+      xla.yield %res : bf16
+  }
+  return %ret : tensor<8xbf16>
+}
+// CHECK-HOPPER-LABEL: @no_direct_atomic_rmw_fadd_bf16_widened_inexact_cst
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER: llvm.cmpxchg
+// CHECK-HOPPER-NOT: llvm.atomicrmw
+// CHECK-HOPPER: return
+
+// -----
+
+func.func @direct_atomic_store_f64(%in: tensor<8xf64>, %val: f64, %i: index)
+    -> tensor<8xf64> {
+  %ret = xla.atomic_store %val into %in[%i] : tensor<8xf64>
+  return %ret : tensor<8xf64>
+}
+// CHECK-LABEL: @direct_atomic_store_f64
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK: llvm.store %{{.*}}, %[[ADDR]] atomic unordered <alignment = 8> : f64, !llvm.ptr
+
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_store_f64
+// CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX942-MI300: llvm.store %{{.*}}, %[[ADDR]] atomic syncscope("agent-one-as") monotonic <alignment = 8> : f64, !llvm.ptr
+
+// CHECK-BMG-LABEL: @direct_atomic_store_f64
+// CHECK-BMG: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-BMG: %[[BITS:.*]] = arith.bitcast %{{.*}} : f64 to i64
+// CHECK-BMG: llvm.store %[[BITS]], %[[ADDR]] atomic unordered <alignment = 8> : i64, !llvm.ptr
+
+// -----
+
+func.func @direct_atomic_rmw_subi(%in: tensor<8xi32>, %x: i32, %i: index)
+    -> tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %sub = arith.subi %current, %x : i32
+      xla.yield %sub : i32
+  }
+  return %ret : tensor<8xi32>
+}
+// CHECK-PASCAL-LABEL: @direct_atomic_rmw_subi
+// CHECK-PASCAL: llvm.atomicrmw sub %{{.*}}, %{{.*}} monotonic
+
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_subi
+// CHECK-GFX942-MI300: llvm.atomicrmw sub %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
+// CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_subi
+// CHECK-GFX908-MI100: llvm.atomicrmw sub %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
+// CHECK-BMG-LABEL: @direct_atomic_rmw_subi
+// CHECK-BMG: llvm.atomicrmw sub %{{.*}}, %{{.*}} monotonic
+
+// CHECK-CPU-LABEL: @direct_atomic_rmw_subi
+// CHECK-CPU: llvm.atomicrmw sub %{{.*}}, %{{.*}} monotonic
+
+// -----
+
+func.func @atomic_store_c64_in_scf_if(
+    %in: tensor<8xcomplex<f32>> {llvm.align = 8 : index}, %val: complex<f32>,
+    %i: index, %cond: i1) -> tensor<8xcomplex<f32>> {
+  %ret = scf.if %cond -> (tensor<8xcomplex<f32>>) {
+    %s = xla.atomic_store %val into %in[%i] : tensor<8xcomplex<f32>>
+    scf.yield %s : tensor<8xcomplex<f32>>
+  } else {
+    scf.yield %in : tensor<8xcomplex<f32>>
+  }
+  return %ret : tensor<8xcomplex<f32>>
+}
+// CHECK-LABEL: @atomic_store_c64_in_scf_if
+// CHECK-NOT: llvm.alloca
+// CHECK-NOT: llvm.cmpxchg
+// CHECK: scf.if
+// CHECK-NOT: llvm.alloca
+// CHECK-NOT: llvm.cmpxchg
+// CHECK: %[[RE:.*]] = complex.re %{{.*}} : complex<f32>
+// CHECK: %[[IM:.*]] = complex.im %{{.*}} : complex<f32>
+// CHECK: %[[VEC:.*]] = vector.from_elements %[[RE]], %[[IM]] : vector<2xf32>
+// CHECK: %[[BITS:.*]] = llvm.bitcast %[[VEC]] : vector<2xf32> to i64
+// CHECK: llvm.store %[[BITS]], %{{.*}} atomic unordered <alignment = 8> : i64, !llvm.ptr
+// CHECK-NOT: llvm.cmpxchg
+// CHECK: return
+// CHECK-GFX942-MI300-LABEL: @atomic_store_c64_in_scf_if
+// CHECK-GFX942-MI300-NOT: llvm.cmpxchg
+// CHECK-GFX942-MI300: llvm.store %{{.*}}, %{{.*}} atomic syncscope("agent-one-as") monotonic <alignment = 8> : i64, !llvm.ptr
+// CHECK-GFX942-MI300-NOT: llvm.cmpxchg
+// CHECK-GFX942-MI300: return
+
+// -----
+
+func.func @atomic_store_unpacked_f6(%in: tensor<8xf6E2M3FN>, %val: f6E2M3FN,
+    %i: index) -> tensor<8xf6E2M3FN> {
+  %ret = xla.atomic_store %val into %in[%i] : tensor<8xf6E2M3FN>
+  return %ret : tensor<8xf6E2M3FN>
+}
+// CHECK-LABEL: @atomic_store_unpacked_f6
+// CHECK-GPU: llvm.mlir.constant(255 : i32) : i32
+// CHECK-GPU: llvm.cmpxchg
+// CHECK-CPU: %[[ALL_ONES:.*]] = llvm.mlir.constant(-1 : i8) : i8
+// CHECK-CPU: %[[MASK:.*]] = llvm.xor %[[ALL_ONES]], %[[ALL_ONES]] : i8
+// CHECK-CPU: scf.while
+// CHECK-CPU: llvm.and %{{.*}}, %[[MASK]] : i8
+// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i8
+
+// -----
+
+func.func @atomic_store_packed_i4(%in: tensor<8xi4>, %val: i4, %i: index)
+    -> tensor<8xi4> {
+  %ret = xla.atomic_store %val into %in[%i] : tensor<8xi4>
+  return %ret : tensor<8xi4>
+}
+// CHECK-LABEL: @atomic_store_packed_i4
+// CHECK-GPU: llvm.mlir.constant(15 : i32) : i32
+// CHECK-GPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+// CHECK-CPU: llvm.mlir.constant(15 : i8) : i8
+// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i8
+
+// -----
+
+func.func @unsupported_vector_atomic_rmw(
+    %in: tensor<8xbf16>, %vec: vector<2xbf16>, %i: index) -> tensor<8xbf16> {
+  %r0 = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
+  ^bb0(%cur: vector<2xbf16>):
+    xla.yield %vec : vector<2xbf16>
+  }
+  %c = arith.constant dense<[1.5, -2.0]> : vector<2xf32>
+  %r1 = xla.atomic_rmw %r0[%i] : tensor<8xbf16> {
+  ^bb0(%cur: vector<2xbf16>):
+    %ext = arith.extf %cur : vector<2xbf16> to vector<2xf32>
+    %add = arith.addf %ext, %c : vector<2xf32>
+    %res = arith.truncf %add : vector<2xf32> to vector<2xbf16>
+    xla.yield %res : vector<2xbf16>
+  }
+  return %r1 : tensor<8xbf16>
+}
+// CHECK-HOPPER-LABEL: @unsupported_vector_atomic_rmw
+// CHECK-HOPPER-DAG: %[[C1_5:.*]] = arith.constant 1.500000e+00 : bf16
+// CHECK-HOPPER-DAG: %[[CM2:.*]] = arith.constant -2.000000e+00 : bf16
+// CHECK-HOPPER: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+// CHECK-HOPPER: arith.addi %{{.*}}, %{{.*}} : index
+// CHECK-HOPPER: llvm.cmpxchg {{.*}} : !llvm.ptr, i32
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %[[C1_5]] monotonic : !llvm.ptr, bf16
+// CHECK-HOPPER: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %[[CM2]] monotonic : !llvm.ptr, bf16
+
+// CHECK-GFX942-MI300-LABEL: @unsupported_vector_atomic_rmw
+// CHECK-GFX942-MI300: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr<1>, vector<2xbf16>
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr<1>, vector<2xbf16>
+
+// CHECK-GFX908-MI100-LABEL: @unsupported_vector_atomic_rmw
+// CHECK-GFX908-MI100: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, bf16
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, bf16
+
+// CHECK-CPU-LABEL: @unsupported_vector_atomic_rmw
+// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 2> : bf16, !llvm.ptr
+// CHECK-CPU: llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 2> : bf16, !llvm.ptr
+// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i16
+// CHECK-CPU: llvm.cmpxchg {{.*}} : !llvm.ptr, i16
+
+// -----
+
+func.func @aligned_vector_atomic_rmw_amd(
+    %in: tensor<8xbf16> {llvm.align = 16 : index}, %vec: vector<2xbf16>)
+    -> tensor<8xbf16> {
+  %c2 = arith.constant 2 : index
+  %r = xla.atomic_rmw %in[%c2] : tensor<8xbf16> {
+  ^bb0(%cur: vector<2xbf16>):
+    %add = arith.addf %cur, %vec : vector<2xbf16>
+    xla.yield %add : vector<2xbf16>
+  }
+  return %r : tensor<8xbf16>
+}
+// CHECK-GFX942-MI300-LABEL: @aligned_vector_atomic_rmw_amd
+// CHECK-GFX942-MI300: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, vector<2xbf16>
+// CHECK-GFX942-MI300-NOT: llvm.atomicrmw
+// CHECK-GFX942-MI300: return
+
+// CHECK-GFX908-MI100-LABEL: @aligned_vector_atomic_rmw_amd
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, bf16
+// CHECK-GFX908-MI100: llvm.atomicrmw ignore_denormal_mode fadd %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory} : !llvm.ptr, bf16
+
+// -----
+
+func.func @shared_bf16_atomic_rmw_amd(%out: tensor<8xbf16>, %i: index, %m: bf16)
+    -> tensor<8xbf16> {
+  %sh = xla_gpu.allocate_shared : tensor<8xbf16>
+  %a = xla.atomic_rmw %sh[%i] : tensor<8xbf16> {
+  ^bb0(%cur: bf16):
+    %ec = arith.extf %cur : bf16 to f32
+    %em = arith.extf %m : bf16 to f32
+    %r = arith.addf %ec, %em : f32
+    %tr = arith.truncf %r : f32 to bf16
+    xla.yield %tr : bf16
+  }
+  %s = xla_gpu.sync_threads %a : tensor<8xbf16>
+  %v = tensor.extract %s[%i] : tensor<8xbf16>
+  %o = tensor.insert %v into %out[%i] : tensor<8xbf16>
+  return %o : tensor<8xbf16>
+}
+// CHECK-GFX942-MI300-LABEL: @shared_bf16_atomic_rmw_amd
+// CHECK-GFX942-MI300-NOT: !llvm.ptr<1>
+// CHECK-GFX942-MI300-NOT: llvm.atomicrmw
+// CHECK-GFX942-MI300: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+// CHECK-GFX942-MI300-NOT: !llvm.ptr<1>
+// CHECK-GFX942-MI300-NOT: llvm.atomicrmw
+// CHECK-GFX942-MI300: return
+
+// -----
+
+func.func @vector_fma_atomic_rmw_scalarized(
+    %in: tensor<8xf32>, %i: index, %a: vector<2xf32>, %b: vector<2xf32>)
+    -> tensor<8xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
+  ^bb0(%cur: vector<2xf32>):
+    %fma = vector.fma %cur, %a, %b : vector<2xf32>
+    xla.yield %fma : vector<2xf32>
+  }
+  return %ret : tensor<8xf32>
+}
+// CHECK-LABEL: @vector_fma_atomic_rmw_scalarized
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i32) -> i32
+// CHECK: llvm.intr.fma(%{{.*}}, %{{.*}}, %{{.*}}) : (f32, f32, f32) -> f32
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i32) -> i32
+// CHECK: llvm.intr.fma(%{{.*}}, %{{.*}}, %{{.*}}) : (f32, f32, f32) -> f32
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// -----
+
+func.func @vector_atomic_rmw_mulf_scalarized(
+    %in: tensor<8xf32>, %vec: vector<2xf32>, %i: index) -> tensor<8xf32> {
+  %r = xla.atomic_rmw %in[%i] : tensor<8xf32> {
+  ^bb0(%cur: vector<2xf32>):
+    %p = arith.mulf %cur, %vec : vector<2xf32>
+    xla.yield %p : vector<2xf32>
+  }
+  return %r : tensor<8xf32>
+}
+// CHECK-LABEL: @vector_atomic_rmw_mulf_scalarized
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i32) -> i32
+// CHECK: arith.mulf %{{.*}}, %{{.*}} : f32
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i32) -> i32
+// CHECK: arith.mulf %{{.*}}, %{{.*}} : f32
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i32
+
+// -----
+
+func.func @aligned_cross_lane_vector_atomic_rmw_cas(
+    %in: tensor<8xf32> {llvm.align = 16 : index}) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %r = xla.atomic_rmw %in[%c0] : tensor<8xf32> {
+  ^bb0(%cur: vector<2xf32>):
+    %e0 = vector.extract %cur[0] : f32 from vector<2xf32>
+    %e1 = vector.extract %cur[1] : f32 from vector<2xf32>
+    %sw = vector.from_elements %e1, %e0 : vector<2xf32>
+    xla.yield %sw : vector<2xf32>
+  }
+  return %r : tensor<8xf32>
+}
+// CHECK-LABEL: @aligned_cross_lane_vector_atomic_rmw_cas
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i64) -> i64
+// CHECK: vector.from_elements %{{.*}}, %{{.*}} : vector<2xf32>
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i64
+
+// -----
+
+func.func @dynamic_index_stride_aligned_vector_cas(
+    %in: tensor<8xf64> {llvm.align = 16 : index}, %i: index) -> tensor<8xf64> {
+  %r = xla.atomic_rmw %in[%i] : tensor<8xf64> {
+  ^bb0(%cur: vector<1xf64>):
+    %e = vector.extract %cur[0] : f64 from vector<1xf64>
+    %s = arith.addf %e, %e : f64
+    %v = vector.from_elements %s : vector<1xf64>
+    xla.yield %v : vector<1xf64>
+  }
+  return %r : tensor<8xf64>
+}
+// CHECK-LABEL: @dynamic_index_stride_aligned_vector_cas
+// CHECK: scf.while (%{{.*}} = %{{.*}}) : (i64) -> i64
+// CHECK: llvm.cmpxchg %{{.*}}, %{{.*}}, %{{.*}} monotonic monotonic : !llvm.ptr, i64
+
+// -----
+
+func.func @direct_atomic_rmw_bitwise(%in: tensor<8xi32>, %x: i32, %i: index)
+    -> tensor<8xi32> {
+  %r0 = xla.atomic_rmw %in[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %v = arith.andi %current, %x : i32
+      xla.yield %v : i32
+  }
+  %r1 = xla.atomic_rmw %r0[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %v = arith.ori %current, %x : i32
+      xla.yield %v : i32
+  }
+  %r2 = xla.atomic_rmw %r1[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %v = arith.xori %current, %x : i32
+      xla.yield %v : i32
+  }
+  return %r2 : tensor<8xi32>
+}
+// CHECK-LABEL: @direct_atomic_rmw_bitwise
+// CHECK: llvm.atomicrmw _and %{{.*}}, %{{.*}} monotonic
+// CHECK: llvm.atomicrmw _or %{{.*}}, %{{.*}} monotonic
+// CHECK: llvm.atomicrmw _xor %{{.*}}, %{{.*}} monotonic
 
 // -----
 
@@ -1319,9 +1763,14 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL: }
 // CHECK-PASCAL: return
 
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_maximumf
+// CHECK-GFX942-MI300: llvm.atomicrmw max %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+// CHECK-GFX942-MI300: llvm.atomicrmw umin %{{.*}}, %{{.*}} syncscope("agent-one-as") monotonic {rocdl.no_fine_grained_memory, rocdl.no_remote_memory}
+
 // -----
 
-func.func @atomic_rmw_c32(%in: tensor<8xcomplex<f32>>, %i: index)
+func.func @atomic_rmw_c32(
+    %in: tensor<8xcomplex<f32>> {llvm.align = 8 : index}, %i: index)
     -> (tensor<8xcomplex<f32>>) {
   %ret = xla.atomic_rmw %in[%i] : tensor<8xcomplex<f32>> {
     ^bb0(%current : complex<f32>):
@@ -1331,12 +1780,106 @@ func.func @atomic_rmw_c32(%in: tensor<8xcomplex<f32>>, %i: index)
   return %ret : tensor<8xcomplex<f32>>
 }
 // CHECK-LABEL: @atomic_rmw_c32
-
-// CHECK: %[[TMP:.*]] = llvm.alloca %{{.*}} x i64 : (i32) -> !llvm.ptr
+// CHECK-NOT: llvm.alloca
 // CHECK: scf.while (%[[ITER_ARG:.*]] = %{{.*}}) : (i64) -> i64
-// CHECK: llvm.store %[[ITER_ARG]], %[[TMP]]
-// CHECK: %[[LD:.*]] = llvm.load %[[TMP]] : {{.*}} -> !llvm.struct<(f32, f32)>
-// CHECK: builtin.unrealized_conversion_cast %[[LD]] : {{.*}} to complex<f32>
+// CHECK: %[[VEC:.*]] = llvm.bitcast %[[ITER_ARG]] : i64 to vector<2xf32>
+// CHECK: %[[RE:.*]] = vector.extract %[[VEC]][0] : f32 from vector<2xf32>
+// CHECK: %[[IM:.*]] = vector.extract %[[VEC]][1] : f32 from vector<2xf32>
+// CHECK: %[[CPLX:.*]] = complex.create %[[RE]], %[[IM]] : complex<f32>
+// CHECK: %[[ADD:.*]] = complex.add %[[CPLX]], %[[CPLX]] : complex<f32>
+// CHECK: %[[OUT_RE:.*]] = complex.re %[[ADD]] : complex<f32>
+// CHECK: %[[OUT_IM:.*]] = complex.im %[[ADD]] : complex<f32>
+// CHECK: %[[OUT_VEC:.*]] = vector.from_elements %[[OUT_RE]], %[[OUT_IM]] : vector<2xf32>
+// CHECK: llvm.bitcast %[[OUT_VEC]] : vector<2xf32> to i64
+// CHECK-NOT: llvm.alloca
+// CHECK: return
+
+// -----
+
+func.func @atomic_store_through_index_switch(
+    %in: tensor<8xf32>, %val: f32, %i: index, %c: index) -> tensor<8xf32> {
+  %sw = scf.index_switch %c -> tensor<8xf32>
+  case 0 {
+    scf.yield %in : tensor<8xf32>
+  }
+  default {
+    scf.yield %in : tensor<8xf32>
+  }
+  %s = xla.atomic_store %val into %sw[%i] : tensor<8xf32>
+  return %s : tensor<8xf32>
+}
+// The address must come from the traced buffer: a cast of the switch result
+// would keep the tensor result of the switch alive.
+// CHECK-LABEL: @atomic_store_through_index_switch
+// CHECK-SAME:      (%[[BUF:.*]]: !llvm.ptr,
+// CHECK-NOT:     tensor<
+// CHECK:         %[[ADDR:.*]] = llvm.getelementptr inbounds %[[BUF]]
+// CHECK-NOT:     tensor<
+// CHECK:         llvm.store %{{.*}}, %[[ADDR]] atomic
+// CHECK-NOT:     tensor<
+// CHECK:         return
+
+// -----
+
+func.func @atomic_rmw_through_index_switch(
+    %in: tensor<8xi32>, %val: i32, %i: index, %c: index) -> tensor<8xi32> {
+  %sw = scf.index_switch %c -> tensor<8xi32>
+  case 0 {
+    scf.yield %in : tensor<8xi32>
+  }
+  default {
+    scf.yield %in : tensor<8xi32>
+  }
+  %add = xla.atomic_rmw %sw[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %a = arith.addi %current, %val : i32
+      xla.yield %a : i32
+  }
+  %mul = xla.atomic_rmw %add[%i] : tensor<8xi32> {
+    ^bb0(%current : i32):
+      %m = arith.muli %current, %val : i32
+      xla.yield %m : i32
+  }
+  return %mul : tensor<8xi32>
+}
+// CHECK-LABEL: @atomic_rmw_through_index_switch
+// CHECK-SAME:      (%[[BUF:.*]]: !llvm.ptr,
+// CHECK-NOT:     tensor<
+// CHECK:         %[[ADD_ADDR:.*]] = llvm.getelementptr inbounds %[[BUF]]
+// CHECK:         llvm.atomicrmw add %[[ADD_ADDR]]
+// CHECK-NOT:     tensor<
+// CHECK:         %[[CAS_ADDR:.*]] = llvm.getelementptr inbounds %[[BUF]]
+// CHECK:         llvm.cmpxchg %[[CAS_ADDR]]
+// CHECK-NOT:     tensor<
+// CHECK:         return
+
+// -----
+
+func.func @atomic_rmw_through_index_switch_and_element_cast(
+    %in: tensor<8xi4>, %val: i8, %i: index, %c: index) -> tensor<8xi8> {
+  %sw = scf.index_switch %c -> tensor<8xi4>
+  case 0 {
+    scf.yield %in : tensor<8xi4>
+  }
+  default {
+    scf.yield %in : tensor<8xi4>
+  }
+  %bytes = builtin.unrealized_conversion_cast %sw : tensor<8xi4> to tensor<8xi8>
+  %ret = xla.atomic_rmw %bytes[%i] : tensor<8xi8> {
+    ^bb0(%current : i8):
+      %m = arith.muli %current, %val : i8
+      xla.yield %m : i8
+  }
+  return %ret : tensor<8xi8>
+}
+// The address keeps the i8 stride of the cast tensor type.
+// CHECK-LABEL: @atomic_rmw_through_index_switch_and_element_cast
+// CHECK-NOT:     scf.index_switch
+// CHECK:         llvm.getelementptr inbounds %{{.*}} : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x i8>
+// CHECK-NOT:     scf.index_switch
+// CHECK:         llvm.cmpxchg
+// CHECK-NOT:     scf.index_switch
+// CHECK:         return
 
 // -----
 
@@ -2044,4 +2587,49 @@ func.func @get_destination_buffer_through_atomic_rmw(
 // CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
 // CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
 // CHECK:         return
+
+// -----
+
+func.func @get_destination_buffer_through_atomic_store(
+    %arg0: tensor<8xf32>, %val: f32, %idx: index) -> tensor<8xf32> {
+  %st = xla.atomic_store %val into %arg0[%idx] : tensor<8xf32>
+  %ins = tensor.insert %val into %st[%idx] : tensor<8xf32>
+  func.return %ins : tensor<8xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_atomic_store(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK:         llvm.store %{{.*}}, %{{.*}} atomic unordered <alignment = 4> : f32, !llvm.ptr
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+
+// -----
+
+func.func @non_entry_block_arg_no_align_spoof_or_oob(
+    %aligned_dummy: tensor<8xf32> {llvm.align = 16 : index},
+    %unaligned: tensor<8xbf16>, %v: vector<2xbf16>) -> bf16 {
+  %c0 = arith.constant 0 : index
+  "test.br"(%unaligned, %c0, %c0, %unaligned) [^bb1]
+      : (tensor<8xbf16>, index, index, tensor<8xbf16>) -> ()
+^bb1(%bb_first: tensor<8xbf16>, %i0: index, %i1: index,
+     %bb_oob: tensor<8xbf16>):
+  %r0 = xla.atomic_rmw %bb_first[%c0] : tensor<8xbf16> {
+  ^bb0(%cur: vector<2xbf16>):
+    %a = arith.addf %cur, %v : vector<2xbf16>
+    xla.yield %a : vector<2xbf16>
+  }
+  %r1 = xla.atomic_rmw %bb_oob[%i0] : tensor<8xbf16> {
+  ^bb0(%cur: vector<2xbf16>):
+    %a = arith.addf %cur, %v : vector<2xbf16>
+    xla.yield %a : vector<2xbf16>
+  }
+  %e0 = tensor.extract %r0[%c0] : tensor<8xbf16>
+  %e1 = tensor.extract %r1[%i1] : tensor<8xbf16>
+  %sum = arith.addf %e0, %e1 : bf16
+  return %sum : bf16
+}
+// CHECK-GFX942-MI300-LABEL: @non_entry_block_arg_no_align_spoof_or_oob
+// CHECK-GFX942-MI300-COUNT-4: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} : !llvm.ptr<1>, vector<2xbf16>
+// CHECK-GFX942-MI300-NOT: : !llvm.ptr, vector<2xbf16>
+// CHECK-GFX942-MI300: return
 

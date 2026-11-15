@@ -227,10 +227,251 @@ func.func @atomic_rmw_cst(%in: tensor<2x3xf32>, %i: index, %j: index)
   return %ret : tensor<2x3xf32>
 }
 // CHECK-LABEL: func.func @atomic_rmw_cst
-// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>, %[[I:.*]]: index, %[[J:.*]]: index)
 // CHECK-NEXT: %[[CST:.*]] = arith.constant
-// CHECK-NEXT: atomic_rmw
-// CHECK:      xla.yield %[[CST]]
+// CHECK-NEXT: %[[STORE:.*]] = xla.atomic_store %[[CST]] into %[[ARG0]][%[[I]], %[[J]]] : tensor<2x3xf32>
+// CHECK-NEXT: return %[[STORE]]
+
+// -----
+
+func.func @atomic_rmw_identity_with_dead_ops(
+    %in: tensor<2x3xf32>, %i: index, %j: index, %x: f32) -> tensor<2x3xf32> {
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      %dead = arith.addf %current, %x : f32
+      xla.yield %current : f32
+  }
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_identity_with_dead_ops
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>
+// CHECK-NEXT: return %[[ARG0]]
+
+// -----
+
+func.func @atomic_rmw_hoist_to_store(
+    %in: tensor<2x3xf32>, %i: index, %j: index, %x: f32, %y: f32)
+    -> tensor<2x3xf32> {
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      %prod = arith.mulf %x, %y : f32
+      xla.yield %prod : f32
+  }
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_hoist_to_store
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[X:.*]]: f32, %[[Y:.*]]: f32)
+// CHECK-NEXT: %[[PROD:.*]] = arith.mulf %[[X]], %[[Y]] : f32
+// CHECK-NEXT: %[[STORE:.*]] = xla.atomic_store %[[PROD]] into %[[ARG0]][%[[I]], %[[J]]] : tensor<2x3xf32>
+// CHECK-NEXT: return %[[STORE]]
+
+// -----
+
+func.func @atomic_rmw_hoist_invariant_modifier(
+    %in: tensor<2x3xf32>, %i: index, %j: index, %x: f32, %y: f32)
+    -> tensor<2x3xf32> {
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      %prod = arith.mulf %x, %y : f32
+      %sum = arith.addf %current, %prod : f32
+      xla.yield %sum : f32
+  }
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_hoist_invariant_modifier
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<2x3xf32>, %[[I:.*]]: index, %[[J:.*]]: index, %[[X:.*]]: f32, %[[Y:.*]]: f32)
+// CHECK-NEXT: %[[PROD:.*]] = arith.mulf %[[X]], %[[Y]] : f32
+// CHECK-NEXT: %[[RMW:.*]] = xla.atomic_rmw %[[ARG0]][%[[I]], %[[J]]] : tensor<2x3xf32> {
+// CHECK-NEXT: ^bb0(%[[CUR:.*]]: f32):
+// CHECK-NEXT:   %[[SUM:.*]] = arith.addf %[[CUR]], %[[PROD]] : f32
+// CHECK-NEXT:   xla.yield %[[SUM]] : f32
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
+
+// -----
+
+func.func @atomic_rmw_erase_dead_chain_with_live_body(
+    %in: tensor<8xf32>, %i: index, %x: f32, %y: f32) -> tensor<8xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
+    ^bb0(%current : f32):
+      %prod = arith.mulf %current, %y : f32
+      %dead0 = arith.subf %current, %x : f32
+      %dead1 = arith.addf %dead0, %x : f32
+      xla.yield %prod : f32
+  }
+  return %ret : tensor<8xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_erase_dead_chain_with_live_body
+// CHECK-NEXT: %[[RMW:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0(%[[CUR:.*]]: f32):
+// CHECK-NEXT:   %[[PROD:.*]] = arith.mulf %[[CUR]], %{{.*}} : f32
+// CHECK-NEXT:   xla.yield %[[PROD]] : f32
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
+
+// -----
+
+func.func @atomic_rmw_hoist_nested_scf_if(
+    %in: tensor<4xf32>, %i: index, %cond: i1, %x: f32, %y: f32)
+    -> tensor<4xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %base = arith.mulf %x, %y : f32
+      %sel = scf.if %cond -> (f32) {
+        %a = arith.addf %base, %x : f32
+        scf.yield %a : f32
+      } else {
+        scf.yield %base : f32
+      }
+      %sum = arith.addf %current, %sel : f32
+      xla.yield %sum : f32
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_hoist_nested_scf_if
+// CHECK-NEXT: %[[BASE:.*]] = arith.mulf
+// CHECK-NEXT: %[[SEL:.*]] = scf.if
+// CHECK:      %[[RMW:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0(%[[CUR:.*]]: f32):
+// CHECK-NEXT:   %[[SUM:.*]] = arith.addf %[[CUR]], %[[SEL]] : f32
+// CHECK-NEXT:   xla.yield %[[SUM]] : f32
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
+
+// -----
+
+func.func @atomic_rmw_no_hoist_nested_scf_if_using_current(
+    %in: tensor<4xf32>, %i: index, %cond: i1, %x: f32) -> tensor<4xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %sel = scf.if %cond -> (f32) {
+        %a = arith.addf %current, %x : f32
+        scf.yield %a : f32
+      } else {
+        scf.yield %x : f32
+      }
+      xla.yield %sel : f32
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_no_hoist_nested_scf_if_using_current
+// CHECK-NEXT: %[[RMW:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0(%[[CUR:.*]]: f32):
+// CHECK-NEXT:   %[[SEL:.*]] = scf.if
+// CHECK:        xla.yield %[[SEL]] : f32
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
+
+// -----
+
+func.func private @impure_fn(f32) -> f32
+
+func.func @atomic_rmw_preserves_impure_body_ops(
+    %in: tensor<4xf32>, %i: index, %x: f32, %d: i32, %e: i32) -> tensor<4xf32> {
+  %unused = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %call = func.call @impure_fn(%current) : (f32) -> f32
+      xla.yield %current : f32
+  }
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %q = arith.divsi %d, %e : i32
+      %qf = arith.sitofp %q : i32 to f32
+      %call2 = func.call @impure_fn(%x) : (f32) -> f32
+      %sum = arith.addf %qf, %call2 : f32
+      xla.yield %sum : f32
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_preserves_impure_body_ops
+// CHECK-NEXT: %{{.*}} = xla.atomic_rmw
+// CHECK-NEXT: ^bb0
+// CHECK-NEXT:   func.call @impure_fn
+// CHECK-NEXT:   xla.yield
+// CHECK-NEXT: }
+// CHECK-NEXT: %[[RMW:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0
+// CHECK-NEXT:   arith.divsi
+// CHECK-NEXT:   arith.sitofp
+// CHECK-NEXT:   func.call @impure_fn
+// CHECK-NEXT:   arith.addf
+// CHECK-NEXT:   xla.yield
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
+
+// -----
+
+func.func private @impure_loop_fn(f32) -> f32
+#loop_map = #xla.indexing_map<"()[s0] -> (s0), domain: s0 in [0, 2]">
+
+func.func @atomic_rmw_preserves_impure_xla_loop(
+    %in: tensor<4xf32>, %i: index, %init: f32) -> tensor<4xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %unused = xla.loop ()[%s] -> (%r) in #loop_map iter_args(%acc = %init) -> (f32) {
+        %c = func.call @impure_loop_fn(%acc) : (f32) -> f32
+        xla.yield %c : f32
+      }
+      xla.yield %current : f32
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_preserves_impure_xla_loop
+// CHECK: xla.atomic_rmw
+// CHECK: xla.loop
+// CHECK: func.call @impure_loop_fn
+
+// -----
+
+#pure_loop_map = #xla.indexing_map<"()[s0] -> (s0), domain: s0 in [0, 2]">
+
+func.func @hoist_and_dce_pure_xla_loop_and_atomic_rmw(
+    %in: tensor<4xf32>, %i: index, %init: f32, %x: f32) -> tensor<4xf32> {
+  %dead_loop = xla.loop ()[%s] -> (%r) in #pure_loop_map iter_args(%acc = %init) -> (f32) {
+    %next = arith.addf %acc, %x : f32
+    xla.yield %next : f32
+  }
+  %dead_rmw = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %sum = arith.addf %current, %x : f32
+      xla.yield %sum : f32
+  }
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : f32):
+      %hoistable = xla.loop ()[%s] -> (%r) in #pure_loop_map iter_args(%acc = %init) -> (f32) {
+        %next = arith.addf %acc, %x : f32
+        xla.yield %next : f32
+      }
+      %sum = arith.addf %current, %hoistable : f32
+      xla.yield %sum : f32
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @hoist_and_dce_pure_xla_loop_and_atomic_rmw
+// CHECK-NEXT: %[[HOISTED:.*]] = xla.loop
+// CHECK:      %[[RET:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0(%[[CUR:.*]]: f32):
+// CHECK-NEXT:   %[[SUM:.*]] = arith.addf %[[CUR]], %[[HOISTED]] : f32
+// CHECK-NEXT:   xla.yield %[[SUM]] : f32
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RET]]
+
+// -----
+
+func.func @atomic_rmw_vector_overwrite_not_converted_to_scalar_store(
+    %in: tensor<4xf32>, %i: index, %v: vector<2xf32>) -> tensor<4xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<4xf32> {
+    ^bb0(%current : vector<2xf32>):
+      xla.yield %v : vector<2xf32>
+  }
+  return %ret : tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_rmw_vector_overwrite_not_converted_to_scalar_store
+// CHECK-NEXT: %[[RMW:.*]] = xla.atomic_rmw
+// CHECK-NEXT: ^bb0(%{{.*}}: vector<2xf32>):
+// CHECK-NEXT:   xla.yield %{{.*}} : vector<2xf32>
+// CHECK-NEXT: }
+// CHECK-NEXT: return %[[RMW]]
 
 // -----
 

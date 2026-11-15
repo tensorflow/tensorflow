@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -490,6 +491,32 @@ struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
   }
 };
 
+struct RewriteAtomicStore : OpRewritePattern<AtomicStoreOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(AtomicStoreOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getDest();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+    auto loc = op.getLoc();
+    auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
+                                       rewriter, tensor_type.getEncoding());
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    auto tensor_1d = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(tensor_type), tensor)
+                         .getResult(0);
+    auto new_store =
+        AtomicStoreOp::create(b, op.getValue(), tensor_1d, linear_index);
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, tensor_type, new_store.getResult());
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
 struct RewriteAtomicRMW : OpRewritePattern<AtomicRMWOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -510,6 +537,7 @@ struct RewriteAtomicRMW : OpRewritePattern<AtomicRMWOp> {
     auto new_atomic_rmw = AtomicRMWOp::create(b, tensor_1D, linear_index);
     rewriter.inlineRegionBefore(op.getRegion(),
                                 &new_atomic_rmw.getRegion().front());
+    rewriter.eraseBlock(&new_atomic_rmw.getRegion().back());
     auto cast_to_orig_type = UnrealizedConversionCastOp::create(
         b, tensor_type, new_atomic_rmw.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
@@ -896,6 +924,7 @@ class FlattenTensorsPass
     patterns.add<
         RewriteAllocateShared,
         RewriteAtomicRMW,
+        RewriteAtomicStore,
         RewriteConstant,
         RewriteCopySlice,
         RewriteCpuLoad,

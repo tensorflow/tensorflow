@@ -387,7 +387,6 @@ cc_library(
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters:type_util",
         "//xla/codegen/emitters:utils",
-        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",

@@ -22,6 +22,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "xla/codegen/emitters/ir/xla_dialect.td"
@@ -31,10 +32,37 @@ class XLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaDialect, mnemonic, traits> {
 }
 
+def XLA_AtomicStoreOp : XLA_Op<"atomic_store",
+    [NoMemoryEffect,
+     TypesMatchWith<"result type matches dest type",
+                    "dest", "result", "$_self">,
+     TypesMatchWith<"value type matches dest element type",
+                    "dest", "value",
+                    "mlir::cast<mlir::ShapedType>($_self).getElementType()">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
+  let summary = "Atomically stores an element into a tensor.";
+
+  let description = [{
+    Atomically writes `$value` into `$dest[$indices]` and returns the updated
+    destination tensor.
+  }];
+
+  let arguments = (ins AnyType:$value, AnyStaticShapeTensor:$dest,
+                       Variadic<Index>:$indices);
+  let results = (outs AnyStaticShapeTensor:$result);
+
+  let assemblyFormat = [{
+    $value `into` $dest `[` $indices `]` attr-dict `:` type($dest)
+  }];
+  let hasVerifier = 1;
+}
+
 def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
-    [Pure,
+    [RecursiveMemoryEffects,
      TypesMatchWith<"result type matches type of dest",
                     "input", "result", "$_self">,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface, ["getLoopRegions"]>,
      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]> {
   let summary = "Atomically updates an element of a tensor.";
@@ -44,8 +72,8 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
     writes back the result.
   }];
 
-  let arguments = (ins AnyRankedTensor:$input, Variadic<Index>:$indices);
-  let results = (outs AnyRankedTensor:$result);
+  let arguments = (ins AnyStaticShapeTensor:$input, Variadic<Index>:$indices);
+  let results = (outs AnyStaticShapeTensor:$result);
   // The region takes the current value in the tensor as an argument and yields
   // the updated value.
   let regions = (region SizedRegion<1>:$computation);
@@ -60,13 +88,17 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
   let extraClassDeclaration = [{
     mlir::Block* getBody() { return &getComputation().front(); }
     mlir::OpBuilder getBodyBuilder() {
-      return mlir::OpBuilder(getBody(), std::prev(getBody()->end()));
+      mlir::Block* body = getBody();
+      return body->mightHaveTerminator()
+                 ? mlir::OpBuilder::atBlockTerminator(body)
+                 : mlir::OpBuilder::atBlockEnd(body);
     }
     // The value stored in tensor[ivs].
     mlir::Value getCurrentValue() {
       return getRegion().getArgument(0);
     }
   }];
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
   let hasVerifier = 1;
 
@@ -76,7 +108,7 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
 }
 
 def XLA_YieldOp : XLA_Op<"yield", [
-    ParentOneOf<["::xla::AtomicRMWOp", "::xla::LoopOp"]>,
+    Pure, ParentOneOf<["::xla::AtomicRMWOp", "::xla::LoopOp"]>,
     ReturnLike, Terminator]> {
   let summary = "Terminator for atomic_rmw ops.";
   let arguments = (ins Variadic<AnyType>:$result);
@@ -284,7 +316,7 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
 }
 
 def LoopOp : XLA_Op<"loop", [
-    AttrSizedOperandSegments, Pure,
+    AttrSizedOperandSegments, RecursiveMemoryEffects, RecursivelySpeculatable,
     DeclareOpInterfaceMethods<OpAsmOpInterface,
       ["getAsmBlockArgumentNames", "getAsmResultNames"]>,
     SingleBlockImplicitTerminator<"xla::YieldOp">

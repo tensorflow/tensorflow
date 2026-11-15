@@ -1953,6 +1953,38 @@ SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
   return mapped_results;
 }
 
+Value EmitScatterAtomicUpdate(mlir::ImplicitLocOpBuilder& b,
+                              const HloComputation* to_apply,
+                              mlir::func::FuncOp reducer, Value update_elem,
+                              Value output_tensor, ValueRange indices) {
+  if (reducer.getArgument(0).use_empty() ||
+      to_apply->parameter_instruction(0)->IsDead()) {
+    Value unused_current;
+    if (!reducer.getArgument(0).use_empty()) {
+      mlir::Type arg_type = reducer.getArgument(0).getType();
+      if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(arg_type)) {
+        mlir::TypedAttr zero = b.getZeroAttr(complex_ty.getElementType());
+        unused_current = mlir::complex::ConstantOp::create(
+            b, complex_ty, b.getArrayAttr({zero, zero}));
+      } else {
+        unused_current =
+            mlir::arith::ConstantOp::create(b, b.getZeroAttr(arg_type));
+      }
+    }
+    Value reduced_val = InlineBlock(b, reducer.getBody().front(),
+                                    {unused_current, update_elem})[0];
+    return AtomicStoreOp::create(b, reduced_val, output_tensor, indices)
+        .getResult();
+  }
+  auto atomic_rmw = AtomicRMWOp::create(b, output_tensor, indices);
+  mlir::OpBuilder body_b = atomic_rmw.getBodyBuilder();
+  Value reduced_val =
+      InlineBlock(body_b, reducer.getBody().front(),
+                  {atomic_rmw.getCurrentValue(), update_elem})[0];
+  xla::YieldOp::create(body_b, reducer->getLoc(), reduced_val);
+  return atomic_rmw.getResult();
+}
+
 bool IsSupportedElementalOp(HloOpcode opcode) {
   return !kUnsupportedOps.contains(opcode);
 }

@@ -30,21 +30,27 @@ limitations under the License.
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
+#include "mlir/IR/Region.h"
+#include "mlir/IR/RegionKindInterface.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
@@ -52,14 +58,17 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/codegen/emitters/ir/xla_dialect.cc.inc"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/permutation_util.h"
 
 namespace xla {
 namespace {
@@ -721,12 +730,98 @@ mlir::LogicalResult ApplyIndexingOp::fold(
 }
 
 //===----------------------------------------------------------------------===//
+// AtomicStoreOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+bool IsSupportedAtomicElementType(Type elem_type) {
+  if (elem_type.isSignlessInteger()) {
+    unsigned width = elem_type.getIntOrFloatBitWidth();
+    return llvm::isPowerOf2_32(width) && width <= 128;
+  }
+  if (mlir::isa<mlir::FloatType>(elem_type)) {
+    unsigned width = elem_type.getIntOrFloatBitWidth();
+    return width == 4 || width == 6 || width == 8 || width == 16 ||
+           width == 32 || width == 64 || width == 128;
+  }
+  if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(elem_type)) {
+    return complex_ty.getElementType().isF32() ||
+           complex_ty.getElementType().isF64();
+  }
+  return false;
+}
+
+LogicalResult VerifyMinorToMajorEncoding(
+    mlir::Operation* op, RankedTensorType tensor_type,
+    int64_t* physical_minor_dim = nullptr) {
+  int64_t rank = tensor_type.getRank();
+  if (physical_minor_dim != nullptr) {
+    *physical_minor_dim = rank - 1;
+  }
+  mlir::Attribute encoding = tensor_type.getEncoding();
+  if (!encoding) {
+    return success();
+  }
+  auto layout = mlir::dyn_cast<mlir::DenseIntElementsAttr>(encoding);
+  auto layout_type =
+      layout ? mlir::dyn_cast<RankedTensorType>(layout.getType()) : nullptr;
+  if (!layout_type || layout_type.getRank() != 1 ||
+      !layout_type.getElementType().isSignlessInteger(64) ||
+      (layout.isSplat() && rank > 1) || layout.getNumElements() != rank) {
+    return op->emitOpError(
+        "expected tensor layout encoding to be a 1D i64 minor to major "
+        "permutation matching tensor rank");
+  }
+  llvm::SmallVector<int64_t> dims =
+      llvm::to_vector(layout.getValues<int64_t>());
+  if (!IsPermutation(dims)) {
+    return op->emitOpError(
+        "expected tensor layout encoding to be a permutation of [0, rank)");
+  }
+  if (physical_minor_dim != nullptr && !dims.empty()) {
+    *physical_minor_dim = dims[0];
+  }
+  return success();
+}
+
+}  // namespace
+
+void AtomicStoreOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  setNameFn(getResult(), "atomic_store");
+}
+
+LogicalResult AtomicStoreOp::verify() {
+  if (Region* parent = (*this)->getParentRegion();
+      parent && !mlir::mayHaveSSADominance(*parent)) {
+    return emitOpError("must reside in an SSACFG region");
+  }
+  RankedTensorType dest_type = getDest().getType();
+  if (static_cast<int64_t>(getIndices().size()) != dest_type.getRank()) {
+    return emitOpError("indices count must match dest rank");
+  }
+  if (!mlir::ShapedType::tryGetNumElements(dest_type.getShape()).has_value()) {
+    return emitOpError("dest tensor element count overflows int64");
+  }
+  if (!IsSupportedAtomicElementType(dest_type.getElementType())) {
+    return emitOpError(
+        "expected signless integer, float, or complex float element type");
+  }
+  return VerifyMinorToMajorEncoding(getOperation(), dest_type);
+}
+
+//===----------------------------------------------------------------------===//
 // AtomicRMWOp
 //===----------------------------------------------------------------------===//
 
 void AtomicRMWOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
   setNameFn(getResult(), "atomic_rmw");
+}
+
+SmallVector<Region*> AtomicRMWOp::getLoopRegions() {
+  return {&getComputation()};
 }
 
 void AtomicRMWOp::build(OpBuilder& builder, OperationState& result,
@@ -748,24 +843,62 @@ void AtomicRMWOp::build(OpBuilder& builder, OperationState& result,
 }
 
 LogicalResult AtomicRMWOp::verify() {
+  if (Region* parent = (*this)->getParentRegion();
+      parent && !mlir::mayHaveSSADominance(*parent)) {
+    return emitOpError("must reside in an SSACFG region");
+  }
+  RankedTensorType input_type = getInput().getType();
+  if (static_cast<int64_t>(getIndices().size()) != input_type.getRank()) {
+    return emitOpError("indices count must match input rank");
+  }
+  std::optional<int64_t> num_elements =
+      mlir::ShapedType::tryGetNumElements(input_type.getShape());
+  if (!num_elements.has_value()) {
+    return emitOpError("input tensor element count overflows int64");
+  }
+  Type result_elem_type = input_type.getElementType();
+  if (!IsSupportedAtomicElementType(result_elem_type)) {
+    return emitOpError(
+        "expected signless integer, float, or complex float element type");
+  }
+  int64_t minor_dim = input_type.getRank() - 1;
+  if (failed(
+          VerifyMinorToMajorEncoding(getOperation(), input_type, &minor_dim))) {
+    return failure();
+  }
+  Block* body = getBody();
+  if (body->getNumArguments() != 1) {
+    return emitOpError("expected body block to have a single argument");
+  }
+  if (!body->mightHaveTerminator()) {
+    return emitOpError("expected non empty body terminated by xla.yield");
+  }
+  auto yield_op = mlir::dyn_cast<YieldOp>(body->getTerminator());
+  if (!yield_op) {
+    return emitOpError("expected body to be terminated by xla.yield");
+  }
   Type body_arg_type = getCurrentValue().getType();
-  auto body_terminator = getBody()->getTerminator();
-  if (body_terminator->getNumOperands() != 1 ||
-      body_terminator->getOperand(0).getType() != body_arg_type) {
+  if (yield_op.getNumOperands() != 1 ||
+      yield_op.getOperand(0).getType() != body_arg_type) {
     return emitOpError(
         "mismatch in the block argument type and the yielded type");
   }
-  Type result_elem_type =
-      mlir::cast<RankedTensorType>(getResult().getType()).getElementType();
   if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(body_arg_type)) {
-    if (vector_type.getRank() != 1) {
+    if (vector_type.getRank() != 1 || vector_type.isScalable()) {
       return emitOpError(
-          "expected a rank-1 vector type for the block argument");
+          "expected a fixed length 1D vector type for the block argument");
     }
     if (result_elem_type != vector_type.getElementType()) {
       return emitOpError(
           "mismatch in the result element type and the block argument vector "
           "element type");
+    }
+    if (input_type.getRank() < 1 || minor_dim < 0 ||
+        minor_dim >= input_type.getRank() ||
+        input_type.getDimSize(minor_dim) < vector_type.getNumElements() ||
+        *num_elements < vector_type.getNumElements()) {
+      return emitOpError(
+          "vector block argument exceeds input tensor minor dimension");
     }
   } else if (result_elem_type != body_arg_type) {
     return emitOpError(
@@ -775,12 +908,124 @@ LogicalResult AtomicRMWOp::verify() {
 }
 
 mlir::OpFoldResult AtomicRMWOp::fold(FoldAdaptor adaptor) {
-  auto* body = getBody();
-  if (&body->front() == body->getTerminator() &&
-      body->front().getOperand(0) == body->getArgument(0)) {
-    return getOperand(0);
+  if (!getComputation().hasOneBlock() || getInput() == getResult()) {
+    return {};
+  }
+  Block* body = getBody();
+  if (body->getNumArguments() != 1 || !body->mightHaveTerminator()) {
+    return {};
+  }
+  auto yield_op = mlir::dyn_cast<YieldOp>(body->getTerminator());
+  if (!yield_op || yield_op.getNumOperands() != 1) {
+    return {};
+  }
+  if (yield_op.getOperand(0) == getCurrentValue() &&
+      llvm::all_of(body->without_terminator(), [](mlir::Operation& op) {
+        return mlir::wouldOpBeTriviallyDead(&op);
+      })) {
+    return getInput();
   }
   return {};
+}
+
+namespace {
+
+bool CanHoistFromAtomicRMW(AtomicRMWOp atomic_op, mlir::Operation* candidate) {
+  if (candidate->hasTrait<mlir::OpTrait::IsTerminator>() ||
+      !mlir::isPure(candidate)) {
+    return false;
+  }
+  mlir::WalkResult walk_result =
+      candidate->walk([&](mlir::Operation* nested_op) {
+        for (Value operand : nested_op->getOperands()) {
+          Region* def_region = operand.getParentRegion();
+          if (def_region && def_region->isAttached() &&
+              candidate->isAncestor(def_region->getParentOp())) {
+            continue;
+          }
+          if (!atomic_op.isDefinedOutsideOfLoop(operand)) {
+            return mlir::WalkResult::interrupt();
+          }
+        }
+        return mlir::WalkResult::advance();
+      });
+  return !walk_result.wasInterrupted();
+}
+
+// Hoists operations independent of `getCurrentValue()` out of `xla.atomic_rmw`
+// and erases unused operations without side effects inside the region.
+struct SimplifyAtomicRMWBody : public mlir::OpRewritePattern<AtomicRMWOp> {
+  explicit SimplifyAtomicRMWBody(MLIRContext* context)
+      : OpRewritePattern<AtomicRMWOp>(context, /*benefit=*/3) {}
+
+  LogicalResult matchAndRewrite(AtomicRMWOp op,
+                                PatternRewriter& rewriter) const override {
+    Block* body = op.getBody();
+    bool has_simplification =
+        llvm::any_of(body->without_terminator(), [&](mlir::Operation& body_op) {
+          return CanHoistFromAtomicRMW(op, &body_op) ||
+                 (body_op.use_empty() &&
+                  mlir::wouldOpBeTriviallyDead(&body_op));
+        });
+    if (!has_simplification) {
+      return rewriter.notifyMatchFailure(
+          op, "no hoistable or dead operations in atomic_rmw body");
+    }
+
+    rewriter.modifyOpInPlace(op, [&]() {
+      for (mlir::Operation& candidate :
+           llvm::make_early_inc_range(body->without_terminator())) {
+        if (CanHoistFromAtomicRMW(op, &candidate)) {
+          rewriter.moveOpBefore(&candidate, op);
+        }
+      }
+
+      for (mlir::Operation* curr = body->getTerminator()->getPrevNode();
+           curr != nullptr;) {
+        mlir::Operation* prev = curr->getPrevNode();
+        if (curr->use_empty() && mlir::wouldOpBeTriviallyDead(curr)) {
+          rewriter.eraseOp(curr);
+        }
+        curr = prev;
+      }
+    });
+    return success();
+  }
+};
+
+// Converts an `xla.atomic_rmw` whose yielded value does not depend on
+// `getCurrentValue()` into an explicit `xla.atomic_store`.
+struct ConvertInvariantAtomicRMWToStore
+    : public mlir::OpRewritePattern<AtomicRMWOp> {
+  explicit ConvertInvariantAtomicRMWToStore(MLIRContext* context)
+      : OpRewritePattern<AtomicRMWOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(AtomicRMWOp op,
+                                PatternRewriter& rewriter) const override {
+    Value yielded = op.getBody()->getTerminator()->getOperand(0);
+    RankedTensorType input_type = op.getInput().getType();
+    if (!op.isDefinedOutsideOfLoop(yielded) ||
+        yielded.getType() != input_type.getElementType() ||
+        !llvm::all_of(op.getBody()->without_terminator(),
+                      [](mlir::Operation& body_op) {
+                        return mlir::wouldOpBeTriviallyDead(&body_op);
+                      })) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "body has side effects or yielded value is not an invariant scalar");
+    }
+    auto store = AtomicStoreOp::create(rewriter, op.getLoc(), yielded,
+                                       op.getInput(), op.getIndices());
+    rewriter.replaceOp(op, store.getResult());
+    return success();
+  }
+};
+
+}  // namespace
+
+void AtomicRMWOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results,
+                                              MLIRContext* context) {
+  results.add<SimplifyAtomicRMWBody, ConvertInvariantAtomicRMWToStore>(context);
 }
 
 //===----------------------------------------------------------------------===//

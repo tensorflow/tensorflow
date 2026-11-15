@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
+#include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
+#include "mlir/Interfaces/LoopLikeInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep

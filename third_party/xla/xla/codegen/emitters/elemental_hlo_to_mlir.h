@@ -148,6 +148,16 @@ mlir::SmallVector<mlir::Value, 2> InlineBlock(mlir::OpBuilder& builder,
                                               mlir::Block& src_block,
                                               mlir::ValueRange mapped_args);
 
+// Emits an `xla.atomic_store` when the scatter combiner `to_apply` / `reducer`
+// ignores its first argument (the current destination element), or an
+// `xla.atomic_rmw` otherwise.
+mlir::Value EmitScatterAtomicUpdate(mlir::ImplicitLocOpBuilder& b,
+                                    const HloComputation* to_apply,
+                                    mlir::func::FuncOp reducer,
+                                    mlir::Value update_elem,
+                                    mlir::Value output_tensor,
+                                    mlir::ValueRange indices);
+
 // Populates `lbs`, `ubs` and `steps` with the loop bounds from `indexing_map`.
 void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
                                   const IndexingMap& indexing_map,

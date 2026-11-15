@@ -174,15 +174,12 @@ SmallVector<Value> EmitScatterComputation(
     }
     return ret;
   }
-  Value output_tensor = output_tensors.front();
-  Value update_elem = update_elems.front();
-  auto atomic_rmw = AtomicRMWOp::create(b, output_tensor, indices);
-  mlir::OpBuilder body_builder = atomic_rmw.getBodyBuilder();
-  auto reduced_val =
-      emitters::InlineBlock(body_builder, reducer.getBody().front(),
-                            {atomic_rmw.getCurrentValue(), update_elem})[0];
-  xla::YieldOp::create(body_builder, reducer->getLoc(), reduced_val);
-  return {atomic_rmw->getResult(0)};
+  // Multi workgroup CPU scatter path (active when num_threads > 1).
+  CHECK_EQ(output_tensors.size(), 1);
+  CHECK_EQ(update_elems.size(), 1);
+  return {emitters::EmitScatterAtomicUpdate(
+      b, scatter->called_computations()[0], reducer, update_elems.front(),
+      output_tensors.front(), indices)};
 }
 
 CpuScatterFusion::CpuScatterFusion(const BufferAssignment& buffer_assignment,

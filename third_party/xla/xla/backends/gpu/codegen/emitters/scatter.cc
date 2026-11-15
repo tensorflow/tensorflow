@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
-#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -342,13 +341,12 @@ SmallVector<Value> EmitterHelper::EmitScatterComputation(
     return WriteUpdatesToOperands(b, indices, reduced_values, output_tensors);
   }
 
-  auto atomic_rmw = AtomicRMWOp::create(b, output_tensors.front(), indices);
-  OpBuilder body_b = atomic_rmw.getBodyBuilder();
-  auto reduced_val = emitters::InlineBlock(
-      body_b, reducer.getBody().front(),
-      {atomic_rmw.getCurrentValue(), update_elements.front()})[0];
-  xla::YieldOp::create(body_b, reducer->getLoc(), reduced_val);
-  return {atomic_rmw->getResult(0)};
+  CHECK_EQ(output_tensors.size(), 1)
+      << "Variadic scatter is only supported with unique_indices.";
+  CHECK_EQ(update_elements.size(), 1);
+  return {emitters::EmitScatterAtomicUpdate(
+      b, description_->scatter->called_computations()[0], reducer,
+      update_elements.front(), output_tensors.front(), indices)};
 }
 
 SmallVector<Value> EmitterHelper::WriteAccumulatedElementsToOutput(

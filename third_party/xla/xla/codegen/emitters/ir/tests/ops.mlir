@@ -18,6 +18,25 @@
 // Verify the generic form can be parsed.
 // RUN: emitters_opt %s --split-input-file --mlir-print-op-generic | emitters_opt --split-input-file | FileCheck %s
 
+func.func @atomic_store(%in: tensor<2x3xf32>, %val: f32, %i: index, %j: index)
+    -> tensor<2x3xf32> {
+  %ret = xla.atomic_store %val into %in[%i, %j] : tensor<2x3xf32>
+  return %ret : tensor<2x3xf32>
+}
+// CHECK-LABEL: @atomic_store
+// CHECK: xla.atomic_store %{{.*}} into %{{.*}}[%{{.*}}, %{{.*}}] : tensor<2x3xf32>
+
+// -----
+
+func.func @atomic_store_0d(%in: tensor<f32>, %val: f32) -> tensor<f32> {
+  %ret = xla.atomic_store %val into %in[] : tensor<f32>
+  return %ret : tensor<f32>
+}
+// CHECK-LABEL: @atomic_store_0d
+// CHECK: xla.atomic_store %{{.*}} into %{{.*}}[] : tensor<f32>
+
+// -----
+
 func.func @atomic_rmw(%in: tensor<2x3xf32>, %i: index, %j: index)
     -> (tensor<2x3xf32>) {
   %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {

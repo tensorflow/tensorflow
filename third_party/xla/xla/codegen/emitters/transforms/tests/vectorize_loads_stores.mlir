@@ -608,6 +608,151 @@ func.func @sub_atomic_rmw(%arg0: tensor<2xf32>, %arg1: f32)
 
 // -----
 
+func.func @atomic_rmw_in_body_modifier(%arg0: tensor<2xf32>, %arg1: f32)
+    -> tensor<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3.0 : f32
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+      -> tensor<2xf32> {
+    %atomic = xla.atomic_rmw %iter[%j] : tensor<2xf32> {
+      ^bb0(%current: f32):
+        %scaled = arith.mulf %arg1, %c3 : f32
+        %add = arith.addf %current, %scaled : f32
+        xla.yield %add : f32
+    }
+    scf.yield %atomic : tensor<2xf32>
+  }
+  return %loop : tensor<2xf32>
+}
+
+// CHECK-HOPPER-LABEL:       @atomic_rmw_in_body_modifier
+// CHECK-HOPPER-SAME:          (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: f32)
+// CHECK-HOPPER:               %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-HOPPER:               %[[LOOP:.*]] = scf.for
+// CHECK-HOPPER-SAME:          iter_args(%[[ITER:.*]] = %[[INIT]])
+// CHECK-HOPPER:                 %[[SCALED:.*]] = arith.mulf %[[ARG1]], %{{.*}} : f32
+// CHECK-HOPPER:                 vector.insert %[[SCALED]]
+// CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
+// CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
+// CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]
+
+// -----
+
+func.func @already_vectorized_atomic_rmw_in_body_modifier(
+    %arg0: tensor<4xf32>, %v: vector<2xf32>, %s: vector<2xf32>) -> tensor<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %res = scf.for %i = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+      -> tensor<4xf32> {
+    %rmw = xla.atomic_rmw %iter[%i] : tensor<4xf32> {
+      ^bb0(%cur: vector<2xf32>):
+        %scaled = arith.mulf %v, %s : vector<2xf32>
+        %sum = arith.subf %cur, %scaled : vector<2xf32>
+        xla.yield %sum : vector<2xf32>
+    }
+    scf.yield %rmw : tensor<4xf32>
+  }
+  return %res : tensor<4xf32>
+}
+// CHECK-HOPPER-LABEL: @already_vectorized_atomic_rmw_in_body_modifier
+// CHECK-HOPPER:       scf.for
+// CHECK-HOPPER:         %[[SCALED:.*]] = arith.mulf %{{.*}}, %{{.*}} : vector<2xf32>
+// CHECK-HOPPER:         xla.atomic_rmw
+// CHECK-HOPPER-NEXT:    ^bb0(%[[CUR:.*]]: vector<2xf32>):
+// CHECK-HOPPER-NEXT:      arith.subf %[[CUR]], %[[SCALED]] : vector<2xf32>
+
+// -----
+
+func.func @shared_memory_atomic_rmw_not_vectorized(%out: tensor<2xf32>, %x: f32)
+    -> tensor<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %sh = xla_gpu.allocate_shared : tensor<2xf32>
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %sh)
+      -> tensor<2xf32> {
+    %rmw = xla.atomic_rmw %iter[%j] : tensor<2xf32> {
+      ^bb0(%cur: f32):
+        %add = arith.addf %cur, %x : f32
+        xla.yield %add : f32
+    }
+    scf.yield %rmw : tensor<2xf32>
+  }
+  %synced = xla_gpu.sync_threads %loop : tensor<2xf32>
+  %v = tensor.extract %synced[%c0] : tensor<2xf32>
+  %res = tensor.insert %v into %out[%c0] : tensor<2xf32>
+  return %res : tensor<2xf32>
+}
+// CHECK-HOPPER-LABEL: @shared_memory_atomic_rmw_not_vectorized
+// CHECK-HOPPER-NOT:   vector<2xf32>
+// CHECK-HOPPER:       scf.for
+// CHECK-HOPPER:         xla.atomic_rmw
+// CHECK-HOPPER-NEXT:    ^bb0(%{{.*}}: f32):
+// CHECK-HOPPER-NOT:   vector<2xf32>
+// CHECK-HOPPER:       return
+
+// -----
+
+func.func @shared_memory_after_transfer_write_not_vectorized(
+    %out: tensor<4xf32>, %x: f32) -> tensor<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %sh = xla_gpu.allocate_shared : tensor<4xf32>
+  %init = scf.for %i = %c0 to %c4 step %c1 iter_args(%acc = %sh)
+      -> tensor<4xf32> {
+    %ins = tensor.insert %x into %acc[%i] : tensor<4xf32>
+    scf.yield %ins : tensor<4xf32>
+  }
+  %synced = xla_gpu.sync_threads %init : tensor<4xf32>
+  %res = scf.for %j = %c0 to %c4 step %c1 iter_args(%acc2 = %synced)
+      -> tensor<4xf32> {
+    %rmw = xla.atomic_rmw %acc2[%j] : tensor<4xf32> {
+      ^bb0(%cur: f32):
+        %add = arith.addf %cur, %x : f32
+        xla.yield %add : f32
+    }
+    scf.yield %rmw : tensor<4xf32>
+  }
+  %synced2 = xla_gpu.sync_threads %res : tensor<4xf32>
+  %v = tensor.extract %synced2[%c0] : tensor<4xf32>
+  %final = tensor.insert %v into %out[%c0] : tensor<4xf32>
+  return %final : tensor<4xf32>
+}
+// CHECK-HOPPER-LABEL: @shared_memory_after_transfer_write_not_vectorized
+// CHECK-HOPPER:       vector.transfer_write
+// CHECK-HOPPER:       scf.for
+// CHECK-HOPPER:         xla.atomic_rmw
+// CHECK-HOPPER-NEXT:    ^bb0(%{{.*}}: f32):
+
+// -----
+
+func.func @zero_element_tensor_atomic_rmw_not_vectorized(
+    %arg0: tensor<0xf32>, %arg1: f32) -> tensor<0xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+      -> tensor<0xf32> {
+    %rmw = xla.atomic_rmw %iter[%j] : tensor<0xf32> {
+      ^bb0(%cur: f32):
+        %add = arith.addf %cur, %arg1 : f32
+        xla.yield %add : f32
+    }
+    scf.yield %rmw : tensor<0xf32>
+  }
+  return %loop : tensor<0xf32>
+}
+// CHECK-HOPPER-LABEL: @zero_element_tensor_atomic_rmw_not_vectorized
+// CHECK-HOPPER-NOT:   vector<2xf32>
+// CHECK-HOPPER:       xla.atomic_rmw
+// CHECK-HOPPER-NEXT:  ^bb0(%{{.*}}: f32):
+
+// -----
+
 func.func @fold_insert_extract(%in: tensor<64xf32>, %out: tensor<64xf32>)
     -> tensor<64xf32> {
   %c0 = arith.constant 0 : index

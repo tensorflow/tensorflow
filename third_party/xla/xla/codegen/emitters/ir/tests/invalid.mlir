@@ -111,6 +111,206 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32
 
 // -----
 
+func.func @atomic_store_indices_rank_mismatch(
+    %in: tensor<2x3xf32>, %val: f32, %i: index) -> tensor<2x3xf32> {
+  // expected-error @+1 {{indices count must match dest rank}}
+  %ret = xla.atomic_store %val into %in[%i] : tensor<2x3xf32>
+  return %ret : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @atomic_store_value_type_mismatch(
+    %in: tensor<2x3xf32>, %val: i32, %i: index, %j: index) -> tensor<2x3xf32> {
+  // expected-error @+1 {{failed to verify that value type matches dest element type}}
+  %ret = "xla.atomic_store"(%val, %in, %i, %j) : (i32, tensor<2x3xf32>, index, index) -> tensor<2x3xf32>
+  return %ret : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @atomic_store_result_type_mismatch(
+    %in: tensor<2x3xf32>, %val: f32, %i: index, %j: index) -> tensor<3x2xf32> {
+  // expected-error @+1 {{failed to verify that result type matches dest type}}
+  %ret = "xla.atomic_store"(%val, %in, %i, %j) : (f32, tensor<2x3xf32>, index, index) -> tensor<3x2xf32>
+  return %ret : tensor<3x2xf32>
+}
+
+// -----
+
+func.func @atomic_store_dynamic_shape(
+    %in: tensor<?xf32>, %val: f32, %i: index) -> tensor<?xf32> {
+  // expected-error @+1 {{'dest' must be statically shaped tensor}}
+  %ret = xla.atomic_store %val into %in[%i] : tensor<?xf32>
+  return %ret : tensor<?xf32>
+}
+
+// -----
+
+func.func @atomic_store_unsupported_element_type(
+    %in: tensor<4xindex>, %val: index, %i: index) -> tensor<4xindex> {
+  // expected-error @+1 {{expected signless integer, float, or complex float element type}}
+  %ret = xla.atomic_store %val into %in[%i] : tensor<4xindex>
+  return %ret : tensor<4xindex>
+}
+
+// -----
+
+func.func @atomic_rmw_zero_block_args(
+    %in: tensor<2xf32>, %i: index) -> tensor<2xf32> {
+  // expected-error @+1 {{expected body block to have a single argument}}
+  %ret = xla.atomic_rmw %in[%i] : tensor<2xf32> {
+  ^bb0:
+    %c = arith.constant 1.0 : f32
+    xla.yield %c : f32
+  }
+  return %ret : tensor<2xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_two_block_args(
+    %in: tensor<2xf32>, %i: index) -> tensor<2xf32> {
+  // expected-error @+1 {{expected body block to have a single argument}}
+  %ret = xla.atomic_rmw %in[%i] : tensor<2xf32> {
+  ^bb0(%a: f32, %b: i32):
+    xla.yield %a : f32
+  }
+  return %ret : tensor<2xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_indices_rank_mismatch(
+    %in: tensor<2xf32>, %i: index, %j: index) -> tensor<2xf32> {
+  // expected-error @+1 {{indices count must match input rank}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2xf32> {
+  ^bb0(%a: f32):
+    xla.yield %a : f32
+  }
+  return %ret : tensor<2xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_scalable_vector(
+    %in: tensor<16xf32>, %i: index) -> tensor<16xf32> {
+  // expected-error @+1 {{expected a fixed length 1D vector type for the block argument}}
+  %ret = xla.atomic_rmw %in[%i] : tensor<16xf32> {
+  ^bb0(%a: vector<[2]xf32>):
+    xla.yield %a : vector<[2]xf32>
+  }
+  return %ret : tensor<16xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_vector_on_0d_tensor(
+    %in: tensor<f32>, %v: vector<2xf32>) -> tensor<f32> {
+  // expected-error @+1 {{vector block argument exceeds input tensor minor dimension}}
+  %ret = xla.atomic_rmw %in[] : tensor<f32> {
+  ^bb0(%a: vector<2xf32>):
+    xla.yield %v : vector<2xf32>
+  }
+  return %ret : tensor<f32>
+}
+
+// -----
+
+func.func @atomic_rmw_vector_on_zero_elements(
+    %in: tensor<0x4xf32>, %i: index, %j: index, %v: vector<2xf32>) -> tensor<0x4xf32> {
+  // expected-error @+1 {{vector block argument exceeds input tensor minor dimension}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<0x4xf32> {
+  ^bb0(%a: vector<2xf32>):
+    xla.yield %v : vector<2xf32>
+  }
+  return %ret : tensor<0x4xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_vector_layout_minor_dim_too_small(
+    %in: tensor<1x4xf32, dense<[0, 1]> : tensor<2xi64>>, %i: index, %j: index,
+    %v: vector<2xf32>) -> tensor<1x4xf32, dense<[0, 1]> : tensor<2xi64>> {
+  // expected-error @+1 {{vector block argument exceeds input tensor minor dimension}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<1x4xf32, dense<[0, 1]> : tensor<2xi64>> {
+  ^bb0(%a: vector<2xf32>):
+    xla.yield %v : vector<2xf32>
+  }
+  return %ret : tensor<1x4xf32, dense<[0, 1]> : tensor<2xi64>>
+}
+
+// -----
+
+func.func @atomic_store_tf32(
+    %in: tensor<4xtf32>, %val: tf32, %i: index) -> tensor<4xtf32> {
+  // expected-error @+1 {{expected signless integer, float, or complex float element type}}
+  %ret = xla.atomic_store %val into %in[%i] : tensor<4xtf32>
+  return %ret : tensor<4xtf32>
+}
+
+// -----
+
+func.func @atomic_store_non_power_of_two_int(
+    %in: tensor<4xi24>, %val: i24, %i: index) -> tensor<4xi24> {
+  // expected-error @+1 {{expected signless integer, float, or complex float element type}}
+  %ret = xla.atomic_store %val into %in[%i] : tensor<4xi24>
+  return %ret : tensor<4xi24>
+}
+
+// -----
+
+func.func @atomic_rmw_malformed_layout_encoding(
+    %in: tensor<4x1xf32, dense<[18446744073709551616, 1]> : tensor<2xi128>>,
+    %i: index, %j: index, %v: vector<2xf32>)
+    -> tensor<4x1xf32, dense<[18446744073709551616, 1]> : tensor<2xi128>> {
+  // expected-error @+1 {{expected tensor layout encoding to be a 1D i64 minor to major permutation matching tensor rank}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<4x1xf32, dense<[18446744073709551616, 1]> : tensor<2xi128>> {
+  ^bb0(%a: vector<2xf32>):
+    xla.yield %v : vector<2xf32>
+  }
+  return %ret : tensor<4x1xf32, dense<[18446744073709551616, 1]> : tensor<2xi128>>
+}
+
+// -----
+
+func.func @atomic_rmw_layout_encoding_repeats_dim(
+    %in: tensor<4x4x4xf32, dense<[0, 2, 2]> : tensor<3xi64>>, %i: index,
+    %j: index, %k: index)
+    -> tensor<4x4x4xf32, dense<[0, 2, 2]> : tensor<3xi64>> {
+  // expected-error @+1 {{expected tensor layout encoding to be a permutation of [0, rank)}}
+  %ret = xla.atomic_rmw %in[%i, %j, %k] : tensor<4x4x4xf32, dense<[0, 2, 2]> : tensor<3xi64>> {
+  ^bb0(%a: f32):
+    xla.yield %a : f32
+  }
+  return %ret : tensor<4x4x4xf32, dense<[0, 2, 2]> : tensor<3xi64>>
+}
+
+// -----
+
+func.func @atomic_store_layout_encoding_dim_out_of_range(
+    %in: tensor<4x4xf32, dense<[2, 0]> : tensor<2xi64>>, %val: f32, %i: index,
+    %j: index) -> tensor<4x4xf32, dense<[2, 0]> : tensor<2xi64>> {
+  // expected-error @+1 {{expected tensor layout encoding to be a permutation of [0, rank)}}
+  %ret = xla.atomic_store %val into %in[%i, %j] : tensor<4x4xf32, dense<[2, 0]> : tensor<2xi64>>
+  return %ret : tensor<4x4xf32, dense<[2, 0]> : tensor<2xi64>>
+}
+
+// -----
+
+func.func @atomic_rmw_overflow_element_count(
+    %in: tensor<4611686018427387904x4xf32>, %i: index, %j: index)
+    -> tensor<4611686018427387904x4xf32> {
+  // expected-error @+1 {{input tensor element count overflows int64}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<4611686018427387904x4xf32> {
+  ^bb0(%a: f32):
+    xla.yield %a : f32
+  }
+  return %ret : tensor<4611686018427387904x4xf32>
+}
+
+// -----
+
 func.func @atomic_rmw_mismatch_yield(%in: tensor<2x3xf32>, %i: index, %j: index)
     -> (tensor<2x3xf32>) {
   // expected-error @+1 {{mismatch in the block argument type and the yielded type}}
@@ -216,4 +416,13 @@ func.func @set_dynamic_dim_size_negative_dim(%dst: tensor<4xf32>, %size: i32) ->
   // expected-error @+1 {{dim must be non-negative}}
   %out = xla.set_dynamic_dim_size %size into %dst[-1] : tensor<4xf32>
   func.return %out : tensor<4xf32>
+}
+
+// -----
+
+module {
+  %c0 = arith.constant 0 : index
+  %v = arith.constant 1.0 : f32
+  // expected-error @+1 {{must reside in an SSACFG region}}
+  %0 = xla.atomic_store %v into %0[%c0] : tensor<4xf32>
 }

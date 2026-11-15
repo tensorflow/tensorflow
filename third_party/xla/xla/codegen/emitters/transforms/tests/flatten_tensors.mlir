@@ -71,6 +71,37 @@ func.func @pure_call(%arg0: tensor<10x24xf32>) -> tensor<10x24xf32> {
 
 // -----
 
+func.func @atomic_store(
+    %in: tensor<2x4xf32, dense<[0, 1]> : tensor<2xi64>>,
+    %val: f32, %i: index, %j: index)
+    -> tensor<2x4xf32, dense<[0, 1]> : tensor<2xi64>> {
+  %ret = xla.atomic_store %val into %in[%i, %j]
+      : tensor<2x4xf32, dense<[0, 1]> : tensor<2xi64>>
+  return %ret : tensor<2x4xf32, dense<[0, 1]> : tensor<2xi64>>
+}
+// CHECK: #[[$STORE_MAP:.+]] = #xla.indexing_map<"(d0, d1) -> (d1 * 2 + d0), domain: d0 in [0, 1], d1 in [0, 3]">
+// CHECK-LABEL: func.func @atomic_store(
+// CHECK-SAME:      %[[TENSOR:.*]]: tensor<8xf32>, %[[VAL:.*]]: f32,
+// CHECK-SAME:      %[[I:.*]]: index, %[[J:.*]]: index) -> tensor<8xf32> {
+// CHECK:         %[[INDEX:.*]] = xla.apply_indexing #[[$STORE_MAP]](%[[I]], %[[J]])
+// CHECK:         xla.atomic_store %[[VAL]] into %[[TENSOR]][%[[INDEX]]] : tensor<8xf32>
+
+// -----
+
+func.func @atomic_store_0d_and_1d(%t0: tensor<f32>, %t1: tensor<4xf32>,
+    %val: f32, %i: index) -> (tensor<f32>, tensor<4xf32>) {
+  %r0 = xla.atomic_store %val into %t0[] : tensor<f32>
+  %r1 = xla.atomic_store %val into %t1[%i] : tensor<4xf32>
+  return %r0, %r1 : tensor<f32>, tensor<4xf32>
+}
+// CHECK-LABEL: func.func @atomic_store_0d_and_1d(
+// CHECK-NOT:   unrealized_conversion_cast
+// CHECK:       xla.atomic_store %{{.*}} into %{{.*}}[] : tensor<f32>
+// CHECK-NEXT:  xla.atomic_store %{{.*}} into %{{.*}}[%{{.*}}] : tensor<4xf32>
+// CHECK-NEXT:  return
+
+// -----
+
 func.func @atomic_rmw(%in: tensor<2x4xf32>, %i: index, %j: index)
     -> (tensor<2x4xf32>) {
   %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {

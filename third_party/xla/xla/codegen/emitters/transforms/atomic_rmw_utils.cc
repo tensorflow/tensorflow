@@ -15,17 +15,29 @@ limitations under the License.
 
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 
+#include <cassert>
 #include <optional>
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/ADT/ilist.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Region.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/UseDefLists.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
@@ -37,173 +49,293 @@ using mlir::Operation;
 using mlir::Type;
 using mlir::Value;
 
-namespace ml = ::mlir::LLVM;
 namespace arith = ::mlir::arith;
 
-bool IsAtomicIntegral(Type element_type) {
-  if (!element_type.isInteger()) {
-    return false;
+struct BinaryOpMatch {
+  AtomicRMWKind kind;
+  bool is_commutative;
+};
+
+bool IsFloatAtomicRMWKind(AtomicRMWKind kind) {
+  switch (kind) {
+    case AtomicRMWKind::kFAdd:
+    case AtomicRMWKind::kFSub:
+    case AtomicRMWKind::kFMax:
+    case AtomicRMWKind::kFMin:
+      return true;
+    default:
+      return false;
   }
-  unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
-  return element_bitwidth == 32 || element_bitwidth == 64;
 }
 
-std::optional<ml::AtomicBinOp> GetAtomicBinOp(Operation* modifier_op,
-                                              Type element_type) {
-  return llvm::TypeSwitch<Operation*, std::optional<ml::AtomicBinOp>>(
-             modifier_op)
-      // Floating-point operations.
-      .Case([](arith::AddFOp op) { return ml::AtomicBinOp::fadd; })
-      .Case([](arith::MaximumFOp op) { return ml::AtomicBinOp::fmax; })
-      .Case([](arith::MinimumFOp op) { return ml::AtomicBinOp::fmin; })
-      // Integer operations.
-      .Case([&](arith::AddIOp op) {
-        return IsAtomicIntegral(element_type)
-                   ? std::make_optional(ml::AtomicBinOp::add)
-                   : std::nullopt;
+std::optional<BinaryOpMatch> MatchBinaryOpKind(Operation* modifier_op) {
+  if (!modifier_op) {
+    return std::nullopt;
+  }
+  return llvm::TypeSwitch<Operation*, std::optional<BinaryOpMatch>>(modifier_op)
+      .Case([](arith::AddFOp op) -> std::optional<BinaryOpMatch> {
+        if (op.getRoundingmode().has_value() &&
+            *op.getRoundingmode() != arith::RoundingMode::to_nearest_even) {
+          return std::nullopt;
+        }
+        return BinaryOpMatch{AtomicRMWKind::kFAdd, true};
       })
-      .Case([&](arith::MaxUIOp op) {
-        return IsAtomicIntegral(element_type)
-                   ? std::make_optional(ml::AtomicBinOp::umax)
-                   : std::nullopt;
+      .Case([](arith::SubFOp op) -> std::optional<BinaryOpMatch> {
+        if (op.getRoundingmode().has_value() &&
+            *op.getRoundingmode() != arith::RoundingMode::to_nearest_even) {
+          return std::nullopt;
+        }
+        return BinaryOpMatch{AtomicRMWKind::kFSub, false};
       })
-      .Case([&](arith::MinUIOp op) {
-        return IsAtomicIntegral(element_type)
-                   ? std::make_optional(ml::AtomicBinOp::umin)
-                   : std::nullopt;
+      .Case([](arith::MaximumFOp) {
+        return BinaryOpMatch{AtomicRMWKind::kFMax, true};
       })
-      .Case([&](arith::MaxSIOp op) {
-        return IsAtomicIntegral(element_type)
-                   ? std::make_optional(ml::AtomicBinOp::max)
-                   : std::nullopt;
+      .Case([](arith::MinimumFOp) {
+        return BinaryOpMatch{AtomicRMWKind::kFMin, true};
       })
-      .Case([&](arith::MinSIOp op) {
-        return IsAtomicIntegral(element_type)
-                   ? std::make_optional(ml::AtomicBinOp::min)
-                   : std::nullopt;
+      .Case([](arith::AddIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kAdd, true};
       })
-      .Default([](Operation* op) { return std::nullopt; });
+      .Case([](arith::SubIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kSub, false};
+      })
+      .Case([](arith::MaxSIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kMaxS, true};
+      })
+      .Case([](arith::MinSIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kMinS, true};
+      })
+      .Case([](arith::MaxUIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kMaxU, true};
+      })
+      .Case([](arith::MinUIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kMinU, true};
+      })
+      .Case([](arith::AndIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kAnd, true};
+      })
+      .Case(
+          [](arith::OrIOp) { return BinaryOpMatch{AtomicRMWKind::kOr, true}; })
+      .Case([](arith::XOrIOp) {
+        return BinaryOpMatch{AtomicRMWKind::kXor, true};
+      })
+      .Default([](Operation*) { return std::nullopt; });
 }
 
-// Looks through an arith.extf widening cast and returns the narrower source
-// value. Low-precision floating-point reductions (e.g. bf16) are computed in a
-// wider type, so the atomic modifier appears in the body as extf(modifier).
-Value LookThroughExtF(Value value) {
+Value UnwrapExtF(Value value, Type target_type) {
   if (auto ext = value.getDefiningOp<arith::ExtFOp>()) {
-    return ext.getIn();
+    if (ext.getIn().getType() == target_type) {
+      return ext.getIn();
+    }
   }
-  return value;
+  return Value{};
 }
 
-std::optional<AtomicModifierParameters> MatchAtomicModifier(
-    Operation* modifier_op, Value lhs, Value rhs, Value block_arg,
-    Type element_type) {
-  bool negated = false;
-  ml::AtomicBinOp bin_op;
+std::optional<llvm::APFloat> ConvertLosslessly(
+    llvm::APFloat value, mlir::FloatType target_float_type) {
+  const llvm::fltSemantics& target_sem = target_float_type.getFloatSemantics();
+  if (value.isNaN() ||
+      (value.isInfinity() && !llvm::APFloat::semanticsHasInf(target_sem))) {
+    return std::nullopt;
+  }
+  const llvm::fltSemantics& src_sem = value.getSemantics();
+  llvm::APFloat narrowed = value;
+  bool loses_info = false;
+  narrowed.convert(target_sem, llvm::APFloat::rmNearestTiesToEven, &loses_info);
+  if (loses_info) {
+    return std::nullopt;
+  }
+  llvm::APFloat roundtrip = narrowed;
+  bool roundtrip_loses_info = false;
+  roundtrip.convert(src_sem, llvm::APFloat::rmNearestTiesToEven,
+                    &roundtrip_loses_info);
+  if (roundtrip_loses_info || !roundtrip.bitwiseIsEqual(value)) {
+    return std::nullopt;
+  }
+  return narrowed;
+}
+
+// Recovers a `target_type` modifier from a widened float operand, either by
+// looking through `arith.extf` or by narrowing a constant whose value is exact
+// in `target_type` (for example after `arith.extf(cst)` constant folded to a
+// wider float constant).
+std::optional<mlir::OpFoldResult> RecoverNarrowFloatModifier(
+    AtomicRMWOp atomic_op, Value widened_value, Type target_type) {
+  if (Value narrow = UnwrapExtF(widened_value, target_type)) {
+    if (atomic_op.isDefinedOutsideOfLoop(narrow)) {
+      return narrow;
+    }
+    return std::nullopt;
+  }
+
+  if (auto target_float_type = mlir::dyn_cast<mlir::FloatType>(target_type)) {
+    mlir::FloatAttr float_attr;
+    if (mlir::matchPattern(widened_value, mlir::m_Constant(&float_attr))) {
+      if (std::optional<llvm::APFloat> narrowed =
+              ConvertLosslessly(float_attr.getValue(), target_float_type)) {
+        return mlir::FloatAttr::get(target_float_type, *narrowed);
+      }
+    }
+    return std::nullopt;
+  }
+
+  if (auto target_vec_type = mlir::dyn_cast<mlir::VectorType>(target_type)) {
+    auto target_elem_type =
+        mlir::dyn_cast<mlir::FloatType>(target_vec_type.getElementType());
+    mlir::DenseFPElementsAttr dense_attr;
+    if (!target_elem_type ||
+        !mlir::matchPattern(widened_value, mlir::m_Constant(&dense_attr)) ||
+        dense_attr.getNumElements() != target_vec_type.getNumElements()) {
+      return std::nullopt;
+    }
+    llvm::SmallVector<llvm::APFloat> narrowed_values;
+    narrowed_values.reserve(dense_attr.getNumElements());
+    for (const llvm::APFloat& elem : dense_attr.getValues<llvm::APFloat>()) {
+      std::optional<llvm::APFloat> narrowed =
+          ConvertLosslessly(elem, target_elem_type);
+      if (!narrowed.has_value()) {
+        return std::nullopt;
+      }
+      narrowed_values.push_back(*narrowed);
+    }
+    return mlir::DenseElementsAttr::get(target_vec_type, narrowed_values);
+  }
+
+  return std::nullopt;
+}
+
+std::optional<AtomicModifierParameters> MatchDirectBinaryModifier(
+    AtomicRMWOp atomic_op, Operation* modifier_op, Value current,
+    Type expected_type) {
+  std::optional<BinaryOpMatch> match = MatchBinaryOpKind(modifier_op);
+  if (!match.has_value()) {
+    return std::nullopt;
+  }
+  Value lhs = modifier_op->getOperand(0);
+  Value rhs = modifier_op->getOperand(1);
   Value modifier_arg;
-  // `subf(current, x)` comes from canonicalizing
-  // `addf(current, negf(x))`.
-  if (llvm::isa<arith::SubFOp>(modifier_op)) {
-    if (lhs != block_arg || rhs == block_arg) {
-      return std::nullopt;
-    }
+  if (lhs == current && rhs != current) {
     modifier_arg = rhs;
-    bin_op = ml::AtomicBinOp::fadd;
-    negated = true;
+  } else if (match->is_commutative && rhs == current && lhs != current) {
+    modifier_arg = lhs;
   } else {
-    const auto kind = GetAtomicBinOp(modifier_op, element_type);
-    if (!kind.has_value()) {
-      return std::nullopt;
-    }
-    bin_op = *kind;
-    if (lhs == block_arg) {
-      modifier_arg = rhs;
-    } else if (rhs == block_arg) {
-      modifier_arg = lhs;
-    } else {
-      return std::nullopt;
-    }
-  }
-  Type modifier_type = modifier_arg.getType();
-  bool is_matching_vector =
-      llvm::isa<mlir::VectorType>(modifier_type) &&
-      llvm::cast<mlir::VectorType>(modifier_type).getElementType() ==
-          element_type;
-  if (modifier_type != element_type && !is_matching_vector) {
     return std::nullopt;
   }
-  // A value defined inside the atomic body would be erased when the body is
-  // replaced. Keep only values defined outside the computation.
-  if (block_arg.getParentRegion()->isAncestor(modifier_arg.getParentRegion())) {
+  if (modifier_arg.getType() != expected_type ||
+      !atomic_op.isDefinedOutsideOfLoop(modifier_arg)) {
     return std::nullopt;
   }
-  return AtomicModifierParameters{modifier_arg, bin_op, negated};
+  return AtomicModifierParameters{modifier_arg, match->kind};
 }
 
 }  // namespace
 
 std::optional<AtomicModifierParameters> GetAtomicModifierParameters(
     AtomicRMWOp op) {
-  Type element_type = op.getInput().getType().getElementType();
-  auto& operations = op.getBody()->getOperations();
-  auto terminator = op.getBody()->getTerminator();
-  Value block_arg = op.getBody()->getArgument(0);
-
-  // If the body contains only the terminator, then it is an atomic store.
-  if (operations.size() == 1) {
-    // TODO(b/336367145): Support complex<f32> atomic store.
-    if (element_type.isF32() || IsAtomicIntegral(element_type)) {
-      return AtomicModifierParameters{terminator->getOperand(0),
-                                      ml::AtomicBinOp::xchg};
-    }
+  mlir::Block* body = op.getBody();
+  if (!llvm::all_of(body->without_terminator(), [](Operation& body_op) {
+        return mlir::wouldOpBeTriviallyDead(&body_op);
+      })) {
     return std::nullopt;
   }
+  Operation* terminator = body->getTerminator();
+  if (terminator->getNumOperands() != 1) {
+    return std::nullopt;
+  }
+  Value current = op.getCurrentValue();
+  Type expected_type = current.getType();
+  if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(expected_type);
+      vec_type && (vec_type.getRank() != 1 || vec_type.isScalable())) {
+    return std::nullopt;
+  }
+  Value yielded = terminator->getOperand(0);
 
-  // Simple case: a single binary modifier op followed by the terminator,
-  // operating directly on the atomic element type.
-  if (operations.size() == 2) {
-    mlir::Operation* modifier_op = &operations.front();
-    if (modifier_op->getNumResults() != 1 ||
-        modifier_op->getNumOperands() != 2 ||
-        terminator->getNumOperands() != 1) {
-      return std::nullopt;
-    }
-    if (terminator->getOperand(0) != modifier_op->getResult(0)) {
-      return std::nullopt;
-    }
-    return MatchAtomicModifier(modifier_op, modifier_op->getOperand(0),
-                               modifier_op->getOperand(1), block_arg,
-                               element_type);
+  if (std::optional<AtomicModifierParameters> direct =
+          MatchDirectBinaryModifier(op, yielded.getDefiningOp(), current,
+                                    expected_type)) {
+    return direct;
   }
 
-  // Widened low-precision case (e.g. bf16): the reduction is computed in a
-  // wider type, so the body looks like:
+  // Widened low precision float case (e.g. bf16 computed in f32):
   //   %0 = arith.extf %current  : bf16 to f32
-  //   %1 = arith.extf %modifier : bf16 to f32
+  //   %1 = arith.extf %modifier : bf16 to f32  (or lossless f32 constant)
   //   %2 = arith.<binop> %0, %1 : f32
   //   %3 = arith.truncf %2      : f32 to bf16
   //   xla.yield %3              : bf16
-  //
-  // bf16 has no native arithmetic on the relevant targets, so
-  // FloatNormalization (driven by GpuFloatSupport, which reports bf16
-  // add/mul/etc. as unsupported) legitimately wraps the combiner in f32
-  // conversions. We do NOT undo that normalization globally; we only look
-  // through it *here*, where we are about to emit a hardware atomic (e.g.
-  // global_atomic_pk_add_bf16) that performs the very same widen-add-round
-  // internally. Recovering the narrow (bf16) modifier lets the lowering use
-  // that packed atomic instead of a slow compare-and-swap loop, without
-  // claiming a native bf16 arithmetic instruction.
-  auto trunc_op = terminator->getOperand(0).getDefiningOp<arith::TruncFOp>();
-  if (!trunc_op || trunc_op.getType() != element_type) {
+  // Restrict to sub 32 bit float target types promoted by FloatNormalization so
+  // explicit f32 to f64 precision elevations stay in f64.
+  auto expected_float_type = mlir::dyn_cast<mlir::FloatType>(
+      mlir::getElementTypeOrSelf(expected_type));
+  if (!expected_float_type || expected_float_type.getWidth() >= 32) {
     return std::nullopt;
   }
-  mlir::Operation* modifier_op = trunc_op.getIn().getDefiningOp();
-  if (!modifier_op || modifier_op->getNumOperands() != 2) {
+  auto trunc_op = yielded.getDefiningOp<arith::TruncFOp>();
+  if (!trunc_op || trunc_op.getType() != expected_type ||
+      (trunc_op.getRoundingmode().has_value() &&
+       *trunc_op.getRoundingmode() != arith::RoundingMode::to_nearest_even)) {
     return std::nullopt;
   }
-  Value lhs = LookThroughExtF(modifier_op->getOperand(0));
-  Value rhs = LookThroughExtF(modifier_op->getOperand(1));
-  return MatchAtomicModifier(modifier_op, lhs, rhs, block_arg, element_type);
+  Operation* modifier_op = trunc_op.getIn().getDefiningOp();
+  std::optional<BinaryOpMatch> match = MatchBinaryOpKind(modifier_op);
+  if (!match.has_value() || !IsFloatAtomicRMWKind(match->kind)) {
+    return std::nullopt;
+  }
+  auto wide_float_type = mlir::dyn_cast<mlir::FloatType>(
+      mlir::getElementTypeOrSelf(trunc_op.getIn().getType()));
+  if (!wide_float_type) {
+    return std::nullopt;
+  }
+  const llvm::fltSemantics& narrow_sem =
+      expected_float_type.getFloatSemantics();
+  const llvm::fltSemantics& wide_sem = wide_float_type.getFloatSemantics();
+  unsigned int narrow_prec = llvm::APFloat::semanticsPrecision(narrow_sem);
+  unsigned int wide_prec = llvm::APFloat::semanticsPrecision(wide_sem);
+  // Require lossless widening into the intermediate format and, for addition
+  // and subtraction, satisfy wide_prec >= 2 * narrow_prec + 2 so widened
+  // rounding matches single rounding in the narrow type.
+  if (wide_prec <= narrow_prec ||
+      !llvm::APFloat::isLosslesslyConvertibleTo(narrow_sem, wide_sem,
+                                                /*IgnoreNaNs=*/true)) {
+    return std::nullopt;
+  }
+  if ((match->kind == AtomicRMWKind::kFAdd ||
+       match->kind == AtomicRMWKind::kFSub) &&
+      wide_prec < 2 * narrow_prec + 2) {
+    return std::nullopt;
+  }
+
+  Value raw_lhs = modifier_op->getOperand(0);
+  Value raw_rhs = modifier_op->getOperand(1);
+  Value unwrapped_lhs = UnwrapExtF(raw_lhs, expected_type);
+  Value unwrapped_rhs = UnwrapExtF(raw_rhs, expected_type);
+
+  Value raw_modifier;
+  if (unwrapped_lhs == current && unwrapped_rhs != current) {
+    raw_modifier = raw_rhs;
+  } else if (match->is_commutative && unwrapped_rhs == current &&
+             unwrapped_lhs != current) {
+    raw_modifier = raw_lhs;
+  } else {
+    return std::nullopt;
+  }
+
+  std::optional<mlir::OpFoldResult> narrow_modifier =
+      RecoverNarrowFloatModifier(op, raw_modifier, expected_type);
+  if (!narrow_modifier.has_value()) {
+    return std::nullopt;
+  }
+  return AtomicModifierParameters{*narrow_modifier, match->kind};
+}
+
+Value MaterializeAtomicModifier(mlir::OpBuilder& b, mlir::Location loc,
+                                mlir::OpFoldResult modifier) {
+  assert(modifier && "expected nonnull atomic modifier");
+  if (auto value = mlir::dyn_cast<Value>(modifier)) {
+    return value;
+  }
+  return arith::ConstantOp::create(
+      b, loc,
+      mlir::cast<mlir::TypedAttr>(mlir::cast<mlir::Attribute>(modifier)));
 }
 
 }  // namespace emitters
