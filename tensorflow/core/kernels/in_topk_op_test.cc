@@ -116,6 +116,43 @@ TEST_F(InTopKOpTest, LargeMatchesReference) {
   test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
 }
 
+// The kernel times a sample of leading rows to decide whether to shard the
+// rest. Make the leading rows cheap (early exit) and the remaining rows full
+// scans, and also cover inputs with fewer rows than the sample.
+TEST_F(InTopKOpTest, MixedRowCostsMatchesReference) {
+  for (const int rows : {5, 32, 33, 40, 600}) {
+    inputs_.clear();
+    MakeOp(DT_INT32);
+    const int cols = 2000, k = 3;
+    std::vector<float> pred(rows * cols);
+    std::vector<int32_t> targets(rows);
+    for (int r = 0; r < rows; ++r) {
+      for (int c = 0; c < cols; ++c) {
+        pred[r * cols + c] = static_cast<float>((r * 31 + c * 17) % 101);
+      }
+      targets[r] = (r * 7) % cols;
+      // Rows past the sample hold the row maximum at the target.
+      if (r >= 32) pred[r * cols + targets[r]] = 1000.0f + (r % 3);
+      if (r % 9 == 4) pred[r * cols + targets[r]] = 100.0f;  // ties
+    }
+    AddInputFromArray<float>(TensorShape({rows, cols}), pred);
+    AddInputFromArray<int32_t>(TensorShape({rows}), targets);
+    AddInputFromArray<int32_t>(TensorShape({}), {k});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(DT_BOOL, TensorShape({rows}));
+    auto e = expected.flat<bool>();
+    for (int r = 0; r < rows; ++r) {
+      int larger = 0;
+      for (int c = 0; c < cols; ++c) {
+        if (pred[r * cols + c] > pred[r * cols + targets[r]]) ++larger;
+      }
+      e(r) = larger < k;
+    }
+    test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
+  }
+}
+
 template <typename T>
 static Graph* InTopK(int num_targets, int num_classes, T top_k) {
   Graph* g = new Graph(OpRegistry::Global());
