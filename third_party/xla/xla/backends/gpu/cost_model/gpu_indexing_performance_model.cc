@@ -90,7 +90,7 @@ using ::xla::xtile::GetTilingSpaceConcreteSizes;
 
 namespace {
 
-namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model;
 
 // Information about an operand read.
 struct OperandReadInfo {
