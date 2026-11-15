@@ -1424,6 +1424,15 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
   }
 };
 
+// True if `node` has exactly `regular` regular inputs, optionally followed by
+// control inputs. Add, Sub, Neg and Exp take a fixed number of regular inputs,
+// and a GraphDef handed to Grappler has not necessarily been validated against
+// the op definitions.
+bool HasExactRegularInputs(const NodeDef& node, int regular) {
+  return NumNonControlInputs(node) == regular &&
+         NumControlInputs(node) == node.input_size() - regular;
+}
+
 class RemoveNegationStage : public ArithmeticOptimizerStage {
  public:
   explicit RemoveNegationStage(const GraphOptimizerContext& ctx,
@@ -1432,7 +1441,8 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   ~RemoveNegationStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return (IsAdd(*node) || IsSub(*node)) && !IsInPreserveSet(*node);
+    return (IsAdd(*node) || IsSub(*node)) && HasExactRegularInputs(*node, 2) &&
+           !IsInPreserveSet(*node);
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -1442,14 +1452,14 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     bool updated = false;
-    if (IsNeg(*y)) {
+    if (IsNeg(*y) && HasExactRegularInputs(*y, 1)) {
       // a - (-b) = a + b or  a + (-b) = a - b
       ForwardControlDependencies(node, {y});
       ctx().node_map->UpdateInput(node->name(), node->input(1), y->input(0));
       node->set_op(IsAdd(*node) ? "Sub" : "AddV2");
       node->set_input(1, y->input(0));
       updated = true;
-    } else if (IsAdd(*node) && IsNeg(*x)) {
+    } else if (IsAdd(*node) && IsNeg(*x) && HasExactRegularInputs(*x, 1)) {
       // (-a) + b = b - a
       ForwardControlDependencies(node, {x});
       ctx().node_map->UpdateInput(node->name(), node->input(0), x->input(0));
@@ -3489,12 +3499,12 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
   ~ConvertExpm1Stage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsSub(*node)) return false;
+    if (!IsSub(*node) || !HasExactRegularInputs(*node, 2)) return false;
 
     NodeDef* input;
     if (!GetInputNode(node->input(0), &input).ok()) return false;
 
-    return IsExp(*input);
+    return IsExp(*input) && HasExactRegularInputs(*input, 1);
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -3533,6 +3543,7 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
     }
     NodeDef* exp;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &exp));
+    if (!HasExactRegularInputs(*exp, 1)) return absl::OkStatus();
     NodeDef *exp_input, *ones;
     TF_RETURN_IF_ERROR(GetInputNode(exp->input(0), &exp_input));
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));

@@ -2984,6 +2984,277 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
+TEST_F(ArithmeticOptimizerTest,
+       RemoveNegationAndExpm1IgnoreMissingAndControlInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto value = ops::Placeholder(s.WithOpName("value"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+  auto valid_neg = ops::Neg(s.WithOpName("valid_neg"), value);
+  auto valid_exp = ops::Exp(s.WithOpName("valid_exp"), value);
+  auto ones = ops::Const(s.WithOpName("ones"), 1.0f, {});
+  (void)valid_neg;
+  (void)valid_exp;
+  (void)ones;
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto add_node = [&item](absl::string_view name, absl::string_view op,
+                          const std::vector<absl::string_view>& inputs) {
+    NodeDef* node = item.graph.add_node();
+    node->set_name(name.data(), name.size());
+    node->set_op(op.data(), op.size());
+    for (absl::string_view input : inputs) {
+      node->add_input(input.data(), input.size());
+    }
+    (*node->mutable_attr())["T"].set_type(DT_FLOAT);
+  };
+
+  add_node("neg_without_input", "Neg", {});
+  add_node("neg_only_ctrl", "Neg", {"^value"});
+  add_node("exp_without_input", "Exp", {});
+  add_node("exp_only_ctrl", "Exp", {"^value"});
+
+  add_node("add_without_inputs", "Add", {});
+  add_node("add_with_one_input", "Add", {"value"});
+  add_node("sub_without_inputs", "Sub", {});
+  add_node("sub_with_one_input", "Sub", {"value"});
+  add_node("add_rhs_neg_without_input", "Add", {"value", "neg_without_input"});
+  add_node("add_lhs_neg_without_input", "Add", {"neg_without_input", "value"});
+  add_node("sub_rhs_neg_without_input", "Sub", {"value", "neg_without_input"});
+
+  // Control-input spoofing cases where input_size() satisfies arity counts via
+  // leading ^ control dependencies.
+  add_node("add_rhs_ctrl_neg", "Add", {"value", "^valid_neg"});
+  add_node("add_lhs_ctrl_neg", "Add", {"^valid_neg", "value"});
+  add_node("sub_rhs_ctrl_neg", "Sub", {"value", "^valid_neg"});
+  add_node("sub_lhs_ctrl_neg", "Sub", {"^valid_neg", "value"});
+  add_node("add_rhs_neg_only_ctrl", "Add", {"value", "neg_only_ctrl"});
+  add_node("add_lhs_neg_only_ctrl", "Add", {"neg_only_ctrl", "value"});
+  add_node("sub_rhs_neg_only_ctrl", "Sub", {"value", "neg_only_ctrl"});
+  add_node("sub_expm1_rhs_ctrl_ones", "Sub", {"valid_exp", "^ones"});
+  add_node("sub_expm1_lhs_ctrl_exp", "Sub", {"^valid_exp", "ones"});
+  add_node("sub_expm1_exp_without_input", "Sub", {"exp_without_input", "ones"});
+  add_node("sub_expm1_exp_only_ctrl", "Sub", {"exp_only_ctrl", "ones"});
+
+  for (const char* name :
+       {"add_without_inputs", "add_with_one_input", "sub_without_inputs",
+        "sub_with_one_input", "add_rhs_neg_without_input",
+        "add_lhs_neg_without_input", "sub_rhs_neg_without_input",
+        "add_rhs_ctrl_neg", "add_lhs_ctrl_neg", "sub_rhs_ctrl_neg",
+        "sub_lhs_ctrl_neg", "add_rhs_neg_only_ctrl", "add_lhs_neg_only_ctrl",
+        "sub_rhs_neg_only_ctrl", "sub_expm1_rhs_ctrl_ones",
+        "sub_expm1_lhs_ctrl_exp", "sub_expm1_exp_without_input",
+        "sub_expm1_exp_only_ctrl"}) {
+    add_node(absl::StrCat(name, "_output"), "Identity", {name});
+    item.fetch.push_back(absl::StrCat(name, "_output"));
+  }
+
+  for (bool expm1 : {false, true}) {
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    if (expm1) {
+      EnableOnlyExpm1(&optimizer);
+    } else {
+      EnableOnlyRemoveNegation(&optimizer);
+    }
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+    // The graph is returned unchanged: every node is found by name, with its
+    // op and inputs intact.
+    ASSERT_EQ(output.node_size(), item.graph.node_size());
+    for (const NodeDef& expected : item.graph.node()) {
+      const NodeDef* actual = nullptr;
+      for (const NodeDef& candidate : output.node()) {
+        if (candidate.name() == expected.name()) actual = &candidate;
+      }
+      ASSERT_NE(actual, nullptr) << expected.name();
+      EXPECT_EQ(actual->op(), expected.op()) << expected.name();
+      ASSERT_EQ(actual->input_size(), expected.input_size()) << expected.name();
+      for (int i = 0; i < expected.input_size(); ++i) {
+        EXPECT_EQ(actual->input(i), expected.input(i)) << expected.name();
+      }
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       RemoveNegationAndExpm1IgnoreExtraRegularInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto value = ops::Placeholder(s.WithOpName("value"), DT_FLOAT,
+                                ops::Placeholder::Shape({2, 2}));
+  ops::Neg(s.WithOpName("valid_neg"), value);
+  ops::Exp(s.WithOpName("valid_exp"), value);
+  ops::Const(s.WithOpName("ones"), 1.0f, {});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto add_node = [&item](absl::string_view name, absl::string_view op,
+                          const std::vector<absl::string_view>& inputs) {
+    NodeDef* node = item.graph.add_node();
+    node->set_name(name.data(), name.size());
+    node->set_op(op.data(), op.size());
+    for (absl::string_view input : inputs) {
+      node->add_input(input.data(), input.size());
+    }
+    (*node->mutable_attr())["T"].set_type(DT_FLOAT);
+  };
+
+  // Neg and Exp take one regular input.
+  add_node("neg_extra", "Neg", {"value", "value"});
+  add_node("exp_extra", "Exp", {"value", "value"});
+
+  // Add and Sub take two regular inputs. A third one is not a control input,
+  // and the rewrites would keep it on a node that no longer takes it.
+  add_node("add_rhs_neg_extra_arg", "Add", {"value", "valid_neg", "value"});
+  add_node("add_lhs_neg_extra_arg", "Add", {"valid_neg", "value", "value"});
+  add_node("sub_rhs_neg_extra_arg", "Sub", {"value", "valid_neg", "value"});
+  add_node("add_rhs_neg_ctrl_then_extra", "Add",
+           {"value", "valid_neg", "^value", "value"});
+  add_node("add_rhs_extra_neg", "Add", {"value", "neg_extra"});
+  add_node("add_lhs_extra_neg", "Add", {"neg_extra", "value"});
+  add_node("sub_rhs_extra_neg", "Sub", {"value", "neg_extra"});
+  add_node("sub_expm1_extra_arg", "Sub", {"valid_exp", "ones", "value"});
+  add_node("sub_expm1_ctrl_then_extra", "Sub",
+           {"valid_exp", "ones", "^value", "value"});
+  add_node("sub_expm1_extra_exp", "Sub", {"exp_extra", "ones"});
+
+  for (const char* name :
+       {"add_rhs_neg_extra_arg", "add_lhs_neg_extra_arg",
+        "sub_rhs_neg_extra_arg", "add_rhs_neg_ctrl_then_extra",
+        "add_rhs_extra_neg", "add_lhs_extra_neg", "sub_rhs_extra_neg",
+        "sub_expm1_extra_arg", "sub_expm1_ctrl_then_extra",
+        "sub_expm1_extra_exp"}) {
+    add_node(absl::StrCat(name, "_output"), "Identity", {name});
+    item.fetch.push_back(absl::StrCat(name, "_output"));
+  }
+
+  for (bool expm1 : {false, true}) {
+    SCOPED_TRACE(expm1 ? "EnableOnlyExpm1" : "EnableOnlyRemoveNegation");
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    if (expm1) {
+      EnableOnlyExpm1(&optimizer);
+    } else {
+      EnableOnlyRemoveNegation(&optimizer);
+    }
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+    // The graph is returned unchanged: every node is found by name, with its
+    // op and inputs intact.
+    EXPECT_EQ(output.node_size(), item.graph.node_size());
+    for (const NodeDef& expected : item.graph.node()) {
+      const NodeDef* actual = nullptr;
+      for (const NodeDef& candidate : output.node()) {
+        if (candidate.name() == expected.name()) actual = &candidate;
+      }
+      if (actual == nullptr) {
+        ADD_FAILURE() << "missing node " << expected.name();
+        continue;
+      }
+      EXPECT_EQ(actual->op(), expected.op()) << expected.name();
+      EXPECT_EQ(actual->input_size(), expected.input_size()) << expected.name();
+      const int common_inputs = actual->input_size() < expected.input_size()
+                                    ? actual->input_size()
+                                    : expected.input_size();
+      for (int i = 0; i < common_inputs; ++i) {
+        EXPECT_EQ(actual->input(i), expected.input(i)) << expected.name();
+      }
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       RemoveNegationAndExpm1TrailingControlInputsAreRewritten) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x1 = ops::Const(s.WithOpName("x1"), {2.0f, 2.0f}, {1, 2});
+  auto x2 = ops::Const(s.WithOpName("x2"), {1.0f, 1.0f}, {1, 2});
+  auto ctrl = ops::Const(s.WithOpName("ctrl"), {3.0f, 3.0f}, {1, 2});
+  auto neg = ops::Neg(s.WithOpName("neg"), x1);
+  auto exp = ops::Exp(s.WithOpName("exp"), x1);
+  Output add_neg =
+      ops::Add(s.WithOpName("add_neg").WithControlDependencies(ctrl), neg, x2);
+  Output sub_exp =
+      ops::Sub(s.WithOpName("sub_exp").WithControlDependencies(ctrl), exp, x2);
+
+  // Fetch nodes are in the preserve set and are never rewritten, so fetch
+  // Identity nodes that consume the nodes under test.
+  Output add_out = ops::Identity(s.WithOpName("add_out"), add_neg);
+  Output sub_out = ops::Identity(s.WithOpName("sub_out"), sub_exp);
+
+  GrapplerItem item;
+  item.fetch = {"add_out", "sub_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  {
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveNegation(&optimizer);
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+    NodeMap node_map(&output);
+    const NodeDef* rewritten = node_map.GetNode("add_neg");
+    ASSERT_NE(rewritten, nullptr);
+    EXPECT_EQ(rewritten->op(), "Sub");
+    ASSERT_EQ(rewritten->input_size(), 3);
+    EXPECT_EQ(rewritten->input(0), "x2");
+    EXPECT_EQ(rewritten->input(1), "x1");
+    EXPECT_EQ(rewritten->input(2), "^ctrl");
+  }
+  {
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyExpm1(&optimizer);
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+    NodeMap node_map(&output);
+    const NodeDef* rewritten = node_map.GetNode("sub_exp");
+    ASSERT_NE(rewritten, nullptr);
+    EXPECT_EQ(rewritten->op(), "Expm1");
+    ASSERT_EQ(rewritten->input_size(), 3);
+    EXPECT_EQ(rewritten->input(0), "x1");
+    EXPECT_EQ(rewritten->input(1), "^x2");
+    EXPECT_EQ(rewritten->input(2), "^ctrl");
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveNegationWellFormedControl) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
+  auto y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT);
+  Output neg_x = ops::Neg(s.WithOpName("neg_x"), x);
+  Output add_negx_y = ops::Add(s.WithOpName("add_negx_y"), neg_x, y);
+  Output sub_y_negx = ops::Sub(s.WithOpName("sub_y_negx"), y, neg_x);
+  Output add_out = ops::Identity(s.WithOpName("add_out"), add_negx_y);
+  Output sub_out = ops::Identity(s.WithOpName("sub_out"), sub_y_negx);
+
+  GrapplerItem item;
+  item.fetch = {"add_out", "sub_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveNegation(&optimizer);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add_negx_y") {
+      ++found;
+      EXPECT_EQ(node.op(), "Sub");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "y");
+      EXPECT_EQ(node.input(1), "x");
+    } else if (node.name() == "sub_y_negx") {
+      ++found;
+      EXPECT_EQ(node.op(), "AddV2");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "y");
+      EXPECT_EQ(node.input(1), "x");
+    }
+  }
+  EXPECT_EQ(found, 2);
+}
+
 TEST_F(ArithmeticOptimizerTest, ConvertSqrtDivToRsqrtMul) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
