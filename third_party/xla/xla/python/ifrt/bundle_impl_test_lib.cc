@@ -47,10 +47,12 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 using ::testing::SizeIs;
 
 absl::StatusOr<ArrayRef> MakeArbitrarySingleDeviceArray(Client* client) {
@@ -119,7 +121,10 @@ TEST(BundleImplTest, Roundtrip) {
       BundleRef bundle,
       client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
 
+  EXPECT_EQ(bundle->client(), client.get());
   EXPECT_EQ(bundle->num_values(), 2);
+  EXPECT_OK(bundle->GetReadyFuture().Await());
+  EXPECT_FALSE(bundle->DebugString().empty());
 
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values,
                        bundle->GetValues(ArrayCopySemantics::kReuseInput));
@@ -861,6 +866,230 @@ TEST(BundleImplTest, CopyArraysWithFewerDestinationDevicesFails) {
 
   EXPECT_THAT(bundle->CopyArrays({1}, specs, ArrayCopySemantics::kAlwaysCopy),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, GetArraySpecsMatchesBundledArrays) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  std::vector<float> f32_data = {1.0f, 2.0f};
+  std::vector<int32_t> s32_data = {1, 2, 3, 4, 5, 6};
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array0,
+      client->MakeArrayFromHostBuffer(
+          f32_data.data(), DType(DType::kF32), Shape({2}),
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*host_buffer_hold=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      ArrayRef array1,
+      client->MakeArrayFromHostBuffer(
+          s32_data.data(), DType(DType::kS32), Shape({2, 3}),
+          /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
+          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*host_buffer_hold=*/nullptr));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  ASSERT_OK_AND_ASSIGN(absl::Span<const ArraySpec> specs,
+                       bundle->GetArraySpecs());
+
+  ASSERT_THAT(specs, SizeIs(2));
+  EXPECT_EQ(specs[0].dtype, DType(DType::kF32));
+  EXPECT_EQ(specs[0].shape, Shape({2}));
+  EXPECT_EQ(*specs[0].sharding, *sharding);
+  EXPECT_EQ(specs[1].dtype, DType(DType::kS32));
+  EXPECT_EQ(specs[1].shape, Shape({2, 3}));
+  EXPECT_EQ(*specs[1].sharding, *sharding);
+}
+
+TEST(BundleImplTest, DeleteMarksBundleDeletedAndIsIdempotent) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_FALSE(bundle->IsDeleted());
+  tsl::Future<> future1 = bundle->Delete();
+  tsl::Future<> future2 = bundle->Delete();
+  EXPECT_TRUE(bundle->IsDeleted());
+  EXPECT_OK(future1.Await());
+  EXPECT_OK(future2.Await());
+}
+
+TEST(BundleImplTest, GetReadyFuturePropagatesErrorFromPoisonedArray) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().at(0);
+  ArraySpec error_spec = {
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({2}),
+      /*sharding=*/SingleDeviceSharding::Create(device, MemoryKind()),
+  };
+  absl::StatusOr<std::vector<ArrayRef>> poisoned_arrays =
+      client->MakeErrorArrays(absl::InternalError("injected error"),
+                              {error_spec});
+  if (absl::IsUnimplemented(poisoned_arrays.status())) {
+    GTEST_SKIP() << "MakeErrorArrays is not supported.";
+  }
+  ASSERT_OK(poisoned_arrays.status());
+  ASSERT_OK_AND_ASSIGN(ArrayRef healthy_array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {healthy_array, poisoned_arrays->front()};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(BundleImplTest, BundleWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+
+  EXPECT_THAT(
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kAlwaysCopy),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, ConcatBundlesWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<BundleRef> bundles = {bundle};
+
+  EXPECT_THAT(client->ConcatBundles(absl::MakeSpan(bundles),
+                                    ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, GetValuesWithAlwaysCopyFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+
+  EXPECT_THAT(bundle->GetValues(ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, EmptyBundleAndDeleteIfSupported) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  absl::StatusOr<BundleRef> bundle =
+      client->Bundle({}, ArrayCopySemantics::kReuseInput);
+  if (absl::IsInvalidArgument(bundle.status())) {
+    GTEST_SKIP() << "Empty bundles are not supported.";
+  }
+  ASSERT_OK(bundle.status());
+
+  EXPECT_EQ((*bundle)->num_values(), 0);
+  EXPECT_OK((*bundle)->GetReadyFuture().Await());
+  EXPECT_THAT((*bundle)->GetValues(ArrayCopySemantics::kReuseInput),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT((*bundle)->GetArraySpecs(), IsOkAndHolds(IsEmpty()));
+  EXPECT_FALSE((*bundle)->IsDeleted());
+  EXPECT_OK((*bundle)->Delete().Await());
+  EXPECT_TRUE((*bundle)->IsDeleted());
+}
+
+TEST(BundleImplTest, ConcatEmptyBundlesAndDeleteIfSupported) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  absl::StatusOr<BundleRef> bundle =
+      client->ConcatBundles({}, ArrayCopySemantics::kReuseInput);
+  if (absl::IsInvalidArgument(bundle.status())) {
+    GTEST_SKIP() << "Empty bundle concatenation is not supported.";
+  }
+  ASSERT_OK(bundle.status());
+
+  EXPECT_EQ((*bundle)->num_values(), 0);
+  EXPECT_OK((*bundle)->GetReadyFuture().Await());
+  EXPECT_FALSE((*bundle)->IsDeleted());
+  EXPECT_OK((*bundle)->Delete().Await());
+  EXPECT_TRUE((*bundle)->IsDeleted());
+}
+
+TEST(BundleImplTest, CopyArraysWithMismatchedCopySpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{}};
+
+  EXPECT_THAT(
+      bundle->CopyArrays({1, 1}, specs, ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithNegativeSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{},
+                                         Bundle::CopySpec{}};
+
+  EXPECT_THAT(
+      bundle->CopyArrays({-1, 3}, specs, ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, CopyArraysWithMismatchedSliceSizesSumFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<Bundle::CopySpec> specs = {Bundle::CopySpec{}};
+
+  EXPECT_THAT(bundle->CopyArrays({1}, specs, ArrayCopySemantics::kReuseInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(BundleImplTest, ReshardArraysWithMismatchedArraySpecsSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(ArrayRef array0,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array1,
+                       MakeArbitrarySingleDeviceArray(client.get()));
+  std::vector<ValueRef> values = {array0, array1};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  std::vector<ArraySpec> specs = {array0->array_spec()};
+
+  EXPECT_THAT(bundle->ReshardArrays(specs, ArrayCopySemantics::kDonateInput),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_FALSE(bundle->IsDeleted());
 }
 
 }  // namespace

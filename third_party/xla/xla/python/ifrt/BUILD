@@ -785,6 +785,11 @@ cc_library(
     alwayslink = True,
 )
 
+build_test(
+    name = "bundle_test_no_impl",
+    targets = [":bundle_impl_test_lib"],
+)
+
 cc_library(
     name = "tuple_impl_test_lib",
     testonly = True,
