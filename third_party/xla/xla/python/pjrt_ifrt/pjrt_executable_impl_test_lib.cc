@@ -48,6 +48,10 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
+#include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -76,6 +80,8 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
+using ::testing::Optional;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -806,6 +812,34 @@ TEST(PjRtExecutableImplTest, ExecuteWithDonatedCrossDeviceCopySourceFails) {
       StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(PjRtExecutableImplTest, EmptyOutputsBundleSliceSizesCompileOptionsSerDes) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList({device}));
+
+  xla::CompileOptions compile_options;
+  auto xla_compile_options =
+      std::make_unique<XlaCompileOptions>(compile_options, device_list);
+  xla_compile_options->outputs_bundle_slice_sizes = std::vector<int>{};
+
+  for (const SerDesVersion& version : test_util::AllSupportedSerDesVersions()) {
+    absl::StatusOr<Serialized> serialized_options = Serialize(
+        *xla_compile_options, std::make_unique<SerializeOptions>(version));
+    if (version.version_number() < SerDesVersionNumber(7)) {
+      EXPECT_THAT(serialized_options,
+                  StatusIs(absl::StatusCode::kFailedPrecondition));
+      continue;
+    }
+    ASSERT_OK(serialized_options);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<XlaCompileOptions> deserialized_options,
+        Deserialize<XlaCompileOptions>(*serialized_options,
+                                       /*options=*/nullptr));
+    EXPECT_THAT(deserialized_options->outputs_bundle_slice_sizes,
+                Optional(IsEmpty()));
+  }
+}
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

@@ -23,5 +23,6 @@ message XlaCompileOptionsProto {
   int32 version_number = 3;
 
   xla.CompileOptionsProto compile_options = 1;
+  bool has_outputs_bundle_slice_sizes = 4;
   repeated int32 outputs_bundle_slice_sizes = 2;
 }

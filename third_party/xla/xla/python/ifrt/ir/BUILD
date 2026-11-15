@@ -270,6 +270,8 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",
+        "//xla/python/ifrt:serdes_test_util",
+        "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/mlir:fingerprint_utils",
         "//xla/service:device_assignment",

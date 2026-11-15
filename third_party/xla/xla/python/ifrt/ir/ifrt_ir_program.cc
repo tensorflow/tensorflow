@@ -129,7 +129,7 @@ absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>>
 IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number > SerDesVersionNumber(4)) {
+  if (version_number > SerDesVersionNumber(7)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version_number,
                      " for IfrtIRCompileOptions deserialization"));
@@ -162,7 +162,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   }
   std::optional<std::vector<int>> outputs_bundle_slice_sizes;
   if (version_number >= SerDesVersionNumber(4)) {
-    if (!proto.outputs_bundle_slice_sizes().empty()) {
+    if (proto.has_outputs_bundle_slice_sizes() ||
+        !proto.outputs_bundle_slice_sizes().empty()) {
       outputs_bundle_slice_sizes.emplace(
           proto.outputs_bundle_slice_sizes().begin(),
           proto.outputs_bundle_slice_sizes().end());
@@ -227,12 +228,16 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
       dot_graph_min_per_device_transfer_size_bytes);
   proto.set_strict_memory_reservation(strict_memory_reservation);
   if (outputs_bundle_slice_sizes.has_value()) {
-    if (version.version_number() < SerDesVersionNumber(4)) {
+    const SerDesVersionNumber min_version(
+        outputs_bundle_slice_sizes->empty() ? 7 : 4);
+    if (version.version_number() < min_version) {
       return absl::FailedPreconditionError(
           absl::StrCat("Unsupported ", version.version_number(),
                        " for IfrtIRCompileOptions serialization with "
                        "outputs_bundle_slice_sizes"));
     }
+    proto.set_version_number(min_version.value());
+    proto.set_has_outputs_bundle_slice_sizes(true);
     proto.mutable_outputs_bundle_slice_sizes()->Add(
         outputs_bundle_slice_sizes->begin(), outputs_bundle_slice_sizes->end());
   }

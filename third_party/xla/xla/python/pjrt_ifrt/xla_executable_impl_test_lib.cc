@@ -1283,6 +1283,32 @@ TEST_P(LoadedExecutableImplTest, ExecuteWithMismatchedDevicesFails) {
               Not(IsOk()));
 }
 
+TEST_P(
+    LoadedExecutableImplTest,
+    CompileAndExecuteBundleWithZeroOutputsAndEmptySliceSizesReturnsNoBundles) {
+  static constexpr absl::string_view kModule = R"mlir(
+module @nop {
+  func.func @main() {
+    return
+  }
+})mlir";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, /*serialize=*/GetParam(),
+                       /*outputs_bundle_slice_sizes=*/std::vector<int>{}));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                       executable->ExecuteBundle({}, execute_options));
+
+  EXPECT_OK(result.status.Await());
+  EXPECT_THAT(result.outputs, IsEmpty());
+}
 INSTANTIATE_TEST_SUITE_P(
     LoadedExecutableImplTest, LoadedExecutableImplTest,
     /*serialize=*/testing::Bool(),
@@ -1814,32 +1840,6 @@ TEST(ExecutableTest, UnloadedExecutableSerialization) {
     ASSERT_TRUE(metadata.parameter_specs(i).has_shape());
     EXPECT_THAT(metadata.parameter_specs(i).shape().dims(), ElementsAre(2, 3));
   }
-}
-
-TEST(ExecutableTest,
-     CompileAndExecuteBundleWithZeroOutputsAndEmptySliceSizesReturnsNoBundles) {
-  static constexpr absl::string_view kModule = R"mlir(
-module @nop {
-  func.func @main() {
-    return
-  }
-})mlir";
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
-  Compiler* const compiler = client->GetDefaultCompiler();
-  Device* const device = client->addressable_devices().front();
-  ASSERT_OK_AND_ASSIGN(
-      LoadedExecutableRef executable,
-      CompileOnDevices(client.get(), compiler, kModule, {device},
-                       /*replicated=*/false, /*serialize=*/false,
-                       /*outputs_bundle_slice_sizes=*/std::vector<int>{}));
-  ExecuteOptions execute_options;
-  execute_options.fill_status = true;
-
-  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
-                       executable->ExecuteBundle({}, execute_options));
-
-  EXPECT_OK(result.status.Await());
-  EXPECT_THAT(result.outputs, IsEmpty());
 }
 
 }  // namespace

@@ -81,12 +81,16 @@ class XlaCompileOptionsSerDes
           "xla::ifrt::XlaCompileOptions with relocatables is not serializable");
     }
     if (xla_compile_options.outputs_bundle_slice_sizes.has_value()) {
-      if (version.version_number() < SerDesVersionNumber(4)) {
+      const SerDesVersionNumber min_version(
+          xla_compile_options.outputs_bundle_slice_sizes->empty() ? 7 : 4);
+      if (version.version_number() < min_version) {
         return absl::FailedPreconditionError(
             absl::StrCat("Unsupported ", version.version_number(),
                          " for XlaCompileOptions serialization with "
                          "outputs_bundle_slice_sizes"));
       }
+      proto.set_version_number(min_version.value());
+      proto.set_has_outputs_bundle_slice_sizes(true);
       proto.mutable_outputs_bundle_slice_sizes()->Add(
           xla_compile_options.outputs_bundle_slice_sizes->begin(),
           xla_compile_options.outputs_bundle_slice_sizes->end());
@@ -103,7 +107,7 @@ class XlaCompileOptionsSerDes
           "Unable to parse serialized XlaCompileOptionsProto");
     }
     const SerDesVersionNumber version_number(proto.version_number());
-    if (version_number > SerDesVersionNumber(4)) {
+    if (version_number > SerDesVersionNumber(7)) {
       return absl::FailedPreconditionError(
           absl::StrCat("Unsupported ", version_number,
                        " for XlaCompileOptions deserialization"));
@@ -113,7 +117,8 @@ class XlaCompileOptionsSerDes
     ABSL_ASSIGN_OR_RETURN(options->compile_options,
                      xla::CompileOptions::FromProto(proto.compile_options()));
     if (version_number >= SerDesVersionNumber(4)) {
-      if (!proto.outputs_bundle_slice_sizes().empty()) {
+      if (proto.has_outputs_bundle_slice_sizes() ||
+          !proto.outputs_bundle_slice_sizes().empty()) {
         options->outputs_bundle_slice_sizes.emplace(
             proto.outputs_bundle_slice_sizes().begin(),
             proto.outputs_bundle_slice_sizes().end());

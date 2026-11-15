@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/service/device_assignment.h"
 #include "xla/tsl/platform/test.h"
 
@@ -81,6 +83,25 @@ TEST(IfrtIRCompileOptionsTest, ToFromProto) {
   EXPECT_EQ(std::vector(from_to_proto.device_ids().begin(),
                         from_to_proto.device_ids().end()),
             std::vector(proto.device_ids().begin(), proto.device_ids().end()));
+}
+
+TEST(IfrtIRCompileOptionsTest, EmptyOutputsBundleSliceSizesToFromProto) {
+  IfrtIRCompileOptions options;
+  options.outputs_bundle_slice_sizes = std::vector<int>{};
+
+  for (const SerDesVersion& version : test_util::AllSupportedSerDesVersions()) {
+    IfrtIrCompileOptionsProto proto;
+    absl::Status status = options.ToProto(proto, version);
+    if (version.version_number() < SerDesVersionNumber(7)) {
+      EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+      continue;
+    }
+    ASSERT_OK(status);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtIRCompileOptions> deserialized,
+                         IfrtIRCompileOptions::FromProto(proto));
+    ASSERT_TRUE(deserialized->outputs_bundle_slice_sizes.has_value());
+    EXPECT_TRUE(deserialized->outputs_bundle_slice_sizes->empty());
+  }
 }
 
 TEST(IfrtIRCompileOptionsTest, FingerprintDeterministic) {

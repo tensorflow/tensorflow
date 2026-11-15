@@ -38,5 +38,6 @@ message CustomCallProgramProto {
 message CustomCallCompileOptionsProto {
   int32 version_number = 1;
 
+  bool has_outputs_bundle_slice_sizes = 3;
   repeated int32 outputs_bundle_slice_sizes = 2;
 }

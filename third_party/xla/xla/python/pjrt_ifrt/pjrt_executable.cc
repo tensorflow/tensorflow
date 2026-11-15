@@ -833,6 +833,7 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
   metadata.set_portable(is_portable);
 
   if (outputs_bundle_slice_sizes.has_value()) {
+    metadata.set_has_outputs_bundle_slice_sizes(true);
     metadata.mutable_outputs_bundle_slice_sizes()->Add(
         outputs_bundle_slice_sizes->begin(), outputs_bundle_slice_sizes->end());
   }
@@ -974,7 +975,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   }
 
   std::optional<std::vector<int>> outputs_bundle_slice_sizes;
-  if (!metadata.outputs_bundle_slice_sizes().empty()) {
+  if (metadata.has_outputs_bundle_slice_sizes() ||
+      !metadata.outputs_bundle_slice_sizes().empty()) {
     outputs_bundle_slice_sizes.emplace(
         metadata.outputs_bundle_slice_sizes().begin(),
         metadata.outputs_bundle_slice_sizes().end());

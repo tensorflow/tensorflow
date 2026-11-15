@@ -110,5 +110,6 @@ message SerializedXlaExecutableMetadata {
 
   repeated ParameterSpec parameter_specs = 6;
 
+  bool has_outputs_bundle_slice_sizes = 11;
   repeated int32 outputs_bundle_slice_sizes = 10;
 }
