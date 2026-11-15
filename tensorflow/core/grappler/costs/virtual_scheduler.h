@@ -170,8 +170,8 @@ struct DeviceState {
 // Keeps ready nodes and picks the best one to be scheduled.
 class ReadyNodeManager {
  public:
-  ReadyNodeManager() {}
-  virtual ~ReadyNodeManager() {}
+  ReadyNodeManager() = default;
+  virtual ~ReadyNodeManager() = default;
   virtual absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) {
     return absl::OkStatus();
@@ -184,8 +184,8 @@ class ReadyNodeManager {
 
 class FIFOManager : public ReadyNodeManager {
  public:
-  FIFOManager() : ReadyNodeManager() {}
-  ~FIFOManager() override {}
+  FIFOManager() : = default;
+  ~FIFOManager() override = default;
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -204,8 +204,8 @@ class FIFOManager : public ReadyNodeManager {
 // that node's execution.
 class LIFOManager : public ReadyNodeManager {
  public:
-  LIFOManager() : ReadyNodeManager() {}
-  ~LIFOManager() override {}
+  LIFOManager() : = default;
+  ~LIFOManager() override = default;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -228,7 +228,7 @@ class HeapReadyManager : public ReadyNodeManager {
   HeapReadyManager();
   absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
-  ~HeapReadyManager() override {}
+  ~HeapReadyManager() override = default;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -258,8 +258,8 @@ class HeapReadyManager : public ReadyNodeManager {
 // time_ready value with unique node names as the tie-breaker.
 class FirstReadyManager : public HeapReadyManager {
  public:
-  FirstReadyManager() : HeapReadyManager() {}
-  ~FirstReadyManager() override {}
+  FirstReadyManager() : = default;
+  ~FirstReadyManager() override = default;
 
  protected:
   std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
@@ -269,8 +269,8 @@ class FirstReadyManager : public HeapReadyManager {
 // from all the ready nodes.
 class PriorityReadyManager : public HeapReadyManager {
  public:
-  PriorityReadyManager() : HeapReadyManager() {}
-  ~PriorityReadyManager() override {}
+  PriorityReadyManager() : = default;
+  ~PriorityReadyManager() override = default;
   void AddNode(const NodeDef* node) override;
 
   // Note this should be called after Init().
@@ -295,7 +295,7 @@ class PriorityReadyManager : public HeapReadyManager {
 class CompositeNodeManager : public ReadyNodeManager {
  public:
   CompositeNodeManager();
-  ~CompositeNodeManager() override {}
+  ~CompositeNodeManager() override = default;
 
   absl::Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;

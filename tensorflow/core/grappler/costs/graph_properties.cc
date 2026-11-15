@@ -180,7 +180,7 @@ struct Processor<DimensionHandle> {
 template <typename Handle>
 class DisjointSet {
  public:
-  DisjointSet() {}
+  DisjointSet() = default;
   ~DisjointSet() {
     for (auto rep : nodes_) {
       delete rep.second;
@@ -2089,7 +2089,7 @@ class SymbolicShapeRefiner {
 // dims, and consolidate the information globally.
 class SymbolicShapeManager {
  public:
-  SymbolicShapeManager() {}
+  SymbolicShapeManager() = default;
 
   absl::Status Merge(ShapeHandle s1, ShapeHandle s2) {
     if (!s1.IsSet() || !s2.IsSet()) {
