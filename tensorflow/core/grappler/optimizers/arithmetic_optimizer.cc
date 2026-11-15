@@ -2757,14 +2757,16 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
   ~ReduceUpsamplingDims() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
+    return IsReshape(*node) && HasExactRegularInputs(*node, 2) &&
+           !IsInPreserveSet(*node);
   }
 
   absl::Status TrySimplify(NodeDef* node,
                            std::string* simplified_node_name) override {
     NodeDef* tile;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &tile));
-    if (!IsTile(*tile) || IsInPreserveSet(*tile)) {
+    if (!IsTile(*tile) || IsInPreserveSet(*tile) ||
+        !HasExactRegularInputs(*tile, 2)) {
       return absl::OkStatus();
     }
 
@@ -2777,7 +2779,8 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
 
     NodeDef* reshape;
     TF_RETURN_IF_ERROR(GetInputNode(tile->input(0), &reshape));
-    if (!IsReshape(*reshape) || IsInPreserveSet(*reshape)) {
+    if (!IsReshape(*reshape) || IsInPreserveSet(*reshape) ||
+        !HasExactRegularInputs(*reshape, 2)) {
       return absl::OkStatus();
     }
 
@@ -2853,6 +2856,15 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
   }
 
  private:
+  // True if `node` has exactly `regular` regular inputs, optionally followed by
+  // control inputs. Reshape and Tile take two regular inputs, and a GraphDef
+  // handed to Grappler has not necessarily been validated against the op
+  // definitions.
+  static bool HasExactRegularInputs(const NodeDef& node, int regular) {
+    return NumNonControlInputs(node) == regular &&
+           NumControlInputs(node) == node.input_size() - regular;
+  }
+
   bool CreateUpdatedMultiplesProto(const NodeDef* node, TensorProto* proto) {
     Tensor multiples;
     if (!GetTensorFromConstNode(node->name(), &multiples)) {
