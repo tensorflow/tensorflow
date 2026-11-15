@@ -1117,6 +1117,135 @@ TEST(CopytoHostBufferTest,
               absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST(CopyToHostBufferTest, FailsWhenAssembledShardExceedsShapeNumElements) {
+  absl::StatusOr<std::shared_ptr<Client>> client = test_util::GetClient();
+  ASSERT_THAT(client, absl_testing::IsOk());
+  absl::Span<Device* const> devices = (*client)->addressable_devices();
+  ASSERT_GE(devices.size(), 1);
+
+  std::vector<std::string> shard_contents = {"abc", "def", "ghi"};
+  absl::StatusOr<ArrayRef> single_device_array =
+      MakeSingleDeviceStringTestArray(shard_contents, client->get(),
+                                      devices[0]);
+  ASSERT_THAT(single_device_array, absl_testing::IsOk());
+
+  absl::StatusOr<DeviceListRef> device_list =
+      (*client)->MakeDeviceList({devices[0]});
+  ASSERT_THAT(device_list, absl_testing::IsOk());
+  ShardingRef opaque_sharding =
+      OpaqueSharding::Create(*std::move(device_list), MemoryKind());
+  std::vector<ArrayRef> shards = {*std::move(single_device_array)};
+
+  absl::StatusOr<ArrayRef> assembled =
+      (*client)->AssembleArrayFromSingleDeviceArrays(
+          DType(DType::kString), Shape({1}), std::move(opaque_sharding),
+          absl::MakeSpan(shards), ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards);
+  ASSERT_THAT(assembled, absl_testing::IsOk());
+
+  std::vector<absl::Cord> data_read = {absl::Cord("sentinel")};
+  EXPECT_THAT((*assembled)
+                  ->CopyToHostBuffer(data_read.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(data_read, ElementsAre("sentinel"));
+}
+
+TEST(CopyToHostBufferTest, FailsWhenShardHasFewerElementsThanShape) {
+  absl::StatusOr<std::shared_ptr<Client>> client = test_util::GetClient();
+  ASSERT_THAT(client, absl_testing::IsOk());
+  absl::Span<Device* const> devices = (*client)->addressable_devices();
+  ASSERT_GE(devices.size(), 1);
+
+  auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
+  ShardingRef sharding = SingleDeviceSharding::Create(devices[0], MemoryKind());
+  absl::StatusOr<tsl::RCReference<BasicStringArray>> array =
+      BasicStringArray::Create(
+          client->get(), Shape({3}), std::move(sharding),
+          tsl::Future<BasicStringArray::Buffers>(std::move(buffers)),
+          std::move(on_done_with_buffer));
+  ASSERT_THAT(array, absl_testing::IsOk());
+
+  std::vector<absl::Cord> data_read(3, absl::Cord("sentinel"));
+  EXPECT_THAT((*array)
+                  ->CopyToHostBuffer(data_read.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(data_read, ElementsAre("sentinel", "sentinel", "sentinel"));
+}
+
+TEST(CopyToHostBufferTest, ValidatesByteStridesAndNullHostBuffer) {
+  absl::StatusOr<std::shared_ptr<Client>> client = test_util::GetClient();
+  ASSERT_THAT(client, absl_testing::IsOk());
+  absl::Span<Device* const> devices = (*client)->addressable_devices();
+  ASSERT_GE(devices.size(), 1);
+
+  absl::StatusOr<ArrayRef> non_empty_array =
+      MakeSingleDeviceStringTestArray({"abc"}, client->get(), devices[0]);
+  ASSERT_THAT(non_empty_array, absl_testing::IsOk());
+
+  std::vector<absl::Cord> data_read(1);
+  const int64_t strides[] = {16};
+  EXPECT_THAT(
+      (*non_empty_array)
+          ->CopyToHostBuffer(data_read.data(), absl::MakeConstSpan(strides),
+                             ArrayCopySemantics::kAlwaysCopy)
+          .Await(),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  EXPECT_THAT((*non_empty_array)
+                  ->CopyToHostBuffer(/*data=*/nullptr,
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  absl::StatusOr<ArrayRef> empty_array =
+      MakeSingleDeviceStringTestArray({}, client->get(), devices[0]);
+  ASSERT_THAT(empty_array, absl_testing::IsOk());
+  EXPECT_THAT((*empty_array)
+                  ->CopyToHostBuffer(/*data=*/nullptr,
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              absl_testing::IsOk());
+}
+
+TEST(CopyToHostBufferTest, FailsWithNonAddressableSingleDeviceArray) {
+  absl::StatusOr<std::shared_ptr<Client>> client = test_util::GetClient();
+  ASSERT_THAT(client, absl_testing::IsOk());
+  Device* non_addressable_device = nullptr;
+  for (Device* const device : (*client)->devices()) {
+    if (!device->IsAddressable()) {
+      non_addressable_device = device;
+      break;
+    }
+  }
+  ASSERT_NE(non_addressable_device, nullptr);
+
+  ShardingRef sharding =
+      SingleDeviceSharding::Create(non_addressable_device, MemoryKind());
+  absl::StatusOr<tsl::RCReference<BasicStringArray>> array =
+      BasicStringArray::Create(
+          client->get(), Shape({1}), std::move(sharding),
+          tsl::Future<BasicStringArray::Buffers>(BasicStringArray::Buffers{}),
+          /*on_done_with_buffer=*/nullptr);
+  ASSERT_THAT(array, absl_testing::IsOk());
+
+  std::vector<absl::Cord> data_read = {absl::Cord("sentinel")};
+  EXPECT_THAT((*array)
+                  ->CopyToHostBuffer(data_read.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(data_read, ElementsAre("sentinel"));
+}
+
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

@@ -281,19 +281,49 @@ tsl::Future<> BasicStringArray::CopyToHostBuffer(
         "array has been sharded over %d devices.",
         array_spec_.sharding->devices()->size())));
   }
+  if (!array_spec_.sharding->devices()->IsFullyAddressable()) {
+    return tsl::Future<>(absl::InvalidArgumentError(absl::StrFormat(
+        "CopyToHostBuffer only supports addressable string arrays. This "
+        "array has non-addressable devices: %v",
+        *array_spec_.sharding->devices())));
+  }
+  if (byte_strides.has_value()) {
+    return tsl::Future<>(absl::InvalidArgumentError(
+        "Byte strides are not supported for string arrays"));
+  }
+  const int64_t num_elements = array_spec_.shape.num_elements();
+  if (num_elements > 0 && data == nullptr) {
+    return tsl::Future<>(absl::InvalidArgumentError(
+        "Host buffer data must not be null for non-empty string arrays"));
+  }
 
   auto [copy_completion_promise, copy_completion_future] = tsl::MakePromise<>();
 
   buffers_.OnReady(
       [copy_completion_promise = std::move(copy_completion_promise),
-       host_buffer = static_cast<absl::Cord*>(data)](
-          absl::StatusOr<Buffers> input_buffers) mutable {
+       host_buffer = static_cast<absl::Cord*>(data),
+       num_elements](absl::StatusOr<Buffers> input_buffers) mutable {
         if (!input_buffers.ok()) {
           copy_completion_promise.Set(input_buffers.status());
           return;
         }
-        const absl::Span<const absl::Cord>& input_buffer = (*input_buffers)[0];
-        for (int i = 0; i < input_buffer.size(); ++i) {
+        if (input_buffers->size() != 1) {
+          copy_completion_promise.Set(absl::FailedPreconditionError(
+              absl::StrCat("Expected a single shard buffer in "
+                           "CopyToHostBuffer, but got: ",
+                           input_buffers->size())));
+          return;
+        }
+        const absl::Span<const absl::Cord> input_buffer = (*input_buffers)[0];
+        if (input_buffer.size() != num_elements) {
+          copy_completion_promise.Set(absl::FailedPreconditionError(
+              absl::StrCat("Number of strings in buffer: ", input_buffer.size(),
+                           " does not match the number of elements in array "
+                           "shape: ",
+                           num_elements)));
+          return;
+        }
+        for (int64_t i = 0; i < num_elements; ++i) {
           host_buffer[i] = input_buffer[i];
         }
         copy_completion_promise.Set(absl::OkStatus());
