@@ -527,7 +527,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
 class EagerServiceImplFunctionTest : public EagerServiceImplTest {
  public:
-  EagerServiceImplFunctionTest() : EagerServiceImplTest() {}
+  EagerServiceImplFunctionTest() : = default;
 
   // Creates a context and attempts to execute a function.
   void TestFunction(const RegisterFunctionOp& register_op,

@@ -124,7 +124,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
-      ~Iterator() override {}
+      ~Iterator() override = default;
 
       absl::Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(ctx, this, prefix(),
@@ -248,7 +248,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
      private:
       // Describes one component of the input.
       struct InputDescriptor {
-        InputDescriptor() {}
+        InputDescriptor() = default;
         InputDescriptor(Tensor&& whole_tensor, int64_t original_batch_dim,
                         int64_t interval)
             : whole_tensor(std::move(whole_tensor)),
@@ -387,7 +387,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
-      ~Iterator() override {}
+      ~Iterator() override = default;
 
       absl::Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(ctx, this, prefix(),
