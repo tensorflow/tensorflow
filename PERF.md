@@ -61,11 +61,47 @@ The 70x at 4096/1024 is larger than the others. The `std::unordered_map` baselin
 slow at that size, and the result was consistent across sessions (73-75x in an
 earlier 7-round run).
 
+## 3. InTopK: adaptive row sharding (`in_topk_op.h`)
+
+Rows are independent but ran serially. The kernel now runs the first 32 rows inline,
+measures how many predictions they actually read (rows stop early once more than k
+larger values are seen), and shards the remaining rows with `ParallelFor` only if the
+estimated remaining work is at least 32K predictions. The row loop now reads through
+raw pointers.
+
+These numbers come from a separate 7-round run (base vs. the branch head), with k=5.
+`hit=1` means the target is the row maximum, so every row is a full scan; that is the
+common case for a trained classifier. `hit=0` means random predictions, so rows exit early.
+
+| rows x classes, hit | base us | new us | speedup |
+|---|---:|---:|---:|
+| 64 x 1000, early exit | 16.4 | 15.8 | 1.04x |
+| 64 x 1000, full scan | 76.2 | 64.9 | 1.17x |
+| 1024 x 1000, early exit | 77.9 | 81.4 | **0.96x** |
+| 1024 x 1000, full scan | 1080.8 | 192.4 | 5.62x |
+| 4096 x 1000, full scan | 4124.3 | 625.2 | 6.60x |
+| 1024 x 10000, full scan | 10147.4 | 1733.2 | 5.85x |
+| 256 x 100000, full scan | 28234.5 | 6080.5 | 4.64x |
+| BM_InTopK int64 64 x 1000, k=10 | 19.1 | 18.9 | 1.01x |
+| BM_InTopK int64 64 x 10000, k=10 | 19.6 | 19.2 | 1.02x |
+
 ## Negative results and caveats
 
 - Small Bucketize inputs (below 4096 elements) gain nothing. They stay on the caller
   thread on purpose. An earlier session measured 0.85-0.89x at 1024 elements for the
   inline path, and this session measured 0.97x. The loop is the same, so treat it as
   noise or code layout.
+- InTopK, first attempt (not kept): always calling `ParallelFor` with a full-row cost
+  hint gave 1.5-7.6x on full scans, but made small and early-exit inputs 1.5-2.9x
+  slower (for example 64x10000 early exit went from 12.8 to 36.5 us), because dispatch
+  overhead dominated rows that stop after a few dozen reads. The adaptive sampling
+  above replaced it.
+- InTopK cost-hint tuning made no difference. A ParallelFor cost hint of 2x, 8x, or a
+  full row of `num_classes` per row, and a 128K instead of 32K threshold, all landed
+  within noise of each other on these benchmarks, so the simplest hint was kept.
+- InTopK 1024x1000 early exit is about 4-10% slower across runs (0.88-0.96x). It stays
+  on the serial path (about 22 reads per sampled row, below the threshold), and that
+  loop is a bit slower than the original for very short rows. I didn't find a fix that
+  holds up beyond noise.
 - The multithreaded speedups depend on idle cores. On a loaded machine, or inside an
   inter-op pool that is already busy, the gains will be smaller.
