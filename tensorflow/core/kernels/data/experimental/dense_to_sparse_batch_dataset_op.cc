@@ -199,28 +199,27 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             if (!*end_of_sequence) {
               DCHECK_EQ(1, batch_element_tuple.size());
               batch_elements.push_back(std::move(batch_element_tuple[0]));
-              total_elements += batch_element_tuple[0].NumElements();
+              const Tensor& batch_element = batch_elements.back();
+              total_elements += batch_element.NumElements();
 
               // TODO(mrry): Investigate how to hoist this check when we
               // have static information that renders it unnecessary.
-              if (batch_element_tuple[0].shape().dims() != row_ndims) {
+              if (batch_element.shape().dims() != row_ndims) {
                 return absl::InvalidArgumentError(
                     absl::StrCat("Input element had shape (",
-                                 batch_element_tuple[0].shape().DebugString(),
+                                 batch_element.shape().DebugString(),
                                  ") that is incompatible with the row shape (",
                                  row_shape.DebugString(), ")."));
               }
               for (int j = 0; j < row_ndims; ++j) {
                 // Take the maximum in the dimension if -1 is given.
                 if (row_shape.dim_size(j) == -1) {
-                  dense_shape_vec(j + 1) =
-                      std::max(batch_element_tuple[0].dim_size(j),
-                               dense_shape_vec(j + 1));
-                } else if (batch_element_tuple[0].dim_size(j) >
-                           row_shape.dim_size(j)) {
+                  dense_shape_vec(j + 1) = std::max(batch_element.dim_size(j),
+                                                    dense_shape_vec(j + 1));
+                } else if (batch_element.dim_size(j) > row_shape.dim_size(j)) {
                   return absl::DataLossError(
                       absl::StrCat("Input element had shape (",
-                                   batch_element_tuple[0].shape().DebugString(),
+                                   batch_element.shape().DebugString(),
                                    ") that is larger than the row shape (",
                                    row_shape.DebugString(), ")."));
                 }

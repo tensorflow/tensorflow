@@ -101,6 +101,28 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                                 "larger than the row shape"):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testLargeDimensions(self):
+    # Dimensions >= 2**16 use a different TensorShape representation, so the
+    # row shape checks must read the shape of the element that was batched.
+    get_next = self.getNext(
+        dataset_ops.Dataset.from_tensors(array_ops.zeros([70000])).sparse_batch(
+            1, [5000]))
+    with self.assertRaisesRegex(errors.DataLossError,
+                                "larger than the row shape"):
+      self.evaluate(get_next())
+
+    get_next = self.getNext(
+        dataset_ops.Dataset.from_tensors(array_ops.zeros([70000])).sparse_batch(
+            1, [None]))
+    self.assertAllEqual([1, 70000], self.evaluate(get_next()).dense_shape)
+
+    get_next = self.getNext(
+        dataset_ops.Dataset.from_tensors(array_ops.zeros(
+            [70000, 1, 1, 1])).sparse_batch(1, [None, None, None, None]))
+    self.assertAllEqual([1, 70000, 1, 1, 1],
+                        self.evaluate(get_next()).dense_shape)
+
 
 class DenseToSparseBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                        parameterized.TestCase):
