@@ -550,7 +550,6 @@ absl::StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(output_names_size == num_data_results)
         << "output names (" << output_names.size()
         << ") != terminator operands (" << num_data_results << ")";
-    llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
     llvm::StringMap<Operation*> name_to_op;
     for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.

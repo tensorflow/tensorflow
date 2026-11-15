@@ -62,6 +62,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -75,7 +77,9 @@ tf_cc_test(
         ":uniform_quant_ops_params",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/platform:status_matchers",
     ],
 )
 

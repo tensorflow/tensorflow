@@ -879,11 +879,10 @@ TEST(XlaBuilderTest, AllToAll) {
            /*split_count=*/2);
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
 
-  // AllToAll is decomposed into slices -> all-to-all -> gte -> concat.
+  // AllToAll is decomposed into reshape -> all-to-all -> transpose -> reshape.
   const HloInstruction* root = GetRoot(*module);
-  EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
-  EXPECT_EQ(root->operand(0)->operand(0)->operand(0)->opcode(),
-            HloOpcode::kAllToAll);
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Transpose(
+                        m::AllToAll(m::Reshape(m::Parameter(0)))))));
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
 }

@@ -30,15 +30,18 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/locality_domain.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -77,19 +80,43 @@ absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
 }  // namespace
 
 CUmemAllocationProp BuildVmmAllocationProp(
-    CUdevice device, const CudaDeviceAllocator::Options& options) {
+    CUdevice device, const CudaDeviceAllocator::Options& options,
+    [[maybe_unused]] std::optional<int> locality_domain_id) {
   CUmemAllocationProp properties = {};
   properties.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   properties.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
   properties.location.id = device;
-  properties.allocFlags.gpuDirectRDMACapable = options.enable_rdma ? 1 : 0;
-
-  int handle_types = CU_MEM_HANDLE_TYPE_NONE;
-  if (options.enable_posix_fd_handle) {
-    handle_types |= CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+  bool localized = false;
+#if CUDA_VERSION >= 13040
+  // Locality-domain (die) placement: back this allocation with physical memory
+  // local to a specific die of the device.
+  if (locality_domain_id.has_value()) {
+    properties.location.type = CU_MEM_LOCATION_TYPE_DEVICE_LOCALITY_DOMAIN;
+    properties.location.localized.deviceId = static_cast<unsigned char>(device);
+    properties.location.localized.localityDomainId =
+        static_cast<unsigned char>(*locality_domain_id);
+    localized = true;
   }
-  if (options.enable_fabric_handle) {
-    handle_types |= CU_MEM_HANDLE_TYPE_FABRIC;
+#endif  // CUDA_VERSION >= 13040
+  // Locality-domain memory does not support GPUDirect-RDMA-capable placement;
+  // leave allocFlags zeroed for it (matching the driver's supported
+  // locality-domain allocation shape). Only request RDMA for ordinary device
+  // allocations.
+  properties.allocFlags.gpuDirectRDMACapable =
+      (!localized && options.enable_rdma) ? 1 : 0;
+
+  // Locality-domain memory is intra-process, per-die memory and does not
+  // support exportable handle types (FABRIC / POSIX_FD); request NONE for it.
+  // Intra-process peer (P2P/NVLink) access is granted separately via
+  // cuMemSetAccess, which does not require exportable handles.
+  int handle_types = CU_MEM_HANDLE_TYPE_NONE;
+  if (!localized) {
+    if (options.enable_posix_fd_handle) {
+      handle_types |= CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+    }
+    if (options.enable_fabric_handle) {
+      handle_types |= CU_MEM_HANDLE_TYPE_FABRIC;
+    }
   }
   properties.requestedHandleTypes =
       static_cast<CUmemAllocationHandleType>(handle_types);
@@ -228,11 +255,29 @@ AllocateDeviceMemory(StreamExecutor* executor,
   ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
+  const bool localized = options.locality_domain_id.has_value();
+
   // Query device allocation granularity and pad size to alignment boundary.
-  CUmemAllocationProp properties = BuildVmmAllocationProp(device, options);
+  CUmemAllocationProp properties =
+      BuildVmmAllocationProp(device, options, options.locality_domain_id);
   size_t granularity = 0;
-  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
-      &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
+  CUresult granularity_result = cuMemGetAllocationGranularity(
+      &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED);
+  if (localized && (granularity_result != CUDA_SUCCESS || granularity == 0)) {
+    // Locality-domain properties may only report a minimum granularity.
+    XLA_VLOG_DEVICE(1, executor->device_ordinal())
+        << "cuMemGetAllocationGranularity(RECOMMENDED) for locality domain "
+        << *options.locality_domain_id << " "
+        << (granularity_result != CUDA_SUCCESS
+                ? absl::StrCat("failed: ",
+                               cuda::ToStatus(granularity_result).ToString())
+                : std::string("returned 0"))
+        << "; will retry with minimum granularity.";
+    granularity_result = cuMemGetAllocationGranularity(
+        &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+  }
+  ABSL_RETURN_IF_ERROR(
+      cuda::ToStatus(granularity_result, "cuMemGetAllocationGranularity"));
 
   size_t effective_alignment = std::max(options.alignment, granularity);
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, effective_alignment);
@@ -496,6 +541,33 @@ CudaDeviceAllocator::CudaDeviceAllocator(StreamExecutor* executor)
 CudaDeviceAllocator::CudaDeviceAllocator(StreamExecutor* executor,
                                          Options options)
     : executor_(executor), options_(options) {}
+
+absl::StatusOr<std::unique_ptr<CudaDeviceAllocator>>
+CudaDeviceAllocator::Create(StreamExecutor* executor, Options options) {
+  if (options.locality_domain_id.has_value()) {
+    if (*options.locality_domain_id < 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Invalid CUDA locality domain id: %d", *options.locality_domain_id));
+    }
+    if (!options.use_vmm) {
+      return absl::InvalidArgumentError(
+          "Locality-domain memory placement requires the VMM allocation path "
+          "(use_vmm=true)");
+    }
+    CUdevice device;
+    ABSL_RETURN_IF_ERROR(
+        cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
+    ABSL_ASSIGN_OR_RETURN(int domain_count, GetLocalityDomainCount(device));
+    if (*options.locality_domain_id >= domain_count) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Invalid CUDA locality domain id %d; device %d has %d locality "
+          "domains",
+          *options.locality_domain_id, executor->device_ordinal(),
+          domain_count));
+    }
+  }
+  return absl::WrapUnique(new CudaDeviceAllocator(executor, options));
+}
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> CudaDeviceAllocator::Allocate(
     uint64_t size) {

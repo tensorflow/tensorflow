@@ -17,10 +17,11 @@ What other things have we tried?
    Therefore, updating OSS `gmock/gmock.h` seems necessary.
 
 2. Patching in the extra macros to `gmock/gmock.h` by including
-   `absl/status/status_macros.h`.
+   `absl/status/status_matchers.h`.
 
    This introduces a circular dependency between absl and gmock which makes
-   bazel strongly opposed to the idea.
+   bazel strongly opposed to the idea (also, `absl/status/status_matchers.h`
+   does not provide `ASSERT_OK_AND_ASSIGN`).
 
 3. Introducing a googletest bazel module wrapper.
 

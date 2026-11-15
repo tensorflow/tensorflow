@@ -170,6 +170,10 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
   // For a forward cycle, this checks:
   // 1. Split collectives should not have channel-id
   // 2. Split collectives are combined based on replica-id.
+  // With two disjoint cycles there are two back edges, so the select must be
+  // driven by the disjunction of both back-edge targets: device 0 receives on
+  // {6,0} and device 1 on {7,1}, and neither is a target of the forward
+  // collective-permute.
   absl::string_view hlo = R"(
     HloModule test
     ENTRY test_computation {
@@ -184,8 +188,11 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
   EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
     // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
     // CHECK-DAG:   %[[replica_id:.+]] = u32[] replica-id()
+    // CHECK-DAG:   %[[c0:.+]] = u32[] constant(0)
+    // CHECK-DAG:   %[[cmp0:.+]] = pred[] compare(%[[replica_id]], %[[c0]]), direction=EQ
     // CHECK-DAG:   %[[c1:.+]] = u32[] constant(1)
-    // CHECK-DAG:   %[[compare:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %[[cmp1:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %[[compare:.+]] = pred[] or(%[[cmp0]], %[[cmp1]])
     // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
 
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
@@ -305,6 +312,44 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycleNoChannel) {
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
   )"));
+}
+
+TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycleMultipleCycles) {
+  // With two disjoint backward cycles ({0,6},{6,4},{4,2},{2,0} and
+  // {1,7},{7,5},{5,3},{3,1}), there are two back edges ({0,6} and {1,7}), so
+  // the select predicate must OR the comparisons for both back-edge receivers
+  // (partitions 6 and 7).
+  absl::string_view hlo = R"(
+    HloModule test
+    ENTRY test_computation {
+      p = u32[8,8] parameter(0)
+      ROOT start = u32[8,8] collective-permute(p), channel_id=1,
+        source_target_pairs={{0,6},{6,4},{4,2},{2,0},{1,7},{7,5},{5,3},{3,1}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunAndCheckHloRewrite(hlo, Decomposer(0), true));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(PrintOptions()), R"(
+    // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
+    // CHECK-DAG:   %[[partition:.+]] = u32[] partition-id()
+    // CHECK-DAG:   %[[c6:.+]] = u32[] constant(6)
+    // CHECK-DAG:   %[[cmp6:.+]] = pred[] compare(%[[partition]], %[[c6]]), direction=EQ
+    // CHECK-DAG:   %[[c7:.+]] = u32[] constant(7)
+    // CHECK-DAG:   %[[cmp7:.+]] = pred[] compare(%[[partition]], %[[c7]]), direction=EQ
+    // CHECK-DAG:   %[[compare:.+]] = pred[] or(%[[cmp6]], %[[cmp7]])
+    // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
+
+    // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1, source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{0,6},{1,7}}
+
+    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2, source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{6,4},{4,2},{2,0},{7,5},{5,3},{3,1}}
+
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG: }
+  )"));
+  EXPECT_TRUE(filecheck_matched);
 }
 
 }  // namespace

@@ -55,6 +55,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/SwapByteOrder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -111,13 +113,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
-#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/metadata_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/region_isolation.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/tf_convert_type.h"
 #include "tensorflow/compiler/mlir/lite/version.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -273,6 +275,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   } else if (auto q_calibrated_type =
                  mlir::dyn_cast<mlir::quant::CalibratedQuantizedType>(type)) {
     return GetTFLiteType(q_calibrated_type.getExpressedType());
+  } else if (auto blockwise_type =
+                 mlir::dyn_cast<mlir::TFL::BlockwiseQuantType>(type)) {
+    return GetTFLiteType(blockwise_type.getStorageType());
   } else if (mlir::isa<mlir::TF::ResourceType>(type)) {
     return tflite::TensorType_RESOURCE;
   } else if (mlir::isa<mlir::TF::VariantType>(type)) {
@@ -297,6 +302,132 @@ static mlir::AsmResourceBlob* GetBlob(
     blob = resource_attr.getRawHandle().getResource()->getBlob();
   }
   return blob;
+}
+
+// A blockwise quantization parameter tensor (scales or zero points) serialized
+// for the flatbuffer.
+struct SerializedBlockwiseParams {
+  tflite::TensorType type;
+  std::vector<int32_t> shape;
+  std::string data;
+};
+
+// Reads the elements of `attr` as `APInt`s of the element bit width, expanding
+// splats. Like `DenseElementsAttr`, this expects every element to be stored in
+// a whole number of bytes, e.g. one byte per element for sub-byte types.
+static std::optional<std::vector<llvm::APInt>> ReadElementsAsAPInts(
+    ElementsAttr attr) {
+  auto type = attr.getShapedType();
+  const unsigned bit_width = type.getElementTypeBitWidth();
+  const int64_t num_elements = type.getNumElements();
+  const size_t stride = llvm::divideCeil(bit_width, 8);
+
+  llvm::ArrayRef<char> raw;
+  bool is_splat = false;
+  if (auto dense = mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+    if (bit_width == 1) return std::nullopt;
+    raw = dense.getRawData();
+    is_splat = dense.isSplat();
+  } else if (auto resource =
+                 mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+    mlir::AsmResourceBlob* blob = GetBlob(resource);
+    if (blob == nullptr) return std::nullopt;
+    raw = blob->getData();
+  } else {
+    return std::nullopt;
+  }
+  const size_t expected_size = is_splat ? stride : stride * num_elements;
+  if (raw.size() < expected_size) return std::nullopt;
+
+  std::vector<llvm::APInt> values;
+  values.reserve(num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    const char* element = raw.data() + (is_splat ? 0 : i * stride);
+    uint64_t bits = 0;
+    std::memcpy(&bits, element, std::min<size_t>(stride, sizeof(bits)));
+    values.emplace_back(bit_width, bits, /*isSigned=*/false,
+                        /*implicitTrunc=*/true);
+  }
+  return values;
+}
+
+// Serializes the scales of a blockwise quantized tensor. f32, f16 and bf16
+// scales are written as is. Other floating point types, which the TFLite
+// schema has no tensor type for (e.g. f8E8M0FNU), are widened to f32; this is
+// exact since f32 represents all of their values.
+static std::optional<SerializedBlockwiseParams> SerializeBlockwiseScales(
+    ElementsAttr scales) {
+  auto float_type = mlir::dyn_cast<mlir::FloatType>(scales.getElementType());
+  if (!float_type) return std::nullopt;
+  std::optional<std::vector<llvm::APInt>> bits = ReadElementsAsAPInts(scales);
+  if (!bits.has_value()) return std::nullopt;
+
+  SerializedBlockwiseParams params;
+  for (int64_t dim : scales.getShapedType().getShape()) {
+    params.shape.push_back(static_cast<int32_t>(dim));
+  }
+  if (float_type.isF16() || float_type.isBF16()) {
+    params.type = float_type.isF16() ? tflite::TensorType_FLOAT16
+                                     : tflite::TensorType_BFLOAT16;
+    for (const llvm::APInt& value : *bits) {
+      const uint16_t half = static_cast<uint16_t>(value.getZExtValue());
+      params.data.append(reinterpret_cast<const char*>(&half), sizeof(half));
+    }
+    return params;
+  }
+  params.type = tflite::TensorType_FLOAT32;
+  for (const llvm::APInt& value : *bits) {
+    llvm::APFloat scale(float_type.getFloatSemantics(), value);
+    bool loses_info = false;
+    scale.convert(llvm::APFloat::IEEEsingle(),
+                  llvm::APFloat::rmNearestTiesToEven, &loses_info);
+    const float f = scale.convertToFloat();
+    params.data.append(reinterpret_cast<const char*>(&f), sizeof(f));
+  }
+  return params;
+}
+
+// Serializes the zero points of a blockwise quantized tensor: integer zero
+// points as int32 and floating point zero points (e.g. the -0.5 of a grid
+// centered between the integers) as f32.
+static std::optional<SerializedBlockwiseParams> SerializeBlockwiseZeroPoints(
+    ElementsAttr zero_points) {
+  Type element_type = zero_points.getElementType();
+  std::optional<std::vector<llvm::APInt>> bits =
+      ReadElementsAsAPInts(zero_points);
+  if (!bits.has_value()) return std::nullopt;
+
+  SerializedBlockwiseParams params;
+  for (int64_t dim : zero_points.getShapedType().getShape()) {
+    params.shape.push_back(static_cast<int32_t>(dim));
+  }
+  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type)) {
+    params.type = tflite::TensorType_FLOAT32;
+    for (const llvm::APInt& value : *bits) {
+      llvm::APFloat zero_point(float_type.getFloatSemantics(), value);
+      bool loses_info = false;
+      zero_point.convert(llvm::APFloat::IEEEsingle(),
+                         llvm::APFloat::rmNearestTiesToEven, &loses_info);
+      const float f = zero_point.convertToFloat();
+      params.data.append(reinterpret_cast<const char*>(&f), sizeof(f));
+    }
+    return params;
+  }
+  auto int_type = mlir::dyn_cast<mlir::IntegerType>(element_type);
+  if (!int_type) return std::nullopt;
+  params.type = tflite::TensorType_INT32;
+  for (const llvm::APInt& value : *bits) {
+    const int64_t wide =
+        int_type.isUnsigned() ? value.getZExtValue() : value.getSExtValue();
+    if (wide < std::numeric_limits<int32_t>::min() ||
+        wide > std::numeric_limits<int32_t>::max()) {
+      return std::nullopt;
+    }
+    const int32_t zero_point = static_cast<int32_t>(wide);
+    params.data.append(reinterpret_cast<const char*>(&zero_point),
+                       sizeof(zero_point));
+  }
+  return params;
 }
 
 static bool IsBf16ToF32CastOnConstant(Operation* op,
@@ -725,6 +856,282 @@ class ExportBufferStorage {
   absl::flat_hash_map<KeyT, std::unique_ptr<ExportBuffer>> buffers_;
 };
 
+absl::string_view ToAbslStringView(llvm::StringRef ref) {
+  return absl::string_view(ref.data(), ref.size());
+}
+
+// Returns true if `loc` represents a Python traceback frame NameLoc, i.e., a
+// NameLoc whose name is a non-hierarchical function/node identifier (no `/`)
+// and whose immediate child is a FileLineColLoc (as emitted by JAX's
+// traceback_to_location).
+bool IsFrameNameLoc(mlir::Location loc) {
+  auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc);
+  return name_loc && mlir::isa<mlir::FileLineColLoc>(name_loc.getChildLoc()) &&
+         !name_loc.getName().strref().contains('/');
+}
+
+// Unwraps leading JAX op-type NameLoc wrappers (whose name ends with ':', e.g.
+// "composite:", "pjit:", "dot_general:") so the underlying scope NameLoc is
+// visible.
+mlir::Location StripOpTypeWrappers(mlir::Location loc) {
+  while (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (IsFrameNameLoc(name_loc)) {
+      break;
+    }
+    llvm::StringRef name = name_loc.getName().strref().split('@').first;
+    if (!name.ends_with(":")) {
+      break;
+    }
+    loc = name_loc.getChildLoc();
+  }
+  return loc;
+}
+
+// Strips JAX's internal `@api.jit def _where` wrapper (`jit(_where)`) when the
+// callee already carries an op name (such as `select_n`), so multiple
+// `jnp.where` calls in the same module scope stay distinct leaf ops rather
+// than grouping into a shared `jit(_where)` sub-scope.
+llvm::StringRef StripInternalJitWrapper(llvm::StringRef caller_scope,
+                                        llvm::StringRef callee_scope) {
+  if (callee_scope.empty()) {
+    return caller_scope;
+  }
+  constexpr llvm::StringLiteral kJitWhere = "jit(_where)";
+  constexpr llvm::StringLiteral kSlashJitWhere = "/jit(_where)";
+  if (caller_scope == kJitWhere) {
+    return llvm::StringRef();
+  }
+  if (caller_scope.ends_with(kSlashJitWhere)) {
+    return caller_scope.drop_back(kSlashJitWhere.size());
+  }
+  return caller_scope;
+}
+
+std::string CombineCallerAndCalleeScopes(llvm::StringRef caller_scope,
+                                         llvm::StringRef callee_scope) {
+  caller_scope = StripInternalJitWrapper(caller_scope, callee_scope);
+  if (caller_scope.empty()) {
+    return std::string(callee_scope);
+  }
+  if (callee_scope.empty() || caller_scope.ends_with(";")) {
+    return std::string(caller_scope);
+  }
+  return absl::StrCat(ToAbslStringView(caller_scope), "/",
+                      ToAbslStringView(callee_scope));
+}
+
+std::string ExtractCallerScope(mlir::Location loc) {
+  loc = StripOpTypeWrappers(loc);
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (IsFrameNameLoc(name_loc)) {
+      return "";
+    }
+    return std::string(name_loc.getName().strref().split('@').first);
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    std::string caller_scope = ExtractCallerScope(call_loc.getCaller());
+    std::string callee_scope = ExtractCallerScope(call_loc.getCallee());
+    return CombineCallerAndCalleeScopes(caller_scope, callee_scope);
+  }
+  return "";
+}
+
+llvm::StringRef GetCompositeReplacementName(mlir::Operation* op) {
+  if (op == nullptr) {
+    return llvm::StringRef();
+  }
+  if (auto vhlo_comp = mlir::dyn_cast<mlir::vhlo::CompositeOpV1>(op)) {
+    if (auto name_attr = mlir::dyn_cast_or_null<mlir::vhlo::StringV1Attr>(
+            vhlo_comp.getName())) {
+      return name_attr.getValue();
+    }
+  }
+  if (auto stablehlo_comp = mlir::dyn_cast<mlir::stablehlo::CompositeOp>(op)) {
+    return stablehlo_comp.getName();
+  }
+  if (auto custom_op = mlir::dyn_cast<mlir::TFL::CustomOp>(op)) {
+    return custom_op.getCustomCode();
+  }
+  return op->getName().stripDialect();
+}
+
+std::string EnrichCompositeScope(llvm::StringRef scope,
+                                 llvm::StringRef composite_name) {
+  if (composite_name.empty()) {
+    return std::string(scope);
+  }
+  constexpr llvm::StringLiteral kComposite = "composite";
+  constexpr llvm::StringLiteral kSlashComposite = "/composite";
+  if (scope == kComposite) {
+    return std::string(composite_name);
+  }
+  if (scope.ends_with(kSlashComposite)) {
+    llvm::StringRef prefix = scope.drop_back(kComposite.size());
+    return absl::StrCat(ToAbslStringView(prefix),
+                        ToAbslStringView(composite_name));
+  }
+  return std::string(scope);
+}
+
+void CollectLeafLocNames(mlir::Location loc,
+                         llvm::StringRef inherited_caller_scope,
+                         llvm::StringRef composite_replacement_name,
+                         llvm::SmallVectorImpl<std::string>& out) {
+  mlir::Location unwrapped = StripOpTypeWrappers(loc);
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(unwrapped)) {
+    for (mlir::Location sub_loc : fused_loc.getLocations()) {
+      CollectLeafLocNames(sub_loc, inherited_caller_scope,
+                          composite_replacement_name, out);
+    }
+    return;
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(unwrapped)) {
+    std::string local_caller = ExtractCallerScope(call_loc.getCaller());
+    std::string combined_caller =
+        CombineCallerAndCalleeScopes(inherited_caller_scope, local_caller);
+    CollectLeafLocNames(call_loc.getCallee(), combined_caller,
+                        composite_replacement_name, out);
+    return;
+  }
+  llvm::StringRef leaf_name;
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(unwrapped)) {
+    leaf_name = name_loc.getName().strref().split('@').first;
+  }
+  std::string combined =
+      CombineCallerAndCalleeScopes(inherited_caller_scope, leaf_name);
+  out.push_back(EnrichCompositeScope(combined, composite_replacement_name));
+}
+
+// Returns true if any `NameLoc` in `loc` contains `;` (the PyTorch
+// hierarchy-delimiter convention emitted by `litert_torch`), so JAX-specific
+// location cleanup leaves PyTorch locations untouched.
+bool HasSemicolonNameLoc(mlir::Location loc) {
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (name_loc.getName().strref().contains(';')) {
+      return true;
+    }
+    return HasSemicolonNameLoc(name_loc.getChildLoc());
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    return HasSemicolonNameLoc(call_loc.getCallee()) ||
+           HasSemicolonNameLoc(call_loc.getCaller());
+  }
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
+    for (mlir::Location sub_loc : fused_loc.getLocations()) {
+      if (HasSemicolonNameLoc(sub_loc)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+llvm::StringRef ExtractDirectoryPrefix(llvm::StringRef name) {
+  size_t last_slash = name.rfind('/');
+  if (last_slash == llvm::StringRef::npos || last_slash == 0) {
+    return llvm::StringRef();
+  }
+  return name.substr(0, last_slash);
+}
+
+// Formats an op or value's `mlir::Location` into a FlatBuffer tensor name
+// without mutating any IR `Location` attributes:
+// - Unwraps JAX op-type `NameLoc` wrappers (e.g. `"composite:"`, `"pjit:"`).
+// - Combines caller and callee scopes across inlined `CallSiteLoc`s (stripping
+//   internal `jit(_where)` wrappers).
+// - Enriches trailing `"composite"` leaf scopes with the op's composite name.
+// - Filters cross-scope CSE outlier locations from `FusedLoc`s.
+std::string GetHierarchicalNameFromLoc(mlir::Location loc,
+                                       mlir::Operation* op) {
+  llvm::SmallVector<std::string, 8> leaf_names;
+  CollectLeafLocNames(loc, /*inherited_caller_scope=*/llvm::StringRef(),
+                      GetCompositeReplacementName(op), leaf_names);
+  bool has_nonempty = llvm::any_of(
+      leaf_names, [](const std::string& name) { return !name.empty(); });
+  if (!has_nonempty) {
+    return "";
+  }
+  if (leaf_names.size() > 1 && !HasSemicolonNameLoc(loc)) {
+    llvm::SmallVector<std::pair<llvm::StringRef, int>, 4> dir_counts;
+    llvm::SmallVector<llvm::StringRef, 8> elem_dirs;
+    elem_dirs.reserve(leaf_names.size());
+    for (const std::string& name : leaf_names) {
+      llvm::StringRef dir = ExtractDirectoryPrefix(name);
+      elem_dirs.push_back(dir);
+      if (dir.empty()) {
+        continue;
+      }
+      auto it = llvm::find_if(
+          dir_counts, [&](const auto& entry) { return entry.first == dir; });
+      if (it != dir_counts.end()) {
+        ++it->second;
+      } else {
+        dir_counts.emplace_back(dir, 1);
+      }
+    }
+    if (dir_counts.size() > 1) {
+      llvm::StringRef primary_dir = dir_counts[0].first;
+      int best_count = dir_counts[0].second;
+      for (size_t i = 1; i < dir_counts.size(); ++i) {
+        if (dir_counts[i].second > best_count) {
+          primary_dir = dir_counts[i].first;
+          best_count = dir_counts[i].second;
+        }
+      }
+      llvm::SmallVector<absl::string_view, 8> kept;
+      for (size_t i = 0; i < leaf_names.size(); ++i) {
+        if (elem_dirs[i] == primary_dir) {
+          kept.push_back(leaf_names[i]);
+        }
+      }
+      if (!kept.empty()) {
+        std::string joined = absl::StrJoin(kept, ";");
+        absl::c_replace(joined, ',', '_');
+        return joined;
+      }
+    }
+  }
+  std::string joined = absl::StrJoin(leaf_names, ";");
+  if (!HasSemicolonNameLoc(loc)) {
+    absl::c_replace(joined, ',', '_');
+  }
+  return joined;
+}
+
+bool ShouldPreserveHierarchicalOutputName(mlir::Value operand,
+                                          llvm::StringRef output_name) {
+  if (output_name.contains('/')) {
+    return false;
+  }
+  mlir::Operation* def_op = operand.getDefiningOp();
+  if (def_op == nullptr || HasSemicolonNameLoc(def_op->getLoc())) {
+    return false;
+  }
+  std::string loc_name = GetHierarchicalNameFromLoc(def_op->getLoc(), def_op);
+  return llvm::StringRef(loc_name).trim().contains('/');
+}
+
+class TfliteOpOrArgLocNameMapper : public tensorflow::OpOrArgLocNameMapper {
+ protected:
+  std::string GetName(tensorflow::OpOrVal op_or_val) override {
+    if (auto* op = llvm::dyn_cast_if_present<mlir::Operation*>(op_or_val)) {
+      std::string name = GetHierarchicalNameFromLoc(op->getLoc(), op);
+      if (!name.empty()) {
+        return name;
+      }
+      return tensorflow::OpOrArgLocNameMapper::GetName(op_or_val);
+    }
+    if (auto val = llvm::dyn_cast_if_present<mlir::Value>(op_or_val)) {
+      std::string name =
+          GetHierarchicalNameFromLoc(val.getLoc(), val.getDefiningOp());
+      if (!name.empty()) {
+        return name;
+      }
+    }
+    return tensorflow::OpOrArgLocNameMapper::GetName(op_or_val);
+  }
+};
+
 // Translates an MLIR module in TFLite dialect to TFLite FlatBuffer.
 class Translator {
  public:
@@ -795,6 +1202,23 @@ class Translator {
   // duplicated buffer is found.
   std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(
       Value value, bool can_be_deduplicated, int& index);
+
+  // Returns a TFLite buffer holding `data`, honoring `use_buffer_offset_`.
+  // `index` is the index the buffer will have in `buffers_`.
+  BufferOffset<tflite::Buffer> BuildBufferFromBytes(std::string data,
+                                                    int index);
+
+  // Builds the tensors holding the scales and zero points of `blockwise_type`
+  // into `side_tensors`, and returns the `QuantizationParameters` referring to
+  // them. The tensor quantized with `blockwise_type` is expected at index
+  // `tensor_index` of the subgraph, and the caller has to append
+  // `side_tensors` right after it. Emits an error at `loc` and returns
+  // std::nullopt if the parameters cannot be serialized.
+  std::optional<BufferOffset<tflite::QuantizationParameters>>
+  BuildBlockwiseQuantizationParameters(
+      mlir::TFL::BlockwiseQuantType blockwise_type, mlir::Location loc,
+      const std::string& tensor_name, int tensor_index,
+      std::vector<BufferOffset<tflite::Tensor>>& side_tensors);
 
   // Builds external buffer and external buffer group from the given value. If
   // the value is not defined by a constant op with external buffer attributes,
@@ -1060,15 +1484,12 @@ class Translator {
       const_buffer_storage_;
   absl::flat_hash_map<mlir::AsmResourceBlob*, int> resource_ref_counts_;
 
-  // Maps custom options data to corresponding node
-  // Key is set to be the list of input tensor indices and list of output tensor
-  // indices
-  // in the idx map, the value is a pair of offset and size
-  absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      std::pair<uint64_t, uint64_t>>
+  // Maps custom options data to corresponding node.
+  // Keyed by the MLIR custom op; value is the (offset, size) of its large
+  // custom options in the exported buffer.
+  absl::flat_hash_map<mlir::Operation*, std::pair<uint64_t, uint64_t>>
       custom_op_idx_map_;
-  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      mlir::TFL::ConstBytesAttr>
+  ExportBufferStorage<mlir::Operation*, mlir::TFL::ConstBytesAttr>
       custom_op_buffer_storage_;
 
   // Points to TensorFlow and TFLite dialects, respectively. nullptr if the
@@ -1111,6 +1532,11 @@ class Translator {
 
   // Decide if we convert stablehlo ops in flatbuffer
   bool convert_stablehlo_ = true;
+
+  // Decide if hierarchical defining-op location names should be preserved on
+  // entry-function output tensors instead of flat `tf.entry_function` output
+  // placeholders.
+  bool preserve_hierarchical_output_names_ = false;
 
   // Decide if the debug metadata is serialized.
   bool serialize_debug_metadata_ = false;
@@ -1604,6 +2030,86 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   }
 }
 
+BufferOffset<tflite::Buffer> Translator::BuildBufferFromBytes(std::string data,
+                                                              int index) {
+  if (use_buffer_offset_) {
+    auto shared_data = std::make_shared<const std::string>(std::move(data));
+    const uint64_t hash = llvm::hash_value(
+        llvm::StringRef(shared_data->data(), shared_data->size()));
+    const uint64_t size = shared_data->size();
+    const_buffer_storage_.Insert(
+        index, std::make_pair(mlir::Attribute(), nullptr),
+        [shared_data](const std::pair<mlir::Attribute, mlir::Operation*>&,
+                      auto apply) { return apply(*shared_data); },
+        hash, size);
+    return tflite::CreateBuffer(builder_, 0, 1, 1);
+  }
+  builder_.ForceVectorAlignment(
+      data.size(), sizeof(uint8_t),
+      custom_option_alignment_.value_or(kFbAlignment));
+  return tflite::CreateBuffer(
+      builder_,
+      builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.data()),
+                            data.size()));
+}
+
+std::optional<BufferOffset<tflite::QuantizationParameters>>
+Translator::BuildBlockwiseQuantizationParameters(
+    mlir::TFL::BlockwiseQuantType blockwise_type, mlir::Location loc,
+    const std::string& tensor_name, int tensor_index,
+    std::vector<BufferOffset<tflite::Tensor>>& side_tensors) {
+  // Builds a constant tensor (and its buffer) holding `params`, and returns its
+  // index in the subgraph.
+  auto add_params_tensor = [&](const SerializedBlockwiseParams& params,
+                               absl::string_view suffix) -> int32_t {
+    const int32_t index =
+        tensor_index + 1 + static_cast<int32_t>(side_tensors.size());
+    const int buffer_index = buffers_.size();
+    buffers_.push_back(BuildBufferFromBytes(params.data, buffer_index));
+    side_tensors.push_back(tflite::CreateTensor(
+        builder_, builder_.CreateVector(params.shape), params.type,
+        buffer_index, builder_.CreateString(absl::StrCat(tensor_name, suffix)),
+        /*quantization=*/0, /*is_variable=*/false, /*sparsity=*/0,
+        /*shape_signature=*/0, /*has_rank=*/true));
+    return index;
+  };
+
+  std::optional<SerializedBlockwiseParams> scales =
+      SerializeBlockwiseScales(blockwise_type.getScales());
+  if (!scales.has_value()) {
+    mlir::emitError(loc,
+                    "failed to serialize the scales of blockwise quantized "
+                    "type ")
+        << blockwise_type;
+    return std::nullopt;
+  }
+  const int32_t scales_index = add_params_tensor(*scales, "_scales");
+
+  // -1 marks an absent zero point tensor, meaning a zero point of 0.
+  int32_t zero_points_index = -1;
+  if (ElementsAttr zero_points_attr = blockwise_type.getZeroPoints()) {
+    std::optional<SerializedBlockwiseParams> zero_points =
+        SerializeBlockwiseZeroPoints(zero_points_attr);
+    if (!zero_points.has_value()) {
+      mlir::emitError(loc,
+                      "failed to serialize the zero points of blockwise "
+                      "quantized type ")
+          << blockwise_type;
+      return std::nullopt;
+    }
+    zero_points_index = add_params_tensor(*zero_points, "_zero_points");
+  }
+
+  std::vector<int32_t> block_shape(blockwise_type.getBlockShape().begin(),
+                                   blockwise_type.getBlockShape().end());
+  auto details = tflite::CreateBlockwiseQuantization(
+      builder_, scales_index, zero_points_index, /*block_size=*/0,
+      builder_.CreateVector(block_shape));
+  return tflite::CreateQuantizationParameters(
+      builder_, /*min=*/0, /*max=*/0, /*scale=*/0, /*zero_point=*/0,
+      tflite::QuantizationDetails_BlockwiseQuantization, details.Union());
+}
+
 int32_t Translator::UnnamedRegionToSubgraph(
     mlir::Region* region, const tflite::BuiltinOperator op_code) {
   int32_t subgraph_index = subgraphs_.size();
@@ -2027,8 +2533,7 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      mlir::TFL::ConstBytesAttr>::ExportBuffer
+  ExportBufferStorage<mlir::Operation*, mlir::TFL::ConstBytesAttr>::ExportBuffer
       export_buffer(
           op.getCustomOption(),
           [](const mlir::TFL::ConstBytesAttr& attr, auto apply) {
@@ -2041,7 +2546,7 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
   if (use_buffer_offset_) {
     custom_op_buffer_storage_.Insert(
-        std::make_pair(operands, results),
+        inst,
         std::make_unique<decltype(export_buffer)>(std::move(export_buffer)));
     return tflite::CreateOperator(
         builder_, opcode_index, builder_.CreateVector(operands),
@@ -3716,7 +4221,12 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
       return;
     }
     for (const auto& it : llvm::enumerate(term->getOperands())) {
-      name_mapper_.InitOpName(it.value(), output_names[it.index()].trim());
+      llvm::StringRef output_name = output_names[it.index()].trim();
+      if (preserve_hierarchical_output_names_ &&
+          ShouldPreserveHierarchicalOutputName(it.value(), output_name)) {
+        continue;
+      }
+      name_mapper_.InitOpName(it.value(), output_name);
     }
   }
 }
@@ -3822,10 +4332,23 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       buffers_.push_back(empty_buffer_);
     }
 
+    // Blockwise quantization parameters live in tensors of their own, placed
+    // right after the tensor they quantize.
+    std::vector<BufferOffset<tflite::Tensor>> blockwise_param_tensors;
+    if (auto blockwise_type = mlir::dyn_cast<mlir::TFL::BlockwiseQuantType>(
+            getElementTypeOrSelf(value.getType()))) {
+      quant_parameters = BuildBlockwiseQuantizationParameters(
+          blockwise_type, value.getLoc(), tensor_name, tensors.size(),
+          blockwise_param_tensors);
+      if (!quant_parameters.has_value()) return false;
+    }
+
     auto tensor_or = BuildTensor(value, tensor_name, buffer_index,
                                  external_buffer_id, quant_parameters);
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
+    tensors.insert(tensors.end(), blockwise_param_tensors.begin(),
+                   blockwise_param_tensors.end());
 
     return true;
   };
@@ -4477,11 +5000,6 @@ constexpr absl::string_view kFlatbufferSizeLimitExceededError =
 absl::Status Translator::Translate(
     ModuleOp module, const tflite::FlatbufferExportOptions& options,
     llvm::raw_pwrite_stream& export_stream) {
-  OpOrArgNameMapper* op_or_arg_name_mapper = options.op_or_arg_name_mapper;
-  OpOrArgLocNameMapper default_op_or_arg_name_mapper;
-  if (!op_or_arg_name_mapper) {
-    op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
-  }
   if (!UpdateEntryFunction(module)) {
     LOG(ERROR) << "No entry function found in the module.";
     return absl::InvalidArgumentError("No entry function found.");
@@ -4505,12 +5023,18 @@ absl::Status Translator::Translate(
   }
 
   auto translate = [&]() {
+    TfliteOpOrArgLocNameMapper default_op_or_arg_name_mapper;
+    OpOrArgNameMapper* op_or_arg_name_mapper =
+        options.op_or_arg_name_mapper ? options.op_or_arg_name_mapper
+                                      : &default_op_or_arg_name_mapper;
     Translator translator(module, export_stream, converter_flags,
                           options.saved_model_tags, op_or_arg_name_mapper,
                           options.metadata, options.custom_option_alignment,
                           options.disable_buffer_deduping,
                           options.attribute_buffer_applier_factories);
     translator.convert_stablehlo_ = options.serialize_stablehlo_ops;
+    translator.preserve_hierarchical_output_names_ =
+        (options.op_or_arg_name_mapper == nullptr);
     return translator.TranslateInternal();
   };
 
@@ -4893,35 +5417,37 @@ bool Translator::UpdateBufferOffsets(tflite::Model* mutable_model) {
     return ret;
   }
 
+  size_t updated_custom_ops = 0;
   auto mutable_subgraphs = mutable_model->mutable_subgraphs();
-  for (auto msubgraph : *mutable_subgraphs) {
+  for (uint32_t sg_idx = 0; sg_idx < mutable_subgraphs->size(); ++sg_idx) {
+    if (sg_idx >= subgraph_op_inst_map_.size()) {
+      ret = false;
+      break;
+    }
+    auto msubgraph = mutable_subgraphs->GetMutableObject(sg_idx);
     auto operators = msubgraph->mutable_operators();
-    for (auto op : *operators) {
+    for (uint32_t op_idx = 0; op_idx < operators->size(); ++op_idx) {
+      if (op_idx >= subgraph_op_inst_map_[sg_idx].size()) {
+        ret = false;
+        break;
+      }
+      auto op = operators->GetMutableObject(op_idx);
       auto opcode_idx = op->opcode_index();
       auto opcodes = mutable_model->operator_codes();
       auto opcode = (*opcodes)[opcode_idx]->builtin_code();
       if (opcode == tflite::BuiltinOperator_CUSTOM) {
-        std::vector<int32_t> inputs(op->inputs()->begin(), op->inputs()->end());
-        std::vector<int32_t> outputs(op->outputs()->begin(),
-                                     op->outputs()->end());
-        for (auto& custom_op : custom_op_idx_map_) {
-          std::vector<int32_t> key_inputs = custom_op.first.first;
-          std::vector<int32_t> key_outputs = custom_op.first.second;
-          // TODO(b/287306548): we need more rigorous check to make sure the
-          // node we're updating is the right one for now we're just ensuring
-          // they have the same number of input, output and first output is
-          // the same
-          if (key_inputs.size() == inputs.size() &&
-              key_outputs.size() == outputs.size() &&
-              key_outputs[0] == outputs[0]) {
-            ret &=
-                op->mutate_large_custom_options_offset(custom_op.second.first);
-            ret &=
-                op->mutate_large_custom_options_size(custom_op.second.second);
-          }
+        if (auto it =
+                custom_op_idx_map_.find(subgraph_op_inst_map_[sg_idx][op_idx]);
+            it != custom_op_idx_map_.end()) {
+          ret &= op->mutate_large_custom_options_offset(it->second.first);
+          ret &= op->mutate_large_custom_options_size(it->second.second);
+          ++updated_custom_ops;
         }
       }
     }
+  }
+  if (updated_custom_ops < custom_op_idx_map_.size()) {
+    ret = false;
   }
   if (!ret) LOG(ERROR) << "failed to update custom op offsets\n";
 

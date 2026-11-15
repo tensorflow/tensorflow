@@ -705,11 +705,11 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
-  if (sharding_proto.ParseFromString(sharding.str())) {
+  if (sharding_proto.ParseFromArray(sharding.data(), sharding.size())) {
     return sharding_proto;
   }
   absl::StatusOr<xla::HloSharding> sharding_cpp =
-      xla::ParseSharding(sharding.str());
+      xla::ParseSharding(absl::string_view(sharding.data(), sharding.size()));
   if (sharding_cpp.ok()) {
     return sharding_cpp->ToProto();
   }

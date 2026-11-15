@@ -75,11 +75,4 @@ absl::Status VerifyTileEquivalence(const Tile& tile_a, const Shape& shape_a,
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::BumpCoordinates;
-using ::xla::gpu::EvaluateAccessedIndexesForTile;
-using ::xla::gpu::GetTestTile;
-using ::xla::gpu::VerifyTileEquivalence;
-}  // namespace xla::gpu::experimental
-
 #endif  // XLA_CODEGEN_TILING_TEST_UTILS_H_

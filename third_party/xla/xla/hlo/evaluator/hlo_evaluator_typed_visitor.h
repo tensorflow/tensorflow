@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -547,6 +548,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMaximum(const HloInstruction* maximum) override {
+    if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+      // Unpacked float8_e8m0fnu has 2^-127 as a float32 subnormal, which host
+      // worker threads with FTZ/DAZ enabled would flush to +0.0f (NaN in E8M0).
+      return ElementWiseBinaryOp(
+          maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
+            return absl::bit_cast<ElementwiseT>(std::max(
+                absl::bit_cast<int32_t>(lhs), absl::bit_cast<int32_t>(rhs)));
+          });
+    }
     if constexpr (!is_complex_v<ElementwiseT>) {
       return ElementWiseBinaryOp(
           maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
@@ -565,6 +575,20 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMinimum(const HloInstruction* minimum) override {
+    if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+      return ElementWiseBinaryOp(
+          minimum, [](ElementwiseT lhs, ElementwiseT rhs) {
+            const int32_t lhs_bits = absl::bit_cast<int32_t>(lhs);
+            const int32_t rhs_bits = absl::bit_cast<int32_t>(rhs);
+            if (lhs_bits > 0x7F800000) {
+              return lhs;
+            }
+            if (rhs_bits > 0x7F800000) {
+              return rhs;
+            }
+            return absl::bit_cast<ElementwiseT>(std::min(lhs_bits, rhs_bits));
+          });
+    }
     if constexpr (!is_complex_v<ElementwiseT>) {
       return ElementWiseBinaryOp(
           minimum, [](ElementwiseT lhs, ElementwiseT rhs) {
@@ -857,7 +881,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
       return ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
-        return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand).count();
+        // Narrow ReturnT types (s4, s2, s1) have sizeof == 1; use the exact bit
+        // width so sign extension does not inflate the count.
+        constexpr int kBitWidth = std::numeric_limits<ReturnT>::digits +
+                                  std::numeric_limits<ReturnT>::is_signed;
+        return std::bitset<kBitWidth>(static_cast<uint64_t>(elem_operand))
+            .count();
       });
     }
     return UnsupportedTypeError(popcnt);
@@ -916,6 +945,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
   absl::Status HandleReducePrecision(const HloInstruction* reduce_precision) {
+    if (primitive_util::HasFloatingPointPrecision(
+            reduce_precision->shape().element_type(),
+            reduce_precision->exponent_bits(),
+            reduce_precision->mantissa_bits())) {
+      return ElementWiseUnaryOp(reduce_precision,
+                                [](ElementwiseT elem) { return elem; });
+    }
     return ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
       const uint32_t src_mantissa_bits =
           std::numeric_limits<NativeT>::digits - 1;
@@ -1038,6 +1074,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleRng(const HloInstruction* random) override {
     RandomDistribution distribution = random->random_distribution();
     Shape result_shape = GetShapeWithLayout(random->shape());
+    // The operands are read as the element type of the result.
+    for (const HloInstruction* operand : random->operands()) {
+      TF_RET_CHECK(
+          parent_->GetEvaluatedLiteralFor(operand).shape().element_type() ==
+          result_shape.element_type())
+          << "operand element type mismatch: " << random->ToString();
+    }
     Literal result(result_shape);
 
     if constexpr (std::is_floating_point_v<ElementwiseT>) {

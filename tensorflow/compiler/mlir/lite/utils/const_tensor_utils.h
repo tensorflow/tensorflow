@@ -20,12 +20,15 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/function_ref.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -53,6 +56,26 @@ absl::StatusOr<mlir::TensorType> GetTensorType(const tflite::TensorT& tensor,
                                                bool is_constant = false,
                                                bool is_intermediate = false,
                                                bool get_storage = false);
+
+// Returns true if `tensor` is quantized with `BlockwiseQuantization` with a
+// non-empty `block_shape`. Such tensors are imported with a
+// `!tfl.blockwise_quant` element type. Blockwise quantized tensors that only
+// set the legacy `block_size` are not covered.
+bool IsBlockwiseQuantizedWithBlockShape(const tflite::TensorT& tensor);
+
+// Returns the data of the tensor at the given index of the subgraph.
+using TensorBufferResolver =
+    absl::FunctionRef<absl::StatusOr<llvm::ArrayRef<uint8_t>>(int32_t)>;
+
+// Returns the `!tfl.blockwise_quant` element type of `tensor`, which must
+// satisfy `IsBlockwiseQuantizedWithBlockShape`. Its scales and zero points are
+// read from the tensors of `subgraph_tensors` that the quantization parameters
+// refer to, using `get_tensor_buffer` to fetch their data.
+absl::StatusOr<mlir::Type> GetBlockwiseQuantizedType(
+    const tflite::TensorT& tensor, mlir::Builder builder,
+    mlir::Type storage_type,
+    const std::vector<std::unique_ptr<tflite::TensorT>>& subgraph_tensors,
+    TensorBufferResolver get_tensor_buffer);
 
 // Gets a constant splat for the given value of type. Requires value to be of
 // type static shaped RankedTensorType. `unique_index` is used to get the unique

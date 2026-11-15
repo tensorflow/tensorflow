@@ -36,11 +36,25 @@ struct Table::Rep {
   Options options;
   absl::Status status;
   RandomAccessFile* file;
+  uint64_t file_size;
   uint64_t cache_id;
 
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
 };
+
+// Returns an error unless the block named by "handle", including its trailer,
+// lies within the first "file_size" bytes of the file. ReadBlock allocates a
+// buffer of the size stored in the handle, so check before calling it.
+static absl::Status CheckBlockHandle(const BlockHandle& handle,
+                                     uint64_t file_size) {
+  if (handle.offset() > file_size ||
+      handle.size() > file_size - handle.offset() ||
+      kBlockTrailerSize > file_size - handle.offset() - handle.size()) {
+    return absl::DataLossError("block handle extends past the end of the file");
+  }
+  return absl::OkStatus();
+}
 
 absl::Status Table::Open(const Options& options, RandomAccessFile* file,
                          uint64_t size, Table** table) {
@@ -63,6 +77,9 @@ absl::Status Table::Open(const Options& options, RandomAccessFile* file,
   BlockContents contents;
   Block* index_block = nullptr;
   if (s.ok()) {
+    s = CheckBlockHandle(footer.index_handle(), size);
+  }
+  if (s.ok()) {
     s = ReadBlock(file, footer.index_handle(), &contents);
   }
 
@@ -73,6 +90,7 @@ absl::Status Table::Open(const Options& options, RandomAccessFile* file,
     Rep* rep = new Table::Rep;
     rep->options = options;
     rep->file = file;
+    rep->file_size = size;
     rep->metaindex_handle = footer.metaindex_handle();
     rep->index_block = index_block;
     rep->cache_id = (options.block_cache ? options.block_cache->NewId() : 0);
@@ -114,6 +132,9 @@ Iterator* Table::BlockReader(void* arg, absl::string_view index_value) {
   absl::Status s = handle.DecodeFrom(&input);
   // We intentionally allow extra stuff in index_value so that we
   // can add more features in the future.
+  if (s.ok()) {
+    s = CheckBlockHandle(handle, table->rep_->file_size);
+  }
 
   if (s.ok()) {
     BlockContents contents;

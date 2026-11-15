@@ -244,15 +244,27 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
 
   def _to_dense(self):
     perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
-    return math_ops.cast(math_ops.equal(
-        math_ops.range(0, self._domain_dimension_tensor(perm)),
-        perm[..., array_ops.newaxis]), self.dtype)
+    return math_ops.cast(
+        math_ops.equal(
+            math_ops.range(
+                0, self._domain_dimension_tensor(perm), dtype=perm.dtype
+            ),
+            perm[..., array_ops.newaxis],
+        ),
+        self.dtype,
+    )
 
   def _diag_part(self):
     perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
-    return math_ops.cast(math_ops.equal(
-        math_ops.range(0, self._domain_dimension_tensor(perm)),
-        perm), self.dtype)
+    return math_ops.cast(
+        math_ops.equal(
+            math_ops.range(
+                0, self._domain_dimension_tensor(perm), dtype=perm.dtype
+            ),
+            perm,
+        ),
+        self.dtype,
+    )
 
   def _cond(self):
     # Permutation matrices are rotations which have condition number 1.

@@ -51,14 +51,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 
 namespace {
 
 using ::absl::StatusOr;
-using ::tensorflow::Status;
-using ::tensorflow::errors::InvalidArgument;
 
 StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
                                           mlir::Builder builder,
@@ -396,7 +393,7 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
     extendVec[i] = llvm::APInt(1, value[i]);
   }
   mlir::RankedTensorType ty =
-      tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(1));
+      mlir::TFL::GetTypeFromTFLiteShape(shape, builder.getIntegerType(1));
   return mlir::DenseIntElementsAttr::get(ty, extendVec);
 }
 
@@ -404,7 +401,7 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
                                              std::vector<int32_t> value,
                                              mlir::Builder builder) {
   mlir::RankedTensorType ty =
-      tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(32));
+      mlir::TFL::GetTypeFromTFLiteShape(shape, builder.getIntegerType(32));
   return mlir::DenseIntElementsAttr::get(ty, value);
 }
 
@@ -412,7 +409,7 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
                                              std::vector<int64_t> value,
                                              mlir::Builder builder) {
   mlir::RankedTensorType ty =
-      tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(64));
+      mlir::TFL::GetTypeFromTFLiteShape(shape, builder.getIntegerType(64));
   return mlir::DenseIntElementsAttr::get(ty, value);
 }
 
@@ -420,7 +417,7 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
                                              std::vector<float> value,
                                              mlir::Builder builder) {
   mlir::RankedTensorType ty =
-      tensorflow::GetTypeFromTFTensorShape(shape, builder.getF32Type());
+      mlir::TFL::GetTypeFromTFLiteShape(shape, builder.getF32Type());
   return mlir::DenseFPElementsAttr::get(ty, value);
 }
 
@@ -585,7 +582,7 @@ static mlir::Attribute BuildStablehlo_PrecisionConfigAttr(
   return builder.getArrayAttr(precision_attrs);
 }
 
-Status mlir::CustomOptionsToAttributes(
+absl::Status mlir::CustomOptionsToAttributes(
     const std::string& custom_code, llvm::ArrayRef<uint8_t> custom_options,
     mlir::Builder builder, mlir::Location loc,
     llvm::SmallVectorImpl<mlir::NamedAttribute>* attributes) {

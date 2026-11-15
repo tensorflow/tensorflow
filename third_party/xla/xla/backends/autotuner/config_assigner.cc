@@ -484,8 +484,19 @@ ConfigAssigner::GetEstimatedConfigs(const HloInstruction* instr) {
 
 absl::StatusOr<ConfigAssigner::Config>
 ConfigAssigner::GetFirstCompilableConfigOrDefault(const HloInstruction* instr) {
+  std::optional<autotuner::Backend> default_backend;
+  if (options_.default_backend_fn) {
+    default_backend = options_.default_backend_fn(*instr);
+  }
   absl::StatusOr<std::vector<Config>> supported_configs =
       orchestrator_->GetSupportedConfigs(*instr);
+  if (default_backend.has_value() && supported_configs.ok()) {
+    // Move the configs of `default_backend` to the front, keeping the order
+    // within each backend, so that they are tried first.
+    absl::c_stable_partition(*supported_configs, [&](const Config& config) {
+      return config.codegen_backend->backend() == *default_backend;
+    });
+  }
   absl::StatusOr<Config> supported_config =
       supported_configs.ok()
           ? GetFirstCompilableConfig(instr, std::move(*supported_configs))

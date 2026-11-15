@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -58,7 +59,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/util/buffer_slice_merge.h"
@@ -69,6 +72,10 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+// Minimum size of the buffer used to flush the caches, in case the device does
+// not report its L2 cache size.
+constexpr int64_t kMinCacheFlushBytes = int64_t{64} << 20;  // 64 MiB
 
 std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
     absl::Span<se::DeviceAddressBase const> buffers,
@@ -255,13 +262,37 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
     LOG(ERROR) << "Failed to create stream: " << stream.status();
     return nullptr;
   }
-  return absl::WrapUnique(new GpuProfiler(stream_executor, active_allocator,
-                                          std::move(owned_allocator),
-                                          stream.value(), options));
+
+  // Overwriting twice the L2 cache size evicts all previously cached lines.
+  const int64_t cache_flush_bytes =
+      options.flush_caches
+          ? std::max(
+                2 * stream_executor->GetDeviceDescription().l2_cache_size(),
+                kMinCacheFlushBytes)
+          : 0;
+  return absl::WrapUnique(new GpuProfiler(
+      stream_executor, active_allocator, std::move(owned_allocator),
+      stream.value(), options, cache_flush_bytes));
+}
+
+GpuProfiler::~GpuProfiler() {
+  if (!cache_flush_buffer_.is_null()) {
+    absl::Status status = stream_->BlockHostUntilDone();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to synchronize stream before freeing cache flush "
+                    "buffer: "
+                 << status;
+    }
+  }
 }
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable, const HloInstruction* instr) {
+  if (!cache_flush_buffer_.is_null()) {
+    ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    ABSL_RETURN_IF_ERROR(cache_flush_buffer_.Free());
+  }
+  cache_flush_alloc_failed_ = false;
   ABSL_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
@@ -310,6 +341,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
                         .status());
     ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
     if (warmup_rz.has_value()) {
+      absl::ReaderMutexLock lock(GetGpuMutex(stream_executor_));
       ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
                        warmup_rz->CheckRedzones());
       if (!rz_check.ok()) {
@@ -325,19 +357,78 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     }
   }
 
+  // Average over several timed runs. With a single run, the device timer's
+  // quantization and run-to-run noise are comparable to the differences
+  // between the best candidates, which makes the selection nondeterministic.
+  const int num_timed_runs = std::max(1, options_.num_timed_runs);
+  absl::Duration total_duration = absl::ZeroDuration();
   ExecutionProfile profile;
-  profile.set_warmup_run_executed(true);
-  std::vector<ExecutionInput> execution_inputs =
-      CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
-                                       rz_buffers.input_shapes());
+  for (int run = 0; run < num_timed_runs; ++run) {
+    ABSL_RETURN_IF_ERROR(FlushCaches());
+    profile.Clear();
+    profile.set_warmup_run_executed(true);
+    std::vector<ExecutionInput> execution_inputs =
+        CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
+                                         rz_buffers.input_shapes());
 
-  ABSL_ASSIGN_OR_RETURN(
-      ExecutionOutput execution_output,
-      Execute(executable, std::move(execution_inputs), &profile, allocator_));
+    ABSL_ASSIGN_OR_RETURN(
+        ExecutionOutput execution_output,
+        Execute(executable, std::move(execution_inputs), &profile, allocator_));
 
-  result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  result.output_buffer = execution_output.Commit().ConsumeResult();
+    total_duration += absl::Nanoseconds(profile.compute_time_ns());
+    if (run == num_timed_runs - 1) {
+      result.output_buffer = execution_output.Commit().ConsumeResult();
+    }
+  }
+  result.duration = total_duration / num_timed_runs;
   return result;
+}
+
+absl::Status GpuProfiler::FlushCaches() {
+  if (cache_flush_bytes_ <= 0 || cache_flush_alloc_failed_) {
+    return absl::OkStatus();
+  }
+  auto allocate_flush_buffer = [&]() {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocator_->Allocate(stream_executor_->device_ordinal(),
+                             cache_flush_bytes_,
+                             /*retry_on_failure=*/false);
+    if (!buffer.ok()) {
+      cache_flush_alloc_failed_ = true;
+      if (!logged_cache_flush_alloc_failure_) {
+        logged_cache_flush_alloc_failure_ = true;
+        LOG(WARNING) << "Failed to allocate " << cache_flush_bytes_
+                     << " bytes to flush caches between autotuning runs, "
+                        "profiling with warm caches: "
+                     << buffer.status();
+      }
+    }
+    return buffer;
+  };
+
+  if (allocator_->AllowsAsynchronousDeallocation()) {
+    // Pool and VMM allocators handle stream-ordered reuse in Deallocate(), so
+    // release the scratch buffer immediately after scheduling MemZero() rather
+    // than holding it across input-buffer creation, warm-up redzones, or
+    // timed executions.
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocate_flush_buffer();
+    if (!buffer.ok()) {
+      return absl::OkStatus();
+    }
+    return stream_->MemZero(buffer->ptr(), (*buffer)->size());
+  }
+
+  if (cache_flush_buffer_.is_null()) {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> buffer =
+        allocate_flush_buffer();
+    if (!buffer.ok()) {
+      return absl::OkStatus();
+    }
+    cache_flush_buffer_ = *std::move(buffer);
+  }
+  return stream_->MemZero(cache_flush_buffer_.ptr(),
+                          cache_flush_buffer_->size());
 }
 
 absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(

@@ -250,31 +250,6 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   return analysis;
 }
 
-bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
-    const HloInstruction& dot, Scope scope) const {
-  CHECK(scope == Scope::LHS || scope == Scope::RHS);
-  const auto& dims = dot.dot_dimension_numbers();
-  const auto& batch_dims = (scope == Scope::LHS) ? dims.lhs_batch_dimensions()
-                                                 : dims.rhs_batch_dimensions();
-
-  if (batch_dims.empty()) return true;
-
-  int32_t batch_dim = batch_dims.Get(0);
-  CHECK_EQ(batch_dims.size(), 1);
-  const auto& params = parameters_.at(scope);
-  for (const auto& param : params) {
-    if (param->shape().element_type() != S4) continue;
-
-    const auto* strides = IterSpec(scope, param, batch_dim);
-    if (strides == nullptr) continue;
-    // The hacky way to check if the batch dimension is minor.
-    // It also covers the case when the batch dimension is second to last but
-    // the minor dimension is equal to 1.
-    if (strides->front().stride == 1) return false;
-  }
-  return true;
-}
-
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot) {
   is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;

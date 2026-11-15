@@ -407,3 +407,43 @@ func.func @NotBatchmatmul2FullyconnectedI8CastConstY(%arg0: tensor<16x1024xf32>)
   %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
   func.return %1 : tensor<16x128xf32>
 }
+
+// A rank-2 blockwise-dequantized RHS of an SRQ batch_matmul becomes a
+// transposed fully_connected filter, which can be folded into a blockwise
+// quantized FULLY_CONNECTED filter.
+// CHECK-LABEL: ConvertSrqBatchmatmulWithBlockwiseRhsToFullyConnected
+func.func @ConvertSrqBatchmatmulWithBlockwiseRhsToFullyConnected(%arg0: tensor<2x4xf32>) -> tensor<2x3xf32> {
+  %w = arith.constant dense<1> : tensor<4x3xi4>
+  %scales = arith.constant dense<0.5> : tensor<1x3xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %none) {block_shape = [4, 1], symmetric = true} : (tensor<4x3xi4>, tensor<1x3xf32>, none) -> tensor<4x3xf32>
+  %q = "tfl.quantize"(%arg0) <{qtype = tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>
+  %dq = "tfl.dequantize"(%q) : (tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>) -> tensor<2x4xf32>
+  // CHECK: %[[W_DQ:.*]] = "tfl.blockwise_dequantize"
+  // CHECK: %[[W_T:.*]] = "tfl.transpose"(%[[W_DQ]], %{{.*}}) : (tensor<4x3xf32>, tensor<2xi32>) -> tensor<3x4xf32>
+  // CHECK: "tfl.fully_connected"(%{{.*}}, %[[W_T]], %{{.*}})
+  // CHECK-NOT: "tfl.batch_matmul"
+  %0 = "tfl.batch_matmul"(%dq, %w_dq) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<2x4xf32>, tensor<4x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// The transpose of a shared blockwise-dequantized RHS could not be pushed into
+// its constants, so SRQ batch_matmuls sharing one stay batch_matmul.
+// CHECK-LABEL: KeepSrqBatchmatmulsWithSharedBlockwiseRhs
+func.func @KeepSrqBatchmatmulsWithSharedBlockwiseRhs(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) -> (tensor<2x3xf32>, tensor<2x3xf32>) {
+  %w = arith.constant dense<1> : tensor<4x3xi4>
+  %scales = arith.constant dense<0.5> : tensor<1x3xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %none) {block_shape = [4, 1], symmetric = true} : (tensor<4x3xi4>, tensor<1x3xf32>, none) -> tensor<4x3xf32>
+  %q0 = "tfl.quantize"(%arg0) <{qtype = tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>
+  %dq0 = "tfl.dequantize"(%q0) : (tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>) -> tensor<2x4xf32>
+  %q1 = "tfl.quantize"(%arg1) <{qtype = tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>
+  %dq1 = "tfl.dequantize"(%q1) : (tensor<2x4x!quant.uniform<i8:f32, 5.000000e-01>>) -> tensor<2x4xf32>
+  // CHECK-NOT: "tfl.fully_connected"
+  // CHECK: "tfl.batch_matmul"
+  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: "tfl.fully_connected"
+  %0 = "tfl.batch_matmul"(%dq0, %w_dq) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<2x4xf32>, tensor<4x3xf32>) -> tensor<2x3xf32>
+  %1 = "tfl.batch_matmul"(%dq1, %w_dq) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<2x4xf32>, tensor<4x3xf32>) -> tensor<2x3xf32>
+  func.return %0, %1 : tensor<2x3xf32>, tensor<2x3xf32>
+}

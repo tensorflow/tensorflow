@@ -24,9 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
+#include "absl/base/nullability.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -43,22 +46,28 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/local_client.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -68,6 +77,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
@@ -79,12 +89,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
-#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace {
@@ -633,13 +640,32 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   return out;
 }
 
+namespace {
+const PjRtTensorBuffer* GetPjRtTensorBuffer(const Tensor* tensor) {
+  const TensorBuffer* buf = DMAHelper::buffer(tensor);
+  if (buf == nullptr) {
+    return nullptr;
+  }
+  if (const auto* pjrt_buf = dynamic_cast<const PjRtTensorBuffer*>(buf)) {
+    return pjrt_buf;
+  }
+  const TensorBuffer* root_buf = const_cast<TensorBuffer*>(buf)->root_buffer();
+  if (root_buf != buf && root_buf != nullptr &&
+      root_buf->data() == buf->data() && root_buf->size() == buf->size()) {
+    return dynamic_cast<const PjRtTensorBuffer*>(root_buf);
+  }
+  return nullptr;
+}
+}  // namespace
+
 // TODO(b/289002708) Create a unit test to cover use_pjrt_tensor_buffer=true.
 absl::Status PreparePjRtExecutableArguments(
     int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     xla::PjRtClient* pjrt_client, xla::PjRtDevice* pjrt_device,
-    bool use_pjrt_tensor_buffer, std::vector<xla::PjRtBuffer*>* args,
+    bool use_pjrt_tensor_buffer,
+    std::vector<xla::PjRtBuffer*>* absl_nonnull args,
     std::vector<std::unique_ptr<xla::PjRtBuffer>>* owned_args,
     absl::flat_hash_set<int>* non_donatable_input_indices) {
   for (auto arg_num : input_mapping) {
@@ -669,9 +695,12 @@ absl::Status PreparePjRtExecutableArguments(
             "If use_pjrt_tensor_buffer is set, the input tensor should not "
             "contain an AsyncValueTensor.");
       }
-      const PjRtTensorBuffer* pjrt_tensor_buffer =
-          dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(tensor));
-      if (pjrt_tensor_buffer != nullptr) {
+      const PjRtTensorBuffer* pjrt_tensor_buffer = GetPjRtTensorBuffer(tensor);
+      if (pjrt_tensor_buffer != nullptr &&
+          pjrt_tensor_buffer->pjrt_buffer()->device() == pjrt_device &&
+          (pjrt_client->platform_id() != xla::CpuId() ||
+           pjrt_tensor_buffer->pjrt_buffer()->dimensions().size() ==
+               tensor->dims())) {
         args->push_back(pjrt_tensor_buffer->pjrt_buffer());
       } else {
         // Creates a PjRtBuffer from DeviceMemoryBase. The newly created
@@ -679,14 +708,86 @@ absl::Status PreparePjRtExecutableArguments(
         xla::Shape device_shape;
         TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
             tensor->dtype(), tensor->shape(), &device_shape));
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<xla::PjRtBuffer> pjrt_buffer,
-            pjrt_client->CreateViewOfDeviceBuffer(
-                const_cast<char*>(tensor->tensor_data().data()), device_shape,
-                pjrt_device->default_memory_space().value_or(nullptr),
-                [tensor = *tensor]() {}));
-        owned_args->push_back(std::move(pjrt_buffer));
-        args->push_back(owned_args->back().get());
+        const bool can_persist_pjrt_tensor_buffer =
+            pjrt_tensor_buffer == nullptr &&
+            DMAHelper::buffer(tensor) != nullptr &&
+            const_cast<TensorBuffer*>(DMAHelper::buffer(tensor))
+                    ->root_buffer() == DMAHelper::buffer(tensor) &&
+            tensor->TotalBytes() > 0 &&
+            (tensor->RefCountIsOne() || variable_snapshots.contains(arg_num));
+        std::unique_ptr<xla::PjRtBuffer> pjrt_buffer;
+        if (pjrt_tensor_buffer != nullptr &&
+            pjrt_client->platform_id() != xla::CpuId()) {
+          if (auto* common_client =
+                  dynamic_cast<xla::CommonPjRtClient*>(pjrt_client);
+              common_client != nullptr) {
+            if (auto* src_common_buffer = dynamic_cast<xla::CommonPjRtBuffer*>(
+                    pjrt_tensor_buffer->pjrt_buffer());
+                src_common_buffer != nullptr) {
+              xla::CommonPjRtBuffer::ScopedHold hold =
+                  src_common_buffer->GetBufferWithHold(
+                      xla::CommonPjRtBuffer::ScopedHold::kExternalReference);
+              TF_RETURN_IF_ERROR(hold.status());
+              absl::InlinedVector<xla::PjRtDeviceEventRef, 2> definition_events(
+                  hold.buffer()->definition_events().begin(),
+                  hold.buffer()->definition_events().end());
+              xla::PjRtMemorySpace* memory_space =
+                  pjrt_device->default_memory_space().value_or(nullptr);
+              TF_ASSIGN_OR_RETURN(
+                  xla::Shape canonical_shape,
+                  common_client->MakeDefaultShapeForMemorySpace(
+                      memory_space, device_shape,
+                      device_shape.has_layout() ? &device_shape.layout()
+                                                : nullptr));
+              TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                                  common_client->GetOnDeviceBytesCount(
+                                      memory_space, canonical_shape));
+              TF_ASSIGN_OR_RETURN(
+                  xla::PjRtRawBufferRef raw_buffer,
+                  common_client->ImportForeignMemory(
+                      const_cast<char*>(tensor->tensor_data().data()),
+                      [tensor = *tensor]() {}, on_device_bytes_count,
+                      memory_space, /*is_mutable=*/false));
+              TF_ASSIGN_OR_RETURN(
+                  pjrt_buffer,
+                  common_client->DefineBuffer(
+                      std::move(canonical_shape), memory_space,
+                      std::move(raw_buffer), std::move(definition_events)));
+            }
+          }
+        }
+        if (pjrt_buffer == nullptr) {
+          if (pjrt_tensor_buffer != nullptr) {
+            TF_RETURN_IF_ERROR(
+                pjrt_tensor_buffer->pjrt_buffer()->GetReadyFuture().Await());
+          }
+          TF_ASSIGN_OR_RETURN(
+              pjrt_buffer,
+              pjrt_client->CreateViewOfDeviceBuffer(
+                  const_cast<char*>(tensor->tensor_data().data()), device_shape,
+                  pjrt_device->default_memory_space().value_or(nullptr),
+                  [tensor = *tensor]() {}));
+        }
+        if (can_persist_pjrt_tensor_buffer) {
+          TF_RETURN_IF_ERROR(
+              PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
+                  tensor->dtype(), tensor->shape(), std::move(pjrt_buffer),
+                  const_cast<Tensor*>(tensor)));
+          pjrt_tensor_buffer =
+              dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(tensor));
+          TF_RET_CHECK(pjrt_tensor_buffer != nullptr);
+          args->push_back(pjrt_tensor_buffer->pjrt_buffer());
+        } else {
+          owned_args->push_back(std::move(pjrt_buffer));
+          args->push_back(owned_args->back().get());
+        }
+      }
+      if (!tensor->RefCountIsOne() ||
+          (pjrt_tensor_buffer != nullptr &&
+           (DMAHelper::buffer(tensor) != pjrt_tensor_buffer ||
+            const_cast<PjRtTensorBuffer*>(pjrt_tensor_buffer)->root_buffer() !=
+                pjrt_tensor_buffer))) {
+        non_donatable_input_indices->insert(args->size() - 1);
       }
     } else {
       if (av_tensor->GetBuffer() == nullptr) {
@@ -694,10 +795,9 @@ absl::Status PreparePjRtExecutableArguments(
         continue;
       }
       args->push_back(av_tensor->GetBuffer().get());
-    }
-
-    if (!tensor->RefCountIsOne()) {
-      non_donatable_input_indices->insert(args->size() - 1);
+      if (!tensor->RefCountIsOne()) {
+        non_donatable_input_indices->insert(args->size() - 1);
+      }
     }
   }
   return absl::OkStatus();
@@ -815,7 +915,8 @@ absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 
 xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
-    absl::flat_hash_set<int> non_donatable_input_indices) {
+    absl::flat_hash_set<int> non_donatable_input_indices,
+    xla::ExecuteContext* execute_context) {
   xla::ExecuteOptions options;
   // Hardcode run id to always be one: TF distributed strategy
   // differentiates between subsequent runs using dependency edges. This
@@ -834,6 +935,7 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
   // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
   options.use_major_to_minor_data_layout_for_callbacks = true;
   options.non_donatable_input_indices = std::move(non_donatable_input_indices);
+  options.context = execute_context;
   return options;
 }
 
@@ -873,8 +975,13 @@ absl::Status RunPjRtExecutable(
           : accelerator_device_info->use_pjrt_tensor_buffer;
 
   const DeviceType& device_type = GetDeviceType(ctx);
-  const int pjrt_device_id =
-      tsl::GetDeviceIdFromDeviceParsedName(ctx->device()->parsed_name());
+  int pjrt_device_id = 0;
+  if (device_type == DEVICE_CPU || device_type == DEVICE_XLA_CPU) {
+    pjrt_device_id = 0;
+  } else {
+    pjrt_device_id =
+        tsl::GetDeviceIdFromDeviceParsedName(ctx->device()->parsed_name());
+  }
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
       pjrt_client->LookupAddressableDevice(xla::LocalDeviceId(pjrt_device_id)));
@@ -898,12 +1005,17 @@ absl::Status RunPjRtExecutable(
                         executable->FingerprintExecutable());
     device_selector_resource->selector()->Enqueue(pjrt_device_id, fingerprint);
   }
+  const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
+  if (ctx != nullptr && ctx->device() != nullptr &&
+      ctx->device()->has_eigen_cpu_device()) {
+    intra_op_thread_pool = ctx->device()->eigen_cpu_device();
+  }
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
       RunPjRtExecutable(num_missing_prefix_ctx_inputs, inputs,
                         variable_snapshots, updated_variables, device_type,
                         use_pjrt_tensor_buffer, compilation_result, device,
-                        pjrt_client, executable));
+                        pjrt_client, executable, intra_op_thread_pool));
   if (device_selector_resource != nullptr) {
     device_selector_resource->selector()->Completed(pjrt_device_id,
                                                     /*had_error=*/false);
@@ -922,7 +1034,8 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     const DeviceType& device_type, bool use_pjrt_tensor_buffer,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtDevice* device, xla::PjRtClient* pjrt_client,
-    xla::PjRtLoadedExecutable* executable) {
+    xla::PjRtLoadedExecutable* executable,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
   std::vector<xla::PjRtBuffer*> executable_args;
   executable_args.reserve(compilation_result.input_mapping.size());
   std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_executable_args;
@@ -935,32 +1048,36 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs;
   std::optional<tsl::Future<void>> future;
+
+  std::unique_ptr<xla::CpuExecuteContext> cpu_execute_context;
+  if (pjrt_client->platform_id() == xla::CpuId() &&
+      intra_op_thread_pool != nullptr) {
+    cpu_execute_context = std::make_unique<xla::CpuExecuteContext>();
+    cpu_execute_context->set_intra_op_thread_pool(intra_op_thread_pool);
+  }
+  xla::ExecuteOptions execute_options =
+      GetPjRtExecuteOptions(device_type, std::move(non_donatable_input_indices),
+                            cpu_execute_context.get());
+
+  const bool fill_future = cpu_execute_context != nullptr;
   if (executable->num_replicas() != 1 || executable->num_partitions() != 1) {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,
-        executable->ExecuteSharded(
-            executable_args, device,
-            GetPjRtExecuteOptions(device_type,
-                                  std::move(non_donatable_input_indices)),
-            future));
+        executable->ExecuteSharded(executable_args, device, execute_options,
+                                   future, fill_future));
   } else {
     TF_ASSIGN_OR_RETURN(
         execute_outputs,
-        executable->ExecutePortable(
-            executable_args, device,
-            GetPjRtExecuteOptions(device_type,
-                                  std::move(non_donatable_input_indices)),
-            future));
+        executable->ExecutePortable(executable_args, device, execute_options,
+                                    future, fill_future));
   }
 
-  // We need to ensure the PjRtBuffers owned by `owned_executable_args` live
-  // until execution is complete. We do this by capturing
-  // `owned_executable_args` by move, so it is owned by the lambda
-  // that is executed when the future returned by ExecutePortable/ExecuteSharded
-  // is ready i.e. when the execution is complete.
-  if (!owned_executable_args.empty() && future.has_value()) {
-    future->OnReady([owned_executable_args =
-                         std::move(owned_executable_args)](absl::Status s) {});
+  // Ensure `cpu_execute_context` lives until CPU execution is complete.
+  // Underlying device memory for `owned_executable_args` is retained by PJRT's
+  // raw buffer and usage events until device execution completes.
+  if (cpu_execute_context != nullptr && future.has_value()) {
+    future->OnReady([cpu_execute_context =
+                         std::move(cpu_execute_context)](absl::Status s) {});
   }
 
   return execute_outputs;

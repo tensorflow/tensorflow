@@ -1340,10 +1340,14 @@ class SingleOpModel {
         t.shape[t.shape.size() - 1] / t.per_block_quantization;
     TensorData scale_tensor_data(TensorType_FLOAT16, scale_shape);
     int scale_tensor_id = id + 1;
-    // TODO(zichuanwei): support blockwise zero point.
+    // The zero points, if any, are an int32 tensor right after the scales.
+    // Otherwise, -1 means that the zero points are 0.
+    const bool has_zero_points = !t.per_channel_quantization_offsets.empty();
+    const int zero_points_tensor_id =
+        has_zero_points ? id + 2 : kTfLiteOptionalTensor;
     flatbuffers::Offset<BlockwiseQuantization> blockwise_quant_params = 0;
     blockwise_quant_params = CreateBlockwiseQuantization(
-        builder_, scale_tensor_id, /*zero_points=*/-1,
+        builder_, scale_tensor_id, zero_points_tensor_id,
         /*block_size=*/t.per_block_quantization);
     flatbuffers::Offset<QuantizationParameters> q_params = 0;
     q_params = CreateQuantizationParameters(
@@ -1373,6 +1377,13 @@ class SingleOpModel {
                      /*name=*/0, q_params, /*is_variable=*/false));
     scale_tensor_id = AddTensor<uint16_t>(scale_tensor_data, fp16_scales.data(),
                                           fp16_scales.size());
+    if (has_zero_points) {
+      const std::vector<int32_t> zero_points(
+          t.per_channel_quantization_offsets.begin(),
+          t.per_channel_quantization_offsets.end());
+      AddTensor<int32_t>(TensorData(TensorType_INT32, scale_shape),
+                         zero_points.data(), zero_points.size());
+    }
     tensor_data_[id] = t;
     return id;
   }

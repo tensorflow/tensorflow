@@ -114,6 +114,10 @@ class CudaStream : public StreamCommon {
 
   CUstream stream_handle() const { return stream_handle_; }
 
+  // Returns the green context used to create this stream, or nullptr for an
+  // ordinary CUDA stream.
+  const GreenContext* green_context() const { return green_context_; }
+
   // RAII Handle for capturing a CUDA graph.
   // Captures must be ended manually for errors to be propagated.
   // Otherwise the destruction will fail with a fatal error.
@@ -149,7 +153,8 @@ class CudaStream : public StreamCommon {
  private:
   CudaStream(CudaExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
-             CUstream stream_handle, CudaStreamType type);
+             CUstream stream_handle, CudaStreamType type,
+             const GreenContext* green_context);
 
   absl::Status RecordCompletedEvent();
 
@@ -163,6 +168,7 @@ class CudaStream : public StreamCommon {
   CudaEvent completed_event_;
   CUstream stream_handle_;
   CudaStreamType type_;
+  const GreenContext* green_context_;
 
   absl::once_flag capture_stream_once_;
   absl::StatusOr<std::unique_ptr<CudaStream>> capture_stream_{

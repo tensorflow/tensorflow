@@ -1374,7 +1374,7 @@ absl::StatusOr<HloInstruction*> AddSinkedAllReducesAndReplaceWhile(
     if (!ShapeUtil::Equal(update->shape(), result_tuple_element->shape())) {
       std::vector<HloInstruction*> start_indices;
       start_indices.reserve(context.update_slice_offsets.size());
-      for (int offset : context.update_slice_offsets) {
+      for (int64_t offset : context.update_slice_offsets) {
         start_indices.push_back(get_or_create_constant(offset));
       }
       update =

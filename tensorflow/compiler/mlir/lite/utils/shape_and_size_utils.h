@@ -19,10 +19,36 @@ limitations under the License.
 #include <cstdint>
 
 #include "mlir/Support/LLVM.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
+
+// Value used for a dynamic dimension in TFLite (and TF) shapes.
+inline constexpr int64_t kTFLiteDynamicSize = -1;
+
+// Converts a shape that uses `kTFLiteDynamicSize` for dynamic dimensions to an
+// MLIR shape that uses `ShapedType::kDynamic`.
+llvm::SmallVector<int64_t> ConvertTFLiteShapeToMlir(
+    llvm::ArrayRef<int64_t> shape);
+
+// Converts an MLIR shape that uses `ShapedType::kDynamic` for dynamic
+// dimensions to a shape that uses `kTFLiteDynamicSize`.
+llvm::SmallVector<int64_t> ConvertMlirShapeToTFLite(
+    llvm::ArrayRef<int64_t> shape);
+
+// Returns a ranked tensor type for a shape that uses `kTFLiteDynamicSize` for
+// dynamic dimensions.
+mlir::RankedTensorType GetTypeFromTFLiteShape(llvm::ArrayRef<int64_t> shape,
+                                              mlir::Type element_type,
+                                              mlir::Attribute encoding = {});
 
 // Converts a TF size (64-bit) to TFLite (32-bit) and properly converts TF's
 // value for dynamic size (`std::numeric_limits<int64_t>::min()`) to the
@@ -37,6 +63,21 @@ int32_t ConvertToTfliteSize(int64_t size);
 absl::StatusOr<int32_t> GetQuantDimensionAfterReshape(
     mlir::ArrayRef<int64_t> input_shape, mlir::ArrayRef<int64_t> output_shape,
     int32_t input_quant_dim);
+
+// Padding schemes supported by TFLite windowed ops (e.g. convolutions and
+// pooling).
+enum class WindowPadding { kValid, kSame };
+
+// Parses a TFLite padding attribute value ("SAME" or "VALID").
+absl::StatusOr<WindowPadding> ParseWindowPadding(llvm::StringRef padding);
+
+// Computes the output size of a windowed op along one spatial dimension, as
+// well as the padding added before and after the input.
+absl::Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
+                                   int64_t dilation_rate, int64_t stride,
+                                   WindowPadding padding, int64_t* output_size,
+                                   int64_t* padding_before,
+                                   int64_t* padding_after);
 
 }  // namespace TFL
 }  // namespace mlir

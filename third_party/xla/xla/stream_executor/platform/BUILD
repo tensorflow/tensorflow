@@ -35,12 +35,7 @@ cc_library(
     hdrs = [
         "initialize.h",
     ],
-    deps = [
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
-        "@tsl//tsl/platform",
-    ] + tf_stream_executor_deps("platform", "//xla/stream_executor/platform/"),
+    deps = ["@tsl//tsl/platform"] + tf_stream_executor_deps("platform", "//xla/stream_executor/platform/"),
 )
 
 cc_library(

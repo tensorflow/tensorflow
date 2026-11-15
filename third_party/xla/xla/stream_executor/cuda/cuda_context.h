@@ -36,6 +36,7 @@ class CudaContext : public Context {
   ~CudaContext() override;
 
   void SetActive() override;
+  void SetInactive() const override;
   bool IsActive() const override;
   CUcontext context() const { return context_; }
   int device_ordinal() const override { return device_ordinal_; }

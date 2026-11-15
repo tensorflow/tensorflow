@@ -75,11 +75,28 @@ static std::string FprintToHex(const tsl::Fprint128& fp) {
   return absl::StrFormat("%016x%016x", fp.low64, fp.high64);
 }
 
+// Returns whether the proto has an embedded HLO module. Executables can be
+// serialized without a module (e.g. if it wasn't embedded at compile time) or
+// with only the module config.
+static bool HasHloModule(const GpuExecutableProto& proto) {
+  return proto.has_hlo_module_with_config() &&
+         proto.hlo_module_with_config().has_hlo_module();
+}
+
+// Deserializes the embedded HLO module if there is one, otherwise returns
+// nullptr.
+static absl::StatusOr<std::unique_ptr<HloModule>> MaybeCreateHloModule(
+    const GpuExecutableProto& proto) {
+  if (!HasHloModule(proto)) {
+    return nullptr;
+  }
+  return HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config());
+}
+
 absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>>
 GpuAotCompilationResult::FromProto(GpuExecutableProto executable_proto) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                   HloModule::CreateFromProtoWithConfig(
-                       executable_proto.hlo_module_with_config()));
+                   MaybeCreateHloModule(executable_proto));
   return absl::WrapUnique(new GpuAotCompilationResult(
       std::move(executable_proto), std::move(module)));
 }
@@ -94,8 +111,7 @@ GpuAotCompilationResult::FromSerialized(
   ABSL_RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *executable_proto));
 
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                   HloModule::CreateFromProtoWithConfig(
-                       executable_proto->hlo_module_with_config()));
+                   MaybeCreateHloModule(*executable_proto));
   return absl::WrapUnique(
       new GpuAotCompilationResult(internal::ArenaAllocatedGpuExecutableProto(
                                       std::move(arena), executable_proto),
@@ -121,12 +137,20 @@ GpuAotCompilationResult::LoadExecutable(
     return registry.FindSymbol(symbol_name, platform_id);
   };
 
-  VLOG(1) << absl::StrFormat(
-      "GpuAotCompilationResult::LoadExecutable: module=%s "
-      "num_instructions=%d hlo_fingerprint=%s executable_fingerprint=%s",
-      hlo_module_->name(), hlo_module_->instruction_count(),
-      FprintToHex(HloModuleFingerprint(*hlo_module_)),
-      FprintToHex(ExecutableFingerprint(GetExecutableProto())));
+  if (hlo_module_ != nullptr) {
+    VLOG(1) << absl::StrFormat(
+        "GpuAotCompilationResult::LoadExecutable: module=%s "
+        "num_instructions=%d hlo_fingerprint=%s executable_fingerprint=%s",
+        hlo_module_->name(), hlo_module_->instruction_count(),
+        FprintToHex(HloModuleFingerprint(*hlo_module_)),
+        FprintToHex(ExecutableFingerprint(GetExecutableProto())));
+  } else {
+    VLOG(1) << absl::StrFormat(
+        "GpuAotCompilationResult::LoadExecutable: module=%s (no HLO module) "
+        "executable_fingerprint=%s",
+        GetExecutableProto().module_name(),
+        FprintToHex(ExecutableFingerprint(GetExecutableProto())));
+  }
 
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
                                   platform_id->ToName(), debug_options,
@@ -161,14 +185,24 @@ GpuAotCompilationResult::GetCompiledMemoryStats() const {
   for (const BufferAllocation& alloc : allocations) {
     alloc_ptrs.push_back(&alloc);
   }
-  memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
-  ABSL_ASSIGN_OR_RETURN(
-      auto peak_memories,
-      ComputePeakMemorySizes(
-          GetExecutableProto().buffer_assignment(),
-          GetExecutableProto().hlo_module_with_config().hlo_module()));
-  memory_stats.peak_memory_in_bytes = peak_memories.padded;
-  memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
+  memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs,
+                                                  /*assignment=*/nullptr);
+  if (HasHloModule(GetExecutableProto())) {
+    ABSL_ASSIGN_OR_RETURN(
+        auto peak_memories,
+        ComputePeakMemorySizes(
+            GetExecutableProto().buffer_assignment(),
+            GetExecutableProto().hlo_module_with_config().hlo_module()));
+    memory_stats.peak_memory_in_bytes = peak_memories.padded;
+    memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
+  } else {
+    // The unpadded sizes can only be derived from the HLO module, so without a
+    // module we only compute the padded peak and leave
+    // `peak_unpadded_heap_bytes` at 0, which means unknown.
+    ABSL_ASSIGN_OR_RETURN(
+        memory_stats.peak_memory_in_bytes,
+        ComputePeakMemory(GetExecutableProto().buffer_assignment()));
+  }
   memory_stats.total_allocation_bytes = ComputeTotalAllocationBytes(
       GetExecutableProto().buffer_assignment(), /*memory_color=*/0);
   memory_stats.indefinite_allocations = ComputeIndefiniteAllocationsInBytes(

@@ -63,7 +63,8 @@ TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
 
   RocmTraceCollectorImpl collector(options, kStartWallTimeNs, kStartGpuTimeNs);
 
-  constexpr uint32_t kCorrelationId = 42;
+  // Above 2^32: correlation ids are 64-bit and must not be truncated.
+  constexpr uint64_t kCorrelationId = (uint64_t{1} << 32) + 42;
   constexpr uint64_t kStartTimeNs = 3000;
   constexpr uint64_t kEndTimeNs = 4000;
 
@@ -76,15 +77,6 @@ TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
   api_event.correlation_id = kCorrelationId;
   api_event.thread_id = 999;
   api_event.kernel_info = KernelDetails{};
-  api_event.kernel_info.private_segment_size = 32;
-  api_event.kernel_info.group_segment_size = 1024;
-  api_event.kernel_info.workgroup_x = 256;
-  api_event.kernel_info.workgroup_y = 1;
-  api_event.kernel_info.workgroup_z = 1;
-  api_event.kernel_info.grid_x = 100;
-  api_event.kernel_info.grid_y = 1;
-  api_event.kernel_info.grid_z = 1;
-  api_event.kernel_info.func_ptr = reinterpret_cast<void*>(0xdeadbeef);
 
   collector.AddEvent(std::move(api_event), /*is_auxiliary=*/false);
 
@@ -99,6 +91,7 @@ TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
   activity_event.end_time_ns = kEndTimeNs;
   activity_event.device_id = 100;
   activity_event.stream_id = 123;
+  activity_event.kernel_info = KernelDetails{};
 
   collector.AddEvent(std::move(activity_event), /*is_auxiliary=*/false);
 
@@ -129,6 +122,7 @@ TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
 // ApiActivityInfoExchange. When N activity events share one
 // correlation_id (the rocprofiler-sdk pattern for hipGraphLaunch-replayed
 // kernels), all N must reach the exported XPlane, not just the first.
+// Each must also keep its own kernel_details, not the first one's.
 TEST(RocmCollectorTest, MultipleActivitiesPerCorrelationIdAllExported) {
   RocmTraceCollectorOptions options;
   options.max_callback_api_events = 100;
@@ -155,20 +149,21 @@ TEST(RocmCollectorTest, MultipleActivitiesPerCorrelationIdAllExported) {
   api_event.correlation_id = kCorrelationId;
   api_event.thread_id = 999;
   api_event.kernel_info = KernelDetails{};
-  api_event.kernel_info.func_ptr = reinterpret_cast<void*>(0xdeadbeef);
   collector.AddEvent(std::move(api_event), /*is_auxiliary=*/false);
 
   // Three GPU activity records, same correlation_id, same stream (so
-  // they land on the same XLine), distinct names and timestamps.
+  // they land on the same XLine), distinct names, timestamps and grids.
   struct ActivityShape {
     const char* name;
     uint64_t start_ns;
     uint64_t end_ns;
+    uint32_t grid_x;  // Distinct per kernel, so a copied kernel_details shows.
+    const char* expected_grid;
   };
   constexpr ActivityShape kActivities[] = {
-      {"kernel_a", 3000, 3500},
-      {"kernel_b", 3500, 4000},
-      {"kernel_c", 4000, 4500},
+      {"kernel_a", 3000, 3500, 1024, "grid:4,1,1"},
+      {"kernel_b", 3500, 4000, 2048, "grid:8,1,1"},
+      {"kernel_c", 4000, 4500, 4096, "grid:16,1,1"},
   };
   for (const auto& shape : kActivities) {
     RocmTracerEvent activity;
@@ -181,6 +176,15 @@ TEST(RocmCollectorTest, MultipleActivitiesPerCorrelationIdAllExported) {
     activity.end_time_ns = shape.end_ns;
     activity.device_id = kDeviceId;
     activity.stream_id = kStreamId;
+    // ToXStat prints grid in workgroups (grid / workgroup), and 0 for any
+    // dimension whose workgroup size is 0, so set all three.
+    activity.kernel_info = KernelDetails{};
+    activity.kernel_info.workgroup_x = 256;
+    activity.kernel_info.workgroup_y = 1;
+    activity.kernel_info.workgroup_z = 1;
+    activity.kernel_info.grid_x = shape.grid_x;
+    activity.kernel_info.grid_y = 1;
+    activity.kernel_info.grid_z = 1;
     collector.AddEvent(std::move(activity), /*is_auxiliary=*/false);
   }
 
@@ -197,13 +201,34 @@ TEST(RocmCollectorTest, MultipleActivitiesPerCorrelationIdAllExported) {
   // appear on the stream line. Dense stream remapping converts the raw
   // stream_id (123) to a sequential index (0), so we look for events on
   // any device line rather than matching a specific line ID.
+  //
+  // An event's kernel_details stat refers by id to the stat metadata whose
+  // name is the ToXStat string. Empty if the event has no such stat.
+  auto kernel_details_of = [&](const auto& ev) -> std::string {
+    for (const auto& stat : ev.stats()) {
+      if (gpu_plane->stat_metadata().at(stat.metadata_id()).name() ==
+          "kernel_details") {
+        return gpu_plane->stat_metadata().at(stat.ref_value()).name();
+      }
+    }
+    return "";
+  };
   size_t total_kernel_events = 0;
   absl::flat_hash_set<std::string> seen_names;
   for (const auto& line : gpu_plane->lines()) {
     total_kernel_events += line.events_size();
     for (const auto& ev : line.events()) {
-      seen_names.insert(
-          gpu_plane->event_metadata().at(ev.metadata_id()).name());
+      const std::string& name =
+          gpu_plane->event_metadata().at(ev.metadata_id()).name();
+      seen_names.insert(name);
+      for (const auto& shape : kActivities) {
+        if (name == shape.name) {
+          const std::string details = kernel_details_of(ev);
+          EXPECT_TRUE(absl::StrContains(details, shape.expected_grid))
+              << name << " shows \"" << details
+              << "\"; each graph kernel must keep its own kernel_details.";
+        }
+      }
     }
   }
 

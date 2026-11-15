@@ -173,7 +173,7 @@ class DeterminismTest : public HloPjRtGpuTestBase {
 };
 
 TEST_F(DeterminismTest, CublasLtDot) {
-  debug_options_.clear_xla_gpu_experimental_autotune_backends();
+  debug_options_.clear_xla_config_assigner_backends();
   if (IsRocm()) {
     if (!HasHipblasLt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
@@ -181,7 +181,7 @@ TEST_F(DeterminismTest, CublasLtDot) {
   }
   auto backend =
       IsRocm() ? autotuner::Backend::HIPBLASLT : autotuner::Backend::CUBLASLT;
-  debug_options_.add_xla_gpu_experimental_autotune_backends(backend);
+  debug_options_.add_xla_config_assigner_backends(backend);
 
   constexpr absl::string_view kHloText = R"hlo(
 ENTRY e {

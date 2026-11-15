@@ -140,13 +140,8 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnConvolution) {
       target_suffix);
 }
 
-TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnFmha) {
-  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
-    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
-                 << se::gpu::kMinDevicelessCudnnVersion;
-  }
-  absl::string_view target_suffix =
-      absl::StrContains(device_description().name(), "MIG") ? "_mig" : "";
+void LoadAndRunDevicelessCudnnFmha(XlaCompileTest& test,
+                                   absl::string_view target_suffix) {
   Literal q = LiteralUtil::CreateFullWithDescendingLayout<bfloat16>(
       {1, 2, 128, 64}, static_cast<bfloat16>(0.0f));
   Literal k = LiteralUtil::CreateFullWithDescendingLayout<bfloat16>(
@@ -155,9 +150,33 @@ TEST_F(XlaCompileTest, LoadGpuExecutableWithDevicelessCudnnFmha) {
       {1, 2, 128, 64}, static_cast<bfloat16>(1.0f));
   Literal expected = LiteralUtil::CreateFullWithDescendingLayout<bfloat16>(
       {1, 2, 128, 64}, static_cast<bfloat16>(1.0f));
-  LoadAndRunExecutable(
+  test.LoadAndRunExecutable(
       "xla_aot_compile_test_gpu_executable_fmha_deviceless_cudnn", {&q, &k, &v},
       expected, target_suffix);
+}
+
+TEST_F(XlaCompileTest, ExecutableWithDevicelessCudnnFmha) {
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
+  }
+  absl::string_view target_suffix =
+      absl::StrContains(device_description().name(), "MIG") ? "_mig" : "";
+  LoadAndRunDevicelessCudnnFmha(*this, target_suffix);
+}
+
+TEST_F(XlaCompileTest, ExecutableWithDevicelessCudnnFmhaCompiledForFewerSms) {
+  if (!se::gpu::SupportsDevicelessCudnnCompilation()) {
+    GTEST_SKIP() << "Deviceless cuDNN compilation requires cuDNN >= "
+                 << se::gpu::kMinDevicelessCudnnVersion;
+  }
+  const char* test_device = getenv("XLA_TEST_DEVICE");
+  if (test_device == nullptr || absl::string_view(test_device) != "b200") {
+    // This doesn't work in h100 for example because of cudnn bug fixed in 9.25.
+    GTEST_SKIP() << "Only tested on full b200.";
+  }
+  // Run the MIG-compiled executable on a full device.
+  LoadAndRunDevicelessCudnnFmha(*this, /*target_suffix=*/"_mig");
 }
 
 }  // namespace

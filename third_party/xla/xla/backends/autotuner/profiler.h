@@ -35,6 +35,15 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
+  // Number of timed runs of each executable. The reported duration is the
+  // mean over all timed runs, which reduces run-to-run noise and the
+  // quantization error of the device timer.
+  int num_timed_runs = 1;
+  // Whether to flush the device caches before every timed run, so that the
+  // executable reads its inputs from device memory. This matches production
+  // workloads, where large operands such as weights are usually not cached
+  // when a kernel starts.
+  bool flush_caches = false;
 };
 
 struct ProfileResult {

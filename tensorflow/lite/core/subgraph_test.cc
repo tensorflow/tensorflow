@@ -41,6 +41,7 @@ TfLiteRegistration* Register_NEG();
 
 namespace {
 
+using testing::ElementsAre;
 using testing::ElementsAreArray;
 using testing::Not;
 
@@ -416,6 +417,92 @@ TEST(ReplaceNodeSubsetsWithDelegateKernels,
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(&delegate), kTfLiteOk);
   EXPECT_TRUE(kernel_initialized);
+}
+
+TEST(ReplaceNodeWithSubgraph, PreservesOptionalTensorIndices) {
+  static StderrReporter* error_reporter = new StderrReporter;
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 2; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/error_reporter,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+
+  Subgraph& primary = *subgraphs[0];
+  Subgraph& decomp = *subgraphs[1];
+
+  // Primary subgraph has 2 tensors (input 0, output 1) and 1 composite node.
+  ASSERT_EQ(primary.AddTensors(/*tensors_to_add=*/2), kTfLiteOk);
+  ASSERT_EQ(primary.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(primary.SetOutputs({1}), kTfLiteOk);
+  TfLiteRegistration composite_reg = {};
+  int composite_node_index = -1;
+  ASSERT_EQ(primary.AddNodeWithParameters(
+                /*inputs=*/{0, kTfLiteOptionalTensor},
+                /*outputs=*/{1, kTfLiteOptionalTensor},
+                /*intermediates=*/{}, /*init_data=*/nullptr,
+                /*init_data_size=*/0, /*builtin_data=*/nullptr, &composite_reg,
+                &composite_node_index),
+            kTfLiteOk);
+
+  // Decomposition subgraph has 3 tensors: input 0, internal tensor 1, output 2.
+  // Its op uses kTfLiteOptionalTensor (-1) in inputs, outputs, and
+  // intermediates (e.g. FULLY_CONNECTED without a bias tensor).
+  ASSERT_EQ(decomp.AddTensors(/*tensors_to_add=*/3), kTfLiteOk);
+  ASSERT_EQ(decomp.SetInputs({0, kTfLiteOptionalTensor}), kTfLiteOk);
+  ASSERT_EQ(decomp.SetOutputs({2, kTfLiteOptionalTensor}), kTfLiteOk);
+  TfLiteRegistration inner_reg = {};
+  int inner_node_index = -1;
+  ASSERT_EQ(decomp.AddNodeWithParameters(
+                /*inputs=*/{0, 1, kTfLiteOptionalTensor},
+                /*outputs=*/{2, kTfLiteOptionalTensor},
+                /*intermediates=*/{1, kTfLiteOptionalTensor},
+                /*init_data=*/nullptr, /*init_data_size=*/0,
+                /*builtin_data=*/nullptr, &inner_reg, &inner_node_index),
+            kTfLiteOk);
+
+  const auto* composite_node_and_reg =
+      primary.node_and_registration(composite_node_index);
+  ASSERT_NE(composite_node_and_reg, nullptr);
+  int last_inserted_execution_index = -1;
+  ASSERT_EQ(primary.ReplaceNodeWithSubgraph(
+                /*execution_index=*/0, composite_node_and_reg->first,
+                /*subgraph_index=*/1, last_inserted_execution_index),
+            kTfLiteOk);
+  EXPECT_EQ(last_inserted_execution_index, 0);
+
+  ASSERT_EQ(primary.execution_plan().size(), 1);
+  const int inlined_node_index = primary.execution_plan()[0];
+  const auto* inlined_node_and_reg =
+      primary.node_and_registration(inlined_node_index);
+  ASSERT_NE(inlined_node_and_reg, nullptr);
+  const TfLiteNode& inlined_node = inlined_node_and_reg->first;
+
+  // Input 0 maps to primary tensor 0, internal tensor 1 is offset by 2 -> 3,
+  // and kTfLiteOptionalTensor (-1) is preserved rather than becoming 2 + (-1).
+  ASSERT_NE(inlined_node.inputs, nullptr);
+  EXPECT_THAT(
+      std::vector<int>(inlined_node.inputs->data,
+                       inlined_node.inputs->data + inlined_node.inputs->size),
+      ElementsAre(0, 3, kTfLiteOptionalTensor));
+
+  // Output 2 maps to primary tensor 1, and kTfLiteOptionalTensor is preserved.
+  ASSERT_NE(inlined_node.outputs, nullptr);
+  EXPECT_THAT(
+      std::vector<int>(inlined_node.outputs->data,
+                       inlined_node.outputs->data + inlined_node.outputs->size),
+      ElementsAre(1, kTfLiteOptionalTensor));
+
+  // Intermediate 1 is offset by 2 -> 3, and kTfLiteOptionalTensor is preserved.
+  ASSERT_NE(inlined_node.intermediates, nullptr);
+  EXPECT_THAT(std::vector<int>(inlined_node.intermediates->data,
+                               inlined_node.intermediates->data +
+                                   inlined_node.intermediates->size),
+              ElementsAre(3, kTfLiteOptionalTensor));
 }
 
 }  // namespace

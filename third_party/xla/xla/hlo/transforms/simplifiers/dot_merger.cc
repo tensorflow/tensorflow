@@ -81,9 +81,9 @@ bool HasSubByteUpcast(const HloInstruction* instr) {
 using ReplacementMap = HloInstructionMap<HloInstruction*>;
 
 // In order to be mergeable, the shared operand should have the same dimension
-// categories for non-degenerate dimensions, have the same operand and output
-// types, and same algorithm/precision config. And same queue_id, whatever it
-// is.
+// categories for non-degenerate dimensions, the same operand and output
+// types, and the same algorithm/precision config, queue_id, and frontend
+// attributes.
 struct EquivalenceKey {
   const HloInstruction* source;
   std::vector<DotOperandDims::Category> dim_categories;
@@ -92,12 +92,13 @@ struct EquivalenceKey {
   PrimitiveType concat_op_type;
   PrimitiveType dot_type;
   std::string precision_config_bytes;
+  absl::btree_map<std::string, std::string> frontend_attributes;
 
   template <typename H>
   friend H AbslHashValue(H h, const EquivalenceKey& k) {
     return H::combine(std::move(h), k.source, k.dim_categories, k.queue_id,
                       k.shared_op_type, k.concat_op_type, k.dot_type,
-                      k.precision_config_bytes);
+                      k.precision_config_bytes, k.frontend_attributes);
   }
 
   bool operator==(const EquivalenceKey& other) const {
@@ -106,17 +107,20 @@ struct EquivalenceKey {
            shared_op_type == other.shared_op_type &&
            concat_op_type == other.concat_op_type &&
            dot_type == other.dot_type &&
-           precision_config_bytes == other.precision_config_bytes;
+           precision_config_bytes == other.precision_config_bytes &&
+           frontend_attributes == other.frontend_attributes;
   }
 
   bool operator<(const EquivalenceKey& other) const {
     int64_t id1 = source->unique_id();
     int64_t id2 = other.source->unique_id();
-    auto t1 = std::tie(id1, queue_id, dim_categories, shared_op_type,
-                       concat_op_type, dot_type, precision_config_bytes);
-    auto t2 = std::tie(id2, other.queue_id, other.dim_categories,
-                       other.shared_op_type, other.concat_op_type,
-                       other.dot_type, other.precision_config_bytes);
+    auto t1 =
+        std::tie(id1, queue_id, dim_categories, shared_op_type, concat_op_type,
+                 dot_type, precision_config_bytes, frontend_attributes);
+    auto t2 =
+        std::tie(id2, other.queue_id, other.dim_categories,
+                 other.shared_op_type, other.concat_op_type, other.dot_type,
+                 other.precision_config_bytes, other.frontend_attributes);
     return t1 < t2;
   }
 };
@@ -148,6 +152,9 @@ absl::StatusOr<EquivalenceKey> GetEquivalenceKey(
   PrimitiveType dot_type = dot->shape().element_type();
   std::string precision_config_bytes =
       dot->precision_config().SerializeAsString();
+  absl::btree_map<std::string, std::string> frontend_attributes(
+      dot->frontend_attributes().map().begin(),
+      dot->frontend_attributes().map().end());
 
   return EquivalenceKey{source,
                         dim_categories,
@@ -155,7 +162,8 @@ absl::StatusOr<EquivalenceKey> GetEquivalenceKey(
                         shared_op_type,
                         concat_op_type,
                         dot_type,
-                        std::move(precision_config_bytes)};
+                        std::move(precision_config_bytes),
+                        std::move(frontend_attributes)};
 }
 
 // Traverses backward from the operand of a dot instruction to find its source,
@@ -559,6 +567,7 @@ absl::StatusOr<HloInstruction*> CreateNewDot(
   HloInstruction* new_dot = dot_lhs->AddInstruction(
       HloInstruction::CreateDot(new_dot_shape, dot_lhs, dot_rhs, dnums,
                                 dots_to_merge[0].dot->precision_config()));
+  new_dot->CopyBackendConfigFrom(dots_to_merge[0].dot);
 
   auto it = absl::c_find_if(dots_to_merge, [](const DotOperandUsage& usage) {
     return !usage.dot->metadata().op_name().empty();
@@ -566,6 +575,7 @@ absl::StatusOr<HloInstruction*> CreateNewDot(
   if (it != dots_to_merge.end()) {
     new_dot->set_metadata(it->dot->metadata());
   }
+  new_dot->set_frontend_attributes(dots_to_merge[0].dot->frontend_attributes());
 
   return new_dot;
 }
@@ -1026,7 +1036,9 @@ absl::StatusOr<bool> MergeDots(
               << ", shared_op_type: " << PrimitiveType_Name(key.shared_op_type)
               << ", concat_op_type: " << PrimitiveType_Name(key.concat_op_type)
               << ", dot_type: " << PrimitiveType_Name(key.dot_type)
-              << ", queue_id: " << key.queue_id;
+              << ", queue_id: " << key.queue_id << ", frontend_attributes: "
+              << FrontendAttributesToString(
+                     values[0].dot->frontend_attributes());
       VLOG(3) << "    Members:";
       for (const auto& usage : values) {
         VLOG(3) << "      " << usage.dot->name() << " (operand "

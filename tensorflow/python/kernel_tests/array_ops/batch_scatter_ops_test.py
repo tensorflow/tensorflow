@@ -19,6 +19,8 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -49,17 +51,20 @@ class ScatterTest(test.TestCase):
                         updates_are_scalar=False,
                         method=False):
     np.random.seed(8)
-    with self.cached_session(use_gpu=False):
+    with self.cached_session():
       for indices_shape in (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
-          sparse_dim = len(indices_shape) - 1
-          indices = np.random.randint(
-              indices_shape[sparse_dim], size=indices_shape, dtype=itype)
+          # while leaving untouched slots along the scatter dimension.
+          num_slots = indices_shape[-1] + 2
+          indices = np.argsort(
+              np.random.rand(*(indices_shape[:-1] + (num_slots,))), axis=-1
+          )[..., : indices_shape[-1]].astype(itype)
           updates = _AsType(
               np.random.randn(*(indices_shape + extra_shape)), vtype)
 
-          old = _AsType(np.random.randn(*(indices_shape + extra_shape)), vtype)
+          old_shape = indices_shape[:-1] + (num_slots,) + extra_shape
+          old = _AsType(np.random.randn(*old_shape), vtype)
 
           # Scatter via numpy
           new = old.copy()
@@ -83,39 +88,47 @@ class ScatterTest(test.TestCase):
         self._VariableRankTest(
             state_ops.batch_scatter_update, vtype, itype)
 
+  @test_util.disable_xla('Cannot force cpu placement for xla_gpu test')
   def testBooleanScatterUpdate(self):
-    var = variables.Variable([True, False])
-    update0 = state_ops.batch_scatter_update(var, [1], [True])
-    update1 = state_ops.batch_scatter_update(
-        var, constant_op.constant(
-            [0], dtype=dtypes.int64), [False])
-    self.evaluate(variables.variables_initializer([var]))
+    # There is no GPU kernel for ResourceScatterNdUpdate with bool values.
+    with ops.device('/cpu:0'):
+      var = variables.Variable([True, False])
+      update0 = state_ops.batch_scatter_update(var, [1], [True])
+      update1 = state_ops.batch_scatter_update(
+          var, constant_op.constant([0], dtype=dtypes.int64), [False]
+      )
+      self.evaluate(variables.variables_initializer([var]))
 
-    self.evaluate([update0, update1])
+      self.evaluate([update0, update1])
 
-    self.assertAllEqual([False, True], self.evaluate(var))
+      self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.disable_xla('Cannot force cpu placement for xla_gpu test')
   def testScatterOutOfRange(self):
-    params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
-    updates = np.array([-3, -4, -5]).astype(np.float32)
+    # Only the CPU kernel reports out-of-range indices as an error.
+    with ops.device('/cpu:0'):
+      params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
+      updates = np.array([-3, -4, -5]).astype(np.float32)
 
-    ref = variables.Variable(params)
-    self.evaluate(variables.variables_initializer([ref]))
+      ref = variables.Variable(params)
+      self.evaluate(variables.variables_initializer([ref]))
 
-    # Indices all in range, no problem.
-    indices = np.array([2, 0, 5])
-    self.evaluate(state_ops.batch_scatter_update(ref, indices, updates))
-
-    # Test some out of range errors.
-    indices = np.array([-1, 0, 5])
-    with self.assertRaisesOpError(
-        r'indices\[0\] = \[-1\] does not index into shape \[6\]'):
+      # Indices all in range, no problem.
+      indices = np.array([2, 0, 5])
       self.evaluate(state_ops.batch_scatter_update(ref, indices, updates))
 
-    indices = np.array([2, 0, 6])
-    with self.assertRaisesOpError(r'indices\[2\] = \[6\] does not index into '
-                                  r'shape \[6\]'):
-      self.evaluate(state_ops.batch_scatter_update(ref, indices, updates))
+      # Test some out of range errors.
+      indices = np.array([-1, 0, 5])
+      with self.assertRaisesOpError(
+          r'indices\[0\] = \[-1\] does not index into shape \[6\]'
+      ):
+        self.evaluate(state_ops.batch_scatter_update(ref, indices, updates))
+
+      indices = np.array([2, 0, 6])
+      with self.assertRaisesOpError(
+          r'indices\[2\] = \[6\] does not index into ' r'shape \[6\]'
+      ):
+        self.evaluate(state_ops.batch_scatter_update(ref, indices, updates))
 
 if __name__ == '__main__':
   test.main()

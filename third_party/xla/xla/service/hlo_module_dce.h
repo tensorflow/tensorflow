@@ -30,7 +30,7 @@ namespace xla {
 //
 class HloModuleDCE : public HloModulePass {
  public:
-  ~HloModuleDCE() override {}
+  ~HloModuleDCE() override = default;
   absl::string_view name() const override { return "hlo-module-dce"; }
 
  protected:

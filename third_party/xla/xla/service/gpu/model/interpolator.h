@@ -49,7 +49,7 @@ class InterpolatorBase {
                        const std::array<int64_t, N>& rhs) {
     int64_t dist = 0;
     for (int i = 0; i < lhs.size(); ++i) {
-      int coord = lhs[i];
+      int64_t coord = lhs[i];
       int64_t abs_dist = coord - rhs[i];
       dist += abs_dist * abs_dist;
     }

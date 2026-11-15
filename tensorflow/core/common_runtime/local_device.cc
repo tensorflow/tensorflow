@@ -167,6 +167,6 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   set_eigen_cpu_device(tp_info->eigen_device_.get());
 }
 
-LocalDevice::~LocalDevice() {}
+LocalDevice::~LocalDevice() = default;
 
 }  // namespace tensorflow

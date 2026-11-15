@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"

@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 
+#include <cstddef>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -65,6 +68,14 @@ class CollectiveCliques {
   absl::StatusOr<tsl::TiedRef<T>> Tie(const GpuCliqueKey& clique_key,
                                       std::unique_ptr<T> object);
 
+  // Ties one object from `objects` to each acquired clique. Cliques take
+  // ownership of the objects and will destroy them when the respective clique
+  // is destroyed.
+  template <typename T>
+  absl::StatusOr<std::vector<tsl::TiedRef<T>>> TieAll(
+      std::vector<std::unique_ptr<T>> objects);
+
+  size_t num_cliques() const { return cliques_map_.size(); }
   bool empty() const { return cliques_map_.empty(); }
 
  private:
@@ -80,6 +91,24 @@ absl::StatusOr<tsl::TiedRef<T>> CollectiveCliques::Tie(
     return NotFound("No clique found for clique key: %v", clique_key);
   }
   return (*clique->second)->Tie(std::move(object));
+}
+
+template <typename T>
+absl::StatusOr<std::vector<tsl::TiedRef<T>>> CollectiveCliques::TieAll(
+    std::vector<std::unique_ptr<T>> objects) {
+  if (objects.size() != cliques_map_.size()) {
+    return InvalidArgument("Expected %d objects to tie to cliques, but got %d",
+                           cliques_map_.size(), objects.size());
+  }
+  std::vector<tsl::TiedRef<T>> refs;
+  refs.reserve(cliques_map_.size());
+  size_t i = 0;
+  for (auto& [key, clique] : cliques_map_) {
+    ABSL_ASSIGN_OR_RETURN(tsl::TiedRef<T> ref,
+                     (*clique)->Tie(std::move(objects[i++])));
+    refs.push_back(std::move(ref));
+  }
+  return refs;
 }
 
 // Acquires collective cliques using the given collective parameters for all

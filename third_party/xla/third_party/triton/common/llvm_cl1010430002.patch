@@ -1,0 +1,41 @@
+--- a/python/test/unit/language/test_core.py
++++ b/python/test/unit/language/test_core.py
+@@ -1303,12 +1303,19 @@ def test_math_divide_op(expr, num_ctas, device):
+ @pytest.mark.parametrize("enable_fp_fusion", [False, True])
+ def test_fdiv_approx(approx, reciprocal, enable_fp_fusion, device):
+ 
+-    @triton.jit
+-    def kernel(X, Y, Z, APPROX: tl.constexpr, RECIPROCAL: tl.constexpr, BLOCK: tl.constexpr):
+-        offsets = tl.arange(0, BLOCK)
+-        x = 1.0 if RECIPROCAL else tl.load(X + offsets)
+-        y = tl.load(Y + offsets)
+-        tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
++  @triton.jit
++  def kernel(
++      X,
++      Y,
++      Z,
++      APPROX: tl.constexpr,
++      RECIPROCAL: tl.constexpr,
++      BLOCK: tl.constexpr,
++  ):
++    offsets = tl.arange(0, BLOCK)
++    x = 1.0 if RECIPROCAL else tl.load(X + offsets)
++    y = tl.load(Y + offsets)
++    tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
+ 
+     rng = RandomState(0)
+     # Keep inputs and results normal for both approximate backends.
+
+--- a/test/Conversion/tritongpu_to_ptx.mlir
++++ b/test/Conversion/tritongpu_to_ptx.mlir
+@@ -55,7 +55,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, "ttg.thr
+ 
+   tt.func public @reciprocal_f32(%ptr: !tt.ptr<f32>, %arg: f32) {
+     // CHECK-LABEL: reciprocal_f32(
+-    // CHECK: div.full.f32
++    // CHECK: {{div.full.f32|rcp.approx.f32}}
+     %one = arith.constant 1.0 : f32
+     %result = arith.divf %one, %arg : f32
+     tt.store %ptr, %result : !tt.ptr<f32>
+

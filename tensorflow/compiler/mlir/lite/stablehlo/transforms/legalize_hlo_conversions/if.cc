@@ -19,19 +19,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
-class LegalizeIfOp : public OpConversionPattern<mhlo::IfOp> {
+class LegalizeIfOp : public OpConversionPattern<stablehlo::IfOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::IfOp if_op, OpAdaptor adaptor,
+      stablehlo::IfOp if_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto new_op = TFL::IfOp::create(rewriter, if_op.getLoc(),
                                     if_op.getResultTypes(), if_op.getPred());
@@ -52,7 +52,7 @@ class LegalizeIfOp : public OpConversionPattern<mhlo::IfOp> {
 void PopulateIfPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                         ConversionTarget& target) {
   patterns.add<LegalizeIfOp>(ctx);
-  target.addIllegalOp<mhlo::IfOp>();
+  target.addIllegalOp<stablehlo::IfOp>();
 }
 
 }  // namespace mlir::odml

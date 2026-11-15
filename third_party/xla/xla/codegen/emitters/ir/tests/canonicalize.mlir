@@ -357,3 +357,49 @@ func.func @fold_sequence_with_constraints_and_symbols(
 // CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index, %[[S0:.*]]: index)
 
 // CHECK-NEXT: xla.apply_indexing #[[$MAP]](%[[S0]], %[[ARG0]])
+
+// -----
+
+func.func @preserve_tighter_xla_range_on_variable_result() -> index {
+  %pid = gpu.thread_id x {xla.range = [0 : index, 15 : index]}
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0 mod 8), domain: d0 in [0, 7]">(%pid)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0), domain: d0 in [0, 7]">
+// CHECK-LABEL: func.func @preserve_tighter_xla_range_on_variable_result
+// CHECK: %[[PID:.*]] = gpu.thread_id x {xla.range = [0 : index, 15 : index]}
+// CHECK: %[[RES:.*]] = xla.apply_indexing #[[$MAP]](%[[PID]]) {xla.range = [0 : index, 7 : index]}
+// CHECK: return %[[RES]] : index
+
+// -----
+
+func.func @fold_redundant_xla_range_on_variable_result() -> index {
+  %pid = gpu.thread_id x {xla.range = [0 : index, 7 : index]}
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0), domain: d0 in [0, 7]">(%pid)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK-LABEL: func.func @fold_redundant_xla_range_on_variable_result
+// CHECK-NEXT: %[[PID:.*]] = gpu.thread_id x {xla.range = [0 : index, 7 : index]}
+// CHECK-NEXT: return %[[PID]] : index
+
+// -----
+
+func.func @preserve_xla_range_on_variable_result_with_unknown_operand_range(
+    %arg0: index) -> index {
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0), domain: d0 in [0, 7]">(%arg0)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0), domain: d0 in [0, 7]">
+// CHECK-LABEL: func.func @preserve_xla_range_on_variable_result_with_unknown_operand_range
+// CHECK-SAME: (%[[ARG0:.*]]: index)
+// CHECK-NEXT: %[[RES:.*]] = xla.apply_indexing #[[$MAP]](%[[ARG0]]) {xla.range = [0 : index, 7 : index]}
+// CHECK-NEXT: return %[[RES]] : index

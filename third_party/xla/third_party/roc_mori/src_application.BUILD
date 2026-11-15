@@ -35,6 +35,7 @@ cc_library(
     copts = [
         "-fvisibility=hidden",
         "-fvisibility-inlines-hidden",
+        "-std=c++17",
     ],
     linkstatic = True,
     visibility = ["//visibility:private"],
@@ -66,7 +67,10 @@ cc_library(
     ],
     # Hide the GCC 8 std::filesystem code (libstdc++fs.a and inline members):
     # it is ABI-incompatible with the libstdc++.so that other libraries use.
-    copts = ["-fvisibility-inlines-hidden"],
+    copts = [
+        "-fvisibility-inlines-hidden",
+        "-std=c++17",
+    ],
     linkopts = [
         "-ldl",
         "-Wl,--exclude-libs,libstdc++fs.a",

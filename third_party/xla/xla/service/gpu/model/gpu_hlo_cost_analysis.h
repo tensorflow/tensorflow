@@ -41,13 +41,17 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // number of basic blocks and the IR code size accordingly.
   static constexpr int64_t kMaxBasicBlockSplitsPerFusion = 10;
   static constexpr int64_t kMaxIRSize = 10000;
+  // Warp size used when the warp size is unknown.
+  static constexpr int64_t kDefaultWarpSize = 32;
 
  public:
   GpuHloCostAnalysis(
       const Options& options,
-      const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile)
+      const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile,
+      int64_t warp_size = kDefaultWarpSize)
       : HloCostAnalysis(options),
-        hlo_elementwise_op_profile_(hlo_elementwise_op_profile) {}
+        hlo_elementwise_op_profile_(hlo_elementwise_op_profile),
+        warp_size_(warp_size > 0 ? warp_size : kDefaultWarpSize) {}
 
   explicit GpuHloCostAnalysis(const Options& options)
       : GpuHloCostAnalysis(options,
@@ -55,8 +59,9 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   GpuHloCostAnalysis(const Options& options,
                      const se::DeviceDescription& device_info)
-      : GpuHloCostAnalysis(
-            options, HloOpProfiles::Singleton().GetProfile(device_info)) {}
+      : GpuHloCostAnalysis(options,
+                           HloOpProfiles::Singleton().GetProfile(device_info),
+                           device_info.threads_per_warp()) {}
 
   absl::Status Preprocess(const HloInstruction* hlo) override;
 
@@ -141,6 +146,9 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // Contains a map from (opcode, element_type) to FLOPs per element estimate
   // for elementwise instructions.
   const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile_;
+
+  // Number of threads in a warp (wavefront on ROCm) of the target device.
+  const int64_t warp_size_;
 
  private:
   // Extracts custom cost estimates from the backend config (either structured

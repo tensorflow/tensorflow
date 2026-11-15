@@ -281,11 +281,12 @@ class TFRecordWriter(_pywrap_record_io.RecordWriter):
     Args:
       path: The path to the TFRecords file.
       options: (optional) String specifying compression type,
-          `TFRecordCompressionType`, or `TFRecordOptions` object.
+        `TFRecordCompressionType`, or `TFRecordOptions` object.
 
     Raises:
       IOError: If `path` cannot be opened for writing.
       ValueError: If valid compression_type can't be determined from `options`.
+      InvalidArgumentError: If `options` has invalid ZLIB or GZIP options.
     """
     if not isinstance(options, TFRecordOptions):
       options = TFRecordOptions(compression_type=options)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <set>
@@ -24,7 +25,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/status/status_matchers.h"  // IWYU pragma: keep
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -35,10 +37,12 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -1428,6 +1432,120 @@ ENTRY main {
   EXPECT_TRUE(changed);
   EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kConcatenate));
   EXPECT_FALSE(EntryHasStandaloneOp(*module, HloOpcode::kNegate));
+}
+
+// A chain of pad+add accumulations (the shape of a stencil adjoint): with the
+// default operand budget the chain must be split into several fusions, each
+// within the budget; with the budget disabled it fuses into a single fusion.
+std::string PadAccumulateChainHlo(int num_taps) {
+  std::string params;
+  std::string body;
+  std::string prev;
+  for (int i = 0; i < num_taps; ++i) {
+    absl::StrAppend(&params, "  %p", i, " = f32[30,30] parameter(", i, ")\n");
+    absl::StrAppend(&body, "  %m", i, " = f32[30,30] multiply(%p", i, ", %p", i,
+                    ")\n");
+    absl::StrAppend(&body, "  %pad", i, " = f32[34,34] pad(%m", i,
+                    ", %zero), padding=", i % 4, "_", 4 - i % 4, "x",
+                    (i + 1) % 4, "_", 4 - (i + 1) % 4, "\n");
+    if (i == 0) {
+      prev = "%pad0";
+    } else {
+      absl::StrAppend(&body, i + 1 == num_taps ? "  ROOT %acc" : "  %acc", i,
+                      " = f32[34,34] add(", prev, ", %pad", i, ")\n");
+      prev = absl::StrCat("%acc", i);
+    }
+  }
+  return absl::StrCat("HloModule module\n\nENTRY main {\n", params,
+                      "  %zero = f32[] constant(0)\n", body, "}\n");
+}
+
+int64_t MaxFusionOperandCount(const HloModule& module) {
+  int64_t max_operands = 0;
+  for (const HloInstruction* instruction :
+       module.entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      max_operands =
+          std::max<int64_t>(max_operands, instruction->operand_count());
+    }
+  }
+  return max_operands;
+}
+
+int64_t FusionCount(const HloModule& module) {
+  return absl::c_count_if(module.entry_computation()->instructions(),
+                          [](const HloInstruction* instruction) {
+                            return instruction->opcode() == HloOpcode::kFusion;
+                          });
+}
+
+TEST_F(InstructionFusionTest, LoopFusionOperandBudgetSplitsLongPadChain) {
+  constexpr int kNumTaps = 120;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        PadAccumulateChainHlo(kNumTaps)));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  // Default budget: 96 operands per fusion. The shared scalar padding value
+  // counts once, so the largest fusion lands exactly on the budget.
+  EXPECT_EQ(MaxFusionOperandCount(*module), 96);
+  EXPECT_GT(FusionCount(*module), 1);
+}
+
+TEST_F(InstructionFusionTest,
+       LoopFusionOperandBudgetSplitsLongPadChainWithoutDuplication) {
+  // may_duplicate=false is the multi-output fusion mode in which the
+  // code-duplication check is skipped; the operand budget must still apply.
+  constexpr int kNumTaps = 120;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        PadAccumulateChainHlo(kNumTaps)));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuInstructionFusion(&alias_info_, /*may_duplicate=*/false)
+                        .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(MaxFusionOperandCount(*module), 96);
+  EXPECT_GT(FusionCount(*module), 1);
+}
+
+TEST_F(InstructionFusionTest, LoopFusionOperandBudgetIsConfigurable) {
+  constexpr int kNumTaps = 120;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        PadAccumulateChainHlo(kNumTaps)));
+  DebugOptions debug_options = module->config().debug_options();
+  auto& extra_options = *debug_options.mutable_xla_backend_extra_options();
+  extra_options["xla_cpu_max_fusion_operands"] = "16";
+  module->mutable_config().set_debug_options(debug_options);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(MaxFusionOperandCount(*module), 16);
+}
+
+TEST_F(InstructionFusionTest, LoopFusionBudgetDisabledFusesWholeChain) {
+  constexpr int kNumTaps = 120;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        PadAccumulateChainHlo(kNumTaps)));
+  DebugOptions debug_options = module->config().debug_options();
+  auto& extra_options = *debug_options.mutable_xla_backend_extra_options();
+  extra_options["xla_cpu_max_fusion_operands"] = "0";
+  module->mutable_config().set_debug_options(debug_options);
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       CpuInstructionFusion(&alias_info_).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FusionCount(*module), 1);
+  // All taps plus the shared scalar padding value.
+  EXPECT_EQ(MaxFusionOperandCount(*module), kNumTaps + 1);
+}
+
+TEST_F(InstructionFusionTest, LoopFusionOperandBudgetRejectsMalformedValue) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(PadAccumulateChainHlo(4)));
+  DebugOptions debug_options = module->config().debug_options();
+  auto& extra_options = *debug_options.mutable_xla_backend_extra_options();
+  extra_options["xla_cpu_max_fusion_operands"] = "many";
+  module->mutable_config().set_debug_options(debug_options);
+  EXPECT_THAT(CpuInstructionFusion(&alias_info_).Run(module.get()),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

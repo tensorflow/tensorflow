@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_PJRT_TILED_LINEARIZER_H_
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -40,6 +42,15 @@ class TiledLinearizer {
   TiledLinearizer() = delete;
   TiledLinearizer(const TiledLinearizer&) = delete;
   TiledLinearizer& operator=(const TiledLinearizer&) = delete;
+
+  // Returns a cached multi-chunk TransposePlan with contiguous
+  // `~target_chunk_bytes` device chunks, or nullptr to fall back to the
+  // unchunked path.
+  static std::shared_ptr<TransposePlan> CreateChunkedTransposePlan(
+      bool is_h2d, const Shape& host_shape,
+      std::optional<absl::Span<int64_t const>> host_byte_strides,
+      const Shape& device_shape, int64_t target_chunk_bytes,
+      int64_t offset_alignment = 1, int64_t size_alignment = 1);
 
   // Linearizes `data` (with shape `host_shape` and `byte_strides`) into the
   // pre-allocated `dest` buffer according to the resolved `device_layout`.

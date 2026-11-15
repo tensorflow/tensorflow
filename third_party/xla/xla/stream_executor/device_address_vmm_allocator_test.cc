@@ -363,6 +363,30 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   EXPECT_EQ(allocator->allocation_count(), 2);
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest, RejectsLocalityDomainMemorySpaces) {
+  auto reservation = std::make_unique<TestMemoryReservation>(kGranularity);
+  ASSERT_OK_AND_ASSIGN(auto allocator, TestDeviceAddressVmmAllocator::Create(
+                                           &platform_, {Config(UINT64_MAX)}));
+  constexpr int64_t kLocalityDomainMemorySpace = 16;
+
+  EXPECT_THAT(allocator->Allocate(/*device_ordinal=*/0, kGranularity,
+                                  /*retry_on_failure=*/true,
+                                  kLocalityDomainMemorySpace),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(allocator->Allocate(/*device_ordinal=*/0, /*allocation_size=*/0,
+                                  /*retry_on_failure=*/true,
+                                  kLocalityDomainMemorySpace),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(allocator->Allocate(
+                  /*device_ordinal=*/0, /*allocation_size=*/kGranularity,
+                  /*retry_on_failure=*/true, kLocalityDomainMemorySpace,
+                  reservation.get(), /*reservation_offset=*/0,
+                  /*mapping_size=*/kGranularity),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(allocator->allocation_count(), 0);
+  EXPECT_EQ(reservation->active_mapping_count(), 0);
+}
+
 TEST_F(DeviceAddressVmmAllocatorTest,
        PhysicalAllocationSizeControlsBudgetAccounting) {
   const DeviceAddressVmmAllocator::DeviceConfig config =

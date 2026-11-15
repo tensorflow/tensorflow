@@ -55,11 +55,47 @@ func.func @clamp_neg_inf_f16() -> tensor<f16> {
 // -----
 
 // CHECK-LABEL:   func.func @clamp_neg_inf_bf16() -> tensor<bf16> {
-// CHECK:           %[[CONST:.*]] = stablehlo.constant dense<-1.038460e+34> : tensor<bf16>
+// CHECK:           %[[CONST:.*]] = stablehlo.constant dense<-3.389530e+38> : tensor<bf16>
 // CHECK:           return %[[CONST]] : tensor<bf16>
 func.func @clamp_neg_inf_bf16() -> tensor<bf16> {
-  %ret = stablehlo.constant dense<0xF800> : tensor<bf16>
+  %ret = stablehlo.constant dense<0xFF80> : tensor<bf16>
   return %ret : tensor<bf16>
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @clamp_inf_bf16_tensor() -> tensor<3xbf16> {
+// CHECK:           %[[CONST:.*]] = stablehlo.constant dense<[3.389530e+38, 1.000000e+00, -3.389530e+38]> : tensor<3xbf16>
+// CHECK:           return %[[CONST]] : tensor<3xbf16>
+func.func @clamp_inf_bf16_tensor() -> tensor<3xbf16> {
+  %ret = stablehlo.constant dense<[0x7F80, 1.0, 0xFF80]> : tensor<3xbf16>
+  return %ret : tensor<3xbf16>
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @clamp_inf_f64_tensor() -> tensor<3xf64> {
+// CHECK:           %[[CONST:.*]] = stablehlo.constant dense<[1.7976931348623157E+308, 1.000000e+00, -1.7976931348623157E+308]> : tensor<3xf64>
+// CHECK:           return %[[CONST]] : tensor<3xf64>
+func.func @clamp_inf_f64_tensor() -> tensor<3xf64> {
+  %ret = stablehlo.constant dense<[0x7FF0000000000000, 1.0, 0xFFF0000000000000]> : tensor<3xf64>
+  return %ret : tensor<3xf64>
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @no_clamp_finite_and_nan_tensors() -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf16>, tensor<2xbf16>) {
+// CHECK:           %[[F32_FINITE:.*]] = stablehlo.constant dense<[1.000000e+00, -2.000000e+00]> : tensor<2xf32>
+// CHECK:           %[[F32_NAN:.*]] = stablehlo.constant dense<[1.000000e+00, 0x7FC00000]> : tensor<2xf32>
+// CHECK:           %[[F16_NAN:.*]] = stablehlo.constant dense<[1.000000e+00, 0x7E00]> : tensor<2xf16>
+// CHECK:           %[[BF16_NAN:.*]] = stablehlo.constant dense<[1.000000e+00, 0x7FC0]> : tensor<2xbf16>
+// CHECK:           return %[[F32_FINITE]], %[[F32_NAN]], %[[F16_NAN]], %[[BF16_NAN]]
+func.func @no_clamp_finite_and_nan_tensors() -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf16>, tensor<2xbf16>) {
+  %0 = stablehlo.constant dense<[1.0, -2.0]> : tensor<2xf32>
+  %1 = stablehlo.constant dense<[1.0, 0x7FC00000]> : tensor<2xf32>
+  %2 = stablehlo.constant dense<[1.0, 0x7E00]> : tensor<2xf16>
+  %3 = stablehlo.constant dense<[1.0, 0x7FC0]> : tensor<2xbf16>
+  return %0, %1, %2, %3 : tensor<2xf32>, tensor<2xf32>, tensor<2xf16>, tensor<2xbf16>
 }
 
 // -----

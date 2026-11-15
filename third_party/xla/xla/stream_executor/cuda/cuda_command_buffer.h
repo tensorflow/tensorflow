@@ -24,6 +24,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -238,14 +239,17 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   // `child_node` embeds a clone of `original`; copies its annotations.
   void MaybeRegisterClonedChildAnnotations(CUgraphNode child_node,
                                            CUgraph original);
-  // Must run before `cuGraphExecNodeSetParams(..., child_graph)`, so the
-  // cleanup is among the references it clones into the executable graph.
-  void MaybeRegisterUpdatedChildAnnotations(CUgraph child_graph);
+  // Retains `nested`'s telemetry entries for `node` and unregisters the
+  // previous ones.
+  void RetainUpdatedChildTelemetry(CUgraphNode node,
+                                   const CudaCommandBuffer& nested);
   // On CUDA 13.2-13.3, projects exec-graph keys.
   void MaybeFinalizeGraphTelemetry();
   // Tracks `graph_` once and caches the result.
   std::optional<command_buffer_telemetry::TrackedGraph>
   TrackOwnGraphForTelemetry();
+  // The root command buffer, whose graph contains this one's (`parent_` chain).
+  CudaCommandBuffer* Root();
 
   // Static helpers that are needed across different versions of CUDA.
   // We declare them here and define it in the base .cc file so its available
@@ -298,6 +302,22 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   CUgraphExec graph_exec_ = nullptr;
 
   std::optional<command_buffer_telemetry::TrackedGraph> telemetry_graph_;
+
+  // Telemetry entries owned by this root command buffer (its graph,
+  // conditional bodies, cloned/moved children, and stream-captured/cuDNN
+  // subgraphs). Nested command buffers with `parent_ != nullptr` record into
+  // `Root()->telemetry_graphs_`.
+  std::vector<command_buffer_telemetry::TrackedGraph> telemetry_graphs_;
+
+  // For each child node updated via `UpdateClonedChildNode`, the retained
+  // telemetry entries of the nested command buffer it currently runs.
+  absl::flat_hash_map<CUgraphNode,
+                      std::vector<command_buffer_telemetry::TrackedGraph>>
+      installed_child_graphs_;
+
+  // On CUDA 13.2-13.3, the entry of `graph_exec_` (keyed by its exec ID),
+  // replaced when the graph is re-instantiated.
+  std::optional<command_buffer_telemetry::TrackedGraph> pre134_exec_entry_;
 };
 
 }  // namespace stream_executor::gpu

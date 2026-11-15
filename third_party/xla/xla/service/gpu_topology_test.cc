@@ -17,16 +17,23 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/path.h"
@@ -264,6 +271,119 @@ TEST(GpuTopologyTest, ParseGpuTopologySpecFiles) {
   EXPECT_THAT(gb300_4x4.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
                                 "aarch64-unknown-linux-gnu")));
+}
+
+TEST(GpuTopologyTest, SupportedPlatformConfigsInvariants) {
+  absl::Span<const GpuPlatformConfig> configs =
+      GetSupportedGpuPlatformConfigs();
+  EXPECT_FALSE(configs.empty());
+  absl::flat_hash_set<std::string> seen_platform_names;
+  absl::flat_hash_set<std::string> seen_short_names;
+  absl::flat_hash_set<std::string> seen_device_descriptions;
+  for (const GpuPlatformConfig& config : configs) {
+    EXPECT_TRUE(seen_platform_names.insert(config.platform_name).second)
+        << config.platform_name;
+    EXPECT_TRUE(seen_short_names.insert(config.short_name).second)
+        << config.short_name;
+    ASSERT_FALSE(config.device_descriptions.empty()) << config.platform_name;
+    for (const std::string& desc : config.device_descriptions) {
+      EXPECT_TRUE(seen_device_descriptions.insert(desc).second) << desc;
+    }
+    ASSERT_OK_AND_ASSIGN(stream_executor::GpuTargetConfigProto target_config,
+                         gpu::GetGpuTargetConfig(config.gpu_model));
+    EXPECT_TRUE(absl::c_linear_search(config.device_descriptions,
+                                      target_config.device_description_str()))
+        << config.platform_name;
+    if (config.nvlink_domain_size.has_value()) {
+      ASSERT_TRUE(config.devices_per_host.has_value());
+      ASSERT_GT(*config.devices_per_host, 0);
+      EXPECT_EQ(*config.nvlink_domain_size % *config.devices_per_host, 0);
+    }
+  }
+}
+
+TEST(GpuTopologyTest, GetGpuTopologyForSliceSpec) {
+  ASSERT_OK_AND_ASSIGN(GpuTopology h100_multi,
+                       GetGpuTopologyForSliceSpec("h100", "8x2"));
+  EXPECT_EQ(h100_multi.platform_version(), "nvidia_h100");
+  EXPECT_EQ(h100_multi.num_partitions(), 2);
+  EXPECT_EQ(h100_multi.num_hosts_per_partition(), 1);
+  EXPECT_EQ(h100_multi.num_devices_per_host(), 8);
+  EXPECT_EQ(GetGpuDeviceKind(h100_multi.ToProto()), "NVIDIA H100 80GB HBM3");
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology gb300_mnnvl,
+                       GetGpuTopologyForSliceSpec("gb300", "4x4"));
+  EXPECT_EQ(gb300_mnnvl.platform_version(), "oberon_b300");
+  EXPECT_EQ(gb300_mnnvl.num_partitions(), 1);
+  EXPECT_EQ(gb300_mnnvl.num_hosts_per_partition(), 4);
+  EXPECT_EQ(gb300_mnnvl.num_devices_per_host(), 4);
+  EXPECT_EQ(GetGpuDeviceKind(gb300_mnnvl.ToProto()), "NVIDIA GB300");
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology vr200_mnnvl,
+                       GetGpuTopologyForSliceSpec("vr200", "4x2"));
+  EXPECT_EQ(vr200_mnnvl.platform_version(), "velorum_r200");
+  EXPECT_EQ(vr200_mnnvl.num_partitions(), 1);
+  EXPECT_EQ(vr200_mnnvl.num_hosts_per_partition(), 2);
+  EXPECT_EQ(vr200_mnnvl.num_devices_per_host(), 4);
+
+  EXPECT_THAT(GetGpuTopologyForSliceSpec("h100", "4x2"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(GetGpuTopologyForSliceSpec("v100", "16x2"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(GetGpuTopologyForSliceSpec("gb300", "4x20"),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST(GpuTopologyTest,
+     ParseGpuTopologyPreservesEmbeddedTargetConfigForUnlistedPlatform) {
+  const std::string unlisted_with_target_file =
+      tsl::io::JoinPath(testing::TempDir(), "unlisted_with_target.txtpb");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(),
+                                   unlisted_with_target_file, R"pb(
+    platform_version: "custom_gpu"
+    num_partitions: 1
+    num_hosts_per_partition: 1
+    num_devices_per_host: 8
+    gpu_target_config { device_description_str: "Custom GPU" }
+  )pb"));
+  ASSERT_OK_AND_ASSIGN(GpuTopology unlisted_topology,
+                       ParseGpuTopology(unlisted_with_target_file));
+  EXPECT_EQ(unlisted_topology.platform_version(), "custom_gpu");
+  ASSERT_TRUE(unlisted_topology.has_gpu_target_config());
+  EXPECT_EQ(unlisted_topology.gpu_target_config().device_description_str,
+            "Custom GPU");
+  EXPECT_FALSE(unlisted_topology.host_target_machine_options().has_value());
+
+  const std::string registered_alias_with_target_file = tsl::io::JoinPath(
+      testing::TempDir(), "registered_alias_with_target.txtpb");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(),
+                                   registered_alias_with_target_file, R"pb(
+    platform_version: "gb300"
+    num_partitions: 1
+    num_hosts_per_partition: 1
+    num_devices_per_host: 4
+    gpu_target_config { device_description_str: "Custom GB300" }
+  )pb"));
+  ASSERT_OK_AND_ASSIGN(GpuTopology alias_topology,
+                       ParseGpuTopology(registered_alias_with_target_file));
+  ASSERT_TRUE(alias_topology.has_gpu_target_config());
+  EXPECT_EQ(alias_topology.gpu_target_config().device_description_str,
+            "Custom GB300");
+  EXPECT_THAT(alias_topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
+
+  const std::string unlisted_without_target_file =
+      tsl::io::JoinPath(testing::TempDir(), "unlisted_without_target.txtpb");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(),
+                                   unlisted_without_target_file, R"pb(
+    platform_version: "custom_gpu"
+    num_partitions: 1
+    num_hosts_per_partition: 1
+    num_devices_per_host: 8
+  )pb"));
+  EXPECT_THAT(ParseGpuTopology(unlisted_without_target_file),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

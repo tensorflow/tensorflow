@@ -182,9 +182,12 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

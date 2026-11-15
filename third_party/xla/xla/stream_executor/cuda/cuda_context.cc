@@ -191,6 +191,15 @@ void CudaContext::SetActive() {
   }
 }
 
+void CudaContext::SetInactive() const {
+  CUresult result = cuCtxSetCurrent(nullptr);
+  if (result == CUDA_ERROR_DEINITIALIZED) {
+    VLOG(1) << "Ignoring errors from cuCtxSetCurrent due to driver shutdown";
+  } else {
+    CHECK_OK(cuda::ToStatus(result, "Failed clearing current context"));
+  }
+}
+
 bool CudaContext::IsActive() const { return CurrentContext() == context_; }
 
 absl::Status CudaContext::Synchronize() {

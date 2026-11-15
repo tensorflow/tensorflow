@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -1078,9 +1079,11 @@ void HloComputation::ForEachInstructionPostOrderImpl(
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
     HloInstruction& postorder_root) const {
   std::vector<HloInstruction*> post_order;
+  post_order.reserve(instruction_count());
   VisitMap visited(instructions_.size());
 
   std::vector<HloInstruction*> dfs_stack_scratch;
+  dfs_stack_scratch.reserve(instruction_count());
   ComputeInstructionPostOrder(&postorder_root, visited, post_order,
                               &dfs_stack_scratch);
   return post_order;
@@ -1393,6 +1396,8 @@ void HloComputation::ToProto(HloComputationProto* proto,
          "computation is inside a module before dumping it.";
   proto->set_id(unique_id_);
   proto->set_name(name_);
+  proto->mutable_instructions()->Reserve(proto->instructions_size() +
+                                         instruction_count());
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     instruction->ToProto(proto->add_instructions(), options);
   }
@@ -2398,7 +2403,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   // does -- we only care about operand dependencies -- so let's just do it
   // ourselves.
   std::vector<const HloInstruction*> postorder;
+  postorder.reserve(instruction_count());
   absl::flat_hash_map<const HloInstruction*, VisitState> visited;
+  visited.reserve(instruction_count());
   std::vector<const HloInstruction*> dfs_stack;
   for (const auto& instr : instructions()) {
     const HloInstruction* new_instr = replace(instr);
@@ -2433,14 +2440,16 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   }
 
   std::vector<std::unique_ptr<HloInstruction>> instructions;
+  instructions.reserve(postorder.size() + extra_parameters.size());
   // First add the extra parameters to 'instructions'.
   for (const auto& instr : extra_parameters) {
     CHECK_EQ(instr->opcode(), HloOpcode::kParameter)
         << "Only parameter instructions are allowed in 'extra_parameters'";
     instructions.emplace_back(instr->Clone());
   }
+  HloInstruction::InstructionVector new_operands;
   for (const HloInstruction* instr : postorder) {
-    std::vector<HloInstruction*> new_operands;
+    new_operands.clear();
     for (HloInstruction* operand : instr->operands()) {
       auto replaced_operand = replace(operand);
       CHECK_NE(replaced_operand, nullptr)
@@ -2563,6 +2572,25 @@ bool HloComputation::CanExpandIntoSingleInstruction() const {
       instructions(), [root = root_instruction()](const HloInstruction* instr) {
         return root == instr || instr->opcode() == HloOpcode::kParameter;
       });
+}
+
+namespace {
+
+bool IsCollectivesGroupComputation(const HloComputation* computation) {
+  auto maybe_caller = computation->GetUniqueCaller(HloOpcode::kAsyncStart);
+  if (!maybe_caller.has_value()) {
+    return false;
+  }
+  return (*maybe_caller)
+      ->get_frontend_attribute(kCollectiveGroupMarkerAttr)
+      .has_value();
+}
+
+}  // namespace
+
+bool HloComputation::IsRestrictedAsyncComputation() const {
+  return IsAsyncComputation() && IsMainThread() &&
+         !IsCollectivesGroupComputation(this);
 }
 
 bool HloComputation::IsFusionComputation() const {

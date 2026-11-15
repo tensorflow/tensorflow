@@ -421,6 +421,11 @@ struct PReLUAttributes {
       alpha;
 };
 
+// Mirrors TfLiteGeluParams: tanh approximation (true) or exact erf (false).
+struct GeluAttributes {
+  bool approximate = false;
+};
+
 struct ReduceAttributes {
   std::set<Axis> dims;
 };

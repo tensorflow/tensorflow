@@ -292,7 +292,7 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
 }
 
 WhileThunk::BufferUses WhileThunk::buffer_uses() const {
-  BufferUses buffer_uses = {BufferUse::Write(cond_buffer_, cond_buffer_shape_)};
+  BufferUses buffer_uses = {BufferUse::Read(cond_buffer_, cond_buffer_shape_)};
 
   BufferUses cond_uses = cond_executor_.buffer_uses();
   buffer_uses.insert(buffer_uses.end(), cond_uses.begin(), cond_uses.end());

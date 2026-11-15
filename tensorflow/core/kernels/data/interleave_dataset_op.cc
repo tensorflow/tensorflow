@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -200,10 +198,10 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          auto nested_ctx = MakeNestedIteratorContext(ctx);
+          NestedIteratorContext nested_ctx(*ctx);
           CurrentElement& current_element = *current_elements_[cycle_index_];
           TF_RETURN_IF_ERROR(current_element.iterator->GetNext(
-              &nested_ctx, out_tensors, &end_of_element));
+              nested_ctx.get(), out_tensors, &end_of_element));
           ctx->MergeCheckpoint(nested_ctx.checkpoint());
           if (!end_of_element) {
             // Produce the subelement as output.
@@ -254,9 +252,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           bool end_of_element = false;
           int element_num_skipped = 0;
-          auto nested_ctx = MakeNestedIteratorContext(ctx);
+          NestedIteratorContext nested_ctx(*ctx);
           TF_RETURN_IF_ERROR(current_element.iterator->Skip(
-              &nested_ctx, element_num_to_skip, &end_of_element,
+              nested_ctx.get(), element_num_to_skip, &end_of_element,
               &element_num_skipped));
           *num_skipped += element_num_skipped;
           ctx->MergeCheckpoint(nested_ctx.checkpoint());
@@ -383,6 +381,35 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    // Lazily constructs a child `IteratorContext` only when needed (when
+    // symbolic checkpointing is enabled to isolate `checkpoint()`, or when
+    // `strip_split_providers` is true and split providers must be stripped for
+    // a sub-iterator).
+    class NestedIteratorContext {
+     public:
+      explicit NestedIteratorContext(IteratorContext& ctx,
+                                     bool strip_split_providers = true)
+          : ctx_(ctx) {
+        if (strip_split_providers && !ctx.split_providers().empty()) {
+          nested_ctx_.emplace(MakeNestedIteratorContext(&ctx));
+        } else if (ctx.symbolic_checkpoint()) {
+          nested_ctx_.emplace(ctx);
+        }
+      }
+      NestedIteratorContext(const NestedIteratorContext&) = delete;
+      NestedIteratorContext& operator=(const NestedIteratorContext&) = delete;
+
+      IteratorContext* get() {
+        return nested_ctx_.has_value() ? &*nested_ctx_ : &ctx_;
+      }
+
+      MemoryCheckpoint* checkpoint() { return get()->checkpoint(); }
+
+     private:
+      IteratorContext& ctx_;
+      std::optional<IteratorContext> nested_ctx_;
+    };
+
     using InputOffset = int64_t;
     using CycleIdx = int;
     struct CurrentElement;
@@ -518,7 +545,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
       InputOffset prev_input_element_index =
           last_checkpointed_input_element_index_;
-      auto input_ctx = std::make_unique<IteratorContext>(ctx);
+      IteratorContext input_ctx(ctx);
       // Loop over (InputOffset, CycleIdx) pairs ordered by `InputOffset`.
       for (const auto& input_offset_w_cycle_idx : input_offset_w_cycle_idxs) {
         InputOffset input_element_index =
@@ -534,9 +561,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         // Skip some elements.
         // Note that `num_to_skip` could be zero.
         num_to_skip = input_element_index - prev_input_element_index - 1;
-        TF_RETURN_IF_ERROR(input_impl_->Skip(input_ctx.get(), num_to_skip,
-                                             &end_of_sequence,
-                                             &num_actually_skip));
+        TF_RETURN_IF_ERROR(input_impl_->Skip(
+            &input_ctx, num_to_skip, &end_of_sequence, &num_actually_skip));
         if (end_of_sequence || num_actually_skip != num_to_skip) {
           return absl::InternalError(
               "Unexpected end of sequence while symbolically restoring "
@@ -547,11 +573,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         // Grab the next input element and put it at `cycle_idx`
         std::vector<Tensor> current_element_args;
         TF_RETURN_IF_ERROR(input_impl_->GetNext(
-            input_ctx.get(), &current_element_args, &end_of_sequence));
+            &input_ctx, &current_element_args, &end_of_sequence));
 
         prev_input_element_index = input_element_index;
 
-        checkpoints[cycle_idx].emplace(*input_ctx->checkpoint());
+        checkpoints[cycle_idx].emplace(*input_ctx.checkpoint());
         args[cycle_idx] = std::move(current_element_args);
         input_element_indices[cycle_idx] = input_element_index;
       }
@@ -576,7 +602,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       //                                         but not the 5-th one.
       num_to_skip = next_input_element_index_ - prev_input_element_index - 1;
       TF_RETURN_IF_ERROR(input_impl_->Skip(
-          input_ctx.get(), num_to_skip, &end_of_sequence, &num_actually_skip));
+          &input_ctx, num_to_skip, &end_of_sequence, &num_actually_skip));
       if (end_of_sequence || num_actually_skip != num_to_skip) {
         return absl::InternalError(
             "Unexpected end of sequence while symbolically restoring "
@@ -584,7 +610,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             "deterministically.");
       }
 
-      input_ckpt_->Merge(input_ctx->checkpoint());
+      input_ckpt_->Merge(input_ctx.checkpoint());
       return absl::OkStatus();
     }
 
@@ -616,7 +642,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             for (int i = 0; i < args_size; i++) {
               TF_RETURN_IF_ERROR(reader->ReadTensor(
                   ctx->flr(), prefix(),
-                  strings::StrCat(kArgsList, "[", idx, "][", i, "]"),
+                  absl::StrCat(kArgsList, "[", idx, "][", i, "]"),
                   &current_element_args[i]));
             }
             args[idx] = std::move(current_element_args);
@@ -653,14 +679,14 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       if (!end_of_input_) {
         // Get the next element from the input dataset, and create
         // an iterator from it.
-        IteratorContext input_ctx = MakeNestedIteratorContext(ctx);
-
+        NestedIteratorContext input_ctx(*ctx, /*strip_split_providers=*/false);
         std::vector<Tensor> args;
-
+        args.reserve(dataset()->input_->output_dtypes().size());
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(&input_ctx, &args, &end_of_input_));
-
-        input_ckpt_->Merge(input_ctx.checkpoint());
+            input_impl_->GetNext(input_ctx.get(), &args, &end_of_input_));
+        if (ctx->symbolic_checkpoint()) {
+          input_ckpt_->Merge(input_ctx.checkpoint());
+        }
 
         if (!end_of_input_) {
           std::unique_ptr<IteratorBase> iterator;

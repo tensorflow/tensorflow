@@ -488,9 +488,9 @@ def banded_triangular_solve(
       'LEFT_RIGHT' alignment, where the superdiagonals are padded on the right
       and subdiagonals are padded on the left. This is the alignment cuSPARSE
       uses.  See  `tf.linalg.set_diag` for more details.
-    rhs: A `Tensor` of shape [..., M] or [..., M, N] and with the same dtype as
-      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
-      statically, `rhs` will be treated as a matrix rather than a vector.
+    rhs: A `Tensor` of shape `[..., M, N]` and with the same dtype as `bands`.
+      Must have rank at least 2. For a single right-hand side, use shape `[...,
+      M, 1]`.
     lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
       `bands` represents a lower or upper triangular matrix.
     adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
@@ -498,7 +498,7 @@ def banded_triangular_solve(
     name:  A name to give this `Op` (optional).
 
   Returns:
-    A `Tensor` of shape [..., M] or [..., M, N] containing the solutions.
+    A `Tensor` of shape `[..., M, N]` containing the solutions.
   """
   with ops.name_scope(name, 'banded_triangular_solve', [bands, rhs]):
     return gen_linalg_ops.banded_triangular_solve(
@@ -810,6 +810,17 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)
 
 
+def _convert_with_float32_hint(value, name):
+  """Converts to tensor with a float32 hint, keeping float64 and complex.
+
+  The hint alone also casts float64 and complex NumPy inputs to float32,
+  silently dropping precision and imaginary parts.
+  """
+  if getattr(value, 'dtype', None) in (np.float64, np.complex64, np.complex128):
+    return ops.convert_to_tensor(value, name=name)
+  return ops.convert_to_tensor(value, dtype_hint=dtypes.float32, name=name)
+
+
 def _maybe_validate_matrix(a, validate_args):
   """Checks that input is a `float` matrix."""
   assertions = []
@@ -848,7 +859,7 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
       singular values.
   """
   with ops.name_scope(name or 'matrix_rank'):
-    a = ops.convert_to_tensor(a, dtype_hint=dtypes.float32, name='a')
+    a = _convert_with_float32_hint(a, name='a')
     assertions = _maybe_validate_matrix(a, validate_args)
     if assertions:
       with ops.control_dependencies(assertions):
@@ -1041,8 +1052,7 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_solve'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     rhs = ops.convert_to_tensor(rhs, dtype_hint=lower_upper.dtype, name='rhs')
 
@@ -1076,8 +1086,11 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
       broadcast_perm = array_ops.reshape(broadcast_perm, [-1, d])
       broadcast_batch_size = math_ops.reduce_prod(broadcast_batch_shape)
       broadcast_batch_indices = array_ops.broadcast_to(
-          math_ops.range(broadcast_batch_size)[:, array_ops.newaxis],
-          [broadcast_batch_size, d])
+          math_ops.range(broadcast_batch_size, dtype=perm.dtype)[
+              :, array_ops.newaxis
+          ],
+          [broadcast_batch_size, d],
+      )
       broadcast_perm = array_ops_stack.stack(
           [broadcast_batch_indices, broadcast_perm], axis=-1)
 
@@ -1143,8 +1156,7 @@ def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_matrix_inverse'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)
     if assertions:
@@ -1195,8 +1207,7 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
 
   """
   with ops.name_scope(name or 'lu_reconstruct'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
 
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)
@@ -1222,7 +1233,9 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
       perm = array_ops.reshape(perm, [batch_size, d])
       perm = map_fn.map_fn(array_ops.invert_permutation, perm)
       batch_indices = array_ops.broadcast_to(
-          math_ops.range(batch_size)[:, array_ops.newaxis], [batch_size, d])
+          math_ops.range(batch_size, dtype=perm.dtype)[:, array_ops.newaxis],
+          [batch_size, d],
+      )
       x = array_ops.gather_nd(
           x, array_ops_stack.stack([batch_indices, perm], axis=-1))
       x = array_ops.reshape(x, shape)

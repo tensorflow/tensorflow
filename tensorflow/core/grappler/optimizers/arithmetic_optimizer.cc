@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <limits>
 #include <unordered_map>
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -1277,8 +1280,11 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (a.size() != b.size()) {
       return false;
     }
-    for (int i = 0, end = a.size(); i < end; ++i) {
-      if (a[b[i]] != i) {
+    for (size_t i = 0; i < a.size(); ++i) {
+      if (b[i] < 0 || static_cast<size_t>(b[i]) >= a.size()) {
+        return false;
+      }
+      if (a[static_cast<size_t>(b[i])] != static_cast<int64_t>(i)) {
         return false;
       }
     }
@@ -1586,9 +1592,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
  private:
   bool FirstNInputsAreUnique(const NodeDef& node, int n) const {
-    if (n > node.input_size()) return false;
-    absl::flat_hash_set<std::string> unique_inputs;
     const int start = node.op() == "Concat" ? 1 : 0;
+    if (n < 0 || n > node.input_size() - start) return false;
+    absl::flat_hash_set<std::string> unique_inputs;
     const int end = start + n;
     for (int i = start; i < end; ++i) {
       unique_inputs.insert(node.input(i));
@@ -2667,7 +2673,17 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
     // 1. Create constant node with correct tile multiples
     Tensor multiples(DT_INT32, TensorShape({output_shape.dim_size()}));
     for (int i = 0; i < output_shape.dim_size(); ++i) {
-      int64_t size = output_shape.dim(i).size() / input_shape.dim(i).size();
+      const int64_t input_dim = input_shape.dim(i).size();
+      const int64_t output_dim = output_shape.dim(i).size();
+      // Unknown dimensions are negative symbolic sizes here. A symbolic input
+      // dimension only broadcasts to itself, which gives a multiple of 1.
+      if (input_dim == 0) {
+        return absl::OkStatus();
+      }
+      int64_t size = output_dim / input_dim;
+      if (size < 0) {
+        return absl::OkStatus();
+      }
       if (TF_PREDICT_FALSE(size >= INT_MAX)) {
         return absl::Status(absl::StatusCode::kOutOfRange, "int32 overflow");
       }
@@ -2956,7 +2972,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
     // 1. traverse the chain of Pack ops to get the original input
     NodeDef* input = node;
     std::vector<const NodeDef*> chain;
-    while (IsPack(*input) && NumNonControlInputs(*node) > 1 &&
+    while (IsPack(*input) && NumNonControlInputs(*input) > 1 &&
            !IsInPreserveSet(*input)) {
       // Only pack operations with all identical inputs are supported
       if (!AllRegularInputsEqual(*input)) {
@@ -2993,7 +3009,11 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
     const OpInfo::TensorProperties* input_props;
     TF_RETURN_IF_ERROR(GetTensorProperties(input->name(), &input_props));
     const TensorShapeProto& input_shape = input_props->shape();
-    if (!PartialTensorShape(input_shape).IsFullyDefined()) {
+    PartialTensorShape partial_input_shape;
+    if (!PartialTensorShape::BuildPartialTensorShape(input_shape,
+                                                     &partial_input_shape)
+             .ok() ||
+        !partial_input_shape.IsFullyDefined()) {
       return absl::OkStatus();
     }
     Tensor multiples(DT_INT32, TensorShape({input_shape.dim_size()}));
@@ -3002,13 +3022,25 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
     const OpInfo::TensorProperties* output_props;
     TF_RETURN_IF_ERROR(GetTensorProperties(node->name(), &output_props));
     const TensorShapeProto& output_shape = output_props->shape();
-    if (!PartialTensorShape(output_shape).IsFullyDefined()) {
+    PartialTensorShape partial_output_shape;
+    if (!PartialTensorShape::BuildPartialTensorShape(output_shape,
+                                                     &partial_output_shape)
+             .ok() ||
+        !partial_output_shape.IsFullyDefined()) {
       return absl::OkStatus();
     }
     Tensor output_shape_tensor(DT_INT32,
                                TensorShape({output_shape.dim_size()}));
     for (int i = 0; i < output_shape.dim_size(); ++i) {
-      output_shape_tensor.flat<int32_t>()(i) = output_shape.dim(i).size();
+      const int64_t dim_size = output_shape.dim(i).size();
+      if (TF_PREDICT_FALSE(
+              dim_size < 0 ||
+              dim_size >
+                  static_cast<int64_t>(std::numeric_limits<int32_t>::max()))) {
+        return absl::Status(absl::StatusCode::kOutOfRange,
+                            "int32 overflow in output shape");
+      }
+      output_shape_tensor.flat<int32_t>()(i) = static_cast<int32_t>(dim_size);
     }
 
     // 3. Create constant node with correct multiples value
@@ -3082,17 +3114,25 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "axis", &axis));
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &n));
 
-      if (axis >= dims.size()) {
+      if (n < 0) {
+        return absl::Status(absl::StatusCode::kOutOfRange,
+                            "negative N in Pack chain");
+      }
+      if (axis < 0 || static_cast<size_t>(axis) >= dims.size()) {
         // We don't handle the case where Pack is performed on the last axis,
         // e.g. Pack([x, x], axis=3) where rank(x) == 3
         return absl::Status(absl::StatusCode::kOutOfRange,
                             "axis value out of range of dims");
       }
 
-      int64_t m = multiples->flat<int32_t>()(dims[axis]) * n;
-      if (TF_PREDICT_FALSE(m > INT_MAX)) {
+      const int64_t current = multiples->flat<int32_t>()(dims[axis]);
+      if (TF_PREDICT_FALSE(
+              current > 0 &&
+              n > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) /
+                      current)) {
         return absl::Status(absl::StatusCode::kOutOfRange, "int32 overflow");
       }
+      int64_t m = current * n;
       multiples->flat<int32_t>()(dims[axis]) = static_cast<int32_t>(m);
 
       // Copy index from immediate right of inserted axis
@@ -3225,6 +3265,7 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
                            std::string* simplified_node_name) override {
     Tensor pow;
     if (!GetTensorFromConstNode(node->input(1), &pow)) return absl::OkStatus();
+    if (pow.NumElements() == 0) return absl::OkStatus();
     complex128 prev, curr;
     for (int i = 0; i < pow.NumElements(); ++i) {
       if (!GetElementUnexhaustive(pow, i, {pow.dtype()}, &curr)) {

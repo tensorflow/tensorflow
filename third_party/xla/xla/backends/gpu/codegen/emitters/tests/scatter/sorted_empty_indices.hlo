@@ -26,5 +26,5 @@ scatter {
     to_apply=add
 }
 // CHECK-LABEL: func.func @main
-// CHECK: scf.for
-// CHECK:   xla.atomic_rmw
+// CHECK-COUNT-6: tensor.extract {{.*}} : tensor<64256xf32>
+// CHECK: xla.atomic_rmw

@@ -1,6 +1,6 @@
 // RUN: fusion_compiler_opt %s --xtile-cpu-lower-xtile-entry -split-input-file \
-// RUN:   | FileCheck %s
-// RUN: fusion_compiler_opt %s -split-input-file \
+// RUN:   -verify-diagnostics | FileCheck %s
+// RUN: fusion_compiler_opt %s -split-input-file -verify-diagnostics \
 // RUN:   --xtile-cpu-lower-xtile-entry="prefer_vector_width=256" \
 // RUN:   | FileCheck %s --check-prefix=PREFER_VECTOR
 
@@ -35,3 +35,12 @@ xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
 // PREFER_VECTOR-NOT:    llvm.passthrough
 
 // -----
+
+// expected-error@+1 {{collective entry arguments are not supported on CPU}}
+xtile.entry_func @collective_rejected(%input: memref<1024xf32>,
+                                      %signal: memref<2xi64>,
+                                      %rank: index,
+                                      %pid: index)
+    attributes {has_rank, has_signal_buffer} {
+  xtile.return
+}

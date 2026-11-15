@@ -95,7 +95,8 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }
-    absl::string_view line(report.data() + pos, end_of_line - pos);
+    absl::string_view line =
+        absl::string_view(report).substr(pos, end_of_line - pos);
 
     // TODO(b/34779244): Figure out how to do this without the verbose log-line
     // prefix. The usual way didn't compile on open source.

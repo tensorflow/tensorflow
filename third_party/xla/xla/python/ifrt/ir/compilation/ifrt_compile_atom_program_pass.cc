@@ -63,10 +63,11 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/compilation/passes.h"
+#include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/user_context.h"
@@ -96,7 +97,9 @@ class IfrtCompileAtomProgramPass
             mlir::MLIRContext::Threading::DISABLED)),
         compile_options_overrides_(std::move(compile_options_overrides)),
         atom_executable_future_map_(std::move(atom_executable_future_map)),
-        user_context_(UserContextScope::current()) {}
+        user_context_(UserContextScope::current()) {
+    hlo_program_context_->enableThreadSafeLocking();
+  }
 
   llvm::StringRef getArgument() const override {
     return "ifrt-compile-atom-program";

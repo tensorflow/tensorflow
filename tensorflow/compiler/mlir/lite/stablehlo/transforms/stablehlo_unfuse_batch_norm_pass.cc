@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"  // NOLINT: Used in stablehlo_passes.h.inc
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -72,6 +71,67 @@ Value getShapeValue(Location loc, Value operand, PatternRewriter &rewriter) {
       RankedTensorType::get(/*shape=*/{resultType.getRank()},
                             rewriter.getIndexType()),
       operand);
+}
+
+// Returns the mean of `input` over `reduce_dims` as a tensor of `result_type`.
+Value computeMean(Location loc, Value input, ArrayRef<int64_t> reduce_dims,
+                  RankedTensorType result_type, PatternRewriter& rewriter) {
+  auto input_type = mlir::cast<RankedTensorType>(input.getType());
+  Type element_type = result_type.getElementType();
+  auto scalar_type = RankedTensorType::get(/*shape=*/{}, element_type);
+
+  // Sum over `reduce_dims`.
+  Value zero = stablehlo::ConstantOp::create(rewriter, loc,
+                                             rewriter.getZeroAttr(scalar_type));
+  auto reduce_op = stablehlo::ReduceOp::create(
+      rewriter, loc, TypeRange{result_type}, ValueRange{input},
+      ValueRange{zero}, rewriter.getDenseI64ArrayAttr(reduce_dims));
+  {
+    OpBuilder::InsertionGuard guard(rewriter);
+    Block* body = rewriter.createBlock(&reduce_op.getBody(), {},
+                                       {scalar_type, scalar_type}, {loc, loc});
+    Value sum = stablehlo::AddOp::create(rewriter, loc, body->getArgument(0),
+                                         body->getArgument(1));
+    stablehlo::ReturnOp::create(rewriter, loc, ValueRange{sum});
+  }
+  Value sum = reduce_op.getResult(0);
+
+  // Number of reduced elements.
+  int64_t static_count = 1;
+  Value count;
+  for (int64_t dim : reduce_dims) {
+    if (!input_type.isDynamicDim(dim)) {
+      static_count *= input_type.getDimSize(dim);
+      continue;
+    }
+    Value dim_size = stablehlo::ConvertOp::create(
+        rewriter, loc, scalar_type,
+        stablehlo::GetDimensionSizeOp::create(rewriter, loc, input, dim));
+    count = count ? stablehlo::MulOp::create(rewriter, loc, count, dim_size)
+                        .getResult()
+                  : dim_size;
+  }
+  Attribute static_count_attr =
+      rewriter.getFloatAttr(element_type, static_cast<double>(static_count));
+  Value static_count_value = stablehlo::ConstantOp::create(
+      rewriter, loc, DenseElementsAttr::get(scalar_type, {static_count_attr}));
+  count =
+      count ? stablehlo::MulOp::create(rewriter, loc, count, static_count_value)
+                  .getResult()
+            : static_count_value;
+
+  // Broadcast the count to the shape of the sum and divide.
+  auto dims = rewriter.getDenseI64ArrayAttr({});
+  Value count_bcast;
+  if (result_type.hasStaticShape()) {
+    count_bcast = stablehlo::BroadcastInDimOp::create(rewriter, loc,
+                                                      result_type, count, dims);
+  } else {
+    count_bcast = stablehlo::DynamicBroadcastInDimOp::create(
+        rewriter, loc, result_type, count, getShapeValue(loc, sum, rewriter),
+        dims);
+  }
+  return stablehlo::DivOp::create(rewriter, loc, sum, count_bcast);
 }
 
 Value materializeEpsilon(Operation *op, FloatAttr epsilon_attr,
@@ -127,36 +187,26 @@ class UnfuseBatchNormTrainingPattern
     auto feature_index = bn_op.getFeatureIndex();
 
     // Compute mean
-    int64_t input_last_dim = input_type.getRank() - 1;
-    auto dims_type = RankedTensorType::get(/*shape=*/{input_last_dim},
-                                           rewriter.getIntegerType(32));
-    ::mlir::SmallVector<int32_t> reduce_dim_axes;
-    for (int i = 0; i < input_type.getRank(); ++i) {
-      if (i != feature_index) {
-        reduce_dim_axes.push_back(i);
-      }
+    ::mlir::SmallVector<int64_t> reduce_dims;
+    for (int64_t i = 0; i < input_type.getRank(); ++i) {
+      if (i != feature_index) reduce_dims.push_back(i);
     }
-    auto mean_dims = DenseIntElementsAttr::get(dims_type, reduce_dim_axes);
-    // TODO(b/299514833): Remove TensorFlowDialect usage.
-    ::mlir::TF::ConstOp reduce_dim_op =
-        TF::ConstOp::create(rewriter, bn_op.getLoc(), mean_dims);
-    int64_t feature_dim_size = input_type.getDimSize(feature_index);
-    auto mean_var_type = RankedTensorType::get(/*shape=*/{feature_dim_size},
-                                               rewriter.getF32Type());
-    ::mlir::Value mean = TF::MeanOp::create(
-        rewriter, bn_op.getLoc(), mean_var_type, inputs, reduce_dim_op,
-        /*keep_dims=*/rewriter.getBoolAttr(false));
+    auto mean_var_type =
+        mlir::cast<RankedTensorType>(bn_op.getBatchMean().getType());
+    Value mean = computeMean(bn_op.getLoc(), inputs, reduce_dims, mean_var_type,
+                             rewriter);
 
     // Compute variance
     Value shape_value =
         getShapeValue(bn_op.getLoc(), bn_op.getOperand(), rewriter);
     auto broadcast_mean = broadcastToFeatureDim(
         bn_op.getLoc(), input_type, mean, shape_value, feature_index, rewriter);
-    ::mlir::Value square_diff = TF::SquaredDifferenceOp::create(
-        rewriter, bn_op.getLoc(), inputs, broadcast_mean);
-    ::mlir::Value variance = TF::MeanOp::create(
-        rewriter, bn_op.getLoc(), mean_var_type, square_diff, reduce_dim_op,
-        /*keep_dims=*/rewriter.getBoolAttr(false));
+    Value diff = stablehlo::SubtractOp::create(rewriter, bn_op.getLoc(), inputs,
+                                               broadcast_mean);
+    Value square_diff =
+        stablehlo::MulOp::create(rewriter, bn_op.getLoc(), diff, diff);
+    Value variance = computeMean(bn_op.getLoc(), square_diff, reduce_dims,
+                                 mean_var_type, rewriter);
 
     // Invoke BatchNormInferenceOp
     ::mlir::FloatAttr epsilon = bn_op.getEpsilonAttr();

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -73,7 +74,8 @@ SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options) {
   return options->version;
 }
 
-void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
+void RegisterSerDes(const void* absl_nonnull type_id,
+                    absl_nonnull std::unique_ptr<SerDes> serdes) {
   Registry* const r = registry();
   absl::MutexLock l(r->mu);
 

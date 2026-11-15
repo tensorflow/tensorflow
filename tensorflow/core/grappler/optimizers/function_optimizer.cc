@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -533,54 +534,64 @@ void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
   }
 }
 
-// Remove Tin type parameters for pushed down const inputs.
+absl::Status ValidateIndirectFunctionCall(const FunctionDef& func,
+                                          const NodeDef& func_node) {
+  int num_data_inputs = 0;
+  while (num_data_inputs < func_node.input_size() &&
+         !IsControlInput(func_node.input(num_data_inputs))) {
+    ++num_data_inputs;
+  }
+  const AttrValue* tin = AttrSlice(func_node).Find("Tin");
+  if (tin == nullptr || !AttrValueHasType(*tin, "list(type)").ok() ||
+      tin->list().type_size() != num_data_inputs ||
+      num_data_inputs != func.signature().input_arg_size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Indirect function call node ", func_node.name(),
+                     " has mismatched Tin or input count for function ",
+                     func.signature().name()));
+  }
+  const AttrValue* tout = AttrSlice(func_node).Find("Tout");
+  if (tout == nullptr || !AttrValueHasType(*tout, "list(type)").ok() ||
+      tout->list().type_size() != func.signature().output_arg_size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Indirect function call node ", func_node.name(),
+        " has mismatched Tout count for function ", func.signature().name()));
+  }
+  return absl::OkStatus();
+}
+
+// Remove Tin type parameters for pushed down const inputs. The caller has
+// already validated the original indirect call signature.
 void RemovePushedDownConstInputTypes(
     const FunctionSpecialization& specialization, const NodeDef& func_node,
     NodeDef* specialized_func_node) {
-  // Nothing to do if it was no const inputs to the function node.
   if (specialization.const_inputs.empty()) return;
-
-  // Make sure that original function caller has Tin attribute.
   const AttrValue* tin = AttrSlice(func_node).Find("Tin");
-  if (tin == nullptr || !tin->has_list()) return;
-
-  // Clear input types for the specialized node.
   auto* attr = specialized_func_node->mutable_attr();
   (*attr)["Tin"].mutable_list()->clear_type();
-
-  // Keep types of non-const inputs.
-  for (int i = 0; i < func_node.input_size(); ++i) {
-    const std::string& input = func_node.input(i);
-    if (IsControlInput(input)) break;
-
-    if (!specialization.const_inputs.contains(input)) {
-      DataType dt = tin->list().type(i);
-      (*attr)["Tin"].mutable_list()->add_type(dt);
+  for (int i = 0; i < tin->list().type_size(); ++i) {
+    if (!specialization.const_inputs.contains(func_node.input(i))) {
+      (*attr)["Tin"].mutable_list()->add_type(tin->list().type(i));
     }
   }
 }
 
-// Remove Tout type parameters for pruned function outputs.
+// Remove Tout type parameters for pruned function outputs. The caller has
+// already validated the original indirect call signature.
 void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
                               const NodeDef& func_node,
                               NodeDef* specialized_func_node) {
-  // Make sure that original function caller has Tout attribute.
   const AttrValue* tout = AttrSlice(func_node).Find("Tout");
-  if (tout == nullptr || !tout->has_list()) return;
-
-  // Nothing to do if all outputs are active.
-  int specialization_active_outputs_size = specialization.active_outputs.size();
-  if (specialization_active_outputs_size == tout->list().type_size()) return;
-
-  // Clear input types for the specialized node.
+  // Fetch nodes must retain all outputs.
+  if (specialization.is_in_fetch_set ||
+      specialization.active_outputs.size() == tout->list().type_size()) {
+    return;
+  }
   auto* attr = specialized_func_node->mutable_attr();
   (*attr)["Tout"].mutable_list()->clear_type();
-
-  // Keep output types of active outputs only.
   for (int i = 0; i < tout->list().type_size(); ++i) {
     if (specialization.active_outputs.contains(i)) {
-      DataType dt = tout->list().type(i);
-      (*attr)["Tout"].mutable_list()->add_type(dt);
+      (*attr)["Tout"].mutable_list()->add_type(tout->list().type(i));
     }
   }
 }
@@ -624,21 +635,15 @@ absl::Status UpdateSpecializedFunctionNode(
   // NOTE: PartitionedCallOp has `Tin` and `Tout` attributes for input/output
   // types, that must be in sync with updated function signature.
 
-  // 3. Update input types for the indirect function calls.
+  // 3. Update input/output types for indirect function calls.
   if (is_indirect_call) {
     RemovePushedDownConstInputTypes(specialization, func_node,
                                     specialized_func_node);
-  }
-
-  // 4. Update output types for the indirect function call. It's unsafe to
-  // change the number of outputs for the fetch nodes, so we just skip them.
-  if (is_indirect_call && !specialization.is_in_fetch_set) {
     RemoveUnusedOutputsTypes(specialization, func_node, specialized_func_node);
   }
 
-  // 5. Remove custom gradient annotation.
+  // 4. Remove custom gradient annotation.
   specialized_func_node->mutable_attr()->erase("_gradient_op_type");
-
   return absl::OkStatus();
 }
 
@@ -687,6 +692,9 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
                                 FunctionOptimizerContext* ctx,
                                 GraphDef* optimized_graph) {
   VLOG(2) << "Specialize function call: " << SummarizeNodeDef(func_node);
+  if (IsIndirectFunctionCall(func, func_node)) {
+    TF_RETURN_IF_ERROR(ValidateIndirectFunctionCall(func, func_node));
+  }
 
   const AttrSlice func_instantiation_attr =
       FunctionInstantiationAttributes(func, func_node);
@@ -704,14 +712,15 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
                "specialized_name="
             << already_specialized->specialized_func_name;
 
-    // Add a function call node for the specialized function.
-    NodeDef* specialized_func_node = optimized_graph->add_node();
-    *specialized_func_node = func_node;
-
+    NodeDef specialized_func_node = func_node;
     TF_RETURN_IF_ERROR(UpdateSpecializedFunctionNode(
-        func, func_node, *already_specialized, specialized_func_node));
+        func, func_node, *already_specialized, &specialized_func_node));
 
-    ctx->AddTensorMapping(specialized_func_node->name(), *already_specialized);
+    // Commit specialized call node only after validation and rewrite succeed.
+    NodeDef* committed_node = optimized_graph->add_node();
+    *committed_node = std::move(specialized_func_node);
+
+    ctx->AddTensorMapping(committed_node->name(), *already_specialized);
 
     return absl::OkStatus();
   }
@@ -763,22 +772,21 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
   auto* specialized_attr = specialized_func.mutable_attr();
   (*specialized_attr)[kGrapplerSpecializedFuncAttr].set_b(true);
 
-  // Add specialized function to the library.
-  TF_RETURN_IF_ERROR(ctx->function_library().AddFunctionDef(specialized_func));
-
-  // Add a function call node for the specialized function.
-  NodeDef* specialized_func_node = optimized_graph->add_node();
-  *specialized_func_node = func_node;
-
   FunctionSpecialization func_specialization = {
       specialized_func_name, signature.is_in_fetch_set, const_inputs,
       control_deps,          signature.active_outputs,  output_mapping};
 
+  NodeDef specialized_func_node = func_node;
   TF_RETURN_IF_ERROR(UpdateSpecializedFunctionNode(
-      func, func_node, func_specialization, specialized_func_node));
+      func, func_node, func_specialization, &specialized_func_node));
+
+  // Add specialized function and call node only after call-site validation.
+  TF_RETURN_IF_ERROR(ctx->function_library().AddFunctionDef(specialized_func));
+  NodeDef* committed_node = optimized_graph->add_node();
+  *committed_node = std::move(specialized_func_node);
 
   ctx->AddSpecializedFunction(signature, func_specialization);
-  ctx->AddTensorMapping(specialized_func_node->name(), func_specialization);
+  ctx->AddTensorMapping(committed_node->name(), func_specialization);
 
   return absl::OkStatus();
 }

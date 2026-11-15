@@ -17,6 +17,7 @@ limitations under the License.
 // `CudaCommandBuffer` registers in `CudaGraphAnnotationRegistry`, with
 // which annotations, and when the entries go away.
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -143,9 +145,8 @@ TEST_F(CudaCommandBufferTelemetryTest,
         Optional(Eq("XlaModule:#module=test#::traced_child:#tf_op=gemm#")));
   }
 
-  // Once the command buffers are destroyed, their cleanups unregister every
-  // graph. CUDA runs them asynchronously.
-  EXPECT_TRUE(PollUntil([] { return registry().empty(); }));
+  // Destroying the command buffers unregisters every graph.
+  EXPECT_TRUE(registry().empty());
   EXPECT_EQ(Lookup(kernel_key), std::nullopt);
   EXPECT_EQ(Lookup(embedded_key), std::nullopt);
 }
@@ -211,7 +212,7 @@ TEST_F(CudaCommandBufferTelemetryTest, ClonedChildCopiesFromOriginal) {
   ASSERT_OK(primary->Finalize());
   primary.reset();
   nested.reset();
-  EXPECT_TRUE(PollUntil([] { return registry().empty(); }));
+  EXPECT_TRUE(registry().empty());
 }
 
 TEST_F(CudaCommandBufferTelemetryTest, UpdateKeepsPreciseNestedAnnotations) {
@@ -224,8 +225,6 @@ TEST_F(CudaCommandBufferTelemetryTest, UpdateKeepsPreciseNestedAnnotations) {
     const Command* outer_kernel = nullptr;
     const Command* child = nullptr;
   };
-  // Records the outer kernel for op `kernel_op` and the child graph node for
-  // op `child_op`, each with recording off if its op is null.
   auto record_nested = [&](const char* kernel_op,
                            const char* child_op) -> absl::StatusOr<Nested> {
     Nested nested;
@@ -248,34 +247,83 @@ TEST_F(CudaCommandBufferTelemetryTest, UpdateKeepsPreciseNestedAnnotations) {
                        primary->CreateChildCommand(*original.outer, {}));
   ASSERT_OK(primary->Finalize());
 
-  // An untracked graph gets the update's annotation, but only for nodes that
-  // have none: its tracked child graph is left alone.
-  ASSERT_OK_AND_ASSIGN(Nested untracked, record_nested(nullptr, "inner"));
-  {
-    ScopedOpRecording recording("update");
-    ASSERT_OK(UpdateChild(*primary, child, *untracked.outer));
-  }
-  ASSERT_OK_AND_ASSIGN(NodeKey kernel_key, KeyOf(untracked.outer_kernel));
-  ASSERT_OK_AND_ASSIGN(NodeKey embedded_key,
-                       EmbeddedKey(untracked.child, untracked.inner_kernel));
-  EXPECT_THAT(Lookup(kernel_key), Optional(Eq("m::update")));
-  EXPECT_THAT(Lookup(embedded_key), Optional(Eq("m::inner")));
-
   // A tracked graph was registered as its nodes were created, so the update
-  // doesn't walk it, and its unregistered child graph stays unregistered.
-  ASSERT_OK_AND_ASSIGN(Nested tracked, record_nested("outer", nullptr));
+  // retains its entries without walking or overwriting them.
+  ASSERT_OK_AND_ASSIGN(Nested tracked, record_nested("outer", "inner"));
   {
     ScopedOpRecording recording("update");
     ASSERT_OK(UpdateChild(*primary, child, *tracked.outer));
   }
-  ASSERT_OK_AND_ASSIGN(kernel_key, KeyOf(tracked.outer_kernel));
-  ASSERT_OK_AND_ASSIGN(embedded_key,
+  ASSERT_OK_AND_ASSIGN(NodeKey kernel_key, KeyOf(tracked.outer_kernel));
+  ASSERT_OK_AND_ASSIGN(NodeKey embedded_key,
                        EmbeddedKey(tracked.child, tracked.inner_kernel));
+  tracked.outer.reset();
+  tracked.inner.reset();
   EXPECT_THAT(Lookup(kernel_key), Optional(Eq("m::outer")));
-  EXPECT_EQ(Lookup(embedded_key), std::nullopt);
+  EXPECT_THAT(Lookup(embedded_key), Optional(Eq("m::inner")));
+
+  primary.reset();
+  EXPECT_TRUE(registry().empty());
 }
 
-TEST_F(CudaCommandBufferTelemetryTest, UpdateWithTemporaryNestedGraph) {
+TEST_F(CudaCommandBufferTelemetryTest, UpdateSharesEntriesOfRecordedNested) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> original, NewNested());
+  ASSERT_OK(Launch(*original).status());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
+  ASSERT_OK_AND_ASSIGN(const Command* child,
+                       primary->CreateChildCommand(*original, {}));
+  ASSERT_OK(primary->Finalize());
+  // Recorded with recording off, so nothing so far is in the registry.
+  ASSERT_TRUE(registry().empty());
+
+  // Records a nested graph for op `op`, updates `child` to it, and destroys it
+  // right away, as commands that record a temporary nested command buffer per
+  // Record do.
+  auto update_to_temporary = [&](const char* op) -> absl::StatusOr<NodeKey> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested, NewNested());
+    const Command* kernel = nullptr;
+    {
+      ScopedOpRecording recording(op);
+      ABSL_ASSIGN_OR_RETURN(kernel, Launch(*nested));
+    }
+    ScopedOpRecording recording("update");
+    ABSL_RETURN_IF_ERROR(UpdateChild(*primary, child, *nested));
+    return KeyOf(kernel);
+  };
+
+  // The child node retains the entry of the nested command buffer after the
+  // nested command buffer is destroyed.
+  ASSERT_OK_AND_ASSIGN(NodeKey first, update_to_temporary("first"));
+  EXPECT_THAT(Lookup(first), Optional(Eq("m::first")));
+  EXPECT_EQ(registry().GetStats().live_graphs, size_t{1});
+
+  // Each update releases the graph the node ran before: however many updates
+  // there are, the registry only has the entry of the graph the node runs.
+  NodeKey prev = first;
+  for (int i = 0; i < 16; ++i) {
+    ASSERT_OK_AND_ASSIGN(NodeKey next, update_to_temporary("next"));
+    EXPECT_EQ(Lookup(prev), std::nullopt);
+    EXPECT_THAT(Lookup(next), Optional(Eq("m::next")));
+    EXPECT_EQ(registry().GetStats().live_graphs, size_t{1});
+    prev = next;
+  }
+
+  // Under a harvest hold, the replaced graph is parked until the hold ends.
+  {
+    CudaGraphAnnotationRegistry::HarvestHold hold =
+        registry().AcquireHarvestHold();
+    ASSERT_OK_AND_ASSIGN(NodeKey held, update_to_temporary("held"));
+    EXPECT_FALSE(registry().IsGraphTracked(prev.graph_id));
+    EXPECT_THAT(Lookup(prev), Optional(Eq("m::next")));
+    EXPECT_THAT(Lookup(held), Optional(Eq("m::held")));
+  }
+  EXPECT_EQ(Lookup(prev), std::nullopt);
+
+  primary.reset();
+  EXPECT_TRUE(registry().empty());
+}
+
+TEST_F(CudaCommandBufferTelemetryTest, UpdateToCachedNestedKeepsItsEntries) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> original, NewNested());
   ASSERT_OK(Launch(*original).status());
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
@@ -283,55 +331,126 @@ TEST_F(CudaCommandBufferTelemetryTest, UpdateWithTemporaryNestedGraph) {
                        primary->CreateChildCommand(*original, {}));
   ASSERT_OK(primary->Finalize());
 
-  // Updates `child` to a new nested graph and destroys that graph right away,
-  // as host execution does for every Record. The graph is recorded with
-  // recording off, so the update tracks it. Returns the key of its kernel.
-  auto update_to_temporary = [&](const char* op) -> absl::StatusOr<NodeKey> {
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested, NewNested());
-    ABSL_ASSIGN_OR_RETURN(const Command* kernel, Launch(*nested));
+  // Two nested command buffers that stay alive between updates, as in a trace
+  // cache with room for two.
+  struct Cached {
+    std::unique_ptr<CommandBuffer> nested;
+    NodeKey key;
+  };
+  auto record = [&](const char* op) -> absl::StatusOr<Cached> {
+    Cached cached;
+    ABSL_ASSIGN_OR_RETURN(cached.nested, NewNested());
     ScopedOpRecording recording(op);
-    ABSL_RETURN_IF_ERROR(UpdateChild(*primary, child, *nested));
-    return KeyOf(kernel);
+    ABSL_ASSIGN_OR_RETURN(const Command* kernel, Launch(*cached.nested));
+    ABSL_ASSIGN_OR_RETURN(cached.key, KeyOf(kernel));
+    return cached;
+  };
+  ASSERT_OK_AND_ASSIGN(Cached a, record("a"));
+  ASSERT_OK_AND_ASSIGN(Cached b, record("b"));
+  auto update_to = [&](const Cached& cached) {
+    ScopedOpRecording recording("update");
+    return UpdateChild(*primary, child, *cached.nested);
   };
 
-  ASSERT_OK_AND_ASSIGN(NodeKey first, update_to_temporary("first"));
-  // The update attached the cleanup before `SetParams` cloned the graph's
-  // references into the executable graph, so the entry outlives the graph.
-  // Wait for the cleanup of a graph destroyed later, by which time the
-  // cleanup would most likely have run otherwise.
-  NodeKey control;
-  {
-    ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> nested, NewNested());
-    ScopedOpRecording recording("control");
-    ASSERT_OK_AND_ASSIGN(const Command* kernel, Launch(*nested));
-    ASSERT_OK_AND_ASSIGN(control, KeyOf(kernel));
-    ASSERT_TRUE(registry().IsGraphTracked(control.graph_id));
+  // Switching between them releases nothing that a cached command buffer still
+  // holds, and installing one again keeps its precise annotation.
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK(update_to(a));
+    ASSERT_OK(update_to(b));
+    EXPECT_THAT(Lookup(a.key), Optional(Eq("m::a")));
+    EXPECT_THAT(Lookup(b.key), Optional(Eq("m::b")));
   }
-  ASSERT_TRUE(
-      PollUntil([&] { return !registry().IsGraphTracked(control.graph_id); }));
-  EXPECT_THAT(Lookup(first), Optional(Eq("m::first")));
 
-  // The next update replaces the executable graph's references, the last ones
-  // to the first graph's cleanup.
-  ASSERT_OK_AND_ASSIGN(NodeKey second, update_to_temporary("second"));
-  EXPECT_TRUE(PollUntil([&] { return !Lookup(first).has_value(); }));
-  EXPECT_THAT(Lookup(second), Optional(Eq("m::second")));
+  // Evicting the installed command buffer keeps its entry for the node.
+  ASSERT_OK(update_to(a));
+  a.nested.reset();
+  EXPECT_THAT(Lookup(a.key), Optional(Eq("m::a")));
+  // Until the node switches away from it.
+  ASSERT_OK(update_to(b));
+  EXPECT_EQ(Lookup(a.key), std::nullopt);
+  EXPECT_THAT(Lookup(b.key), Optional(Eq("m::b")));
 
-  // While a harvest hold is active, the entry is parked instead: it is no
-  // longer tracked, but still resolves until the hold is released.
-  {
-    CudaGraphAnnotationRegistry::HarvestHold hold =
-        registry().AcquireHarvestHold();
-    ASSERT_OK_AND_ASSIGN(NodeKey third, update_to_temporary("third"));
-    EXPECT_TRUE(
-        PollUntil([&] { return !registry().IsGraphTracked(second.graph_id); }));
-    EXPECT_THAT(Lookup(second), Optional(Eq("m::second")));
-    EXPECT_THAT(Lookup(third), Optional(Eq("m::third")));
-  }
-  EXPECT_EQ(Lookup(second), std::nullopt);
+  // Evicting a command buffer that no node runs releases its entries.
+  ASSERT_OK_AND_ASSIGN(Cached c, record("c"));
+  ASSERT_THAT(Lookup(c.key), Optional(Eq("m::c")));
+  c.nested.reset();
+  EXPECT_EQ(Lookup(c.key), std::nullopt);
 
   primary.reset();
-  EXPECT_TRUE(PollUntil([] { return registry().empty(); }));
+  EXPECT_THAT(Lookup(b.key), Optional(Eq("m::b")));
+  b.nested.reset();
+  EXPECT_TRUE(registry().empty());
+}
+
+TEST_F(CudaCommandBufferTelemetryTest,
+       MovedChildWithSubgraphsLivesAsLongAsPrimary) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> inner, NewNested());
+  const Command* inner_kernel = nullptr;
+  {
+    ScopedOpRecording recording("inner");
+    ASSERT_OK_AND_ASSIGN(inner_kernel, Launch(*inner));
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
+  NodeKey moved_key;
+  NodeKey embedded_key;
+  {
+    ScopedOpRecording recording("moved");
+    // The moved child has both its own kernel and an embedded clone of `inner`,
+    // whose entries the primary takes over
+    // (`CU_GRAPH_CHILD_GRAPH_OWNERSHIP_MOVE`).
+    ASSERT_OK(primary
+                  ->CreateChildCommand(
+                      [&](CommandBuffer* nested) -> absl::Status {
+                        ABSL_ASSIGN_OR_RETURN(const Command* kernel,
+                                         Launch(*nested));
+                        ABSL_ASSIGN_OR_RETURN(moved_key, KeyOf(kernel));
+                        ABSL_ASSIGN_OR_RETURN(
+                            const Command* child,
+                            nested->CreateChildCommand(*inner, {kernel}));
+                        ABSL_ASSIGN_OR_RETURN(embedded_key,
+                                         EmbeddedKey(child, inner_kernel));
+                        return absl::OkStatus();
+                      },
+                      {})
+                  .status());
+  }
+  ASSERT_OK(primary->Finalize());
+  EXPECT_THAT(Lookup(moved_key), Optional(Eq("m::moved")));
+  EXPECT_THAT(Lookup(embedded_key), Optional(Eq("m::inner")));
+
+  // Both the moved graph and its embedded clone live in the primary's graph.
+  inner.reset();
+  EXPECT_THAT(Lookup(moved_key), Optional(Eq("m::moved")));
+  EXPECT_THAT(Lookup(embedded_key), Optional(Eq("m::inner")));
+  primary.reset();
+  EXPECT_TRUE(registry().empty());
+}
+
+TEST_F(CudaCommandBufferTelemetryTest,
+       NestedUnregistersItsGraphsOnDestruction) {
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> nested, NewNested());
+    ScopedOpRecording recording("nested");
+    ASSERT_OK_AND_ASSIGN(const Command* kernel, Launch(*nested));
+    ASSERT_OK_AND_ASSIGN(NodeKey key, KeyOf(kernel));
+    EXPECT_THAT(Lookup(key), Optional(Eq("m::nested")));
+  }
+  EXPECT_TRUE(registry().empty());
+
+  // A command buffer built by stream capture, as `TracedCommandBuffer` does.
+  {
+    ScopedOpRecording recording("traced");
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> traced,
+                         TraceCommandBufferFactory::Create(
+                             executor_, stream_.get(),
+                             [&](Stream* stream) {
+                               return stream->Memset32(&a_, 42,
+                                                       4 * sizeof(int32_t));
+                             },
+                             CommandBuffer::Mode::kNested));
+    EXPECT_FALSE(registry().empty());
+  }
+  EXPECT_TRUE(registry().empty());
 }
 
 TEST_F(CudaCommandBufferTelemetryTest, WhileBodyRegisteredAndCleanedUp) {
@@ -361,13 +480,13 @@ TEST_F(CudaCommandBufferTelemetryTest, WhileBodyRegisteredAndCleanedUp) {
     ASSERT_OK(primary->CreateWhile(pred, create_cond, create_body, {kernel})
                   .status());
   }
-  // The body is a graph of its own, whose cleanup the root graph holds.
+  // The body is a graph of its own, whose entry the root command buffer owns.
   EXPECT_NE(body_key.graph_id, root_key.graph_id);
   EXPECT_THAT(Lookup(body_key), Optional(Eq("m::while::body")));
   ASSERT_OK(primary->Finalize());
 
   primary.reset();
-  EXPECT_TRUE(PollUntil([] { return registry().empty(); }));
+  EXPECT_TRUE(registry().empty());
   EXPECT_EQ(Lookup(body_key), std::nullopt);
 }
 

@@ -1,10 +1,9 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --canonicalize -cse \
 // RUN:   | FileCheck %s
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
+// RUN:   --xtile-cpu-xtile-to-vector --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
 // RUN: test_correctness %s
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
 
 fusion {
 
@@ -48,7 +47,7 @@ ENTRY main {
 // CHECK:        }
 // CHECK:        xtile.return
 
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT: llvm.alloc
-// NEW-VECTOR-LLVM: llvm.shufflevector
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT: llvm.alloc
+// CHECK-LLVM: llvm.shufflevector
 

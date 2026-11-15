@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
@@ -317,11 +318,15 @@ bool CompressRepeatedField(float min_compression_ratio,
   const int64_t num_tensor_values = shape.num_elements();
   const int64_t num_proto_values = TypeHelper::NumValues(*tensor);
 
-  // Notice that for complex types the tensor is stored as an array of up to
-  // 2 * num_tensor_values real values (real and imaginary parts), possibly
-  // truncated. A 0-splat does not need any value present and is maximally
-  // compressed.
-  if (num_proto_values == 0) return false;
+  // NumValues counts logical elements, including complex values stored as
+  // pairs of real and imaginary components. A 0-splat needs no explicit values
+  // and is already maximally compressed. Validate bounds before scanning or
+  // changing the repeated field.
+  if (num_proto_values == 0 || num_proto_values > num_tensor_values ||
+      num_tensor_values > std::numeric_limits<int64_t>::max() /
+                              static_cast<int64_t>(sizeof(T))) {
+    return false;
+  }
 
   const T last_value = TypeHelper::GetValue(num_proto_values - 1, *tensor);
   int64_t last_index = 0;
@@ -342,7 +347,8 @@ bool CompressRepeatedField(float min_compression_ratio,
   const int64_t num_truncated_proto_values = last_index + 1;
   const int64_t num_bytes_as_field =
       num_truncated_proto_values * sizeof(FieldType);
-  const int64_t num_bytes_as_tensor_content = num_tensor_values * sizeof(T);
+  const int64_t num_bytes_as_tensor_content =
+      num_tensor_values * static_cast<int64_t>(sizeof(T));
   const int64_t num_bytes_before = num_proto_values * sizeof(FieldType);
   if (std::min(num_bytes_as_field, num_bytes_as_tensor_content) >
       static_cast<int64_t>(num_bytes_before / min_compression_ratio)) {
@@ -371,7 +377,10 @@ template <typename T>
 bool CompressTensorProtoInPlaceImpl(int64_t min_num_elements,
                                     float min_compression_ratio,
                                     TensorProto* tensor) {
-  const TensorShape shape(tensor->tensor_shape());
+  TensorShape shape;
+  if (!TensorShape::BuildTensorShape(tensor->tensor_shape(), &shape).ok()) {
+    return false;
+  }
   const int64_t num_tensor_values = shape.num_elements();
   if (num_tensor_values < min_num_elements) {
     return false;

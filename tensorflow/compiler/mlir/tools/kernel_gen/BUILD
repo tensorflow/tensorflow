@@ -134,7 +134,6 @@ tf_cc_binary(
     deps = [
         ":kernel_creator",
         "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -147,7 +146,6 @@ tf_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",

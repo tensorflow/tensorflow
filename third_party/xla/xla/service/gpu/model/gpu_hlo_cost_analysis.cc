@@ -538,7 +538,7 @@ absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   // TODO(b/315776282): Model this more accurately once we can reason about
   // tiling patterns.
   int64_t dim = Cast<HloConcatenateInstruction>(hlo)->concatenate_dimension();
-  if (dim > 0 && hlo->operand(0)->shape().dimensions()[dim] & 31) {
+  if (dim > 0 && hlo->operand(0)->shape().dimensions()[dim] % warp_size_ != 0) {
     flop_per_element = 400;
   }
   current_properties_[kFlopsKey] =
@@ -717,8 +717,8 @@ absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
 
 std::unique_ptr<HloCostAnalysis>
 GpuHloCostAnalysis::CreateNestedCostAnalysis() {
-  return std::make_unique<GpuHloCostAnalysis>(options_,
-                                              hlo_elementwise_op_profile_);
+  return std::make_unique<GpuHloCostAnalysis>(
+      options_, hlo_elementwise_op_profile_, warp_size_);
 }
 
 bool GpuHloCostAnalysis::KeyToCopyFromSubcomputation(

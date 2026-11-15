@@ -25,11 +25,12 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -37,16 +38,20 @@ namespace xla::cpu {
 absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>>
 RngGetAndUpdateStateThunk::Create(Info info,
                                   BufferAllocation::Slice state_buffer,
-                                  int64_t delta) {
-  return absl::WrapUnique(
-      new RngGetAndUpdateStateThunk(std::move(info), state_buffer, delta));
+                                  int64_t delta,
+                                  std::shared_ptr<RngStateResource> rng_state) {
+  TF_RET_CHECK(rng_state != nullptr) << "rng_state cannot be null";
+  return absl::WrapUnique(new RngGetAndUpdateStateThunk(
+      std::move(info), state_buffer, delta, std::move(rng_state)));
 }
 
 RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
-    Info info, BufferAllocation::Slice state_buffer, int64_t delta)
-    : Thunk(Kind::kRngGetAndUpdateState, info),
+    Info info, BufferAllocation::Slice state_buffer, int64_t delta,
+    std::shared_ptr<RngStateResource> rng_state)
+    : Thunk(Kind::kRngGetAndUpdateState, std::move(info)),
       state_buffer_(state_buffer),
-      rng_state_(delta) {}
+      delta_(delta),
+      rng_state_(std::move(rng_state)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
     const ExecuteParams& params) {
@@ -62,7 +67,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
                                 state_data.opaque());
 
   uint64_t* data = static_cast<uint64_t*>(state_data.opaque());
-  rng_state_.GetAndUpdateState(data);
+  rng_state_->GetAndUpdateState(data, delta_, params.device_ordinal);
 
   return OkExecuteEvent();
 }

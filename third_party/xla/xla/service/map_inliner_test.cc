@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -37,6 +39,8 @@ namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
 
 using MapInlinerTest = HloTestBase;
 
@@ -182,6 +186,98 @@ TEST_F(MapInlinerTest, MapParameter) {
                        Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR0<float>(4);
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
+}
+
+TEST_F(MapInlinerTest, DoesNotInlineWhileRoot) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule MapWhile
+
+    while_cond {
+      x = f32[] parameter(0)
+      limit = f32[] constant(8.0)
+      ROOT cmp = pred[] compare(x, limit), direction=LT
+    }
+
+    while_body {
+      x = f32[] parameter(0)
+      ROOT doubled = f32[] add(x, x)
+    }
+
+    mapper {
+      p0 = f32[] parameter(0)
+      ROOT loop = f32[] while(p0), condition=while_cond, body=while_body
+    }
+
+    ENTRY main {
+      a = f32[4] parameter(0)
+      ROOT mapped = f32[4] map(a), dimensions={0}, to_apply=mapper
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(RunHloPass(MapInliner(), module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(MapInlinerTest, DoesNotInlineConditionalRoot) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule MapConditional
+
+    on_true {
+      x = f32[] parameter(0)
+      ROOT sq = f32[] multiply(x, x)
+    }
+
+    on_false {
+      y = f32[] parameter(0)
+      ROOT neg = f32[] negate(y)
+    }
+
+    mapper {
+      p = pred[] parameter(0)
+      t = f32[] parameter(1)
+      f = f32[] parameter(2)
+      ROOT cond = f32[] conditional(p, t, f),
+          true_computation=on_true, false_computation=on_false
+    }
+
+    ENTRY main {
+      preds = pred[4] parameter(0)
+      ts = f32[4] parameter(1)
+      fs = f32[4] parameter(2)
+      ROOT mapped = f32[4] map(preds, ts, fs), dimensions={0}, to_apply=mapper
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(RunHloPass(MapInliner(), module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(MapInlinerTest, DoesNotInlineCallRoot) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule MapCall
+
+    callee {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      sum = f32[] add(x, y)
+      ROOT prod = f32[] multiply(sum, x)
+    }
+
+    mapper {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT c = f32[] call(p0, p1), to_apply=callee
+    }
+
+    ENTRY main {
+      lhs = f32[3] parameter(0)
+      rhs = f32[3] parameter(1)
+      ROOT mapped = f32[3] map(lhs, rhs), dimensions={0}, to_apply=mapper
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(RunHloPass(MapInliner(), module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

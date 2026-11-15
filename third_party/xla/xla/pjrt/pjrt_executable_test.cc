@@ -15,11 +15,14 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/client/executable_build_options.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/device_assignment.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -79,6 +83,105 @@ TEST(CompileOptionsTest, Defaults) {
   EXPECT_EQ(src.parameter_is_tupled_arguments, false);
   EXPECT_EQ(src.allow_in_place_mlir_modification, false);
   EXPECT_EQ(src.matrix_unit_operand_precision, PrecisionConfig::DEFAULT);
+  EXPECT_EQ(src.multi_slice_config, nullptr);
+  EXPECT_EQ(src.owned_multi_slice_config, nullptr);
+  EXPECT_EQ(src.get_multi_slice_config(), nullptr);
+}
+
+class FakeMultiSliceConfig : public MultiSliceConfig {
+ public:
+  FakeMultiSliceConfig(std::string serialized, bool* destroyed)
+      : serialized_(std::move(serialized)), destroyed_(destroyed) {}
+
+  ~FakeMultiSliceConfig() override {
+    if (destroyed_ != nullptr) {
+      *destroyed_ = true;
+    }
+  }
+
+  int32_t NumSlices() const override { return 2; }
+  int32_t SliceId() const override { return 0; }
+  absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const override {
+    return {{0, 4}, {1, 4}};
+  }
+  std::string Serialize() const override { return serialized_; }
+
+ private:
+  std::string serialized_;
+  bool* destroyed_;
+};
+
+TEST(CompileOptionsTest, MultiSliceConfigRCReferenceOwnershipAndAccessors) {
+  bool destroyed = false;
+  CompileOptions copy;
+  {
+    CompileOptions original;
+    original.set_multi_slice_config(
+        tsl::MakeRef<FakeMultiSliceConfig>("test_topology", &destroyed));
+    ASSERT_NE(original.get_multi_slice_config(), nullptr);
+    EXPECT_EQ(original.multi_slice_config, original.get_multi_slice_config());
+    EXPECT_TRUE(original.get_multi_slice_config()->IsUnique());
+
+    copy = original;
+    EXPECT_FALSE(original.get_multi_slice_config()->IsUnique());
+  }
+
+  EXPECT_FALSE(destroyed);
+  ASSERT_NE(copy.get_multi_slice_config(), nullptr);
+  EXPECT_EQ(copy.multi_slice_config, copy.get_multi_slice_config());
+  EXPECT_TRUE(copy.get_multi_slice_config()->IsUnique());
+  EXPECT_EQ(copy.get_multi_slice_config()->NumSlices(), 2);
+  EXPECT_EQ(copy.get_multi_slice_config()->Serialize(), "test_topology");
+
+  MultiSliceConfigRef extra_ref = tsl::FormRef(copy.get_multi_slice_config());
+  EXPECT_FALSE(copy.get_multi_slice_config()->IsUnique());
+
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, copy.ToProto());
+  EXPECT_EQ(proto.serialized_multi_slice_config(), "test_topology");
+
+  copy.set_multi_slice_config({});
+  EXPECT_EQ(copy.get_multi_slice_config(), nullptr);
+  EXPECT_EQ(copy.multi_slice_config, nullptr);
+  EXPECT_FALSE(destroyed);
+
+  extra_ref.reset();
+  EXPECT_TRUE(destroyed);
+}
+
+TEST(CompileOptionsTest, MultiSliceConfigLegacyPointerCompatibility) {
+  bool stack_destroyed = false;
+  const FakeMultiSliceConfig stack_config("stack_topology", &stack_destroyed);
+  {
+    CompileOptions options{.compile_portable_executable = true};
+    options.multi_slice_config = &stack_config;
+    EXPECT_EQ(options.owned_multi_slice_config, nullptr);
+    ASSERT_NE(options.get_multi_slice_config(), nullptr);
+    EXPECT_EQ(options.get_multi_slice_config()->Serialize(), "stack_topology");
+  }
+  EXPECT_FALSE(stack_destroyed);
+
+  bool unique_destroyed = false;
+  {
+    auto unique_config = std::make_unique<FakeMultiSliceConfig>(
+        "unique_topology", &unique_destroyed);
+    CompileOptions options;
+    options.multi_slice_config = unique_config.get();
+    ASSERT_NE(options.get_multi_slice_config(), nullptr);
+    EXPECT_EQ(options.get_multi_slice_config()->Serialize(), "unique_topology");
+  }
+  EXPECT_TRUE(unique_destroyed);
+
+  bool shared_destroyed = false;
+  {
+    std::shared_ptr<const MultiSliceConfig> shared_config =
+        std::make_shared<FakeMultiSliceConfig>("shared_topology",
+                                               &shared_destroyed);
+    CompileOptions options;
+    options.multi_slice_config = shared_config.get();
+    ASSERT_NE(options.get_multi_slice_config(), nullptr);
+    EXPECT_EQ(options.get_multi_slice_config()->Serialize(), "shared_topology");
+  }
+  EXPECT_TRUE(shared_destroyed);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {

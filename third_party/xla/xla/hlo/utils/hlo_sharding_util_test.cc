@@ -2223,6 +2223,32 @@ TEST_F(HloShardingUtilTestWithHlo, MultipleCallSitesForIota) {
       std::nullopt);
 }
 
+TEST(HloShardingUtilTest, NonTiledLeafShardingSpecificityAndImprovement) {
+  const HloSharding unreduced = HloSharding::Unreduced();
+  const HloSharding named_unreduced(NamedSharding::Unreduced(Mesh({2}, {"x"})));
+  const HloSharding unknown = HloSharding::Unknown();
+  const HloSharding tiled = HloSharding::IotaTile({2});
+  const HloSharding replicated = HloSharding::Replicate();
+  const Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  for (const HloSharding& s : {unreduced, named_unreduced, unknown}) {
+    EXPECT_FALSE(IsShardingMoreSpecific(s, s));
+    EXPECT_FALSE(IsShardingMoreSpecific(s, tiled));
+    EXPECT_FALSE(IsShardingMoreSpecific(tiled, s));
+    EXPECT_FALSE(IsShardingMoreSpecific(s, replicated));
+    EXPECT_EQ(UntileShape(s, shape), shape);
+    EXPECT_EQ(TileShape(s, shape), shape);
+    EXPECT_EQ(ReturnImprovedShardingImpl(s, /*to_improved=*/nullptr, shape,
+                                         /*may_combine_partial_sharding=*/true,
+                                         /*allow_aggressive_resharding=*/true),
+              std::nullopt);
+    EXPECT_EQ(ReturnImprovedShardingImpl(s, &replicated, shape,
+                                         /*may_combine_partial_sharding=*/true,
+                                         /*allow_aggressive_resharding=*/true),
+              std::nullopt);
+  }
+}
+
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla

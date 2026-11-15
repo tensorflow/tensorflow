@@ -19,8 +19,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
@@ -43,6 +47,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -51,6 +56,90 @@ std::string PrintModule(mlir::ModuleOp module) {
   llvm::raw_string_ostream os(module_str);
   module->print(os, mlir::OpPrintingFlags().enableDebugInfo());
   return module_str;
+}
+
+struct VersionedTestProgram {
+  Serialized serialized;
+  IfrtIrProgramProto program_proto;
+};
+
+// Serializes a simple single-atom versioned `IfrtIRProgram` and parses its
+// `IfrtIrProgramProto` payload so tests can mutate individual fields.
+absl::StatusOr<VersionedTestProgram> SerializeVersionedTestProgram() {
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @add_one <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      %0 = stablehlo.constant dense<1> : tensor<2xi32>
+      %1 = stablehlo.add %arg0, %0 : tensor<2xi32>
+      return %1 : tensor<2xi32>
+    }
+  }
+}
+  )mlir";
+
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   support::ParseMlirModuleString(kMlirModuleStr, *context));
+  IfrtIRProgram program(std::move(context), std::move(module));
+  ABSL_ASSIGN_OR_RETURN(
+      Serialized serialized,
+      Serialize(
+          program,
+          std::make_unique<SerializeIfrtIRProgramOptions>(
+              /*ifrt_version=*/Version::getCurrentVersion().toString(),
+              /*atom_program_version=*/
+              mlir::vhlo::Version::getCurrentVersion().toString(),
+              /*atom_program_sdy_version=*/
+              mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
+              /*version_in_place=*/false)));
+
+  IfrtIrProgramProto program_proto;
+  if (!program_proto.ParseFromString(serialized.data())) {
+    return absl::InternalError("Failed to parse IfrtIrProgramProto");
+  }
+  return VersionedTestProgram{std::move(serialized), std::move(program_proto)};
+}
+
+// Returns a versioned serialized `IfrtIRProgram` whose outer `ifrt_program`
+// bytecode has been replaced with the result of calling `replace` on it.
+absl::StatusOr<Serialized> SerializeWithIfrtProgram(
+    absl::FunctionRef<std::string(absl::string_view)> replace) {
+  ABSL_ASSIGN_OR_RETURN(VersionedTestProgram test_program,
+                   SerializeVersionedTestProgram());
+  const std::string bytecode(test_program.program_proto.ifrt_program());
+  test_program.program_proto.set_ifrt_program(replace(bytecode));
+  test_program.serialized.set_data(
+      test_program.program_proto.SerializeAsCord());
+  return test_program.serialized;
+}
+
+// Returns a versioned serialized `IfrtIRProgram` whose only atom program, which
+// is serialized as MLIR bytecode, has been replaced with the result of calling
+// `replace` on it.
+absl::StatusOr<Serialized> SerializeWithAtomProgram(
+    absl::FunctionRef<std::string(absl::string_view)> replace) {
+  ABSL_ASSIGN_OR_RETURN(VersionedTestProgram test_program,
+                   SerializeVersionedTestProgram());
+  if (test_program.program_proto.atom_programs_size() != 1) {
+    return absl::InternalError(
+        absl::StrCat("Expected 1 atom program, got ",
+                     test_program.program_proto.atom_programs_size()));
+  }
+  IfrtIrAtomProgramProto& atom_program =
+      *test_program.program_proto.mutable_atom_programs(0);
+  const std::string bytecode(atom_program.program());
+  atom_program.set_program(replace(bytecode));
+  test_program.serialized.set_data(
+      test_program.program_proto.SerializeAsCord());
+  return test_program.serialized;
 }
 
 class IfrtIRProgramSerDesTest : public testing::TestWithParam<SerDesVersion> {
@@ -420,6 +509,120 @@ module {
       Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
       absl_testing::StatusIs(Not(absl::StatusCode::kOk),
                              HasSubstr("Failed to parse IfrtIrProgramProto")));
+}
+
+TEST_P(IfrtIRProgramSerDesTest, NonBytecodeIfrtProgramDeserializationError) {
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       SerializeWithIfrtProgram([](absl::string_view) {
+                         return std::string("module {}");
+                       }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to parse IFRT IR module string"),
+                        HasSubstr("not MLIR bytecode"))));
+}
+
+// Bytecode `IfrtIRProgram` payloads are deserialized directly from a flattened
+// `absl::Cord` without copying to a null-terminated `std::string`, so these
+// tests truncate the bytecode and rely on sanitizers to detect out-of-bounds
+// reads.
+TEST_P(IfrtIRProgramSerDesTest,
+       ShortTruncatedBytecodeIfrtProgramDeserializationError) {
+  // Short enough for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       SerializeWithIfrtProgram([](absl::string_view bytecode) {
+                         return std::string(bytecode.substr(0, 15));
+                       }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to parse IFRT IR module string"),
+                        Not(HasSubstr("not MLIR bytecode")))));
+}
+
+TEST_P(IfrtIRProgramSerDesTest,
+       LongTruncatedBytecodeIfrtProgramDeserializationError) {
+  // Too long for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized,
+      SerializeWithIfrtProgram([](absl::string_view bytecode) {
+        return std::string(bytecode.substr(0, bytecode.size() - 1));
+      }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to parse IFRT IR module string"),
+                        Not(HasSubstr("not MLIR bytecode")))));
+}
+
+TEST_P(IfrtIRProgramSerDesTest,
+       ShortNonBytecodeAtomProgramDeserializationError) {
+  // Short enough for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       SerializeWithAtomProgram([](absl::string_view) {
+                         return std::string("module @abcdefg");
+                       }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize atom program"),
+                        HasSubstr("not MLIR bytecode"))));
+}
+
+TEST_P(IfrtIRProgramSerDesTest,
+       LongNonBytecodeAtomProgramDeserializationError) {
+  // Too long for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized, SerializeWithAtomProgram([](absl::string_view) {
+        return absl::StrCat("module @add_one { func.func @main() { return } } ",
+                            std::string(42, ' '));
+      }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize atom program"),
+                        HasSubstr("not MLIR bytecode"))));
+}
+
+// Bytecode atom programs are deserialized directly from a flattened
+// `absl::Cord` without copying to a null-terminated `std::string`, so these
+// tests truncate the bytecode and rely on sanitizers to detect out-of-bounds
+// reads.
+TEST_P(IfrtIRProgramSerDesTest,
+       ShortTruncatedBytecodeAtomProgramDeserializationError) {
+  // Short enough for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       SerializeWithAtomProgram([](absl::string_view bytecode) {
+                         return std::string(bytecode.substr(0, 15));
+                       }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize atom program"),
+                        Not(HasSubstr("not MLIR bytecode")))));
+}
+
+TEST_P(IfrtIRProgramSerDesTest,
+       LongTruncatedBytecodeAtomProgramDeserializationError) {
+  // Too long for `absl::Cord` to store inline.
+  ASSERT_OK_AND_ASSIGN(
+      Serialized serialized,
+      SerializeWithAtomProgram([](absl::string_view bytecode) {
+        return std::string(bytecode.substr(0, bytecode.size() - 1));
+      }));
+
+  EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("Failed to deserialize atom program"),
+                        Not(HasSubstr("not MLIR bytecode")))));
 }
 
 INSTANTIATE_TEST_SUITE_P(

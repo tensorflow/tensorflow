@@ -18,6 +18,7 @@ common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
 common:clang_local --noincompatible_enable_cc_toolchain_resolution
 common:clang_local --@rules_ml_toolchain//common:enable_hermetic_cc=False
 common:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
+common:clang_local --@llvm-project//llvm:use_libunwind_for_eh_frame_registration=false
 
 # Error on struct/class mismatches, since this causes link failures on Windows.
 common:clang --copt=-Werror=mismatched-tags

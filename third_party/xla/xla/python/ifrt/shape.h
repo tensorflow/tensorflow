@@ -84,8 +84,15 @@ class Shape {
   template <typename H>
   friend H AbslHashValue(H h, const Shape& shape);
 
-  // Total number of elements in this shape.
+  // Total number of elements in this shape. `CHECK`-fails if any dimension size
+  // is negative or the total number of elements overflows `int64_t`. Use
+  // `NumElements` to handle such an error without `CHECK` failure.
   int64_t num_elements() const;
+
+  // Returns the total number of elements in this shape, or
+  // `InvalidArgumentError` if any dimension size is negative or the total
+  // number of elements overflows `int64_t`.
+  absl::StatusOr<int64_t> NumElements() const;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Shape& shape) {

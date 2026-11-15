@@ -24,30 +24,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/WalkResult.h"  // from @llvm-project
-#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
-#include "tensorflow/compiler/mlir/lite/python/slim_model_importer.h"
-#include "tensorflow/compiler/mlir/lite/python/stablehlo_tfl_pipeline.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
@@ -370,55 +357,6 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
       /*export_to_mlir=*/false, quantization_py_function_lib);
 
   return status;
-}
-
-absl::Status ConvertMlirBytecodeToTFLite(
-    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
-    llvm::raw_pwrite_stream& export_stream) {
-  mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::BuiltinDialect, mlir::func::FuncDialect,
-              mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
-              mlir::TFL::TensorFlowLiteDialect, mlir::quant::QuantDialect>();
-  auto context = std::make_unique<mlir::MLIRContext>(registry);
-  context->loadAllAvailableDialects();
-
-  auto module_or = LoadSlimModel(model_dir, context.get());
-  if (!module_or.ok()) return module_or.status();
-  auto module = std::move(module_or).value();
-
-  mlir::TFL::QuantizationSpecs quant_specs;
-  quant_specs.qdq_conversion_mode = mlir::TFL::QDQConversionMode::kQDQStrict;
-
-  mlir::TFL::PassConfig pass_config(quant_specs);
-  pass_config.fold_fp16_resource_casts =
-      converter_flags.fold_fp16_resource_casts();
-  pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
-  pass_config.fold_fp16_casts_into_fully_connected =
-      converter_flags.fold_fp16_casts_into_fully_connected();
-
-  return mlir::TFL::ConvertStableHloToTFLite(*module, converter_flags,
-                                             pass_config, export_stream);
-}
-
-absl::Status ConvertMlirBytecodeToTFLite(
-    tflite::ConverterFlags& converter_flags, absl::string_view model_dir,
-    absl::string_view output_file_path) {
-  std::string error_msg;
-  auto output = mlir::openOutputFile(output_file_path, &error_msg);
-  if (!output) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to open output file: ", error_msg));
-  }
-  auto status =
-      ConvertMlirBytecodeToTFLite(converter_flags, model_dir, output->os());
-  if (!status.ok()) return status;
-  output->os().close();
-  if (output->os().has_error()) {
-    return absl::InternalError("Error writing to output file.");
-  }
-  output->keep();
-  return absl::OkStatus();
 }
 
 void WarningUnusedFlags(const tflite::ModelFlags& model_flags,

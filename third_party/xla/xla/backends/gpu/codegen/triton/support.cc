@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -408,6 +409,13 @@ CodegenDecision CanTritonHandleScan(
         "Triton requires the scan combiner to be associative.");
   }
 
+  // Mirrors EmitScan. Support is re-checked after FloatNormalization (e.g. by
+  // BlockLevelEmitterBackend), which may wrap the bf16 add in converts.
+  if (!xtile::IsAdditiveScanCombiner(*scan.to_apply())) {
+    return CodegenDecision::Forbid(
+        "Only additive scans are supported in Triton.");
+  }
+
   switch (scan.shape().tuple_shapes(0).element_type()) {
     case PrimitiveType::F8E4M3FN:
     case PrimitiveType::F8E5M2:
@@ -432,6 +440,19 @@ CodegenDecision CanTritonHandleReduce(
        reduce.shape().element_type() == PrimitiveType::F8E4M3FNUZ)) {
     return CodegenDecision::Forbid(
         "F8E4M3FN and F8E5M2 are not supported for reductions.");
+  }
+
+  // A reduction computation that just returns one of its parameters, e.g. the
+  // `(a, b) -> b` combiner of a "take last" reduction, has no neutral value.
+  // Emitting it requires masking the lanes past the end of a tile, and those
+  // lanes are masked with the init value, which such a combiner returns as-is:
+  // any padding would silently become the result. Whether a tile is padded is
+  // not known here, so always fall back to the native emitter.
+  if (reduce.to_apply()->root_instruction()->opcode() ==
+      HloOpcode::kParameter) {
+    return CodegenDecision::Forbid(
+        "Reduction computation that just returns a parameter is not "
+        "supported.");
   }
 
   bool is_triton_supported_reduction_computation = absl::c_all_of(
@@ -766,6 +787,28 @@ CodegenDecision IsTritonSupportedDot(
   return CodegenDecision::Allow();
 }
 
+bool IsBlock16ScaledOperand(const Shape& operand, const Shape& scale,
+                            absl::Span<const int64_t> contracting_dims) {
+  if (!xtile::IsTritonDotScaledOperandType(operand.element_type()) ||
+      scale.dimensions().size() != operand.dimensions().size() ||
+      contracting_dims.size() != 1) {
+    return false;
+  }
+  int64_t k_dim = contracting_dims[0];
+  int64_t scale_k = scale.dimensions(k_dim);
+  return scale_k > 0 && scale_k * 16 == operand.dimensions(k_dim);
+}
+
+bool HasBlock16ScaledOperand(const HloScaledDotInstruction& dot) {
+  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
+  return IsBlock16ScaledOperand(dot.operand(0)->shape(),
+                                dot.operand(2)->shape(),
+                                dnums.lhs_contracting_dimensions()) ||
+         IsBlock16ScaledOperand(dot.operand(1)->shape(),
+                                dot.operand(3)->shape(),
+                                dnums.rhs_contracting_dimensions());
+}
+
 CodegenDecision IsTritonSupportedScaledDot(
     const HloScaledDotInstruction& dot,
     const se::GpuComputeCapability& gpu_version) {
@@ -828,6 +871,12 @@ CodegenDecision IsTritonSupportedScaledDot(
     return CodegenDecision::Forbid(
         absl::StrCat("RHS scale is ignored for operand type ",
                      PrimitiveType_Name(rhs_type), " but is not all ones."));
+  }
+  if (const auto* cc = gpu_version.cuda_compute_capability();
+      cc && cc->IsAtLeastBlackwell() && HasBlock16ScaledOperand(dot)) {
+    return CodegenDecision::Forbid(
+        "Triton's Blackwell MMA lowering does not support block-16 scaled "
+        "dots.");
   }
   return CodegenDecision::Allow();
 }
@@ -1069,6 +1118,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kExp2:

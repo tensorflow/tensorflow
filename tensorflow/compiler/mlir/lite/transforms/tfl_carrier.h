@@ -32,8 +32,10 @@ namespace TFL {
 // legalization (legalize_hlo_conversions/custom_call.cc) and passes that need
 // to read carrier attributes before legalization.
 //
-// Returns the parsed dictionary, or null if `backend_config` is absent, not a
-// string, or does not parse as a dictionary.
+// A `backend_config` that is already a DictionaryAttr (StableHLO allows
+// dictionary backend configs) is returned as is. Returns the parsed dictionary,
+// or null if `backend_config` is absent, neither a dictionary nor a string, or
+// does not parse as a dictionary.
 DictionaryAttr ParseSerializedTFLOpAttributes(
     std::optional<Attribute> backend_config, MLIRContext* ctx);
 

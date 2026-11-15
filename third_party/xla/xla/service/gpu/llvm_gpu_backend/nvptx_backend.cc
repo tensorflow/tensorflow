@@ -238,6 +238,11 @@ absl::StatusOr<se::SemanticVersion> GetPtxVersionForCompilation(
 
 std::vector<std::string> GetNVPTXBackendOptions(
     const DebugOptions& debug_options) {
+  // The NVPTX target registers its LLVM command line options (such as
+  // -nvptx-prec-divf32) when it is initialized. Initialize it before callers
+  // parse the options returned here.
+  InitializeNVPTXBackend();
+
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
   std::vector<std::string> backend_llvm_opts;

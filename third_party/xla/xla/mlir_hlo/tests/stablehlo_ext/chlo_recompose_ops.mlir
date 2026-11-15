@@ -247,6 +247,50 @@ func.func private @chlo.scan.impl(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>
 
 // -----
 
+// A composite whose number of regions differs from that of the CHLO op is not
+// recomposed.
+// CHECK-LABEL: func @erf_composite_unexpected_region
+func.func @erf_composite_unexpected_region(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: stablehlo.composite "chlo.erf"
+  %0 = stablehlo.composite "chlo.erf" %arg0 ({
+  ^bb0(%b0: tensor<3xf32>):
+    stablehlo.return %b0 : tensor<3xf32>
+  }) {decomposition = @chlo.erf.impl, version = 1 : i32} : (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+func.func private @chlo.erf.impl(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %0 = chlo.erf %arg0 : tensor<3xf32> -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @scan_composite_missing_region
+func.func @scan_composite_missing_region(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
+  // CHECK: stablehlo.composite "chlo.scan"
+  %0:2 = stablehlo.composite "chlo.scan" %arg0, %arg1, %arg2 {
+    composite_attributes = {
+      dimension = 0 : i64,
+      operandSegmentSizes = array<i32: 2, 1>,
+      resultSegmentSizes = array<i32: 1, 1>
+    },
+    decomposition = @chlo.scan.impl,
+    version = 1 : i32
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %0#0, %0#1 : tensor<5xf64>, tensor<4xf64>
+}
+func.func private @chlo.scan.impl(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
+  %0:2 = chlo.scan(%arg0, %arg1) inits(%arg2) dimension=0 {
+  ^bb0(%b0: tensor<2xf64>, %b1: tensor<3xf64>, %b2: tensor<4xf64>):
+    %1 = stablehlo.add %b2, %b2 : tensor<4xf64>
+    %2 = stablehlo.constant dense<0.000000e+00> : tensor<f64>
+    stablehlo.return %2, %1 : tensor<f64>, tensor<4xf64>
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %0#0, %0#1 : tensor<5xf64>, tensor<4xf64>
+}
+
+// -----
+
 /////
 // (Deprecated) CustomCall Recomposition
 

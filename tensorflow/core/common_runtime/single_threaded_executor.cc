@@ -15,18 +15,34 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -243,11 +259,32 @@ class SingleThreadedExecutorImpl : public Executor {
           last_kernel_state.input_start_index + last_kernel_state.num_inputs;
       input_alloc_attrs_.resize(total_num_inputs_);
       for (size_t i = 0; i < kernels_.size(); ++i) {
+        const size_t input_start_index = kernels_[i].input_start_index;
+        OpKernel* op_kernel = kernels_[i].kernel;
+        // `_Arg` nodes have no kernel; `Run()` forwards their tensors
+        // directly into consumer input slots. Derive host placement from
+        // the consumer's input memory type, which matches the producer's
+        // after `EnsureMemoryTypes()`. Producer attrs are merged below.
+        const MemoryTypeVector& input_memory_types =
+            op_kernel->input_memory_types();
+        DCHECK_EQ(input_memory_types.size(), kernels_[i].num_inputs);
+        for (size_t j = 0; j < kernels_[i].num_inputs; ++j) {
+          if (input_memory_types[j] == HOST_MEMORY) {
+            input_alloc_attrs_[input_start_index + j].set_on_host(true);
+          }
+        }
         for (size_t j = 0; j < kernels_[i].output_locations.size(); ++j) {
           for (size_t output_location : kernels_[i].output_locations[j]) {
-            input_alloc_attrs_[output_location] =
-                kernels_[i].output_alloc_attrs[j];
+            input_alloc_attrs_[output_location].Merge(
+                kernels_[i].output_alloc_attrs[j]);
           }
+        }
+      }
+      for (size_t i = 0; i < const_tensor_kernels_.size(); ++i) {
+        for (size_t output_location :
+             const_tensor_kernels_[i].output_locations) {
+          input_alloc_attrs_[output_location].Merge(
+              const_tensor_kernels_[i].output_alloc_attr);
         }
       }
     } else {

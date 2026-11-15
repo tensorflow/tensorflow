@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -117,6 +118,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
 }
 
 bool IsSupportedCudnnFusion(const HloInstruction& instr,
+                            se::StreamExecutor* stream_exec,
                             const GpuTargetConfig& target_config,
                             const DebugOptions& debug_options) {
   const HloComputation* computation = instr.fused_instructions_computation();
@@ -124,8 +126,34 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
       *computation, {HloOpcode::kDot, HloOpcode::kConvolution,
                      HloOpcode::kScaledDot, HloOpcode::kRaggedDot});
   if (hero == nullptr) {
-    VLOG(1) << "Fusion does not contain a dot or convolution.";
-    return false;
+    if (debug_options.xla_gpu_cudnn_non_gemm_fusion_level() < 1) {
+      return false;
+    }
+    // Don't reclaim a fusion another pass has already committed to a
+    // specific custom kind (e.g. a legacy custom-fusion match).
+    if (instr.fusion_kind() == HloInstruction::FusionKind::kCustom) {
+      return false;
+    }
+    if (target_config.device_description.dnn_version() <
+        se::SemanticVersion(9, 26, 0)) {
+      VLOG(1) << "Cudnn version is too old for cudnn non-gemm fusion.";
+      return false;
+    }
+    if (!target_config.device_description.cuda_compute_capability()
+             .IsAtLeastBlackwell()) {
+      VLOG(1) << "Compute capability is not supported for cudnn non-gemm "
+                 "fusion.";
+      return false;
+    }
+    absl::StatusOr<bool> is_supported =
+        CuDnnFusionCompiler::IsSupportedNonGemmFusion(
+            stream_exec, target_config.device_description,
+            *Cast<HloFusionInstruction>(&instr));
+    if (!is_supported.ok()) {
+      VLOG(1) << "Fusion is not supported by cudnn: " << is_supported.status();
+      return false;
+    }
+    return *is_supported;
   }
 
   PrecisionConfig::Algorithm algorithm = PrecisionConfig::ALG_UNSET;
@@ -155,13 +183,10 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   if (hero->opcode() == HloOpcode::kScaledDot) {
-    return target_config.device_description.cuda_compute_capability()
-               .IsAtLeastBlackwell() &&
-           se::dnn::VersionInfo(
-               target_config.device_description.dnn_version()) >=
-               kCudnnSupportsBlockScaledDot &&
-           CudnnScaledDotHelper::IsSupported(
-               Cast<HloScaledDotInstruction>(hero));
+    // Only fusions built by CudnnScaledDotRewriter are supported: their scale
+    // operands are already padded and swizzled in the parent computation.
+    return IsCudnnFusion(instr) &&
+           CudnnScaledDotHelper::IsAvailable(target_config.device_description);
   }
 
   if (hero->shape().element_type() == PrimitiveType::F64) {
@@ -339,22 +364,21 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 
 absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                                       const CudnnBackendConfig& config) {
-  HloInstruction* fusion_instr = &instr;
-  auto* fusion = Cast<HloFusionInstruction>(&instr);
-  if (hlo_query::GetFirstInstructionWithOpcode(
-          *fusion->fused_instructions_computation(), HloOpcode::kScaledDot) !=
-      nullptr) {
-    ABSL_ASSIGN_OR_RETURN(fusion_instr,
-                     CudnnScaledDotHelper::AddScaleSwizzle(fusion));
-  }
+  // Only CudnnScaledDotRewriter emits the scale swizzle that cuDNN needs.
+  TF_RET_CHECK(
+      IsCudnnFusion(instr) ||
+      !hlo_query::ContainsInstrWithOpcode(
+          instr.fused_instructions_computation(), {HloOpcode::kScaledDot}))
+      << "kScaledDot requires a fusion built by CudnnScaledDotRewriter: "
+      << instr.name();
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   fusion_instr->backend_config<GpuBackendConfig>());
+                   instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(std::move(gpu_config)));
-  fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 
@@ -376,7 +400,8 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
 
 bool CudnnBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
-    return IsSupportedCudnnFusion(instr, target_config(), debug_options());
+    return IsSupportedCudnnFusion(instr, stream_executor(), target_config(),
+                                  debug_options());
   }
 
   if (instr.opcode() == HloOpcode::kCustomCall) {
@@ -401,7 +426,8 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
         "and custom call instructions");
   }
 
-  if (IsSupportedCudnnFusion(instr, target_config(), debug_options())) {
+  if (IsSupportedCudnnFusion(instr, stream_executor(), target_config(),
+                             debug_options())) {
     ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                      GetCudnnFusionConfigs(instr, stream_executor(),
                                            target_config(), debug_options()));

@@ -85,6 +85,16 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                << status;
   }
 
+  // Setting XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES to true makes a D2D copy
+  // wait on the host for events from other devices, instead of making its
+  // stream wait on them. See b/578068384.
+  status = tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES",
+                                   false, &host_wait_cross_device_copies_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to read XLA_PJRT_GPU_HOST_WAIT_CROSS_DEVICE_COPIES: "
+               << status;
+  }
+
   local_hardware_id_ = executor_->device_ordinal();
   local_device_id_ =
       device_ordinal != -1 ? device_ordinal : executor_->device_ordinal();

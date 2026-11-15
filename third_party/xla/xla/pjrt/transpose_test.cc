@@ -613,25 +613,29 @@ struct TransposeTestCase {
   TransposeTestCase(std::vector<int64_t> dims, std::vector<int64_t> permutation,
                     std::vector<int64_t> input_tiling = {},
                     std::vector<int64_t> output_tiling = {},
-                    std::vector<int64_t> input_striding = {})
+                    std::vector<int64_t> input_striding = {},
+                    std::optional<uint8_t> tile_padding = std::nullopt)
       : dims(std::move(dims)),
         permutation(std::move(permutation)),
         input_tiling(std::move(input_tiling)),
         input_striding(std::move(input_striding)),
-        output_tiling(std::move(output_tiling)) {}
+        output_tiling(std::move(output_tiling)),
+        tile_padding(tile_padding) {}
 
   std::vector<int64_t> dims;
   std::vector<int64_t> permutation;
   std::vector<int64_t> input_tiling;
   std::vector<int64_t> input_striding;
   std::vector<int64_t> output_tiling;
+  std::optional<uint8_t> tile_padding;
 
   std::string ToString() const {
     return absl::StrFormat(
-        "[%s],perm=[%s],tiling=[%s]/[%s],striding=[%s]",
+        "[%s],perm=[%s],tiling=[%s]/[%s],striding=[%s]%s",
         absl::StrJoin(dims, ","), absl::StrJoin(permutation, ","),
         absl::StrJoin(input_tiling, ","), absl::StrJoin(output_tiling, ","),
-        input_striding.empty() ? "none" : absl::StrJoin(input_striding, ","));
+        input_striding.empty() ? "none" : absl::StrJoin(input_striding, ","),
+        tile_padding ? absl::StrFormat(",pad=0x%02x", *tile_padding) : "");
   }
 };
 
@@ -793,7 +797,40 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       // Other small stride-1 sizes, including one coalesced from 2 x 3.
       TransposeTestCase(/*dims=*/{5, 256, 256}, /*permutation=*/{1, 2, 0}),
       TransposeTestCase(/*dims=*/{256, 256, 6}, /*permutation=*/{2, 0, 1}),
-      TransposeTestCase(/*dims=*/{2, 3, 64, 64}, /*permutation=*/{2, 3, 0, 1})};
+      TransposeTestCase(/*dims=*/{2, 3, 64, 64}, /*permutation=*/{2, 3, 0, 1}),
+
+      // Output tile padding.
+      TransposeTestCase(/*dims=*/{0}, /*permutation=*/{0}, /*input_tiling=*/{},
+                        /*output_tiling=*/{128}, /*input_striding=*/{},
+                        /*tile_padding=*/uint8_t{0x00}),
+      TransposeTestCase(/*dims=*/{5}, /*permutation=*/{0}, /*input_tiling=*/{},
+                        /*output_tiling=*/{128}, /*input_striding=*/{},
+                        /*tile_padding=*/uint8_t{0xff}),
+      TransposeTestCase(/*dims=*/{133}, /*permutation=*/{0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00}),
+      TransposeTestCase(/*dims=*/{3, 5}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00}),
+      TransposeTestCase(/*dims=*/{260, 19}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0xff}),
+      TransposeTestCase(/*dims=*/{16, 256}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x7f}),
+      TransposeTestCase(/*dims=*/{24, 80}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{15, 1},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0xff}),
+      TransposeTestCase(/*dims=*/{130, 3, 11}, /*permutation=*/{1, 2, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{2, 8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00}),
+      TransposeTestCase(/*dims=*/{11, 130}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{-520, 4},
+                        /*tile_padding=*/uint8_t{0xff}),
+      TransposeTestCase(/*dims=*/{1, 131072}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{8, 128},
+                        /*input_striding=*/{}, /*tile_padding=*/uint8_t{0x00})};
   return cases;
 }
 
@@ -919,10 +956,14 @@ std::vector<RandomTransposeTestCase> GetRandomTransposeTestCases() {
       auto chunk_contiguity = static_cast<TransposePlan::ChunkContiguity>(
           absl::Uniform<int>(bitgen, 0, 3));
       bool use_execute_chunk = absl::Bernoulli(bitgen, 0.5);
+      std::optional<uint8_t> tile_padding;
+      if (absl::Bernoulli(bitgen, 0.5)) {
+        tile_padding = absl::Uniform<uint8_t>(bitgen);
+      }
 
       cases.push_back(RandomTransposeTestCase(
           TransposeTestCase(dims, permutation, input_tiling, output_tiling,
-                            striding),
+                            striding, tile_padding),
           elem_size, parallelism, TransposePlan::Transformation::kNone,
           chunk_contiguity, use_execute_chunk));
       valid = true;
@@ -955,13 +996,21 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
   options.transformation = transformation;
   options.num_threads = parallelism;
   options.chunk_contiguity = chunk_contiguity;
+  options.tile_padding = test.tile_padding;
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   VLOG(1) << plan->ToString();
 
   int64_t output_size_bytes =
       SizeOfTiledArray(plan->OutputDims(), test.output_tiling, sizeof(T));
   int64_t output_size = CeilOfRatio<int64_t>(output_size_bytes, sizeof(T));
-  std::vector<T> output(output_size, -1);
+  const uint8_t pad_byte = test.tile_padding.value_or(0xFF);
+  const uint8_t init_byte = test.tile_padding
+                                ? static_cast<uint8_t>(~*test.tile_padding)
+                                : uint8_t{0xFF};
+  std::vector<T> output(output_size);
+  if (output_size_bytes > 0) {
+    std::memset(output.data(), init_byte, output_size_bytes);
+  }
 
   std::vector<int64_t> input_striding = test.input_striding;
   std::vector<int64_t> input_tiling = PadTiling(test.dims, test.input_tiling);
@@ -979,7 +1028,10 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
   int64_t input_size = CeilOfRatio<int64_t>(input_size_bytes, sizeof(T));
   std::vector<T> input(input_size);
   FillRandom<T>(absl::MakeSpan(input));
-  std::vector<T> expected_output(output_size, -1);
+  std::vector<T> expected_output(output_size);
+  if (output_size_bytes > 0) {
+    std::memset(expected_output.data(), pad_byte, output_size_bytes);
+  }
 
   int64_t input_base_offset_bytes = -min_offset_bytes;
   ReferenceTranspose<T>(test.dims, test.permutation, input_tiling,
@@ -1027,7 +1079,8 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
                   input_bytes);
 
       if (chunk_contiguity == TransposePlan::ChunkContiguity::kOutput) {
-        std::vector<char> output_temp(output_bytes, 0xFF);
+        std::vector<char> output_temp(output_bytes,
+                                      static_cast<char>(init_byte));
         plan->ExecuteChunk(chunk, input_temp.data(), output_temp.data(),
                            /*input_is_global=*/false,
                            /*output_is_global=*/false);
@@ -1544,6 +1597,13 @@ TEST(TransposeTest, F64ToEf57MemcpyRejection) {
   EXPECT_THAT(plan.status().message(),
               testing::HasSubstr(
                   "Memcpy-based plans cannot be used with transformations"));
+
+  permutation = {1, 0};
+  options.permutation = permutation;
+  options.dest_bits_per_element = 4;
+  options.tile_padding = uint8_t{0xff};
+  EXPECT_EQ(TransposePlan::Create(options).status().code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST(TransposeTest, F64ToEf57Execution) {
@@ -1571,6 +1631,24 @@ TEST(TransposeTest, F64ToEf57Execution) {
                                         converted[1], converted[3]};
 
   EXPECT_EQ(output, expected_output);
+
+  // Tiled output with tile_padding.
+  const std::vector<int64_t> tiled_dims = {5, 3, 2};
+  const std::vector<int64_t> tiled_perm = {2, 1, 0};
+  const std::vector<int64_t> tiling = {8, 128};
+  options.dims = tiled_dims;
+  options.permutation = tiled_perm;
+  options.output_tiling = TransposePlan::Tiling{tiling};
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_plan, TransposePlan::Create(options));
+  options.tile_padding = uint8_t{0xff};
+  TF_ASSERT_OK_AND_ASSIGN(auto pad_plan, TransposePlan::Create(options));
+  std::vector<double> tiled_input(15, 1.25);
+  std::vector<uint8_t> expected_bytes(
+      pad_plan->OutputNumElems() * sizeof(float), 0xff);
+  std::vector<uint8_t> actual_bytes(expected_bytes.size(), 0x00);
+  ref_plan->Execute(tiled_input.data(), expected_bytes.data());
+  pad_plan->Execute(tiled_input.data(), actual_bytes.data());
+  EXPECT_EQ(actual_bytes, expected_bytes);
 }
 
 TEST(TransposePlanCache, Basics) {
@@ -1620,6 +1698,25 @@ TEST(TransposePlanCache, Basics) {
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<TransposePlan> p_output_again,
                        contiguity_cache.GetOrCreate(o_output));
   EXPECT_EQ(p_output, p_output_again);
+
+  TransposePlanCache padding_cache(4);
+  TransposePlan::Options o_no_pad = o;
+  TransposePlan::Options o_pad_zero = o;
+  o_pad_zero.tile_padding = uint8_t{0x00};
+  TransposePlan::Options o_pad_ff = o;
+  o_pad_ff.tile_padding = uint8_t{0xff};
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<TransposePlan> p_no_pad,
+                       padding_cache.GetOrCreate(o_no_pad));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<TransposePlan> p_pad_zero,
+                       padding_cache.GetOrCreate(o_pad_zero));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<TransposePlan> p_pad_ff,
+                       padding_cache.GetOrCreate(o_pad_ff));
+  EXPECT_NE(p_no_pad, p_pad_zero);
+  EXPECT_NE(p_no_pad, p_pad_ff);
+  EXPECT_NE(p_pad_zero, p_pad_ff);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<TransposePlan> p_pad_ff_again,
+                       padding_cache.GetOrCreate(o_pad_ff));
+  EXPECT_EQ(p_pad_ff, p_pad_ff_again);
 }
 
 void TestPackIntN(
@@ -1631,7 +1728,8 @@ void TestPackIntN(
     TransposePlan::ChunkContiguity chunk_contiguity =
         TransposePlan::ChunkContiguity::kNone,
     std::optional<int> expected_parallelism = std::nullopt,
-    std::optional<bool> expected_inner_kernel_is_memcpy = std::nullopt) {
+    std::optional<bool> expected_inner_kernel_is_memcpy = std::nullopt,
+    std::optional<uint8_t> tile_padding = std::nullopt) {
   const int elements_per_byte = 8 / bits_per_element;
   std::vector<int64_t> output_dims = Permute(dims, permutation);
   std::vector<int64_t> full_input_tiling = PadTiling(dims, input_tiling);
@@ -1671,6 +1769,7 @@ void TestPackIntN(
   options.dest_bits_per_element = bits_per_element;
   options.num_threads = num_threads;
   options.chunk_contiguity = chunk_contiguity;
+  options.tile_padding = tile_padding;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> plan,
                        TransposePlan::Create(options));
@@ -1682,25 +1781,29 @@ void TestPackIntN(
   }
 
   const int64_t output_num_elems = plan->OutputNumElems();
-  const int64_t output_size_bytes =
-      CeilOfRatio<int64_t>(output_num_elems, elements_per_byte);
+  const int64_t padded_elems =
+      RoundUpTo<int64_t>(output_num_elems, elements_per_byte);
+  const int64_t output_size_bytes = padded_elems / elements_per_byte;
+  const char pad_byte = static_cast<char>(tile_padding.value_or(0));
+  const char init_byte = static_cast<char>(tile_padding ? ~*tile_padding : 0);
 
-  std::vector<int8_t> expected_unpacked_transposed(output_num_elems, 0);
+  std::vector<int8_t> expected_unpacked_transposed(padded_elems, pad_byte);
   ReferenceTranspose<int8_t>(
       dims, permutation, full_input_tiling, full_input_strides,
       full_output_tiling, full_output_strides, input,
-      absl::MakeSpan(expected_unpacked_transposed), input_base_offset_bytes);
+      absl::MakeSpan(expected_unpacked_transposed).first(output_num_elems),
+      input_base_offset_bytes);
 
   std::vector<char> expected_output(output_size_bytes, 0);
   PackIntN(bits_per_element,
            absl::MakeConstSpan(reinterpret_cast<const char*>(
                                    expected_unpacked_transposed.data()),
-                               output_num_elems),
+                               padded_elems),
            absl::MakeSpan(expected_output));
 
   const char* input_base =
       reinterpret_cast<const char*>(input.data()) + input_base_offset_bytes;
-  std::vector<char> output(output_size_bytes, 0);
+  std::vector<char> output(output_size_bytes, init_byte);
   tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
                                      std::max(1, num_threads));
   plan->Execute(input_base, output.data(), [&](std::function<void()> fn) {
@@ -1709,7 +1812,7 @@ void TestPackIntN(
   EXPECT_EQ(output, expected_output);
 
   if (chunk_contiguity == TransposePlan::ChunkContiguity::kOutput) {
-    std::vector<char> global_chunked_output(output_size_bytes, 0);
+    std::vector<char> global_chunked_output(output_size_bytes, init_byte);
     for (int i = 0; i < plan->Parallelism(); ++i) {
       plan->ExecuteChunk(i, input_base, global_chunked_output.data(),
                          /*input_is_global=*/true,
@@ -1717,7 +1820,7 @@ void TestPackIntN(
     }
     EXPECT_EQ(global_chunked_output, expected_output);
 
-    std::vector<char> local_chunked_output(output_size_bytes, 0);
+    std::vector<char> local_chunked_output(output_size_bytes, init_byte);
     int64_t sum_chunk_bytes = 0;
     int64_t max_in_chunk_bytes = 0;
     int64_t max_out_chunk_bytes = 0;
@@ -1736,7 +1839,7 @@ void TestPackIntN(
       EXPECT_EQ(out_offset, sum_chunk_bytes);
       sum_chunk_bytes += out_bytes;
       max_out_chunk_bytes = std::max(max_out_chunk_bytes, out_bytes);
-      std::vector<char> out_slot(out_bytes, 0);
+      std::vector<char> out_slot(out_bytes, init_byte);
       plan->ExecuteChunk(i, in_slot.data(), out_slot.data(),
                          /*input_is_global=*/false,
                          /*output_is_global=*/false);
@@ -1768,6 +1871,21 @@ TEST(TransposeTest, PackInt4_2D) {
                TransposePlan::ChunkContiguity::kOutput,
                /*expected_parallelism=*/2,
                /*expected_inner_kernel_is_memcpy=*/false);
+  TestPackIntN(4, /*dims=*/{5, 6}, /*permutation=*/{0, 1},
+               /*input_tiling=*/{}, /*output_tiling=*/{8, 16},
+               /*input_striding=*/{}, /*num_threads=*/4,
+               TransposePlan::ChunkContiguity::kOutput, std::nullopt,
+               std::nullopt, /*tile_padding=*/uint8_t{0x00});
+  TestPackIntN(4, /*dims=*/{6, 8}, /*permutation=*/{1, 0},
+               /*input_tiling=*/{}, /*output_tiling=*/{8, 4},
+               /*input_striding=*/{}, /*num_threads=*/2,
+               TransposePlan::ChunkContiguity::kOutput, std::nullopt,
+               std::nullopt, /*tile_padding=*/uint8_t{0xff});
+  TestPackIntN(4, /*dims=*/{6, 8}, /*permutation=*/{1, 0},
+               /*input_tiling=*/{}, /*output_tiling=*/{8, 4},
+               /*input_striding=*/{}, /*num_threads=*/2,
+               TransposePlan::ChunkContiguity::kOutput, std::nullopt,
+               std::nullopt, /*tile_padding=*/uint8_t{0x0a});
   // Innermost output dimension splits only at byte boundaries (multiples of
   // loop.inc = elements_per_byte on the memcpy path, or macro-block size on the
   // microkernel path).
@@ -1859,6 +1977,10 @@ TEST(TransposeTest, PackInt4_Unaligned) {
   TestPackIntN(4, {4, 4}, {0, 1}, /*input_tiling=*/{}, /*output_tiling=*/{},
                /*input_striding=*/{-8, -1});
   TestPackIntN(4, /*dims=*/{1, 5}, /*permutation=*/{0, 1});
+  TestPackIntN(4, {5, 5}, {0, 1}, /*input_tiling=*/{},
+               /*output_tiling=*/{8, 15}, /*input_striding=*/{},
+               /*num_threads=*/4, TransposePlan::ChunkContiguity::kNone,
+               std::nullopt, std::nullopt, /*tile_padding=*/uint8_t{0x0a});
 }
 
 TEST(TransposeTest, PackInt2_Unaligned) {
@@ -1868,6 +1990,10 @@ TEST(TransposeTest, PackInt2_Unaligned) {
                /*output_tiling=*/{3, 3});
   TestPackIntN(2, {24, 80}, {0, 1}, /*input_tiling=*/{},
                /*output_tiling=*/{15, 1});
+  TestPackIntN(2, {8, 5}, {1, 0}, /*input_tiling=*/{},
+               /*output_tiling=*/{8, 16}, /*input_striding=*/{},
+               /*num_threads=*/4, TransposePlan::ChunkContiguity::kOutput,
+               std::nullopt, std::nullopt, /*tile_padding=*/uint8_t{0x01});
 }
 
 TEST(TransposeTest, PackInt1_Unaligned) {
@@ -1877,6 +2003,10 @@ TEST(TransposeTest, PackInt1_Unaligned) {
                /*output_tiling=*/{3, 3});
   TestPackIntN(1, {24, 80}, {0, 1}, /*input_tiling=*/{},
                /*output_tiling=*/{15, 1});
+  TestPackIntN(1, {3, 11}, {1, 0}, /*input_tiling=*/{},
+               /*output_tiling=*/{8, 16}, /*input_striding=*/{},
+               /*num_threads=*/4, TransposePlan::ChunkContiguity::kNone,
+               std::nullopt, std::nullopt, /*tile_padding=*/uint8_t{0xff});
 }
 
 TEST(TransposeTest, Sub64MiBContiguousChunking) {

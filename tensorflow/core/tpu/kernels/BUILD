@@ -128,6 +128,26 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "sparse_core_preprocess_ops_test",
+    srcs = ["sparse_core_preprocess_ops_test.cc"],
+    deps = [
+        ":sparse_core_preprocess_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/tpu/ops:sparse_core_preprocess_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@xla//xla/tsl/lib/core:status_test_util",
+    ],
+)
+
 cc_library(
     name = "sparse_core_xla_ops",
     srcs = ["sparse_core_xla_ops.cc"],

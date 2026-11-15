@@ -3652,5 +3652,86 @@ TEST_P(LSTMOpTest, TestWithAuxInputNoAuxWeightsMismatchedBatchSize) {
       "Cannot allocate tensors");
 }
 
+// Prepare must reject rank-0 input-to-output weights in either direction
+// before it reads their first dimension.
+TEST(LSTMOpTest, RankZeroInputToOutputWeightsFailsPrepare) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+  const std::vector<std::vector<int>> valid_input_shapes = {
+      {sequence_length, n_batch, n_input},  // input tensor
+
+      // Forward cell
+      {n_cell, n_input},  // input_to_input_weight tensor
+      {n_cell, n_input},  // input_to_forget_weight tensor
+      {n_cell, n_input},  // input_to_cell_weight tensor
+      {n_cell, n_input},  // input_to_output_weight tensor
+
+      {n_cell, n_output},  // recurrent_to_input_weight tensor
+      {n_cell, n_output},  // recurrent_to_forget_weight tensor
+      {n_cell, n_output},  // recurrent_to_cell_weight tensor
+      {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+      {0},  // cell_to_input_weight tensor
+      {0},  // cell_to_forget_weight tensor
+      {0},  // cell_to_output_weight tensor
+
+      {n_cell},  // input_gate_bias tensor
+      {n_cell},  // forget_gate_bias tensor
+      {n_cell},  // cell_gate_bias tensor
+      {n_cell},  // output_gate_bias tensor
+
+      {0, 0},  // projection_weight tensor
+      {0},     // projection_bias tensor
+
+      // Backward cell
+      {n_cell, n_input},  // input_to_input_weight tensor
+      {n_cell, n_input},  // input_to_forget_weight tensor
+      {n_cell, n_input},  // input_to_cell_weight tensor
+      {n_cell, n_input},  // input_to_output_weight tensor
+
+      {n_cell, n_output},  // recurrent_to_input_weight tensor
+      {n_cell, n_output},  // recurrent_to_forget_weight tensor
+      {n_cell, n_output},  // recurrent_to_cell_weight tensor
+      {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+      {0},  // cell_to_input_weight tensor
+      {0},  // cell_to_forget_weight tensor
+      {0},  // cell_to_output_weight tensor
+
+      {n_cell},  // input_gate_bias tensor
+      {n_cell},  // forget_gate_bias tensor
+      {n_cell},  // cell_gate_bias tensor
+      {n_cell},  // output_gate_bias tensor
+
+      {0, 0},  // projection_weight tensor
+      {0},     // projection_bias tensor
+
+      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_cell},    // cell_state tensor
+
+      {n_batch, n_output},  // activation_state tensor
+      {n_batch, n_cell},    // cell_state tensor
+  };
+
+  // Forward and backward input_to_output_weight tensors. An empty shape leaves
+  // the tensor at rank 0.
+  for (const int weights_index : {4, 21}) {
+    std::vector<std::vector<int>> input_shapes = valid_input_shapes;
+    input_shapes[weights_index] = {};
+    EXPECT_DEATH_IF_SUPPORTED(
+        BidirectionalLSTMOpModel(
+            n_batch, n_input, n_cell, n_output, sequence_length,
+            /*use_cifg=*/false, /*use_peephole=*/false,
+            /*use_projection_weights=*/false, /*use_projection_bias=*/false,
+            /*merge_outputs=*/false, /*use_aux_input=*/false,
+            /*cell_clip=*/0.0, /*proj_clip=*/0.0, /*quantize_weights=*/false,
+            /*time_major=*/true, input_shapes),
+        "Cannot allocate tensors");
+  }
+}
+
 }  // namespace
 }  // namespace tflite

@@ -151,6 +151,12 @@ class TransposePlan {
 
     ChunkContiguity chunk_contiguity = ChunkContiguity::kNone;
 
+    // If set, sets the padding bytes in the tiled output buffer to this value.
+    // When `dest_bits_per_element` is set, the low `dest_bits_per_element` bits
+    // are repeated for each padded sub-byte element and any unused high bits in
+    // the final byte. Zero-element transposes remain a no-op.
+    std::optional<uint8_t> tile_padding = std::nullopt;
+
     // DEPRECATED: Use input_tiling or input_striding instead.
     // This field is only present for backward compatibility.
     // TODO(phawkins): remove me.
@@ -304,10 +310,26 @@ class TransposePlan {
   }
 
  private:
+  struct MemsetLoop {
+    int64_t count;
+    int64_t stride_bytes;
+  };
+
+  struct StridedMemset {
+    int64_t offset_bytes = 0;  // Byte offset relative to chunk's `bc`.
+    int64_t size_bytes = 0;    // Innermost contiguous memset size in bytes.
+    absl::InlinedVector<MemsetLoop, 4> loops;  // Outer strided loops.
+  };
+
   // Performs plan initialization.
   absl::Status Initialize();
 
   void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
+  void BuildTilePaddingMemsets(int chunk_id,
+                               std::vector<StridedMemset>& memsets) const;
+  static void ExecuteStridedMemset(absl::Span<const MemsetLoop> loops,
+                                   char* dst, int64_t size_bytes,
+                                   uint8_t value);
 
   // Chooses a parallelism for each loop. Returns the number of separate chunks
   // in the plan, and populates the `parallelism` field of each loop.
@@ -443,6 +465,8 @@ class TransposePlan {
   bool use_fallback_pack_ = false;
 
   ChunkContiguity chunk_contiguity_ = ChunkContiguity::kNone;
+  std::optional<uint8_t> tile_padding_ = std::nullopt;
+  std::vector<std::vector<StridedMemset>> chunk_padding_memsets_;
 
   // Size of the per-thread scratch buffer. 0 means "no scratch buffer required"
   int64_t scratch_size_ = 0;
@@ -462,6 +486,7 @@ struct TransposePlanCacheKey {
   std::optional<int> dest_bits_per_element;
   int num_threads;
   TransposePlan::ChunkContiguity chunk_contiguity;
+  std::optional<uint8_t> tile_padding;
 
   bool operator==(const TransposePlanCacheKey& other) const;
 };

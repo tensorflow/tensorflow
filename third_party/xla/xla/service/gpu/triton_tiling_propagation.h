@@ -20,7 +20,6 @@ limitations under the License.
 // paradigm. Stateful operations belong in triton_fusion_analysis.
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <variant>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -289,20 +287,6 @@ using DimOrdersAndReqsOrError = std::variant<DimOrdersAndReqs, FusionDecision>;
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
     const HloInstruction& hlo, const DimensionOrder& src_dim_order,
     TransformDirection direction, const DotProperties& properties);
-// If fusing the instruction is possible *and profitable* then it propagates
-// the `src_dim_order` (describing one side of `hlo`) to the other side and
-// returns those dim orders and the requirements that they impose on the
-// fusion.
-//
-// `src_operand_index` must be set iff `transform_direction` is
-// kInputToOutput.
-DimOrdersAndReqsOrError
-GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-    const HloInstruction& hlo, TransformDirection transform_direction,
-    const std::optional<int>& src_operand_index,
-    const DimensionOrder& src_dim_order,
-    const se::GpuComputeCapability& gpu_version,
-    const DotProperties& properties);
 
 // Returns true whether the given instruction is worth fusing as an input.
 bool IsInputWorthFusing(const HloInstruction& hlo);

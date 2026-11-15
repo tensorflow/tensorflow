@@ -735,8 +735,7 @@ class LayoutAssignment : public HloModulePass, public HloDataflowPropagation {
   absl::Status AddWhileConstraints(HloInstruction* instruction);
   absl::Status AddConditionalConstraints(HloInstruction* instruction);
   absl::Status AddAsyncStartConstraints(HloInstruction* instruction);
-  absl::Status AddAsyncDoneConstraints(HloInstruction* instruction,
-                                       LayoutConstraints* constraints);
+  absl::Status AddAsyncDoneConstraints(HloInstruction* instruction);
 
   // Sets the computation result layout based on constraints and
   // sub-computations.

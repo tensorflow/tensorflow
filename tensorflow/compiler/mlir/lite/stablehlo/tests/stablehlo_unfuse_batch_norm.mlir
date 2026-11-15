@@ -162,13 +162,19 @@ func.func @batchNormInference_f16_overflow(
 func.func @batchNormTraining_4D_middle_features(
     %x: tensor<3x4x256x6xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>)
     -> (tensor<3x4x256x6xf32>) {
-  // CHECK: %[[CST:.+]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[CST_AXIS:.+]] = "tf.Const"() <{value = dense<[0, 1, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK-DAG: %[[CST:.+]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[COUNT:.+]] = stablehlo.constant dense<7.200000e+01> : tensor<f32>
+  // CHECK-DAG: %[[ZERO:.+]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[X_SHAPE:.+]] = shape.shape_of %[[X]] : tensor<3x4x256x6xf32> -> tensor<4xindex>
-  // CHECK-DAG: %[[MEAN:.+]] = "tf.Mean"(%arg0, %[[CST_AXIS]]) <{keep_dims = false}> : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[SUM:.+]] = stablehlo.reduce(%[[X]] init: %[[ZERO]]) applies stablehlo.add across dimensions = [0, 1, 3] : (tensor<3x4x256x6xf32>, tensor<f32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[COUNT_BCAST:.+]] = stablehlo.broadcast_in_dim %[[COUNT]], dims = [] : (tensor<f32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[MEAN:.+]] = stablehlo.divide %[[SUM]], %[[COUNT_BCAST]] : tensor<256xf32>
   // CHECK-DAG: %[[MEAN_BCAST:.+]] = stablehlo.dynamic_broadcast_in_dim %[[MEAN]], %[[X_SHAPE]], dims = [2] : (tensor<256xf32>, tensor<4xindex>) -> tensor<3x4x256x6xf32>
-  // CHECK-DAG: %[[SQ_DIFF:.+]] = "tf.SquaredDifference"(%arg0, %[[MEAN_BCAST]]) : (tensor<3x4x256x6xf32>, tensor<3x4x256x6xf32>) -> tensor<3x4x256x6xf32>
-  // CHECK-DAG: %[[VARIANCE:.+]] = "tf.Mean"(%[[SQ_DIFF]], %[[CST_AXIS]]) <{keep_dims = false}> : (tensor<3x4x256x6xf32>, tensor<3xi32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[DIFF:.+]] = stablehlo.subtract %[[X]], %[[MEAN_BCAST]] : tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[SQ_DIFF:.+]] = stablehlo.multiply %[[DIFF]], %[[DIFF]] : tensor<3x4x256x6xf32>
+  // CHECK-DAG: %[[SQ_SUM:.+]] = stablehlo.reduce(%[[SQ_DIFF]] init: %[[ZERO]]) applies stablehlo.add across dimensions = [0, 1, 3] : (tensor<3x4x256x6xf32>, tensor<f32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[VARIANCE:.+]] = stablehlo.divide %[[SQ_SUM]], %[[COUNT_BCAST]] : tensor<256xf32>
+  // CHECK-NOT: tf.
   // CHECK-DAG: %[[EPS:.+]] = stablehlo.broadcast_in_dim %[[CST]], dims = [] : (tensor<f32>) -> tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = stablehlo.add %[[VARIANCE]], %[[EPS]] : tensor<256xf32>
   // CHECK-DAG: %[[VARIANCE_EPS_RSQRT:.+]] = stablehlo.rsqrt %[[VARIANCE_EPS]] : tensor<256xf32>
@@ -183,4 +189,27 @@ func.func @batchNormTraining_4D_middle_features(
       {epsilon = 1.0 : f32, feature_index = 2 : i64} :
       (tensor<3x4x256x6xf32>, tensor<256xf32>, tensor<256xf32>) -> (tensor<3x4x256x6xf32>, tensor<256xf32>, tensor<256xf32>)
   func.return %0 : tensor<3x4x256x6xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @batchNormTraining_dynamic
+// CHECK-SAME: %[[X:[^:[:space:]]+]]
+func.func @batchNormTraining_dynamic(
+    %x: tensor<?x4x256x?xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>)
+    -> (tensor<?x4x256x?xf32>) {
+  // CHECK-DAG: %[[STATIC_COUNT:.+]] = stablehlo.constant dense<4.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[DIM0:.+]] = stablehlo.get_dimension_size %[[X]], dim = 0
+  // CHECK-DAG: %[[DIM0_F:.+]] = stablehlo.convert %[[DIM0]] : (tensor<i32>) -> tensor<f32>
+  // CHECK-DAG: %[[DIM3:.+]] = stablehlo.get_dimension_size %[[X]], dim = 3
+  // CHECK-DAG: %[[DIM3_F:.+]] = stablehlo.convert %[[DIM3]] : (tensor<i32>) -> tensor<f32>
+  // CHECK-DAG: %[[DYN_COUNT:.+]] = stablehlo.multiply %[[DIM0_F]], %[[DIM3_F]] : tensor<f32>
+  // CHECK-DAG: %[[COUNT:.+]] = stablehlo.multiply %[[DYN_COUNT]], %[[STATIC_COUNT]] : tensor<f32>
+  // CHECK-DAG: %[[COUNT_BCAST:.+]] = stablehlo.broadcast_in_dim %[[COUNT]], dims = [] : (tensor<f32>) -> tensor<256xf32>
+  // CHECK-DAG: %[[MEAN:.+]] = stablehlo.divide %{{.+}}, %[[COUNT_BCAST]] : tensor<256xf32>
+  // CHECK-NOT: tf.
+  %0:3 = "stablehlo.batch_norm_training"(%x, %scale, %offset)
+      {epsilon = 1.0 : f32, feature_index = 2 : i64} :
+      (tensor<?x4x256x?xf32>, tensor<256xf32>, tensor<256xf32>) -> (tensor<?x4x256x?xf32>, tensor<256xf32>, tensor<256xf32>)
+  func.return %0#0 : tensor<?x4x256x?xf32>
 }

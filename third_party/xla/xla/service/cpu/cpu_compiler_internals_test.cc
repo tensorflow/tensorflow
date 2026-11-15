@@ -21,20 +21,30 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
+#include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -59,7 +69,31 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuCompilerInternalsTest = HloHardwareIndependentTestBase;
+class CpuCompilerInternalsTest : public HloHardwareIndependentTestBase {
+ protected:
+  // Compiles `hlo` and returns the thunks of the entry computation.
+  absl::StatusOr<std::vector<const Thunk*>> CompileToThunks(
+      CpuCompiler& compiler, absl::string_view hlo) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                     ParseAndReturnVerifiedModule(hlo));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     compiler.RunHloPasses(std::move(hlo_module),
+                                           /*stream_exec=*/nullptr,
+                                           /*options=*/{}));
+    ABSL_ASSIGN_OR_RETURN(executable_,
+                     compiler.RunBackend(std::move(optimized_module),
+                                         /*stream_exec=*/nullptr,
+                                         /*options=*/{}));
+    auto* cpu_executable = absl::down_cast<CpuExecutable*>(executable_.get());
+    std::vector<const Thunk*> thunks;
+    for (const auto& thunk : cpu_executable->thunks().thunk_sequence()) {
+      thunks.push_back(thunk.get());
+    }
+    return thunks;
+  }
+
+  std::unique_ptr<Executable> executable_;
+};
 
 TEST_F(CpuCompilerInternalsTest, DotRootedLoopFusionRoutesToMlirEmitter) {
   // Dot-rooted loop fusions must not route to the legacy LLVM loop emitter.
@@ -119,27 +153,9 @@ std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
   return c->getSExtValue();
 }
 
-std::optional<std::string> GetMetadataString(
-    llvm::Metadata* absl_nullable value) {
-  if (value == nullptr) {
-    return std::nullopt;
-  }
-  auto* md_string = llvm::dyn_cast<llvm::MDString>(value);
-  if (md_string == nullptr) {
-    return std::nullopt;
-  }
-  return md_string->getString().str();
-}
-
 std::optional<int64_t> GetXlaDylibIndex(const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_dylib_index");
   return GetMetadataInt(md);
-}
-
-std::optional<std::string> GetXlaBackendExtraOptions(
-    const llvm::Module& llvm_module) {
-  llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
-  return GetMetadataString(md);
 }
 
 static constexpr absl::string_view kAddExponentialOfScatterHlo = R"(
@@ -226,6 +242,27 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
                          << "one dylib is allowed.";
 }
 
+TEST_F(CpuCompilerInternalsTest, ZeroParallelCodegenSplitCountReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kAddExponentialOfScatterHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_parallel_codegen_split_count(0);
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+  EXPECT_THAT(
+      compiler.RunBackend(std::move(optimized_module),
+                          /*stream_exec=*/nullptr, /*options=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr("xla_cpu_parallel_codegen_split_count")));
+}
+
 TEST_F(CpuCompilerInternalsTest, IdenticalSmallWhileLoopsShareKernel) {
   static constexpr absl::string_view kHlo = R"(
     body {
@@ -303,6 +340,239 @@ TEST_F(CpuCompilerInternalsTest, IdenticalSmallWhileLoopsShareKernel) {
   compiler.RemovePreOptimizationHook();
 
   EXPECT_EQ(num_kernels, 1);
+}
+
+// The thunks of a small loop are compiled into a single kernel. The kernels
+// they launch are linked into its module and nothing else defines them.
+TEST_F(CpuCompilerInternalsTest, SmallWhileLoopIsOneKernel) {
+  static constexpr absl::string_view kHlo = R"(
+    HloModule SmallWhileLoopIsOneKernel
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      next_x = f32[4] exponential(x)
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(5)
+      ROOT lt = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT while = (s32[], f32[4]) while((s32[], f32[4]) tuple(
+          s32[] constant(0), p0)), condition=cond, body=body
+    }
+  )";
+
+  absl::Mutex mu;
+  // Kernel entry points (external, ptr(ptr)) and the internal ones linked in.
+  std::vector<std::string> entry_points;
+  int64_t num_linked_kernels = 0;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (function.isDeclaration() || function.arg_size() != 1 ||
+          !function.getReturnType()->isPointerTy()) {
+        continue;
+      }
+      if (function.hasInternalLinkage()) {
+        ++num_linked_kernels;
+      } else {
+        entry_points.push_back(function.getName().str());
+      }
+    }
+  };
+
+  CpuCompiler compiler;
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK_AND_ASSIGN(std::vector<const Thunk*> thunks,
+                       CompileToThunks(compiler, kHlo));
+  compiler.RemovePreOptimizationHook();
+
+  // The entry computation may copy the parameter in and the tuple out, but the
+  // loop is one kernel and nothing else is a while or a call.
+  std::vector<std::string> kernel_names;
+  for (const Thunk* thunk : thunks) {
+    EXPECT_NE(thunk->kind(), Thunk::Kind::kWhile);
+    EXPECT_NE(thunk->kind(), Thunk::Kind::kCall);
+    if (thunk->kind() == Thunk::Kind::kKernel) {
+      kernel_names.push_back(std::string(
+          absl::down_cast<const KernelThunkBase*>(thunk)->kernel_name()));
+    }
+  }
+  ASSERT_EQ(kernel_names.size(), 1);
+  EXPECT_THAT(entry_points, ::testing::ElementsAre(kernel_names[0]));
+  // The two body fusions. The loop has a known trip count, so its condition
+  // never runs and is not linked.
+  EXPECT_GE(num_linked_kernels, 2);
+}
+
+TEST_F(CpuCompilerInternalsTest, SmallWhileLoopBodyIsNoalias) {
+  static constexpr absl::string_view kHlo = R"(
+    HloModule SmallWhileLoopBodyIsNoalias
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      next_x = f32[4] exponential(x)
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(5)
+      ROOT lt = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT while = (s32[], f32[4]) while((s32[], f32[4]) tuple(
+          s32[] constant(0), p0)), condition=cond, body=body
+    }
+  )";
+
+  absl::Mutex mu;
+  int64_t body_functions = 0;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (!function.isDeclaration() &&
+          absl::EndsWith(function.getName(), "_kernel_body")) {
+        ++body_functions;
+        EXPECT_GT(function.arg_size(), 0);
+        for (const llvm::Argument& arg : function.args()) {
+          EXPECT_TRUE(arg.hasNoAliasAttr());
+        }
+      }
+    }
+  };
+
+  CpuCompiler compiler;
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK(CompileToThunks(compiler, kHlo));
+  compiler.RemovePreOptimizationHook();
+  EXPECT_EQ(body_functions, 1);
+}
+
+// A sort thunk cannot run inside a small call kernel, so the call falls back to
+// a call thunk and its nested kernels stay entry points.
+TEST_F(CpuCompilerInternalsTest, SmallCallFallsBackToCallThunk) {
+  static constexpr absl::string_view kHlo = R"(
+    HloModule SmallCallFallsBackToCallThunk
+
+    compare {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT
+    }
+
+    f_negate {
+      x = s32[4] parameter(0)
+      ROOT n = s32[4] negate(x)
+    }
+
+    small_fn {
+      x = s32[4] parameter(0)
+      n = s32[4] fusion(x), kind=kLoop, calls=f_negate
+      ROOT s = s32[4] sort(n), dimensions={0}, to_apply=compare
+    }
+
+    ENTRY main {
+      p = s32[4] parameter(0)
+      ROOT call = s32[4] call(p), to_apply=small_fn,
+          frontend_attributes={xla_cpu_small_call="true"}
+    }
+  )";
+
+  absl::Mutex mu;
+  absl::flat_hash_set<std::string> entry_points;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (!function.isDeclaration() && !function.hasLocalLinkage()) {
+        entry_points.insert(function.getName().str());
+      }
+    }
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  CpuCompiler compiler;
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
+                          /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
+
+  const ThunkSequence& thunks =
+      absl::down_cast<CpuExecutable*>(executable.get())
+          ->thunks()
+          .thunk_sequence();
+  ASSERT_EQ(thunks.size(), 1);
+  EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCall);
+
+  std::vector<std::string> kernel_names;
+  thunks.ForEach([&](const Thunk& thunk) {
+    if (thunk.kind() == Thunk::Kind::kKernel) {
+      kernel_names.push_back(std::string(
+          absl::down_cast<const KernelThunkBase&>(thunk).kernel_name()));
+    }
+  });
+  ASSERT_EQ(kernel_names.size(), 1);
+  EXPECT_TRUE(entry_points.contains(kernel_names[0]));
+}
+
+TEST_F(CpuCompilerInternalsTest, SharedSortComparatorEmittedOnce) {
+  static constexpr absl::string_view kHlo = R"(
+    shared_compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      p1 = f32[16] parameter(1)
+      sorted0 = f32[16] sort(p0), dimensions={0}, to_apply=shared_compare
+      sorted1 = f32[16] sort(p1), dimensions={0}, to_apply=shared_compare
+      ROOT r = (f32[16], f32[16]) tuple(sorted0, sorted1)
+    }
+  )";
+  // Skip RunHloPasses: FlattenCallGraph would give each sort its own clone.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  absl::Mutex mu;
+  int64_t num_definitions = 0;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (!function.isDeclaration() && function.getName() == "shared_compare") {
+        ++num_definitions;
+      }
+    }
+  };
+
+  CpuCompiler compiler;
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK(compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
+                                /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
+
+  EXPECT_EQ(num_definitions, 1);
 }
 
 TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {

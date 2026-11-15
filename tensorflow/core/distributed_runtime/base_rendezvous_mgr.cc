@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
@@ -491,8 +492,8 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
                  .first;
       }
     }
-    DCHECK(it != calls_.end());
     if (!already_cancelled) {
+      DCHECK(it != calls_.end());
       it->second->num_calls.fetch_add(1);
       auto& bucket = it->second->buckets[hash];
       mutex_lock bucket_lock(bucket.mu);

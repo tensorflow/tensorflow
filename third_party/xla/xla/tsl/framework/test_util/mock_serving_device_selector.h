@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/test.h"
 namespace tsl {
@@ -29,6 +30,8 @@ class MockServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
   MOCK_METHOD(tsl::DeviceReservation, ReserveDevice, (absl::string_view),
               (override));
+  MOCK_METHOD(tsl::DeviceReservation, ReserveDevice,
+              (absl::string_view, absl::Span<const int>), (override));
   MOCK_METHOD(void, Enqueue, (int32_t, absl::string_view), (override));
   MOCK_METHOD(void, Completed, (int32_t, bool), (override));
   MOCK_METHOD(void, FreeDeviceReservation, (const tsl::DeviceReservation&),

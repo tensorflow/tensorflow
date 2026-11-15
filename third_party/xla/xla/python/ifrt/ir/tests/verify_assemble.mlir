@@ -89,3 +89,43 @@ func.func @assemble_requires_same_device_list(
                      #ifrt.sharding_param<1x2 to [0] on 2>, [1,2]>
   return
 }
+
+// -----
+
+func.func @assemble_rejects_fewer_inputs_than_output_devices(
+    %arg0: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Assemble' op requires the same input/output device list. Input 0 vs Output 0, 1}}
+  %0, %ctrl_0 = ifrt.Assemble(%arg0)
+      {operandSegmentSizes=array<i32: 1, 0>}
+      : (!ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>)
+      -> !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @assemble_rejects_more_inputs_than_output_devices(
+    %arg0: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+    %arg1: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [1]>,
+    %arg2: !ifrt.array<tensor<2x2xi32>,
+                       #ifrt.sharding_param<1x1 to [0] on 1>, [2]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Assemble' op requires the same input/output device list. Input 0, 1, 2 vs Output 0, 1}}
+  %0, %ctrl_0 = ifrt.Assemble(%arg0, %arg1, %arg2)
+      {operandSegmentSizes=array<i32: 3, 0>}
+      : (!ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+         !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [1]>,
+         !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [2]>)
+      -> !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+  return
+}

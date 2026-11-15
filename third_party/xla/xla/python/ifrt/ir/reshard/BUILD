@@ -24,12 +24,37 @@ package(
 )
 
 cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:stablehlo",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/python/ifrt/ir",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "xla_computation",
     srcs = ["xla_computation.cc"],
     hdrs = ["xla_computation.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility(["//xla/python/ifrt/ir:friends"]),
     deps = [
+        ":utils",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -41,7 +66,6 @@ cc_library(
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
         "//xla/python/ifrt/hlo:hlo_program",
-        "//xla/python/ifrt/ir:utils",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:errors",

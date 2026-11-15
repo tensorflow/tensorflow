@@ -54,11 +54,17 @@ absl::Status SnapshotResourceVariables(
 // `variables` is allowed to contain instances that don't track a resource
 // variable (i.e. variables[i].var() can be null for some i).
 //
-// If the variable is read_only(), only acquires reader locks.
-absl::Status LockVariables(absl::Span<VariableInfo*> variables)
-    TF_EXCLUSIVE_LOCK_FUNCTION();
-absl::Status LockVariables(absl::Span<VariableInfo> variables)
-    TF_EXCLUSIVE_LOCK_FUNCTION();
+// If the variable is read_only(), only acquires reader locks, unless
+// `upgrade_read_only_for_pjrt_tensor_buffer` is true and the variable's tensor
+// is an initialized non-empty root buffer not yet backed by a PjRtTensorBuffer
+// (in which case it upgrades to an exclusive lock so
+// PreparePjRtExecutableArguments can safely attach a PjRtTensorBuffer).
+absl::Status LockVariables(absl::Span<VariableInfo*> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer =
+                               false) TF_EXCLUSIVE_LOCK_FUNCTION();
+absl::Status LockVariables(absl::Span<VariableInfo> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer =
+                               false) TF_EXCLUSIVE_LOCK_FUNCTION();
 
 // Returns a vector of VariableInfo instances for the resource variable inputs,
 // given that *all* inputs are in `inputs`. The input indices for the resource

@@ -647,6 +647,19 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
       norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
       norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
       return math_ops.complex(norm_real, norm_imag, name=name)
+    if x.dtype.base_dtype in (dtypes.float16, dtypes.bfloat16):
+      # The sum of squares overflows float16 (and `epsilon` underflows it),
+      # and bfloat16 loses precision, so normalize in `float32`.
+      x32 = math_ops.cast(x, dtypes.float32)
+      square_sum = math_ops.reduce_sum(
+          math_ops.square(x32), axis, keepdims=True
+      )
+      x_inv_norm = math_ops.rsqrt(
+          math_ops.maximum(square_sum, math_ops.cast(epsilon, dtypes.float32))
+      )
+      return math_ops.cast(
+          math_ops.multiply(x32, x_inv_norm), x.dtype, name=name
+      )
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
@@ -1321,6 +1334,30 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
     * the (possibly shifted) sum of squares of the elements in the array.
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    # A `Tensor` built inside an explicit `ops.Graph()` stays symbolic even when
+    # eager execution is active, and symbolic tensors have no `numpy()`.
+    if context.executing_eagerly() and hasattr(axes, "numpy"):
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is None:
+        raise ValueError(
+            "`axes` must be statically known when passed as a tensor in "
+            f"graph mode, got {axes}."
+        )
+      axes = axes_const.tolist()
+  elif hasattr(axes, "tolist"):
+    # NumPy arrays are a documented `axes` type ("array of ints"). Convert
+    # them to Python ints so that the `set()` below works on hashable values.
+    axes = axes.tolist()
+  # `tf.nn.moments` accepts a scalar `axes`, and a single axis is naturally
+  # spelled that way. After the conversions above a scalar is a Python int,
+  # which `set()` cannot iterate, so wrap it into a list of one element.
+  # `hasattr(axes, "__iter__")` is used instead of a list/tuple/set whitelist
+  # because `range` and generators are accepted today and must keep working.
+  if not hasattr(axes, "__iter__"):
+    axes = [axes]
   axes = list(set(axes))
   keep_dims = deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
@@ -1465,6 +1502,12 @@ def moments(
       axes_const = tensor_util.constant_value(axes)
       if axes_const is not None:
         axes = axes_const.tolist()
+  elif hasattr(axes, "tolist"):
+    # `axes` is documented as an "array of ints", so NumPy arrays (and other
+    # array-likes) are legal inputs, but `tf.squeeze` only accepts a Python
+    # list or tuple in the `keepdims=False` path. Normalize them here, as
+    # `weighted_moments` already does (GitHub issues #129819, #101580).
+    axes = axes.tolist()
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations

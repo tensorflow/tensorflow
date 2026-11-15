@@ -103,6 +103,18 @@ class LinearOperatorPermutationTest(
         permutation.LinearOperatorPermutation(perm).to_dense(),
         [[0., 0, 0, 1], [0., 0, 1, 0], [1., 0, 0, 0], [0., 1, 0, 0]])
 
+  def test_int32_and_int64_perm(self):
+    for perm_dtype in [dtypes.int32, dtypes.int64]:
+      perm = constant_op.constant([1, 0, 2], dtype=perm_dtype)
+      operator = permutation.LinearOperatorPermutation(perm)
+      self.assertAllClose(
+          operator.to_dense(), [[0.0, 1, 0], [1.0, 0, 0], [0.0, 0, 1]]
+      )
+      self.assertAllClose(operator.diag_part(), [0.0, 0, 1])
+      self.assertAllClose(operator.trace(), 1.0)
+      self.assertAllClose(operator.determinant(), -1.0)
+      self.assertAllClose(operator.matvec([1.0, 2, 3]), [2.0, 1, 3])
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorPermutationTest)

@@ -152,21 +152,49 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       self._testBinary(
           gen_nn_ops.elu_grad,
-          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
-          np.array([-.6, -.4, -.2, 0, .2, .4], dtype=dtype),
-          expected=np.array([0.4, 1.2, 2.4, 4, 5, 6], dtype=dtype))
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-0.6, -0.4, -0.2, 0, 0.2, 0.4, np.nan], dtype=dtype),
+          expected=np.array([0.4, 1.2, 2.4, 4, 5, 6, np.nan], dtype=dtype),
+      )
 
       self._testBinary(
           gen_nn_ops.selu_grad,
-          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
-          np.array([-.6, -.4, -.2, .2, .4, .6], dtype=dtype),
-          expected=np.array([
-              1.158099340847, 2.7161986816948, 4.67429802254, 4.202803949422,
-              5.2535049367774, 6.30420592413
-          ],
-                            dtype=dtype),
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-0.6, -0.4, -0.2, 0.2, 0.4, 0.6, np.nan], dtype=dtype),
+          expected=np.array(
+              [
+                  1.158099340847,
+                  2.7161986816948,
+                  4.67429802254,
+                  4.202803949422,
+                  5.2535049367774,
+                  6.30420592413,
+                  np.nan,
+              ],
+              dtype=dtype,
+          ),
           rtol=1e-10,
-          atol=1e-10)
+          atol=1e-10,
+      )
+
+      self._testBinary(
+          gen_nn_ops.relu6_grad,
+          np.array([1, 2, 3, 4, 5, 6, 1], dtype=dtype),
+          np.array([-1, 0, 2, 5, 6, 8, np.nan], dtype=dtype),
+          expected=np.array([0, 0, 3, 4, 0, 0, np.nan], dtype=dtype),
+      )
+
+      def leaky_relu_grad_fn(grad, feat):
+        return gen_nn_ops.leaky_relu_grad(grad, feat, alpha=0.2)
+
+      self._testBinary(
+          leaky_relu_grad_fn,
+          np.array([1, 2, 3, 4, 1], dtype=dtype),
+          np.array([-2, 0, 3, 5, np.nan], dtype=dtype),
+          expected=np.array([0.2, 0.4, 3, 4, np.nan], dtype=dtype),
+          rtol=1e-8,
+          atol=1e-8,
+      )
 
       self._testBinary(
           gen_nn_ops.relu_grad,
@@ -263,6 +291,29 @@ class BinaryOpsTest(xla_test.XLATestCase):
                               dtype=dtype),
             rtol=1e-4,
             atol=1e-6)
+
+  def testUnaryGradOpsWithZeroUpstreamGradient(self):
+    for dtype in self.float_types | self.complex_types:
+      y = np.array([0, np.inf, np.nan, 4], dtype=dtype)
+      dy = np.array([0, 0, 0, 5], dtype=dtype)
+      self._testBinary(
+          gen_math_ops.reciprocal_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -80], dtype=dtype),
+      )
+      self._testBinary(
+          gen_math_ops.rsqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -160], dtype=dtype),
+      )
+      self._testBinary(
+          gen_math_ops.sqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, 0.625], dtype=dtype),
+      )
 
   def testIntOps(self):
     for dtype in self.signed_int_types:
@@ -390,6 +441,68 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(4),
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
+
+  def testIntegerPowWithConstantExponent(self):
+    for dtype in self.signed_int_types:
+
+      def run_pow(x, exponent, shape=None, dtype=dtype):
+
+        @def_function.function(jit_compile=True)
+        def pow_with_exponent(x):
+          return math_ops.pow(x, constant_op.constant(exponent, dtype=dtype))
+
+        with self.session() as sess:
+          with self.device_scope():
+            px = array_ops.placeholder(
+                dtype, shape=np.shape(x) if shape is None else shape
+            )
+            output = pow_with_exponent(px)
+          return sess.run(output, {px: np.array(x, dtype=dtype)})
+
+      with self.subTest(dtype=dtype):
+        x = [-2, 3, 1, -1]
+        for base in (x, 2):
+          for exponent in (-1, -3, [2, -1, 2, 2]):
+            with self.assertRaisesRegex(
+                errors.InvalidArgumentError,
+                "Integers to negative integer powers are not allowed",
+            ):
+              run_pow(base, exponent)
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Incompatible shapes: \[2\] vs\. \[3\]",
+        ):
+          run_pow([2, 3], [-1, -1, -1], shape=[None])
+
+        self.assertAllEqual(run_pow(x, [0, 1, 2, 3]), [1, 3, 1, -1])
+        self.assertAllEqual(run_pow(x, 2), [4, 9, 1, 1])
+        # Like the TF kernels, an empty result doesn't check the exponent.
+        self.assertAllEqual(run_pow(np.zeros([0]), -1), np.zeros([0]))
+        self.assertAllEqual(run_pow(np.zeros([3, 0]), [[-1]]), np.zeros([3, 0]))
+
+        if "GPU" not in self.device and "TPU" not in self.device:
+
+          @def_function.function(jit_compile=True)
+          def pow_dynamic_empty(a, mask):
+            empty = array_ops.boolean_mask(a, mask)
+            return math_ops.pow(empty, constant_op.constant(-1, dtype=dtype))
+
+          with self.session() as sess:
+            with self.device_scope():
+              pa = array_ops.placeholder(dtype, shape=[2])
+              pmask = array_ops.placeholder(dtypes.bool, shape=[2])
+              dyn_out = pow_dynamic_empty(pa, pmask)
+            self.assertAllEqual(
+                sess.run(
+                    dyn_out,
+                    {
+                        pa: np.array([2, 3], dtype=dtype),
+                        pmask: np.array([False, False]),
+                    },
+                ),
+                np.zeros([0], dtype=dtype),
+            )
 
   def testNumericOps(self):
     for dtype in self.numeric_types:

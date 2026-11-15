@@ -22,13 +22,16 @@ limitations under the License.
 #include <stdio.h>
 
 #include <cfloat>
+#include <cstdint>
 #include <limits>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
@@ -368,7 +371,6 @@ absl::Status MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
     int32_t* top_data, const Eigen::GpuDevice& d) {
-  const int kThreadsPerBlock = 1024;
   int64_t output_size_64 = MultiplyWithoutOverflow(
       MultiplyWithoutOverflow(MultiplyWithoutOverflow(batch, channels),
                               pooled_height),
@@ -380,12 +382,20 @@ absl::Status MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
   }
   const int output_size = output_size_64;
   if (output_size == 0) return absl::OkStatus();
-  TF_CHECK_OK(GpuLaunchKernel(
-      MaxPoolForwardNoMaskKernel_NCHW_VECT_C,
-      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
-      0, d.stream(), output_size, bottom_data, height, width, channels,
-      pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
-      pad_t, pad_l, top_data));
+  int64_t input_size_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(batch, channels), height),
+      width);
+  if (input_size_64 < 0 ||
+      input_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError(
+        "MaxPoolForwardNoMask_NCHW_VECT_C: input size exceeds int32 bounds");
+  }
+  GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+  TF_RETURN_IF_ERROR(GpuLaunchKernel(
+      MaxPoolForwardNoMaskKernel_NCHW_VECT_C, config.block_count,
+      config.thread_per_block, 0, d.stream(), output_size, bottom_data, height,
+      width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+      stride_h, stride_w, pad_t, pad_l, top_data));
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
 }
@@ -399,7 +409,6 @@ absl::Status MaxPoolForwardWithOptionalArgmax<T>::operator()(
     const int stride_w, const int pad_t, const int pad_l, T* top_data,
     int64_t* mask, const Eigen::GpuDevice& d, bool propagate_nans,
     const bool include_batch_in_index) {
-  const int kThreadsPerBlock = 1024;
   int64_t output_size_64 = MultiplyWithoutOverflow(
       MultiplyWithoutOverflow(MultiplyWithoutOverflow(batch, channels),
                               pooled_height),
@@ -411,19 +420,26 @@ absl::Status MaxPoolForwardWithOptionalArgmax<T>::operator()(
   }
   const int output_size = output_size_64;
   if (output_size == 0) return absl::OkStatus();
+  int64_t input_size_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(batch, height), width),
+      channels);
+  if (input_size_64 < 0 ||
+      input_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError(
+        "MaxPoolForwardWithOptionalArgmax: input size exceeds int32 bounds");
+  }
+  GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
   if (propagate_nans) {
-    TF_CHECK_OK(
-        GpuLaunchKernel(MaxPoolForwardNHWC<true, T>,
-                        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                        kThreadsPerBlock, 0, d.stream(), output_size,
+    TF_RETURN_IF_ERROR(
+        GpuLaunchKernel(MaxPoolForwardNHWC<true, T>, config.block_count,
+                        config.thread_per_block, 0, d.stream(), output_size,
                         bottom_data, height, width, channels, pooled_height,
                         pooled_width, kernel_h, kernel_w, stride_h, stride_w,
                         pad_t, pad_l, top_data, mask, include_batch_in_index));
   } else {
-    TF_CHECK_OK(
-        GpuLaunchKernel(MaxPoolForwardNHWC<false, T>,
-                        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                        kThreadsPerBlock, 0, d.stream(), output_size,
+    TF_RETURN_IF_ERROR(
+        GpuLaunchKernel(MaxPoolForwardNHWC<false, T>, config.block_count,
+                        config.thread_per_block, 0, d.stream(), output_size,
                         bottom_data, height, width, channels, pooled_height,
                         pooled_width, kernel_h, kernel_w, stride_h, stride_w,
                         pad_t, pad_l, top_data, mask, include_batch_in_index));
@@ -438,16 +454,22 @@ absl::Status MaxPoolBackwardWithArgmax<T>::operator()(
     const int64_t* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
-  const int kThreadsPerBlock = 1024;
+  if (input_size < 0 || output_size < 0) {
+    return absl::InternalError(
+        "MaxPoolBackwardWithArgmax: input or output size is negative");
+  }
   if (input_size == 0) return absl::OkStatus();
-  TF_CHECK_OK(GpuLaunchKernel(
-      SetZero<T>, (input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-      kThreadsPerBlock, 0, d.stream(), input_size, bottom_diff));
-  TF_CHECK_OK(GpuLaunchKernel(
-      MaxPoolBackward<T>,
-      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
-      0, d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
-      bottom_diff, include_batch_in_index, input_size));
+  GpuLaunchConfig zero_config = GetGpuLaunchConfig(input_size, d);
+  TF_RETURN_IF_ERROR(GpuLaunchKernel(SetZero<T>, zero_config.block_count,
+                                     zero_config.thread_per_block, 0,
+                                     d.stream(), input_size, bottom_diff));
+  if (output_size > 0) {
+    GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+        MaxPoolBackward<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
+        bottom_diff, include_batch_in_index, input_size));
+  }
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
 }
@@ -471,17 +493,25 @@ absl::Status MaxPoolGradBackwardNoMask<T>::operator()(
   }
   const int num_kernels = num_kernels_64;
   if (num_kernels == 0) return absl::OkStatus();
+  int64_t input_size_64 = MultiplyWithoutOverflow(
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(batch, channels), height),
+      width);
+  if (input_size_64 < 0 ||
+      input_size_64 > std::numeric_limits<int32_t>::max()) {
+    return absl::InternalError(
+        "MaxPoolGradBackwardNoMask: input size exceeds int32 bounds");
+  }
   GpuLaunchConfig config = GetGpuLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
-    TF_CHECK_OK(
+    TF_RETURN_IF_ERROR(
         GpuLaunchKernel(MaxPoolGradBackwardNoMaskNHWC<T>, config.block_count,
                         config.thread_per_block, 0, d.stream(), num_kernels,
                         bottom_data, output_data, pooled_height, pooled_width,
                         channels, height, width, kernel_h, kernel_w, stride_h,
                         stride_w, pad_t, pad_l, top_diff, bottom_diff));
   } else {
-    TF_CHECK_OK(
+    TF_RETURN_IF_ERROR(
         GpuLaunchKernel(MaxPoolGradBackwardNoMaskNCHW<T>, config.block_count,
                         config.thread_per_block, 0, d.stream(), num_kernels,
                         bottom_data, output_data, pooled_height, pooled_width,
@@ -498,9 +528,13 @@ absl::Status MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int64_t* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
-  if (input_size == 0) return absl::OkStatus();
+  if (input_size < 0 || output_size < 0) {
+    return absl::InternalError(
+        "MaxPoolGradBackwardWithArgmax: input or output size is negative");
+  }
+  if (input_size == 0 || output_size == 0) return absl::OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-  TF_CHECK_OK(GpuLaunchKernel(
+  TF_RETURN_IF_ERROR(GpuLaunchKernel(
       MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
       d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
       bottom_diff, include_batch_in_index, input_size));

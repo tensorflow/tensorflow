@@ -34,8 +34,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_interop.h"
@@ -244,12 +246,35 @@ class FfiKernelCache : public se::CommandBuffer::Resource {
       launch_params_;
 };
 
-XLA_FFI_Error* FfiCreateLaunch(
-    XLA_FFI_RecordContext* ctx, const char* kernel_name,
-    const void* kernel_data, int64_t kernel_size, XLA_FFI_SourceFormat format,
-    XLA_FFI_LaunchDims launch_dims, uint32_t shared_mem_bytes, int32_t use_pdl,
-    const XLA_FFI_KernelArgs* args, const XLA_FFI_Command* const* dependencies,
-    uint32_t num_dependencies, const XLA_FFI_Command** out_command) {
+XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
+                               const XLA_FFI_KernelSpec* kernel_spec,
+                               const XLA_FFI_KernelLaunchParams* launch_params,
+                               const XLA_FFI_Command* const* dependencies,
+                               uint32_t num_dependencies,
+                               const XLA_FFI_Command** out_command) {
+  if (kernel_spec == nullptr ||
+      kernel_spec->struct_size < XLA_FFI_KernelSpec_STRUCT_SIZE) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("Invalid XLA_FFI_KernelSpec"));
+  }
+  if (launch_params == nullptr ||
+      launch_params->struct_size < XLA_FFI_KernelLaunchParams_STRUCT_SIZE) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("Invalid XLA_FFI_KernelLaunchParams"));
+  }
+  const absl::string_view kernel_name(kernel_spec->name.ptr,
+                                      kernel_spec->name.len);
+  const void* kernel_data = kernel_spec->data;
+  const XLA_FFI_SourceFormat format = kernel_spec->format;
+  const XLA_FFI_LaunchDims& launch_dims = launch_params->launch_dims;
+  const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
+  const int32_t use_pdl = launch_params->uses_pdl;
+  const XLA_FFI_KernelArgs* args = launch_params->args;
+  if (args == nullptr) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("Invalid XLA_FFI_KernelArgs struct"));
+  }
+
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   const bool pdl = ctx->pdl_enabled && (use_pdl != 0);
 

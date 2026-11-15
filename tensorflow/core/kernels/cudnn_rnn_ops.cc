@@ -1406,7 +1406,7 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
 
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, {1}, &output_t));
-    *output_t->template flat<Index>().data() = params_size;
+    output_t->template flat<Index>()(0) = params_size;
   }
 
  private:

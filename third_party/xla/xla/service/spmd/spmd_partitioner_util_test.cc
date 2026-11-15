@@ -474,6 +474,67 @@ TEST(SPMDPartitionerUtilTest,
   EXPECT_EQ(v3_group_list->ToString(), "mesh['a'=8,'b'=4] {'b':(2)2,'a':(2)4}");
 }
 
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsAcrossTargetDimsMergesAdjacentSubAxes) {
+  struct TestCase {
+    Mesh mesh;
+    std::vector<std::vector<std::string>> dim_shardings;
+    std::vector<int64_t> target_dims;
+    std::vector<int64_t> group_sizes;
+    int64_t expected_num_groups;
+    int64_t expected_devices_per_group;
+    std::string expected_str;
+  };
+  std::vector<TestCase> cases = {
+      // Adjacent sub-axes across two target dims merge into a single sub-axis.
+      {Mesh({16}, {"model"}),
+       {{"model:(1)4"}, {"model:(4)2"}},
+       {0, 1},
+       {4, 2},
+       2,
+       8,
+       "mesh['model'=16] {'model':(1)8}"},
+      // Minor sub-axis of dim 0 merges with major sub-axis of dim 1 into full
+      // axis.
+      {Mesh({4, 8}, {"a", "b"}),
+       {{"a", "b:(1)4"}, {"b:(4)2"}},
+       {0, 1},
+       {4, 2},
+       4,
+       8,
+       "mesh['a'=4,'b'=8] {'b'}"},
+      // Three contiguous sub-axes across three target dims merge into full
+      // axis.
+      {Mesh({8}, {"model"}),
+       {{"model:(1)2"}, {"model:(2)2"}, {"model:(4)2"}},
+       {0, 1, 2},
+       {2, 2, 2},
+       1,
+       8,
+       "mesh['model'=8] {'model'}"},
+      // Reversed (non-mergeable) sub-axes across target dims stay separate.
+      {Mesh({8}, {"model"}),
+       {{"model:(4)2"}, {"model:(1)4"}},
+       {0, 1},
+       {2, 4},
+       1,
+       8,
+       "mesh['model'=8] {'model':(4)2,'model':(1)4}"},
+  };
+
+  for (const TestCase& tc : cases) {
+    HloSharding sharding(test_utils::FromAxisNames(tc.mesh, tc.dim_shardings));
+    std::optional<MeshAxesReplicaGroupList> v3_group_list =
+        GetMeshAxesPartitionGroupsAcrossTargetDims(sharding, tc.target_dims,
+                                                   tc.group_sizes);
+    ASSERT_TRUE(v3_group_list.has_value());
+    EXPECT_EQ(v3_group_list->num_replica_groups(), tc.expected_num_groups);
+    EXPECT_EQ(v3_group_list->num_devices_per_group(),
+              tc.expected_devices_per_group);
+    EXPECT_EQ(v3_group_list->ToString(), tc.expected_str);
+  }
+}
+
 TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplicationV2) {
   HloSharding sharding_v2 = HloSharding::IotaTile({2, 2, 2});
   std::optional<MeshAxesReplicaGroupList> v3_group_list =

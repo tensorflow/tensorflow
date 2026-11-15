@@ -132,10 +132,10 @@ module {
 // Test masked operations in separate module to avoid function redefinition
 module {
   // CHECK-LABEL: llvm.func @test_atomic_write_masked
-  llvm.func @test_atomic_write_masked(%ptr: !llvm.ptr<1>, %value: i32, %mask: i32) -> i32 {
+  llvm.func @test_atomic_write_masked(%ptr: !llvm.ptr<1>, %value: i32, %mask: i1) -> i32 {
     // CHECK-NOT: llvm.call @xla_atomicwrite_release_system_mask
     // CHECK: [[POISON:%.*]] = llvm.mlir.poison : i32
-    // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
+    // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(false) : i1
     // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[ATOMIC:.*]], ^[[EXIT:.*]]
     // CHECK: ^[[ATOMIC]]:
@@ -143,15 +143,16 @@ module {
     // CHECK:   llvm.br ^[[EXIT]]
     // CHECK: ^[[EXIT]]:
     // CHECK:   llvm.return [[POISON]]
-    %result = llvm.call @xla_atomicwrite_release_system_mask(%ptr, %value, %mask) : (!llvm.ptr<1>, i32, i32) -> i32
+    %result = llvm.call @xla_atomicwrite_release_system_mask(%ptr, %value, %mask) : (!llvm.ptr<1>, i32, i1) -> i32
     llvm.return %result : i32
   }
   
   // CHECK-LABEL: llvm.func @test_atomic_spin_wait_masked
-  llvm.func @test_atomic_spin_wait_masked(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i32) -> i32 {
+  llvm.func @test_atomic_spin_wait_masked(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i1) -> i32 {
     // CHECK-NOT: llvm.call @xla_atomicspinwait_acquire_system_lt_mask
     // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
-    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
+    // CHECK: [[MASK_ZERO:%.*]] = llvm.mlir.constant(false) : i1
+    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[MASK_ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[LOOP:.*]], ^[[EXIT:.*]]([[ZERO]]
     // CHECK: ^[[LOOP]]:
     // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
@@ -159,14 +160,15 @@ module {
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT]]([[LOADED]] : i32), ^[[LOOP]]
     // CHECK: ^[[EXIT]]([[RESULT:%.*]]: i32):
     // CHECK:   llvm.return [[RESULT]]
-    %result = llvm.call @xla_atomicspinwait_acquire_system_lt_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i32) -> i32
+    %result = llvm.call @xla_atomicspinwait_acquire_system_lt_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i1) -> i32
     llvm.return %result : i32
   }
   
   // CHECK-LABEL: llvm.func @test_atomic_spin_wait_masked_eq
-  llvm.func @test_atomic_spin_wait_masked_eq(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i32) -> i32 {
+  llvm.func @test_atomic_spin_wait_masked_eq(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i1) -> i32 {
     // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
-    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
+    // CHECK: [[MASK_ZERO:%.*]] = llvm.mlir.constant(false) : i1
+    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[MASK_ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[LOOP:.*]], ^[[EXIT:.*]]([[ZERO]]
     // CHECK: ^[[LOOP]]:
     // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
@@ -174,14 +176,15 @@ module {
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT]]([[LOADED]] : i32), ^[[LOOP]]
     // CHECK: ^[[EXIT]]([[RESULT:%.*]]: i32):
     // CHECK:   llvm.return [[RESULT]]
-    %result = llvm.call @xla_atomicspinwait_acquire_system_eq_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i32) -> i32
+    %result = llvm.call @xla_atomicspinwait_acquire_system_eq_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i1) -> i32
     llvm.return %result : i32
   }
 
   // CHECK-LABEL: llvm.func @test_atomic_spin_wait_masked_ge
-  llvm.func @test_atomic_spin_wait_masked_ge(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i32) -> i32 {
+  llvm.func @test_atomic_spin_wait_masked_ge(%ptr: !llvm.ptr<1>, %expected: i32, %mask: i1) -> i32 {
     // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
-    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[ZERO]]
+    // CHECK: [[MASK_ZERO:%.*]] = llvm.mlir.constant(false) : i1
+    // CHECK: [[MASK_NONZERO:%.*]] = llvm.icmp "ne" %arg2, [[MASK_ZERO]]
     // CHECK: llvm.cond_br [[MASK_NONZERO]], ^[[LOOP:.*]], ^[[EXIT:.*]]([[ZERO]]
     // CHECK: ^[[LOOP]]:
     // CHECK:   [[LOADED:%.*]] = llvm.load %arg0 atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
@@ -189,13 +192,13 @@ module {
     // CHECK:   llvm.cond_br [[COND]], ^[[EXIT]]([[LOADED]] : i32), ^[[LOOP]]
     // CHECK: ^[[EXIT]]([[RESULT:%.*]]: i32):
     // CHECK:   llvm.return [[RESULT]]
-    %result = llvm.call @xla_atomicspinwait_acquire_system_ge_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i32) -> i32
+    %result = llvm.call @xla_atomicspinwait_acquire_system_ge_mask(%ptr, %expected, %mask) : (!llvm.ptr<1>, i32, i1) -> i32
     llvm.return %result : i32
   }
   
   // Extern function declarations for the masked operations.
-  llvm.func @xla_atomicwrite_release_system_mask(!llvm.ptr<1>, i32, i32) -> i32
-  llvm.func @xla_atomicspinwait_acquire_system_lt_mask(!llvm.ptr<1>, i32, i32) -> i32
-  llvm.func @xla_atomicspinwait_acquire_system_eq_mask(!llvm.ptr<1>, i32, i32) -> i32
-  llvm.func @xla_atomicspinwait_acquire_system_ge_mask(!llvm.ptr<1>, i32, i32) -> i32
+  llvm.func @xla_atomicwrite_release_system_mask(!llvm.ptr<1>, i32, i1) -> i32
+  llvm.func @xla_atomicspinwait_acquire_system_lt_mask(!llvm.ptr<1>, i32, i1) -> i32
+  llvm.func @xla_atomicspinwait_acquire_system_eq_mask(!llvm.ptr<1>, i32, i1) -> i32
+  llvm.func @xla_atomicspinwait_acquire_system_ge_mask(!llvm.ptr<1>, i32, i1) -> i32
 }

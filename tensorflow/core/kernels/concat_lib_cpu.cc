@@ -17,9 +17,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -31,7 +35,7 @@ template <typename T>
 struct MemCpyCopier {
   inline void Copy(T* dst, const T* src, int input_index, size_t n) {
     if constexpr (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-      memcpy(dst, src, n * sizeof(T));
+      std::memcpy(dst, src, n * sizeof(T));
     } else {
       for (size_t k = 0; k < n; ++k) {
         *dst++ = *src++;
@@ -73,49 +77,30 @@ struct MemCpyCopier<ResourceHandle> {
 };
 
 template <typename T>
-int64_t EstimateBytesPerElement(
-    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs) {
+int64_t EstimateBytesPerElement(absl::Span<const ConcatSlice<T>>, int64_t) {
   return sizeof(T);
 }
 
-// EstimateBytesPerElement for strings estimates the total bytes involved in
-// concatenating the strings in the "inputs" matrices (higher-level code
-// reshapes all the inputs to matrices), by sampling the lengths of the actual
-// strings in the various tensors.
 template <>
 int64_t EstimateBytesPerElement<tstring>(
-    const std::vector<
-        std::unique_ptr<typename TTypes<tstring, 2>::ConstMatrix>>& inputs) {
-  // randomly sample a few input strings to get a sense of the average size
-  // of each element
+    absl::Span<const ConcatSlice<tstring>> slices, int64_t dim0) {
   int num_samples = 0;
   int64_t num_bytes_in_samples = 0;
-  for (const auto& input : inputs) {
-    const auto dim0 = input->dimension(0);
-    const auto dim1 = input->dimension(1);
-    const auto zero = dim0 - dim0;  // Make type match
-    if (dim0 > 0 && dim1 > 0) {
-      // Draw 9 samples of string sizes from the input, in this sort of pattern
-      // ("*" is sample), to get an estimate of the lengths of each string
-      // element in the tensors:
-      //
-      //    *...*...*
-      //    .........
-      //    *...*...*
-      //    .........
-      //    *...*...*
-      for (auto i : {zero, dim0 / 2, dim0 - 1}) {
-        for (auto j : {zero, dim1 / 2, dim1 - 1}) {
-          num_bytes_in_samples += (*input)(i, j).size();
-          num_samples++;
-        }
+  const size_t num_inputs = slices.size();
+  if (dim0 > 0) {
+    const size_t step = std::max<size_t>(1, num_inputs / 4);
+    for (size_t k = 0; k < num_inputs; k += step) {
+      const ptrdiff_t dim1 = slices[k].dim1;
+      if (dim1 > 0 && slices[k].data != nullptr) {
+        const int64_t total = dim0 * static_cast<int64_t>(dim1);
+        num_bytes_in_samples += slices[k].data[0].size();
+        num_bytes_in_samples += slices[k].data[total / 2].size();
+        num_bytes_in_samples += slices[k].data[total - 1].size();
+        num_samples += 3;
       }
     }
   }
-  // We don't use sizeof(std::string) as the overhead, since that would
-  // overestimate the memory touched for copying a string.
-  int64_t string_overhead = sizeof(char*) + sizeof(size_t);
+  const int64_t string_overhead = sizeof(char*) + sizeof(size_t);
   return string_overhead +
          ((num_samples > 0) ? (num_bytes_in_samples / num_samples) : 0);
 }
@@ -123,20 +108,37 @@ int64_t EstimateBytesPerElement<tstring>(
 }  // namespace
 
 template <typename T>
+void ConcatCPUSlices(DeviceBase* device,
+                     absl::Span<const ConcatSlice<T>> slices, int64_t dim0,
+                     int64_t row_size, T* output_data) {
+  const int64_t cost_per_unit = EstimateBytesPerElement<T>(slices, dim0);
+  ConcatCPUSlicesImpl<T, MemCpyCopier<T>,
+                      DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())>(
+      device, slices, dim0, row_size, cost_per_unit, MemCpyCopier<T>(),
+      output_data);
+}
+
+template <typename T>
 void ConcatCPU(
     DeviceBase* d,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output) {
-  int64_t cost_per_unit = EstimateBytesPerElement<T>(inputs);
-  ConcatCPUImpl<T>(d, inputs, cost_per_unit, MemCpyCopier<T>(), output);
+  absl::InlinedVector<ConcatSlice<T>, 32> slices(inputs.size());
+  for (size_t j = 0; j < inputs.size(); ++j) {
+    slices[j] = ConcatSlice<T>{inputs[j]->data(), inputs[j]->dimension(1)};
+  }
+  ConcatCPUSlices<T>(d, slices, output->dimension(0), output->dimension(1),
+                     output->data());
 }
 
 #define REGISTER(T)                                                            \
   template void ConcatCPU<T>(                                                  \
       DeviceBase*,                                                             \
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
-      typename TTypes<T, 2>::Matrix* output);
+      typename TTypes<T, 2>::Matrix* output);                                  \
+  template void ConcatCPUSlices<T>(                                            \
+      DeviceBase*, absl::Span<const ConcatSlice<T>>, int64_t, int64_t, T*);
 TF_CALL_ALL_TYPES(REGISTER)
 TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER) REGISTER(quint8)
     REGISTER(qint8) REGISTER(quint16) REGISTER(qint16) REGISTER(qint32)

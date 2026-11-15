@@ -364,7 +364,6 @@ StatusOr<mlir::Value> EmitRelayout(
                       Layout::GetLayout(tgt_layout.type(), intermediate_specs_1,
                                         src_layout.mesh()));
 
-  llvm::SmallPtrSet<mlir::Operation*, 4> local_newly_created_ops;
   TF_ASSIGN_OR_RETURN(mlir::Value split_result,
                       EmitAllScatter(builder, input, src_layout,
                                      intermediate_layout_1, newly_created_ops));

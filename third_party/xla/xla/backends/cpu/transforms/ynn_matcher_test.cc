@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
@@ -56,7 +58,28 @@ TEST_F(YnnE2eTest, DoNotDegroupConvolutionFeatures) {
                     "CHECK: f32[1,4,8,9]{3,2,1,0} convolution");
 }
 
-class YnnReduceTest : public HloTestBase {
+TEST_F(YnnE2eTest, DisabledYnnKeepsLargeM1DotUnfused) {
+  constexpr absl::string_view kHloText = R"hlo(
+  HloModule large_dot_m1_ynn_disabled
+
+  ENTRY main {
+    %lhs = f32[1,1024] parameter(0)
+    %rhs = f32[1024,1024] parameter(1)
+    %rhs_t = f32[1024,1024] transpose(%rhs), dimensions={1,0}
+    ROOT %out = f32[1,1024] dot(%lhs, %rhs_t), lhs_contracting_dims={1},
+                                               rhs_contracting_dims={0}
+  }
+  )hlo";
+  // When YNNPACK is disabled, large M=1 dots stay unfused (and fold the RHS
+  // transpose into the dot contracting dimension).
+  MatchOptimizedHlo(kHloText, R"(
+    CHECK-NOT: __ynn_fusion
+    CHECK-NOT: transpose(
+    CHECK: f32[1,1024]{1,0} dot({{.*}}, %rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  )");
+}
+
+class YnnReduceTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -92,6 +115,31 @@ TEST_F(YnnReduceTest, ReduceWindowFollowedByReduce) {
     CHECK: kind=kCustom
     CHECK: "kind":"__ynn_fusion"
   )");
+}
+
+TEST_F(YnnReduceTest, ReduceWindowWithBaseDilationIsNotFused) {
+  // Base dilation on a size-1, stride-1 window dimension inserts init values
+  // between the input elements; the YNNPACK lowering does not implement it.
+  const char* hlo_text = R"(
+  HloModule reduce_window_base_dilation
+
+  max {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT max = f32[] maximum(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[64,128] parameter(0)
+    init = f32[] constant(-inf)
+    ROOT rw = f32[32,255] reduce-window(input, init), window={size=2x1 stride=2x1 lhs_dilate=1x2}, to_apply=max
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK-NOT: __ynn_fusion
+  )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(YnnReduceTest, ReduceReshape) {
@@ -275,6 +323,52 @@ TEST_P(YnnDotTest, SingleDot) {
     CHECK: kind=kCustom
     CHECK: "kind":"__ynn_fusion"
   )");
+}
+
+TEST_P(YnnDotTest, SingleDotM1) {
+  constexpr absl::string_view kHloTemplate = R"hlo(
+  HloModule single_dot_m1
+
+  ENTRY main {
+    %lhs = $lhs_dtype[1,1024] parameter(0)
+    %rhs = $rhs_dtype[1024,1024] parameter(1)
+    ROOT %out = $out_dtype[1,1024] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                    rhs_contracting_dims={0}
+  }
+  )hlo";
+  DotTestConfig config = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(kHloTemplate, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: dot
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_P(YnnDotTest, SmallUniformDotM1NotFused) {
+  DotTestConfig config = GetParam();
+  if (config.lhs_dtype != config.out_dtype) {
+    GTEST_SKIP() << "Mixed-precision dots do not use kTiledLlvmIrGemv.";
+  }
+  constexpr absl::string_view kHloTemplate = R"hlo(
+  HloModule small_dot_m1
+
+  ENTRY main {
+    %lhs = $lhs_dtype[1,64] parameter(0)
+    %rhs = $rhs_dtype[64,64] parameter(1)
+    ROOT %out = $out_dtype[1,64] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                  rhs_contracting_dims={0}
+  }
+  )hlo";
+  std::string hlo_text =
+      absl::StrReplaceAll(kHloTemplate, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: __ynn_fusion");
 }
 
 TEST_F(YnnReduceTest, ReduceSquared) {

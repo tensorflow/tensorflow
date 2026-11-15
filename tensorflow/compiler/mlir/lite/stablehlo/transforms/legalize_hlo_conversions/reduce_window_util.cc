@@ -21,15 +21,15 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
-ReduceWindowView::ReduceWindowView(mhlo::ReduceWindowOp op) {
+ReduceWindowView::ReduceWindowView(stablehlo::ReduceWindowOp op) {
   rank_ = op.getWindowDimensions().size();
-  window_dims_ =
-      SmallVector<int64_t, 4>(op.getWindowDimensions().getValues<int64_t>());
+  window_dims_ = SmallVector<int64_t, 4>(op.getWindowDimensions().begin(),
+                                         op.getWindowDimensions().end());
   window_strides_ = ResolveStridesOrDilations(rank_, op.getWindowStrides());
   window_dilations_ = ResolveStridesOrDilations(rank_, op.getWindowDilations());
   base_dilations_ = ResolveStridesOrDilations(rank_, op.getBaseDilations());

@@ -237,6 +237,10 @@ struct ChloOpRecomposePattern
       chloOp = ChloOpTy::create(rewriter, op.getLoc(), op.getResultTypes(),
                                 op.getOperands(), attrs.value());
     }
+    if (op->getNumRegions() != chloOp->getNumRegions()) {
+      rewriter.eraseOp(chloOp);
+      return rewriter.notifyMatchFailure(op, "different number of regions");
+    }
     for (auto [srcRegion, dstRegion] :
          llvm::zip_equal(op.getCompositeRegions(), chloOp->getRegions())) {
       rewriter.inlineRegionBefore(srcRegion, dstRegion, dstRegion.end());

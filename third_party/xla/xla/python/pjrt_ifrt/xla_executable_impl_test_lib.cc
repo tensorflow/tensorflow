@@ -707,7 +707,7 @@ TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
   TF_ASSERT_OK_AND_ASSIGN(
       ArrayRef pjrt_incompatible_array,
       BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
-                               /*on_done_with_buffer=*/[]() {}));
+                               /*on_done_with_buffer=*/nullptr));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;

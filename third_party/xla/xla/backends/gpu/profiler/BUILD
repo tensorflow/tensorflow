@@ -94,6 +94,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:command",
+        "//xla/backends/gpu/runtime:command_buffer_requests",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
         "//xla/backends/gpu/runtime:command_executor",
         "//xla/backends/gpu/runtime:kernel_thunk",

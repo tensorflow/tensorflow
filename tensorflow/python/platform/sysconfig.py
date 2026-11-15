@@ -71,7 +71,10 @@ def get_compile_flags():
   """
   flags = []
   flags.append('-I%s' % get_include())
-  flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
+  if pywrap_tf_session.get_use_libcpp():
+    flags.append('-stdlib=libc++')
+  else:
+    flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
   cxx_version_flag = None
   if _CXX_VERSION == 201103:
     cxx_version_flag = '--std=c++11'

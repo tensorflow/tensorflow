@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -1147,110 +1146,6 @@ DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(
   }
   return DimOrdersAndReqs{propagated_dim_orders,
                           std::get<DotRequirements>(requirements_or_error)};
-}
-
-DimOrdersAndReqsOrError
-GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-    const HloInstruction& hlo, TransformDirection transform_direction,
-    const std::optional<int>& src_operand_index,
-    const DimensionOrder& src_dim_order,
-    const se::GpuComputeCapability& gpu_version,
-    const DotProperties& properties) {
-  CHECK_EQ(transform_direction == TransformDirection::kInputToOutput,
-           src_operand_index.has_value());
-
-  if (hlo.opcode() == HloOpcode::kTuple ||
-      hlo.opcode() == HloOpcode::kGetTupleElement) {
-    return FusionDecision::Forbid("Unsupported instruction.");
-  }
-  if (hlo.opcode() == HloOpcode::kReduce ||
-      hlo.opcode() == HloOpcode::kAllReduce ||
-      hlo.opcode() == HloOpcode::kAllReduceStart ||
-      hlo.opcode() == HloOpcode::kAllReduceDone) {
-    return FusionDecision::Forbid("Reductions are not fused yet.");
-  }
-  if (hlo.opcode() == HloOpcode::kPad) {
-    return FusionDecision::Forbid("Pads are not fused yet.");
-  }
-  if (hlo.opcode() == HloOpcode::kPower && hlo.user_count() > 1) {
-    // The check is placed specifically above the binary elementwise ops with
-    // broadcast operands to prohibit fusing even with broadcast inputs.
-    return FusionDecision::Forbid(
-        "Not fusing power with multiple users because it may result in "
-        "expensive op duplication.");
-  }
-  if (auto decision =
-          legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
-      decision.IsForbidden()) {
-    return decision;
-  }
-  DimOrdersAndReqsOrError result_or_error =
-      GetPropagatedDimOrdersAndRequirements(hlo, src_dim_order,
-                                            transform_direction, properties);
-  if (std::holds_alternative<FusionDecision>(result_or_error)) {
-    VLOG(5) << "Not fusing " << hlo.ToString()
-            << " to the output due to the decision: "
-            << std::get<FusionDecision>(result_or_error).Explain();
-    return result_or_error;
-  }
-  DimOrdersAndReqs dim_orders_and_requirements =
-      std::move(std::get<DimOrdersAndReqs>(result_or_error));
-  // TODO(ROCm): Check fusion level for ROCm.
-  if (transform_direction == TransformDirection::kOutputToInput) {
-    // Exception for binary elementwise operations: in most cases these are
-    // not trivial to fuse because they increase DRAM traffic but if one
-    // of the inputs is for example a broadcast that can be fused too it
-    // becomes worth fusing. Look ahead and analyze operands here.
-    bool accepted = false;
-    if (hlo.IsElementwise() && hlo.operand_count() == 2) {
-      for (const HloInstruction* operand : hlo.operands()) {
-        if (operand->opcode() == HloOpcode::kBroadcast &&
-            (operand->operand(0)->opcode() == HloOpcode::kParameter ||
-             operand->operand(0)->opcode() == HloOpcode::kConstant) &&
-            std::holds_alternative<DimOrdersAndReqs>(
-                GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-                    *operand, TransformDirection::kOutputToInput,
-                    /*src_operand_index=*/std::nullopt,
-                    /*src_dim_order=*/
-                    dim_orders_and_requirements.dim_orders.at(operand),
-                    gpu_version, properties))) {
-          accepted = true;
-          break;
-        }
-      }
-    }
-    if (!accepted && !IsInputWorthFusing(hlo)) {
-      return FusionDecision::Forbid(
-          "Not obviously profitable to fuse as input.");
-    }
-  } else {
-    for (int i = 0; i < hlo.operand_count(); ++i) {
-      const HloInstruction* operand = hlo.operand(i);
-      // Skip source operand.
-      if (i == *src_operand_index) {
-        continue;
-      }
-      // Currently only
-      //  - effective parameters
-      //  - broadcasts of effective parameters
-      //  - broadcasts of scalars
-      // are accepted as other inputs of non-unary operations in
-      // the output fusion.
-      if ((operand->opcode() == HloOpcode::kBroadcast &&
-           (ShapeUtil::IsScalar(operand->operand(0)->shape()) ||
-            hlo_query::IsEffectiveParameter(*operand->operand(0)))) ||
-          hlo_query::IsEffectiveParameter(*operand)) {
-        continue;
-      }
-      return FusionDecision::Forbid(
-          "Has multiple inputs - not properly analyzed yet.");
-    }
-    if (!IsOutputWorthFusing(hlo)) {
-      return FusionDecision::Forbid(
-          "Not obviously profitable to fuse as output.");
-    }
-  }
-  return dim_orders_and_requirements;
 }
 
 }  // namespace triton_fusion

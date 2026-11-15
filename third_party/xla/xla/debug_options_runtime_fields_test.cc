@@ -50,6 +50,8 @@ TEST(DebugOptionsRuntimeFieldsTest, OmitsCompileOnlyAndDiagnosticsFields) {
       DebugOptions::kXlaGpuTraceAnnotationLevelFieldNumber));
   EXPECT_FALSE(IsRuntimeDebugOptionsField(
       DebugOptions::kXlaGpuEnableCuptiMultiSubscriberFieldNumber));
+  EXPECT_FALSE(IsRuntimeDebugOptionsField(
+      DebugOptions::kXlaGpuEnableCommandBufferTelemetryFieldNumber));
 }
 
 }  // namespace

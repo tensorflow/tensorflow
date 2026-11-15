@@ -236,8 +236,10 @@ def fill(dims, value, name=None, layout=None):
   embeds the value as a `Const` node.
 
   Args:
-    dims: A 1-D sequence of non-negative numbers. Represents the shape of the
-      output `tf.Tensor`. Entries should be of type: `int32`, `int64`.
+    dims: A 1-D sequence of non-negative integers. Represents the shape of the
+      output `tf.Tensor`. Entries should be of type: `int32`, `int64`. Scalar
+      tensor entries in a sequence are converted to integers, which truncates
+      floating-point values.
     value: A value to fill the returned `tf.Tensor`.
     name: Optional string. The name of the output `tf.Tensor`.
     layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
@@ -248,8 +250,12 @@ def fill(dims, value, name=None, layout=None):
     A `tf.Tensor` with shape `dims` and the same dtype as `value`.
 
   Raises:
-    InvalidArgumentError: `dims` contains negative entries.
-    NotFoundError: `dims` contains non-integer entries.
+    InvalidArgumentError: `dims` contains negative entries at runtime, or its
+      converted tensor has a dtype other than `int32` or `int64` in eager mode.
+    TypeError: The converted `dims` tensor has a dtype other than `int32` or
+      `int64` in graph mode.
+    ValueError: `dims` contains negative entries that are statically known
+      during graph construction.
 
   @compatibility(numpy)
   Similar to `np.full`. In `numpy`, more parameters are supported. Passing a

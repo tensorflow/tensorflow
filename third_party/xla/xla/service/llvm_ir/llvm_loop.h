@@ -184,7 +184,6 @@ class ForLoopNest {
   ForLoopNest(absl::string_view name, llvm::IRBuilderBase* b,
               llvm::Type* index_ty = nullptr)
       : name_(name),
-        outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
         b_(b) {
@@ -224,19 +223,6 @@ class ForLoopNest {
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
-  // Add loops to iterate through the indices within the specified
-  // shape. The returned index collects the induction variables of the
-  // loops so that it will iterate through all coordinates within the
-  // specified shape.
-  //
-  // E.g. if you pass in a 2x3 shape, you will get back an index with
-  // two entries that are induction variables of the two loops that
-  // will be added. That index will iterate through the 6 coordinates
-  // within the shape. One possible order for that sequence would be:
-  //
-  //   (0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
-  IrArray::Index AddLoopsForShape(const Shape& shape, absl::string_view suffix);
-
   // Add a loop for each dimension in "dimensions". "suffix" is the
   // name suffix of the indvar and basic blocks in this new loop nest.
   //
@@ -258,14 +244,9 @@ class ForLoopNest {
       const llvm_ir::IrArray& operand_array, int64_t dimension_to_skip,
       absl::string_view name_suffix);
 
-  // Convenience methods which return particular basic blocks of the outermost
-  // or innermost loops. These methods return nullptr if no loops have been
-  // added yet.
-  llvm::BasicBlock* GetOuterLoopPreheaderBasicBlock() {
-    return outer_loop_preheader_bb_;
-  }
+  // Convenience method which returns the exit basic block of the outermost
+  // loop, or nullptr if no loops have been added yet.
   llvm::BasicBlock* GetOuterLoopExitBasicBlock() { return outer_loop_exit_bb_; }
-  llvm::BasicBlock* GetInnerLoopBodyBasicBlock() { return inner_loop_body_bb_; }
 
  private:
   void SetIndexType(llvm::Type* index_ty) {
@@ -279,9 +260,8 @@ class ForLoopNest {
   // Human-friendly name of the loop nest.
   std::string name_;
 
-  // The preheader and exit basic block of the outermost loop, or nullptr if no
-  // loop has been added yet.
-  llvm::BasicBlock* outer_loop_preheader_bb_;
+  // The exit basic block of the outermost loop, or nullptr if no loop has
+  // been added yet.
   llvm::BasicBlock* outer_loop_exit_bb_;
 
   // The body basic block of the most-recently added loop, or nullptr if no loop

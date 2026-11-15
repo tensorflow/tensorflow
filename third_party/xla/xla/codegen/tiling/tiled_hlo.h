@@ -266,22 +266,10 @@ class TiledHloComputation {
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::TiledHloComputation;
-using ::xla::gpu::TiledHloInstruction;
-using ::xla::gpu::TiledHloRegion;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::TiledHloComputation;
 using ::xla::gpu::TiledHloInstruction;
 using ::xla::gpu::TiledHloRegion;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::TiledHloComputation;
-using ::xla::gpu::TiledHloInstruction;
-using ::xla::gpu::TiledHloRegion;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILED_HLO_H_

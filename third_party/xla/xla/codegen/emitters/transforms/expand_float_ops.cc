@@ -401,9 +401,12 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
 
     Val biased_exponent = cst(i32_ty, exp_offset + 1) - normalization_factor;
     // If the result is subnormal, adjust the subnormal bits to account for
-    // the difference in exponent bias.
+    // the difference in exponent bias. Without zero, biased exponent 0 is
+    // normal and values with biased_exponent < 0 clamp to code 0.
     Value subnormal_bits = bits;
-    if (exp_offset < wide_int_ty.getWidth()) {
+    if (!llvm::APFloat::semanticsHasZero(to_ty.getFloatSemantics())) {
+      subnormal_bits = bits.MakeConstant(0);
+    } else if (exp_offset < wide_int_ty.getWidth()) {
       subnormal_bits = bits.shl(exp_offset);
     }
 
@@ -415,16 +418,20 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
          ~(1 << from_mantissa)) |
         convert_int(wide_int_ty, biased_exponent).shl(from_mantissa);
 
-    Value biased_exp_sle_zero = biased_exponent.cmp(CmpIPredicate::sle, 0);
-    bits = Val(
-        SelectOp::create(b, biased_exp_sle_zero, subnormal_bits, normal_bits),
-        &b);
+    // Without zero (E8M0), biased exponent 0 is a normal binade, not the
+    // subnormal one.
+    Value is_subnormal = biased_exponent.cmp(
+        llvm::APFloat::semanticsHasZero(to_ty.getFloatSemantics())
+            ? CmpIPredicate::sle
+            : CmpIPredicate::slt,
+        0);
+    bits =
+        Val(SelectOp::create(b, is_subnormal, subnormal_bits, normal_bits), &b);
     if (digit_shift >= 0) {
       bits = bits.shl(digit_shift);
     } else {
-      bits = round_bits_to_nearest_even(
-          bits, bits.MakeConstant(-digit_shift),
-          /*use_implicit_bit=*/to_mantissa == 0 && exp_offset != 0);
+      bits = round_bits_to_nearest_even(bits, bits.MakeConstant(-digit_shift),
+                                        /*use_implicit_bit=*/to_mantissa == 0);
       bits = bits.shrui(-digit_shift);
     }
     bits = convert_int(to_int_ty, bits);
@@ -434,45 +441,53 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
     // `To` supports fewer exponents near zero which means that some values in
     // `From` may become subnormal.
     Val biased_to_exp = biased_from_exp + (to_bias - from_bias);
-    // Subnormals and zero.
-    // Round and shift mantissa down.
-    Val from_has_leading_one = !llvm::isa<mlir::Float8E8M0FNUType>(from_ty)
-                                   ? biased_from_exp != 0
-                                   : cst(i32_ty, 1);
-    Val from_has_leading_one_i32 = convert_int(i32_ty, from_has_leading_one);
-    from_has_leading_one = convert_int(from_int_ty, from_has_leading_one);
-    Val exponent_shift_i32 =
-        (from_has_leading_one_i32 - biased_to_exp) - digit_shift;
-    // Insert the implicit leading 1 bit on the mantissa for normalized
-    // inputs.
-    Val rounded_from_bits = (from_bits & ((1ll << from_mantissa) - 1)) |
-                            from_has_leading_one.shl(from_mantissa);
+    if (!llvm::APFloat::semanticsHasZero(to_ty.getFloatSemantics())) {
+      // Without zero or subnormals (E8M0), biased exponent 0 is normal and
+      // already handled above; smaller positive inputs saturate to code 0
+      // (from_bits == 0 is mapped to NaN below).
+      result = SelectOp::create(b, biased_to_exp.cmp(CmpIPredicate::slt, 0),
+                                cst(to_int_ty, 0), result);
+    } else {
+      // Subnormals and zero.
+      // Round and shift mantissa down.
+      Val from_has_leading_one = !llvm::isa<mlir::Float8E8M0FNUType>(from_ty)
+                                     ? biased_from_exp != 0
+                                     : cst(i32_ty, 1);
+      Val from_has_leading_one_i32 = convert_int(i32_ty, from_has_leading_one);
+      from_has_leading_one = convert_int(from_int_ty, from_has_leading_one);
+      Val exponent_shift_i32 =
+          (from_has_leading_one_i32 - biased_to_exp) - digit_shift;
+      // Insert the implicit leading 1 bit on the mantissa for normalized
+      // inputs.
+      Val rounded_from_bits = (from_bits & ((1ll << from_mantissa) - 1)) |
+                              from_has_leading_one.shl(from_mantissa);
 
-    // NOTE: we need to round again from the original from_bits,
-    // otherwise the lower precision bits may already be lost.  There is
-    // an edge-case where rounding to a normalized value would normally
-    // round down, but for a subnormal, we need to round up.
-    Val exponent_shift_from_ty = convert_int(from_int_ty, exponent_shift_i32);
-    Val exponent_shift_to_ty = convert_int(to_int_ty, exponent_shift_i32);
-    Val positive_bits = convert_int(
-        to_int_ty,
-        round_bits_to_nearest_even(rounded_from_bits, exponent_shift_from_ty)
-            .shrui(exponent_shift_from_ty));
-    // To avoid UB, limit rounding and shifting to the full mantissa plus
-    // leading 1.
-    positive_bits = Val(
-        SelectOp::create(
-            b, exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
-            positive_bits, to_zero),
-        &b);
+      // NOTE: we need to round again from the original from_bits,
+      // otherwise the lower precision bits may already be lost.  There is
+      // an edge-case where rounding to a normalized value would normally
+      // round down, but for a subnormal, we need to round up.
+      Val exponent_shift_from_ty = convert_int(from_int_ty, exponent_shift_i32);
+      Val exponent_shift_to_ty = convert_int(to_int_ty, exponent_shift_i32);
+      Val positive_bits = convert_int(
+          to_int_ty,
+          round_bits_to_nearest_even(rounded_from_bits, exponent_shift_from_ty)
+              .shrui(exponent_shift_from_ty));
+      // To avoid UB, limit rounding and shifting to the full mantissa plus
+      // leading 1.
+      positive_bits = Val(
+          SelectOp::create(
+              b, exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
+              positive_bits, to_zero),
+          &b);
 
-    Val negative_bits = convert_int(to_int_ty, rounded_from_bits)
-                            .shl(to_zero - exponent_shift_to_ty);
-    Value bits =
-        SelectOp::create(b, exponent_shift_i32.cmp(CmpIPredicate::sgt, 0),
-                         positive_bits, negative_bits);
-    result = SelectOp::create(b, biased_to_exp.cmp(CmpIPredicate::sle, 0), bits,
-                              result);
+      Val negative_bits = convert_int(to_int_ty, rounded_from_bits)
+                              .shl(to_zero - exponent_shift_to_ty);
+      Value bits =
+          SelectOp::create(b, exponent_shift_i32.cmp(CmpIPredicate::sgt, 0),
+                           positive_bits, negative_bits);
+      result = SelectOp::create(b, biased_to_exp.cmp(CmpIPredicate::sle, 0),
+                                bits, result);
+    }
   }
 
   Value result_is_inf = IsInf(value, b);

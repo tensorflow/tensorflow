@@ -331,13 +331,11 @@ class ConcreteShardingSpec
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return std::holds_alternative<DynamicShape>(shape_) &&
            std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_);
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return std::holds_alternative<Shape>(shape_) &&
            std::holds_alternative<std::vector<Shape>>(shard_shapes_);
   }
@@ -353,13 +351,11 @@ class ConcreteShardingSpec
   }
 
   const std::vector<Shape>& shard_shapes() const {
-    DCHECK(this);
     DCHECK(std::holds_alternative<std::vector<Shape>>(shard_shapes_));
     return std::get<std::vector<Shape>>(shard_shapes_);
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
-    DCHECK(this);
     DCHECK(std::holds_alternative<std::vector<DynamicShape>>(shard_shapes_));
     return std::get<std::vector<DynamicShape>>(shard_shapes_);
   }
@@ -437,11 +433,9 @@ class ConcreteEvenShardingSpec
       bool is_fully_replicated = false);
 
   Shape shape() const {
-    DCHECK(this);
     return shape_;
   }
   const Shape& shard_shape() const {
-    DCHECK(this);
     return shard_shape_;
   }
 

@@ -98,7 +98,7 @@ tf_py_strict_test(
     exec_properties = {
         "cpp_link.mem": "16g",
     },
-    shard_count = 8,
+    shard_count = 20,
     tags = ["no_oss"],
     deps = [
         # copybara:uncomment "//tensorflow/core/tpu/kernels",

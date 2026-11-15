@@ -501,6 +501,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "xla_compiled_cpu_function_test",
+    srcs = ["xla_compiled_cpu_function_test.cc"],
+    deps = [
+        ":xla_compiled_cpu_function",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/numeric:int128",
+        "@xla//xla:executable_run_options",
+        "@xla//xla/backends/cpu:buffer_allocation_info",
+        "@xla//xla/backends/cpu/runtime:rng_state_lib",
+    ],
+)
+
 cc_library(
     name = "xla_compiled_cpu_function_thunks",
     srcs = ["xla_compiled_cpu_function_thunks.cc"],

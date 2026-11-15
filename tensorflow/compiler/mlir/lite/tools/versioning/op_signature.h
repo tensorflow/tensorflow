@@ -32,54 +32,68 @@ typedef struct {
   bool is_shape_dynamic;
 } OpSignatureTensorSpec;
 
-typedef struct {
-  BuiltinOperator op;
+struct OpSignature {
+  BuiltinOperator op = BuiltinOperator_ADD;
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
-  void* builtin_data;
-  int version;
-  const void* custom_initial_data;
+  void* builtin_data = nullptr;
+  int version = 0;
+  const void* custom_initial_data = nullptr;
   std::string custom_name;
-  union {
+  struct {
     struct {
-      bool is_per_channel_quantized;
-      bool is_grouped_convolution;
+      bool is_per_channel_quantized = false;
+      bool is_grouped_convolution = false;
     } conv_2d;
     struct {
-      bool is_per_channel_quantized;
+      bool is_per_channel_quantized = false;
     } depthwise_conv_2d;
     struct {
       // TODO(b/156530611): Make this global when more ops support sparse
       // computation.
-      bool sparse_weight;
-      bool is_per_channel_quantized;
+      bool sparse_weight = false;
+      bool is_per_channel_quantized = false;
+      // The weight (input 1) is quantized with `BlockwiseQuantization` with a
+      // non-empty `block_shape`.
+      bool is_weight_blockwise_quantized = false;
     } fully_connected;
     struct {
-      float input1_scale;
-      float input2_scale;
-      float output_scale;
-      bool input_quantized;
+      float input1_scale = 0.0f;
+      float input2_scale = 0.0f;
+      float output_scale = 0.0f;
+      bool input_quantized = false;
     } mul;
     struct {
-      int32_t num_dims;
+      int32_t num_dims = 0;
     } strided_slice;
     struct {
-      bool input_quantized;
+      bool input_quantized = false;
     } abs;
     struct {
-      bool is_per_channel_quantized;
+      bool is_per_channel_quantized = false;
+      // The input is quantized with `BlockwiseQuantization` with a non-empty
+      // `block_shape`.
+      bool is_blockwise_quantized = false;
     } dequantize;
     struct {
-      bool is_per_channel_quantized;
+      bool is_per_channel_quantized = false;
     } quantize;
     struct {
-      bool input_quantized;
+      bool input_quantized = false;
     } add;
     struct {
-      bool is_per_channel_quantized;
+      bool is_per_channel_quantized = false;
+      // The table (input 1) is quantized with `BlockwiseQuantization` with a
+      // non-empty `block_shape`.
+      bool is_blockwise_quantized = false;
     } embedding_lookup;
-  } ext_options;
-} OpSignature;
+    struct {
+      // RHS (input 1) is quantized with `BlockwiseQuantization` with a
+      // non-empty `block_shape`.
+      bool is_rhs_blockwise_quantized = false;
+    } batch_matmul;
+  } ext_options = {};
+};
 
 // Generate OpSignature with the given OperatorCode, Operator and Tensors (from
 // SubGraph). The OpSignature will be used by GetBuiltinOperatorVersion() and

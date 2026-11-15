@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -282,7 +283,14 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  ASSERT_OK(executor.Initialize({stream_executor, source}));
+  CommandBufferRequests command_buffer_requests;
+  ASSERT_OK(executor.Initialize(
+      {/*executor=*/stream_executor,
+       /*src=*/source,
+       /*buffer_allocations=*/nullptr,
+       /*stream=*/nullptr,
+       /*command_buffer_trace_stream=*/nullptr,
+       /*command_buffer_requests=*/&command_buffer_requests}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -358,7 +366,14 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  ASSERT_OK(executor.Initialize({stream_executor, source}));
+  CommandBufferRequests command_buffer_requests;
+  ASSERT_OK(executor.Initialize(
+      {/*executor=*/stream_executor,
+       /*src=*/source,
+       /*buffer_allocations=*/nullptr,
+       /*stream=*/nullptr,
+       /*command_buffer_trace_stream=*/nullptr,
+       /*command_buffer_requests=*/&command_buffer_requests}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -548,9 +563,28 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   Thunk::ExecutableSource source_empty = {/*text=*/{}, /*binary=*/{}};
   Thunk::ExecutableSource source_fatbin = {/*text=*/{}, /*binary=*/fatbin};
 
-  ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}));
-  ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}));
-  ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}));
+  CommandBufferRequests command_buffer_requests;
+  ASSERT_OK(exec_a.Initialize(
+      {/*executor=*/stream_executor,
+       /*src=*/source_empty,
+       /*buffer_allocations=*/nullptr,
+       /*stream=*/nullptr,
+       /*command_buffer_trace_stream=*/nullptr,
+       /*command_buffer_requests=*/&command_buffer_requests}));
+  ASSERT_OK(exec_b.Initialize(
+      {/*executor=*/stream_executor,
+       /*src=*/source_fatbin,
+       /*buffer_allocations=*/nullptr,
+       /*stream=*/nullptr,
+       /*command_buffer_trace_stream=*/nullptr,
+       /*command_buffer_requests=*/&command_buffer_requests}));
+  ASSERT_OK(exec_c.Initialize(
+      {/*executor=*/stream_executor,
+       /*src=*/source_empty,
+       /*buffer_allocations=*/nullptr,
+       /*stream=*/nullptr,
+       /*command_buffer_trace_stream=*/nullptr,
+       /*command_buffer_requests=*/&command_buffer_requests}));
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
   ServiceExecutableRunOptions run_options;

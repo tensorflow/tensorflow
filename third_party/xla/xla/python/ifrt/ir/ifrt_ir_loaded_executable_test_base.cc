@@ -28,14 +28,12 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
@@ -47,8 +45,8 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
@@ -61,25 +59,8 @@ namespace xla {
 namespace ifrt {
 namespace test_util {
 
-IfrtIrLoadedExecutableTestBase::IfrtIrLoadedExecutableTestBase() {
-  mlir::registerMLIRContextCLOptions();
-  xla::ifrt::support::RegisterMlirDialects(mlir_context_);
-}
-
 void IfrtIrLoadedExecutableTestBase::SetUp() {
   ASSERT_OK_AND_ASSIGN(client_, GetClient());
-}
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-IfrtIrLoadedExecutableTestBase::LoadFromSource(absl::string_view source) {
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
-  auto op_ref = mlir::parseSourceString<mlir::ModuleOp>(source, &mlir_context_);
-  if (!op_ref) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Failed to parse IFRT IR module string: %s",
-                        diagnostic_handler.ConsumeStatus().message()));
-  }
-  return op_ref;
 }
 
 absl::StatusOr<LoadedExecutableRef>

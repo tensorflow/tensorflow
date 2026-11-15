@@ -32,6 +32,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -412,5 +416,25 @@ absl::StatusOr<bool> ReshapeMover::RunImpl(
   }
   return changed;
 }
+
+namespace {
+
+class ReshapeMoverFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "reshape-mover"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap =
+        options.Get<bool>("reshape_of_1d_broadcast_is_cheap").value_or(false);
+    return std::make_unique<ReshapeMover>(reshape_mover_options);
+  }
+};
+
+const HloPassFactory* const kReshapeMoverRegistration =
+    RegisterHloPassFactory<ReshapeMoverFactory>();
+
+}  // namespace
 
 }  // namespace xla

@@ -434,13 +434,16 @@ SolLatencyEstimator::Create(
     const HloComputation* computation,
     std::unique_ptr<GpuHloCostAnalysis> cost_analysis) {
   if (cost_analysis == nullptr) {
-    cost_analysis =
-        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+    // Default op profile, device warp size.
+    cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+        GpuHloCostAnalysis::Options{
             shape_size_function,
             /*per_second_rates=*/{},
             /*min_latencies_seconds=*/{},
             /*count_multiple_input_accesses=*/true,
-        });
+        },
+        HloOpProfiles::Singleton().GetDefaultProfile(),
+        gpu_info.threads_per_warp());
     ABSL_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
   }
   SolGPUCostModel::Config sol_config =

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -48,7 +50,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/xla_data.pb.h"
@@ -69,10 +73,19 @@ class MockExecutable : public Executable {
   explicit MockExecutable(std::shared_ptr<HloModule> module, int duration_ns,
                           bool should_fail = false,
                           bool write_past_allocated_buffer = false)
+      : MockExecutable(std::move(module), std::vector<int>{duration_ns},
+                       should_fail, write_past_allocated_buffer) {}
+
+  // The i-th profiled run reports the duration
+  // `durations_ns[i % durations_ns.size()]`.
+  MockExecutable(std::shared_ptr<HloModule> module,
+                 std::vector<int> durations_ns, bool should_fail = false,
+                 bool write_past_allocated_buffer = false)
       : Executable(module),
-        duration_ns_(duration_ns),
+        durations_ns_(std::move(durations_ns)),
         should_fail_(should_fail),
         write_past_allocated_buffer_(write_past_allocated_buffer) {}
+
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments) override {
@@ -81,7 +94,9 @@ class MockExecutable : public Executable {
     }
     ExecutionProfile* profile = run_options->run_options().execution_profile();
     if (profile != nullptr) {
-      profile->set_compute_time_ns(duration_ns_);
+      profile->set_compute_time_ns(
+          durations_ns_[num_profiled_runs_ % durations_ns_.size()]);
+      ++num_profiled_runs_;
     }
     if (write_past_allocated_buffer_) {
       ABSL_RETURN_IF_ERROR(WriteOutOfBounds(*run_options));
@@ -92,6 +107,8 @@ class MockExecutable : public Executable {
                            run_options->run_options().allocator(),
                            run_options->run_options().device_ordinal());
   }
+
+  int num_profiled_runs() const { return num_profiled_runs_; }
 
  private:
   // Simulates a kernel that writes past the end of an allocated buffer:
@@ -117,9 +134,80 @@ class MockExecutable : public Executable {
                                                        kOverrunBytes);
   }
 
-  int duration_ns_;
+  std::vector<int> durations_ns_;
+  int num_profiled_runs_ = 0;
   bool should_fail_;
   bool write_past_allocated_buffer_;
+};
+
+// Forwards to another allocator, records allocations, and optionally enforces a
+// live-memory cap or asynchronous-deallocation semantics.
+class RecordingAllocator : public se::DeviceAddressAllocator {
+ public:
+  struct AllocationRecord {
+    uint64_t size;
+    bool retry_on_failure;
+  };
+
+  explicit RecordingAllocator(
+      se::DeviceAddressAllocator* wrapped,
+      bool allows_async_deallocation = false,
+      uint64_t max_live_bytes = std::numeric_limits<uint64_t>::max())
+      : se::DeviceAddressAllocator(wrapped->platform()),
+        wrapped_(wrapped),
+        allows_async_deallocation_(allows_async_deallocation),
+        max_live_bytes_(max_live_bytes) {}
+
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    allocations_.push_back({size, retry_on_failure});
+    if (size > max_live_bytes_ - live_bytes_) {
+      return absl::ResourceExhaustedError("Simulated allocator OOM.");
+    }
+    ABSL_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> address,
+                     wrapped_->Allocate(device_ordinal, size, retry_on_failure,
+                                        memory_space));
+    live_bytes_ += address->size();
+    peak_live_bytes_ = std::max(peak_live_bytes_, live_bytes_);
+    return se::ScopedDeviceAddress<uint8_t>(address.Release(), device_ordinal,
+                                            this);
+  }
+
+  bool AllowsAsynchronousDeallocation() const override {
+    return allows_async_deallocation_;
+  }
+
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    return wrapped_->GetStream(device_ordinal);
+  }
+
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceAddressBase mem) override {
+    if (!mem.is_null()) {
+      if (allows_async_deallocation_ &&
+          !wrapped_->AllowsAsynchronousDeallocation()) {
+        ABSL_ASSIGN_OR_RETURN(se::Stream * stream, GetStream(device_ordinal));
+        ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+      }
+      live_bytes_ -= mem.size();
+    }
+    return wrapped_->Deallocate(device_ordinal, mem);
+  }
+
+  const std::vector<AllocationRecord>& allocations() const {
+    return allocations_;
+  }
+  uint64_t live_bytes() const { return live_bytes_; }
+  uint64_t peak_live_bytes() const { return peak_live_bytes_; }
+
+ private:
+  se::DeviceAddressAllocator* wrapped_;
+  bool allows_async_deallocation_;
+  uint64_t max_live_bytes_;
+  uint64_t live_bytes_ = 0;
+  uint64_t peak_live_bytes_ = 0;
+  std::vector<AllocationRecord> allocations_;
 };
 
 absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
@@ -257,6 +345,188 @@ TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {
                        profiler->CreateInputBuffers(&mock_executable));
   EXPECT_THAT(profiler->Profile(&mock_executable, *buffers),
               StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(GpuProfilerTest, ReportsMeanDurationOfTimedRuns) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, std::vector<int>{1000, 2000, 6000});
+  ProfileOptions options;
+  options.num_timed_runs = 3;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                       profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(3000));
+  EXPECT_EQ(mock_executable.num_profiled_runs(), 3);
+  EXPECT_EQ(profile.output_buffer->on_device_shape(),
+            ShapeUtil::MakeShape(S32, {}));
+}
+
+TEST_F(GpuProfilerTest, DoesNotAllocateCacheFlushBufferByDefault) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, 1000);
+  RecordingAllocator allocator(allocator_.get());
+  auto profiler =
+      GpuProfiler::Create(stream_exec_, ProfileOptions(), &allocator);
+  ASSERT_NE(profiler, nullptr);
+  EXPECT_THAT(allocator.allocations(), ::testing::IsEmpty());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                       profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(1000));
+  const uint64_t min_flush_bytes = std::max<uint64_t>(
+      2 * stream_exec_->GetDeviceDescription().l2_cache_size(), 64ULL << 20);
+  EXPECT_LT(allocator.peak_live_bytes(), min_flush_bytes);
+}
+
+TEST_F(GpuProfilerTest, FlushesCachesBeforeTimedRuns) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, std::vector<int>{1000, 3000});
+  RecordingAllocator allocator(allocator_.get(),
+                               /*allows_async_deallocation=*/false);
+  ProfileOptions options;
+  options.flush_caches = true;
+  options.num_timed_runs = 2;
+  options.redzone_padding_bytes = 1024;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, &allocator);
+  ASSERT_NE(profiler, nullptr);
+  EXPECT_THAT(allocator.allocations(), ::testing::IsEmpty());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                       profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(2000));
+  EXPECT_EQ(mock_executable.num_profiled_runs(), 2);
+  EXPECT_OK(profiler->CheckInputBuffers(*buffers));
+
+  const uint64_t min_flush_bytes = std::max<uint64_t>(
+      2 * stream_exec_->GetDeviceDescription().l2_cache_size(), 64ULL << 20);
+  int flush_alloc_count = 0;
+  for (const auto& alloc : allocator.allocations()) {
+    if (alloc.size >= min_flush_bytes) {
+      ++flush_alloc_count;
+      EXPECT_FALSE(alloc.retry_on_failure);
+    }
+  }
+  // Synchronous allocators allocate the cache-flush buffer lazily once per
+  // instruction group and reuse it across timed runs.
+  EXPECT_EQ(flush_alloc_count, 1);
+}
+
+TEST_F(GpuProfilerTest,
+       ReleasesCacheFlushBufferBetweenRunsWithAsyncDeallocation) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      ROOT copy = s32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, std::vector<int>{1000, 3000});
+  const uint64_t min_flush_bytes = std::max<uint64_t>(
+      2 * stream_exec_->GetDeviceDescription().l2_cache_size(), 64ULL << 20);
+  // Budget fits input redzones (16 MiB) + warm-up output redzones (16 MiB) =
+  // 32 MiB, and fits input redzones (16 MiB) + transient cache-flush scratch,
+  // but CANNOT hold input redzones + warm-up redzones + cache-flush scratch
+  // simultaneously (32 MiB + min_flush_bytes > max_live_bytes).
+  RecordingAllocator allocator(allocator_.get(),
+                               /*allows_async_deallocation=*/true,
+                               /*max_live_bytes=*/min_flush_bytes + (20 << 20));
+  ProfileOptions options;
+  options.flush_caches = true;
+  options.num_timed_runs = 2;
+  options.redzone_padding_bytes = 8 << 20;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, &allocator);
+  ASSERT_NE(profiler, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                       profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(2000));
+  EXPECT_EQ(mock_executable.num_profiled_runs(), 2);
+
+  int flush_alloc_count = 0;
+  for (const auto& alloc : allocator.allocations()) {
+    if (alloc.size >= min_flush_bytes) {
+      ++flush_alloc_count;
+      EXPECT_FALSE(alloc.retry_on_failure);
+    }
+  }
+  EXPECT_EQ(flush_alloc_count, 2);
+  // After Profile() returns, only input buffers + committed output remain live.
+  EXPECT_LT(allocator.live_bytes(), min_flush_bytes);
+}
+
+TEST_F(GpuProfilerTest,
+       FallsBackToWarmCacheWhenPoolTooSmallWithoutStarvingInputs) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      ROOT copy = s32[] copy(p0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  MockExecutable mock_executable(module, std::vector<int>{1000, 3000});
+  const uint64_t min_flush_bytes = std::max<uint64_t>(
+      2 * stream_exec_->GetDeviceDescription().l2_cache_size(), 64ULL << 20);
+  // Pool is slightly larger than min_flush_bytes (e.g. 128 MiB BFCAllocator on
+  // H100 where min_flush_bytes = 100 MiB), so an eager persistent allocation in
+  // Create() would starve the 16 MiB input redzones in CreateInputBuffers().
+  RecordingAllocator allocator(allocator_.get(),
+                               /*allows_async_deallocation=*/true,
+                               /*max_live_bytes=*/min_flush_bytes + (4 << 20));
+  ProfileOptions options;
+  options.flush_caches = true;
+  options.num_timed_runs = 2;
+  options.redzone_padding_bytes = 8 << 20;
+  auto profiler = GpuProfiler::Create(stream_exec_, options, &allocator);
+  ASSERT_NE(profiler, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
+                       profiler->CreateInputBuffers(&mock_executable));
+  ASSERT_OK_AND_ASSIGN(ProfileResult profile,
+                       profiler->Profile(&mock_executable, *buffers));
+  EXPECT_EQ(profile.duration, absl::Nanoseconds(2000));
+  EXPECT_EQ(mock_executable.num_profiled_runs(), 2);
+
+  int flush_attempt_count = 0;
+  for (const auto& alloc : allocator.allocations()) {
+    if (alloc.size >= min_flush_bytes) {
+      ++flush_attempt_count;
+      EXPECT_FALSE(alloc.retry_on_failure);
+    }
+  }
+  EXPECT_EQ(flush_attempt_count, 1);
 }
 
 class GpuProfilerTestWithRedzonePadding

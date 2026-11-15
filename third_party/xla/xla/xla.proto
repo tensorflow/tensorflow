@@ -571,16 +571,6 @@ message DebugOptions {
   repeated CollectiveFilter xla_enable_nccl_symmetric_buffers_for_collectives =
       503;
 
-  // List of autotuner backends to enable. If empty, all backends are enabled.
-  // Backends not relevant to the platform will be ignored, e.g. cuDNN on AMD.
-  // If xla_gpu_experimental_disable_binary_libraries is set, all binary
-  // libraries (CUBLAS, CUBLASLT, CUDNN, with fission) are disabled.
-  // xla_gpu_enable_cublaslt controls if cuBLASLT or cuBLAS is enabled.
-  // The NATIVE_EMITTER and the BLOCK_LEVEL_EMITTER are always enabled for the
-  // fusion autuning pass, and are not affected by this flag, use
-  // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
-  repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
-
   // Preferred autotuner backend. If set and the preferred backend generates
   // valid configs for an instruction, the autotuner will pick a config from
   // this backend even if another backend is faster. If no valid config from the
@@ -648,8 +638,11 @@ message DebugOptions {
   // this field.
   optional float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
-  // Relative precision for comparing different GEMM solutions
-  optional float xla_gpu_autotune_gemm_rtol = 316;
+  // If true, the GPU autotuner flushes the L2 cache before every timed run of
+  // a candidate, so that candidates read their operands from device memory as
+  // they do in production, where large operands such as weights are usually not
+  // cached. Default: true.
+  optional bool xla_gpu_autotune_flush_l2_cache = 570;
 
   // 0:   Disable gemm and convolution autotuning.
   // 1:   Enable autotuning, but disable correctness checking.
@@ -665,6 +658,10 @@ message DebugOptions {
   // This might be useful if underlying math library returns too many GEMM
   // solutions.
   optional int64 xla_gpu_autotune_max_solutions = 288 [deprecated = true];
+
+  // Number of timed runs of each candidate during GPU autotuning. The mean run
+  // time is used to rank the candidates. Default: 3.
+  optional int32 xla_gpu_autotune_num_timed_runs = 571;
 
   // Maximum number of BLAS library algorithms to evaluate during autotuning.
   // Setting this to a lower value (e.g., 16 or 32) speeds up compilation at the
@@ -716,6 +713,12 @@ message DebugOptions {
   // in the CollectivesRegistry.
   optional string xla_gpu_collectives_implementation = 468;
 
+  // With COLLECTIVES in `xla_gpu_enable_command_buffer` and the SKIP_TEMP or
+  // SKIP_PROFILED update mode, keeps buffers of collectives that may be
+  // recorded into command buffers out of output allocations, so the
+  // collectives are not re-recorded on every execution. Costs temp memory.
+  optional bool xla_gpu_command_buffer_keep_collectives_out_of_outputs = 572;
+
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
@@ -748,6 +751,12 @@ message DebugOptions {
   // 2: Enabled on all supported GPUs (Ampere+).
   optional int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
+  // Lets cuDNN compile non-GEMM fusions.
+  // Current levels:
+  // 0: Disabled.
+  // 1: Compile pointwise fusions with cuDNN.
+  optional int32 xla_gpu_cudnn_non_gemm_fusion_level = 510;
+
   // Limit for the number of kernel configurations (plans) to use during
   // autotuning of cuDNN GEMM fusions. The more - the slower the autotuning
   // but potentially higher the performance.
@@ -777,20 +786,14 @@ message DebugOptions {
   // inputs+output is within the threshold.
   optional int32 xla_gpu_dot_merger_threshold_mb = 331;
 
-  // File to write autotune logs to. It will stored in txt format.
-  optional string xla_gpu_dump_autotune_logs_to = 292;
-
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
   // compilation, possibly multiple times per process. This only works on CUDA.
   optional string xla_gpu_dump_autotune_results_to = 222;
 
   // This flag will be deleted soon. Please use
-  // xla_gpu_dump_autotuned_instructions instead.
+  // xla_dump_isolated_hlos_pre_and_post_config_assignment instead.
   optional bool xla_gpu_dump_autotuned_gemm_fusions = 232 [deprecated = true];
-
-  // Whether to dump instructions before/after autotuning.
-  optional bool xla_gpu_dump_autotuned_instructions = 445;
 
   // Whether to dump llvm ir when compiling to ptx.
   optional bool xla_gpu_dump_llvmir = 155;
@@ -829,6 +832,10 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Records the HLO annotation of each CUDA graph node so profiles can
+  // attribute command buffer work to HLO ops. Requires CUDA 13.2+.
+  optional bool xla_gpu_enable_command_buffer_telemetry = 564;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -1193,6 +1200,15 @@ message DebugOptions {
 
   optional bool xla_gpu_experimental_stream_annotation = 342;
 
+  // Whether to use the autotune cache even when deterministic ops are required
+  // (xla_gpu_deterministic_ops or xla_gpu_exclude_nondeterministic_ops). Cached
+  // entries may come from timing-based autotuning in other modules.
+  //
+  // TODO(b/582688534): Remove this flag once autotuner cache keys respect
+  // flags or deviceless cudnn compilation works by default.
+  optional bool
+      xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops = 566;
+
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
   // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
@@ -1242,11 +1258,6 @@ message DebugOptions {
   // Maximum number of candidate configs considered during autotuning non-gemm
   // fusions.
   optional int32 xla_gpu_fusion_autotune_top_k_configs = 476;
-
-  // A textproto file to override triton configs considered by autotuner. See
-  // also `xla_gpu_override_gemm_autotuner` to override with a single config.
-  // Use xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
-  optional string xla_gpu_gemm_autotuner_override_file = 434;
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -1334,11 +1345,6 @@ message DebugOptions {
   // operands in bytes) to enable windowed einsum and
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   optional int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
-
-  // If set, override triton configs considered by autotuner. Use a textproto
-  // format matching AutotuneResult::TritonGemmKey. Use xla_gpu_cublas_fallback
-  // to allow/disallow fallback to cuBLAS.
-  optional string xla_gpu_override_gemm_autotuner = 295;
 
   optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
@@ -1559,9 +1565,9 @@ message DebugOptions {
   // generated IR.
   optional bool xla_llvm_enable_noalias_metadata = 71;
 
-  // If true, in LLVM-based backends, emit !invariant.load metadata in
-  // the generated IR.
-  optional bool xla_llvm_enable_invariant_load_metadata = 72;
+  // Deprecated, has no effect. XLA no longer emits !invariant.load metadata.
+  optional bool xla_llvm_enable_invariant_load_metadata = 72
+      [deprecated = true];
 
   // If true, a set of expensive LLVM optimization passes will not be run.
   optional bool xla_llvm_disable_expensive_passes = 73;
@@ -1899,11 +1905,6 @@ message DebugOptions {
   // overhead. Set to -1 to disable async device-to-device copies.
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
-  // If true, enable experimental tiling propagation.
-  // TODO(b/514293537): drop the flag.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
-      [deprecated = true];
-
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
@@ -1988,7 +1989,63 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 564
+  // If true, enables experimental thread-block specialized horizontal fusion of
+  // independent small-grid GPU kernels.
+  optional bool xla_gpu_experimental_enable_horizontal_fusion = 565;
+
+  // If true, fuses dependent small fusions into nested fusions. Nested fusions
+  // are emitted as a sequence of phases of a single kernel. Phases exchange
+  // data via HBM or caches and synchronize with block cluster barriers.
+  optional bool xla_gpu_experimental_multi_phase_fusion = 567;
+
+  // Relevant to GPU backend only. If true, temporary buffers for fully-sharded
+  // modules (modules using all devices in the topology) are allocated in the
+  // collective memory space (color 7) instead of the default memory space
+  // (color 0).
+  optional bool xla_gpu_temp_buffer_use_collective_color = 568;
+
+  // Weight applied to the (hbm_bw / fabric_bw) ratio when the
+  // ragged-all-to-all device kernel scores remote-peer copies for per-CTA
+  // work assignment (0.0-1.0). Higher value => remote writes score higher
+  // cost => more CTAs are routed to remote work. Default 0.22 was fitted
+  // empirically on GB200; values outside (0, 1] fall back to the default.
+  optional float xla_gpu_experimental_ragged_all_to_all_fabric_cost_weight =
+      569;
+
+  // List of backends to enable for config assignment / autotuning. If empty,
+  // all backends are enabled. Backends not relevant to the platform will be
+  // ignored, e.g. cuDNN on AMD.
+  // If xla_gpu_experimental_disable_binary_libraries is set, all binary
+  // libraries (CUBLAS, CUBLASLT, CUDNN, with fission) are disabled.
+  // xla_gpu_enable_cublaslt controls if cuBLASLT or cuBLAS is enabled.
+  // The NATIVE_EMITTER and the BLOCK_LEVEL_EMITTER are always enabled for the
+  // fusion autotuning pass, and are not affected by this flag; use
+  // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
+  repeated autotuner.Backend xla_config_assigner_backends = 573;
+
+  // Relative precision for comparing different autotuning solutions against the
+  // reference one.
+  optional float xla_autotune_rtol = 574;
+
+  // Whether to dump isolated HLO instructions before and after config
+  // assignment.
+  optional bool xla_dump_isolated_hlos_pre_and_post_config_assignment = 575;
+
+  // File to write autotune logs to. It will be a binary file unless the name
+  // ends with .txt or .textproto.
+  optional string xla_dump_autotune_logs_to = 576;
+
+  // If set, override Triton config considered by the autotuner using a
+  // textproto format matching AutotuneResult::TritonGemmKey. Use
+  // xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
+  optional string xla_gpu_override_triton_config = 577;
+
+  // A textproto file to override Triton configs considered by the autotuner.
+  // See also `xla_gpu_override_triton_config` to override with a single config.
+  // Use xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
+  optional string xla_gpu_override_triton_configs_file = 578;
+
+  // Next id: 579
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -2074,6 +2131,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
   reserved "xla_gpu_experimental_enable_nan_counter_on_thunks";
   reserved "xla_gpu_experimental_enable_split_k_rewrite";
+  reserved "xla_gpu_experimental_enable_tiling_propagation";
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
@@ -2120,16 +2178,22 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_nvshmem";
   reserved "xla_llvm_force_inline_before_split";
   reserved "xla_gpu_enable_shared_constants";
+  reserved "xla_gpu_autotune_gemm_rtol";
+  reserved "xla_gpu_dump_autotune_logs_to";
+  reserved "xla_gpu_dump_autotuned_instructions";
+  reserved "xla_gpu_experimental_autotune_backends";
+  reserved "xla_gpu_gemm_autotuner_override_file";
+  reserved "xla_gpu_override_gemm_autotuner";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
       180, 183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
       234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
-      278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
-      325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
-      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
-      477, 480;
+      278, 279, 281, 282, 286, 292, 295, 298, 299, 300, 302, 303, 309, 313, 314,
+      316, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371,
+      376, 385, 388, 389, 394, 396, 398, 402, 413, 420, 423, 430, 434, 435, 442,
+      443, 445, 446, 450, 456, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

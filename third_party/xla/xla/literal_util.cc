@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/numeric/int128.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -262,6 +263,141 @@ void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
                *engine);
 }
 
+// Number of distinct outputs produced by a single std::minstd_rand0 transition
+// in [std::minstd_rand0::min(), std::minstd_rand0::max()] = [1, 2^31 - 2].
+constexpr uint64_t kMinstdSpan =
+    static_cast<uint64_t>(std::minstd_rand0::max() - std::minstd_rand0::min()) +
+    1;
+constexpr uint64_t kMinstdSpanSquared = kMinstdSpan * kMinstdSpan;
+
+// Draws one zero-based sample in [0, kMinstdSpan) from `engine`, advancing
+// `engine` by exactly one transition.
+uint64_t DrawMinstdZeroBased(std::minstd_rand0* engine) {
+  return static_cast<uint64_t>((*engine)() - std::minstd_rand0::min());
+}
+
+// Stateless SplitMix64 finalizer used to deterministically derive fallback
+// candidate values (when a sampled value hits a forbidden state such as 0.0,
+// NaN, or Inf) without advancing the per-partition engine past its fixed
+// `steps_per_element` transition budget.
+uint64_t Mix64(uint64_t x) {
+  x ^= x >> 30;
+  x *= 0xbf58476d1ce4e5b9ULL;
+  x ^= x >> 27;
+  x *= 0x94d049bb133111ebULL;
+  x ^= x >> 31;
+  return x;
+}
+
+// Maps one zero-based std::minstd_rand0 draw in [0, kMinstdSpan) uniformly to a
+// double in [0.0, 1.0). Sufficient for 32-bit and narrower floating-point
+// significands (<= 24 bits).
+double UniformDouble01From1Draw(uint64_t draw0) {
+  return static_cast<double>(draw0) * (1.0 / static_cast<double>(kMinstdSpan));
+}
+
+// Combines two zero-based std::minstd_rand0 draws into a 53-bit IEEE 754 double
+// significand in [0.0, 1.0) so 64-bit doubles receive full mantissa entropy.
+double UniformDouble01From2Draws(uint64_t draw0, uint64_t draw1) {
+  const uint64_t combined = draw0 * kMinstdSpan + draw1;
+  const uint64_t bits53 = static_cast<uint64_t>(
+      (static_cast<absl::uint128>(combined) << 53) / kMinstdSpanSquared);
+  return static_cast<double>(bits53) *
+         (1.0 / static_cast<double>(uint64_t{1} << 53));
+}
+
+// Combines two zero-based std::minstd_rand0 draws into an unbiased 32-bit
+// unsigned integer in [0, 2^32).
+uint32_t UniformUint32From2Draws(uint64_t draw0, uint64_t draw1) {
+  const uint64_t combined = draw0 * kMinstdSpan + draw1;
+  return static_cast<uint32_t>((static_cast<absl::uint128>(combined) << 32) /
+                               kMinstdSpanSquared);
+}
+
+// Advances a std::minstd_rand0 engine by `steps` transitions in O(log(steps))
+// time using binary modular exponentiation. Since std::minstd_rand0 is a
+// multiplicative linear congruential generator with transition
+// s_{k+1} = (s_k * 16807) mod (2^31 - 1), jumping ahead by `steps` allows
+// worker threads to populate disjoint slices of a large tensor concurrently
+// while advancing the caller's engine deterministically.
+std::minstd_rand0 AdvanceMinstdRand0(std::minstd_rand0 engine, uint64_t steps) {
+  if (steps == 0) {
+    return engine;
+  }
+  constexpr uint64_t kModulus = std::minstd_rand0::modulus;
+  constexpr uint64_t kMultiplier = std::minstd_rand0::multiplier;
+  // Advance once via operator() to normalize seed 0 (or any unnormalized state)
+  // into [1, kModulus - 1], then multiply by kMultiplier^(steps - 1) mod
+  // kModulus.
+  uint64_t state = engine();
+  uint64_t remaining = steps - 1;
+  uint64_t base = kMultiplier;
+  uint64_t factor = 1;
+  while (remaining > 0) {
+    if (remaining & 1) {
+      factor = (factor * base) % kModulus;
+    }
+    base = (base * base) % kModulus;
+    remaining >>= 1;
+  }
+  state = (state * factor) % kModulus;
+  return std::minstd_rand0(static_cast<std::minstd_rand0::result_type>(state));
+}
+
+// Minimum number of elements per parallel partition. Tensors smaller than
+// kMinElementsPerPartition use the legacy single-threaded distribution loops to
+// preserve bit-identical random sequences in small unit tests. Tensors in
+// [kMinElementsPerPartition, 2 * kMinElementsPerPartition) run the fixed-step
+// generator inline on the calling thread, and tensors of at least
+// 2 * kMinElementsPerPartition partition work across the global
+// ForEachIndexParallel thread pool.
+constexpr int64_t kMinElementsPerPartition = 16384;
+
+// Partitions `num_elements` across the global ForEachIndexParallel thread pool,
+// giving each partition its own deterministically jumped-ahead engine state.
+// Every element in `fn` must advance `local_engine` by strictly
+// `steps_per_element` transitions so output values and the final `*engine`
+// state are independent of the host thread count and partition boundaries.
+// Tensors below 2 * kMinElementsPerPartition run inline to avoid thread
+// dispatch overhead.
+template <typename PerPartitionFn>
+void ParallelPopulateWithEngine(int64_t num_elements, std::minstd_rand0* engine,
+                                int64_t steps_per_element,
+                                PerPartitionFn&& fn) {
+  if (num_elements <= 0) {
+    return;
+  }
+  const int max_threads = ShapeUtil::GetForEachIndexParallelThreadCount();
+  if (num_elements < kMinElementsPerPartition * 2 || max_threads <= 1) {
+    fn(0, num_elements, engine);
+    return;
+  }
+  const int64_t num_partitions = std::min<int64_t>(
+      max_threads,
+      CeilOfRatio<int64_t>(num_elements, kMinElementsPerPartition));
+  const int64_t partition_size =
+      CeilOfRatio<int64_t>(num_elements, num_partitions);
+  const std::minstd_rand0 base_engine = *engine;
+  const uint64_t steps_u64 = static_cast<uint64_t>(steps_per_element);
+  Shape work_shape = ShapeUtil::MakeShape(U8, {num_partitions});
+  ShapeUtil::ForEachIndexParallel(
+      work_shape,
+      [&](absl::Span<const int64_t> partition_index,
+          int /*thread_id*/) -> absl::StatusOr<bool> {
+        const int64_t partition_id = partition_index[0];
+        const int64_t start = partition_id * partition_size;
+        const int64_t end = std::min(start + partition_size, num_elements);
+        if (start < end) {
+          std::minstd_rand0 local_engine = AdvanceMinstdRand0(
+              base_engine, static_cast<uint64_t>(start) * steps_u64);
+          fn(start, end, &local_engine);
+        }
+        return true;
+      });
+  *engine = AdvanceMinstdRand0(base_engine,
+                               static_cast<uint64_t>(num_elements) * steps_u64);
+}
+
 // Populates a floating point literal with random floating points sampled from a
 // uniform-log distribution spanning approximately the entire range of the
 // representable floating point.
@@ -276,7 +412,8 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
                                       std::numeric_limits<float>::infinity(),
                                       -std::numeric_limits<float>::infinity()};
   constexpr int kNumSpecialValues = sizeof(kSpecialValues) / sizeof(float);
-  std::uniform_real_distribution<float> special_value_gen(0, 1);
+  constexpr float kHalfInterval =
+      0.5f + (kSpecialValueProbability * kNumSpecialValues) / 2;
 
   // Generates floating points with a log-uniform distribution. This causes the
   // exponent of the floating point to have a uniform distribution.
@@ -285,25 +422,59 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
 
   using GeneratorT =
       std::conditional_t<sizeof(FloatT) >= sizeof(double), double, float>;
-  std::uniform_real_distribution<GeneratorT> generator(min_exp - 1,
-                                                       max_exp - 1);
-
-  for (FloatT& value : literal->data<FloatT>()) {
-    // Each special value has a kSpecialValueProbability chance to be generated
-    // instead of sampling using the normal distributions.
-    float random_interval = special_value_gen(*engine);
-    if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
-      value =
-          static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
-    } else {
-      // Non special values range from [kSpecialValueProbability, 1]. Take the
-      // lower half of that range as a sign of -1, the upper half is +1.
-      const float kHalfInterval =
-          0.5f + (kSpecialValueProbability * kNumSpecialValues) / 2;
-      const float sign = (random_interval < kHalfInterval) ? 1 : -1;
-      value = static_cast<FloatT>(exp2(generator(*engine)) * sign);
+  absl::Span<FloatT> data = literal->data<FloatT>();
+  if (static_cast<int64_t>(data.size()) < kMinElementsPerPartition) {
+    std::uniform_real_distribution<float> special_value_gen(0, 1);
+    std::uniform_real_distribution<GeneratorT> generator(min_exp - 1,
+                                                         max_exp - 1);
+    for (FloatT& value : data) {
+      float random_interval = special_value_gen(*engine);
+      if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
+        value = static_cast<FloatT>(
+            kSpecialValues[(*engine)() % kNumSpecialValues]);
+      } else {
+        const float sign = (random_interval < kHalfInterval) ? 1 : -1;
+        value = static_cast<FloatT>(std::exp2(generator(*engine)) * sign);
+      }
     }
+    return;
   }
+
+  // Always consume a fixed number of RNG transitions per element (3 for 64-bit
+  // floats, 2 for <= 32-bit floats) regardless of whether the element hits the
+  // special-value branch or the normal log-uniform branch so parallel
+  // partitions stay synchronized.
+  constexpr bool kNeedsTwoDrawsForExp = sizeof(GeneratorT) >= sizeof(double);
+  constexpr int64_t kStepsPerElement = kNeedsTwoDrawsForExp ? 3 : 2;
+
+  const double min_exp_d = static_cast<double>(min_exp - 1);
+  const double max_exp_d = static_cast<double>(max_exp - 1);
+  ParallelPopulateWithEngine(
+      static_cast<int64_t>(data.size()), engine, kStepsPerElement,
+      [&](int64_t start, int64_t end, std::minstd_rand0* local_engine) {
+        for (int64_t i = start; i < end; ++i) {
+          const uint64_t draw0 = DrawMinstdZeroBased(local_engine);
+          const uint64_t draw1 = DrawMinstdZeroBased(local_engine);
+          uint64_t draw2 = 0;
+          if constexpr (kNeedsTwoDrawsForExp) {
+            draw2 = DrawMinstdZeroBased(local_engine);
+          }
+          const float random_interval =
+              static_cast<float>(UniformDouble01From1Draw(draw0));
+          if (random_interval < kSpecialValueProbability * kNumSpecialValues) {
+            data[i] =
+                static_cast<FloatT>(kSpecialValues[draw1 % kNumSpecialValues]);
+          } else {
+            const float sign = (random_interval < kHalfInterval) ? 1.0f : -1.0f;
+            const double u_exp = kNeedsTwoDrawsForExp
+                                     ? UniformDouble01From2Draws(draw1, draw2)
+                                     : UniformDouble01From1Draw(draw1);
+            const GeneratorT exp_val = static_cast<GeneratorT>(
+                (1.0 - u_exp) * min_exp_d + u_exp * max_exp_d);
+            data[i] = static_cast<FloatT>(std::exp2(exp_val) * sign);
+          }
+        }
+      });
 }
 
 template <typename FloatT, typename GeneratorT>
@@ -333,18 +504,81 @@ void PopulateWithRandomFloatingPointData(
       min = max - static_cast<GeneratorT>(0.3);
     }
   }
+  absl::Span<FloatT> data = literal->data<FloatT>();
   if (min == max) {
-    for (FloatT& value : literal->data<FloatT>()) {
-      value = static_cast<FloatT>(min);
+    std::fill(data.begin(), data.end(), static_cast<FloatT>(min));
+    return;
+  }
+  const bool exclude_zero = interval.has_value() && interval->exclude_zero;
+  if (static_cast<int64_t>(data.size()) < kMinElementsPerPartition) {
+    std::uniform_real_distribution<GeneratorT> generator(min, max);
+    for (FloatT& value : data) {
+      value = static_cast<FloatT>(generator(*engine));
+      while (exclude_zero && value == static_cast<FloatT>(0.0f)) {
+        value = static_cast<FloatT>(generator(*engine));
+      }
     }
     return;
   }
-  std::uniform_real_distribution<GeneratorT> generator(min, max);
-  for (FloatT& value : literal->data<FloatT>()) {
-    value = static_cast<FloatT>(generator(*engine));
-    while (interval.has_value() && interval->exclude_zero && value == 0.0f) {
-      value = static_cast<FloatT>(generator(*engine));
-    }
+  const double min_d = static_cast<double>(min);
+  const double max_d = static_cast<double>(max);
+  constexpr bool kNeedsTwoDraws = sizeof(FloatT) >= sizeof(double);
+  constexpr int64_t kStepsPerElement = kNeedsTwoDraws ? 2 : 1;
+  ParallelPopulateWithEngine(
+      static_cast<int64_t>(data.size()), engine, kStepsPerElement,
+      [&](int64_t start, int64_t end, std::minstd_rand0* local_engine) {
+        for (int64_t i = start; i < end; ++i) {
+          const uint64_t draw0 = DrawMinstdZeroBased(local_engine);
+          uint64_t draw1 = 0;
+          if constexpr (kNeedsTwoDraws) {
+            draw1 = DrawMinstdZeroBased(local_engine);
+          }
+          double u = kNeedsTwoDraws ? UniformDouble01From2Draws(draw0, draw1)
+                                    : UniformDouble01From1Draw(draw0);
+          // Convex interpolation avoids (max - min) overflow to +Inf on wide
+          // double intervals such as [-1e308, 1e308].
+          GeneratorT scaled =
+              static_cast<GeneratorT>((1.0 - u) * min_d + u * max_d);
+          scaled = std::min(max, std::max(min, scaled));
+          FloatT value = static_cast<FloatT>(scaled);
+          if (exclude_zero && value == static_cast<FloatT>(0.0f)) {
+            // Derive retry candidates via stateless Mix64 so the per-element
+            // engine step count remains constant across parallel partitions.
+            uint64_t retry_state = draw0 ^ (draw1 << 31);
+            for (int attempt = 0;
+                 attempt < 64 && value == static_cast<FloatT>(0.0f);
+                 ++attempt) {
+              retry_state = Mix64(retry_state + 0x9e3779b97f4a7c15ULL);
+              u = static_cast<double>(retry_state >> 11) *
+                  (1.0 / static_cast<double>(uint64_t{1} << 53));
+              scaled = static_cast<GeneratorT>((1.0 - u) * min_d + u * max_d);
+              scaled = std::min(max, std::max(min, scaled));
+              value = static_cast<FloatT>(scaled);
+            }
+            if (value == static_cast<FloatT>(0.0f)) {
+              const FloatT max_f = static_cast<FloatT>(max);
+              value = (max_f != static_cast<FloatT>(0.0f))
+                          ? max_f
+                          : static_cast<FloatT>(min);
+            }
+          }
+          data[i] = value;
+        }
+      });
+}
+
+// Reinterprets the low-order bits of `bits` as a floating-point value of type
+// `FloatT` (1, 2, or 4 bytes).
+template <typename FloatT>
+FloatT BitCastUint32ToFloat(uint32_t bits) {
+  if constexpr (sizeof(FloatT) == 1) {
+    return absl::bit_cast<FloatT>(static_cast<uint8_t>(bits));
+  } else if constexpr (sizeof(FloatT) == 2) {
+    return absl::bit_cast<FloatT>(static_cast<uint16_t>(bits));
+  } else if constexpr (sizeof(FloatT) == 4) {
+    return absl::bit_cast<FloatT>(bits);
+  } else {
+    LOG(FATAL) << "Unsupported float size: " << sizeof(FloatT);
   }
 }
 
@@ -363,34 +597,56 @@ void PopulateWithUniformFullRangeFloatingPointData(Literal* literal,
   const uint32_t max_val = bit_width == 32
                                ? std::numeric_limits<uint32_t>::max()
                                : (1U << bit_width) - 1;
-  absl::uniform_int_distribution<uint32_t> generator(0, max_val);
-  for (FloatT& value : literal->data<FloatT>()) {
-    int repeats = 0;
-    while (true) {
-      if constexpr (sizeof(FloatT) == 1) {
-        value =
-            absl::bit_cast<FloatT>(static_cast<uint8_t>(generator(*engine)));
-      } else if constexpr (sizeof(FloatT) == 2) {
-        value =
-            absl::bit_cast<FloatT>(static_cast<uint16_t>(generator(*engine)));
-      } else if constexpr (sizeof(FloatT) == 4) {
-        value =
-            absl::bit_cast<FloatT>(static_cast<uint32_t>(generator(*engine)));
-      } else {
-        LOG(FATAL) << "Unsupported float size: " << sizeof(FloatT);
+  absl::Span<FloatT> data = literal->data<FloatT>();
+  if (static_cast<int64_t>(data.size()) < kMinElementsPerPartition) {
+    absl::uniform_int_distribution<uint32_t> generator(0, max_val);
+    for (FloatT& value : data) {
+      int repeats = 0;
+      while (true) {
+        value = BitCastUint32ToFloat<FloatT>(generator(*engine));
+        if (!std::isinf(value) && !std::isnan(value)) {
+          break;
+        }
+        repeats++;
+        CHECK_LE(repeats, 5)
+            << "Exceeded max_repeats=5 when generating float values";
       }
-
-      bool is_forbidden = std::isinf(value) || std::isnan(value);
-
-      if (!is_forbidden) {
-        break;
-      }
-
-      repeats++;
-      CHECK_LE(repeats, 5)
-          << "Exceeded max_repeats=5 when generating float values";
     }
+    return;
   }
+  const int64_t steps_per_element = bit_width > 16 ? 2 : 1;
+  ParallelPopulateWithEngine(
+      static_cast<int64_t>(data.size()), engine, steps_per_element,
+      [&](int64_t start, int64_t end, std::minstd_rand0* local_engine) {
+        for (int64_t i = start; i < end; ++i) {
+          const uint64_t draw0 = DrawMinstdZeroBased(local_engine);
+          uint64_t draw1 = 0;
+          uint32_t raw_bits = 0;
+          if (steps_per_element == 2) {
+            draw1 = DrawMinstdZeroBased(local_engine);
+            raw_bits = UniformUint32From2Draws(draw0, draw1) & max_val;
+          } else {
+            raw_bits = static_cast<uint32_t>(draw0) & max_val;
+          }
+          FloatT value = BitCastUint32ToFloat<FloatT>(raw_bits);
+          if (std::isinf(value) || std::isnan(value)) {
+            // Re-sample using stateless Mix64 so the engine advances by a fixed
+            // number of transitions per element regardless of NaN/Inf retries.
+            uint64_t retry_state = draw0 ^ (draw1 << 31);
+            for (int attempt = 0;
+                 attempt < 64 && (std::isinf(value) || std::isnan(value));
+                 ++attempt) {
+              retry_state = Mix64(retry_state + 0x9e3779b97f4a7c15ULL);
+              raw_bits = static_cast<uint32_t>(retry_state) & max_val;
+              value = BitCastUint32ToFloat<FloatT>(raw_bits);
+            }
+            if (std::isinf(value) || std::isnan(value)) {
+              value = static_cast<FloatT>(0.0f);
+            }
+          }
+          data[i] = value;
+        }
+      });
 }
 
 template <typename FloatT>
@@ -583,6 +839,42 @@ std::pair<IntT, IntT> GetIntegralBounds(
   return {SafeClampInt64<IntT>(min_64), SafeClampInt64<IntT>(max_64)};
 }
 
+// Samples an integer offset in [0, span_minus_1] using strictly
+// `steps_per_element` transitions of `engine` (1 draw for spans <= 2^20, 2
+// draws for spans <= 2^32, and 4 draws for 64-bit spans). Using a fixed draw
+// count instead of rejection sampling in absl::uniform_int_distribution avoids
+// per-element rejection loops on sub-byte types (such as s4/u4) and guarantees
+// exact partition-count invariance across worker threads.
+uint64_t SampleIntegralOffset(std::minstd_rand0* engine, uint64_t span_minus_1,
+                              int64_t steps_per_element) {
+  if (steps_per_element == 1) {
+    const uint64_t draw0 = DrawMinstdZeroBased(engine);
+    return (draw0 * (span_minus_1 + 1)) / kMinstdSpan;
+  }
+  if (steps_per_element == 2) {
+    const uint64_t draw0 = DrawMinstdZeroBased(engine);
+    const uint64_t draw1 = DrawMinstdZeroBased(engine);
+    const uint64_t draw62 = draw0 * kMinstdSpan + draw1;
+    return static_cast<uint64_t>(
+        (static_cast<absl::uint128>(draw62) * (span_minus_1 + 1)) /
+        kMinstdSpanSquared);
+  }
+  const uint64_t draw0 = DrawMinstdZeroBased(engine);
+  const uint64_t draw1 = DrawMinstdZeroBased(engine);
+  const uint64_t draw2 = DrawMinstdZeroBased(engine);
+  const uint64_t draw3 = DrawMinstdZeroBased(engine);
+  const uint64_t u64 =
+      (static_cast<uint64_t>(UniformUint32From2Draws(draw0, draw1)) << 32) |
+      UniformUint32From2Draws(draw2, draw3);
+  if (span_minus_1 == std::numeric_limits<uint64_t>::max()) {
+    return u64;
+  }
+  return static_cast<uint64_t>(
+      (static_cast<absl::uint128>(u64) *
+       (static_cast<absl::uint128>(span_minus_1) + 1)) >>
+      64);
+}
+
 template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates, IntT min,
@@ -606,18 +898,87 @@ void PopulateWithRandomIntegralDataWithBounds(
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    absl::uniform_int_distribution<RngT<IntT>> generator(
-        static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
-    for (IntT& value : literal->data<IntT>()) {
-      value = static_cast<IntT>(generator(*engine));
-      if (alignment.has_value()) {
-        value = (value / alignment.value()) * alignment.value();
+    absl::Span<IntT> data = literal->data<IntT>();
+    if (static_cast<int64_t>(data.size()) < kMinElementsPerPartition) {
+      absl::uniform_int_distribution<RngT<IntT>> generator(
+          static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
+      for (IntT& value : data) {
+        value = static_cast<IntT>(generator(*engine));
+        if (alignment.has_value()) {
+          value = (value / *alignment) * *alignment;
+        }
+        if (index_known_zeroes.has_value()) {
+          value &= ~*index_known_zeroes;
+        }
       }
-      if (index_known_zeroes.has_value()) {
-        value &= ~index_known_zeroes.value();
-      }
+      return;
     }
+    // Map signed bounds into an order-preserving unsigned domain by flipping
+    // the sign bit so `u_max - u_min` never overflows signed arithmetic.
+    using SignedOrUnsignedRngT = RngT<IntT>;
+    using UnsignedRngT = std::make_unsigned_t<SignedOrUnsignedRngT>;
+    constexpr UnsignedRngT kSignBit =
+        std::is_signed_v<SignedOrUnsignedRngT>
+            ? (UnsignedRngT{1} << (sizeof(UnsignedRngT) * 8 - 1))
+            : UnsignedRngT{0};
+    const SignedOrUnsignedRngT min_rng = static_cast<SignedOrUnsignedRngT>(min);
+    const SignedOrUnsignedRngT max_rng = static_cast<SignedOrUnsignedRngT>(max);
+    const uint64_t u_min =
+        static_cast<uint64_t>(static_cast<UnsignedRngT>(min_rng) ^ kSignBit);
+    const uint64_t u_max =
+        static_cast<uint64_t>(static_cast<UnsignedRngT>(max_rng) ^ kSignBit);
+    CHECK_LE(u_min, u_max);
+    const uint64_t span_minus_1 = u_max - u_min;
+
+    const int64_t steps_per_element =
+        span_minus_1 < (uint64_t{1} << 20)
+            ? 1
+            : (span_minus_1 <= std::numeric_limits<uint32_t>::max() ? 2 : 4);
+    ParallelPopulateWithEngine(
+        static_cast<int64_t>(data.size()), engine, steps_per_element,
+        [&](int64_t start, int64_t end, std::minstd_rand0* local_engine) {
+          for (int64_t i = start; i < end; ++i) {
+            const uint64_t offset = SampleIntegralOffset(
+                local_engine, span_minus_1, steps_per_element);
+            const SignedOrUnsignedRngT sampled =
+                static_cast<SignedOrUnsignedRngT>(
+                    static_cast<UnsignedRngT>(u_min + offset) ^ kSignBit);
+            IntT value = static_cast<IntT>(sampled);
+            if (alignment.has_value()) {
+              value = (value / *alignment) * *alignment;
+            }
+            if (index_known_zeroes.has_value()) {
+              value &= ~*index_known_zeroes;
+            }
+            data[i] = value;
+          }
+        });
   }
+}
+
+// Populates a PRED (boolean) literal with uniform random booleans, using the
+// parallel fixed-step engine path for tensors of at least
+// kMinElementsPerPartition elements.
+void PopulateWithRandomPredData(Literal* literal, std::minstd_rand0* engine) {
+  CHECK_NOTNULL(engine);
+  absl::Span<bool> data = literal->data<bool>();
+  if (static_cast<int64_t>(data.size()) < kMinElementsPerPartition) {
+    absl::uniform_int_distribution<int> generator(0, 1);
+    for (bool& value : data) {
+      value = generator(*engine);
+    }
+    return;
+  }
+  constexpr std::minstd_rand0::result_type kHalfMax =
+      std::minstd_rand0::max() / 2;
+  ParallelPopulateWithEngine(
+      static_cast<int64_t>(data.size()), engine,
+      /*steps_per_element=*/1,
+      [&](int64_t start, int64_t end, std::minstd_rand0* local_engine) {
+        for (int64_t i = start; i < end; ++i) {
+          data[i] = (*local_engine)() > kHalfMax;
+        }
+      });
 }
 
 }  // namespace
@@ -975,8 +1336,12 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     return Literal::CreateFromShape(shape);
   }
   // Clear tiles/element size in shape's layout before using it for creating
-  // literal.
+  // literal. Ensure a default layout is present first before mutating layout
+  // fields.
   Shape new_shape = shape;
+  if (!new_shape.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&new_shape);
+  }
   new_shape.mutable_layout()->clear_tiles();
   new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(1);
   new_shape.mutable_layout()->set_element_size_in_bits(0);
@@ -994,11 +1359,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
             return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
-            absl::uniform_int_distribution<int> generator(0, 1);
-            CHECK_OK(literal.Populate<bool>(
-                [&](absl::Span<const int64_t> /*indices*/) {
-                  return generator(*engine);
-                }));
+            PopulateWithRandomPredData(&literal, engine);
             return absl::OkStatus();
           }
           if constexpr (primitive_util::IsIntegralType(

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -196,22 +197,22 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
   return absl::OkStatus();
 }
 
-std::pair<tsl::Future<KernelReuseCache::Entry>, bool>
+std::pair<tsl::Future<KernelReuseCache::Kernel>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
-    absl::Span<const emitters::KernelArgument> kernel_arguments,
+    const emitters::KernelArguments& kernel_arguments,
     absl::string_view discriminator,
     absl::FunctionRef<tsl::Future<KernelReuseCache::Entry>()> generator) {
   std::string fingerprint = emitters::GetComputationFingerprint(
-      fused_computation, kernel_arguments, discriminator);
+      fused_computation, kernel_arguments.args(), discriminator);
   VLOG(4) << "Fingerprint: ";
   XLA_VLOG_LINES(4, fingerprint);
-  return GetWithStatus(std::move(fingerprint), generator);
+  return GetWithStatus(std::move(fingerprint), kernel_arguments, generator);
 }
 
-std::pair<tsl::Future<KernelReuseCache::Entry>, bool>
+std::pair<tsl::Future<KernelReuseCache::Kernel>, bool>
 KernelReuseCache::GetWithStatus(
-    std::string fingerprint,
+    std::string fingerprint, const emitters::KernelArguments& kernel_arguments,
     absl::FunctionRef<tsl::Future<KernelReuseCache::Entry>()> generator) {
   absl::MutexLock lock(m_);
   hits_.insert(fingerprint);
@@ -225,7 +226,22 @@ KernelReuseCache::GetWithStatus(
     it = cache_.insert({std::move(fingerprint), generator()}).first;
   }
 
-  return {it->second, cached};
+  return {it->second.Map(
+              [kernel_arguments](const KernelReuseCache::Entry& entry) mutable {
+                return KernelReuseCache::Kernel{
+                    GpuKernelSpec{
+                        entry.kernel_name,
+                        entry.launch_dimensions,
+                        std::move(kernel_arguments),
+                        entry.shmem_bytes,
+                        entry.use_pdl,
+                        entry.tma_metadata,
+                        entry.cluster_dim,
+                    },
+                    entry.binary,
+                };
+              }),
+          cached};
 }
 
 }  // namespace xla::gpu

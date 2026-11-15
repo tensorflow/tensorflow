@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -635,16 +636,17 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
   for (int i = 0; i < num_elements; ++i, ++element) {
     strings->push_back(*element);
   }
-  std::move(on_done_with_host_buffer)();
+  if (on_done_with_host_buffer) {
+    std::move(on_done_with_host_buffer)();
+  }
 
   BasicStringArray::Buffers buffers;
   buffers.push_back(*strings);
-  auto buffer_releaser = [strings = std::move(strings)]() {};
 
   return BasicStringArray::Create(
       client, std::move(shape), std::move(sharding),
       tsl::Future<BasicStringArray::Buffers>(std::move(buffers)),
-      std::move(buffer_releaser));
+      std::move(strings));
 }
 
 absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
@@ -678,7 +680,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
   };
   auto buffer_backing_store =
       std::make_shared<BufferBackingStore>(sharding->devices()->size());
-  auto on_done_with_buffer = [buffer_holder = buffer_backing_store]() {};
+  BasicStringArray::OnDoneWithBuffer on_done_with_buffer = buffer_backing_store;
 
   struct BufferCopyingState {
     BufferCopyingState(int num_buffers_to_copy,
@@ -1001,7 +1003,6 @@ absl::StatusOr<xla::GlobalDeviceId> PjRtClient::GetGlobalDeviceId(
 }
 
 absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
-  DCHECK(this);
   auto it = device_id_map_.find(device_id);
   if (it != device_id_map_.end()) {
     return it->second;
@@ -1012,7 +1013,6 @@ absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
 
 absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
-  DCHECK(this);
   ABSL_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                    pjrt_client_->LookupAddressableDevice(
                        xla::LocalDeviceId(local_hardware_id)));
@@ -1020,7 +1020,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
 }
 
 absl::StatusOr<DeviceListRef> PjRtClient::MakeDeviceList(
-    absl::Span<Device* const> devices) const {
+    absl::Span<Device* absl_nonnull const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
@@ -1049,7 +1049,6 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     LayoutRef layout, Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
-  DCHECK(this);
   if (dtype.kind() == DType::kString) {
     if (layout != nullptr) {
       return InvalidArgument(
@@ -1158,7 +1157,6 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   if (error.ok()) {
     return absl::InvalidArgumentError("Error status must not be OK");
   }
-  DCHECK(this);
   std::vector<ArrayRef> arrays;
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
@@ -1167,7 +1165,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
                        BasicStringArray::Create(
                            this, array_spec.shape, array_spec.sharding,
                            tsl::Future<BasicStringArray::Buffers>(error),
-                           /*on_done_with_buffer=*/[]() {}));
+                           /*on_done_with_buffer=*/nullptr));
       continue;
     }
 
@@ -1235,7 +1233,6 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     DType dtype, Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
   if (!arrays.empty() && isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
@@ -1387,11 +1384,12 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArraysImpl(
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
+    if ((devices.has_value() &&
+         *sharding.devices() != *arrays[0]->sharding().devices()) ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
-          "memory kind");
+          "memory kind when `devices` is specified");
     }
   }
 
@@ -2072,7 +2070,7 @@ absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
 
 absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> PjRtClient::Load(
     absl::Span<const ExecutableRef> executables,
-    absl::Span<std::unique_ptr<LoadOptions>> options) {
+    absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) {
   if (executables.size() != options.size()) {
     return absl::InvalidArgumentError(
         absl::StrCat("executables and options must have the same size, got ",
@@ -2195,7 +2193,8 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
-                                 Device* device, MemoryKind memory_kind) const {
+                                 Device* absl_nonnull device,
+                                 MemoryKind memory_kind) const {
   // PjRt-IFRT devices are currently homogeneous. The cache key omits device
   // information.
   // TODO(hyeontaek): Add device-specific information (e.g., `device->Kind()`)

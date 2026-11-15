@@ -263,8 +263,8 @@ absl::Status TritonFusionNumericsVerifier::VerifyTritonFusion(
                        /*disable_triton=*/true, stream_executor_, allocator_,
                        alias_info_, mlir_context_));
 
-  auto status = profiler.CheckOutputBuffer(
-      triton_result, emitters_result, debug_opts.xla_gpu_autotune_gemm_rtol());
+  auto status = profiler.CheckOutputBuffer(triton_result, emitters_result,
+                                           debug_opts.xla_autotune_rtol());
   VLOG(2) << "CompareBuffers result: " << status;
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "

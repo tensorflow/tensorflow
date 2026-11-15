@@ -17,15 +17,23 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/literal_util.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -410,5 +418,31 @@ bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
          (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1 ||
           GatherIsBroadcast(inst));
 }
+
+namespace {
+
+class GatherExpanderFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "gather_expander"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    static const absl::NoDestructor<
+        absl::flat_hash_map<absl::string_view, GatherExpander::Mode>>
+        kModes({
+            {"eliminate_all_gathers", GatherExpander::kEliminateAllGathers},
+            {"eliminate_simple_gathers",
+             GatherExpander::kEliminateSimpleGathers},
+        });
+    ABSL_ASSIGN_OR_RETURN(GatherExpander::Mode mode,
+                     options.GetEnum("mode", *kModes));
+    return std::make_unique<GatherExpander>(mode);
+  }
+};
+
+const HloPassFactory* const kGatherExpanderRegistration =
+    RegisterHloPassFactory<GatherExpanderFactory>();
+
+}  // namespace
 
 }  // namespace xla

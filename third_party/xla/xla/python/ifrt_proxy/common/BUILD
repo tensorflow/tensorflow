@@ -138,6 +138,7 @@ ifrt_proxy_cc_test(
         ":types",
         ":types_proto_cc",
         "//xla/pjrt:pjrt_common",
+        "//xla/python/ifrt",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",

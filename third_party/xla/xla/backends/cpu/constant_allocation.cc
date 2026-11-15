@@ -107,7 +107,8 @@ absl::StatusOr<std::vector<ConstantAllocation>> CreateConstantAllocations(
 
     // Find the constant instruction defining the value for allocation.
     HloInstruction* const_instr = nullptr;
-    for (const auto& [value, _] : allocation.assigned_buffers()) {
+    // NOLINTNEXTLINE(google*-custom-deterministic-iteration-order)
+    for (const auto& [value, _] : assignment.assigned_buffers(allocation)) {
       // Multiple aliasing instructions can share the allocation, we need to
       // find the original constant instruction that defines the value.
       if (value->instruction()->opcode() == HloOpcode::kConstant) {

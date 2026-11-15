@@ -536,6 +536,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/data/experimental/ops:__pkg__",
@@ -832,9 +833,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_gen",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -3648,6 +3651,7 @@ cuda_py_strict_test(
     tags = [
         "no_windows_gpu",
     ],
+    xla_enabled = True,
     deps = [
         ":array_ops",
         ":gradients",

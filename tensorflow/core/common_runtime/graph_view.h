@@ -148,7 +148,7 @@ struct NodeItem {
  private:
   friend class GraphView;
 
-  NodeItem() {}
+  NodeItem() = default;
 
   // Variable length section starts immediately after *this
   // (uint8 is enough for DataType).

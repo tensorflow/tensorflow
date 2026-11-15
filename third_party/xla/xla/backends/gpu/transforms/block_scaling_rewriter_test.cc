@@ -20,16 +20,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -368,265 +365,6 @@ ENTRY main {
 })");
 }
 
-TEST_F(BlockScalingRewriterTest, CudnnFusionSupportedE4M3) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f8e4m3fn[128,256] parameter(0)
-  %rhs = f8e4m3fn[128,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[128,8] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_TRUE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionSupportedE5M2) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f8e5m2[128,256] parameter(0)
-  %rhs = f8e5m2[128,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[128,8] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_TRUE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionSupportedMxfp4) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f4e2m1fn[128,256] parameter(0)
-  %rhs = f4e2m1fn[128,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[128,8] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_TRUE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionUnsupportedMixedFp8Fp4) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f8e4m3fn[128,256] parameter(0)
-  %rhs = f4e2m1fn[128,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[128,8] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionUnsupportedDimensions) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f8e4m3fn[128,256] parameter(0)
-  %rhs = f8e4m3fn[256,128] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[8,128] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionUnupportedLayout) {
-  constexpr absl::string_view hlo_string = R"(
-HloModule test
-
-ENTRY main {
-  %lhs = f8e4m3fn[16,128]{0,1} parameter(0)
-  %rhs = f8e4m3fn[32,128]{1,0} parameter(1)
-  %lhs_scale = f8e8m0fnu[16,4]{1,0} parameter(2)
-  %rhs_scale = f8e8m0fnu[32,4]{1,0} parameter(3)
-  ROOT %result = f16[16,32]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionUnsupportedInputs) {
-  constexpr absl::string_view hlo_string = R"(
-ENTRY main {
-  %lhs = f8e4m3fn[128] parameter(0)
-  %lhs_bc = f8e4m3fn[128,256] broadcast(%lhs), dimensions={0}
-  %rhs = f8e4m3fn[128,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[128,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[128,8] parameter(3)
-  ROOT %result = f16[128,128] scaled-dot(%lhs_bc, %rhs, %lhs_scale, %rhs_scale),
-      lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_FALSE(CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(
-      test_module->entry_computation()->root_instruction())));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionSwizzleSimple) {
-  constexpr absl::string_view hlo_string = R"(
-fusion {
-  %lhs = f8e4m3fn[4,384,256] parameter(0)
-  %rhs = f8e4m3fn[4,512,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,384,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,512,8] parameter(3)
-  ROOT %result = f32[4,384,512] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_batch_dims={0}, rhs_batch_dims={0},
-      lhs_contracting_dims={2}, rhs_contracting_dims={2}
-}
-
-ENTRY main {
-  %lhs = f8e4m3fn[4,384,256] parameter(0)
-  %rhs = f8e4m3fn[4,512,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,384,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,512,8] parameter(3)
-  ROOT %result = f32[4,384,512] fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      kind=kCustom, calls=fusion,
-      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(CudnnScaledDotHelper::AddScaleSwizzle(Cast<HloFusionInstruction>(
-      test_module->entry_computation()->root_instruction())));
-
-  constexpr absl::string_view expected = R"(
-  // %lhs_scale.1_swizzle.1
-  CHECK: [[lhs_bc:%.+]] = f8e8m0fnu[4,3,4,32,2,4]{5,4,3,2,1,0} bitcast({{.+}})
-  CHECK: [[lhs_tr:%.+]] = f8e8m0fnu[4,3,2,32,4,4]{5,4,3,2,1,0} transpose([[lhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,384,8]{2,1,0} bitcast([[lhs_tr]])
-  // %rhs_scale.1_swizzle.1
-  CHECK: [[rhs_bc:%.+]] = f8e8m0fnu[4,4,4,32,2,4]{5,4,3,2,1,0} bitcast({{.+}})
-  CHECK: [[rhs_tr:%.+]] = f8e8m0fnu[4,4,2,32,4,4]{5,4,3,2,1,0} transpose([[rhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,512,8]{2,1,0} bitcast([[rhs_tr]])
-  // %fusion
-  CHECK: [[lhs:%.+]] = f8e4m3fn[4,384,256]{2,1,0} parameter(0)
-  CHECK: [[rhs:%.+]] = f8e4m3fn[4,512,256]{2,1,0} parameter(1)
-  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[4,384,8]{2,1,0} parameter(2)
-  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[4,512,8]{2,1,0} parameter(3)
-  CHECK: {{.+}} = f32[4,384,512]{2,1,0} scaled-dot([[lhs]], [[rhs]], [[lhs_scale]], [[rhs_scale]])
-)";
-  EXPECT_THAT(RunFileCheck(test_module->ToString(), expected),
-              absl_testing::IsOkAndHolds(true));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionSwizzlePadContracting) {
-  constexpr absl::string_view hlo_string = R"(
-fusion {
-  %lhs = f8e4m3fn[4,384,224] parameter(0)
-  %rhs = f8e4m3fn[4,512,224] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,384,7] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,512,7] parameter(3)
-  ROOT %result = f32[4,384,512] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_batch_dims={0}, rhs_batch_dims={0},
-      lhs_contracting_dims={2}, rhs_contracting_dims={2}
-}
-
-ENTRY main {
-  %lhs = f8e4m3fn[4,384,224] parameter(0)
-  %rhs = f8e4m3fn[4,512,224] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,384,7] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,512,7] parameter(3)
-  ROOT %result = f32[4,384,512] fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      kind=kCustom, calls=fusion,
-      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(CudnnScaledDotHelper::AddScaleSwizzle(Cast<HloFusionInstruction>(
-      test_module->entry_computation()->root_instruction())));
-
-  constexpr absl::string_view expected = R"(
-  // %lhs_scale.1_swizzle.1
-  CHECK: [[lhs_pad:%.+]] = f8e8m0fnu[4,384,8]{2,1,0} pad({{.+}}, {{.+}}), padding=0_0x0_0x0_1
-  CHECK: [[lhs_bc:%.+]] = f8e8m0fnu[4,3,4,32,2,4]{5,4,3,2,1,0} bitcast([[lhs_pad]])
-  CHECK: [[lhs_tr:%.+]] = f8e8m0fnu[4,3,2,32,4,4]{5,4,3,2,1,0} transpose([[lhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,384,8]{2,1,0} bitcast([[lhs_tr]])
-  // %rhs_scale.1_swizzle.1
-  CHECK: [[rhs_pad:%.+]] = f8e8m0fnu[4,512,8]{2,1,0} pad({{.+}}, {{.+}}), padding=0_0x0_0x0_1
-  CHECK: [[rhs_bc:%.+]] = f8e8m0fnu[4,4,4,32,2,4]{5,4,3,2,1,0} bitcast([[rhs_pad]])
-  CHECK: [[rhs_tr:%.+]] = f8e8m0fnu[4,4,2,32,4,4]{5,4,3,2,1,0} transpose([[rhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,512,8]{2,1,0} bitcast([[rhs_tr]])
-  // %fusion
-  CHECK: [[lhs:%.+]] = f8e4m3fn[4,384,224]{2,1,0} parameter(0)
-  CHECK: [[rhs:%.+]] = f8e4m3fn[4,512,224]{2,1,0} parameter(1)
-  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[4,384,8]{2,1,0} parameter(2)
-  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[4,512,8]{2,1,0} parameter(3)
-  CHECK: {{.+}} = f32[4,384,512]{2,1,0} scaled-dot([[lhs]], [[rhs]], [[lhs_scale]], [[rhs_scale]])
-)";
-  EXPECT_THAT(RunFileCheck(test_module->ToString(), expected),
-              absl_testing::IsOkAndHolds(true));
-}
-
-TEST_F(BlockScalingRewriterTest, CudnnFusionSwizzlePadNoncontracting) {
-  constexpr absl::string_view hlo_string = R"(
-fusion {
-  %lhs = f8e4m3fn[4,320,256] parameter(0)
-  %rhs = f8e4m3fn[4,448,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,320,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,448,8] parameter(3)
-  ROOT %result = f32[4,320,448] scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      lhs_batch_dims={0}, rhs_batch_dims={0},
-      lhs_contracting_dims={2}, rhs_contracting_dims={2}
-}
-
-ENTRY main {
-  %lhs = f8e4m3fn[4,320,256] parameter(0)
-  %rhs = f8e4m3fn[4,448,256] parameter(1)
-  %lhs_scale = f8e8m0fnu[4,320,8] parameter(2)
-  %rhs_scale = f8e8m0fnu[4,448,8] parameter(3)
-  ROOT %result = f32[4,320,448] fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
-      kind=kCustom, calls=fusion,
-      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
-})";
-  ASSERT_OK_AND_ASSIGN(auto test_module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(CudnnScaledDotHelper::AddScaleSwizzle(Cast<HloFusionInstruction>(
-      test_module->entry_computation()->root_instruction())));
-
-  constexpr absl::string_view expected = R"(
-  // %lhs_scale.1_swizzle.1
-  CHECK: [[lhs_pad:%.+]] = f8e8m0fnu[4,384,8]{2,1,0} pad({{.+}}, {{.+}}), padding=0_0x0_64x0_0
-  CHECK: [[lhs_bc:%.+]] = f8e8m0fnu[4,3,4,32,2,4]{5,4,3,2,1,0} bitcast([[lhs_pad]])
-  CHECK: [[lhs_tr:%.+]] = f8e8m0fnu[4,3,2,32,4,4]{5,4,3,2,1,0} transpose([[lhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,384,8]{2,1,0} bitcast([[lhs_tr]])
-  // %rhs_scale.1_swizzle.1
-  CHECK: [[rhs_pad:%.+]] = f8e8m0fnu[4,512,8]{2,1,0} pad({{.+}}, {{.+}}), padding=0_0x0_64x0_0
-  CHECK: [[rhs_bc:%.+]] = f8e8m0fnu[4,4,4,32,2,4]{5,4,3,2,1,0} bitcast([[rhs_pad]])
-  CHECK: [[rhs_tr:%.+]] = f8e8m0fnu[4,4,2,32,4,4]{5,4,3,2,1,0} transpose([[rhs_bc]]), dimensions={0,1,4,3,2,5}
-  CHECK: {{.+}} = f8e8m0fnu[4,512,8]{2,1,0} bitcast([[rhs_tr]])
-  // %fusion
-  CHECK: [[lhs:%.+]] = f8e4m3fn[4,320,256]{2,1,0} parameter(0)
-  CHECK: [[rhs:%.+]] = f8e4m3fn[4,448,256]{2,1,0} parameter(1)
-  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[4,384,8]{2,1,0} parameter(2)
-  CHECK: [[lhs_slice:%.+]] = f8e8m0fnu[4,320,8]{2,1,0} slice([[lhs_scale]]), slice={[0:4], [0:320], [0:8]}
-  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[4,512,8]{2,1,0} parameter(3)
-  CHECK: [[rhs_slice:%.+]] = f8e8m0fnu[4,448,8]{2,1,0} slice([[rhs_scale]]), slice={[0:4], [0:448], [0:8]}
-  CHECK: {{.+}} = f32[4,320,448]{2,1,0} scaled-dot([[lhs]], [[rhs]], [[lhs_slice]], [[rhs_slice]])
-)";
-  EXPECT_THAT(RunFileCheck(test_module->ToString(), expected),
-              absl_testing::IsOkAndHolds(true));
-}
-
 class CudnnScaledDotRewriterTest : public HloHardwareIndependentTestBase {
  protected:
   CudnnScaledDotRewriterTest()
@@ -737,6 +475,36 @@ ENTRY main {
 })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_THAT(IsSupported(*module), Pair(true, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupportedInputTypes) {
+  // Block size 32 (MX) for all combinations.
+  constexpr absl::string_view kHloTemplate = R"(
+HloModule test
+ENTRY main {
+  %lhs = $0[128,256]{1,0} parameter(0)
+  %rhs = $1[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  struct TestCase {
+    absl::string_view lhs;
+    absl::string_view rhs;
+    bool supported;
+  };
+  for (const auto& [lhs, rhs, supported] : {
+           TestCase{"f8e5m2", "f8e5m2", true},
+           TestCase{"f4e2m1fn", "f4e2m1fn", true},
+           TestCase{"f8e4m3fn", "f4e2m1fn", false},
+       }) {
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHloTemplate, lhs, rhs)));
+    EXPECT_THAT(IsSupported(*module), Pair(supported, supported))
+        << lhs << " x " << rhs;
+  }
 }
 
 TEST_F(CudnnScaledDotRewriterTest, IsSupportedOutputTypes) {

@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
@@ -44,13 +43,17 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/pjrt/dynamic_pad_to_static.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -157,7 +160,9 @@ absl::StatusOr<std::vector<int64_t>> GetShardShape(
   std::vector<int64_t> tile_shape;
   tile_shape.reserve(shape.size());
   for (int64_t i = 0; i < shape.size(); ++i) {
-    tile_shape.push_back(xla::CeilOfRatio(shape[i], sharding_dims[i]));
+    tile_shape.push_back(shape[i] == Shape::kUnboundedSize
+                             ? Shape::kUnboundedSize
+                             : xla::CeilOfRatio(shape[i], sharding_dims[i]));
   }
   return tile_shape;
 }
@@ -201,20 +206,28 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     }
     std::vector<int64_t> shard_shape;
     xla::PrimitiveType primitive_type;
+    std::vector<bool> dynamic_dimensions;
     if (auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
-      llvm::ArrayRef<int64_t> dims = tensor_type.getShape();
+      xla::Shape unsharded_shape = xla::TypeToShape(tensor_type);
+      if (unsharded_shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported type ", mlir::debugString(type)));
+      }
+      llvm::ArrayRef<int64_t> dims(unsharded_shape.dimensions().data(),
+                                   unsharded_shape.dimensions().size());
       ABSL_ASSIGN_OR_RETURN(shard_shape, GetShardShape(sharding, dims,
                                                   extras->num_replicas *
                                                       extras->num_partitions));
-      primitive_type =
-          xla::ConvertMlirTypeToPrimitiveType(tensor_type.getElementType());
+      primitive_type = unsharded_shape.element_type();
+      dynamic_dimensions.assign(unsharded_shape.dynamic_dimensions().begin(),
+                                unsharded_shape.dynamic_dimensions().end());
     } else {
       primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
     }
     ABSL_ASSIGN_OR_RETURN(auto* memory_space,
                      addressable_devices[0]->default_memory_space());
-    auto xla_shard_shape =
-        xla::ShapeUtil::MakeShape(primitive_type, shard_shape);
+    xla::Shape xla_shard_shape = xla::ShapeUtil::MakeShape(
+        primitive_type, shard_shape, dynamic_dimensions);
     // TODO(parkers): Fix the nullptr layout.
     ABSL_ASSIGN_OR_RETURN(auto xla_shape,
                      topology->MakeCanonicalShapeForMemorySpace(
@@ -239,20 +252,14 @@ absl::StatusOr<PjRtLoadedExecutableDispatchInfo> InferDispatchInfo(
     ABSL_ASSIGN_OR_RETURN((std::tie(shape, layout)),
                      get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
 
-    // Inputs feeding PadRealToStatic custom calls are bounded dynamic tensors
-    // supplied without the TPU hardware dynamic metadata prefix (0 bytes).
-    // During async compilation, InferDispatchInfo is called on the MLIR module
-    // before TpuLayoutAssignment runs, so we must set prefix bytes to 0 here to
-    // ensure the inferred parameter layout matches the actual compiled layout.
-    for (mlir::Operation* user : main.getArgument(i).getUsers()) {
-      if (auto attr =
-              user->getAttrOfType<mlir::StringAttr>("call_target_name")) {
-        if (attr.getValue() == "PadRealToStatic" &&
-            user->getNumOperands() > 0 &&
-            user->getOperand(0) == main.getArgument(i)) {
-          shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
-          layout = std::make_shared<PjRtLayout>(shape.layout());
-        }
+    // `PadRealToStatic` inputs carry no metadata prefix; mirror the HLO check
+    // here because async compilation never reaches `LoadInternal`.
+    if (shape.IsArray() && shape.is_dynamic()) {
+      ABSL_ASSIGN_OR_RETURN(bool clear_prefix,
+                       ShouldClearPadRealToStaticMetadataPrefix(main, i));
+      if (clear_prefix) {
+        shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+        layout = std::make_shared<PjRtLayout>(shape.layout());
       }
     }
 

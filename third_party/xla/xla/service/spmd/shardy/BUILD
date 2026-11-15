@@ -46,7 +46,11 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:stack_frames",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_context",
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/translate:stablehlo",
@@ -82,6 +86,7 @@ cc_library(
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -123,6 +128,9 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 

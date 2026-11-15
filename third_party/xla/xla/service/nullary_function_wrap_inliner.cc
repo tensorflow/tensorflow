@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/call_inliner.h"
 
 namespace xla {
@@ -55,5 +56,13 @@ absl::StatusOr<bool> NullaryFunctionWrapInliner::RunImpl(
   }
   return changed;
 }
+
+namespace {
+
+const HloPassFactory* const kNullaryFunctionWrapInlinerRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<NullaryFunctionWrapInliner>>(
+        "nullary-function-wrap-inliner");
+
+}  // namespace
 
 }  // namespace xla

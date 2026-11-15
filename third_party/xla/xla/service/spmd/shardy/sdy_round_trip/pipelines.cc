@@ -87,8 +87,7 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
                                    bool liftAndDedupMeshes,
-                                   bool enableHloShardingV3,
-                                   bool enableNativeNonFlatSupport) {
+                                   bool enableHloShardingV3) {
   pm.addPass(mlir::createSymbolDCEPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
   // We call prepare-for-export pass before SDY propagation, so that all IR

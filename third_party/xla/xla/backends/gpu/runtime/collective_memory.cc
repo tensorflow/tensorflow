@@ -61,7 +61,19 @@ CollectiveMemory::CollectiveMemory(
     absl::flat_hash_map<Key, PeerMemory> peer_memories)
     : buffers_(buffers),
       sym_memories_(std::move(sym_memories)),
-      peer_memories_(std::move(peer_memories)) {}
+      peer_memories_(std::move(peer_memories)) {
+  symmetric_memory_ids_.reserve(sym_memories_.size());
+  // Iteration order does not matter because `symmetric_memory_ids_` is sorted
+  // by key below.
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [key, sym] : sym_memories_) {
+    symmetric_memory_ids_.emplace_back(key, sym->id());
+  }
+  absl::c_sort(symmetric_memory_ids_,
+               [](const SymmetricMemoryId& a, const SymmetricMemoryId& b) {
+                 return a.first < b.first;
+               });
+}
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     const GpuCliqueKey& clique, BufferAllocation::Index allocation) const {

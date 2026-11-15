@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -102,10 +103,10 @@ class ClientLibraryTestRunnerMixin : public T {
   PrimitiveType FloatType() const { return test_type_; }
   void set_float_type(PrimitiveType type) { test_type_ = type; }
 
-  absl::StatusOr<Literal> ExecuteAndTransfer(
+  absl::StatusOr<std::optional<Literal>> ExecuteAndTransferLocal(
       const XlaComputation& computation,
-      const absl::Span<const Literal* const> arguments,
-      const Shape* const shape_with_output_layout = nullptr) {
+      absl::Span<const Literal* const> arguments,
+      const Shape* shape_with_output_layout = nullptr) {
     ExecutionOptions execution_options = execution_options_;
     if (shape_with_output_layout != nullptr) {
       *execution_options.mutable_shape_with_output_layout() =
@@ -119,6 +120,7 @@ class ClientLibraryTestRunnerMixin : public T {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      BuildAndVerifyHloModule(computation, argument_shapes,
                                              &execution_options));
+    const Shape result_shape = module->result_shape();
     const int64_t num_devices = std::max(execution_options.num_replicas(), 1) *
                                 std::max(execution_options.num_partitions(), 1);
     std::optional<DeviceAssignment> device_assignment;
@@ -136,7 +138,31 @@ class ClientLibraryTestRunnerMixin : public T {
     ABSL_ASSIGN_OR_RETURN(std::vector<Literal> results,
                      this->test_runner().ExecuteReplicated(
                          std::move(module), options, device_assignment_ptr));
+    // Multi-host: return the first locally addressable replica's result
+    // (assumes all replicas produce the same output).
+    for (Literal& result : results) {
+      if (!ShapeUtil::IsEmptyTuple(result.shape())) {
+        return std::move(result);
+      }
+    }
+    if (!ShapeUtil::IsEmptyTuple(result_shape)) {
+      return std::nullopt;
+    }
     return std::move(results.front());
+  }
+
+  absl::StatusOr<Literal> ExecuteAndTransfer(
+      const XlaComputation& computation,
+      absl::Span<const Literal* const> arguments,
+      const Shape* shape_with_output_layout = nullptr) {
+    ABSL_ASSIGN_OR_RETURN(std::optional<Literal> result,
+                     ExecuteAndTransferLocal(computation, arguments,
+                                             shape_with_output_layout));
+    if (!result.has_value()) {
+      return absl::FailedPreconditionError(
+          "This process owns none of the assigned replicas; no local result.");
+    }
+    return *std::move(result);
   }
 
   absl::StatusOr<Literal> ExecuteAndTransfer(
@@ -221,13 +247,18 @@ class ClientLibraryTestRunnerMixin : public T {
         shape_with_layout = &layout_shape;
       }
     }
-    TF_ASSERT_OK_AND_ASSIGN(
-        Literal actual,
-        this->ExecuteAndTransfer(builder, arguments, shape_with_layout));
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
+    TF_ASSERT_OK_AND_ASSIGN(std::optional<Literal> actual,
+                            this->ExecuteAndTransferLocal(
+                                computation, arguments, shape_with_layout));
+    if (!actual.has_value()) {
+      LOG(WARNING) << "Skipping comparison: this process owns no replicas.";
+      return;
+    }
     if (error.has_value()) {
-      EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, *error));
+      EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, *actual, *error));
     } else {
-      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, *actual));
     }
   }
 

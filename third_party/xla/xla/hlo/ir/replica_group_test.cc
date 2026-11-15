@@ -393,6 +393,11 @@ TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
       "Axis index must be less than number of axes");
   EXPECT_DEATH(
       {
+        MeshAxesReplicaGroupList negative_index(mesh, /*axes=*/{AxisRef(-1)});
+      },
+      "Axis index must be non-negative");
+  EXPECT_DEATH(
+      {
         MeshAxesReplicaGroupList index_out_of_bounds(
             mesh, /*axes=*/{AxisRef(0, {8, 2})});
       },

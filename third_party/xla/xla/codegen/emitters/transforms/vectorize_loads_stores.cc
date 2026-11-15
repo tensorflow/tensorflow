@@ -537,6 +537,10 @@ struct FoldVectorInsertExtractPairs
       return rewriter.notifyMatchFailure(insert,
                                          "no single-use vector.extract found");
     }
+    if (extract.getSourceVectorType() != vector_type) {
+      return rewriter.notifyMatchFailure(
+          insert, "source and destination vector types don't match");
+    }
 
     // Check that the insert is in the loop and is used only by the yield.
     auto loop = mlir::dyn_cast_or_null<scf::ForOp>(insert->getParentOp());

@@ -277,5 +277,37 @@ func.func @test_transpose_unsupported_bitwidth_not_folded() -> tensor<3x2xi5> {
   }
 #-}
 
+// -----
 
+// Unit-dimension reshape on a constant blockwise_dequantize is pushed into its
+// constant operands so downstream SRQ fusion sees blockwise_dequantize
+// directly (e.g. single-token decode batched matmul).
+// CHECK-LABEL: func.func @test_push_unit_dim_reshape_through_blockwise_dequantize
+func.func @test_push_unit_dim_reshape_through_blockwise_dequantize() -> tensor<1x2x4x3xf32> {
+  // CHECK-NOT: "tfl.reshape"
+  // CHECK: %[[BW:.*]] = "tfl.blockwise_dequantize"({{.*}}) <{block_shape = [1, 1, 4, 1], symmetric = false}> : (tensor<1x2x4x3xi2>, tensor<1x2x1x3xf16>, tensor<1x1x1x1xf32>) -> tensor<1x2x4x3xf32>
+  // CHECK: return %[[BW]] : tensor<1x2x4x3xf32>
+  %w = arith.constant dense<[[[-2, -1, 0], [1, -2, -1], [0, 1, -2], [1, 0, 1]], [[1, 0, -1], [0, 1, -2], [-1, -2, 1], [-2, 1, 0]]]> : tensor<2x4x3xi2>
+  %scales = arith.constant dense<[[[0.5, 1.0, 1.5]], [[2.0, 0.25, 0.5]]]> : tensor<2x1x3xf16>
+  %zp = arith.constant dense<-0.5> : tensor<1x1x1xf32>
+  %shape = arith.constant dense<[1, 2, 4, 3]> : tensor<4xi32>
+  %bw = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 4, 1], symmetric = false} : (tensor<2x4x3xi2>, tensor<2x1x3xf16>, tensor<1x1x1xf32>) -> tensor<2x4x3xf32>
+  %res = "tfl.reshape"(%bw, %shape) : (tensor<2x4x3xf32>, tensor<4xi32>) -> tensor<1x2x4x3xf32>
+  return %res : tensor<1x2x4x3xf32>
+}
 
+// -----
+
+// A reshape that changes non-unit dimensions is not pushed through.
+// CHECK-LABEL: func.func @test_non_unit_dim_reshape_not_pushed_through_blockwise_dequantize
+func.func @test_non_unit_dim_reshape_not_pushed_through_blockwise_dequantize() -> tensor<8x3xf32> {
+  // CHECK: "tfl.blockwise_dequantize"({{.*}}) <{block_shape = [1, 4, 1], symmetric = false}>
+  // CHECK: "tfl.reshape"
+  %w = arith.constant dense<1> : tensor<2x4x3xi2>
+  %scales = arith.constant dense<0.5> : tensor<2x1x3xf16>
+  %zp = arith.constant dense<-0.5> : tensor<1x1x1xf32>
+  %shape = arith.constant dense<[8, 3]> : tensor<2xi32>
+  %bw = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 4, 1], symmetric = false} : (tensor<2x4x3xi2>, tensor<2x1x3xf16>, tensor<1x1x1xf32>) -> tensor<2x4x3xf32>
+  %res = "tfl.reshape"(%bw, %shape) : (tensor<2x4x3xf32>, tensor<2xi32>) -> tensor<8x3xf32>
+  return %res : tensor<8x3xf32>
+}

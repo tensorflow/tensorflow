@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -100,7 +101,6 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
                                                  mlir::LLVM::GEPArg(3)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto args_ptr = mlir::LLVM::LoadOp::create(b, ptr, args_gep);
-    args_ptr.setInvariant(true);
 
     // Get a pointer to the `KernelArg` at the given index.
     auto arg_gep = mlir::LLVM::GEPOp::create(
@@ -109,13 +109,25 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
             mlir::LLVM::GEPArg(op.getIndex()), mlir::LLVM::GEPArg(0)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto arg_ptr = mlir::LLVM::LoadOp::create(b, ptr, arg_gep);
-    arg_ptr.setInvariant(true);
 
     if (auto dereferenceable = op->getAttrOfType<mlir::IntegerAttr>(
             mlir::LLVM::LLVMDialect::getDereferenceableAttrName())) {
       arg_ptr.setDereferenceable(
           rewriter.getAttr<mlir::LLVM::DereferenceableAttr>(
               dereferenceable.getInt(), false));
+    }
+
+    if (auto align = op->getAttrOfType<mlir::IntegerAttr>(
+            mlir::LLVM::LLVMDialect::getAlignAttrName())) {
+      int64_t align_bytes = align.getInt();
+      if (align_bytes > 1 && llvm::isPowerOf2_64(align_bytes)) {
+        mlir::Value true_cond =
+            mlir::LLVM::ConstantOp::create(b, b.getBoolAttr(true));
+        mlir::Value align_const =
+            mlir::LLVM::ConstantOp::create(b, b.getI64Type(), align_bytes);
+        mlir::LLVM::AssumeOp::create(b, true_cond, mlir::LLVM::AssumeAlignTag(),
+                                     arg_ptr, align_const);
+      }
     }
 
     if (auto memref_type = mlir::dyn_cast<mlir::MemRefType>(op.getType())) {
@@ -169,7 +181,6 @@ struct LowerExtractWorkgroupIdOp
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto workgroup_dim_load =
         mlir::LLVM::LoadOp::create(builder, i64_ty, workgroup_dim_gep);
-    workgroup_dim_load.setInvariant(true);
 
     mlir::Value workgroup_dim = workgroup_dim_load.getResult();
     auto index_ty = builder.getIntegerType(
@@ -406,6 +417,82 @@ class WrapEntryWithCallFrame
   int32_t vector_width_;
 };
 
+class WrapComparatorWithDataArray
+    : public mlir::OpRewritePattern<mlir::func::FuncOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::func::FuncOp op, mlir::PatternRewriter& rewriter) const override {
+    if (!op->hasAttr("xla.cpu.is_comparator")) {
+      return mlir::failure();
+    }
+
+    if (op->hasAttr("xla.cpu.is_wrapped")) {
+      return mlir::failure();
+    }
+
+    if (!op->getUsers().empty()) {
+      return rewriter.notifyMatchFailure(op, "Comparator function has users.");
+    }
+
+    mlir::MLIRContext* context = rewriter.getContext();
+    mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+
+    std::string comparator_name(op.getName());
+    op.setName(absl::StrCat(comparator_name, "_wrapped"));
+
+    auto ptr_type = mlir::LLVM::LLVMPointerType::get(context);
+    mlir::func::FuncOp comparator_func = mlir::func::FuncOp::create(
+        builder, comparator_name,
+        rewriter.getFunctionType({ptr_type}, op.getResultTypes()));
+
+    builder.setInsertionPointToStart(comparator_func.addEntryBlock());
+    comparator_func->setAttr(
+        "llvm.uwtable_kind",
+        mlir::LLVM::UWTableKindAttr::get(
+            context, mlir::LLVM::uwtable::UWTableKind::Async));
+    comparator_func.setArgAttr(0, mlir::LLVM::LLVMDialect::getNoUndefAttrName(),
+                               builder.getUnitAttr());
+    comparator_func.setArgAttr(0, mlir::LLVM::LLVMDialect::getNonNullAttrName(),
+                               builder.getUnitAttr());
+    // The x86-64 psABI requires a `bool` return to be zero extended to 8 bits,
+    // and clang marks it `zeroext` there. AAPCS64 leaves the upper bits to the
+    // caller, so clang omits it on aarch64 Linux; an extra `zeroext` there is
+    // harmless. Emit it unconditionally so the C declaration is matched on
+    // every target that needs it.
+    comparator_func.setResultAttr(0, mlir::LLVM::LLVMDialect::getZExtAttrName(),
+                                  builder.getUnitAttr());
+
+    mlir::Value params_ptr = comparator_func.getArgument(0);
+
+    llvm::SmallVector<mlir::Value> call_args;
+    call_args.reserve(op.getNumArguments());
+    for (const auto& [idx, arg] : llvm::enumerate(op.getArguments())) {
+      auto param_gep = mlir::LLVM::GEPOp::create(
+          builder, ptr_type, ptr_type, params_ptr,
+          llvm::SmallVector<mlir::LLVM::GEPArg, 1>{
+              mlir::LLVM::GEPArg(static_cast<int32_t>(idx))},
+          mlir::LLVM::GEPNoWrapFlags::inbounds);
+      auto param_ptr = mlir::LLVM::LoadOp::create(builder, ptr_type, param_gep);
+      auto cast = mlir::UnrealizedConversionCastOp::create(
+          builder, arg.getType(), param_ptr.getResult());
+      call_args.push_back(cast.getResult(0));
+    }
+
+    auto call = mlir::func::CallOp::create(builder, op, call_args);
+    mlir::func::ReturnOp::create(builder, call.getResults());
+
+    op->setAttr("xla.cpu.is_wrapped", builder.getUnitAttr());
+    op.setPrivate();
+    op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
+                                    context, mlir::LLVM::Linkage::Internal));
+    op->setAttr("llvm.always_inline", builder.getUnitAttr());
+
+    return mlir::success();
+  }
+};
+
 // Implementation similar to https://gudok.xyz/transpose/#_64_bit_simd_0_74.
 
 // Example that follows changes in the first row.
@@ -638,7 +725,7 @@ void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns,
   mlir::MLIRContext* context = patterns.getContext();
   patterns.add<LowerLoadOp, LowerWorkGroupIdOp, LowerSuccessOp,
                RewriteFunctionSignatures, LowerExtractWorkgroupIdOp,
-               LowerVector2DTransposeOp>(context);
+               LowerVector2DTransposeOp, WrapComparatorWithDataArray>(context);
   patterns.add<WrapEntryWithCallFrame>(context, vector_width);
 }
 

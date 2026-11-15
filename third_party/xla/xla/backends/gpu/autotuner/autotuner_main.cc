@@ -259,7 +259,10 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
 
   ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CodegenBackend>> autotuner_backends,
-      ConfigAssignerPass::GetEnabledBackends(
+      ConfigAssignerPass::CreateBackends(
+          GetEnabledBackendTypes(
+              debug_options,
+              target_config->device_description.gpu_compute_capability()),
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
           compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id(),
@@ -349,7 +352,9 @@ absl::Status RunAutotuning(const std::vector<std::string>& hlo_files,
   InstructionFilterFn should_assign_config_to_instr =
       GetShouldAssignConfigToInstructionFn(
           debug_options,
-          env.target_config->device_description.gpu_compute_capability());
+          GetEnabledBackendTypes(
+              debug_options,
+              env.target_config->device_description.gpu_compute_capability()));
 
   auto should_autotune = [&autotuner_cache, &should_assign_config_to_instr](
                              const xla::HloInstruction& instr) {

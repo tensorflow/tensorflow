@@ -2,7 +2,9 @@
 // RUN: triton_test_correctness %s
 
 // Both branches of concat access whole second dimension of parameters and we
-// can simplify offset of it to 0 constant.
+// can simplify offset of it to 0 constant. Propagating branch-specific tile
+// constraints produces distinct row-offset indexing maps (`#indexing_map1` and
+// `#indexing_map2`) restricted to each branch's active tiles.
 
 // CHECK:      xtile.entry_func @triton_fn
 // CHECK:        %[[C0:.*]] = arith.constant 0 : index
@@ -10,7 +12,7 @@
 // CHECK:          %[[ROW_0:.*]] = xla.apply_indexing #indexing_map1(%arg3)
 // CHECK:          xtile.extract %arg0[%[[ROW_0]], %[[C0]]] [16, 128] [1, 1]
 // CHECK:        } else {
-// CHECK:          %[[ROW_1:.*]] = xla.apply_indexing #indexing_map1(%arg3)
+// CHECK:          %[[ROW_1:.*]] = xla.apply_indexing #indexing_map2(%arg3)
 // CHECK:          xtile.extract %arg1[%[[ROW_1]], %[[C0]]] [16, 128] [1, 1]
 
 fusion {

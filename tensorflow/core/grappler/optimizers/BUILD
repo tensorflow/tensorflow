@@ -208,6 +208,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -741,7 +742,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -826,6 +830,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -845,6 +850,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:graph_view",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "@com_google_absl//absl/status",
     ],
 )
 

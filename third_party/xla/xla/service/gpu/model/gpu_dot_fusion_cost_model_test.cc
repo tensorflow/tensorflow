@@ -325,6 +325,40 @@ backend_config={"sizes":["32"]}
   EXPECT_GT(absl::ToInt64Microseconds(runtime_h100.exec_time), 0);
 }
 
+TEST_F(GpuDotFusionCostModelTest, VectorMatrixDotIsRejected) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+ROOT r = bf16[1024] dot(p0, p1),
+lhs_contracting_dims={0}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  EXPECT_THAT(gpu_dot_fusion_cost_model::IsSupported(dot),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(GpuDotFusionCostModelTest, InnerProductDotIsRejected) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[2048] parameter(0)
+p1 = bf16[2048] parameter(1)
+ROOT r = bf16[] dot(p0, p1),
+lhs_contracting_dims={0}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  EXPECT_THAT(gpu_dot_fusion_cost_model::IsSupported(dot),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+}
+
 // TODO(b/501002656): Remove this test once we support transposes in the dot
 // fusion cost model.
 TEST_F(GpuDotFusionCostModelTest, GpuDotWithDownstreamTransposeIsRejected) {

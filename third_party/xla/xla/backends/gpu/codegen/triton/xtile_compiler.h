@@ -70,6 +70,14 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
     bool is_xla_fusion);
 
+// Lowers `triton_source` to the MLIR LLVM/NVVM dialect.
+absl::StatusOr<TritonKernelSource> LowerTritonToLlvmDialect(
+    absl::string_view kernel_name, const HloModule& hlo_module,
+    const se::DeviceDescription& device_info,
+    const xla::xtile::BlockLevelParameters& block_level_parameters,
+    TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
+    bool is_xla_fusion);
+
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
 

@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu::experimental {
+namespace gpu {
 
 namespace {
 
@@ -320,6 +320,6 @@ Decision VerifySubsetOfTritonConstraints(
   return Decision::Allow();
 }
 
-}  // namespace gpu::experimental
+}  // namespace gpu
 
 }  // namespace xla

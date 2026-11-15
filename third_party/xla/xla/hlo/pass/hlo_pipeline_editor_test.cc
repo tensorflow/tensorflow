@@ -43,6 +43,8 @@ TEST(HloPipelineEditorTest, BuildsNestedPipeline) {
   simplification.AppendPass("algsimp", {{"limit", 2}},
                             /*max_fixed_point_iterations=*/25);
   simplification.AppendPass("hlo-cse", {{"is_layout_sensitive", false}});
+  simplification.AppendPass("gather_expander",
+                            {{"mode", "eliminate_simple_gathers"}});
   root.AppendPass("hlo-dce");
 
   EXPECT_THAT(proto, EqualsProto(R"pb(
@@ -68,6 +70,13 @@ TEST(HloPipelineEditorTest, BuildsNestedPipeline) {
                         options {
                           key: "is_layout_sensitive"
                           value { bool_val: false }
+                        }
+                      }
+                      nodes {
+                        name: "gather_expander"
+                        options {
+                          key: "mode"
+                          value { string_val: "eliminate_simple_gathers" }
                         }
                       }
                     }

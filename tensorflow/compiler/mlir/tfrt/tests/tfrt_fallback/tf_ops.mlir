@@ -68,9 +68,9 @@ func.func @test_tf_vars() -> !tfrt.chain {
 func.func @test_parse_example_v2() -> !tfrt.chain {
   %ch = tfrt.new.chain
 
-  %serialized_th = corert.const_string_tensor {shape = [1], value = [""]}
-  %names_th = corert.const_string_tensor {shape = [0], value = []}
-  %dense_keys_th = corert.const_string_tensor {shape = [7], value = ["has_login_page_feature", "num_terms_inside_postform", "num_terms_outside_postform", "num_terms_outside_postform_without_bp", "query_params_contains_url", "title_with_login_phase", "url_contains_login_terms"]}
+  %serialized_th = corert.const_string_tensor <shape = [1], value = [""]>
+  %names_th = corert.const_string_tensor <shape = [0], value = []>
+  %dense_keys_th = corert.const_string_tensor <shape = [7], value = ["has_login_page_feature", "num_terms_inside_postform", "num_terms_outside_postform", "num_terms_outside_postform_without_bp", "query_params_contains_url", "title_with_login_phase", "url_contains_login_terms"]>
 
 
   %ch0 = tfrt_fallback_async.createop(%ch) key(6) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<i64>} num_args(0)
@@ -117,7 +117,7 @@ func.func @test_parse_example_v2() -> !tfrt.chain {
 func.func @test_tile() -> !tfrt.chain {
   %ch = tfrt.new.chain
 
-  %input_th = corert.const_string_tensor {shape = [1, 2], value = ["", ""]}
+  %input_th = corert.const_string_tensor <shape = [1, 2], value = ["", ""]>
   %multiples_th = corert.const_dense_tensor dense<[7,3]> : tensor<2xi32>
 
   %input, %multiples = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %input_th, %multiples_th {_tfrt_cost = 1 : i64, device = "CPU:0"}

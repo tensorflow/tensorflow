@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/runtime/device_id.h"
 
 namespace xla {
 
@@ -128,7 +129,7 @@ TfPjRtClient::TfPjRtClient(std::unique_ptr<PjRtClient> wrapped)
   alive_buffers_ = std::vector<DeviceBuffers>(num_mutexes);
   for (int i = 0; i < num_mutexes; ++i) {
     mutex_id_from_device_id_.insert(
-        {wrapped_->addressable_devices()[i]->id(), i});
+        {wrapped_->addressable_devices()[i]->global_device_id(), i});
   }
 }
 
@@ -152,11 +153,12 @@ TfPjRtClient::WrapExecutable(
 
 static int GetMutexId(
     const TfPjRtBuffer* buffer,
-    const absl::flat_hash_map<int, int>& mutex_id_from_device_id) {
-  auto iters = mutex_id_from_device_id.find(buffer->wrapped()->device()->id());
+    const absl::flat_hash_map<GlobalDeviceId, int>& mutex_id_from_device_id) {
+  auto iters = mutex_id_from_device_id.find(
+      buffer->wrapped()->device()->global_device_id());
   CHECK(iters != mutex_id_from_device_id.end())
       << "Mutex id not found for device id: "
-      << buffer->wrapped()->device()->id();
+      << buffer->wrapped()->device()->global_device_id();
   return iters->second;
 }
 

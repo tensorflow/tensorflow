@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/export/vifrt_bytecode.h"
 
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Compiler.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/export/vifrt_dialect.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 
@@ -73,7 +77,6 @@ namespace vifrt_encoding {
 enum AttributeMarker {
   kDevicesV1Attr = 0,
   kUnspecifiedShardingV1Attr = 1,
-  kShardingParamV1Attr = 2,
   kIntervalV1Attr = 3,
   kMappingV1Attr = 4,
   kArrayMappingV1Attr = 5,
@@ -130,8 +133,6 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
       mlir::DialectBytecodeReader& reader) const;
   VifrtUnspecifiedShardingV1Attr readUnspecifiedShardingV1Attr(
       mlir::DialectBytecodeReader& reader) const;
-  VifrtShardingParamV1Attr readShardingParamV1Attr(
-      mlir::DialectBytecodeReader& reader) const;
   VifrtShardingParamV2Attr readShardingParamV2Attr(
       mlir::DialectBytecodeReader& reader) const;
   VifrtIntervalV1Attr readIntervalV1Attr(
@@ -146,8 +147,6 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
   void write(VifrtDevicesV1Attr attr,
              mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtUnspecifiedShardingV1Attr attr,
-             mlir::DialectBytecodeWriter& writer) const;
-  void write(VifrtShardingParamV1Attr attr,
              mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtShardingParamV2Attr attr,
              mlir::DialectBytecodeWriter& writer) const;
@@ -200,8 +199,6 @@ mlir::Attribute VifrtBytecodeInterface::readAttribute(
       return readDevicesV1Attr(reader);
     case vifrt_encoding::kUnspecifiedShardingV1Attr:
       return readUnspecifiedShardingV1Attr(reader);
-    case vifrt_encoding::kShardingParamV1Attr:
-      return readShardingParamV1Attr(reader);
     case vifrt_encoding::kIntervalV1Attr:
       return readIntervalV1Attr(reader);
     case vifrt_encoding::kMappingV1Attr:
@@ -225,9 +222,8 @@ mlir::LogicalResult VifrtBytecodeInterface::writeAttribute(
     mlir::Attribute attr, mlir::DialectBytecodeWriter& writer) const {
   return llvm::TypeSwitch<mlir::Attribute, mlir::LogicalResult>(attr)
       .Case<VifrtDevicesV1Attr, VifrtUnspecifiedShardingV1Attr,
-            VifrtShardingParamV1Attr, VifrtShardingParamV2Attr,
-            VifrtIntervalV1Attr, VifrtMappingV1Attr, VifrtArrayMappingV1Attr,
-            VifrtTypeV1Attr>([&](auto attr) {
+            VifrtShardingParamV2Attr, VifrtIntervalV1Attr, VifrtMappingV1Attr,
+            VifrtArrayMappingV1Attr, VifrtTypeV1Attr>([&](auto attr) {
         LOG_WRITE_CALL;
         write(attr, writer);
         return mlir::success();
@@ -238,17 +234,58 @@ mlir::LogicalResult VifrtBytecodeInterface::writeAttribute(
       });
 }
 
+// Reads a signed varint and verifies that it fits in a 32-bit signed integer.
+mlir::LogicalResult ReadSignedInt32(mlir::DialectBytecodeReader& reader,
+                                    llvm::StringRef field_name,
+                                    int32_t& result) {
+  int64_t value = 0;
+  if (mlir::failed(reader.readSignedVarInt(value))) {
+    return mlir::failure();
+  }
+  if (value < std::numeric_limits<int32_t>::min() ||
+      value > std::numeric_limits<int32_t>::max()) {
+    reader.emitError() << field_name << " value " << value
+                       << " overflows 32-bit signed integer";
+    return mlir::failure();
+  }
+  result = static_cast<int32_t>(value);
+  return mlir::success();
+}
+
+// Reads a list of signed varints and verifies that each element fits in a
+// 32-bit signed integer.
+template <typename ContainerT>
+mlir::LogicalResult ReadSignedInt32List(mlir::DialectBytecodeReader& reader,
+                                        llvm::StringRef field_name,
+                                        ContainerT& result) {
+  static_assert(sizeof(typename ContainerT::value_type) >= sizeof(int32_t));
+  llvm::SmallVector<int64_t> values;
+  if (mlir::failed(reader.readSignedVarInts(values))) {
+    return mlir::failure();
+  }
+  result.reserve(values.size());
+  for (int64_t value : values) {
+    if (value < std::numeric_limits<int32_t>::min() ||
+        value > std::numeric_limits<int32_t>::max()) {
+      reader.emitError() << field_name << " value " << value
+                         << " overflows 32-bit signed integer";
+      return mlir::failure();
+    }
+    result.push_back(static_cast<typename ContainerT::value_type>(value));
+  }
+  return mlir::success();
+}
+
 VifrtDevicesV1Attr VifrtBytecodeInterface::readDevicesV1Attr(
     mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
-  llvm::SmallVector<int64_t> device_ids;
-  if (mlir::failed(reader.readSignedVarInts(device_ids))) {
+  llvm::SmallVector<int> ids;
+  if (mlir::failed(ReadSignedInt32List(reader, "devices", ids))) {
     reader.emitError() << "Failed to read VifrtDevicesV1Attr";
     return VifrtDevicesV1Attr();
   }
-  return VifrtDevicesV1Attr::get(
-      getContext(),
-      llvm::SmallVector<int>(device_ids.begin(), device_ids.end()));
+  return VifrtDevicesV1Attr::getChecked([&]() { return reader.emitError(); },
+                                        getContext(), llvm::ArrayRef<int>(ids));
 }
 
 void VifrtBytecodeInterface::write(VifrtDevicesV1Attr attr,
@@ -271,66 +308,28 @@ void VifrtBytecodeInterface::write(VifrtUnspecifiedShardingV1Attr attr,
   writer.writeVarInt(vifrt_encoding::kUnspecifiedShardingV1Attr);
 }
 
-VifrtShardingParamV1Attr VifrtBytecodeInterface::readShardingParamV1Attr(
-    mlir::DialectBytecodeReader& reader) const {
-  LOG_READ_CALL;
-  llvm::SmallVector<int64_t> dim_shards;
-  llvm::SmallVector<int64_t> permutation;
-  llvm::SmallVector<int64_t> axis_sizes;
-  if (mlir::failed(reader.readSignedVarInts(dim_shards)) ||
-      mlir::failed(reader.readSignedVarInts(permutation)) ||
-      mlir::failed(reader.readSignedVarInts(axis_sizes))) {
-    reader.emitError() << "Failed to read VifrtShardingParamV1Attr";
-    return VifrtShardingParamV1Attr();
-  }
-  ShardingParam::MinorToMajor minor_to_major;
-  minor_to_major.permutation =
-      llvm::SmallVector<int, 4>(permutation.begin(), permutation.end());
-  minor_to_major.axis_sizes =
-      llvm::SmallVector<int, 4>(axis_sizes.begin(), axis_sizes.end());
-  ShardingParam sharding_param(
-      std::vector(dim_shards.begin(), dim_shards.end()),
-      std::move(minor_to_major));
-  return VifrtShardingParamV1Attr::get(getContext(), std::move(sharding_param));
-}
-
-void VifrtBytecodeInterface::write(VifrtShardingParamV1Attr attr,
-                                   mlir::DialectBytecodeWriter& writer) const {
-  writer.writeVarInt(vifrt_encoding::kShardingParamV1Attr);
-  auto sharding = attr.getSharding();
-  writer.writeSignedVarInts(sharding.dim_shards());
-  writer.writeList(sharding.minor_to_major().permutation, [&](int value) {
-    writer.writeSignedVarInt(static_cast<int64_t>(value));
-  });
-  writer.writeList(sharding.minor_to_major().axis_sizes, [&](int value) {
-    writer.writeSignedVarInt(static_cast<int64_t>(value));
-  });
-}
-
 VifrtShardingParamV2Attr VifrtBytecodeInterface::readShardingParamV2Attr(
     mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   llvm::SmallVector<int64_t> dim_shards;
-  llvm::SmallVector<int64_t> permutation;
-  llvm::SmallVector<int64_t> axis_sizes;
-  llvm::SmallVector<int64_t> unreduced_axes;
+  ShardingParam::MinorToMajor minor_to_major;
+  std::vector<int> unreduced_axes;
   if (mlir::failed(reader.readSignedVarInts(dim_shards)) ||
-      mlir::failed(reader.readSignedVarInts(permutation)) ||
-      mlir::failed(reader.readSignedVarInts(axis_sizes)) ||
-      mlir::failed(reader.readSignedVarInts(unreduced_axes))) {
+      mlir::failed(ReadSignedInt32List(reader, "permutation",
+                                       minor_to_major.permutation)) ||
+      mlir::failed(ReadSignedInt32List(reader, "axis_sizes",
+                                       minor_to_major.axis_sizes)) ||
+      mlir::failed(
+          ReadSignedInt32List(reader, "unreduced_axes", unreduced_axes))) {
     reader.emitError() << "Failed to read VifrtShardingParamV2Attr";
     return VifrtShardingParamV2Attr();
   }
-  ShardingParam::MinorToMajor minor_to_major;
-  minor_to_major.permutation =
-      llvm::SmallVector<int, 4>(permutation.begin(), permutation.end());
-  minor_to_major.axis_sizes =
-      llvm::SmallVector<int, 4>(axis_sizes.begin(), axis_sizes.end());
   ShardingParam sharding_param(
-      std::vector(dim_shards.begin(), dim_shards.end()),
-      std::move(minor_to_major),
-      std::vector<int>(unreduced_axes.begin(), unreduced_axes.end()));
-  return VifrtShardingParamV2Attr::get(getContext(), std::move(sharding_param));
+      std::vector<int64_t>(dim_shards.begin(), dim_shards.end()),
+      std::move(minor_to_major), std::move(unreduced_axes));
+  return VifrtShardingParamV2Attr::getChecked(
+      [&]() { return reader.emitError(); }, getContext(),
+      std::move(sharding_param));
 }
 
 void VifrtBytecodeInterface::write(VifrtShardingParamV2Attr attr,
@@ -352,18 +351,18 @@ void VifrtBytecodeInterface::write(VifrtShardingParamV2Attr attr,
 VifrtIntervalV1Attr VifrtBytecodeInterface::readIntervalV1Attr(
     mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
-  int64_t start;
-  int64_t end;
-  int64_t step;
-  if (mlir::failed(reader.readSignedVarInt(start)) ||
-      mlir::failed(reader.readSignedVarInt(end)) ||
-      mlir::failed(reader.readSignedVarInt(step))) {
+  int32_t start = 0;
+  int32_t end = 0;
+  int32_t step = 0;
+  if (mlir::failed(ReadSignedInt32(reader, "start", start)) ||
+      mlir::failed(ReadSignedInt32(reader, "end", end)) ||
+      mlir::failed(ReadSignedInt32(reader, "step", step))) {
     reader.emitError() << "Failed to read VifrtIntervalV1Attr";
     return VifrtIntervalV1Attr();
   }
-  return VifrtIntervalV1Attr::get(getContext(), static_cast<int>(start),
-                                  static_cast<int>(end),
-                                  static_cast<int>(step));
+  return VifrtIntervalV1Attr::getChecked(
+      [&]() { return reader.emitError(); }, getContext(),
+      static_cast<int>(start), static_cast<int>(end), static_cast<int>(step));
 }
 
 void VifrtBytecodeInterface::write(VifrtIntervalV1Attr attr,
@@ -384,7 +383,8 @@ VifrtMappingV1Attr VifrtBytecodeInterface::readMappingV1Attr(
     reader.emitError() << "Failed to read VifrtMappingV1Attr";
     return VifrtMappingV1Attr();
   }
-  return VifrtMappingV1Attr::get(getContext(), from_shards, to_shards);
+  return VifrtMappingV1Attr::getChecked([&]() { return reader.emitError(); },
+                                        getContext(), from_shards, to_shards);
 }
 
 void VifrtBytecodeInterface::write(VifrtMappingV1Attr attr,
@@ -397,11 +397,12 @@ void VifrtBytecodeInterface::write(VifrtMappingV1Attr attr,
 VifrtArrayMappingV1Attr VifrtBytecodeInterface::readArrayMappingV1Attr(
     mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
-  int64_t in_array_index;
-  int64_t out_array_index;
+  int32_t in_array_index = 0;
+  int32_t out_array_index = 0;
   llvm::SmallVector<VifrtMappingV1Attr> mappings;
-  if (mlir::failed(reader.readSignedVarInt(in_array_index)) ||
-      mlir::failed(reader.readSignedVarInt(out_array_index)) ||
+  if (mlir::failed(ReadSignedInt32(reader, "in_array_index", in_array_index)) ||
+      mlir::failed(
+          ReadSignedInt32(reader, "out_array_index", out_array_index)) ||
       mlir::failed(reader.readAttributes(mappings))) {
     reader.emitError() << "Failed to read VifrtArrayMappingV1Attr";
     return VifrtArrayMappingV1Attr();
@@ -409,9 +410,9 @@ VifrtArrayMappingV1Attr VifrtBytecodeInterface::readArrayMappingV1Attr(
   mlir::ArrayAttr array_attr = mlir::ArrayAttr::get(
       getContext(),
       llvm::SmallVector<mlir::Attribute>(mappings.begin(), mappings.end()));
-  return VifrtArrayMappingV1Attr::get(
-      getContext(), static_cast<int32_t>(in_array_index),
-      static_cast<int32_t>(out_array_index), array_attr);
+  return VifrtArrayMappingV1Attr::getChecked(
+      [&]() { return reader.emitError(); }, getContext(), in_array_index,
+      out_array_index, array_attr);
 }
 
 void VifrtBytecodeInterface::write(VifrtArrayMappingV1Attr attr,
@@ -429,8 +430,9 @@ VifrtTypeV1Attr VifrtBytecodeInterface::readTypeV1Attr(
   if (mlir::failed(reader.readType(type))) {
     reader.emitError() << "Failed to read VifrtTypeV1Attr";
     return VifrtTypeV1Attr();
-  };
-  return VifrtTypeV1Attr::get(getContext(), type);
+  }
+  return VifrtTypeV1Attr::getChecked([&]() { return reader.emitError(); },
+                                     getContext(), type);
 }
 
 void VifrtBytecodeInterface::write(VifrtTypeV1Attr attr,
@@ -497,8 +499,9 @@ VifrtArrayV1Type VifrtBytecodeInterface::readArrayV1Type(
     reader.emitError() << "Failed to read VifrtArrayV1Type";
     return VifrtArrayV1Type();
   }
-  return VifrtArrayV1Type::get(getContext(), shape, sharding, devices,
-                               memory_kind, layout);
+  return VifrtArrayV1Type::getChecked([&]() { return reader.emitError(); },
+                                      getContext(), shape, sharding, devices,
+                                      memory_kind, layout);
 }
 
 void VifrtBytecodeInterface::write(VifrtArrayV1Type type,
@@ -532,7 +535,9 @@ VifrtFunctionV1Type VifrtBytecodeInterface::readFunctionV1Type(
     reader.emitError() << "Failed to read VifrtFunctionV1Type";
     return VifrtFunctionV1Type();
   }
-  return VifrtFunctionV1Type::get(getContext(), inputs, outputs);
+  return VifrtFunctionV1Type::getChecked(
+      [&]() { return reader.emitError(); }, getContext(),
+      llvm::ArrayRef<mlir::Type>(inputs), llvm::ArrayRef<mlir::Type>(outputs));
 }
 
 void VifrtBytecodeInterface::write(VifrtFunctionV1Type type,

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdalign.h>
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -292,6 +293,52 @@ TEST_P(NanoRtClientTest, CompileAndRunConditionalComputation) {
 
   ASSERT_TRUE(event.IsConcrete());
   EXPECT_EQ(r0_value, 8.0f);
+}
+
+TEST_P(NanoRtClientTest, HoistedWhileLoopReturningTuple) {
+  constexpr absl::string_view hlo = R"(
+    HloModule tuple_while
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      next_i = s32[] add(i, s32[] constant(1))
+      next_x = f32[4] add(x, x)
+      ROOT next = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      ROOT w = (s32[], f32[4]) while((s32[], f32[4]) tuple(
+          s32[] constant(0), p0)), condition=cond, body=body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
+
+  alignas(64) std::array<float, 4> in = {1.0f, 2.0f, 3.0f, 4.0f};
+  alignas(64) int32_t out_i = 0;
+  alignas(64) std::array<float, 4> out_x = {0.0f, 0.0f, 0.0f, 0.0f};
+  Arguments arguments = {{in.data(), 4}};
+  Results results = {{&out_i, 1}, {out_x.data(), 4}};
+  NanoRtExecutable::ManagedTemp<64> temp(executable->temp_buffer_size());
+
+  auto event = executable->Execute(arguments, results, temp);
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsConcrete()) << event.GetError();
+  EXPECT_EQ(out_i, 3);
+  EXPECT_EQ(out_x, (std::array<float, 4>{8.0f, 16.0f, 24.0f, 32.0f}));
 }
 
 TEST_P(NanoRtClientTest, CompileAndRunModelWithThreadPool) {
@@ -623,6 +670,60 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
   }
   EXPECT_EQ(program_shape->result().layout().minor_to_major(),
             absl::Span<const int64_t>({0, 1}));
+}
+
+TEST_P(NanoRtClientTest, SharedRngGetAndUpdateStateAcrossOps) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule shared_rng_state
+    ENTRY main {
+      first = u64[2]{0} rng-get-and-update-state(), delta=131072
+      second = u64[2]{0} rng-get-and-update-state(), delta=65536
+      ROOT tuple = (u64[2]{0}, u64[2]{0}) tuple(first, second)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  XlaComputation computation(module->ToProto());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
+
+  alignas(32) std::array<uint64_t, 2> out1 = {0, 0};
+  alignas(32) std::array<uint64_t, 2> out2 = {0, 0};
+  Results results = {{out1.data(), 2}, {out2.data(), 2}};
+
+  // The HLO does not order `first` and `second`; the shared RNG resource only
+  // serializes them. Whichever runs first reads the counter, and the other
+  // reads it advanced by the first one's delta. Each execution advances the
+  // counter by both deltas. Independent counters would make both outputs equal.
+  constexpr uint64_t kInit = 0x7012395;
+  constexpr uint64_t kFirstDelta = 131072;
+  constexpr uint64_t kSecondDelta = 65536;
+  std::optional<bool> run0_first_ran_first;
+  for (uint64_t run = 0; run < 2; ++run) {
+    auto event = executable->Execute({}, results, {});
+    tsl::BlockUntilReady(event);
+    ASSERT_TRUE(event.IsConcrete());
+    EXPECT_EQ(out1[1], 0);
+    EXPECT_EQ(out2[1], 0);
+
+    const uint64_t base = kInit + run * (kFirstDelta + kSecondDelta);
+    const bool first_ran_first = out1[0] == base;
+    if (first_ran_first) {
+      EXPECT_EQ(out2[0], base + kFirstDelta) << "run " << run;
+    } else {
+      EXPECT_EQ(out2[0], base) << "run " << run;
+      EXPECT_EQ(out1[0], base + kSecondDelta) << "run " << run;
+    }
+    // The resource edge follows the fixed thunk sequence order, so every run
+    // of one executable uses the same order.
+    if (run0_first_ran_first.has_value()) {
+      EXPECT_EQ(first_ran_first, *run0_first_ran_first);
+    } else {
+      run0_first_ran_first = first_ran_first;
+    }
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(NanoRtClientTestSuite, NanoRtClientTest,

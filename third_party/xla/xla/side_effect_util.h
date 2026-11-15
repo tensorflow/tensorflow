@@ -100,6 +100,13 @@ extern const char kXlaMultiRecvCountAttr[];
 extern const char kXlaSchedulingGroupIdAttr[];
 // XLA frontend attribute value for a group that will not actually be scheduled.
 extern const char kXlaNoOpSchedulingGroup[];
+// XLA frontend attribute that puts the scheduling group of an instruction in
+// deep pipelining mode (value "true"). Data-dependent members of such a group
+// (e.g. a collective and the computation consuming its result) may be merged
+// into a single deep-pipelined operation by the backend, so the group may
+// contain data dependencies. The mode applies to the whole group as soon as
+// one member carries it.
+extern const char kXlaSchedulingGroupDeepPipelineAttr[];
 
 // XLA frontend attributes for specifying fusion directives.
 // MUST_FUSE: all ops labeled so should form as single fusion,
@@ -118,6 +125,12 @@ extern const char kKernelWindowBoundsAttr[];
 extern const char kScopedVmemLimitKibAttr[];
 extern const char kIntegerAttr[];
 extern const char kXlaCseSafeZeroOperandAttr[];
+
+// XLA:TPU frontend attribute that opts a fusion into native packed bf16
+// emission whatever the global bf16 emission mode. It applies to the whole
+// fusion: one fused instruction carrying it with value "true" opts in every
+// bf16 op that XLA fuses with it. On a call it propagates to the callee.
+extern const char kXlaTpuNativeBf16Attr[];
 
 // Frontend attribute asking XLA to launch and schedule independent collectives
 // with the same nonempty value as one group. Groups may mix operation types;

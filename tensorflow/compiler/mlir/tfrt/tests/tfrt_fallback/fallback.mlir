@@ -90,7 +90,7 @@ func.func @test_parse_single_example() -> !tfrt.chain {
   //   }
   //
   // Note that in MLIR, non-printable bytes are printed as escaped hex numbers.
-  %serialized_th = corert.const_string_tensor {shape = [], value = ["\0A!\0A\0E\0A\05key_0\12\05\1A\03\0A\01d\0A\0F\0A\05key_1\12\06\1A\04\0A\02\C8\01"]}
+  %serialized_th = corert.const_string_tensor <shape = [], value = ["\0A!\0A\0E\0A\05key_0\12\05\1A\03\0A\01d\0A\0F\0A\05key_1\12\06\1A\04\0A\02\C8\01"]>
   %serialized = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(2) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<1xi64>} num_args(0)

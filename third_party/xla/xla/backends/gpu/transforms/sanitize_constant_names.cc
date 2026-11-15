@@ -35,8 +35,9 @@ absl::StatusOr<bool> SanitizeConstantNames::RunImpl(
   bool changed = false;
 
   NameUniquer instr_name_uniquer(/*separator=*/"_");
-  // Collect the names used for the non-constant HLO instructions.+
-  for (HloComputation* computation : module->computations(execution_threads)) {
+  // Sanitize constant names globally, regardless of execution thread, because
+  // constant names must be unique across the module.
+  for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instr : computation->instructions()) {
       if (HloPredicateIsOp<HloOpcode::kConstant>(instr)) {
         continue;
@@ -53,7 +54,7 @@ absl::StatusOr<bool> SanitizeConstantNames::RunImpl(
   // change the names of non-constant instructions, that is, if a constant HLO
   // conflicts with a non-constant HLO, we change the name of the constant HLO
   // even though the non-constant HLO comes after in the HLO module.
-  for (HloComputation* computation : module->computations(execution_threads)) {
+  for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instr : computation->instructions()) {
       if (HloPredicateIsNotOp<HloOpcode::kConstant>(instr)) {
         continue;

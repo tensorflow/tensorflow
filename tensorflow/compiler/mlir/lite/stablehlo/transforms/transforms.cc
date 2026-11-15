@@ -21,13 +21,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
-#include "tensorflow/compiler/mlir/stablehlo/transforms/fold_broadcast_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 namespace odml {
@@ -86,43 +84,37 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   }
 }
 
-void AddMhloOptimizationPasses(OpPassManager& pm,
-                               const bool add_fold_broadcast_pass) {
+void AddCoreStablehloOptimizationPasses(OpPassManager& pm,
+                                        const bool add_fold_broadcast_pass) {
   pm.addNestedPass<func::FuncOp>(createStablehloUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createStablehloFuseConvolutionPass());
-  // StableHLO -> MHLO legalization.
-  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   // Rewrites some patterns for better performance.
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
   // Conditionally enable below pass because this causes unfused convolutions
   // described in b/293149194. This problem is not replicated in
   // StableHLO Quantizer.
   if (add_fold_broadcast_pass) {
-    pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
+    pm.addNestedPass<func::FuncOp>(CreateStablehloFoldBroadcastPass());
   }
 
   // Rewrites legacy StableHLO ops.
-  pm.addNestedPass<func::FuncOp>(mhlo::createLegalizeEinsumToDotGeneralPass());
   pm.addNestedPass<func::FuncOp>(
-      mhlo::createLegalizeTorchIndexSelectToGatherPass());
+      CreateLegalizeStablehloEinsumToDotGeneralPass());
+  pm.addNestedPass<func::FuncOp>(
+      CreateLegalizeStablehloTorchIndexSelectToGatherPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {
-  // The current plan of record is to avoid doing optimization passes
-  // on StableHLO, treating StableHLO purely as an input format, and do all
-  // optimizations via MHLO passes that can be shared with the OpenXLA compiler.
-  // Therefore, this function inserts a StableHLO <=> MHLO roundtrip to make
-  // this happen.
-
-  AddMhloOptimizationPasses(pm, /*enable_stablehlo_quantizer=*/false);
-  // TODO: b/293149194 - Add `createFoldBroadcastPass` back to
-  // `AddMhloOptimizationPasses`
-  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
-
-  // MHLO -> StableHLO legalization.
-  pm.addPass(mhlo::createHloLegalizeToStablehloPass());
+  AddCoreStablehloOptimizationPasses(pm, /*add_fold_broadcast_pass=*/false);
+  // TODO: b/293149194 - Add `CreateStablehloFoldBroadcastPass` back to
+  // `AddCoreStablehloOptimizationPasses`
+  pm.addNestedPass<func::FuncOp>(CreateStablehloFoldBroadcastPass());
+  // The StableHLO export paths do not run the TFLite legalization (which runs
+  // simplify-hlo itself), so fold and simplify here, as MHLO's folders and
+  // canonicalizations used to.
+  pm.addNestedPass<func::FuncOp>(CreateSimplifyHloPass());
 }
 
 }  // namespace odml

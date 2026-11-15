@@ -27,6 +27,7 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "mori_cco",
     srcs = ["cco_init.cpp"],
+    copts = ["-std=c++17"],
     # PUBLIC BUILD_CCO_SDMA=1 mirrors src/cco/CMakeLists.txt: it must match the
     # value every dependent that includes mori/cco/cco.hpp compiles with.
     defines = ["BUILD_CCO_SDMA=1"],

@@ -276,27 +276,11 @@ DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::DimTile;
-using ::xla::gpu::GetDefaultDimTile;
-using ::xla::gpu::GetFullDimTile;
-using ::xla::gpu::Tile;
-using ::xla::gpu::TiledDimId;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::DimTile;
 using ::xla::gpu::GetDefaultDimTile;
 using ::xla::gpu::GetFullDimTile;
 using ::xla::gpu::TiledDimId;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::DimTile;
-using ::xla::gpu::GetDefaultDimTile;
-using ::xla::gpu::GetFullDimTile;
-using ::xla::gpu::Tile;
-using ::xla::gpu::TiledDimId;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILE_H_

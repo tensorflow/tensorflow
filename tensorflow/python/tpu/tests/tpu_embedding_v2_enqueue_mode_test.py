@@ -66,7 +66,7 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     activations_oc = enqueue_with_outside_compilation(features)
     activations = enqueue_without_outside_compilation(features)
 
-    # Extact per core numpy arrays.
+    # Extract per core numpy arrays.
     activations_oc0 = self._get_replica_numpy(activations_oc, strategy, 0)
     activations0 = self._get_replica_numpy(activations, strategy, 0)
 

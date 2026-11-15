@@ -482,7 +482,7 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
 
 class Exporter {
  public:
-  virtual ~Exporter() {}
+  virtual ~Exporter() = default;
   virtual void PeriodicallyExportMetrics() = 0;
   virtual void ExportMetrics() = 0;
 };

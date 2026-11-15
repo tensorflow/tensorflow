@@ -32,7 +32,11 @@ def cuda_stub(name, srcs):
             "{}.inc".format(name),
             "{}.tramp.S".format(name),
         ],
-        tags = ["gpu"],
+        tags = [
+            "cuda-only",
+            "gpu",
+            "manual",
+        ],
         cmd = select({
             Label("//xla/tsl:linux_aarch64"): "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target aarch64",
             Label("//xla/tsl:linux_x86_64"): "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target x86_64",

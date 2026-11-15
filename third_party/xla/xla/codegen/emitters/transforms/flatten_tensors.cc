@@ -42,7 +42,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/WalkResult.h"
@@ -117,7 +117,9 @@ bool HasOnlyFlatTensorsFlatVectorsOrScalars(TypeRange types) {
 }
 
 Value Flatten(Value value, PatternRewriter& rewriter) {
-  if (IsScalarOrFlat(value.getType())) return value;
+  if (IsScalarOrFlat(value.getType())) {
+    return value;
+  }
   auto flat_type = GetFlattenedType(value.getType());
   return UnrealizedConversionCastOp::create(rewriter, value.getLoc(), flat_type,
                                             value)
@@ -156,7 +158,9 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     SmallVector<Type> new_operand_types(input_types);
     rewriter.setInsertionPointToStart(entry_block);
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
-      if (IsScalarOrFlat(operand_type)) continue;
+      if (IsScalarOrFlat(operand_type)) {
+        continue;
+      }
       mlir::BlockArgument func_argument = op.getArgument(index);
       auto cast_to_orig_type = UnrealizedConversionCastOp::create(
           rewriter, loc, operand_type, func_argument);
@@ -322,7 +326,7 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
 
   LogicalResult matchAndRewrite(mv::TransferReadOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getVector();
+    auto vector = op.getResult();
     auto vector_type = vector.getType();
     if (vector_type.getRank() != 1) {
       return rewriter.notifyMatchFailure(op, "the vector should be 1D");
@@ -394,6 +398,51 @@ struct RewriteTensorInsert : OpRewritePattern<InsertOp> {
   }
 };
 
+struct RewriteCopySlice : OpRewritePattern<CopySliceOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CopySliceOp op,
+                                PatternRewriter& rewriter) const override {
+    Value src = op.getSrc();
+    auto src_type = mlir::cast<RankedTensorType>(src.getType());
+    Value dest = op.getDest();
+    auto dest_type = mlir::cast<RankedTensorType>(dest.getType());
+    if (IsScalarOrFlat(src_type) && IsScalarOrFlat(dest_type)) {
+      return rewriter.notifyMatchFailure(op, "the tensors are already flat");
+    }
+
+    auto loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    SmallVector<Value> src_indices(op.getSrcIndices());
+    if (src_type.getRank() >= 2) {
+      src_indices = {LinearizeIndex(loc, src_type, op.getSrcIndices(), rewriter,
+                                    src_type.getEncoding())};
+      src =
+          UnrealizedConversionCastOp::create(b, GetFlattenedType(src_type), src)
+              .getResult(0);
+    }
+    SmallVector<Value> dest_indices(op.getDestIndices());
+    if (dest_type.getRank() >= 2) {
+      dest_indices = {LinearizeIndex(loc, dest_type, op.getDestIndices(),
+                                     rewriter, dest_type.getEncoding())};
+      dest = UnrealizedConversionCastOp::create(b, GetFlattenedType(dest_type),
+                                                dest)
+                 .getResult(0);
+    }
+
+    auto new_copy = CopySliceOp::create(b, src, dest, src_indices, dest_indices,
+                                        op.getNumElements());
+    if (dest_type.getRank() >= 2) {
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          b, dest_type, new_copy.getResult());
+      rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    } else {
+      rewriter.replaceOp(op, new_copy.getResult());
+    }
+    return mlir::success();
+  }
+};
+
 struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -425,7 +474,7 @@ struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
 
   LogicalResult matchAndRewrite(mv::FromElementsOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getDest();
+    auto vector = op.getResult();
     auto vector_type = vector.getType();
     if (vector_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op, "the vector is already flat");
@@ -531,7 +580,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
                                              new_body->getArguments().end()};
     for (auto [index, arg] :
          llvm::enumerate(new_body->getArguments().drop_front())) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       updated_block_args[index + 1] =
           UnrealizedConversionCastOp::create(
               rewriter, loc, old_body->getArgument(index + 1).getType(), arg)
@@ -547,7 +598,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto&& [index, yielded_value] :
          llvm::enumerate(new_terminator.getResultsMutable())) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       yielded_value.assign(UnrealizedConversionCastOp::create(
                                rewriter, loc, new_init_args[index].getType(),
                                yielded_value.get())
@@ -558,7 +611,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     rewriter.setInsertionPointAfter(new_for_op);
     SmallVector<Value> new_results(new_for_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       result = UnrealizedConversionCastOp::create(
                    rewriter, loc, op->getResult(index).getType(), result)
                    .getResult(0);
@@ -603,7 +658,9 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       rewriter.setInsertionPoint(else_yield);
       for (auto&& [result, type] :
            llvm::zip(else_yield->getOpOperands(), new_result_types)) {
-        if (result.get().getType() == type) continue;
+        if (result.get().getType() == type) {
+          continue;
+        }
         result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
                                                       result.get())
                        .getResult(0));
@@ -626,7 +683,9 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
     SmallVector<Value> new_results(new_if_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       Type old_type = op->getResult(index).getType();
-      if (result.getType() == old_type) continue;
+      if (result.getType() == old_type) {
+        continue;
+      }
       result =
           UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
@@ -672,7 +731,9 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       rewriter.setInsertionPoint(yield);
       for (auto&& [result, type] :
            llvm::zip(yield->getOpOperands(), new_result_types)) {
-        if (result.get().getType() == type) continue;
+        if (result.get().getType() == type) {
+          continue;
+        }
         result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
                                                       result.get())
                        .getResult(0));
@@ -691,7 +752,9 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
     SmallVector<Value> new_results(new_index_switch.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       Type old_type = op->getResult(index).getType();
-      if (result.getType() == old_type) continue;
+      if (result.getType() == old_type) {
+        continue;
+      }
       result =
           UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
@@ -768,6 +831,60 @@ struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
   }
 };
 
+struct RewriteLinearExtractOp : OpRewritePattern<LinearExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LinearExtractOp op,
+                                PatternRewriter& rewriter) const override {
+    Value flat_tensor = Flatten(op.getTensor(), rewriter);
+    rewriter.replaceOpWithNewOp<ExtractOp>(op, flat_tensor, op.getIndex());
+    return mlir::success();
+  }
+};
+
+struct RewriteLinearInsertOp : OpRewritePattern<LinearInsertOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LinearInsertOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    Value flat_tensor = Flatten(tensor, rewriter);
+    auto insert_op = InsertOp::create(rewriter, op.getLoc(), op.getValue(),
+                                      flat_tensor, op.getIndex());
+    if (tensor_type.getRank() < 2) {
+      rewriter.replaceOp(op, insert_op.getResult());
+    } else {
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+          op, tensor_type, insert_op.getResult());
+    }
+    return mlir::success();
+  }
+};
+
+struct RewriteSetDynamicDimSizeOp : OpRewritePattern<SetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetDynamicDimSizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+
+    auto tensor_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(tensor_type), tensor)
+            .getResult(0);
+    auto new_op = SetDynamicDimSizeOp::create(rewriter, op.getLoc(), tensor_1D,
+                                              op.getSize(), op.getDim());
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, tensor_type,
+                                                            new_op.getResult());
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -780,13 +897,17 @@ class FlattenTensorsPass
         RewriteAllocateShared,
         RewriteAtomicRMW,
         RewriteConstant,
+        RewriteCopySlice,
         RewriteCpuLoad,
         RewriteFor,
         RewriteFunctionSignatures,
         RewriteGetDynamicDimSizeOp,
         RewriteIf,
         RewriteIndexSwitch,
+        RewriteLinearExtractOp,
+        RewriteLinearInsertOp,
         RewritePureCall,
+        RewriteSetDynamicDimSizeOp,
         RewriteSyncThreads,
         RewriteTensorExtract,
         RewriteTensorInsert,

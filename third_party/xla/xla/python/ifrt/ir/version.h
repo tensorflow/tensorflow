@@ -45,7 +45,7 @@ class Version {
   }
 
   /// Returns a Version representing the minimum supported IFRT IR version.
-  static Version getMinimumVersion() { return Version(0, 1, 0); }
+  static Version getMinimumVersion() { return Version(0, 3, 0); }
 
   // CompatibilityRequirement is used to get a viable target version to use for
   // `xla::ifrt::Serialize` given a compatibility requirement specified as a

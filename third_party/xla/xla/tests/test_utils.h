@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_UTILS_H_
 #define XLA_TESTS_TEST_UTILS_H_
 
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -124,6 +126,31 @@ struct FakeArgumentsOptions {
   //
   // Note: Currently supported only in MakeDataflowConstrainedArguments.
   absl::flat_hash_map<int64_t, std::pair<double, double>> parameter_ranges;
+
+  // If true, caches generated floating-point and narrow (<= 8-bit) integral
+  // static array literals of at least `min_cached_argument_bytes` (and at least
+  // 16,384 elements) in a bounded process-wide LRU memory cache (and on disk as
+  // `.xlatensor` files when the `XLA_ARGUMENT_CACHE_DIR` environment variable
+  // is set). Predicates, wider (>= 16-bit) integer index/control tensors,
+  // structurally constrained index/sort arrays, and smaller per-layer tensors
+  // (such as MoE router gates or scale vectors below
+  // `min_cached_argument_bytes`) remain uncached so per-parameter routing,
+  // mask, and offset semantics are preserved.
+  bool cache_arguments = false;
+
+  // Minimum normalized host byte size for an array literal to be eligible for
+  // caching when `cache_arguments` is true (clamped to at least 64 KiB).
+  // Raising this threshold in large multi-layer models keeps small per-layer
+  // weight matrices (such as MoE router gates) independent across layers while
+  // still caching bulk FFN/attention weights.
+  int64_t min_cached_argument_bytes = 64 * 1024;
+
+  // Maximum number of distinct random variants generated per unique normalized
+  // array shape and constraint profile when `cache_arguments` is true. Keeping
+  // two variants avoids algebraic cancellation in binary ops on identical
+  // parameter shapes (e.g. `subtract(p0, p1)`) while bounding generation work
+  // in deep models with many identically shaped layer weights.
+  int max_cached_variants_per_shape = 2;
 };
 
 // Generates a vector of arguments containing fake data. The number, shape and
@@ -154,6 +181,15 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 // Unimplemented error if provided.
 absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
     const HloModule* module, const FakeArgumentsOptions& options = {});
+
+// Clears the in-memory and tracked on-disk fake argument cache and resets
+// capacity limits to their defaults. Intended for unit tests.
+void ClearFakeArgumentCacheForTest();
+
+// Overrides the maximum in-memory and on-disk capacity limits (in bytes) of the
+// fake argument cache. Intended for unit tests exercising LRU eviction.
+void SetFakeArgumentCacheLimitsForTest(int64_t max_in_memory_bytes,
+                                       int64_t max_disk_bytes);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.

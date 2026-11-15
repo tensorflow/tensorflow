@@ -55,6 +55,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cublas.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -70,6 +74,10 @@ cc_library(
 alias(
     name = "cublas",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cublas//:cublas", ":cublas_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -87,6 +95,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cublasLt.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -101,6 +113,10 @@ cc_library(
 alias(
     name = "cublas_lt",
     actual = if_cuda_libs("@cuda_cublas//:cublasLt", ":cublas_lt_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -117,6 +133,10 @@ cc_library(
     ]),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
+    ],
+    tags = [
+        "cuda-only",
+        "gpu",
     ],
     textual_hdrs = ["cuda.inc"],
     visibility = ["//visibility:public"],
@@ -152,6 +172,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cudart.inc"],
     visibility = ["//visibility:public"],
     deps = select({
@@ -171,6 +195,10 @@ cc_library(
 alias(
     name = "cudart",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cudart//:cudart", ":cudart_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -189,6 +217,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cudnn.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -204,24 +236,40 @@ cc_library(
 alias(
     name = "cudnn",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cudnn//:cudnn", ":cudnn_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "nccl_rpath_flags",
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
 alias(
     name = "nccl_rpath",
     actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl_rpath_flags"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "tensorrt_rpath",
     linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -244,6 +292,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cufft.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -258,6 +310,10 @@ cc_library(
 alias(
     name = "cufft",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cufft//:cufft", ":cufft_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -281,6 +337,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cupti.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -296,6 +356,10 @@ cc_library(
 alias(
     name = "cupti",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cupti//:cupti", ":cupti_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -318,6 +382,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cusolver.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -332,6 +400,10 @@ cc_library(
 alias(
     name = "cusolver",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cusolver//:cusolver", ":cusolver_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -354,6 +426,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cusparse.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -369,6 +445,10 @@ cc_library(
 alias(
     name = "cusparse",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_cusparse//:cusparse", ":cusparse_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -387,6 +467,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["nccl.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -404,6 +488,10 @@ cc_library(
 alias(
     name = "nccl",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -423,6 +511,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["nvshmem.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -436,6 +528,10 @@ cc_library(
 alias(
     name = "nvshmem_stub",
     actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -468,6 +564,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["nvjitlink.inc"],
     visibility = ["//visibility:public"],
     deps = select({
@@ -485,6 +585,10 @@ cc_library(
 alias(
     name = "nvjitlink",  # buildifier: disable=duplicated-name
     actual = if_cuda_libs("@cuda_nvjitlink//:nvjitlink", ":nvjitlink_stub"),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -502,6 +606,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["nvml.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -516,6 +624,10 @@ cc_library(
 alias(
     name = "nvml",  # buildifier: disable=duplicated-name
     actual = ":nvml_stub",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -533,6 +645,10 @@ cc_library(
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["nvrtc.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -547,5 +663,9 @@ cc_library(
 alias(
     name = "nvrtc",  # buildifier: disable=duplicated-name
     actual = ":nvrtc_stub",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
 )

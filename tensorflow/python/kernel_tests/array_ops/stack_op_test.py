@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -438,6 +439,114 @@ class AutomaticStackingTest(test.TestCase):
         TypeError, r"Argument `values` must be a sequence of Tensor objects"
     ):
       array_ops_stack.stack(t, axis=1)
+
+  def testInvalidNonSequenceTypeRaisesTypeError(self):
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(5, axis=0)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(3.14, axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack("abc", axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(b"abc", axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(bytearray(b"abc"), axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack({1, 2}, axis=0)
+
+  def testMappingTypeRaisesTypeError(self):
+    t = constant_op.constant([1, 2, 3])
+    with self.assertRaisesRegex(
+        TypeError,
+        r"Argument `values` must be a sequence of Tensor objects, but got a"
+        r" mapping",
+    ):
+      array_ops_stack.stack({"a": t}, axis=1)
+
+  def testCompositeTensorRaisesTypeError(self):
+    ragged = ragged_factory_ops.constant([[1, 2], [3]])
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(ragged, axis=1)
+
+  def testEmptyValuesAxisNonZeroRaisesValueError(self):
+    with self.assertRaisesRegex(
+        ValueError, r"Argument `values` cannot be empty when axis != 0"
+    ):
+      array_ops_stack.stack([], axis=1)
+
+    with self.assertRaisesRegex(
+        ValueError, r"Argument `values` cannot be empty when axis != 0"
+    ):
+      array_ops_stack.stack((), axis=-1)
+
+    with self.assertRaisesRegex(
+        ValueError, r"Argument `values` cannot be empty when axis != 0"
+    ):
+      array_ops_stack.stack(np.array([]), axis=1)
+
+  def testNumpyArrayValues(self):
+    # 0-D numpy array should raise TypeError
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(np.array(5), axis=1)
+
+    # 1-D numpy array should be stacked properly
+    res = array_ops_stack.stack(np.array([1, 2, 3]), axis=0)
+    self.assertAllEqual(res, [1, 2, 3])
+
+    # 2-D numpy array with non-zero axis should be stacked properly
+    res_axis1 = array_ops_stack.stack(np.array([[1, 2], [3, 4]]), axis=1)
+    self.assertAllEqual(res_axis1, [[1, 3], [2, 4]])
+
+    # Non-list Sequence (range) should be stacked properly
+    res_range = array_ops_stack.stack(range(3), axis=0)
+    self.assertAllEqual(res_range, [0, 1, 2])
+
+  def testGeneratorValuesSupported(self):
+    gen = (constant_op.constant(i) for i in range(3))
+    res = array_ops_stack.stack(gen)
+    self.assertAllEqual(res, [0, 1, 2])
+
+  def testSingleTensorInGraphAndXlaModeRaisesTypeError(self):
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    @def_function.function
+    def graph_fn(x):
+      return array_ops_stack.stack(x, axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      graph_fn(t)
+
+    @def_function.function(jit_compile=True)
+    def xla_fn(x):
+      return array_ops_stack.stack(x, axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      xla_fn(t)
 
   def testSingleTensorAxis0EmitsDeprecationWarning(self):
     t = constant_op.constant([1, 2, 3])

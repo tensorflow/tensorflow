@@ -100,11 +100,17 @@ extern "C" void __chkstk(void);
 #endif
 
 extern "C" {
-// Provided by compiler-rt and MLIR.
+// Provided by compiler-rt and MLIR. On x86_64, Float16bits.cpp defines these
+// with a float return type to match the SSE register return convention.
+#if defined(__x86_64__) || defined(_M_X64)
+using BF16ABIType = float;
+#else
+using BF16ABIType = uint16_t;
+#endif
 // Converts an F32 value to a BF16.
-uint16_t __truncsfbf2(float);
+BF16ABIType __truncsfbf2(float);
 // Converts an F64 value to a BF16.
-uint16_t __truncdfbf2(double);
+BF16ABIType __truncdfbf2(double);
 
 #if defined(__APPLE__) || defined(__s390x__)
 // Converts an F32 value to a F16.

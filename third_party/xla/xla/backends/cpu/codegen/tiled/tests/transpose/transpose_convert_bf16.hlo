@@ -1,10 +1,10 @@
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN:   --xtile-cpu-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: fusion_to_xtile %s | fusion_compiler_opt \
-// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
-// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
-// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+// RUN:   --xtile-cpu-xtile-to-vector --xtile-cpu-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
 
 // The output side of an NHWC -> NCHW layout change in bf16, as emitted around a
 // depthwise convolution. The convert happens before the transpose, so without
@@ -19,22 +19,22 @@ fusion {
   ROOT copy = bf16[1,256,56,56]{3,2,1,0} copy(t)
 }
 
-// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// NEW-VECTOR:         %[[OUT:.*]] = xtile.memref_bitcast %{{.*}} : memref<1x256x56x56xbf16> -> memref<1x256x56x56xi16>
-// NEW-VECTOR:         %[[TRUNC:.*]] = arith.truncf %{{.*}} : vector<1x1x16x16xf32> to vector<1x1x16x16xbf16>
-// NEW-VECTOR:         %[[CAST:.*]] = arith.bitcast %[[TRUNC]] : vector<1x1x16x16xbf16> to vector<1x1x16x16xi16>
-// NEW-VECTOR:         %[[T:.*]] = vector.transpose %[[CAST]], [0, 3, 1, 2] : vector<1x1x16x16xi16> to vector<1x16x1x16xi16>
-// NEW-VECTOR:         vector.transfer_write %[[T]], %[[OUT]]
+// CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// CHECK-VECTOR:         %[[OUT:.*]] = xtile.memref_bitcast %{{.*}} : memref<1x256x56x56xbf16> -> memref<1x256x56x56xi16>
+// CHECK-VECTOR:         %[[TRUNC:.*]] = arith.truncf %{{.*}} : vector<1x1x16x16xf32> to vector<1x1x16x16xbf16>
+// CHECK-VECTOR:         %[[CAST:.*]] = arith.bitcast %[[TRUNC]] : vector<1x1x16x16xbf16> to vector<1x1x16x16xi16>
+// CHECK-VECTOR:         %[[T:.*]] = vector.transpose %[[CAST]], [0, 3, 1, 2] : vector<1x1x16x16xi16> to vector<1x16x1x16xi16>
+// CHECK-VECTOR:         vector.transfer_write %[[T]], %[[OUT]]
 
 // The transpose shuffles and all memory accesses are on i16. The only bf16
 // vectors left join the two halves produced by the 8-wide truncation intrinsic
 // right before the bitcast, which LLVM keeps in registers.
-// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT:     llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}}bf16>
-// NEW-VECTOR-LLVM:         llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}} : vector<16xi16>
-// NEW-VECTOR-LLVM-NOT:     llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}}bf16>
-// NEW-VECTOR-LLVM-NOT:     llvm.store {{.*}}bf16>
-// NEW-VECTOR-LLVM-NOT:     llvm.intr.masked.store {{.*}}bf16>
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// CHECK-LLVM-NOT:     llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}}bf16>
+// CHECK-LLVM:         llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}} : vector<16xi16>
+// CHECK-LLVM-NOT:     llvm.shufflevector {{.*}}[0, 16, 1, 17, {{.*}}bf16>
+// CHECK-LLVM-NOT:     llvm.store {{.*}}bf16>
+// CHECK-LLVM-NOT:     llvm.intr.masked.store {{.*}}bf16>
 
 ENTRY main {
   p0 = f32[1,56,56,256]{3,2,1,0} parameter(0)

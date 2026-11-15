@@ -54,6 +54,14 @@ package(
 
 exports_files(["data/hlo_isolation_cli_test.hlo"])
 
+exports_files(
+    [
+        "benchmarks/hlo/hlo_gemma4_2b_bf16.hlo",
+        "benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo",
+    ],
+    visibility = ["//xla/pjrt/gpu:__pkg__"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -171,6 +179,7 @@ xla_cc_binary(
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/service",
         "//xla/service:hlo_proto_cc",
@@ -212,6 +221,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
@@ -287,7 +297,7 @@ cc_library(
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_propagation",
         "//xla/service:triangular_solve_expander",
-        "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd:spmd_partitioner",
         "//xla/tsl/util:command_line_flags",
     ],
 )

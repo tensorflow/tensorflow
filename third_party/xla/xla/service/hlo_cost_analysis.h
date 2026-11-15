@@ -487,6 +487,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleDot(const HloInstruction* dot) override;
   absl::Status HandleRaggedDot(const HloInstruction* dot) override;
   absl::Status HandleScaledDot(const HloInstruction* dot) override;
+  absl::Status HandleDotGeneral(const HloInstruction* dot) override;
   absl::Status HandleConvolution(const HloInstruction* convolution) override;
   absl::Status HandleFft(const HloInstruction* fft) override;
   absl::Status HandleTriangularSolve(const HloInstruction* hlo) override;

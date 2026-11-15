@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -908,7 +909,14 @@ ScatterDescription GetScatterDescription(const HloFusionAnalysis& analysis) {
   CHECK_NE(hero, nullptr);
   auto* scatter = Cast<HloScatterInstruction>(hero);
   auto indices_shape = scatter->scatter_indices()->shape();
-  auto update_shape = scatter->scatter_updates().front()->shape();
+  // The emitter distributes work over the logical update space, with the slice
+  // dimension (dimension 0) being the most major one, so that no thread
+  // processes elements of two different slices. This must not depend on the
+  // physical layout of the updates operand, so drop the layout here; reading
+  // the operand goes through its own indexing.
+  Shape update_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      scatter->scatter_updates().front()->shape().element_type(),
+      scatter->scatter_updates().front()->shape().dimensions());
   auto output_shape = scatter->scatter_operands().front()->shape();
 
   return ScatterDescription{

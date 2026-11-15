@@ -345,6 +345,57 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetOrCreateRuntimeError_Args,
 typedef PJRT_Error* PJRT_Megascale_GetOrCreateRuntimeError(
     PJRT_Megascale_GetOrCreateRuntimeError_Args* args);
 
+struct PJRT_Megascale_DiscoverSlices_Args {
+  size_t struct_size;
+  PJRT_Megascale_ClientContext* client_context;
+  PJRT_MultiSlice_Config* multi_slice_config;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_DiscoverSlices_Args,
+                          multi_slice_config);
+typedef PJRT_Error* PJRT_Megascale_DiscoverSlices(
+    PJRT_Megascale_DiscoverSlices_Args* args);
+
+struct PJRT_Megascale_MultiSliceConfig_GetIncarnationId_Args {
+  size_t struct_size;
+  PJRT_MultiSlice_Config* config;
+  int64_t incarnation_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_GetIncarnationId_Args,
+                          incarnation_id);
+typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_GetIncarnationId(
+    PJRT_Megascale_MultiSliceConfig_GetIncarnationId_Args* args);
+
+struct PJRT_Megascale_MultiSliceConfig_GetLocalHostId_Args {
+  size_t struct_size;
+  PJRT_MultiSlice_Config* config;
+  int32_t host_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_GetLocalHostId_Args,
+                          host_id);
+typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_GetLocalHostId(
+    PJRT_Megascale_MultiSliceConfig_GetLocalHostId_Args* args);
+
+struct PJRT_Megascale_MultiSliceConfig_GetNumHosts_Args {
+  size_t struct_size;
+  PJRT_MultiSlice_Config* config;
+  int32_t num_hosts;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MultiSliceConfig_GetNumHosts_Args,
+                          num_hosts);
+typedef PJRT_Error* PJRT_Megascale_MultiSliceConfig_GetNumHosts(
+    PJRT_Megascale_MultiSliceConfig_GetNumHosts_Args* args);
+
+struct PJRT_Megascale_GlobalBarrier_Args {
+  size_t struct_size;
+  PJRT_MultiSlice_Config* config;
+  const char* barrier_id;
+  size_t barrier_id_size;
+  int64_t timeout_in_ms;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GlobalBarrier_Args, timeout_in_ms);
+typedef PJRT_Error* PJRT_Megascale_GlobalBarrier(
+    PJRT_Megascale_GlobalBarrier_Args* args);
+
 typedef struct PJRT_Megascale_Extension {
   PJRT_Extension_Base base;
   PJRT_NO_DISCARD PJRT_Megascale_CreateClientContextFromPjRtClient*
@@ -394,9 +445,16 @@ typedef struct PJRT_Megascale_Extension {
       get_interface_addresses_helper;
   PJRT_NO_DISCARD PJRT_Megascale_GetOrCreateRuntimeError*
       get_or_create_runtime_error;
+  PJRT_NO_DISCARD PJRT_Megascale_DiscoverSlices* discover_slices;
+  PJRT_NO_DISCARD PJRT_Megascale_MultiSliceConfig_GetIncarnationId*
+      multi_slice_config_get_incarnation_id;
+  PJRT_NO_DISCARD PJRT_Megascale_MultiSliceConfig_GetLocalHostId*
+      multi_slice_config_get_local_host_id;
+  PJRT_NO_DISCARD PJRT_Megascale_MultiSliceConfig_GetNumHosts*
+      multi_slice_config_get_num_hosts;
+  PJRT_NO_DISCARD PJRT_Megascale_GlobalBarrier* global_barrier;
 } PJRT_Megascale_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension,
-                          get_or_create_runtime_error);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension, global_barrier);
 
 // NOLINTEND(modernize-use-using)
 

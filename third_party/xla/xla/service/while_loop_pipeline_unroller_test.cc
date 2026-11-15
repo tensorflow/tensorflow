@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_pipeline_unroller.h"
 
 #include <cstdint>
+#include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/copy_insertion.h"
 
 namespace xla {
@@ -97,6 +99,56 @@ ENTRY main {
   const HloInstruction* unrolled_loop = original_loop->operand(0);
   EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   // There should be no copies inserted into the unrolled loop.
+  EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
+}
+
+TEST_F(WhileLoopPipelineUnrollerTest, PipelinedLoopS64InductionVar) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  input_tuple.0 = (s32[], s32[], s32[], s64[]) parameter(0)
+  arg.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  arg.1 = s32[] get-tuple-element(input_tuple.0), index=1
+  arg.2 = s32[] get-tuple-element(input_tuple.0), index=2
+  arg.3 = s64[] get-tuple-element(input_tuple.0), index=3
+
+  one.0 = s32[] constant(1)
+  out.0 = s32[] add(arg.0, one.0)
+
+  one_s64.0 = s64[] constant(1)
+  add.0 = s64[] add(arg.3, one_s64.0)
+  ROOT output_tuple.0 = (s32[], s32[], s32[], s64[]) tuple(arg.1, arg.2, out.0, add.0)
+}
+
+condition {
+  input_tuple.0 = (s32[], s32[], s32[], s64[]) parameter(0)
+  arg.3 = s64[] get-tuple-element(input_tuple.0), index=3
+  limit.0 = s64[] constant(5000000000)
+  ROOT pred.0 = pred[] compare(arg.3, limit.0), direction=LT
+}
+
+ENTRY main {
+  while_tuple.0 = (s32[], s32[], s32[], s64[]) parameter(0)
+  ROOT while.0 = (s32[], s32[], s32[], s64[]) while(while_tuple.0), body=body, condition=condition
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  WhileLoopPipelineUnroller wlpu;
+  ASSERT_IS_OK(wlpu.Run(module.get()).status());
+  ASSERT_IS_OK(module->Verify());
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+
+  const HloInstruction* original_loop =
+      FindInstruction(module.get(), "while.0");
+  EXPECT_EQ(Count(HloOpcode::kCopy, *original_loop->while_body()), 3);
+
+  const HloInstruction* unrolled_loop = original_loop->operand(0);
+  EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
 }
 

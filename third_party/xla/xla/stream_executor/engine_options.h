@@ -22,15 +22,17 @@ namespace stream_executor {
 // operations like matrix multiplications and convolutions.
 struct EngineOptions {
   EngineOptions(bool require_determinism, bool allow_tf32,
-                bool require_command_buffer)
+                bool require_command_buffer, bool force_tensor_ir = false)
       : require_determinism(require_determinism),
         allow_tf32(allow_tf32),
-        require_command_buffer(require_command_buffer) {}
+        require_command_buffer(require_command_buffer),
+        force_tensor_ir(force_tensor_ir) {}
 
   EngineOptions()
       : require_determinism(false),
         allow_tf32(true),
-        require_command_buffer(false) {}
+        require_command_buffer(false),
+        force_tensor_ir(false) {}
 
   // If true, the op must be deterministic
   bool require_determinism;
@@ -39,6 +41,11 @@ struct EngineOptions {
   // If true, the execution plan selected must support command buffer
   // construction.
   bool require_command_buffer;
+  // If true, after FALLBACK heuristics deselect engines that report
+  // NUMERICAL_NOTE_TENSOR_CORE so only
+  // CUDNN_GENERIC_MEMBOUND_FUSION_TENSOR_IR_ENGINE (eng3) remains for non-GEMM
+  // pointwise fusions.
+  bool force_tensor_ir;
 };
 
 }  // namespace stream_executor

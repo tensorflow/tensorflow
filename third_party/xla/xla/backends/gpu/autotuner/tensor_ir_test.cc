@@ -114,6 +114,36 @@ ENTRY %entry_computation (p0: f32[4]) -> f32[6] {
   ROOT %fusion = f32[6]{0} fusion(%p0), kind=kLoop, calls=%fused_pad
 })";
 
+// TensorIR's layout propagation fails on the slices of this multi-output
+// fusion.
+constexpr char kLayoutPropagationFailureFusionHlo[] = R"(
+HloModule m
+
+%add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(%lhs, %rhs)
+}
+
+%fused_norm_slice (p0: f32[96,96,3]) -> (f32[96,96,1], f32[96,96,1]) {
+  %p0 = f32[96,96,3]{2,1,0} parameter(0)
+  %mul = f32[96,96,3]{2,1,0} multiply(%p0, %p0)
+  %c0 = f32[] constant(0)
+  %reduce = f32[96,96]{1,0} reduce(%mul, %c0), dimensions={2}, to_apply=%add
+  %sqrt = f32[96,96]{1,0} sqrt(%reduce)
+  %broadcast = f32[96,96,3]{2,1,0} broadcast(%sqrt), dimensions={0,1}
+  %div = f32[96,96,3]{2,1,0} divide(%p0, %broadcast)
+  %slice0 = f32[96,96,1]{2,1,0} slice(%div), slice={[0:96], [0:96], [1:2]}
+  %slice1 = f32[96,96,1]{2,1,0} slice(%div), slice={[0:96], [0:96], [2:3]}
+  ROOT %tuple = (f32[96,96,1]{2,1,0}, f32[96,96,1]{2,1,0}) tuple(%slice0, %slice1)
+}
+
+ENTRY %entry_computation (p0: f32[96,96,3]) -> (f32[96,96,1], f32[96,96,1]) {
+  %p0 = f32[96,96,3]{2,1,0} parameter(0)
+  ROOT %fusion = (f32[96,96,1]{2,1,0}, f32[96,96,1]{2,1,0}) fusion(%p0),
+    kind=kInput, calls=%fused_norm_slice
+})";
+
 class TensorIrBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TensorIrBackendTest()
@@ -232,6 +262,21 @@ TEST_F(TensorIrBackendTest, GetSupportedConfigsReturnsEmptyForUnsupported) {
                        backend_.GetSupportedConfigs(
                            *module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsEmpty());
+}
+
+TEST_F(TensorIrBackendTest, GetSupportedConfigsDoesNotPrintDiagnostics) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLayoutPropagationFailureFusionHlo));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  ASSERT_TRUE(backend_.IsSupported(fusion));
+
+  testing::internal::CaptureStderr();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(fusion);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), IsEmpty());
+  EXPECT_THAT(configs, Not(IsOk()));
 }
 
 TEST_F(TensorIrBackendTest, ApplyConfigSetsFusionBackendConfig) {

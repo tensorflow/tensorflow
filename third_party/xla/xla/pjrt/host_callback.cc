@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/host_callback.h"
 
+#include <cfenv>  // NOLINT(build/c++11)
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -36,7 +37,9 @@ static thread_local int on_send_guard = 0;
 void EnterHostCallback() { ++on_send_guard; }
 void LeaveHostCallback() { --on_send_guard; }
 
-HostCallbackScope::HostCallbackScope() { ++on_send_guard; }
+HostCallbackScope::HostCallbackScope() : set_round_(FE_TONEAREST) {
+  ++on_send_guard;
+}
 HostCallbackScope::~HostCallbackScope() { --on_send_guard; }
 
 bool ThisThreadIsInsideHostCallback() { return on_send_guard > 0; }

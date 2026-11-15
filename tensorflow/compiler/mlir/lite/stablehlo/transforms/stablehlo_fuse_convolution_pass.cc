@@ -36,8 +36,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/quant_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 
 namespace mlir {
 namespace odml {
@@ -118,8 +118,8 @@ class FuseStablehloMulAndConvolutionPattern
     if (is_dynamic_broadcast) {
       auto conv_uses = (*conv_op.getODSResults(0).begin()).getUses();
       if (std::distance(conv_uses.begin(), conv_uses.end()) != 2 ||
-          quant::FindUserOfType<shape::ShapeOfOp>(conv_op) == nullptr ||
-          quant::FindUserOfType<stablehlo::MulOp>(conv_op) == nullptr) {
+          FindUserOfType<shape::ShapeOfOp>(conv_op) == nullptr ||
+          FindUserOfType<stablehlo::MulOp>(conv_op) == nullptr) {
         return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic
                                                            &diag) {
           diag << "entities 'conv' failed to satisfy constraint: has two uses "

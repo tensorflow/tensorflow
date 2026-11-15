@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -141,14 +140,15 @@ bool BasicStringArray::IsDeleted() const {
 }
 
 void BasicStringArray::DeleteInternal() {
-  absl::MutexLock lock(mu_);
-  if (is_deleted_) {
-    return;
+  OnDoneWithBuffer on_done_with_buffer;
+  {
+    absl::MutexLock lock(mu_);
+    if (is_deleted_) {
+      return;
+    }
+    on_done_with_buffer = std::move(on_done_with_buffer_);
+    is_deleted_ = true;
   }
-  if (on_done_with_buffer_) {
-    std::move(on_done_with_buffer_)();
-  }
-  is_deleted_ = true;
 }
 
 absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
@@ -157,7 +157,6 @@ absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
 }
 
 tsl::Future<> BasicStringArray::GetReadyFuture() const {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return tsl::Future<>(
@@ -170,7 +169,6 @@ absl::StatusOr<std::vector<ArrayRef>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
@@ -227,8 +225,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
 
     auto current_shard_strings = std::make_shared<PerShardStringStore>();
     per_shard_strings.push_back(current_shard_strings);
-    on_done_with_buffer_callbacks.push_back(
-        [data = std::move(current_shard_strings)]() {});
+    on_done_with_buffer_callbacks.push_back(std::move(current_shard_strings));
   }
 
   // When the buffers become ready, copy each of the per-shard data into the
@@ -272,7 +269,6 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
 tsl::Future<> BasicStringArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return tsl::Future<>(
@@ -285,19 +281,49 @@ tsl::Future<> BasicStringArray::CopyToHostBuffer(
         "array has been sharded over %d devices.",
         array_spec_.sharding->devices()->size())));
   }
+  if (!array_spec_.sharding->devices()->IsFullyAddressable()) {
+    return tsl::Future<>(absl::InvalidArgumentError(absl::StrFormat(
+        "CopyToHostBuffer only supports addressable string arrays. This "
+        "array has non-addressable devices: %v",
+        *array_spec_.sharding->devices())));
+  }
+  if (byte_strides.has_value()) {
+    return tsl::Future<>(absl::InvalidArgumentError(
+        "Byte strides are not supported for string arrays"));
+  }
+  const int64_t num_elements = array_spec_.shape.num_elements();
+  if (num_elements > 0 && data == nullptr) {
+    return tsl::Future<>(absl::InvalidArgumentError(
+        "Host buffer data must not be null for non-empty string arrays"));
+  }
 
   auto [copy_completion_promise, copy_completion_future] = tsl::MakePromise<>();
 
   buffers_.OnReady(
       [copy_completion_promise = std::move(copy_completion_promise),
-       host_buffer = static_cast<absl::Cord*>(data)](
-          absl::StatusOr<Buffers> input_buffers) mutable {
+       host_buffer = static_cast<absl::Cord*>(data),
+       num_elements](absl::StatusOr<Buffers> input_buffers) mutable {
         if (!input_buffers.ok()) {
           copy_completion_promise.Set(input_buffers.status());
           return;
         }
-        const absl::Span<const absl::Cord>& input_buffer = (*input_buffers)[0];
-        for (int i = 0; i < input_buffer.size(); ++i) {
+        if (input_buffers->size() != 1) {
+          copy_completion_promise.Set(absl::FailedPreconditionError(
+              absl::StrCat("Expected a single shard buffer in "
+                           "CopyToHostBuffer, but got: ",
+                           input_buffers->size())));
+          return;
+        }
+        const absl::Span<const absl::Cord> input_buffer = (*input_buffers)[0];
+        if (input_buffer.size() != num_elements) {
+          copy_completion_promise.Set(absl::FailedPreconditionError(
+              absl::StrCat("Number of strings in buffer: ", input_buffer.size(),
+                           " does not match the number of elements in array "
+                           "shape: ",
+                           num_elements)));
+          return;
+        }
+        for (int64_t i = 0; i < num_elements; ++i) {
           host_buffer[i] = input_buffer[i];
         }
         copy_completion_promise.Set(absl::OkStatus());
@@ -309,7 +335,6 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
@@ -338,7 +363,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
   };
 
   auto string_store = std::make_shared<StringStore>();
-  auto on_done_with_buffer = [string_store]() {};
+  OnDoneWithBuffer on_done_with_buffer = string_store;
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),
@@ -387,7 +412,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
   };
 
   auto string_store = std::make_shared<StringStore>();
-  auto on_done_with_buffer = [string_store]() {};
+  OnDoneWithBuffer on_done_with_buffer = string_store;
   auto [buffers_promise, buffers_future] = tsl::MakePromise<Buffers>();
 
   auto copier = [string_store = std::move(string_store),
@@ -425,7 +450,6 @@ BasicStringArray::pjrt_layout() const {
 LayoutRef BasicStringArray::layout() const { return nullptr; }
 
 std::string BasicStringArray::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat(
       "BasicStringArray(shape=%v; sharding=%v; layout=major-to-minor-dense)",
       array_spec_.shape, array_spec_.sharding);

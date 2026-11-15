@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
-#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo.pb.h"
@@ -100,19 +98,20 @@ bool HasDisjointReadWriteRegions(const HloInstruction* instruction) {
   if (instruction == nullptr) {
     return false;
   }
-  if (HasDisjointReadWriteRegionsAttr(instruction)) {
+  if (frontend::HasDisjointReadWriteRegionsAttr(instruction)) {
     return true;
   }
   if (instruction->IsAsynchronous()) {
     const HloInstruction* wrapped = instruction->async_wrapped_instruction();
-    if (wrapped != nullptr && HasDisjointReadWriteRegionsAttr(wrapped)) {
+    if (wrapped != nullptr &&
+        frontend::HasDisjointReadWriteRegionsAttr(wrapped)) {
       return true;
     }
   }
   if (instruction->parent() != nullptr) {
     for (const HloInstruction* caller :
          instruction->parent()->caller_instructions(HloOpcode::kWhile)) {
-      if (HasDisjointReadWriteRegionsAttr(caller)) {
+      if (frontend::HasDisjointReadWriteRegionsAttr(caller)) {
         return true;
       }
     }
@@ -159,62 +158,6 @@ bool HasExtraRelevantUse(const HloInstruction* inst, const ShapeIndex& idx,
     if (u != expected_user) {
       return true;
     }
-  }
-  return false;
-}
-
-bool IsMatchingInPlaceDusReadSlice(const HloInstruction* slice,
-                                   const HloInstruction* base_inst,
-                                   const HloInstruction* dus) {
-  if (dus->opcode() != HloOpcode::kDynamicUpdateSlice ||
-      slice->operand_count() == 0 || slice->operand(0) != base_inst ||
-      slice->OperandIndices(base_inst).size() != 1 ||
-      !ShapeUtil::EqualIgnoringElementType(base_inst->shape(),
-                                           dus->operand(0)->shape()) ||
-      !ShapeUtil::EqualIgnoringElementType(slice->shape(),
-                                           dus->operand(1)->shape())) {
-    return false;
-  }
-  if (slice->opcode() == HloOpcode::kDynamicSlice) {
-    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
-      return true;
-    }
-    for (int64_t i = 1; i < slice->operand_count(); ++i) {
-      if (slice->operand(i) != dus->operand(i + 1)) {
-        return false;
-      }
-    }
-    return true;
-  }
-  if (slice->opcode() == HloOpcode::kSlice) {
-    for (int64_t stride : slice->slice_strides()) {
-      if (stride != 1) {
-        return false;
-      }
-    }
-    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
-      return true;
-    }
-    const int64_t rank = slice->shape().dimensions().size();
-    for (int64_t d = 0; d < rank; ++d) {
-      const HloInstruction* dus_idx = dus->operand(d + 2);
-      if (dus_idx->opcode() != HloOpcode::kConstant ||
-          !ShapeUtil::IsEffectiveScalar(dus_idx->shape())) {
-        return false;
-      }
-      std::optional<int64_t> idx_val = dus_idx->literal().GetFirstInteger();
-      if (!idx_val.has_value()) {
-        return false;
-      }
-      const int64_t clamped_start =
-          std::clamp(*idx_val, int64_t{0},
-                     dus->operand(0)->shape().dimensions(d) -
-                         dus->operand(1)->shape().dimensions(d));
-      if (clamped_start != slice->slice_starts(d)) {
-        return false;
-      }
-    }
-    return true;
   }
   return false;
 }
@@ -900,13 +843,25 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
     if (wrapped_comp == nullptr) {
       return changed;
     }
-    HloInstruction* root = wrapped_comp->root_instruction();
+    // An async-start wrapping dynamic-update-slice forwards its destination
+    // operand, which the update is written into in place, when that operand is
+    // bound on the start.
+    const HloInstruction* root = wrapped_comp->root_instruction();
+    const HloInstruction* source = root;
+    if (async_op->opcode() == HloOpcode::kAsyncStart &&
+        root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        root->operand(0)->opcode() == HloOpcode::kParameter) {
+      int64_t dst_param = root->operand(0)->parameter_number();
+      if (dst_param < async_op->operand_count()) {
+        source = async_op->operand(dst_param);
+      }
+    }
     ShapeUtil::ForEachSubshape(
-        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!subshape.IsArray() && !subshape.IsToken()) {
             return;
           }
-          const HloValueSet& root_value_set = GetValueSet(root, index);
+          const HloValueSet& source_value_set = GetValueSet(source, index);
 
           ShapeIndex output_index = async_op->opcode() == HloOpcode::kAsyncDone
                                         ? ShapeIndex{}
@@ -921,8 +876,8 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
           }
 
           HloValueSet& value_set = GetMutableValueSet(async_op, output_index);
-          if (value_set != root_value_set) {
-            value_set = root_value_set;
+          if (value_set != source_value_set) {
+            value_set = source_value_set;
             changed = true;
           }
         });
@@ -976,21 +931,9 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     return changed;
   }
 
-  bool is_dus =
-      async_start->async_wrapped_opcode() == HloOpcode::kDynamicUpdateSlice;
-  if (!is_dus) {
-    // AsyncStart forwards the async wrapped computation root values to element
-    // {1} of its output.
-    changed |= UpdateAsyncChainOutputValueSet(async_start);
-  } else if (HloInstruction::IsThreadIncluded(
-                 async_start->async_execution_thread(), execution_threads_)) {
-    const HloValueSet& operand_value_set = GetValueSet(async_start->operand(0));
-    HloValueSet& value_set = GetMutableValueSet(async_start, {1});
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
+  // AsyncStart forwards the async wrapped computation values to element {1} of
+  // its output.
+  changed |= UpdateAsyncChainOutputValueSet(async_start);
   return changed;
 }
 
@@ -2454,7 +2397,15 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);
-    int64_t operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
+    int64_t operand_no = 0;
+    if (user->opcode() == HloOpcode::kTriangularSolve) {
+      operand_no = 1;
+    } else if (user->shape().IsTuple()) {
+      CHECK_EQ(user_index.size(), 1);
+      CHECK_LT(user_index[0],
+               Cast<HloScatterInstruction>(user)->scatter_operand_count());
+      operand_no = user_index[0];
+    }
     return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
   if (user->opcode() == HloOpcode::kSort) {

@@ -289,7 +289,7 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
     Args:
       object_local_name:  The local name of the object being restored.
       from_shard_layouts: A dictionary in stacked table name to a list of its
-        consituent table layouts.  The layouts are coming from the checkpoint
+        constituent table layouts.  The layouts are coming from the checkpoint
         being restored.
       to_shard_layouts: a list of target layouts that will be resharded to.
     """

@@ -527,8 +527,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kFwInputToOutputWeightsTensor,
                                  &fw_input_to_output_weights));
-  const int n_fw_cell = fw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, fw_input_to_output_weights->dims->size, 2);
+  const int n_fw_cell = fw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, fw_input_to_output_weights->dims->data[1],
                     n_input);
 
@@ -536,8 +536,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kBwInputToOutputWeightsTensor,
                                  &bw_input_to_output_weights));
-  const int n_bw_cell = bw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->dims->size, 2);
+  const int n_bw_cell = bw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->dims->data[1],
                     n_input);
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->type,

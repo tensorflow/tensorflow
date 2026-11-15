@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Pattern definition file for direct lowering of mhlo composites to tflite ops.
+// Pattern definition file for direct lowering of stablehlo composites to tflite ops.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mhlo/IR/hlo_ops.td"
+include "stablehlo/dialect/StablehloOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_utils.td"
 include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_avg_pool_patterns.td"
 
 def LegalizeHardSwishComposite: Pat<
-                    (MHLO_CompositeOp:$old_val
+                    (StableHLO_CompositeOp:$old_val
                     (variadic $input),
                     ConstantStrAttr<StrAttr, "aten.hardswish.default">, $_, $_, $_),
                     (TFL_HardSwishOp $input)>;
@@ -52,7 +52,7 @@ class NegatedCompositeBoolAttribute<string attr_name>: NativeCodeCall<
 // TODO(b/343278954): Move the creation of transposes to a separate prepare pass
 // to avoid creating multiple pattern-rewrite rules for the same composite op.
 def LegalizeTorchUpsampleBlinear2dComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
     (variadic $input),
     ConstantStrAttr<StrAttr, "odml.upsample_bilinear2d">, $attrs, $_, $_),
     (TFL_TransposeOp
@@ -71,7 +71,7 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
 // Pattern to lower a stablehlo.composite of `jax` image resize fuctions in
 // `bilinear` mode and with NHWC inputs to a tflite.resize_nearest_neighbor op.
 def LegalizeNhwcResizeBilinear2dComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
     (variadic $input),
     ConstantStrAttr<StrAttr, "odml.upsample_bilinear2d">, $attrs, $_, $_),
     (TFL_ResizeBilinearOp
@@ -84,7 +84,7 @@ def LegalizeNhwcResizeBilinear2dComposite: Pat<
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
 // in `nearest` mode and with NHWC inputs to a tflite.resize_nearest_neighbor op.
 def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
     (variadic $input),
     ConstantStrAttr<StrAttr, "tfl.resize_nearest_neighbor">, $attrs, $_, $_),
     (TFL_ResizeNearestNeighborOp
@@ -99,7 +99,7 @@ def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
 // TODO(b/343278954): Move the creation of transposes to a separate prepare pass
 // to avoid creating multiple pattern-rewrite rules for the same composite op.
 def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
     (variadic $input),
     ConstantStrAttr<StrAttr, "tfl.resize_nearest_neighbor">, $attrs, $_, $_),
     (TFL_TransposeOp
@@ -116,49 +116,49 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
     [(IsNchwLayoutOp $attrs)]>;
 
 def LegalizeCompositeExactAtenGELU : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $inputs),
           ConstantStrAttr<StrAttr, "aten.gelu.default">, $attrs, $_, $_),
         (TFL_GeluOp $inputs, ConstBoolAttrFalse),
         [(IsStrCompositeAttribute<"approximate", "none"> $attrs)]>;
 
 def LegalizeCompositeApproximateAtenGELU : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $inputs),
           ConstantStrAttr<StrAttr, "aten.gelu.default">, $attrs, $_, $_),
         (TFL_GeluOp $inputs, ConstBoolAttrTrue),
         [(IsStrCompositeAttribute<"approximate", "tanh"> $attrs)]>;
 
 def LegalizeCompositeGELU : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $inputs),
           ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeGELUDynamicShaped : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $inputs),
           ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeGELUDynamicShaped2 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $inputs),
           ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeGELUDynamicShaped3 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $_, $inputs),
           ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeOdmlEmbeddingLookup : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
@@ -167,7 +167,7 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         (HasRankAtLeast<2> $table)]>;
 
 def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
@@ -176,7 +176,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
         (HasRankAtLeast<2> $table)]>;
 
 def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped2 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
@@ -185,7 +185,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped2 : Pat<
         (HasRankAtLeast<2> $table)]>;
 
 def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped3 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
@@ -194,7 +194,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped3 : Pat<
         (HasRankAtLeast<2> $table)]>;
 
 def LegalizeCompositeOdmlRandomUniform : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $shape),
           ConstantStrAttr<StrAttr, "odml.random_uniform">, $attrs, $_, $_),
         (TFL_RandomUniformOp $shape,
@@ -202,7 +202,7 @@ def LegalizeCompositeOdmlRandomUniform : Pat<
           (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;
 
 def LegalizeCompositeOdmlRandomStandardNormal : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $shape),
           ConstantStrAttr<StrAttr, "odml.random_standard_normal">, $attrs, $_, $_),
         (TFL_RandomStandardNormalOp $shape,
@@ -210,7 +210,7 @@ def LegalizeCompositeOdmlRandomStandardNormal : Pat<
           (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;
 
 def LegalizeCompositeUnpack : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $inputs),
           ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
         (TFL_UnpackOp $inputs,
@@ -218,7 +218,7 @@ def LegalizeCompositeUnpack : Pat<
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
 
 def LegalizeCompositeUnpack1 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $inputs),
           ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
         (TFL_UnpackOp $inputs,
@@ -226,7 +226,7 @@ def LegalizeCompositeUnpack1 : Pat<
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
 
 def LegalizeCompositePack4Elements : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           // TD not able to represent variadic of variadic now.
           // Move to C++ matcher to support more cases.
           (variadic $i0, $i1, $i2, $i3),
@@ -236,7 +236,7 @@ def LegalizeCompositePack4Elements : Pat<
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
 
 def LegalizeCompositePack4Elements1 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           // TD not able to represent variadic of variadic now.
           // Move to C++ matcher to support more cases.
           (variadic $_, $i0, $i1, $i2, $i3),
@@ -246,19 +246,19 @@ def LegalizeCompositePack4Elements1 : Pat<
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
 
 def LegalizeDynamicSlice : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $input, $begin, $size),
           ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
         (TFL_SliceOp $input, $begin, $size)>;
 
 def LegalizeDynamicSlice_1 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $input, $begin, $size),
           ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
         (TFL_SliceOp $input, $begin, $size)>;
 
 def LegalizeBMM4dAdjY : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $lhs, $rhs),
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
@@ -266,20 +266,20 @@ def LegalizeBMM4dAdjY : Pat<
 
 // For dynamic shaped lhs and rhs.
 def LegalizeBMM4dAdjY_1 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $lhs, $rhs),
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
                      ConstBoolAttrFalse)>;
 
 def LegalizeBMM4dAdjY_2 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $lhs, $rhs),
           ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
         (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
                      ConstBoolAttrFalse)>;
 def LegalizeCompositeMean : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $input),
           ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
         (TFL_MeanOp $input,
@@ -287,7 +287,7 @@ def LegalizeCompositeMean : Pat<
           (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeMeanDynamicShaped : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $input),
           ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
         (TFL_MeanOp $input,
@@ -295,7 +295,7 @@ def LegalizeCompositeMeanDynamicShaped : Pat<
           (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeMeanDynamicShaped2 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $input),
           ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
         (TFL_MeanOp $input,
@@ -303,7 +303,7 @@ def LegalizeCompositeMeanDynamicShaped2 : Pat<
           (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
 
 def LegalizeCompositeMeanDynamicShaped3 : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $_, $_, $_, $input),
           ConstantStrAttr<StrAttr, "tfl.mean">, $attrs, $_, $_),
         (TFL_MeanOp $input,
@@ -311,13 +311,13 @@ def LegalizeCompositeMeanDynamicShaped3 : Pat<
           (GetCompositeAttributeAs<"keep_dims", "BoolAttr"> $attrs))>;
 
 def LegalizeSoftmax : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $input),
           ConstantStrAttr<StrAttr, "odml.softmax">, $attrs, $_, $_),
         (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">)>;
 
 def LegalizeDynamicUpdateSlice : Pat<
-        (MHLO_CompositeOp:$composite
+        (StableHLO_CompositeOp:$composite
           (variadic $input, $update, $begin),
           ConstantStrAttr<StrAttr, "tfl.dynamic_update_slice">, $attrs, $_, $_),
         (TFL_DynamicUpdateSliceOp $input, $update, $begin)>;
@@ -325,7 +325,7 @@ def LegalizeDynamicUpdateSlice : Pat<
 // Lowering for tfl.mirror_pad composite with NCHW inputs.
 // Transposes are inserted to run the op in NHWC.
 def LegalizeNchwMirrorPadComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
       (variadic $input),
       ConstantStrAttr<StrAttr, "tfl.mirror_pad">, $attrs, $_, $_),
     (TFL_TransposeOp
@@ -342,7 +342,7 @@ def LegalizeNchwMirrorPadComposite: Pat<
 
 // Lowering for tfl.mirror_pad composite with NHWC inputs.
 def LegalizeNhwcMirrorPadComposite: Pat<
-    (MHLO_CompositeOp:$old_val
+    (StableHLO_CompositeOp:$old_val
       (variadic $input),
       ConstantStrAttr<StrAttr, "tfl.mirror_pad">, $attrs, $_, $_),
     (TFL_MirrorPadOp

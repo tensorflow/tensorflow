@@ -103,11 +103,10 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) override;
 
-  absl::Status RunPostSchedulingPipelines(
-      HloModule* module, int64_t scheduler_mem_limit,
-      const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context,
-      tsl::thread::ThreadPool* thread_pool = nullptr);
+  absl::Status RunPostSchedulingPipelines(HloModule* module,
+                                          int64_t scheduler_mem_limit,
+                                          const GpuTopology& gpu_topology,
+                                          const GpuAliasInfo* alias_info);
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
@@ -129,10 +128,6 @@ class GpuCompiler : public LLVMCompiler {
       se::StreamExecutor* absl_nullable stream_exec) {
     return false;
   }
-
-  virtual bool IsScaledDotSupportedByBackend(
-      const HloInstruction* instr,
-      const GpuTargetConfig& gpu_target_config) const;
 
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
@@ -249,6 +244,11 @@ class GpuCompiler : public LLVMCompiler {
       se::dnn::VersionInfo dnn_version,
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) = 0;
+
+  // Returns the backend-specific file extension for asm files.
+  virtual absl::StatusOr<absl::string_view> AsmFileExtension() const {
+    return absl::UnimplementedError("AsmFileExtension is not implemented.");
+  }
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.

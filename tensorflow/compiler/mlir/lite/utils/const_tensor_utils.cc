@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,16 +37,20 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/tf_convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tsl/platform/statusor.h"
@@ -213,7 +218,7 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
         llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
                                          nested_tensor->shape.end());
         tensor_types.push_back(
-            tensorflow::GetTypeFromTFTensorShape(shape, nested_elem_type));
+            mlir::TFL::GetTypeFromTFLiteShape(shape, nested_elem_type));
       } else {
         tensor_types.push_back(UnrankedTensorType::get(nested_elem_type));
       }
@@ -243,16 +248,90 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
   if (!tensor.shape_signature.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
                                         tensor.shape_signature.end());
-    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
+    return mlir::TFL::GetTypeFromTFLiteShape(shape, elem_type);
   }
 
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());
-    return tensorflow::GetTypeFromTFTensorShape(shape, elem_type);
+    return mlir::TFL::GetTypeFromTFLiteShape(shape, elem_type);
   }
 
   return UnrankedTensorType::get(elem_type);
+}
+
+bool IsBlockwiseQuantizedWithBlockShape(const TensorT& tensor) {
+  if (tensor.quantization == nullptr) return false;
+  const auto* blockwise =
+      tensor.quantization->details.AsBlockwiseQuantization();
+  return blockwise != nullptr && !blockwise->block_shape.empty();
+}
+
+StatusOr<mlir::Type> GetBlockwiseQuantizedType(
+    const TensorT& tensor, Builder builder, mlir::Type storage_type,
+    const std::vector<std::unique_ptr<TensorT>>& subgraph_tensors,
+    TensorBufferResolver get_tensor_buffer) {
+  if (!IsBlockwiseQuantizedWithBlockShape(tensor)) {
+    return absl::InvalidArgumentError(
+        "Tensor is not blockwise quantized with a block_shape.");
+  }
+  const tflite::BlockwiseQuantizationT& blockwise =
+      *tensor.quantization->details.AsBlockwiseQuantization();
+
+  // Reads the constant tensor at `index` holding quantization parameters.
+  auto read_params = [&](int32_t index,
+                         absl::string_view name) -> StatusOr<ElementsAttr> {
+    if (index < 0 || static_cast<size_t>(index) >= subgraph_tensors.size() ||
+        subgraph_tensors[index] == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Blockwise quantization refers to an invalid ", name,
+                       " tensor index ", index, "."));
+    }
+    const TensorT& params_tensor = *subgraph_tensors[index];
+    TF_ASSIGN_OR_RETURN(mlir::TensorType type,
+                        GetTensorType(params_tensor, builder,
+                                      /*is_constant=*/true));
+    auto ranked_type = mlir::dyn_cast<RankedTensorType>(type);
+    if (!ranked_type || !ranked_type.hasStaticShape()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Blockwise quantization ", name, " must be statically shaped."));
+    }
+    TF_ASSIGN_OR_RETURN(llvm::ArrayRef<uint8_t> data, get_tensor_buffer(index));
+    if (mlir::isa<mlir::FloatType>(ranked_type.getElementType())) {
+      return ConvertFloatBuffer(ranked_type, data);
+    }
+    if (mlir::isa<mlir::IntegerType>(ranked_type.getElementType())) {
+      return ConvertIntBuffer(ranked_type, data);
+    }
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Blockwise quantization ", name, " have an unsupported type."));
+  };
+
+  TF_ASSIGN_OR_RETURN(ElementsAttr scales,
+                      read_params(blockwise.scales, "scales"));
+  ElementsAttr zero_points;
+  // A negative index means that the zero point is 0 everywhere.
+  if (blockwise.zero_points >= 0) {
+    TF_ASSIGN_OR_RETURN(zero_points,
+                        read_params(blockwise.zero_points, "zero points"));
+  }
+
+  llvm::SmallVector<int64_t> block_shape(blockwise.block_shape.begin(),
+                                         blockwise.block_shape.end());
+  auto emit_error = [&] { return mlir::emitError(builder.getUnknownLoc()); };
+  auto type = BlockwiseQuantType::getChecked(emit_error, builder.getContext(),
+                                             storage_type, builder.getF32Type(),
+                                             block_shape, scales, zero_points);
+  if (!type) {
+    return absl::InvalidArgumentError(
+        "Invalid blockwise quantization parameters.");
+  }
+  llvm::SmallVector<int64_t> shape(tensor.shape.begin(), tensor.shape.end());
+  if (failed(type.verifyForShape(emit_error, shape))) {
+    return absl::InvalidArgumentError(
+        "Blockwise quantization parameters do not match the tensor shape.");
+  }
+  return type;
 }
 
 mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
@@ -268,7 +347,7 @@ mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
         type, builder.getFloatAttr(element_ty, unique_index));
 
   if (auto qtype = mlir::dyn_cast<QuantizedType>(element_ty)) {
-    mlir::RankedTensorType new_type = tensorflow::GetTypeFromTFTensorShape(
+    mlir::RankedTensorType new_type = mlir::TFL::GetTypeFromTFLiteShape(
         type.getShape(), qtype.getStorageType());
     return DenseElementsAttr::get(
         new_type, builder.getIntegerAttr(qtype.getStorageType(), unique_index));
@@ -289,8 +368,8 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
                  mlir::dyn_cast<mlir::quant::QuantizedType>(elem_type)) {
     bit_width = qtype.getStorageTypeIntegralWidth();
     is_signed = qtype.isSigned();
-    shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
-                                                       qtype.getStorageType());
+    shaped_type = mlir::TFL::GetTypeFromTFLiteShape(shaped_type.getShape(),
+                                                    qtype.getStorageType());
   } else {
     return absl::InvalidArgumentError("unsupported integer constant type");
   }
@@ -359,7 +438,7 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     auto ety = mlir::IntegerType::get(shaped_type.getContext(),
                                       values[0].getBitWidth(), sign);
     shaped_type =
-        tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(), ety);
+        mlir::TFL::GetTypeFromTFLiteShape(shaped_type.getShape(), ety);
   }
 
   return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
@@ -505,6 +584,9 @@ int64_t GetSizeInBits(mlir::Type type) {
   }
   if (auto quant_type = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
     return GetSizeInBits(quant_type);
+  }
+  if (auto blockwise_type = mlir::dyn_cast<BlockwiseQuantType>(type)) {
+    return GetSizeInBits(blockwise_type.getStorageType());
   }
   if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
     return GetSizeInBits(shaped_type);

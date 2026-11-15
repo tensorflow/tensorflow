@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_cross_host_transfer.pb.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/gpu/vmm_allocator_gate.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
@@ -981,18 +982,19 @@ StreamExecutorGpuRawClient::CrossHostReceiveBuffersInto(
         "configured");
   }
 
-  auto* const memory_space = buffers[0]->memory_space();
-  if (memory_space->kind_id() != StreamExecutorGpuHbmMemorySpace::kKindId) {
+  PJRT_Memory* const memory_space = buffers[0]->c_memory_space();
+  if (memory_space->memory_kind_id !=
+      StreamExecutorGpuHbmMemorySpace::kKindId) {
     return xla::InvalidArgument(
         "Cross-host transfers are only supported for HBM buffers, but got "
-        "buffers on memory space '%s'",
-        memory_space->kind());
+        "buffers on memory space kind_id %d",
+        memory_space->memory_kind_id);
   }
 
   std::vector<PjRtRawBufferRef> raw_buffers;
   raw_buffers.reserve(buffers.size());
   for (const PjRtRawBufferRef& raw_buffer : buffers) {
-    if (raw_buffer->memory_space() != memory_space) {
+    if (raw_buffer->c_memory_space() != memory_space) {
       return xla::InvalidArgument(
           "Cross-host transfers require all buffers in a batch to be on the "
           "same device");
@@ -1460,6 +1462,11 @@ GetStreamExecutorGpuDeviceAllocator(
                     "VMM allocator. Overriding allocator kind to kVmm.";
     effective_kind = GpuAllocatorConfig::Kind::kVmm;
   }
+  if (effective_kind == GpuAllocatorConfig::Kind::kVmm &&
+      !IsVmmAllocatorAllowed()) {
+    return absl::FailedPreconditionError(
+        "The VMM allocator is in an experimental mode.");
+  }
 
   // Set when a single preallocated BFC allocator serves both default and
   // collective memory via spatial partitioning; suppresses the separate
@@ -1629,12 +1636,11 @@ GetStreamExecutorGpuDeviceAllocator(
   // pool.
   if (!shared_collective_pool) {
     for (const auto& ordinal_and_device : addressable_devices) {
-      ABSL_ASSIGN_OR_RETURN(
-          auto collective_bfc_allocator,
-          CreateCollectiveBFCAllocator(
-              ordinal_and_device.second->executor(),
-              /*memory_fraction=*/1.0 - MemFractionStart(memory_fraction),
-              allocator_config.collective_memory_size));
+      ABSL_ASSIGN_OR_RETURN(auto collective_bfc_allocator,
+                       CreateCollectiveBFCAllocator(
+                           ordinal_and_device.second->executor(),
+                           /*memory_fraction=*/MemFractionLeft(memory_fraction),
+                           allocator_config.collective_memory_size));
       allocators.push_back(
           {std::move(collective_bfc_allocator),
            ordinal_and_device.second->compute_stream(),
@@ -1663,6 +1669,29 @@ GetStreamExecutorGpuDeviceAllocator(
           {std::move(async_allocator),
            ordinal_and_device.second->compute_stream(),
            /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kTempBuffer});
+    }
+  }
+#elif TENSORFLOW_USE_ROCM
+  if (debug_options.xla_gpu_temp_buffer_use_separate_color()) {
+    // Only temp buffers may use this pool; that keeps their address the same
+    // across executions. Next to a preallocated default pool, its limit is the
+    // device memory the default pool leaves. Without spatial partitioning, the
+    // separate collective pool above gets the same limit (unless
+    // collective_memory_size preallocates it) and both pools take from that
+    // same memory: together they get it once, not once each.
+    for (const auto& ordinal_and_device : addressable_devices) {
+      ABSL_ASSIGN_OR_RETURN(auto temp_bfc_allocator,
+                       CreateTempBufferBFCAllocator(
+                           ordinal_and_device.second->executor(),
+                           memory_fraction, allocator_config.preallocate,
+                           allocator_config.gpu_system_memory_size,
+                           allocator_config.sub_allocator_alloc_visitors,
+                           allocator_config.sub_allocator_free_visitors));
+      allocators.push_back(
+          {std::move(temp_bfc_allocator),
+           ordinal_and_device.second->compute_stream(),
+           /*memory_space=*/
+           static_cast<int>(xla::gpu::MemorySpaceColor::kTempBuffer)});
     }
   }
 #endif
@@ -1731,6 +1760,7 @@ struct PjRtDevicesAndTopology {
   std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   std::shared_ptr<StreamExecutorGpuTopologyDescription> topology;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
+  tsl::RCReference<const GpuMultiSliceConfig> multi_slice_config;
 };
 
 absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
@@ -1864,6 +1894,8 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
       std::make_shared<se::DeviceInterconnectResource::InfoMap>();
   absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
+  absl::flat_hash_map<int32_t, int32_t> num_devices_per_slice;
+  int32_t local_slice_id = partition_index.value_or(0);
   int curr_partition_index = -1;
   int curr_process_index = -1;
   int curr_process_index_in_partition = 0;
@@ -1884,6 +1916,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
 
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_process[global_device_id] = node.process_id();
+      ++num_devices_per_slice[device_proto.partition_index()];
       LocalDeviceState* local_device = nullptr;
 
       // Prepare DeviceInterconnectInfoMap.
@@ -1900,6 +1933,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
           {global_device_id.value(), std::move(device_interconnect_info)});
 
       if (node.process_id() == process_id) {
+        local_slice_id = device_proto.partition_index();
         auto it = local_device_states.find(device_proto.local_device_ordinal());
         TF_RET_CHECK(it != local_device_states.end())
             << device_proto.local_device_ordinal();
@@ -2018,8 +2052,14 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
         std::move(clique_id_callback));
   }
 
+  int32_t num_slices = num_devices_per_slice.size();
+  auto multi_slice_config = tsl::MakeRef<GpuMultiSliceConfig>(
+      num_slices, local_slice_id, std::move(num_devices_per_slice),
+      std::move(device_to_process));
+
   return PjRtDevicesAndTopology{std::move(devices), std::move(se_gpu_topology),
-                                std::move(local_device_states_vec)};
+                                std::move(local_device_states_vec),
+                                std::move(multi_slice_config)};
 }
 
 const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
@@ -2061,7 +2101,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
     if (device->IsAddressable()) {
       // Use the device id to construct a globally unique memory space id. We do
       // not promise that memory space ids and device ids are the same.
-      const int id = device->id();
+      const int id = device->global_device_id().value();
       auto memory_space =
           std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device.get());
       device->AttachMemorySpace(memory_space.get(), /*is_default=*/true);
@@ -2281,7 +2321,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       preallocate_device_memory, options.abort_collectives_on_failure,
-      std::move(gpu_run_options), std::move(memory_registration));
+      std::move(gpu_run_options), std::move(memory_registration),
+      std::move(devices_and_topology.multi_slice_config));
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_and_topology.devices.size(), options.num_nodes);
@@ -2352,7 +2393,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
       confidential_computing_enabled,
       /*async_work_runner=*/nullptr, first_executor, kv_store,
       /*cache_fabric_handles=*/false,
-      /*abort_collectives_on_failure=*/false, std::move(gpu_run_options));
+      /*abort_collectives_on_failure=*/false, std::move(gpu_run_options),
+      /*memory_registration=*/nullptr,
+      std::move(devices_and_topology.multi_slice_config));
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
       devices_and_topology.devices.size(), options.num_nodes);
@@ -2681,7 +2724,7 @@ StreamExecutorGpuRawClient::RuntimeAbiVersion() const {
   ABSL_ASSIGN_OR_RETURN(auto se_runtime_abi_version,
                    client()->platform()->GetRuntimeAbiVersion());
   return std::make_unique<StreamExecutorGpuPjRtRuntimeAbiVersion>(
-      platform_id_, std::move(se_runtime_abi_version));
+      platform_id(), std::move(se_runtime_abi_version));
 }
 
 }  // namespace xla

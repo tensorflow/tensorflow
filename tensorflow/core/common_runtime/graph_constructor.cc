@@ -200,7 +200,7 @@ class GraphConstructor {
         return_nodes_(return_nodes),
         missing_unused_input_map_keys_(missing_unused_input_map_keys) {}
 
-  virtual ~GraphConstructor() {}
+  virtual ~GraphConstructor() = default;
 
   absl::Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,17 +28,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
-#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -52,8 +53,8 @@ using LlvmIrCompiler = absl::AnyInvocable<absl::StatusOr<std::vector<uint8_t>>(
     llvm::Module& module, const stream_executor::DeviceDescription& descr,
     const DebugOptions& opts)>;
 
-// Implementation of KernelCompiler that compiles LLVM IR to CUBIN format using
-// a provided compilation function.
+// Implementation of KernelCompiler that compiles MLIR, Triton, and LLVM IR
+// kernel sources to target binaries and Thunks.
 //
 // Note: CubinCustomKernelCompiler utilizes provided threadpool.
 // If threadpool is not provided, the compilation happens
@@ -65,26 +66,28 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
                             const se::DeviceDescription& gpu_device_info,
                             const DebugOptions& debug_options,
                             const GpuTopology& gpu_topology,
+                            llvm::Triple target_triple, std::string data_layout,
                             tsl::thread::ThreadPool* thread_pool = nullptr)
       : compiler_(std::move(compiler)),
         device_info_(gpu_device_info),
         debug_options_(debug_options),
         thread_pool_(thread_pool),
-        gpu_topology_(gpu_topology) {}
+        gpu_topology_(gpu_topology),
+        target_triple_(std::move(target_triple)),
+        data_layout_(std::move(data_layout)) {}
 
   xla::Future<std::unique_ptr<Thunk>> Compile(
-      Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions) override;
-
-  xla::Future<LlvmKernelSource> CompileMlirToLlvm(
-      const se::DeviceDescription& device, const HloModule& hlo_module,
-      const std::string& entry_function_name, int unroll_factor,
-      MlirKernelSource source, BorrowedMlirContext borrowed_context) override;
+      Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
+      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
+      int unroll_factor) override;
 
   xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      LlvmKernelSource kernel_source) override;
+      MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
+      const HloModule& hlo_module, int unroll_factor) override;
+
+  xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
+      LlvmKernelSource kernel_source,
+      std::optional<GpuKernelSpec> kernel_spec) override;
 
   xla::Future<TritonWrapperResult> CompileTritonToLlvm(
       absl::string_view kernel_name, const HloModule& hlo_module,
@@ -98,17 +101,23 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
   absl::StatusOr<std::vector<uint8_t>> CompileToCubinImpl(
       LlvmKernelSource kernel_source);
 
+  absl::StatusOr<std::vector<uint8_t>> CompileMlirToCubinImpl(
+      const GpuKernelSpec& spec, MlirKernelSource mlir_source,
+      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
+      int unroll_factor);
+
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(
-      Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions);
+      Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
+      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
+      int unroll_factor);
 
   LlvmIrCompiler compiler_;
   const se::DeviceDescription device_info_;
   const DebugOptions debug_options_;
   tsl::thread::ThreadPool* thread_pool_;
   const GpuTopology& gpu_topology_;
+  llvm::Triple target_triple_;
+  std::string data_layout_;
 };
 
 }  // namespace xla::gpu

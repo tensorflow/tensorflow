@@ -344,12 +344,15 @@ a reproducer of the failure.
 
 At this moment the list of co-maintainers from our partner teams is:
 
-*   [@Tixxx](https://github.com/Tixxx)
-*   [@sergachev](https://github.com/sergachev)
-*   [@jreiffers](https://github.com/jreiffers)
+*   [@draganmladjenovic](https://github.com/draganmladjenovic)
 *   [@ezhulenev](https://github.com/ezhulenev)
+*   [@jreiffers](https://github.com/jreiffers)
+*   [@magaonka-amd](https://github.com/magaonka-amd)
 *   [@mminutoli](https://github.com/mminutoli)
+*   [@nurmukhametov](https://github.com/nurmukhametov)
 *   [@pemeliya](https://github.com/pemeliya)
+*   [@sergachev](https://github.com/sergachev)
+*   [@Tixxx](https://github.com/Tixxx)
 
 ![img](./images/comaintainers.png)
 

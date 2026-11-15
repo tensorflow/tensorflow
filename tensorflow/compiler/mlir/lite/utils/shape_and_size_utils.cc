@@ -15,16 +15,47 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
+
+llvm::SmallVector<int64_t> ConvertTFLiteShapeToMlir(
+    llvm::ArrayRef<int64_t> shape) {
+  return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return dim == kTFLiteDynamicSize ? mlir::ShapedType::kDynamic : dim;
+  }));
+}
+
+llvm::SmallVector<int64_t> ConvertMlirShapeToTFLite(
+    llvm::ArrayRef<int64_t> shape) {
+  return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return mlir::ShapedType::isDynamic(dim) ? kTFLiteDynamicSize : dim;
+  }));
+}
+
+mlir::RankedTensorType GetTypeFromTFLiteShape(llvm::ArrayRef<int64_t> shape,
+                                              mlir::Type element_type,
+                                              mlir::Attribute encoding) {
+  return mlir::RankedTensorType::get(ConvertTFLiteShapeToMlir(shape),
+                                     element_type, encoding);
+}
 
 int32_t ConvertToTfliteSize(int64_t size) {
   return mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size);
@@ -90,6 +121,55 @@ absl::StatusOr<int32_t> GetQuantDimensionAfterReshape(
   }
 
   return output_dim;
+}
+
+absl::StatusOr<WindowPadding> ParseWindowPadding(llvm::StringRef padding) {
+  if (padding == "SAME") return WindowPadding::kSame;
+  if (padding == "VALID") return WindowPadding::kValid;
+  return absl::InvalidArgumentError(
+      absl::StrCat(absl::string_view(padding.data(), padding.size()),
+                   " is not an allowed padding type"));
+}
+
+absl::Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
+                                   int64_t dilation_rate, int64_t stride,
+                                   WindowPadding padding, int64_t* output_size,
+                                   int64_t* padding_before,
+                                   int64_t* padding_after) {
+  if (stride <= 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Stride must be > 0, but got ", stride));
+  }
+  if (dilation_rate < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Dilation rate must be >= 1, but got ", dilation_rate));
+  }
+
+  const int64_t effective_filter_size = (filter_size - 1) * dilation_rate + 1;
+  switch (padding) {
+    case WindowPadding::kValid:
+      *output_size = (input_size - effective_filter_size + stride) / stride;
+      *padding_before = *padding_after = 0;
+      break;
+    case WindowPadding::kSame: {
+      *output_size = (input_size + stride - 1) / stride;
+      const int64_t padding_needed =
+          std::max(int64_t{0}, (*output_size - 1) * stride +
+                                   effective_filter_size - input_size);
+      // For odd values of total padding, add more padding at the 'right' side
+      // of the given dimension.
+      *padding_before = padding_needed / 2;
+      *padding_after = padding_needed - *padding_before;
+      break;
+    }
+  }
+  if (*output_size < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Computed output size would be negative: ", *output_size,
+                     " [input_size: ", input_size, ", effective_filter_size: ",
+                     effective_filter_size, ", stride: ", stride, "]"));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace TFL

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/call_inliner.h"
@@ -448,6 +449,11 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   }
   return changed;
 }
+
+const HloPassFactory* const kConditionalSimplifierRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<ConditionalSimplifier>>(
+        "simplify-conditional");
+
 }  // namespace
 
 // Tries to replace a conditional with a call operation of the corresponding

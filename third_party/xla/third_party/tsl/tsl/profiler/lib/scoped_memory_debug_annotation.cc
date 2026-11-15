@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
+#include <cstddef>
 #include <string>
 
 namespace tsl {
 namespace profiler {
 
-std::string DefaultPendingShapeFunc() { return ""; }
+std::string DefaultPendingShapeFunc(size_t /*index*/) { return ""; }
 
 /*static*/ MemoryDebugAnnotation*
 ScopedMemoryDebugAnnotation::ThreadMemoryDebugAnnotation() {

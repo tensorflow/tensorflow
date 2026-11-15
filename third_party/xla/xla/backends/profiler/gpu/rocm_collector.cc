@@ -759,10 +759,9 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
     api_event.device_id = item.device_id;
     api_event.stream_id = item.stream_id;
     switch (api_event.type) {
+      // No kernel_info copy: the host row does not export it, and front()
+      // may not be a kernel.
       case RocmTracerEventType::Kernel:
-        api_event.kernel_info = item.kernel_info;
-        aggregated_events.push_back(api_event);
-        break;
       case RocmTracerEventType::Memset:
       case RocmTracerEventType::MemoryAlloc:
       case RocmTracerEventType::MemoryFree:
@@ -797,7 +796,7 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
     if (activity_iter.second.empty()) {
       continue;
     }
-    const uint32_t corr_id = activity_iter.first;
+    const uint64_t corr_id = activity_iter.first;
 
     const RocmTracerEvent* api_event = nullptr;
     if (auto it = api_events_map_.find(corr_id); it != api_events_map_.end()) {
@@ -821,9 +820,8 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
     for (auto& activity_event : activity_iter.second) {
       switch (activity_event.type) {
         case RocmTracerEventType::Kernel:
-          activity_event.kernel_info = api_event->kernel_info;
           PrintRocmTracerEvent(activity_event,
-                               ". activity event from api_event.");
+                               ". kernel activity kept own kernel_info.");
           aggregated_events.push_back(activity_event);
           break;
 
@@ -835,7 +833,6 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
           aggregated_events.push_back(activity_event);
           break;
         case RocmTracerEventType::Memset:
-          activity_event.memset_info = api_event->memset_info;
           aggregated_events.push_back(activity_event);
           break;
 

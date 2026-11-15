@@ -30,11 +30,33 @@ package_group(
 )
 
 cc_library(
+    name = "partial_reduce_custom_call",
+    srcs = ["partial_reduce_custom_call.cc"],
+    hdrs = ["partial_reduce_custom_call.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla/hlo/builder/lib:approx_topk_shape",
+        "//xla/mlir_hlo:unregistered_attributes",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/export:utils",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:op_sharding_rule_builder",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "custom_call_extensions",
     srcs = ["custom_call_extensions.cc"],
     hdrs = ["custom_call_extensions.h"],
     deps = [
+        ":partial_reduce_custom_call",
         "//xla/hlo/ir:hlo_sharding",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@com_google_absl//absl/status",
@@ -44,6 +66,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:op_sharding_rule_builder",
         "@stablehlo//:stablehlo_ops",
     ],
 )

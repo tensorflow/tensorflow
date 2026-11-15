@@ -126,14 +126,14 @@ int OpOrArgNameMapper::InitOpName(OpOrVal op_or_val, llvm::StringRef name) {
 bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) { return true; }
 
 std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
-  if (auto* op = op_or_val.dyn_cast<mlir::Operation*>()) {
+  if (auto* op = llvm::dyn_cast_if_present<mlir::Operation*>(op_or_val)) {
     auto name_from_loc = mlir::GetNameFromLoc(op->getLoc());
     if (!name_from_loc.empty()) return name_from_loc;
     // If the location is none of the expected types, then simply use name
     // generated using the op type.
     return std::string(op->getName().getStringRef());
   }
-  auto val = op_or_val.dyn_cast<mlir::Value>();
+  auto val = llvm::dyn_cast_if_present<mlir::Value>(op_or_val);
   auto name_from_loc = mlir::GetNameFromLoc(val.getLoc());
   if (!name_from_loc.empty()) return name_from_loc;
   // If the location is none of the expected types, then simply use name

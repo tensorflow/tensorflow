@@ -50,6 +50,35 @@ func.func @bitcast_add_one_dimension(%arg0: !array0)
 
 // -----
 
+func.func @requires_at_least_one_input() attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires at least one input array}}
+  %ctrl_0 = ifrt.BitcastArrays() : () -> ()
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @error_zero_inputs_one_output() attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires at least one input array}}
+  %0, %ctrl_0 = ifrt.BitcastArrays() : () -> (!array0)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @error_one_input_zero_outputs(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.BitcastArrays' op requires the same number of input and output arrays}}
+  %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> ()
+  return
+}
+
+// -----
+
 !array0 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 !array1 = !ifrt.array<tensor<1x2x2xi32>,

@@ -107,7 +107,9 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
 // This pass only checks that there are no direct data dependencies between
 // instructions with scheduling annotations. If there are any indirect data
 // dependencies(i.e. gaps), it will detected by the
-// LegalizeSchedulingAnnotations pass.
+// LegalizeSchedulingAnnotations pass. Groups in deep pipelining mode (see
+// `kXlaSchedulingGroupDeepPipelineAttr`) are exempt, since they are meant to
+// contain a producer and its consumer.
 class CheckNoDataDependencyInSchedulingAnnotations : public HloModulePass {
  public:
   absl::string_view name() const override {

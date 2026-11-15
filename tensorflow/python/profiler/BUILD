@@ -93,20 +93,6 @@ cuda_py_strict_test(
     ],
 )
 
-py_test(
-    name = "profiler_wrapper_test",
-    srcs = ["profiler_wrapper_test.py"],
-    strict_deps = True,
-    tags = [
-        "no_pip",
-    ],
-    deps = [
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
-    ],
-)
-
 py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],

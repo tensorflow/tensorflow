@@ -248,6 +248,12 @@ class ConditionalCodeMotion : public HloModulePass {
       HloInstruction* conditional, std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
+
+// Updates the sharding of an instruction inside a conditional branch (or a
+// user tuple outside) after MoveOperandIntoBranch widened the argument tuple.
+void UpdateShardingForWidenedBranchArgument(
+    HloInstruction* instruction, const HloInstruction* argument_tuple);
+
 }  // namespace conditional_opt
 
 }  // namespace xla

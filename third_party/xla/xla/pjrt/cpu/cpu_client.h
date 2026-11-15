@@ -143,16 +143,16 @@ class PjRtCpuRawClient : public PjRtRawClient {
       tsl::AsyncValueRef<CpuEvent> execute_event);
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBuffer(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
 
   absl::StatusOr<PjRtRawBufferRef> AllocateRawBufferForExecute(
-      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      PJRT_Memory* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
   absl::StatusOr<std::pair<PjRtRawBufferRef,
                            CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+  CreateRawBufferChannel(PJRT_Memory* memory_space,
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
@@ -164,7 +164,7 @@ class PjRtCpuRawClient : public PjRtRawClient {
       Future<> dependency) override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
-      PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
+      PJRT_Memory* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback,
       bool is_mutable) override;
 
@@ -192,7 +192,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
             PjRtFulfillAsyncExecutableCallback>
   CreateLinkedExecutablePromise() const override;
 
-  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
                                        int32_t launch_id,
@@ -334,7 +335,7 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
   friend class CpuExecutableLoadState;
 
   const PjRtCpuExecutable* executable_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
+  std::shared_ptr<const DeviceAssignment> device_assignment_;
   size_t num_addressable_devices_;
   LocalDeviceId local_device_id_;
   GlobalDeviceId global_device_id_;
@@ -352,6 +353,9 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
   void Delete() override { is_deleted_.store(true); }
   bool IsDeleted() const override { return is_deleted_.load(); }
 
+  absl::StatusOr<std::shared_ptr<const DeviceAssignment>> GetDeviceAssignment(
+      PjRtExecutable* executable, int process_index);
+
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       tsl::AsyncValueRef<PjRtExecutable> executable,
       const ExecuteOptions& options, size_t host_callback_idx,
@@ -361,6 +365,10 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
  private:
   PjRtCpuRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
+
+  absl::Mutex mu_;
+  std::optional<std::shared_ptr<const DeviceAssignment>> device_assignment_
+      ABSL_GUARDED_BY(mu_);
 };
 
 class PjRtCpuExecutable final : public PjRtExecutable {

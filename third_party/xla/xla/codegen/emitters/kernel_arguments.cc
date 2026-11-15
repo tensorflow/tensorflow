@@ -29,13 +29,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/codegen/emitters/kernel_arguments.pb.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::emitters {
 
@@ -100,7 +99,7 @@ void FillKernelArgumentAttributes(
     kernel_argument.set_written(
         buffers_written.contains(kernel_argument.slice()));
 
-    kernel_argument.set_aliased(kernel_argument.written() && [&] {
+    kernel_argument.set_aliased([&] {
       for (size_t j = 0; j < kernel_arguments.size(); ++j) {
         if (i == j ||
             kernel_arguments[j].kind() == KernelArgument::Kind::kUnmanaged) {
@@ -112,7 +111,9 @@ void FillKernelArgumentAttributes(
           continue;
         }
 
-        if (kernel_argument.slice().OverlapsWith(
+        if ((kernel_argument.written() ||
+             buffers_written.contains(other_kernel_argument.slice())) &&
+            kernel_argument.slice().OverlapsWith(
                 other_kernel_argument.slice())) {
           return true;
         }
@@ -200,7 +201,7 @@ absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
     absl::Span<const Shape> unmanaged_arguments,
     absl::Span<const int32_t> interleaved_output_indices) {
   absl::flat_hash_set<int> no_invariant_operands =
-      NonInvariantOperands(*hlo_instruction);
+      frontend::NonInvariantOperands(*hlo_instruction);
 
   std::vector<KernelArgument> operand_arguments;
   operand_arguments.reserve(hlo_instruction->operand_count());
@@ -337,6 +338,96 @@ absl::StatusOr<int64_t> KernelArguments::PositionOfResult(
   }
   return absl::OutOfRangeError(
       absl::StrCat("No such result: ", shape_index.ToString()));
+}
+
+absl::StatusOr<KernelArgument> KernelArgument::FromProto(
+    const KernelArgumentProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  std::optional<KernelArgument> arg;
+  if (proto.has_slice()) {
+    ABSL_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
+    arg.emplace(std::move(shape), slice);
+    arg->set_slice_index(proto.slice_index());
+  } else {
+    arg.emplace(std::move(shape));
+  }
+  arg->set_aliased(proto.aliased());
+  arg->set_alignment(proto.alignment());
+  arg->set_written(proto.written());
+  arg->set_invariant(proto.invariant());
+  return *std::move(arg);
+}
+
+absl::StatusOr<KernelArgumentProto> KernelArgument::ToProto() const {
+  KernelArgumentProto proto;
+  *proto.mutable_shape() = shape_.ToProto();
+  if (kind_ == Kind::kManaged) {
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice_.ToProto());
+    proto.set_slice_index(slice_index_);
+  }
+  proto.set_aliased(aliased_);
+  proto.set_alignment(alignment_);
+  proto.set_written(written_);
+  proto.set_invariant(invariant_);
+  return proto;
+}
+
+absl::StatusOr<KernelArguments> KernelArguments::FromProto(
+    const KernelArgumentsProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  std::vector<KernelArgument> args;
+  args.reserve(proto.args_size());
+  for (const KernelArgumentProto& arg_proto : proto.args()) {
+    ABSL_ASSIGN_OR_RETURN(KernelArgument arg,
+                     KernelArgument::FromProto(arg_proto, buffer_allocations));
+    args.push_back(std::move(arg));
+  }
+  if (proto.has_positions()) {
+    return KernelArguments(std::move(args),
+                           ArgumentPositions::FromProto(proto.positions()));
+  }
+  return KernelArguments(std::move(args));
+}
+
+absl::StatusOr<KernelArgumentsProto> KernelArguments::ToProto() const {
+  KernelArgumentsProto proto;
+  proto.mutable_args()->Reserve(args_.size());
+  for (const KernelArgument& arg : args_) {
+    ABSL_ASSIGN_OR_RETURN(*proto.add_args(), arg.ToProto());
+  }
+  if (positions_.has_value()) {
+    *proto.mutable_positions() = positions_->ToProto();
+  }
+  return proto;
+}
+
+KernelArguments::ArgumentPositions
+KernelArguments::ArgumentPositions::FromProto(
+    const KernelArgumentsProto::ArgumentPositionsProto& proto) {
+  ArgumentPositions positions;
+  positions.operands.assign(proto.operands().begin(), proto.operands().end());
+  positions.results.reserve(proto.results_size());
+  for (const auto& result : proto.results()) {
+    positions.results.emplace_back(ShapeIndex::FromProto(result.shape_index()),
+                                   result.position());
+  }
+  return positions;
+}
+
+KernelArgumentsProto::ArgumentPositionsProto
+KernelArguments::ArgumentPositions::ToProto() const {
+  KernelArgumentsProto::ArgumentPositionsProto proto;
+  proto.mutable_operands()->Assign(operands.begin(), operands.end());
+  proto.mutable_results()->Reserve(results.size());
+  for (const auto& [shape_index, position] : results) {
+    auto* result_proto = proto.add_results();
+    *result_proto->mutable_shape_index() = shape_index.ToProto();
+    result_proto->set_position(position);
+  }
+  return proto;
 }
 
 }  // namespace xla::emitters

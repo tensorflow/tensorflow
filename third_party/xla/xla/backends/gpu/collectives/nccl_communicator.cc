@@ -221,6 +221,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
   bool support_device_comm = false;
   bool support_one_sided_comm = false;
   bool support_gin = false;
+  bool support_cft = false;
   std::optional<int> lsa_size;
   std::string one_sided_comm_unsupported_reason = "";
 
@@ -233,6 +234,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
           /*supports_device_comm=*/false,
           /*supports_one_sided_comm=*/false,
           /*supports_gin=*/false,
+          /*supports_cft=*/false,
           /*lsa_size=*/std::nullopt,
           /*one_sided_comm_unsupported_reason=*/
           absl::StrFormat("NCCL failed to query communicator properties: %s",
@@ -271,10 +273,15 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
     lsa_size = props.nRanks / props.nLsaTeams;
   }
 
+#if NCCL_VERSION_CODE >= 23200
+  support_cft = props.cftSupport;
+#endif
+
   return {
       /*supports_device_comm=*/support_device_comm,
       /*supports_one_sided_comm=*/support_one_sided_comm,
       /*supports_gin=*/support_gin,
+      /*supports_cft=*/support_cft,
       /*lsa_size=*/lsa_size,
       /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
   };
@@ -283,6 +290,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*supports_cft=*/false,
       /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
@@ -293,6 +301,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/true,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*supports_cft=*/false,
       /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
@@ -303,6 +312,7 @@ NcclCapabilities GetCapabilities(std::shared_ptr<NcclCommState> comm_state) {
       /*supports_device_comm=*/false,
       /*supports_one_sided_comm=*/false,
       /*supports_gin=*/false,
+      /*supports_cft=*/false,
       /*lsa_size=*/std::nullopt,
       /*one_sided_comm_unsupported_reason=*/
       absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
@@ -1425,11 +1435,14 @@ Future<T> NcclCommunicator::Execute(
 NcclDeviceCommunicator::NcclDeviceCommunicator(
     std::shared_ptr<NcclCommState> parent_comm,
     se::StreamExecutor* stream_executor,
-    std::shared_ptr<tsl::Executor> executor, ncclDevComm dev_comm)
+    // NOLINTNEXTLINE(misc-include-cleaner): ncclDevComm from nccl_device.h.
+    std::shared_ptr<tsl::Executor> executor, ncclDevComm dev_comm,
+    int32_t granted_cft_caps)
     : parent_comm_(parent_comm),
       stream_executor_(stream_executor),
       executor_(std::move(executor)),
-      dev_comm_(dev_comm) {}
+      dev_comm_(dev_comm),
+      granted_cft_caps_(granted_cft_caps) {}
 
 NcclDeviceCommunicator::~NcclDeviceCommunicator() {
   DCHECK(stream_executor_) << "StreamExecutor is unavailable";
@@ -1494,6 +1507,19 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
   }
 #endif
   reqs.lsaBarrierCount = requirements.lsa_barrier_count;
+  int32_t granted_cft_caps = 0;
+#if NCCL_VERSION_CODE >= 23200
+  if (requirements.cft_caps != 0 && !comm.capabilities_.supports_cft) {
+    XLA_LOG_DEVICE(WARNING, comm.stream_executor()->device_ordinal())
+        << "Not all ranks in the communicator support CFT "
+           "(ncclCommProperties_t::cftSupport=false); requested cft_caps="
+        << std::hex << std::showbase << requirements.cft_caps << std::dec
+        << std::noshowbase << " downgraded to 0.";
+  } else {
+    reqs.cftCaps = requirements.cft_caps;
+    reqs.cftBarrierCount = requirements.cft_barrier_count;
+  }
+#endif
 
   std::shared_ptr<NcclCommState> comm_state = comm.comm_state();
   ncclDevComm dev_comm{};
@@ -1502,9 +1528,13 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
     ABSL_RETURN_IF_ERROR(
         XLA_NCCL_STATUS(ncclDevCommCreate(comm_state->comm, &reqs, &dev_comm)));
   }
+#if NCCL_VERSION_CODE >= 23200
+  granted_cft_caps = reqs.cftCaps;
+#endif
 
-  return absl::WrapUnique(new NcclDeviceCommunicator(
-      comm_state, comm.stream_executor(), comm.executor(), dev_comm));
+  return absl::WrapUnique(
+      new NcclDeviceCommunicator(comm_state, comm.stream_executor(),
+                                 comm.executor(), dev_comm, granted_cft_caps));
 }
 
 PlatformCommunicatorHandle NcclDeviceCommunicator::platform_comm() const {

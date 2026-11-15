@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
+#include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -140,6 +143,7 @@ STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
 
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 std::shared_ptr<const xla::PjRtTopologyDescription>
@@ -174,7 +178,7 @@ std::unique_ptr<CommonPjRtDevice> MakePjRtStreamExecutorDevice(
 
 absl::StatusOr<std::unique_ptr<CommonPjRtClient>>
 MakeTestPjRtStreamExecutorClient(
-    std::string platform_name, LocalClient* client,
+    PjRtPlatformId platform_id, std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<CommonPjRtDevice>> devices,
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     int process_index,
@@ -184,7 +188,9 @@ MakeTestPjRtStreamExecutorClient(
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr,
-    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr) {
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr,
+    std::optional<LinearizeThrottler::Options> throttler_options =
+        std::nullopt) {
   se::StreamExecutor* first_executor = nullptr;
   for (const auto& state : local_device_states) {
     if (state != nullptr && state->compute_stream() != nullptr) {
@@ -193,12 +199,11 @@ MakeTestPjRtStreamExecutorClient(
     }
   }
   auto raw_client = std::make_unique<PjRtStreamExecutorRawClient>(
-      std::move(local_device_states), std::move(allocator), client,
+      platform_id, std::move(local_device_states), std::move(allocator), client,
       std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
-  auto platform_id = tsl::Fingerprint64(platform_name);
   PjRtPluginAttributes attrs;
   attrs.pjrt_c_api_major_version = 0;
   attrs.pjrt_c_api_minor_version = 0;
@@ -212,7 +217,7 @@ MakeTestPjRtStreamExecutorClient(
   auto result = std::make_unique<CommonPjRtClient>(
       platform_id, std::move(platform_name), "<unknown>", process_index,
       std::move(topology), std::move(raw_client), std::move(kv_store),
-      std::move(attrs));
+      std::move(attrs), std::move(throttler_options));
   std::vector<std::unique_ptr<PjRtDevice>> devices_copy;
   devices_copy.reserve(devices.size());
   for (auto& device : devices) {
@@ -223,7 +228,12 @@ MakeTestPjRtStreamExecutorClient(
   return result;
 }
 
-absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClient(
+    PjRtPlatformId platform_id = CpuId(), std::string platform_name = CpuName(),
+    bool should_stage_host_to_device_transfers = false,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator = nullptr,
+    std::optional<LinearizeThrottler::Options> throttler_options =
+        std::nullopt) {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   ABSL_ASSIGN_OR_RETURN(se::Platform * platform, PlatformUtil::GetPlatform("Host"));
   ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -237,7 +247,7 @@ absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClient() {
   std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   devices.emplace_back(MakePjRtStreamExecutorDevice(
       0, /*is_addressable=*/true, local_device_id, /*process_index=*/0,
-      /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
+      /*process_index_in_partition=*/0, /*partition_index=*/0, platform_name));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
       0, devices.back().get(), "device", tsl::Fingerprint32("device")));
@@ -245,12 +255,13 @@ absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClient() {
                                     /*is_default=*/true);
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
-      "cpu", local_client, std::move(devices), std::move(local_device_states),
+      platform_id, std::move(platform_name), local_client, std::move(devices),
+      std::move(local_device_states),
       /*process_index=*/0, std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
-      /*host_memory_allocator=*/nullptr,
-      /*should_stage_host_to_device_transfers=*/false,
-      /*gpu_run_options=*/nullptr);
+      std::move(host_memory_allocator), should_stage_host_to_device_transfers,
+      /*gpu_run_options=*/nullptr, /*kv_store=*/nullptr,
+      std::move(throttler_options));
 }
 
 // Variant of GetClient() that creates `num_addressable_devices` Host-platform
@@ -290,7 +301,7 @@ absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClientWithDevices(
     devices.emplace_back(MakePjRtStreamExecutorDevice(
         i, /*is_addressable=*/true, local_device_id,
         /*process_index=*/0,
-        /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
+        /*process_index_in_partition=*/0, /*partition_index=*/0, CpuName()));
     memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
         i, devices.back().get(), "device", tsl::Fingerprint32("device")));
     devices.back()->AttachMemorySpace(memory_spaces.back().get(),
@@ -300,11 +311,12 @@ absl::StatusOr<std::unique_ptr<CommonPjRtClient>> GetClientWithDevices(
     devices.emplace_back(MakePjRtStreamExecutorDevice(
         i, /*is_addressable=*/false, /*local_device_id=*/-1,
         /*process_index=*/1, /*process_index_in_partition=*/0,
-        /*partition_index=*/0, "cpu"));
+        /*partition_index=*/0, CpuName()));
   }
   auto topology = CreateCpuTopologyDescription(devices.size());
   return MakeTestPjRtStreamExecutorClient(
-      "cpu", local_client, std::move(devices), std::move(local_device_states),
+      CpuId(), CpuName(), local_client, std::move(devices),
+      std::move(local_device_states),
       /*process_index=*/0, std::move(memory_spaces),
       /*topology=*/std::move(topology), /*allocator=*/nullptr,
       /*host_memory_allocator=*/nullptr,
@@ -741,6 +753,251 @@ TEST(PjRtStreamExecutorClientTest, CrossHostReceiveBuffersCleanupAfterFailure) {
       client->CrossHostReceiveBuffers(client->addressable_devices()[0], shapes,
                                       src_device_ids, transfer_keys),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(PjRtStreamExecutorClientTest,
+     UpdateCompileOptionsUsesLocalDeviceStateExecutorDeviceOrdinal) {
+  LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("Host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
+                       platform->ExecutorForDevice(0));
+
+  // Create two virtual LocalDeviceStates (logical device IDs 0 and 5) that both
+  // share physical executor 0. Logical device ID 5 is greater than or equal to
+  // `local_client->backend().stream_executors().size()`.
+  constexpr int kVirtualDeviceId = 5;
+  ASSERT_GE(kVirtualDeviceId,
+            local_client->backend().stream_executors().size());
+
+  std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
+  local_device_states.push_back(std::make_unique<LocalDeviceState>(
+      executor0, local_client, LocalDeviceState::kSynchronous,
+      /*max_inflight_computations=*/32, /*allow_event_reuse=*/false,
+      /*use_callback_stream=*/false, /*device_ordinal=*/0));
+  local_device_states.push_back(std::make_unique<LocalDeviceState>(
+      executor0, local_client, LocalDeviceState::kSynchronous,
+      /*max_inflight_computations=*/32, /*allow_event_reuse=*/false,
+      /*use_callback_stream=*/false, /*device_ordinal=*/kVirtualDeviceId));
+
+  PjRtStreamExecutorRawClient raw_client(
+      CpuId(), std::move(local_device_states),
+      /*allocator=*/nullptr, local_client,
+      /*host_memory_allocator=*/nullptr,
+      /*should_stage_host_to_device_transfers=*/false,
+      MakeUnboundedAsyncWorkRunner("pjrt_async_work_runner",
+                                   {/*stack_size=*/512 * 1024}),
+      executor0);
+
+  std::shared_ptr<const PjRtTopologyDescription> topology =
+      CreateCpuTopologyDescription(kVirtualDeviceId + 1);
+
+  CompileOptions options;
+  options.executable_build_options.set_device_ordinal(kVirtualDeviceId);
+  DeviceAssignment assignment(/*replica_count=*/1, /*computation_count=*/1);
+  assignment(0, 0) = kVirtualDeviceId;
+  options.executable_build_options.set_device_assignment(assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<DeviceAssignment> result_assignment,
+                       raw_client.UpdateCompileOptions(
+                           /*process_index=*/0, *topology, &options,
+                           /*lookup_addressable_devices=*/true));
+  ASSERT_NE(result_assignment, nullptr);
+  EXPECT_EQ(options.executable_build_options.device_ordinal(),
+            executor0->device_ordinal());
+}
+
+TEST(PjRtStreamExecutorClientTest, StagedAsyncBufferFromHostBuffer) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CommonPjRtClient> client,
+      GetClient(CudaId(), CudaName(),
+                /*should_stage_host_to_device_transfers=*/true));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  // Small staged transfer (<= 512 KiB) linearizes inline on the caller's
+  // thread before returning.
+  std::vector<int32_t> small_data(256);
+  std::iota(small_data.begin(), small_data.end(), 0);
+  absl::Notification small_done;
+  std::optional<int64_t> callback_thread_id;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> small_buf,
+      client->BufferFromHostBuffer(
+          small_data.data(), S32, {256}, /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          [&]() {
+            callback_thread_id = tsl::Env::Default()->GetCurrentThreadId();
+            small_done.Notify();
+          },
+          memory_space, /*device_layout=*/nullptr));
+  EXPECT_TRUE(small_done.HasBeenNotified());
+  small_done.WaitForNotification();
+  EXPECT_EQ(callback_thread_id, tsl::Env::Default()->GetCurrentThreadId());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> small_literal,
+                       small_buf->ToLiteral().Await());
+  TF_EXPECT_OK(literal_comparison::Equal(
+      LiteralUtil::CreateR1<int32_t>(small_data), *small_literal));
+
+  // Large staged transfer (> 512 KiB) dispatches asynchronously and round-trips
+  // intact.
+  std::vector<int32_t> large_data(256 * 1024);
+  std::iota(large_data.begin(), large_data.end(), 0);
+  absl::Notification large_done;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> large_buf,
+      client->BufferFromHostBuffer(
+          large_data.data(), S32, {static_cast<int64_t>(large_data.size())},
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          [&]() { large_done.Notify(); }, memory_space,
+          /*device_layout=*/nullptr));
+  large_done.WaitForNotification();
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> large_literal,
+                       large_buf->ToLiteral().Await());
+  TF_EXPECT_OK(literal_comparison::Equal(
+      LiteralUtil::CreateR1<int32_t>(large_data), *large_literal));
+
+  // Invalid byte_strides on the inline path fail synchronously without invoking
+  // on_done_with_host_buffer.
+  bool err_done = false;
+  const int64_t bad_strides[] = {4, 8};
+  EXPECT_THAT(
+      client->BufferFromHostBuffer(
+          small_data.data(), S32, {256}, bad_strides,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          [&]() { err_done = true; }, memory_space, /*device_layout=*/nullptr),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_FALSE(err_done);
+}
+
+class FailingHostMemoryAllocator : public HostMemoryAllocator {
+ public:
+  absl_nullable OwnedPtr Allocate(size_t size,
+                                  const AllocateOptions& options) override {
+    return nullptr;
+  }
+};
+
+TEST(PjRtStreamExecutorClientTest,
+     ToDeviceLayoutReturnsResourceExhaustedOnAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {256}, {0});
+  std::vector<int32_t> data(256, 1);
+  EXPECT_THAT(client->GetPjRtHostMemoryForDeviceManager()->ToDeviceLayout(
+                  data.data(), data.size() * sizeof(int32_t), shape, shape),
+              StatusIs(absl::StatusCode::kResourceExhausted));
+}
+
+TEST(PjRtStreamExecutorClientTest,
+     StagedBufferFromHostBufferSyncReturnsResourceExhaustedOnAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  std::vector<int32_t> data(256, 1);
+  bool on_done_called = false;
+  EXPECT_THAT(client->BufferFromHostBuffer(
+                  data.data(), S32, {256}, /*byte_strides=*/std::nullopt,
+                  PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+                  [&]() { on_done_called = true; }, memory_space,
+                  /*device_layout=*/nullptr),
+              StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_FALSE(on_done_called);
+}
+
+TEST(
+    PjRtStreamExecutorClientTest,
+    SmallStagedBufferFromHostBufferReturnsResourceExhaustedOnAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  std::vector<int32_t> data(256, 1);
+  bool on_done_called = false;
+  EXPECT_THAT(
+      client->BufferFromHostBuffer(
+          data.data(), S32, {256}, /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          [&]() { on_done_called = true; }, memory_space,
+          /*device_layout=*/nullptr),
+      StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_FALSE(on_done_called);
+}
+
+TEST(PjRtStreamExecutorClientTest,
+     AsyncStagedBufferFromHostBufferPropagatesAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  // Large staged transfer (> 512 KiB) allocates on the worker thread.
+  std::vector<int32_t> large_data(256 * 1024, 2);
+  absl::Notification large_done;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> large_buf,
+      client->BufferFromHostBuffer(
+          large_data.data(), S32, {static_cast<int64_t>(large_data.size())},
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          [&]() { large_done.Notify(); }, memory_space,
+          /*device_layout=*/nullptr));
+  large_done.WaitForNotification();
+  EXPECT_THAT(large_buf->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kResourceExhausted));
+}
+
+TEST(PjRtStreamExecutorClientTest,
+     ToLiteralReturnsResourceExhaustedOnAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> device_buf,
+                       client->CreateUninitializedBuffer(
+                           ShapeUtil::MakeShape(S32, {256}), memory_space));
+  EXPECT_THAT(device_buf->ToLiteral().Await(),
+              StatusIs(absl::StatusCode::kResourceExhausted));
+}
+
+TEST(PjRtStreamExecutorClientTest,
+     CrossClientCopyToMemorySpacePropagatesAllocatorFailure) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CommonPjRtClient> src_client,
+      GetClient(CudaId(), CudaName(),
+                /*should_stage_host_to_device_transfers=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommonPjRtClient> dst_client,
+                       GetClient(CudaId(), CudaName(),
+                                 /*should_stage_host_to_device_transfers=*/true,
+                                 std::make_unique<FailingHostMemoryAllocator>(),
+                                 LinearizeThrottler::Options{}));
+
+  std::vector<int32_t> data(256, 1);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buf,
+      src_client->BufferFromHostLiteral(LiteralUtil::CreateR1<int32_t>(data),
+                                        src_client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> copied_buf,
+      src_buf->CopyToMemorySpace(dst_client->memory_spaces()[0]));
+  EXPECT_THAT(copied_buf->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 }  // namespace

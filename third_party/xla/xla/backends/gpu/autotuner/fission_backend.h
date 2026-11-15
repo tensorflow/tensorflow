@@ -92,6 +92,9 @@ class FissionBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool IsSupported(const HloInstruction& instr) override;
+  bool CanProduceWrongResults() const override {
+    return codegen_backend_->CanProduceWrongResults();
+  }
   std::string version() const override { return codegen_backend_->version(); }
 
  private:

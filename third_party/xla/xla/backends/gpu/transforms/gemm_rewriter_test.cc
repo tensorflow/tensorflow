@@ -2847,10 +2847,6 @@ TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
   if (IsRocm()) {
     GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
   }
-  // TODO(intel-tf): Remove this check once SYCL supports c64/c128.
-  if (IsSycl()) {
-    GTEST_SKIP() << "c64/c128 not supported on SYCL.";
-  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -3063,9 +3059,8 @@ ENTRY main {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, ComplexAlphaSimpleRewrite) {
-  if ((IsSycl() || IsRocm()) &&
-      GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
-    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM/SYCL.";
+  if (IsRocm() && GetDebugOptionsForTest().xla_gpu_enable_cublaslt()) {
+    GTEST_SKIP() << "TODO: Unsupported C64 gpublas-lt datatype on ROCM.";
   }
   const char* hlo_text = R"(
 HloModule ComplexAlphaSimpleRewrite
@@ -3486,19 +3481,6 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
   } else {
     type_combinations.push_back({"c64", "c64", true});
     type_combinations.push_back({"c128", "c128", true});
-  }
-
-  // TODO(intel-tf): Remove this check once SYCL supports f64, c64, c128 data
-  // types. SYCL does not support f64, c64, c128 data types in oneDNN matmul
-  if (IsSycl()) {
-    type_combinations.erase(
-        std::remove_if(type_combinations.begin(), type_combinations.end(),
-                       [](const auto& combo) {
-                         auto [input_type, output_type, should_rewrite] = combo;
-                         return input_type == "f64" || input_type == "c64" ||
-                                input_type == "c128";
-                       }),
-        type_combinations.end());
   }
 
   for (const auto& type_combination : type_combinations) {

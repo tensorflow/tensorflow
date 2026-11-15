@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -64,8 +66,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -159,7 +160,7 @@ bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
     for (const CallSite& callsite : node.caller_callsites()) {
       const HloInstruction* caller = callsite.instruction();
       if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(caller)) {
+          frontend::HasDisableWhileLoopCopiesAttr(caller)) {
         return true;
       }
       if (caller != nullptr && caller->parent() != nullptr) {
@@ -451,7 +452,7 @@ bool IsAsyncOperationStateDefinition(const HloInstruction* instruction) {
 
 bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
                                      const ShapeIndex& index) {
-  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+  if (!frontend::HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
     return false;
   }
   int64_t tuple_idx = index[0];
@@ -540,7 +541,7 @@ bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
 
 bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
                                       const ShapeIndex& index) {
-  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+  if (!frontend::HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
     return false;
   }
   int64_t tuple_idx = index[0];
@@ -579,7 +580,7 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
     single_reader = single_reader->users()[0];
   }
   if (single_reader->user_count() != 1 &&
-      !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
     return false;
   }
 
@@ -597,8 +598,8 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
   while (curr != nullptr && curr != single_reader && curr != param_gte) {
     const HloInstruction* next = nullptr;
     if (curr->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      if (!HasDisjointReadWriteRegionsAttr(curr) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      if (!frontend::HasDisjointReadWriteRegionsAttr(curr) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
         return false;
       }
       next = curr->operand(0);
@@ -613,9 +614,9 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
       if (async_start == nullptr || async_start->operand_count() == 0) {
         return false;
       }
-      if (!HasDisjointReadWriteRegionsAttr(curr) &&
-          !HasDisjointReadWriteRegionsAttr(async_start) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      if (!frontend::HasDisjointReadWriteRegionsAttr(curr) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(async_start) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
         return false;
       }
       next = async_start->operand(0);
@@ -638,7 +639,7 @@ bool HasWhileWithDisabledCopies(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(instruction)) {
+          frontend::HasDisableWhileLoopCopiesAttr(instruction)) {
         return true;
       }
     }
@@ -659,7 +660,7 @@ absl::Status AddCopiesForWhile(const HloDataflowAnalysis& dataflow,
   IndicesToCopyForWhile(dataflow, xla_while, &indices_to_copy);
 
   // LINT.IfChange(disabled_copies_buffer_reads)
-  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+  if (frontend::HasDisableWhileLoopCopiesAttr(xla_while)) {
     VLOG(2) << "While loop copy insertion partially disabled via frontend "
                "attribute for "
             << xla_while->name();
@@ -777,6 +778,38 @@ absl::Status AddCopiesForInPlaceOperation(HloInstruction* in_place_op,
   return absl::OkStatus();
 }
 
+// Orders the other readers of the operand of `copy` before `copy`, the copy
+// added for an operand of `in_place_op`, if they are already predecessors of
+// `in_place_op`. Such readers must run before `in_place_op` anyway, so the new
+// control dependencies do not constrain the schedule beyond what `in_place_op`
+// already requires, but they let RemoveUnnecessaryCopies prove that `copy` is
+// redundant. Without them, chains of "read, then update in place" steps on the
+// same buffer (e.g. gather + scatter updates of an embedding table across
+// unrolled training steps) keep every copy, since eliding each copy requires
+// the reader of the next step to be ordered before the next copy.
+//
+// Readers that are copies are skipped: removing either of two copies of the
+// same operand feeding in-place ops would make both ops write the same buffer.
+// `reachability` may be stale; it is only used to find paths that already
+// exist, and instructions missing from it are skipped.
+absl::Status OrderPredecessorReadersBeforeCopy(
+    HloInstruction* copy, const HloInstruction* in_place_op,
+    const HloReachabilityMap& reachability) {
+  for (HloInstruction* reader : copy->operand(0)->users()) {
+    // Asynchronous ops keep reading their operands until the matching done,
+    // so ordering the start before `copy` would not order the read.
+    if (reader != copy && reader != in_place_op &&
+        reader->opcode() != HloOpcode::kCopy &&
+        !HloDataflowAnalysis::IsAsynchronousOperationStart(reader->opcode()) &&
+        reachability.IsPresent(reader) &&
+        reachability.IsReachable(reader, in_place_op)) {
+      VLOG(3) << "Ordering " << reader->name() << " before " << copy->name();
+      ABSL_RETURN_IF_ERROR(reader->AddControlDependencyTo(copy));
+    }
+  }
+  return absl::OkStatus();
+}
+
 // Conservatively adds copies before root instruction of entry computation and
 // each aliased parameter to resolve interference of aliased input and output
 // buffer. We later rely on RemoveUnnecessaryCopies to drop the unnecessary
@@ -887,6 +920,7 @@ absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
 
   return absl::OkStatus();
 }
+
 }  // namespace
 
 // We add copies for all phi indices of the true and false computation
@@ -1327,7 +1361,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
   bool disable_loop_copies = false;
   for (const HloInstruction* caller :
        while_body->caller_instructions(HloOpcode::kWhile)) {
-    if (HasDisableWhileLoopCopiesAttr(caller)) {
+    if (frontend::HasDisableWhileLoopCopiesAttr(caller)) {
       disable_loop_copies = true;
       break;
     }
@@ -1451,7 +1485,7 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
-    if (HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
+    if (frontend::HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
       return absl::OkStatus();
     }
     HloInstruction* operand = chain_start->mutable_operand(0);
@@ -1596,19 +1630,19 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             for (const HloInstruction* caller :
                  instruction->parent()->caller_instructions(
                      HloOpcode::kWhile)) {
-              if (HasDisjointReadWriteRegionsAttr(caller)) {
+              if (frontend::HasDisjointReadWriteRegionsAttr(caller)) {
                 has_disjoint_loop = true;
                 break;
               }
             }
           }
           if (has_disjoint_loop ||
-              (HasDisjointReadWriteRegionsAttr(instruction) &&
+              (frontend::HasDisjointReadWriteRegionsAttr(instruction) &&
                absl::c_all_of(
                    instruction->operand(operand_index_in_this_intr)->users(),
                    [&instruction](const HloInstruction* user) {
                      return user == instruction ||
-                            HasDisjointReadWriteRegionsAttr(user);
+                            frontend::HasDisjointReadWriteRegionsAttr(user);
                    }))) {
             continue;
           }
@@ -1932,6 +1966,39 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   return absl::OkStatus();
 }
 
+absl::Status CopyInsertion::OrderPredecessorReadersBeforeInPlaceCopies(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
+    // Built on first use.
+    std::unique_ptr<HloReachabilityMap> reachability;
+    for (HloInstruction* instruction : computation->instructions()) {
+      for (const auto& [operand_index, output_index] :
+           alias_info_->GetInPlaceInputOutputPairs(instruction)) {
+        if (!operand_index.operand_index.empty()) {
+          continue;
+        }
+        HloInstruction* copy =
+            instruction->mutable_operand(operand_index.operand_number);
+        if (copy->opcode() != HloOpcode::kCopy ||
+            copy->operand(0)->user_count() < 2) {
+          continue;
+        }
+        if (reachability == nullptr) {
+          reachability = HloReachabilityMap::Build(computation);
+        }
+        ABSL_RETURN_IF_ERROR(OrderPredecessorReadersBeforeCopy(copy, instruction,
+                                                          *reachability));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> CopyInsertion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1978,6 +2045,12 @@ absl::StatusOr<bool> CopyInsertion::RunImpl(
   HloDCE dce;
   ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  // Done after tuple simplification so that the orderings only rely on paths
+  // that copy removal also sees.
+  if (order_predecessor_readers_before_in_place_copies_) {
+    ABSL_RETURN_IF_ERROR(
+        OrderPredecessorReadersBeforeInPlaceCopies(module, execution_threads));
+  }
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 

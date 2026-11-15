@@ -26,6 +26,7 @@ class MockContext : public Context {
  public:
   MockContext() = default;
   MOCK_METHOD(void, SetActive, (), (override));
+  MOCK_METHOD(void, SetInactive, (), (const, override));
   MOCK_METHOD(bool, IsActive, (), (const, override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
   MOCK_METHOD(absl::Status, Synchronize, (), (override));

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_BASIC_STRING_ARRAY_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,7 +25,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -63,12 +61,12 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   static constexpr int kBuffersInlineSize = 1;
   using Buffers = absl::InlinedVector<Buffer, kBuffersInlineSize>;
 
-  // Called when this object is done with the string buffer provided at the
+  // Released when this object is done with the string buffer provided at
   // construction time.
-  using OnDoneWithBuffer = std::function<void()>;
+  using OnDoneWithBuffer = std::shared_ptr<const void>;
 
   // General array construction. The `buffers` and their elements
-  // (absl::Cords) must live until the `on_done_with_buffer` is called.
+  // (absl::Cords) must live until `on_done_with_buffer` is released.
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
@@ -83,7 +81,6 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   // ifrt::Array API
 
   Client* client() const override {
-    DCHECK(this);
     return client_;
   }
 
@@ -92,17 +89,14 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   DType dtype() const override { return array_spec_.dtype; }
 
   const Shape& shape() const override {
-    DCHECK(this);
     return array_spec_.shape;
   }
 
   const Sharding& sharding() const override {
-    DCHECK(this);
     return *array_spec_.sharding;
   }
 
   ShardingRef shared_ptr_sharding() const override {
-    DCHECK(this);
     return array_spec_.sharding;
   }
 

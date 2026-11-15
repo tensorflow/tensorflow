@@ -400,10 +400,7 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
     TF_LITE_ENSURE_EQ(context, tflite::NumElements(&constant_value), 1);
   }
 
-  // Check that paddings are non-negative, and reject padding on extent 1
-  // dimensions. This is a workaround for an issue in YNNPACK: it treats
-  // statically extent 1 dimensions as broadcast dimensions, which is not what
-  // we want if we're trying to pad them.
+  // Check that paddings are non-negative.
   if (paddings.type == kTfLiteInt32) {
     const int32_t* paddings_data =
         reinterpret_cast<const int32_t*>(paddings.data.raw);
@@ -412,10 +409,6 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
       int32_t post_pad = paddings_data[i * 2 + 1];
       TF_LITE_ENSURE_MSG(context, pre_pad >= 0 && post_pad >= 0,
                          "Negative paddings are not supported");
-      if (input.dims->data[i] == 1) {
-        TF_LITE_ENSURE_MSG(context, pre_pad == 0 && post_pad == 0,
-                           "Padding on extent 1 dimension is not supported");
-      }
     }
   } else if (paddings.type == kTfLiteInt64) {
     const int64_t* paddings_data =
@@ -425,10 +418,6 @@ TfLiteStatus IsPadSupported(const TfLiteRegistration* registration,
       int64_t post_pad = paddings_data[i * 2 + 1];
       TF_LITE_ENSURE_MSG(context, pre_pad >= 0 && post_pad >= 0,
                          "Negative paddings are not supported");
-      if (input.dims->data[i] == 1) {
-        TF_LITE_ENSURE_MSG(context, pre_pad == 0 && post_pad == 0,
-                           "Padding on extent 1 dimension is not supported");
-      }
     }
   }
 

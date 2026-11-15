@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -51,7 +52,8 @@ class IfrtIrProgramCompiler final
           const IfrtIRCompileOptions&) const>;
 
   IfrtIrProgramCompiler(
-      Client* client, AtomProgramCompilerFactory atom_program_compiler_factory);
+      Client* absl_nonnull client,
+      AtomProgramCompilerFactory atom_program_compiler_factory);
 
   tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> Compile(
       std::unique_ptr<Program> program,
@@ -71,10 +73,11 @@ class IfrtIrProgramCompiler final
 
   tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
       const absl::Cord& serialized,
-      std::unique_ptr<DeserializeExecutableOptions> options) override;
+      absl_nullable std::unique_ptr<DeserializeExecutableOptions> options)
+      override;
 
  private:
-  Client* const client_;
+  Client* absl_nonnull const client_;
   const AtomProgramCompilerFactory atom_program_compiler_factory_;
 };
 

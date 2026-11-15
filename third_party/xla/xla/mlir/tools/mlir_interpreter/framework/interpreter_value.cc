@@ -92,7 +92,9 @@ struct InterpreterValuePrinter {
       } else {
         os << "[";
         for (int64_t i = 0; i < t.view.sizes[dim]; ++i) {
-          if (i > 0) os << ", ";
+          if (i > 0) {
+            os << ", ";
+          }
           indices[dim] = i;
           print(dim + 1);
         }
@@ -110,7 +112,9 @@ struct InterpreterValuePrinter {
     os << "(";
     bool first = true;
     for (const auto& v : t.values) {
-      if (!first) os << ", ";
+      if (!first) {
+        os << ", ";
+      }
       first = false;
       v->Print(os);
     }
@@ -159,9 +163,9 @@ InterpreterValue InterpreterValue::ExtractElement(
         if constexpr (is_tensor_or_memref_v<T>) {
           if (it.view.num_vector_dims) {
             return {it.VectorAt(indices)};
-          } else {
-            return {it.at(indices)};
           }
+          return {it.at(indices)};
+
         } else if constexpr (std::is_same_v<T, Tuple>) {
           llvm_unreachable("extracting from tuples is unsupported");
         } else {
@@ -315,9 +319,13 @@ InterpreterValue InterpreterValue::AsUnitTensor(bool is_vector) const {
 }
 
 bool Tuple::operator==(const Tuple& other) const {
-  if (other.values.size() != values.size()) return false;
+  if (other.values.size() != values.size()) {
+    return false;
+  }
   for (const auto& [lhs, rhs] : llvm::zip(values, other.values)) {
-    if (!(*lhs == *rhs)) return false;
+    if (!(*lhs == *rhs)) {
+      return false;
+    }
   }
   return true;
 }

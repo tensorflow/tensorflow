@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
@@ -587,6 +589,70 @@ TEST(DumpTest, DumpPerExecutionProtoToFile) {
   ASSERT_OK(tsl::ReadTextOrBinaryProto(env, matches[1], &loaded_proto2));
   EXPECT_THAT(loaded_proto1, EqualsProto(R"pb(name: "test_module_1")pb"));
   EXPECT_THAT(loaded_proto2, EqualsProto(R"pb(name: "test_module_2")pb"));
+}
+
+TEST(DumpTest, DumpHloSnapshotWithAndWithoutHloModuleMatch) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_folder,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to(dump_folder.path());
+  debug_options.set_xla_dump_hlo_snapshots(true);
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  const HloModule hlo_module("snapshot_module", config);
+  HloSnapshot snapshot;
+  snapshot.set_execution_platform("test_platform");
+
+  // Both overloads share the per-module execution counter and timestamp, so the
+  // two dumps should only differ in the execution number.
+  DumpHloSnapshotIfEnabled(hlo_module, snapshot);
+  DumpHloSnapshotIfEnabled(hlo_module.unique_id(), hlo_module.name(),
+                           debug_options, snapshot);
+
+  tsl::Env* env = tsl::Env::Default();
+  std::vector<std::string> matches;
+  ASSERT_OK(env->GetMatchingPaths(
+      tsl::io::JoinPath(dump_folder.path(), "*hlo_snapshot.pb"), &matches));
+  absl::c_sort(matches);
+  ASSERT_THAT(matches, ElementsAre(HasSubstr("execution_0000"),
+                                   HasSubstr("execution_0001")));
+  EXPECT_EQ(
+      absl::StrReplaceAll(matches[0], {{"execution_0000", "execution_X"}}),
+      absl::StrReplaceAll(matches[1], {{"execution_0001", "execution_X"}}));
+  EXPECT_THAT(matches[0],
+              HasSubstr(absl::StrFormat("module_%04d.snapshot_module.",
+                                        hlo_module.unique_id())));
+
+  std::string expected_contents;
+  ASSERT_TRUE(
+      tsl::SerializeToStringDeterministic(snapshot, &expected_contents));
+  for (const std::string& match : matches) {
+    std::string contents;
+    ASSERT_OK(tsl::ReadFileToString(env, match, &contents));
+    EXPECT_EQ(contents, expected_contents);
+  }
+}
+
+TEST(DumpTest, DumpHloSnapshotDoesNothingWhenDisabled) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_folder,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  debug_options.set_xla_dump_to(dump_folder.path());
+  debug_options.set_xla_dump_hlo_snapshots(false);
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  const HloModule hlo_module("snapshot_module", config);
+
+  DumpHloSnapshotIfEnabled(hlo_module, HloSnapshot());
+  DumpHloSnapshotIfEnabled(hlo_module.unique_id(), hlo_module.name(),
+                           debug_options, HloSnapshot());
+
+  std::vector<std::string> matches;
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(dump_folder.path(), "*"), &matches));
+  EXPECT_THAT(matches, IsEmpty());
 }
 
 TEST(DumpHloIfEnabled, DumpsToSubfolder) {

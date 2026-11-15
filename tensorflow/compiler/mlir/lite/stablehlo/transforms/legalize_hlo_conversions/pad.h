@@ -17,16 +17,16 @@ limitations under the License.
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 
 namespace mlir::odml {
 
-// Patterns to legalize mhlo.pad to TFL
+// Patterns to legalize stablehlo.pad to TFL
 //
 // Prefers tfl.pad over tfl.padv2 when it can be asserted that the pad
 // values are zero.
 //
-// Matches: mhlo.pad
+// Matches: stablehlo.pad
 //  padding_high/low: all positive or zero
 //. interior_padding: all zero
 //

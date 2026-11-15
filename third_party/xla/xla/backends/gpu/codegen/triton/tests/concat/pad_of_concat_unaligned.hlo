@@ -1,0 +1,38 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// Verifies that a tile straddling `concat_dim_size` (tile 3: [96, 128) for
+// concat size 114) still enters the last operand's branch (96 < 114), while
+// pure high-padding tiles (tiles 4..7: offset >= 114) yield a zero tile.
+fusion {
+  p0 = f32[64] parameter(0)
+  p1 = f32[50] parameter(1)
+  concat = f32[114] concatenate(p0, p1), dimensions={0}
+  c0 = f32[] constant(-7.0)
+  ROOT pad = f32[256] pad(concat, c0), padding=0_142
+}
+
+// CHECK:       %[[C114:.*]] = arith.constant 114 : index
+// CHECK:       scf.if
+// CHECK:       } else {
+// CHECK:         %[[CMPI_1:.*]] = arith.cmpi slt, %{{.*}}, %[[C114]] : index
+// CHECK:         scf.if %[[CMPI_1]] -> (tensor<32xf32>) {
+// CHECK:           xtile.extract %{{.*}}[{{.*}}] [32] [1] : memref<50xf32> -> tensor<32xf32>
+// CHECK:         } else {
+// CHECK:           scf.yield %{{.*}} : tensor<32xf32>
+// CHECK:         }
+// CHECK:       }
+
+ENTRY main {
+  p0 = f32[64] parameter(0)
+  p1 = f32[50] parameter(1)
+  ROOT fusion = f32[256] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

@@ -27,12 +27,16 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -238,10 +242,31 @@ absl::Status PeelTrailingCopies(HloFusionInstruction* fusion) {
   return absl::OkStatus();
 }
 
+// Dots with a non-kEigen implementation strategy (e.g. kTiledLlvmIrGemv,
+// kTiledLlvmIrGemm, kNaiveLlvmIr) are lowered directly to LLVM IR rather than
+// calling a library, matching `call_library_for_instruction` in CpuCompiler.
+bool ShouldCallLibraryForDot(
+    const HloInstruction* instr,
+    const TargetMachineFeatures* target_machine_features) {
+  if (instr->opcode() != HloOpcode::kDot ||
+      target_machine_features == nullptr) {
+    return true;
+  }
+  const HloModuleConfig& config = instr->GetModule() != nullptr
+                                      ? instr->GetModule()->config()
+                                      : HloModuleConfig();
+  return GetDotImplementationStrategy(config, *instr, *target_machine_features,
+                                      /*allow_runtime_calls=*/true) ==
+         DotImplementationStrategy::kEigen;
+}
+
 }  // namespace
 
 absl::StatusOr<LibraryMatcher*> LibraryRewriter::ChooseLibrary(
     HloInstruction* instr) {
+  if (!ShouldCallLibraryForDot(instr, target_machine_features_)) {
+    return nullptr;
+  }
   for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
     ABSL_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
     if (op_supported && lib->ShouldCreateFusion(instr)) {
@@ -356,7 +381,8 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
       continue;
     }
 
-    if (!lib->ShouldFuse(fusion, instr)) {
+    if (!ShouldCallLibraryForDot(instr, target_machine_features_) ||
+        !lib->ShouldFuse(fusion, instr)) {
       VLOG(4) << "  Skipping unsupported instruction: " << instr->ToString();
       continue;
     }

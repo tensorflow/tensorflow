@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -62,12 +61,10 @@ class IfrtIrLoadedExecutable
   ~IfrtIrLoadedExecutable() override = default;
 
   Client* client() const override {
-    DCHECK(this);
     return client_;
   }
 
   absl::string_view name() const override {
-    DCHECK(this);
     return program_->program_name;
   }
 

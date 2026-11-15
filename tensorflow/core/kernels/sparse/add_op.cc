@@ -19,17 +19,25 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/core/framework/op.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/dense_update_functor.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
-#include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/cuda_sparse.h"
@@ -379,8 +387,12 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   GpuSparseMatrixDescriptor descrA_;
   GpuSparseMatrixDescriptor descrB_;
   GpuSparseMatrixDescriptor descrC_;
-  const T alpha_;
-  const T beta_;
+  // Passed by address to GpuSparse, whose CUDA wrappers reinterpret these
+  // as cuComplex / cuDoubleComplex (alignof == sizeof(T)). std::complex
+  // only guarantees alignof(value_type); the wrappers re-align internally,
+  // and this over-alignment is kept as defense in depth.
+  alignas(sizeof(T)) const T alpha_;
+  alignas(sizeof(T)) const T beta_;
   bool initialized_;
 
   CSRSparseMatrixAdd(const CSRSparseMatrixAdd&) = delete;

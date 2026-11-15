@@ -15,6 +15,9 @@
 // RUN: xla-opt %s -split-input-file --triton-xla-pipeline='target=gfx1250' \
 // RUN:   | FileCheck %s --check-prefix=CHECK-TDM
 //
+// RUN: xla-opt %s -split-input-file --triton-xla-pipeline='target=gfx1250-strict' \
+// RUN:   | FileCheck %s --check-prefix=CHECK-TDM
+//
 // RUN: xla-opt %s -split-input-file --triton-xla-pipeline='target=gfx950' \
 // RUN:   | FileCheck %s --check-prefix=CHECK-NOTDM
 

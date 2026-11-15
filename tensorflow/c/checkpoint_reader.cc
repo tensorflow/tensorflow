@@ -66,6 +66,9 @@ CheckpointReader::CheckpointReader(const std::string& filename,
 }
 
 bool CheckpointReader::HasTensor(const std::string& name) const {
+  if (var_to_shape_map_ != nullptr) {
+    return var_to_shape_map_->find(name) != var_to_shape_map_->end();
+  }
   absl::MutexLock lock(reader_mu_);
   if (reader_ != nullptr) {
     return reader_->HasTensor(name, nullptr, nullptr);

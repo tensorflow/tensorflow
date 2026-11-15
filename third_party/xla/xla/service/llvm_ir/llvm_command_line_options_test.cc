@@ -15,17 +15,80 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/CommandLine.h"
 
 namespace xla::llvm_ir {
 namespace {
+
+llvm::cl::opt<int>& GetTestIntOption() {
+  static llvm::cl::opt<int>* option = new llvm::cl::opt<int>(
+      "xla-test-llvm-cl-int-option", llvm::cl::init(0), llvm::cl::Hidden);
+  return *option;
+}
 
 TEST(LLVMCommandLineOptionsLockTest, ApplyLibraryOptions) {
   LLVMCommandLineOptionsLock lock(/*client_options=*/{});
   llvm::LLVMContext context;
   LLVMCommandLineOptionsLock::ApplyLibraryOptions(context);
   EXPECT_TRUE(context.getLibraryOptions().args().empty());
+}
+
+TEST(LLVMCommandLineOptionsLockTest, ReappliesOptionsAfterExternalReset) {
+  llvm::cl::opt<int>& test_option = GetTestIntOption();
+  const std::vector<std::string> client_options = {
+      "-xla-test-llvm-cl-int-option=42"};
+
+  {
+    LLVMCommandLineOptionsLock lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+  }
+
+  // Simulate an external in-process LLVM user (such as Triton's
+  // ScopedLLVMOptions or LLD) resetting global LLVM command-line options.
+  llvm::cl::ResetAllOptionOccurrences();
+  ASSERT_EQ(test_option.getValue(), 0);
+
+  {
+    LLVMCommandLineOptionsLock lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+  }
+}
+
+TEST(LLVMCommandLineOptionsLockTest,
+     NestedLockAfterInProcessResetDoesNotDeadlock) {
+  llvm::cl::opt<int>& test_option = GetTestIntOption();
+  const std::vector<std::string> client_options = {
+      "-xla-test-llvm-cl-int-option=42"};
+
+  {
+    LLVMCommandLineOptionsReleasableLock outer_lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+
+    {
+      LLVMCommandLineOptionsLock inner_lock_1(client_options);
+      // Simulate in-process lld::lldMain calling ResetAllOptionOccurrences()
+      // while the outer lock is held (as happens in AMDGPU CompileToHsaco).
+      llvm::cl::ResetAllOptionOccurrences();
+    }
+
+    // Acquiring a second nested lock with the same options while outer_lock is
+    // still held must not deadlock.
+    {
+      LLVMCommandLineOptionsLock inner_lock_2(client_options);
+    }
+  }
+
+  // Once all locks are released, the next outermost lock must detect the
+  // earlier reset and re-apply client_options.
+  {
+    LLVMCommandLineOptionsLock lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+  }
 }
 
 TEST(LLVMCommandLineOptionsReleasableLockTest, Basic) {

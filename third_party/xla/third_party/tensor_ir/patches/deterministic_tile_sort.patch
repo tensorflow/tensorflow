@@ -1,0 +1,34 @@
+diff --git a/lib/Analysis/TileCandidateGenerator.cpp b/lib/Analysis/TileCandidateGenerator.cpp
+--- a/lib/Analysis/TileCandidateGenerator.cpp
++++ b/lib/Analysis/TileCandidateGenerator.cpp
+@@ -541,15 +541,16 @@
+   {
+     llvm::SmallVector<size_t> activeByWeight(activeDims.begin(),
+                                              activeDims.end());
+-    llvm::sort(activeByWeight,
+-               [&](size_t a, size_t b) { return dimWeight[a] > dimWeight[b]; });
++    llvm::stable_sort(
++        activeByWeight,
++        [&](size_t a, size_t b) { return dimWeight[a] > dimWeight[b]; });
+     llvm::SmallVector<size_t> passiveDesc(passiveDims.begin(),
+                                           passiveDims.end());
+-    llvm::sort(passiveDesc,
+-               [&](size_t a, size_t b) { return shape[a] > shape[b]; });
++    llvm::stable_sort(passiveDesc,
++                      [&](size_t a, size_t b) { return shape[a] > shape[b]; });
+     llvm::SmallVector<size_t> passiveAsc(passiveDims.begin(),
+                                          passiveDims.end());
+-    llvm::sort(passiveAsc,
+-               [&](size_t a, size_t b) { return shape[a] < shape[b]; });
++    llvm::stable_sort(passiveAsc,
++                      [&](size_t a, size_t b) { return shape[a] < shape[b]; });
+ 
+     absorbOrder[0].append(activeByWeight.begin(), activeByWeight.end());
+@@ -859,5 +860,5 @@
+     c.score = scoreTile(c.tileShape, shape, fastestFreeDim, allStrides,
+                         allElementSizeBytes);
+   }
+-  llvm::sort(trackA, [](const Candidate &a, const Candidate &b) {
++  llvm::stable_sort(trackA, [](const Candidate &a, const Candidate &b) {
+     return a.score > b.score;
+   });

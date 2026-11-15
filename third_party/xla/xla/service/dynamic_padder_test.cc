@@ -404,6 +404,53 @@ ENTRY main {
               op::Tuple(op::Constant(), op::CustomCall({"SliceToDynamic"})));
 }
 
+TEST_F(DynamicPadderTest, BitcastConvertWideningWithDynamicDimension) {
+  // Regression test for https://github.com/openxla/xla/issues/45967:
+  // a bit-width-changing bitcast-convert on an operand with a dynamic
+  // dimension made the dynamic padder fail with an Unimplemented error.
+  const std::string hlo_text = R"(
+HloModule BitcastConvertWidening
+
+ENTRY main {
+  param = s64[16,1] parameter(0)
+  size = s32[] parameter(1)
+  param_dynamic = s64[<=16,1] set-dimension-size(param, size), dimensions={0}
+  ROOT bitcast = f32[<=16,1,2] bitcast-convert(param_dynamic)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  XLA_LOG_LINES(INFO, module_->ToString());
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::CustomCall({"SliceToDynamic"}));
+}
+
+TEST_F(DynamicPadderTest, BitcastConvertNarrowingWithDynamicDimension) {
+  // Same as above, in the narrowing direction: the major dimensions of the
+  // consumed shape may be dynamic (the contracted minor dimension is static).
+  const std::string hlo_text = R"(
+HloModule BitcastConvertNarrowing
+
+ENTRY main {
+  param = f32[16,2] parameter(0)
+  size = s32[] parameter(1)
+  param_dynamic = f32[<=16,2] set-dimension-size(param, size), dimensions={0}
+  ROOT bitcast = s64[<=16] bitcast-convert(param_dynamic)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  XLA_LOG_LINES(INFO, module_->ToString());
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::CustomCall({"SliceToDynamic"}));
+}
+
 TEST_F(DynamicPadderTest, ConvolutionTest) {
   auto builder = HloComputation::Builder(TestName());
   constexpr int xdim = 3;
@@ -1250,6 +1297,53 @@ ENTRY main {
                     false));
   result.SetDynamicSize(0, 7);
   Literal expected = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5, 6, 7});
+
+  EXPECT_EQ(result, expected);
+}
+
+TEST_F(ExecutionTest, BitcastConvertWideningWithDynamicDimension) {
+  const std::string hlo_text = R"(
+HloModule BitcastConvertWidening
+
+ENTRY main {
+  param_0 = s64[3] parameter(0)
+  size = s32[] constant(2)
+  param_padded = s64[<=3] set-dimension-size(param_0, size), dimensions={0}
+  ROOT bitcast = s32[<=3,2] bitcast-convert(param_padded)
+}
+)";
+
+  Literal operand_0 = LiteralUtil::CreateR1<int64_t>({1, 2, -1});
+  auto module = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, PadAndExecute(std::move(module), {&operand_0}, false));
+  result.SetDynamicSize(0, 2);
+  Literal expected = LiteralUtil::CreateR2<int32_t>({{1, 0}, {2, 0}});
+
+  EXPECT_EQ(result, expected);
+}
+
+TEST_F(ExecutionTest, BitcastConvertNarrowingWithDynamicDimension) {
+  const std::string hlo_text = R"(
+HloModule BitcastConvertNarrowing
+
+ENTRY main {
+  param_0 = s32[3,2] parameter(0)
+  size = s32[] constant(2)
+  param_padded = s32[<=3,2] set-dimension-size(param_0, size), dimensions={0}
+  ROOT bitcast = s64[<=3] bitcast-convert(param_padded)
+}
+)";
+
+  Literal operand_0 =
+      LiteralUtil::CreateR2<int32_t>({{1, 0}, {2, 0}, {-1, -1}});
+  auto module = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, PadAndExecute(std::move(module), {&operand_0}, false));
+  result.SetDynamicSize(0, 2);
+  Literal expected = LiteralUtil::CreateR1<int64_t>({1, 2});
 
   EXPECT_EQ(result, expected);
 }

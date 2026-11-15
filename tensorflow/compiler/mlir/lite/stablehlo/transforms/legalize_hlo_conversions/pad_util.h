@@ -16,25 +16,27 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_PAD_UTIL_H_
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 
 namespace mlir::odml {
 
 // Gets elements corresponding to slice starts from negative padding
 // values.
-DenseIntElementsAttr SliceStartFromNegPadLows(mhlo::PadOp op);
+DenseI64ArrayAttr SliceStartFromNegPadLows(stablehlo::PadOp op);
 
 // Gets elements corresponding to slice ends from negative padding
 // values.
-DenseIntElementsAttr SliceEndFromNegPadHighs(mhlo::PadOp op);
+DenseI64ArrayAttr SliceEndFromNegPadHighs(stablehlo::PadOp op);
 
 // Gets a copy of `data` with negative values replaced with 0.
-DenseIntElementsAttr ReplaceNegsWithZero(DenseElementsAttr data);
+DenseI64ArrayAttr ReplaceNegsWithZero(llvm::ArrayRef<int64_t> data,
+                                      MLIRContext* ctx);
 
-bool AnyNegativePads(mhlo::PadOp op);
+bool AnyNegativePads(stablehlo::PadOp op);
 
-bool TrivialInterior(mhlo::PadOp op);
+bool TrivialInterior(stablehlo::PadOp op);
 
 }  // namespace mlir::odml
 

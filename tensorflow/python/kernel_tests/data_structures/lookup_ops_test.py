@@ -915,6 +915,110 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
             init, default_value, experimental_is_anonymous=is_anonymous)
         self.initialize_table(table)
 
+  def testOversizeColumnIndex(self, is_anonymous):
+    # A column index that overflows int32 (the op attr is a plain int) used to
+    # be truncated when passed to the initializer, wrapping a large positive
+    # index into a negative one that then indexed the split tokens out of
+    # bounds. It must be rejected the same way any other too-large column index
+    # is, rather than producing a negative token index.
+    # 2**31 narrows to INT32_MIN, 2**32 - 1 wraps a 32-bit size_t column count,
+    # and 2**63 - 1 overflows int64 when the count is computed.
+    vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns_oob.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
+
+    for oversize_index in (2**31, 2**32 - 1, 2**63 - 1):
+      for key_index, value_index in (
+          (0, oversize_index),
+          (oversize_index, 1),
+      ):
+        with self.cached_session():
+          init = lookup_ops.TextFileInitializer(
+              vocabulary_file,
+              dtypes.string,
+              key_index,
+              dtypes.int64,
+              value_index,
+          )
+          with self.assertRaisesOpError("Invalid number of columns"):
+            table = self.getHashTable()(
+                init, -1, experimental_is_anonymous=is_anonymous
+            )
+            self.initialize_table(table)
+
+  def testOffsetOverflow(self, is_anonymous):
+    vocabulary_file = self._createVocabFile(
+        "offset_overflow.txt", values=("10", "20")
+    )
+    with self.cached_session():
+      for bad_offset in (2**31 - 10, -(2**31) - 11, 2**63 - 1, -(2**63)):
+        init = lookup_ops.TextFileInitializer(
+            vocabulary_file,
+            dtypes.string,
+            lookup_ops.TextFileIndex.WHOLE_LINE,
+            dtypes.int32,
+            lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_index_offset=bad_offset,
+        )
+        with self.assertRaisesOpError("overflows int32"):
+          table = self.getHashTable()(
+              init, -1, experimental_is_anonymous=is_anonymous
+          )
+          self.initialize_table(table)
+
+      init = lookup_ops.TextFileInitializer(
+          vocabulary_file,
+          dtypes.string,
+          lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.LINE_NUMBER,
+          value_index_offset=2**63 - 1,
+      )
+      with self.assertRaisesOpError("overflows int64"):
+        table = self.getHashTable()(
+            init, -1, experimental_is_anonymous=is_anonymous
+        )
+        self.initialize_table(table)
+
+  def testInt64WholeLineIgnoresOffset(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
+    vocabulary_file = self._createVocabFile(
+        "int64_offset_vocab.txt", values=("42", "7")
+    )
+    with self.cached_session():
+      init_fwd = lookup_ops.TextFileInitializer(
+          vocabulary_file,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.LINE_NUMBER,
+          value_index_offset=1,
+      )
+      table_fwd = self.getHashTable()(
+          init_fwd, -1, experimental_is_anonymous=is_anonymous
+      )
+      self.initialize_table(table_fwd)
+      out_fwd = table_fwd.lookup(
+          constant_op.constant([42, 7, 43], dtypes.int64)
+      )
+      self.assertAllEqual([1, 2, -1], self.evaluate(out_fwd))
+
+      init_inv = lookup_ops.TextFileInitializer(
+          vocabulary_file,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.LINE_NUMBER,
+          dtypes.int64,
+          lookup_ops.TextFileIndex.WHOLE_LINE,
+          value_index_offset=1,
+      )
+      table_inv = self.getHashTable()(
+          init_inv, -1, experimental_is_anonymous=is_anonymous
+      )
+      self.initialize_table(table_inv)
+      out_inv = table_inv.lookup(constant_op.constant([0, 1, 2], dtypes.int64))
+      self.assertAllEqual([-1, 42, 7], self.evaluate(out_inv))
+
   def testInitializeSameTableWithMultipleNodes(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
       self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)

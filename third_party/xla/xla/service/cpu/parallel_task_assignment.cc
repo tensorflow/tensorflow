@@ -38,13 +38,36 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/shape.h"
 #include "xla/shape_partition.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
+namespace {
+
+bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr) {
+  auto cpu_backend_config_or = instr->backend_config<xla::cpu::BackendConfig>();
+  if (cpu_backend_config_or.ok() &&
+      !cpu_backend_config_or->outer_dimension_partitions().empty()) {
+    return false;
+  }
+
+  if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return true;
+  }
+
+  if (instr->IsLoopFusion()) {
+    const HloInstruction* fused_root = instr->fused_expression_root();
+    return fused_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+           fused_root->operand(0)->LatestNonGteAncestor()->opcode() ==
+               HloOpcode::kParameter;
+  }
+
+  return false;
+}
+
+}  // namespace
 
 class SimpleCostModel : public ParallelCostModel {
  public:
@@ -163,7 +186,7 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   //    in-place will only touch the updated elements).
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
-  if (llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
+  if (MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
       opcode == HloOpcode::kRng || opcode == HloOpcode::kConstant) {
     return 1;
   }

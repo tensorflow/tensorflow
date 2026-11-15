@@ -181,7 +181,7 @@ class Sharding : public RTTIExtends<Sharding, Serializable> {
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
   static absl::StatusOr<ShardingRef> FromProto(
-      Client* client, const ShardingProto& sharding_proto);
+      Client* absl_nonnull client, const ShardingProto& sharding_proto);
 
   // Converts `Sharding` into a protobuf.
   absl::Status ToProto(
@@ -246,8 +246,8 @@ class SingleDeviceSharding final
     : public RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
-  static std::unique_ptr<SingleDeviceSharding> Create(Device* device,
-                                                      MemoryKind memory_kind);
+  static std::unique_ptr<SingleDeviceSharding> Create(
+      Device* absl_nonnull device, MemoryKind memory_kind);
 
   // Sharding implementation.
 
@@ -369,12 +369,10 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_dynamic_shape();
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_static_shape();
   }
 
@@ -389,18 +387,15 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
   }
 
   const std::vector<Shape>& shard_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_shapes();
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_dynamic_shapes();
   }
 
   const std::optional<std::vector<xla::ifrt::IndexDomain>>& index_domains()
       const {
-    DCHECK(this);
     return sharding_spec_->index_domains();
   }
 
@@ -462,11 +457,9 @@ class ConcreteEvenSharding
       Shape shard_shape, bool is_fully_replicated = false);
 
   Shape shape() const {
-    DCHECK(this);
     return sharding_spec_->shape();
   }
   const Shape& shard_shape() const {
-    DCHECK(this);
     return sharding_spec_->shard_shape();
   }
 
@@ -518,11 +511,12 @@ class ConcreteEvenSharding
 // must remain valid during deserialization.
 struct DeserializeShardingOptions
     : RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
-  explicit DeserializeShardingOptions(Client* client) : client(client) {}
+  explicit DeserializeShardingOptions(Client* absl_nonnull client)
+      : client(client) {}
 
   static char ID;  // NOLINT
 
-  Client* client;
+  Client* absl_nonnull client;
 };
 
 }  // namespace ifrt

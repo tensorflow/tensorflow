@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -86,18 +87,27 @@ IfrtServingExecutableTestHelper::IfrtServingExecutableTestHelper(
 std::unique_ptr<IfrtServingExecutable>
 IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
                                                 std::string mlir_module_path) {
+  auto executable_or =
+      MakeExecutable(program_id, mlir_module_path, /*assigned_device_ids=*/{});
+  TF_CHECK_OK(executable_or.status());
+  return std::move(executable_or.value());
+}
+
+absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
+IfrtServingExecutableTestHelper::MakeExecutable(
+    int64_t program_id, std::string mlir_module_path,
+    absl::Span<const int> assigned_device_ids) {
   auto mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
-  auto executable_or = IfrtServingExecutable::Create(
+  return IfrtServingExecutable::Create(
       program_id, "test", "main", std::move(mlir_module), client_,
       thread_pool_.get(), &ifrt_loaded_variable_registry_,
       &ifrt_restore_tensor_registry_, work_queue_.get(), device_mgr_.get(),
       tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
-      /*compilation_environment_proto=*/nullptr, &tf_to_hlo_compiler_,
+      /*compilation_env_or_overrides=*/nullptr, &tf_to_hlo_compiler_,
       ifrt_persistent_compilation_cache_.get(),
-      h2d_transfer_executor_factory_.get());
-  TF_CHECK_OK(executable_or.status());
-  return std::move(executable_or.value());
+      h2d_transfer_executor_factory_.get(), /*use_output_arena=*/false,
+      /*use_undonatable_buffer_converter=*/false, assigned_device_ids);
 }
 
 }  // namespace test_utils

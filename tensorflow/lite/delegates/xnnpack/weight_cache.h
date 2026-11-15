@@ -55,10 +55,17 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When creating a new cache file, `version` should be set to `kVersion`.
 //
 // When reading a cache file, the cache should be rejected if `version`
-// doesn't match `kVersion`.
+// doesn't match `kVersion` or if the magic value doesn't match `kMagicValue`.
+//
+// Note: We could have a single field to identify the file instead of two. The
+// split makes it easier to differentiate the fixed and variable portion of the
+// header identifier.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 4 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 5 };
+  // The magic value is stored as bytes "XNNPACK\0" on a little endian machine.
+  static constexpr uint64_t kMagicValue = 0x004B4341504E4E58;
   uint64_t version;
+  uint64_t magic_value;
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
   uint8_t stale;
@@ -218,6 +225,9 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
+  // True when `schema_` and `build_segment_start_` already reflect the current
+  // buffer list on disk (e.g., after an empty build step that wrote nothing).
+  bool buffer_list_loaded_ = false;
   // File descriptor view.
   FileDescriptorView fd_;
   std::string file_path_;

@@ -1019,6 +1019,69 @@ TEST_F(HloInstructionUtilsTest, FindAsyncTraversal) {
   EXPECT_EQ(async::FindAsyncDone(ag_done), ag_done);
 }
 
+TEST_F(HloInstructionUtilsTest, FindAsyncProducerThroughRebuiltContextTuple) {
+  // When an async context tuple `ctx` is rebuilt from individual elements and
+  // its operand subtuple `{0}` forwards a buffer shared with a sibling async
+  // op `small`, TraceAsyncDataflow must follow the producer owned elements
+  // `{1..n-1}` (`big_out`, `big_flag`) to `big` rather than element `{0}`.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+slice_big {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  ROOT ds = f32[4,4] dynamic-slice(p0, i0, i0), dynamic_slice_sizes={4,4}
+}
+
+slice_small {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  ROOT ds = f32[2,4] dynamic-slice(p0, i0, i0), dynamic_slice_sizes={2,4}
+}
+
+ENTRY main {
+  buf = f32[8,4] parameter(0)
+  zero = s32[] constant(0)
+  small = ((f32[8,4], s32[]), f32[2,4], s32[]) async-start(buf, zero), calls=slice_small
+  big = ((f32[8,4], s32[]), f32[4,4], s32[]) async-start(buf, zero), calls=slice_big
+  small_ops = (f32[8,4], s32[]) get-tuple-element(small), index=0
+  small_buf = f32[8,4] get-tuple-element(small_ops), index=0
+  big_ops = (f32[8,4], s32[]) get-tuple-element(big), index=0
+  big_i = s32[] get-tuple-element(big_ops), index=1
+  ops = (f32[8,4], s32[]) tuple(small_buf, big_i)
+  big_out = f32[4,4] get-tuple-element(big), index=1
+  big_flag = s32[] get-tuple-element(big), index=2
+  ctx = ((f32[8,4], s32[]), f32[4,4], s32[]) tuple(ops, big_out, big_flag)
+  big_done = f32[4,4] async-done(ctx)
+  small_barrier = ((f32[8,4], s32[]), f32[2,4], s32[]) opt-barrier(small)
+  small_done = f32[2,4] async-done(small_barrier)
+  ROOT r = (f32[2,4], f32[4,4]) tuple(small_done, big_done)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  auto* small = FindInstruction(m.get(), "small");
+  auto* small_done = FindInstruction(m.get(), "small_done");
+  auto* big = FindInstruction(m.get(), "big");
+  auto* ctx = FindInstruction(m.get(), "ctx");
+  auto* big_done = FindInstruction(m.get(), "big_done");
+
+  std::vector<async::AsyncTraceStep> steps;
+  EXPECT_EQ(async::TraceAsyncDataflow(
+                ctx, [](const HloInstruction* n) { return n->IsAsyncStart(); },
+                &steps),
+            big);
+  // Recorded step at `ctx` must record operand index 1 (`big_out`), not 0.
+  ASSERT_FALSE(steps.empty());
+  EXPECT_EQ(steps.front().instruction, ctx);
+  EXPECT_EQ(steps.front().operand_index, 1);
+
+  EXPECT_EQ(async::FindAsyncProducer(ctx), big);
+  EXPECT_EQ(async::FindAsyncStart(big_done), big);
+  EXPECT_EQ(async::FindAsyncDone(big), big_done);
+  EXPECT_EQ(async::FindAsyncDone(small), small_done);
+}
+
 }  // namespace
 
 }  // namespace hlo_instruction_utils

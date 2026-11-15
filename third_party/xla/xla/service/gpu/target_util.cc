@@ -18,35 +18,16 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 
 #include <cstring>
-#include <functional>
-#include <optional>
 #include <string>
-#include <variant>
-#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/IntrinsicsAMDGPU.h"
-#include "llvm/IR/IntrinsicsNVPTX.h"
-#include "llvm/IR/MDBuilder.h"
-#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/primitive_util.h"
-#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -54,207 +35,6 @@ namespace gpu {
 namespace {
 // Utility functions to obtain NVPTX/AMDGPU specific information.
 using absl::StrCat;
-
-// Wrapper structure for carrying llvm intrinsic ids for NVPTX/AMDGPU platforms.
-// On AMDGPU, some of these operations are made as device functions instead of
-// intrinsics. Therefore a variant type is used to wrap the lambda to call
-// those device functions.
-struct TargetIntrinsics {
-  std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
-      nvptx_intrinsic_or_function;
-  std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
-      amdgpu_intrinsic_or_function;
-  std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
-      spir_intrinsic_or_function;
-};
-
-// Emits IR to call a device function named "callee_name" on the given
-// operand. Returns the IR value that represents the return value.
-// `output_type` is std::nullopt for void-returning callees (e.g. SPIR-V
-// OpControlBarrier), since PrimitiveType cannot represent void.
-llvm::CallInst* EmitDeviceFunctionCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types,
-    std::optional<PrimitiveType> output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
-    absl::string_view name = "") {
-  std::vector<llvm::Type*> ir_input_types;
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  for (PrimitiveType input_type : input_types) {
-    ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
-  }
-  llvm::Type* return_type =
-      output_type.has_value()
-          ? llvm_ir::PrimitiveTypeToIrType(*output_type, b->getContext())
-          : llvm::Type::getVoidTy(b->getContext());
-  llvm::FunctionType* callee_type =
-      llvm::FunctionType::get(return_type, ir_input_types, /*isVarArg=*/false);
-
-  // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
-      module->getOrInsertFunction(callee_name, callee_type).getCallee());
-
-  callee->addFnAttrs(attributes);
-  if (target_triple.isSPIROrSPIRV()) {
-    callee->setCallingConv(llvm::CallingConv::SPIR_FUNC);
-  }
-
-  return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
-}
-
-// Gets the llvm intrinsic ids on different platforms (NVPTX, AMDGPU)
-// corresponding to the give TargetIntrinsicID.
-struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
-  switch (intrin) {
-    case TargetIntrinsicID::kThreadIdx: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
-          llvm::Intrinsic::amdgcn_workitem_id_x,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall(
-                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(0)},
-                {U32}, U64, {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kThreadIdy: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y,
-          llvm::Intrinsic::amdgcn_workitem_id_y,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall(
-                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(1)},
-                {U32}, U64, {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kThreadIdz: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z,
-          llvm::Intrinsic::amdgcn_workitem_id_z,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall(
-                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(2)},
-                {U32}, U64, {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kBlockIdx: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
-          llvm::Intrinsic::amdgcn_workgroup_id_x,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
-                                          {b_->getInt32(0)}, {U32}, U64,
-                                          {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kBlockIdy: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y,
-          llvm::Intrinsic::amdgcn_workgroup_id_y,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
-                                          {b_->getInt32(1)}, {U32}, U64,
-                                          {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kBlockIdz: {
-      return {
-          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z,
-          llvm::Intrinsic::amdgcn_workgroup_id_z,
-          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
-                                          {b_->getInt32(2)}, {U32}, U64,
-                                          {b_->getContext()}, b_);
-          },
-      };
-    }
-    case TargetIntrinsicID::kBarrierId: {
-      return {[](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                // We need to use the callback mechanism here, because the
-                // barrier intrinsics expects a constant 0 as operand, whereas
-                // for AMD no operand is expected. We don't want to distinguish
-                // at the call site.
-                llvm::Module* module = b_->GetInsertBlock()->getModule();
-                llvm::Function* intrinsic =
-                    llvm::Intrinsic::getOrInsertDeclaration(
-                        module,
-                        llvm::Intrinsic::nvvm_barrier_cta_sync_aligned_all, {});
-                return b_->CreateCall(intrinsic, {b_->getInt32(0)});
-              },
-              llvm::Intrinsic::amdgcn_s_barrier,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
-                // matches the MLIR emitter pipeline.
-                return EmitDeviceFunctionCall(
-                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
-                    llvm::AttrBuilder(b_->getContext())
-                        .addAttribute(llvm::Attribute::Convergent),
-                    b_);
-              }};
-    }
-    case TargetIntrinsicID::kBlockDimx: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(0)}, {U32}, U64,
-                                              {b_->getContext()}, b_);
-              },
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall(
-                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(0)},
-                    {U32}, U64, {b_->getContext()}, b_);
-              }};
-    }
-    case TargetIntrinsicID::kBlockDimy: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_y,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(1)}, {U32}, U64,
-                                              {b_->getContext()}, b_);
-              },
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall(
-                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(1)},
-                    {U32}, U64, {b_->getContext()}, b_);
-              }};
-    }
-    case TargetIntrinsicID::kBlockDimz: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(2)}, {U32}, U64,
-                                              {b_->getContext()}, b_);
-              },
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall(
-                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(2)},
-                    {U32}, U64, {b_->getContext()}, b_);
-              }};
-    }
-    case TargetIntrinsicID::kGroupBarrierId: {
-      return {llvm::Intrinsic::nvvm_bar_warp_sync,
-              llvm::Intrinsic::amdgcn_wave_barrier,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                // OpenCL barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
-                // matches the MLIR emitter pipeline.
-                return EmitDeviceFunctionCall(
-                    "_Z7barrierj", {b_->getInt32(3)}, {U32}, std::nullopt,
-                    llvm::AttrBuilder(b_->getContext())
-                        .addAttribute(llvm::Attribute::Convergent),
-                    b_);
-              }};
-    }
-  }
-}
 
 // Wrapper structure for carrying math functions for NVPTX/AMDGPU platforms.
 struct TargetDeviceFunction {
@@ -460,38 +240,6 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }
-}
-
-llvm::CallInst* EmitCallToTargetIntrinsic(
-    TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
-  std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
-      llvm_intrinsic_or_function;
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.isNVPTX()) {
-    llvm_intrinsic_or_function = gpu_intrinsic_id.nvptx_intrinsic_or_function;
-  } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
-    llvm_intrinsic_or_function = gpu_intrinsic_id.amdgpu_intrinsic_or_function;
-  } else if (target_triple.isSPIROrSPIRV()) {
-    llvm_intrinsic_or_function = gpu_intrinsic_id.spir_intrinsic_or_function;
-  } else {
-    LOG(FATAL) << "Invalid triple " << target_triple.str();
-  }
-  llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
-      std::get_if<llvm::Intrinsic::ID>(&llvm_intrinsic_or_function);
-  if (llvm_intrinsic_id_ptr) {
-    llvm::Intrinsic::ID llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
-    llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
-        module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
-    return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
-  }
-  std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
-      std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
-          &llvm_intrinsic_or_function);
-  return (*builder_func)(b);
 }
 
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,

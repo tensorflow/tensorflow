@@ -73,8 +73,10 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kFusion) {
-      // Cloning not supported for these instructions.
+    if (root.opcode() == HloOpcode::kFusion ||
+        GetInstructionCallContext(root.opcode()) == CallContext::kControlFlow) {
+      // Cloning to tensor shape is not valid for embedded control flow or
+      // fusions.
       return absl::OkStatus();
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "

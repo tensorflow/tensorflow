@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace internal {
-using ::tsl::internal::PickUnusedPortOrDie;  // NOLINT(misc-unused-using-decls)
+using ::tsl::net::PickUnusedPortOrDie;  // NOLINT(misc-unused-using-decls)
 }  // namespace internal
 }  // namespace tensorflow
 

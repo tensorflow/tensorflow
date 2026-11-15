@@ -22,7 +22,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -52,9 +54,13 @@ class IfrtServingExecutableTestHelper {
 
   // Creates an IfrtServingExecutable with the given program id.
   // Note the instance of this class must outlive the returned
-  // IfrtServingExecutable.
+  // IfrtServingExecutable. If assigned_device_ids is not empty, the executable
+  // will be pinned to the given devices.
   std::unique_ptr<IfrtServingExecutable> MakeExecutable(
       int64_t program_id, std::string mlir_module_path);
+  absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> MakeExecutable(
+      int64_t program_id, std::string mlir_module_path,
+      absl::Span<const int> assigned_device_ids);
 
   void SetH2DTransferExecutorFactory(
       std::unique_ptr<H2DTransferExecutorFactory> factory) {
@@ -64,6 +70,8 @@ class IfrtServingExecutableTestHelper {
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry() {
     return &ifrt_restore_tensor_registry_;
   }
+
+  xla::ifrt::Client* client() const { return client_.get(); }
 
   int num_cores() const { return client_->addressable_device_count(); }
 

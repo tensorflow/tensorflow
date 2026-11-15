@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -316,11 +317,11 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
 
-  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
-                                      /*collective_clique_requests=*/nullptr,
-                                      /*collective_memory_requests=*/nullptr,
-                                      /*executor=*/executor,
-                                      /*buffer_allocations=*/&allocations};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(thunk.Prepare(prepare_params));
 
   EXPECT_EQ(cond_counts.prepares, 1);
@@ -373,16 +374,16 @@ TEST(WhileThunkTest, PrepareAndInitializeDoNotDuplicateSharedCommands) {
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
 
-  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
-                                      /*collective_clique_requests=*/nullptr,
-                                      /*collective_memory_requests=*/nullptr,
-                                      /*executor=*/executor,
-                                      /*buffer_allocations=*/&allocations};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(thunk.Prepare(prepare_params));
   EXPECT_EQ(cond_counts.prepares, 1);
   EXPECT_EQ(body_counts.prepares, 1);
 
-  Thunk::InitializeParams init_params;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.buffer_allocations = &allocations;
   ASSERT_OK(thunk.Initialize(init_params));

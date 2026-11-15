@@ -456,7 +456,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
     self._compareBoth(y, np.sign, math_ops.sign)
-    self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
+    self._compareCpu(z, compute_f32(self._rsqrt), math_ops.rsqrt)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
@@ -474,6 +474,28 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
     self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
     self._compareBoth(x, compute_f32(np.square), math_ops.square)
+
+  def testBFloat16RsqrtLengthIndependent(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/123551
+    # Scalar and packet CPU paths must agree for the same bfloat16 value.
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    test_values = [0.53125, 0.0, 1.0, 2.0, float("inf")]
+
+    # Pin to CPU: the length dependence comes from CPU SIMD packet
+    # boundaries (8 lanes for AVX, 16 for AVX-512).
+    with ops.device("/cpu:0"):
+      for val in test_values:
+        value = np.array(val, dtype=bfloat16)
+        with np.errstate(divide="ignore"):
+          reference = np.array(1.0 / np.sqrt(np.float64(value)), dtype=bfloat16)
+        for length in (0, 1, 7, 8, 9, 15, 16, 17, 32):
+          x = np.full([length], value, dtype=bfloat16)
+          y = self.evaluate(math_ops.rsqrt(x))
+          self.assertAllEqual(
+              y,
+              np.full([length], reference, dtype=bfloat16),
+              msg=f"value={val}, length={length}",
+          )
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
@@ -639,6 +661,66 @@ class UnaryOpTest(test.TestCase):
 
     self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexAbsSpecialValues(self):
+    # Test IEEE-754 / ISO C99 compliance for complex abs:
+    # hypot(+-inf, NaN) = +inf and hypot(NaN, +-inf) = +inf
+    for dtype in [np.complex64, np.complex128]:
+      # Extended test ranges covering combinations of inf, nan, finite,
+      # and -0.0 (20 cases)
+      x_1d = np.array(
+          [
+              complex(np.inf, np.nan),
+              complex(-np.inf, np.nan),
+              complex(np.nan, np.inf),
+              complex(np.nan, -np.inf),
+              complex(np.inf, 1.0),
+              complex(-np.inf, 1.0),
+              complex(1.0, np.inf),
+              complex(1.0, -np.inf),
+              complex(np.inf, 0.0),
+              complex(0.0, np.inf),
+              complex(-np.inf, 0.0),
+              complex(0.0, -np.inf),
+              complex(np.inf, np.inf),
+              complex(-np.inf, np.inf),
+              complex(np.inf, -np.inf),
+              complex(-np.inf, -np.inf),
+              complex(np.nan, np.nan),
+              complex(-0.0, 0.0),
+              complex(0.0, -0.0),
+              complex(-0.0, -0.0),
+          ],
+          dtype=dtype,
+      )
+
+      for device_fn in (test_util.force_cpu, test_util.use_gpu):
+        with device_fn():
+          with self.subTest(dtype=dtype, device=device_fn.__name__):
+            x_1d_t = ops.convert_to_tensor(x_1d)
+            self.assertAllClose(np.abs(x_1d), math_ops.abs(x_1d_t))
+
+            # Python built-in aliasing
+            self.assertAllClose(np.abs(x_1d), _ABS(x_1d_t))
+
+            # Multidimensional checks (4, 5) for 20 elements
+            x_2d = x_1d.reshape((4, 5))
+            x_2d_t = ops.convert_to_tensor(x_2d)
+            self.assertAllClose(np.abs(x_2d), math_ops.abs(x_2d_t))
+            self.assertAllClose(np.abs(x_2d), _ABS(x_2d_t))
+
+            # Scalar bounds (N=1)
+            x_scalar = np.array(complex(np.inf, np.nan), dtype=dtype)
+            x_scalar_t = ops.convert_to_tensor(x_scalar)
+            self.assertAllClose(np.abs(x_scalar), math_ops.abs(x_scalar_t))
+            self.assertAllClose(np.abs(x_scalar), _ABS(x_scalar_t))
+
+            # Empty bounds (N=0)
+            x_empty = np.array([], dtype=dtype)
+            x_empty_t = ops.convert_to_tensor(x_empty)
+            self.assertAllClose(np.abs(x_empty), math_ops.abs(x_empty_t))
+            self.assertAllClose(np.abs(x_empty), _ABS(x_empty_t))
 
   @test_util.run_deprecated_v1
   def testGradGrad(self):

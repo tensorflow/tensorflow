@@ -222,9 +222,11 @@ class XtileLoweringTest(absltest.TestCase):
             %output: memref<8x8xf32>,
             %tile_id: index) {
           %offset = arith.constant 0 : index
+          %zero = arith.constant dense<0.0> : tensor<8x8xf32>
           %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
-          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+          %dot = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<8x8xf32>
+          %result = arith.addf %dot, %zero : tensor<8x8xf32>
           xtile.insert %result into %output[%offset, %offset][8, 8][1, 1] : tensor<8x8xf32> -> memref<8x8xf32>
           xtile.return
         }
@@ -251,9 +253,11 @@ class XtileLoweringTest(absltest.TestCase):
             %output: memref<f32>,
             %tile_id: index) {
           %offset = arith.constant 0 : index
+          %zero = arith.constant dense<0.0> : tensor<f32>
           %lhs_tile = xtile.extract %lhs[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 8][1, 1] : memref<16x8xf32> -> tensor<16x8xf32>
-          %result = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1, 0] x [0, 1] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<f32>
+          %dot = stablehlo.dot_general %lhs_tile, %rhs_tile, contracting_dims = [1, 0] x [0, 1] : (tensor<8x16xf32>, tensor<16x8xf32>) -> tensor<f32>
+          %result = arith.addf %dot, %zero : tensor<f32>
           xtile.insert %result into %output[][][] : tensor<f32> -> memref<f32>
           xtile.return
         }
@@ -281,11 +285,13 @@ class XtileLoweringTest(absltest.TestCase):
             %output: memref<8x1xf32>,
             %tile_id: index) {
           %offset = arith.constant 0 : index
+          %zero = arith.constant dense<0.0> : tensor<8xf32>
           %lhs_0_tile = xtile.extract %lhs_0[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %lhs_1_tile = xtile.extract %lhs_1[%offset, %offset][8, 16][1, 1] : memref<8x16xf32> -> tensor<8x16xf32>
           %add_lhs = arith.addf %lhs_0_tile, %lhs_1_tile : tensor<8x16xf32>
           %rhs_tile = xtile.extract %rhs[%offset, %offset][16, 1][1, 1] : memref<16x1xf32> -> tensor<16xf32>
-          %result = stablehlo.dot_general %add_lhs, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16xf32>) -> tensor<8xf32>
+          %dot = stablehlo.dot_general %add_lhs, %rhs_tile, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16xf32>) -> tensor<8xf32>
+          %result = arith.addf %dot, %zero : tensor<8xf32>
           %tanh_result = math.tanh %result : tensor<8xf32>
           xtile.insert %tanh_result into %output[%offset, %offset][8, 1][1, 1] : tensor<8xf32> -> memref<8x1xf32>
           xtile.return

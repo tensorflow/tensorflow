@@ -46,8 +46,11 @@ limitations under the License.
 namespace stream_executor {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    StreamExecutor* executor, int64_t memory_space)
-    : executor_(executor), memory_space_(memory_space) {}
+    StreamExecutor* executor, int64_t memory_space,
+    std::vector<tsl::SubAllocator::Visitor> free_visitors)
+    : executor_(executor),
+      memory_space_(memory_space),
+      free_visitors_(std::move(free_visitors)) {}
 
 std::string StreamExecutorMemoryAllocator::Name() {
   return absl::StrCat("SE_", executor_->device_ordinal(), "_space_",
@@ -62,6 +65,16 @@ void* StreamExecutorMemoryAllocator::AllocateRaw(size_t alignment,
 
 void StreamExecutorMemoryAllocator::DeallocateRaw(void* ptr) {
   if (ptr != nullptr) {
+    if (!free_visitors_.empty()) {
+      if (!executor_->SynchronizeAllActivity()) {
+        LOG(WARNING) << "Failed to synchronize device "
+                     << executor_->device_ordinal()
+                     << " before running free visitors for " << ptr;
+      }
+      for (const tsl::SubAllocator::Visitor& visitor : free_visitors_) {
+        visitor(ptr, executor_->device_ordinal(), /*num_bytes=*/0);
+      }
+    }
     DeviceAddressBase dev_mem(ptr);
     executor_->Deallocate(&dev_mem);
   }

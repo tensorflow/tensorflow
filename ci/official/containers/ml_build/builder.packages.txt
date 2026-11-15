@@ -6,6 +6,7 @@ build-essential
 ca-certificates
 curl
 git
+google-perftools
 parallel
 sudo
 swig

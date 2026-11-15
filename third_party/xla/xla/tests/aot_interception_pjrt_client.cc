@@ -297,10 +297,13 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
               "ptx"),
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "cubin"),
-          // Opaque collective-kernel binary, same as the KernelLoaderSpecProto
-          // payloads above.
+          // Opaque collective-kernel binary and its compiler-computed dynamic
+          // shared-memory size, same as the KernelLoaderSpecProto payloads
+          // above.
           gpu::CollectiveKernelThunkProto::descriptor()->FindFieldByName(
               "cubin"),
+          gpu::CollectiveKernelThunkProto::descriptor()->FindFieldByName(
+              "shmem_bytes"),
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()
                   ->FindFieldByName("cuda_toolkit_version"),

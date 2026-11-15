@@ -26,6 +26,7 @@
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
@@ -119,6 +120,27 @@ absl::StatusOr<SingleDeviceShardSemantics> FromSingleDeviceShardSemanticsProto(
       return absl::InvalidArgumentError(
           absl::StrCat("Unhandled proto-enum value ", s, ":",
                        proto::SingleDeviceShardSemantics_Name(s)));
+  }
+}
+
+proto::HashMode ToHashModeProto(Client::HashMode m) {
+  switch (m) {
+    case Client::HashMode::kPhysical:
+      return proto::HASH_MODE_PHYSICAL;
+    case Client::HashMode::kLogical:
+      return proto::HASH_MODE_LOGICAL;
+  }
+}
+
+absl::StatusOr<Client::HashMode> FromHashModeProto(proto::HashMode m) {
+  switch (m) {
+    case proto::HASH_MODE_PHYSICAL:
+      return Client::HashMode::kPhysical;
+    case proto::HASH_MODE_LOGICAL:
+      return Client::HashMode::kLogical;
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unhandled proto-enum value ", m, ":", proto::HashMode_Name(m)));
   }
 }
 

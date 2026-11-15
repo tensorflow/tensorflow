@@ -70,3 +70,29 @@ module @copy_arrays {
     return %0 : !array1
   }
 }
+
+// -----
+
+// Verify that the pass propagates node provenance through a BitcastArrays op.
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: @bitcast_arrays
+module @bitcast_arrays {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array0) -> !array0
+    %1, %ctrl_1 = ifrt.BitcastArrays(%0) : (!array0) -> !array1
+    %2, %ctrl_2 = ifrt.BitcastArrays(%1) : (!array1) -> !array0
+    %3, %ctrl_3 = ifrt.Call @add_one(%2) on devices [0,1]
+        : (!array0) -> !array0
+    return %3 : !array0
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}

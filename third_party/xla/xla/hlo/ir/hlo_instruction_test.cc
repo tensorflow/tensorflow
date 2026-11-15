@@ -26,6 +26,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/frontend_attributes.h"
@@ -47,14 +49,20 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
@@ -486,13 +494,44 @@ TEST_F(HloInstructionTest, SetFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
+TEST_F(HloInstructionTest, HasFrontendAttribute) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  EXPECT_FALSE(instr.has_frontend_attribute("key1"));
+  EXPECT_FALSE(instr.has_any_frontend_attribute({"key1", "key2"}));
+  EXPECT_FALSE(instr.has_any_frontend_attribute({}));
+
+  instr.set_frontend_attribute("key1", "value1");
+  EXPECT_TRUE(instr.has_frontend_attribute("key1"));
+  EXPECT_FALSE(instr.has_frontend_attribute("key2"));
+
+  EXPECT_TRUE(instr.has_any_frontend_attribute({"key1", "key2"}));
+  EXPECT_TRUE(instr.has_any_frontend_attribute({"key2", "key1"}));
+  EXPECT_FALSE(instr.has_any_frontend_attribute({"key2", "key3"}));
+  EXPECT_FALSE(instr.has_any_frontend_attribute({}));
+}
+
+TEST_F(HloInstructionTest, EraseFrontendAttribute) {
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  EXPECT_FALSE(instr.erase_frontend_attribute("key1"));
+  EXPECT_FALSE(instr.has_frontend_attributes());
+
+  instr.set_frontend_attribute("key1", "value1");
+  instr.set_frontend_attribute("key2", "value2");
+  EXPECT_TRUE(instr.erase_frontend_attribute("key1"));
+  EXPECT_FALSE(instr.erase_frontend_attribute("key1"));
+  EXPECT_FALSE(instr.has_frontend_attribute("key1"));
+  EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
+}
+
 TEST_F(HloInstructionTest, AddFrontendAttributes) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.add_frontend_attribute("key1", "value1");
   FrontendAttributes attributes;
   attributes.mutable_map()->insert({"key1", "value2"});
   attributes.mutable_map()->insert({"key2", "value2"});
-  instr.add_frontend_attributes(attributes);
+  EXPECT_EQ(instr.add_frontend_attributes(attributes), 1)
+      << "only key2 should be added";
+  EXPECT_EQ(instr.add_frontend_attributes(attributes), 0);
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1")
       << "key1 should not be overwritten";
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
@@ -500,26 +539,27 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
 
 TEST_F(HloInstructionTest, DisjointReadWriteRegionsAttributes) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
-  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&instr));
-  EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(nullptr));
-  SetDisjointReadWriteRegionsAttr(nullptr);  // Should be a no-op and not crash.
+  EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(&instr));
+  EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(nullptr));
+  frontend::SetDisjointReadWriteRegionsAttr(
+      nullptr);  // Should be a no-op and not crash.
 
-  SetDisjointReadWriteRegionsAttr(&instr);
-  EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&instr));
+  frontend::SetDisjointReadWriteRegionsAttr(&instr);
+  EXPECT_TRUE(frontend::HasDisjointReadWriteRegionsAttr(&instr));
 
   // Test different key variations and case-insensitive values.
-  for (absl::string_view key :
-       {kXlaDisjointReadWriteRegions, "xla.disjoint_read_write_regions"}) {
+  for (absl::string_view key : {frontend::kXlaDisjointReadWriteRegions,
+                                "xla.disjoint_read_write_regions"}) {
     for (absl::string_view val : {"true", "True", "1", "yes", "YES"}) {
       HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
       test_instr.set_frontend_attribute(key, val);
-      EXPECT_TRUE(HasDisjointReadWriteRegionsAttr(&test_instr))
+      EXPECT_TRUE(frontend::HasDisjointReadWriteRegionsAttr(&test_instr))
           << "Failed for key: " << key << " and val: " << val;
     }
     for (absl::string_view val : {"false", "0", "no", "invalid", ""}) {
       HloConstantInstruction test_instr(ShapeUtil::MakeShape(U32, {3, 2}));
       test_instr.set_frontend_attribute(key, val);
-      EXPECT_FALSE(HasDisjointReadWriteRegionsAttr(&test_instr))
+      EXPECT_FALSE(frontend::HasDisjointReadWriteRegionsAttr(&test_instr))
           << "Expected false for key: " << key << " and val: " << val;
     }
   }
@@ -1098,6 +1138,118 @@ ENTRY main {
   EXPECT_FALSE(done->HasSideEffect());
 }
 
+TEST_F(HloInstructionTest, AsyncChainStartThroughRebuiltContextTuple) {
+  // Two async dynamic slices (`small` of shape f32[2,4] and `big` of shape
+  // f32[4,4]) read the same input buffer `buf`. Before entering the while loop,
+  // `big`'s async context tuple `ctx` is rebuilt from individual elements:
+  //   - Element 0 (`ops`, the input operand subtuple) takes `buf` through
+  //     `small`'s operand slot `{0, 0}`, which aliases the same `buf`.
+  //   - Elements 1 and 2 (`big_out` and `big_flag`) come from `big`.
+  // Both HloVerifier (via TraceAsyncDataflow) and HloAsyncInstruction chain
+  // queries must pair `done` inside the while body with `big`, and `small_done`
+  // (separated by an opt-barrier to exercise the non-direct forward walk) with
+  // `small`.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+slice_big {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[4,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={4,4}
+}
+
+slice_small {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[2,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={2,4}
+}
+
+body {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(p), index=1
+  state_ops = (f32[8,4], s32[], s32[]) get-tuple-element(state), index=0
+  body_buf = f32[8,4] get-tuple-element(state_ops), index=0
+  done = f32[4,4] async-done(state)
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  next_big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(body_buf, next, zero), calls=slice_big
+  ROOT t = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(next, next_big)
+}
+
+cond {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(4)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+ENTRY main {
+  buf = f32[8,4] parameter(0)
+  zero = s32[] constant(0)
+  two = s32[] constant(2)
+  small = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) async-start(buf, two, zero), calls=slice_small
+  big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(buf, zero, zero), calls=slice_big
+  small_ops = (f32[8,4], s32[], s32[]) get-tuple-element(small), index=0
+  small_buf = f32[8,4] get-tuple-element(small_ops), index=0
+  big_ops = (f32[8,4], s32[], s32[]) get-tuple-element(big), index=0
+  big_i = s32[] get-tuple-element(big_ops), index=1
+  big_z = s32[] get-tuple-element(big_ops), index=2
+  ops = (f32[8,4], s32[], s32[]) tuple(small_buf, big_i, big_z)
+  big_out = f32[4,4] get-tuple-element(big), index=1
+  big_flag = s32[] get-tuple-element(big), index=2
+  ctx = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) tuple(ops, big_out, big_flag)
+  init = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(zero, ctx)
+  w = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) while(init), condition=cond, body=body
+  epi_state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(w), index=1
+  epi_done = f32[4,4] async-done(epi_state)
+  small_barrier = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) opt-barrier(small)
+  small_done = f32[2,4] async-done(small_barrier)
+  ROOT r = (f32[2,4], f32[4,4]) tuple(small_done, epi_done)
+}
+)";
+
+  // ParseAndReturnVerifiedModule runs HloVerifier, checking that HloParser and
+  // ShapeVerifier::CheckAsyncDoneOperands also resolve `done` and `epi_done` to
+  // `slice_big` (f32[4,4]) rather than `slice_small` (f32[2,4]).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* small =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small"));
+  auto* small_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small_done"));
+  auto* big = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "big"));
+  auto* next_big =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "next_big"));
+  auto* done = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  auto* epi_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "epi_done"));
+
+  // 1. Backward walk from `done` inside the while body traces `state -> p ->
+  //    init -> ctx`: it must skip the shared operand in `ctx` element 0 and
+  //    resolve to the prologue `big` (`slice_big`, {4,4}), never `small`.
+  EXPECT_EQ(done->async_chain_start(), big);
+  EXPECT_EQ(done->async_wrapped_computation(),
+            big->async_wrapped_computation());
+  ASSERT_NE(done->async_wrapped_instruction(), nullptr);
+  EXPECT_EQ(done->async_wrapped_instruction(),
+            big->async_wrapped_instruction());
+
+  // 2. Backward walk from the post loop epilogue `epi_done` in ENTRY traces
+  //    `w#1 -> body ROOT t#1 -> next_big`.
+  EXPECT_EQ(epi_done->async_chain_start(), next_big);
+  EXPECT_EQ(epi_done->async_wrapped_computation(),
+            next_big->async_wrapped_computation());
+
+  // 3. Forward walk from `small` across `small_barrier` in ENTRY must pair
+  //    `small` with `small_done` and not get diverted into `w` along `{0, 0}`.
+  EXPECT_EQ(small->async_chain_done(), small_done);
+  EXPECT_EQ(small_done->async_chain_start(), small);
+}
+
 TEST_F(HloInstructionTest, AsyncPredicates) {
   const char* const kHlo = R"(
 HloModule async_predicates_test
@@ -1194,6 +1346,209 @@ TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
       static_cast<const HloCompareInstruction*>(clone.get());
   EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
   EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloInstructionTest, CreateFromProtoRejectsInvalidOriginalValueIndex) {
+  constexpr absl::string_view kHloString = R"(
+HloModule OriginalValueShapeIndex
+
+ENTRY %main (p0: f32[], p1: f32[]) -> (f32[], f32[]) {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %tuple = (f32[], f32[]) tuple(%p0, %p1), origin={({"p0"}, {"p1"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  HloModuleProto proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> roundtrip_module,
+                       HloModule::CreateFromProto(proto, module->config()));
+  EXPECT_NE(roundtrip_module->entry_computation()
+                ->root_instruction()
+                ->original_value(),
+            nullptr);
+
+  OriginalValueElementProto* element = nullptr;
+  for (HloInstructionProto& instruction :
+       *proto.mutable_computations(0)->mutable_instructions()) {
+    if (instruction.has_original_value()) {
+      element = instruction.mutable_original_value()->mutable_elements(0);
+    }
+  }
+  ASSERT_NE(element, nullptr);
+  ASSERT_EQ(element->shape_index_size(), 1);
+
+  // The tuple has only two elements.
+  element->set_shape_index(0, 2);
+  EXPECT_THAT(
+      HloModule::CreateFromProto(proto, module->config()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("has shape index {2} that is invalid")));
+
+  // The elements of the tuple are not tuples.
+  element->set_shape_index(0, 0);
+  element->add_shape_index(0);
+  EXPECT_THAT(HloModule::CreateFromProto(proto, module->config()),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("has shape index {0,0} that is invalid")));
+}
+
+// Deserializes an in-place collective-permute proto with `operand_count`
+// operands and the given flat `slice_sizes`, and returns the slice sizes of the
+// resulting instruction. The buffer operands have shape `buffer_shape` and the
+// start indices operands have shape `indices_shape`.
+absl::StatusOr<std::vector<std::vector<int64_t>>>
+InPlaceCollectivePermuteSliceSizesFromProto(
+    const Shape& buffer_shape, const Shape& indices_shape,
+    const std::vector<int64_t>& slice_sizes, int operand_count = 4) {
+  const Shape operand_shapes[] = {buffer_shape, buffer_shape, indices_shape,
+                                  indices_shape};
+  HloInstructionProto proto;
+  proto.set_opcode("collective-permute");
+  proto.set_name("permute");
+  *proto.mutable_shape() = buffer_shape.ToProto();
+  std::vector<std::unique_ptr<HloInstruction>> operands;
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  for (int i = 0; i < operand_count; ++i) {
+    operands.push_back(
+        HloInstruction::CreateParameter(i, operand_shapes[i], "operand"));
+    instruction_map[i] = operands.back().get();
+    proto.add_operand_ids(i);
+  }
+  for (int64_t slice_size : slice_sizes) {
+    proto.add_dynamic_slice_sizes(slice_size);
+  }
+  absl::StatusOr<std::unique_ptr<HloInstruction>> permute =
+      HloInstruction::CreateFromProto(proto, instruction_map);
+  if (!permute.ok()) {
+    return permute.status();
+  }
+  return (*permute)->dynamic_slice_sizes_list();
+}
+
+TEST_F(HloInstructionTest, InPlaceCollectivePermuteFromProto) {
+  const Shape buffer = ShapeUtil::MakeShape(F32, {8, 8});
+  const Shape buffers = ShapeUtil::MakeTupleShape({buffer, buffer});
+  const Shape index = ShapeUtil::MakeShape(S32, {});
+  const Shape indices = ShapeUtil::MakeTupleShape({index, index});
+  const Shape two_indices = ShapeUtil::MakeTupleShape({indices, indices});
+
+  // One buffer with one slice.
+  EXPECT_THAT(
+      InPlaceCollectivePermuteSliceSizesFromProto(buffer, indices, {1, 2}),
+      IsOkAndHolds(ElementsAre(ElementsAre(1, 2))));
+
+  // One buffer with two slices.
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffer, two_indices,
+                                                          {1, 2, 3, 4}),
+              IsOkAndHolds(ElementsAre(ElementsAre(1, 2), ElementsAre(3, 4))));
+
+  // Two buffers with one slice each.
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffers, two_indices,
+                                                          {1, 2, 3, 4}),
+              IsOkAndHolds(ElementsAre(ElementsAre(1, 2), ElementsAre(3, 4))));
+
+  // Two buffers with two slices each.
+  EXPECT_THAT(
+      InPlaceCollectivePermuteSliceSizesFromProto(
+          buffers, ShapeUtil::MakeTupleShape({two_indices, two_indices}),
+          {1, 2, 3, 4, 5, 6, 7, 8}),
+      IsOkAndHolds(ElementsAre(ElementsAre(1, 2), ElementsAre(3, 4),
+                               ElementsAre(5, 6), ElementsAre(7, 8))));
+}
+
+TEST_F(HloInstructionTest, MalformedInPlaceCollectivePermuteFromProto) {
+  const Shape buffer = ShapeUtil::MakeShape(F32, {8, 8});
+  const Shape buffers = ShapeUtil::MakeTupleShape({buffer, buffer});
+  const Shape index = ShapeUtil::MakeShape(S32, {});
+  const Shape indices = ShapeUtil::MakeTupleShape({index, index});
+  const Shape two_indices = ShapeUtil::MakeTupleShape({indices, indices});
+  const Shape nil = ShapeUtil::MakeNil();
+  const auto internal_error = [](absl::string_view message) {
+    return StatusIs(absl::StatusCode::kInternal, HasSubstr(message));
+  };
+
+  // Too few operands.
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffer, indices, {1, 2}, /*operand_count=*/3),
+              internal_error("should have 4 operands but sees 3"));
+
+  // Fewer slice sizes than the operand shapes require.
+  constexpr absl::string_view kTooFewSliceSizes =
+      "proto_index < proto.dynamic_slice_sizes_size()";
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffer, indices, {1}),
+              internal_error(kTooFewSliceSizes));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffer, two_indices,
+                                                          {1, 2, 3}),
+              internal_error(kTooFewSliceSizes));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffer, ShapeUtil::MakeTupleShape({nil, nil}), {1}),
+              internal_error(kTooFewSliceSizes));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffers, two_indices,
+                                                          {1, 2, 3}),
+              internal_error(kTooFewSliceSizes));
+  EXPECT_THAT(
+      InPlaceCollectivePermuteSliceSizesFromProto(
+          buffers, ShapeUtil::MakeTupleShape({two_indices, two_indices}),
+          {1, 2, 3, 4, 5, 6, 7}),
+      internal_error(kTooFewSliceSizes));
+
+  // Start indices that are not non-empty tuples.
+  constexpr absl::string_view kInvalidStartIndices = "invalid start indices";
+  EXPECT_THAT(
+      InPlaceCollectivePermuteSliceSizesFromProto(buffer, index, {1, 2}),
+      internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffer, nil, {1, 2}),
+              internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(buffers, indices,
+                                                          {1, 2, 3, 4}),
+              internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers, ShapeUtil::MakeTupleShape({nil, nil}), {1, 2, 3, 4}),
+              internal_error(kInvalidStartIndices));
+
+  // Start indices for fewer buffers than there are (both single-slice and
+  // multi-slice).
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers, ShapeUtil::MakeTupleShape({indices}), {1, 2, 3, 4}),
+              internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers, ShapeUtil::MakeTupleShape({two_indices}),
+                  {1, 2, 3, 4, 5, 6, 7, 8}),
+              internal_error(kInvalidStartIndices));
+
+  // Mismatched slice counts or nesting across buffers.
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers,
+                  ShapeUtil::MakeTupleShape(
+                      {ShapeUtil::MakeTupleShape({indices}), two_indices}),
+                  {1, 2, 3, 4, 5, 6}),
+              internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers,
+                  ShapeUtil::MakeTupleShape(
+                      {two_indices, ShapeUtil::MakeTupleShape({indices})}),
+                  {1, 2, 3, 4, 5, 6}),
+              internal_error(kInvalidStartIndices));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  buffers, ShapeUtil::MakeTupleShape({indices, two_indices}),
+                  {1, 2, 3, 4, 5, 6}),
+              internal_error(kInvalidStartIndices));
+
+  // Surplus dynamic_slice_sizes entries.
+  EXPECT_THAT(
+      InPlaceCollectivePermuteSliceSizesFromProto(buffer, indices, {1, 2, 3}),
+      internal_error("invalid dynamic slice sizes"));
+
+  // Buffers that are not arrays.
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  ShapeUtil::MakeTokenShape(), indices, {1, 2}),
+              internal_error("invalid input buffer"));
+  EXPECT_THAT(InPlaceCollectivePermuteSliceSizesFromProto(
+                  ShapeUtil::MakeTupleShape({buffers}),
+                  ShapeUtil::MakeTupleShape({indices}), {1, 2}),
+              internal_error("invalid input buffers"));
 }
 
 TEST_F(HloInstructionTest,
@@ -1399,6 +1754,194 @@ ENTRY %main (x: f32[8]) -> f32[8] {
   EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
   EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
             "inner_thread");
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeAllUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanSubsetOfUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape({n0, n1}, p1));
+  EXPECT_THAT(p0->users(), UnorderedElementsAre(n2, n3, n4));
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1));
+  EXPECT_THAT(std::vector<HloInstruction*>({n0, n1}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+  EXPECT_THAT(std::vector<HloInstruction*>({n2, n3, n4}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p0))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanManyUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p0->users(), p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+}
+
+TEST_F(HloInstructionTest, DefuseMultiOperandFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_comp {
+  fp0 = f32[4] parameter(0)
+  fp1 = f32[4] parameter(1)
+  fp2 = f32[4] parameter(2)
+  fadd = f32[4] add(fp0, fp1)
+  ftup = (f32[4], f32[4], f32[4]) tuple(fadd, fp1, fp2)
+  fgte = f32[4] get-tuple-element(ftup), index=2
+  ROOT froot = ((f32[4], f32[4], f32[4]), f32[4]) tuple(ftup, fgte)
+}
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  ROOT fus = ((f32[4], f32[4], f32[4]), f32[4]) fusion(p0, p1, p2), kind=kLoop, calls=fused_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* p2 = entry->parameter_instruction(2);
+  HloInstruction* fus = entry->root_instruction();
+
+  ASSERT_OK(fus->Defuse());
+
+  HloInstruction* defused_root = entry->root_instruction();
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_root->operand_count(), 2);
+
+  const HloInstruction* defused_ftup = defused_root->operand(0);
+  const HloInstruction* defused_fgte = defused_root->operand(1);
+  ASSERT_EQ(defused_ftup->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_fgte->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(defused_fgte->operands(), ::testing::ElementsAre(defused_ftup));
+
+  ASSERT_EQ(defused_ftup->operand_count(), 3);
+  const HloInstruction* defused_fadd = defused_ftup->operand(0);
+  EXPECT_EQ(defused_fadd->opcode(), HloOpcode::kAdd);
+  EXPECT_THAT(defused_fadd->operands(), ::testing::ElementsAre(p0, p1));
+  EXPECT_THAT(defused_ftup->operands(),
+              ::testing::ElementsAre(defused_fadd, p1, p2));
+}
+
+TEST_F(HloInstructionTest, FuseInstructionRemovesDuplicateOperandSlots) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_comp {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  sum = f32[8] add(p0, p1)
+  ROOT out = f32[8] multiply(sum, p2)
+}
+
+ENTRY e {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  neg = f32[8] negate(p0)
+  ROOT fusion = f32[8] fusion(neg, neg, p1), kind=kLoop, calls=fused_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+  HloInstruction* fusion = entry->root_instruction();
+
+  fusion->FuseInstruction(neg);
+  ASSERT_OK(entry->RemoveInstruction(neg));
+
+  EXPECT_THAT(fusion->operands(), ElementsAre(entry->parameter_instruction(1),
+                                              entry->parameter_instruction(0)));
+  const HloInstruction* root = fusion->fused_expression_root();
+  EXPECT_EQ(root->operand(1), fusion->fused_parameter(0));
+  EXPECT_EQ(root->operand(0)->operand(0), root->operand(0)->operand(1));
+  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kNegate);
 }
 }  // namespace
 }  // namespace xla

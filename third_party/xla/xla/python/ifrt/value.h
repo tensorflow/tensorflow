@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
@@ -76,7 +77,7 @@ class Value : public tsl::ReferenceCounted<Value>,
   static char ID;  // NOLINT
 };
 
-using ValueRef = tsl::RCReference<Value>;
+using ValueRef = absl_nonnull tsl::RCReference<Value>;
 
 }  // namespace ifrt
 }  // namespace xla

@@ -1,4 +1,5 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/profiler/builds:build_config.bzl",
@@ -50,6 +51,27 @@ cc_library(
         "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+tsl_cc_test(
+    name = "profiler_service_impl_test",
+    srcs = ["profiler_service_impl_test.cc"],
+    deps = [
+        ":profiler_service_impl",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@grpc//:grpc++",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/lib:profiler_session_impl",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
     ],
 )
 

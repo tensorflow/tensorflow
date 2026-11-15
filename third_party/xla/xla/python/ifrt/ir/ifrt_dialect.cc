@@ -24,15 +24,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
@@ -215,13 +217,37 @@ mlir::LogicalResult IfrtArrayType::verify(
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
     IfrtDevicesAttr devices_attr, mlir::StringAttr memory_kind_attr,
     mlir::StringAttr layout_attr) {
+  if (shape == nullptr || sharding_attr == nullptr || devices_attr == nullptr) {
+    return emitError() << "expected non-null IfrtArrayType parameters";
+  }
+  if (shape.getEncoding() != nullptr) {
+    return emitError() << "Unexpected tensor encoding on array shape: "
+                       << shape;
+  }
+  if (!shape.hasStaticShape()) {
+    return emitError() << "Array shape must be static, got " << shape;
+  }
+  int64_t num_elements = 1;
+  for (int64_t dim : shape.getShape()) {
+    if (__builtin_mul_overflow(num_elements, dim, &num_elements)) {
+      return emitError()
+             << "Array shape element count overflows 64-bit signed integer: "
+             << shape;
+    }
+  }
   if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
     if (!shape.getShape().empty()) {
       return emitError() << "Token type cannot have non-empty shape";
     }
+  } else if (!llvm::isa<IfrtStringType>(shape.getElementType()) &&
+             shape.getElementType().getDialect().getNamespace() !=
+                 mlir::BuiltinDialect::getDialectNamespace()) {
+    return emitError() << "Unsupported array element type: "
+                       << shape.getElementType();
   }
-  if (layout_attr) {
-    auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
+  if (layout_attr != nullptr) {
+    absl::StatusOr<xla::LayoutMode> layout_mode =
+        xla::LayoutMode::FromString(layout_attr.str());
     if (!layout_mode.ok()) {
       return emitError() << "Invalid layout mode: "
                          << layout_mode.status().message();
@@ -378,6 +404,9 @@ IfrtDevicesAttr::operator llvm::ArrayRef<int>() const { return getIds(); }
 mlir::LogicalResult IfrtDevicesAttr::verify(
     llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
     llvm::ArrayRef<int> ids) {
+  if (ids.empty()) {
+    return emitError() << "Device list cannot be empty";
+  }
   llvm::DenseSet<int> device_set;
   for (int id : ids) {
     if (id < 0) {
@@ -404,14 +433,14 @@ mlir::LogicalResult IfrtIntervalAttr::verify(
   if (step <= 0) {
     return emitError() << "step must be positive";
   }
-  if (start > end) {
+  if (start >= end) {
     return emitError() << "interval is empty";
   }
   return mlir::success();
 }
 
 int IfrtIntervalAttr::size() const {
-  return (getEnd() - getStart() + getStep() - 1) / getStep();
+  return 1 + (getEnd() - getStart() - 1) / getStep();
 }
 
 //===----------------------------------------------------------------------===//
@@ -421,11 +450,32 @@ int IfrtIntervalAttr::size() const {
 mlir::LogicalResult IfrtMappingAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     IfrtIntervalAttr from_shards, IfrtIntervalAttr to_shards) {
+  if (from_shards == nullptr || to_shards == nullptr) {
+    return emitError() << "expected non-null interval attributes";
+  }
   // Verify that from and to contains the same number of shards.
   if (from_shards.size() != to_shards.size()) {
     return emitError() << "from has " << from_shards.size() << " and to has "
                        << to_shards.size()
                        << ", but they must have the same number of shards.";
+  }
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfrtArrayMappingAttr
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult IfrtArrayMappingAttr::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    int32_t in_array_index, int32_t out_array_index, mlir::ArrayAttr mappings) {
+  if (in_array_index < 0 || out_array_index < 0) {
+    return emitError()
+           << "in_array_index and out_array_index must be non-negative";
+  }
+  if (mappings == nullptr || mappings.empty() ||
+      !llvm::all_of(mappings.getValue(), llvm::IsaPred<IfrtMappingAttr>)) {
+    return emitError() << "expected non-empty array of IfrtMappingAttr";
   }
   return mlir::success();
 }

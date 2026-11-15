@@ -3650,12 +3650,14 @@ name=None))
         It is recommended to set it to `True`. Otherwise, the distribution of
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
-        off looking correct. Default to `False` for backward compatibility.
+        off looking correct. Default to `False` for backward compatibility. Set
+        it to `True` when `weights` can contain zeros that are only known at
+        runtime.
       rerandomize_each_iteration: An optional `bool`. The boolean argument
-      controls whether the sequence of random numbers used to determine which
-      dataset to sample from will be rerandomized each epoch. That is, it
-      determinies whether datasets will be sampled in the same order across
-      different epochs (the default behavior) or not.
+        controls whether the sequence of random numbers used to determine which
+        dataset to sample from will be rerandomized each epoch. That is, it
+        determinies whether datasets will be sampled in the same order across
+        different epochs (the default behavior) or not.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according

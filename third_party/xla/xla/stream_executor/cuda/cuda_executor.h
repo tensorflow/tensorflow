@@ -138,6 +138,14 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  // If XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT is true, host memory is
+  // registered and unregistered in one context shared by all executors in the
+  // process instead of the executor's primary context. The shared context is
+  // created on the device of the first executor that registers host memory
+  // (see GetHostMemoryRegisterContext in cuda_executor.cc). If it can't be
+  // created, the primary contexts are used. cuMemHostUnregister then doesn't
+  // wait for or block work in any primary context, so callers must make sure
+  // no work on any device still uses the memory before unregistering it.
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
@@ -181,9 +189,10 @@ class CudaExecutor : public GpuExecutor {
 
   // Creates a stream whose work is launched onto the SM partition of locality
   // domain `locality_domain_id`.
+  using StreamExecutor::CreateStreamInLocalityDomain;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
       int locality_domain_id,
-      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
@@ -203,6 +212,12 @@ class CudaExecutor : public GpuExecutor {
       uint64_t size) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>>
   CreatePhysicalMemoryAllocation(uint64_t size) override;
+
+  // Returns a CudaDeviceAllocator that places physical memory on locality
+  // domain `locality_domain_id`. Returns Unimplemented on CUDA older than 13.4
+  // and FailedPrecondition on devices with a single locality domain.
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateLocalityDomainMemoryAllocator(int locality_domain_id) override;
 
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast

@@ -21,8 +21,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -32,6 +34,7 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using WhileLoopFusibleSinkingTest = HloHardwareIndependentTestBase;
 
@@ -567,6 +570,95 @@ ENTRY entry {
   xla::HloVerifier verifier(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
   EXPECT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, DontSinkComputationContainingCall) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithCall
+
+call_comp {
+  p_call = f32[2] parameter(0)
+  ROOT r_call = f32[2] negate(p_call)
+}
+
+body {
+  p_body = (f32[2], f32[2]) parameter(0)
+  p_body.0 = f32[2] get-tuple-element(p_body), index=0
+  p_body.1 = f32[2] get-tuple-element(p_body), index=1
+  add.0 = f32[2] add(p_body.0, p_body.1)
+  ROOT root = (f32[2], f32[2]) tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[2], f32[2]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[2] parameter(0)
+  p = f32[2] parameter(1)
+  call = f32[2] call(p), to_apply=call_comp
+  iota = f32[2] iota(), iota_dimension=0
+  cand = f32[2] add(call, iota)
+  while_init = (f32[2], f32[2]) tuple(const_0, cand)
+  ROOT while = (f32[2], f32[2]) while(while_init), condition=condition, body=body
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(WhileLoopFusibleSinking{}.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, SinkComputationEndingOnCall) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithCallBroadcast
+
+call_comp {
+  p_call = f32[5] parameter(0)
+  ROOT r_call = f32[5] negate(p_call)
+}
+
+// CHECK-LABEL: %body (
+// CHECK-NOT:   call(
+// CHECK:       broadcast(%p_body#2), dimensions={0}
+// CHECK:       multiply(
+// CHECK:       ROOT %root = (f32[5,7]{1,0}, f32[5,7]{1,0}, f32[5]{0}) tuple(
+body {
+  p_body = (f32[5,7], f32[5,7]) parameter(0)
+  p_body.0 = f32[5,7] get-tuple-element(p_body), index=0
+  p_body.1 = f32[5,7] get-tuple-element(p_body), index=1
+
+  add.0 = f32[5,7] add(p_body.0, p_body.1)
+  ROOT root = (f32[5,7], f32[5,7]) tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[5,7], f32[5,7]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+// CHECK-LABEL: ENTRY %entry
+// CHECK:       %[[CALL:.*]] = f32[5]{0} call(%p), to_apply=%call_comp
+// CHECK:       %[[INIT:.*]] = (f32[5,7]{1,0}, f32[5,7]{1,0}, f32[5]{0}) tuple(%const_0, %mask, %[[CALL]])
+// CHECK:       %while = (f32[5,7]{1,0}, f32[5,7]{1,0}, f32[5]{0}) while(%[[INIT]]), condition=%condition, body=%body
+// CHECK:       ROOT %tuple = (f32[5,7]{1,0}, f32[5,7]{1,0}) tuple(%while#0, %mask)
+ENTRY entry {
+  const_0 = f32[5,7] parameter(0)
+  p = f32[5] parameter(1)
+  call = f32[5] call(p), to_apply=call_comp
+  a = f32[5,7] iota(), iota_dimension=0
+  b = f32[5,7] iota(), iota_dimension=1
+  c = f32[5,7] add(a, b)
+  d = f32[5,7] broadcast(call), dimensions={0}
+  mask = f32[5,7] multiply(c, d)
+  while_init = (f32[5,7], f32[5,7]) tuple(const_0, mask)
+  ROOT while = (f32[5,7], f32[5,7]) while(while_init), condition=condition, body=body
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(WhileLoopFusibleSinking{}.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace

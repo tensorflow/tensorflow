@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/rng_state_lib.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
 #include "absl/base/config.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/numeric/int128.h"
 #include "absl/synchronization/mutex.h"
 
@@ -29,20 +31,23 @@ namespace xla::cpu {
 // is arbitrarily chosen, any non-zero values should be fine.
 static constexpr absl::int128 kRngStateInitialValue = 0x7012395ull;
 
-RngState::RngState(int64_t delta)
-    : delta_(delta), state_(kRngStateInitialValue) {}
-
-void RngState::GetAndUpdateState(uint64_t* data) {
+void RngState::GetAndUpdateState(uint64_t* data, int64_t delta,
+                                 int64_t device_ordinal) {
   absl::MutexLock lock(mu_);
 
-  uint64_t low = absl::Int128Low64(state_);
-  uint64_t high = absl::Int128High64(state_);
+  absl::int128& state = states_
+                            .try_emplace(std::max<int64_t>(device_ordinal, 0),
+                                         kRngStateInitialValue)
+                            .first->second;
+
+  uint64_t low = absl::Int128Low64(state);
+  uint64_t high = absl::Int128High64(state);
 
   static_assert(ABSL_IS_LITTLE_ENDIAN, "Big endian not supported");
   std::memcpy(data, &low, sizeof(low));
   std::memcpy(data + 1, &high, sizeof(high));
 
-  state_ += delta_;
+  state += delta;
 }
 
 }  // namespace xla::cpu

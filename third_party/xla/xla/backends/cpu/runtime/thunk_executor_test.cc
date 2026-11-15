@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/rng_state_resource.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -257,6 +258,9 @@ AddI32Thunk::ResourceUses AddI32Thunk::resource_uses() const {
       new std::shared_ptr<Resource>(
           Resource::Create(Resource::kCollectiveCommunicator));
 
+  static std::shared_ptr<Resource>* rng_resource =
+      new std::shared_ptr<Resource>(std::make_shared<RngStateResource>());
+
   if (!shared_resource_) {
     return ResourceUses{};
   }
@@ -266,6 +270,8 @@ AddI32Thunk::ResourceUses AddI32Thunk::resource_uses() const {
       return ResourceUses{ResourceUse::Write(*token_resource)};
     case Resource::kCollectiveCommunicator:
       return ResourceUses{ResourceUse::Write(*comm_resource)};
+    case Resource::kRngState:
+      return ResourceUses{ResourceUse::Write(*rng_resource)};
   }
 }
 

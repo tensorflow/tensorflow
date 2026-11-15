@@ -2307,6 +2307,52 @@ TEST_F(GpuHloScheduleTest,
   EXPECT_FALSE(IsLHSEnabled(*module, "", gpu_device_info));
 }
 
+TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepMosaicGpuV2) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = bf16[2,2048,4,128] parameter(0)
+    p1 = bf16[2,16384,4,128] parameter(1)
+
+    ag-start = (bf16[2,2048,4,128], bf16[2,16384,4,128]) all-gather-start(p0),
+      dimensions={1},
+      frontend_attributes={_scheduling_group_id="0"}
+    ag-done = bf16[2,16384,4,128] all-gather-done(ag-start),
+      frontend_attributes={_scheduling_group_id="0"}
+
+    mosaic = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="mosaic_gpu_v2",
+      frontend_attributes={_scheduling_group_id="0"}
+    other = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="other_custom_call",
+      frontend_attributes={_scheduling_group_id="0"}
+
+    ROOT result = (bf16[2,16384,4,128], bf16[2,16384,4,128], bf16[2,16384,4,128])
+      tuple(ag-done, mosaic, other)
+  })";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* ag_start = entry->GetInstructionWithName("ag-start");
+  const HloInstruction* ag_done = entry->GetInstructionWithName("ag-done");
+  const HloInstruction* mosaic = entry->GetInstructionWithName("mosaic");
+  const HloInstruction* other = entry->GetInstructionWithName("other");
+
+  EXPECT_TRUE(
+      mosaic->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      other->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(order.ExecutesBefore(ag_start, mosaic));
+  EXPECT_TRUE(order.ExecutesBefore(mosaic, ag_done));
+}
+
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
                          GpuHloScheduleParameterizedTest,
                          ::testing::Combine(::testing::Bool(),

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -272,9 +273,10 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // devices without altering their physical layout.
   //
   // This API should be used only with arrays that have the same source device
-  // list and memory kind. Every IFRT implementation must enforce this by
-  // returning an `INVALID_ARGUMENT` error if `arrays` contains different device
-  // lists or memory kinds.
+  // list (when `devices` is specified) and memory kind. Every IFRT
+  // implementation must enforce this by returning an `INVALID_ARGUMENT` error
+  // if `arrays` contains different device lists (when `devices` is specified)
+  // or memory kinds.
   //
   // Implementations may return `UNIMPLEMENTED` if they do not know how to copy
   // the data as instructed.
@@ -505,7 +507,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
 
   // Creates a device list from the given list of devices.
   virtual absl::StatusOr<DeviceListRef> MakeDeviceList(
-      absl::Span<Device* const> devices) const = 0;
+      absl::Span<Device* absl_nonnull const> devices) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
@@ -518,7 +520,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // sets of devices.
   virtual absl::StatusOr<std::vector<tsl::Future<LoadedExecutableRef>>> Load(
       absl::Span<const ExecutableRef> executables,
-      absl::Span<std::unique_ptr<LoadOptions>> options) = 0;
+      absl::Span<absl_nonnull std::unique_ptr<LoadOptions>> options) = 0;
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
@@ -528,7 +530,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // `dtype` and single-shard dimensions `dims`.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
   GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
-                       Device* device,
+                       Device* absl_nonnull device,
                        xla::ifrt::MemoryKind memory_kind) const = 0;
 
   // Returns the default layout for an array with `dtype`, `shape`, and
@@ -538,8 +540,8 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // Helper method for `GetDefaultLayout` for when shard shape dims are known.
   // TODO(hyeontaek): Remove this sugar API once the transition is complete.
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
-      DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
-      xla::ifrt::MemoryKind memory_kind) const;
+      DType dtype, absl::Span<const int64_t> shard_dims,
+      Device* absl_nonnull device, xla::ifrt::MemoryKind memory_kind) const;
 
   // Subscribe to attribute changes to selected devices.
   //
@@ -559,7 +561,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // destroyed, no more callbacks will be issued for attribute changes.
   virtual absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(
-      absl::Span<Device* const> devices,
+      absl::Span<Device* absl_nonnull const> devices,
       std::optional<absl::Span<const std::string>> attribute_names,
       OnDeviceAttributeChangeCallback callback) = 0;
 

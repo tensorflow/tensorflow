@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 
 namespace xla {
@@ -44,8 +45,6 @@ void PropagateSliceIndicesPass::runOnOperation() {
   }
 
   if (!entry) {
-    getOperation()->emitOpError("No entry function found.");
-    signalPassFailure();
     return;
   }
 
@@ -59,8 +58,11 @@ void PropagateSliceIndicesPass::runOnOperation() {
         if (auto index = entry.getArgAttr(i, "xla.slice_index")) {
           func.setArgAttr(i, "xla.slice_index", index);
         }
-        if (auto invariant = entry.getArgAttr(i, "xla.invariant")) {
-          func.setArgAttr(i, "xla.invariant", invariant);
+        if (auto invariant = entry.getArgAttr(i, kXlaInvariantAttr)) {
+          func.setArgAttr(i, kXlaInvariantAttr, invariant);
+        }
+        if (auto aliased = entry.getArgAttr(i, kXlaAliasedAttr)) {
+          func.setArgAttr(i, kXlaAliasedAttr, aliased);
         }
       } else {
         break;

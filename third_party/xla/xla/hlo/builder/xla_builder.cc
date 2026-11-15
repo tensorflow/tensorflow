@@ -4473,25 +4473,26 @@ XlaOp XlaBuilder::AllToAllArray(
         const Shape all_to_all_shape,
         ShapeInference::InferAllToAllShape(*operand_shape, split_dimension,
                                            concat_dimension, split_count));
-    HloInstructionProto instr;
-    *instr.mutable_shape() = operand_shape->ToProto();
-    if (replica_groups.num_replica_groups() == 0) {
-      auto* group = instr.add_replica_groups();
-      for (int64_t i = 0; i < split_count; ++i) {
-        group->add_replica_ids(i);
+    auto build_all_to_all = [&](XlaOp input) -> absl::StatusOr<XlaOp> {
+      ABSL_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
+      HloInstructionProto instr;
+      *instr.mutable_shape() = input_shape->ToProto();
+      if (replica_groups.num_replica_groups() == 0) {
+        auto* group = instr.add_replica_groups();
+        for (int64_t i = 0; i < split_count; ++i) {
+          group->add_replica_ids(i);
+        }
+      } else {
+        PopulateDeviceList(&instr, replica_groups);
       }
-    } else {
-      PopulateDeviceList(&instr, replica_groups);
-    }
-    instr.add_dimensions(split_dimension);
-    if (channel_id.has_value()) {
-      instr.set_channel_id(channel_id->handle());
-    }
-    ABSL_ASSIGN_OR_RETURN(
-        XlaOp all_to_all,
-        AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
+      instr.add_dimensions(split_dimension);
+      if (channel_id.has_value()) {
+        instr.set_channel_id(channel_id->handle());
+      }
+      return AddInstruction(std::move(instr), HloOpcode::kAllToAll, {input});
+    };
     if (split_dimension == concat_dimension) {
-      return all_to_all;
+      return build_all_to_all(operand);
     }
     DimensionVector sizes;
     const bool is_unbounded = operand_shape->is_unbounded_dynamic();
@@ -4529,6 +4530,7 @@ XlaOp XlaBuilder::AllToAllArray(
       }
     }
 
+    XlaOp reshaped_operand;
     if (is_unbounded) {
       std::vector<bool> dynamic_dimensions;
       absl::c_transform(
@@ -4537,11 +4539,13 @@ XlaOp XlaBuilder::AllToAllArray(
       ABSL_ASSIGN_OR_RETURN(const Shape shape, ShapeUtil::MakeValidatedShape(
                                               all_to_all_shape.element_type(),
                                               sizes, dynamic_dimensions));
-      all_to_all =
-          MhloDynamicReshape(all_to_all, ConcatInDim(dynamic_sizes, 0), shape);
+      reshaped_operand =
+          MhloDynamicReshape(operand, ConcatInDim(dynamic_sizes, 0), shape);
     } else {
-      all_to_all = Reshape(all_to_all, sizes);
+      reshaped_operand = Reshape(operand, sizes);
     }
+
+    ABSL_ASSIGN_OR_RETURN(XlaOp all_to_all, build_all_to_all(reshaped_operand));
 
     std::vector<int64_t> permutation;
     const auto rank = operand_shape->dimensions().size();

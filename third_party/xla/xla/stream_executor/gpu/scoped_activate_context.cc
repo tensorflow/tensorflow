@@ -25,10 +25,12 @@ namespace stream_executor::gpu {
 namespace {
 
 thread_local struct ThreadLocalData {
-  Context* context;
-  int device_ordinal;
-  int depth;
-} tls_data = {};
+  Context* context = nullptr;
+  // -1 means no device is tracked as active, so that it never compares equal
+  // to a real device ordinal (including 0) on a fresh thread.
+  int device_ordinal = -1;
+  int depth = 0;
+} tls_data;
 
 }  // namespace
 
@@ -59,6 +61,9 @@ ScopedActivateContext::ScopedActivateContext(gpu::Context* gpu_context) {
           << tls->device_ordinal << " to " << gpu_context->device_ordinal();
 
   to_restore_ = tls->context;
+  // No tracked context means we are nested inside a ScopedDeactivateContext;
+  // undo the activation on exit to preserve the deactivated state.
+  deactivate_on_exit_ = (tls->context == nullptr);
   // Set the context and update thread local.
   gpu_context->SetActive();
   tls->device_ordinal = gpu_context->device_ordinal();
@@ -70,12 +75,52 @@ ScopedActivateContext::~ScopedActivateContext() {
 
   tls->depth--;
   DCHECK_GE(tls->depth, 0);
+  if (deactivate_on_exit_) {
+    tls->context->SetInactive();
+    tls->context = nullptr;
+    tls->device_ordinal = -1;
+    return;
+  }
   if (to_restore_ == nullptr) {
     // Leave context, tls->device_ordinal, and tls->context set.
     return;
   }
 
   // Set context and update thread local.
+  to_restore_->SetActive();
+  tls->device_ordinal = to_restore_->device_ordinal();
+  tls->context = to_restore_;
+}
+
+ScopedDeactivateContext::ScopedDeactivateContext() {
+  auto* tls = &tls_data;
+
+  tls->depth++;
+  if (tls->context == nullptr) {
+    // Nothing tracked as active on this thread by ScopedActivateContext, so
+    // there is nothing we know how to clear. In particular, this avoids
+    // needing a Context instance just to dispatch a "clear" call.
+    to_restore_ = nullptr;
+    return;
+  }
+
+  VLOG(3) << "ScopedDeactivateContext clearing context for device "
+          << tls->device_ordinal;
+  to_restore_ = tls->context;
+  to_restore_->SetInactive();
+  tls->context = nullptr;
+  tls->device_ordinal = -1;
+}
+
+ScopedDeactivateContext::~ScopedDeactivateContext() {
+  auto* tls = &tls_data;
+
+  tls->depth--;
+  DCHECK_GE(tls->depth, 0);
+  if (to_restore_ == nullptr) {
+    return;
+  }
+
   to_restore_->SetActive();
   tls->device_ordinal = to_restore_->device_ordinal();
   tls->context = to_restore_;

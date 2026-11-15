@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_PROGRAM_SERDES_H_
 #define XLA_PYTHON_IFRT_PROGRAM_SERDES_H_
 
+#include "absl/base/nullability.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -26,11 +27,12 @@ namespace ifrt {
 // Abstract options for deserializing an `Program`.
 struct DeserializeProgramOptions
     : RTTIExtends<DeserializeProgramOptions, DeserializeOptions> {
-  explicit DeserializeProgramOptions(Client* client) : client(client) {}
+  explicit DeserializeProgramOptions(Client* absl_nonnull client)
+      : client(client) {}
 
   static char ID;  // NOLINT
 
-  Client* client;
+  Client* absl_nonnull client;
 };
 
 }  // namespace ifrt

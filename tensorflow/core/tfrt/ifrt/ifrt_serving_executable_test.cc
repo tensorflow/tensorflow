@@ -509,6 +509,52 @@ TEST_P(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
   EXPECT_EQ(ifrt_execution_count_reader_->Delta("test"), 1);
 }
 
+TEST_P(IfrtServingExecutableTest, AssignedDeviceIdsPortableExecution) {
+  ASSERT_GE(helper_->num_cores(), 1);
+  int64_t program_id = 654321;
+  const int pinned_device_id =
+      helper_->client()->addressable_devices()[0]->Id().value();
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id),
+                                       ElementsAre(pinned_device_id)))
+      .WillOnce([pinned_device_id](::testing::Unused, absl::Span<const int>) {
+        return tsl::DeviceReservation(pinned_device_id, /*selector=*/nullptr);
+      });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"),
+                              {pinned_device_id}));
+
+  auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  // Warmup only runs on the single assigned device ID, then the second call
+  // delegates to `selector_.ReserveDevice`.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto warmup_result,
+      Execute(executable.get(), absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, Execute(executable.get(), absl::MakeSpan(inputs), {}));
+  const auto expected_out =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  EXPECT_THAT(warmup_result, ElementsAre(TensorEq(expected_out)));
+  EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
+}
+
+TEST_F(IfrtServingExecutableTest, AssignedDeviceIdsSpmdCountMismatchFails) {
+  ASSERT_GE(helper_->num_cores(), 1);
+  int64_t program_id = 654323;
+  const int dev0 = helper_->client()->addressable_devices()[0]->Id().value();
+  // `spmd_executable.mlir` has num_replicas=1, num_cores_per_replica=2;
+  // passing a single assigned device ID must fail validation.
+  EXPECT_THAT(
+      helper_->MakeExecutable(
+          program_id, GetMlirModulePath("spmd_executable.mlir"), {dev0}),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("expected 2")));
+}
+
 TEST_F(IfrtServingExecutableTest, EncodeLayout) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

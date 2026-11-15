@@ -32,7 +32,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -54,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -382,32 +380,6 @@ int64_t EstimateFragmentationSize(HloModule* module,
 
 }  // namespace
 
-CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
-  switch (hlo.opcode()) {
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncDone:
-      return {hlo.opcode(), hlo.async_wrapped_opcode()};
-    case HloOpcode::kAllReduceStart:
-      return {HloOpcode::kAsyncStart, HloOpcode::kAllReduce};
-    case HloOpcode::kAllGatherStart:
-      return {HloOpcode::kAsyncStart, HloOpcode::kAllGather};
-    case HloOpcode::kCollectivePermuteStart:
-      return {HloOpcode::kAsyncStart, HloOpcode::kCollectivePermute};
-    case HloOpcode::kCopyStart:
-      return {HloOpcode::kAsyncStart, HloOpcode::kCopy};
-    case HloOpcode::kCopyDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kCopy};
-    case HloOpcode::kAllReduceDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kAllReduce};
-    case HloOpcode::kAllGatherDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kAllGather};
-    case HloOpcode::kCollectivePermuteDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kCollectivePermute};
-    default:
-      return {hlo.opcode(), hlo.opcode()};
-  }
-}
-
 const HloInstruction* FindStart(const HloInstruction* done) {
   if (done == nullptr) {
     return nullptr;
@@ -475,45 +447,6 @@ HloInstruction* FindDone(HloInstruction* start) {
       FindDone(const_cast<const HloInstruction*>(start)));
 }
 
-bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
-                                   const HloGraphNode& target) const {
-  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
-  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
-  return from_op.outer == HloOpcode::kAsyncStart &&
-         target_op.outer == HloOpcode::kAsyncDone &&
-         from_op.inner == target_op.inner;
-}
-
-bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
-                                 const HloGraphNode& target) const {
-  return (from.GetOpcode() == HloOpcode::kSend &&
-          target.GetOpcode() == HloOpcode::kSendDone) ||
-         (from.GetOpcode() == HloOpcode::kRecv &&
-          target.GetOpcode() == HloOpcode::kRecvDone);
-}
-
-std::optional<LatencyEstimator::TimeCost>
-LatencyEstimator::GetLatencyFromMetadata(
-    const HloInstruction& instruction) const {
-  const auto& attrs = instruction.frontend_attributes().map();
-  const auto it = attrs.find("latency_metadata");
-  if (it == attrs.end()) {
-    return std::nullopt;
-  }
-  int64_t latency_ns;
-  if (!absl::SimpleAtoi(it->second, &latency_ns)) {
-    LOG(WARNING) << "Failed to parse latency from custom call for "
-                 << instruction.name()
-                 << " from latency_metadata:" << it->second;
-    return std::nullopt;
-  }
-  VLOG(10)
-      << "LatencyEstimator::GetLatencyFromMetadata: Returning latency from "
-         "custom call for "
-      << instruction.name() << ": " << latency_ns << " ns";
-  return (TimeCost)latency_ns * CyclesPerMicrosecond() / 1000.0;
-}
-
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   if (IsAsyncPair(from, target)) {
@@ -534,530 +467,6 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
     return kHighCost;
   }
   return kLowCost;
-}
-
-// Returns if this is an Async done op that the scheduler supports.
-bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
-  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
-  if (op.outer == HloOpcode::kSendDone || op.outer == HloOpcode::kRecvDone) {
-    return config_.schedule_send_recvs;
-  }
-
-  if (op.outer == HloOpcode::kAsyncDone) {
-    // If there are parallel thread computations, always schedule.
-    if (hlo.IsAsynchronous() &&
-        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
-      return true;
-    }
-    switch (op.inner) {
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kRaggedAllToAll:
-      case HloOpcode::kAllGather:
-      case HloOpcode::kAllReduce:
-      case HloOpcode::kCollectiveBroadcast:
-      case HloOpcode::kCollectivePermute:
-      case HloOpcode::kCopy:
-      case HloOpcode::kReduceScatter:
-        return true;
-      default:
-        return false;
-    }
-  }
-  return false;
-}
-
-// Returns if this is an Async op start that the scheduler supports.
-bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
-  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
-  if (op.outer == HloOpcode::kSend || op.outer == HloOpcode::kRecv) {
-    return config_.schedule_send_recvs;
-  }
-
-  if (op.outer == HloOpcode::kAsyncStart) {
-    // If there are parallel thread computations, always schedule.
-    if (hlo.IsAsynchronous() &&
-        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
-      return true;
-    }
-    switch (op.inner) {
-      case HloOpcode::kAllToAll:
-      case HloOpcode::kRaggedAllToAll:
-      case HloOpcode::kAllGather:
-      case HloOpcode::kAllReduce:
-      case HloOpcode::kCollectiveBroadcast:
-      case HloOpcode::kCollectivePermute:
-      case HloOpcode::kCopy:
-      case HloOpcode::kReduceScatter:
-        return true;
-      default:
-        return false;
-    }
-  }
-  return false;
-}
-
-ResourceType AsyncTracker::GetResourceTypeForOp(HloOpcode op) {
-  switch (op) {
-    case HloOpcode::kAllReduce:
-      return ResourceType::kAllReduce;
-    case HloOpcode::kAllGather:
-      return ResourceType::kAllGather;
-    case HloOpcode::kAllToAll:
-      return ResourceType::kAllToAll;
-    case HloOpcode::kRaggedAllToAll:
-      return ResourceType::kRaggedAllToAll;
-    case HloOpcode::kCollectiveBroadcast:
-      return ResourceType::kCollectiveBroadcast;
-    case HloOpcode::kCollectivePermute:
-      return ResourceType::kCollectivePermute;
-    case HloOpcode::kCopy:
-      return ResourceType::kCopy;
-    case HloOpcode::kReduceScatter:
-      return ResourceType::kReduceScatter;
-    default:
-      return ResourceType::kNoResource;
-  }
-}
-
-ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
-    const HloInstruction& hlo) const {
-  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
-  if (op.outer == HloOpcode::kAsyncStart || op.outer == HloOpcode::kAsyncDone) {
-    ResourceType type = GetResourceTypeForOp(op.inner);
-    if (type == ResourceType::kNoResource) {
-      return {};
-    }
-    ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
-                                  ? (config_.top_down_scheduling
-                                         ? ResourceUsageType::kResourceOccupy
-                                         : ResourceUsageType::kResourceRelease)
-                                  : (config_.top_down_scheduling
-                                         ? ResourceUsageType::kResourceRelease
-                                         : ResourceUsageType::kResourceOccupy);
-    return {std::make_pair(ResourceTypeToIndex(type), usage)};
-  }
-
-  switch (hlo.opcode()) {
-    case HloOpcode::kAfterAll:
-      // TODO(maggioni): Understand why AfterAll need to not be overlapped.
-      return ResourcesVector{
-          std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
-                         ResourceUsageType::kNoResource)};
-    case HloOpcode::kRecv:
-      return ResourcesVector{
-          static_cast<const HloSendRecvInstruction*>(&hlo)->is_host_transfer()
-              ? std::make_pair(
-                    config_.force_send_recv_to_use_same_resource
-                        ? ResourceTypeToIndex(ResourceType::kSendHost)
-                        : ResourceTypeToIndex(ResourceType::kRecvHost),
-                    config_.top_down_scheduling
-                        ? ResourceUsageType::kResourceOccupy
-                        : ResourceUsageType::kResourceRelease)
-              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceOccupy
-                                   : ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kSend:
-      return ResourcesVector{
-          static_cast<const HloSendRecvInstruction*>(&hlo)->is_host_transfer()
-              ? std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceOccupy
-                                   : ResourceUsageType::kResourceRelease)
-              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceOccupy
-                                   : ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kRecvDone: {
-      const HloSendRecvInstruction* recv =
-          DynCast<HloSendRecvInstruction>(hlo.operand(0));
-      return ResourcesVector{
-          (recv != nullptr && recv->is_host_transfer())
-              ? std::make_pair(
-                    config_.force_send_recv_to_use_same_resource
-                        ? ResourceTypeToIndex(ResourceType::kSendHost)
-                        : ResourceTypeToIndex(ResourceType::kRecvHost),
-                    config_.top_down_scheduling
-                        ? ResourceUsageType::kResourceRelease
-                        : ResourceUsageType::kResourceOccupy)
-              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceRelease
-                                   : ResourceUsageType::kResourceOccupy)};
-    }
-    case HloOpcode::kSendDone: {
-      const HloSendRecvInstruction* send =
-          DynCast<HloSendRecvInstruction>(hlo.operand(0));
-      return ResourcesVector{
-          (send != nullptr && send->is_host_transfer())
-              ? std::make_pair(ResourceTypeToIndex(ResourceType::kSendHost),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceRelease
-                                   : ResourceUsageType::kResourceOccupy)
-              : std::make_pair(ResourceTypeToIndex(ResourceType::kSendRecv),
-                               config_.top_down_scheduling
-                                   ? ResourceUsageType::kResourceRelease
-                                   : ResourceUsageType::kResourceOccupy)};
-    }
-    case HloOpcode::kWhile: {
-      ResourcesVector result;
-      absl::flat_hash_set<int64_t> seen_occupied_resources;
-      absl::flat_hash_set<int64_t> seen_released_resources;
-      absl::flat_hash_set<int64_t> seen_no_resource;
-      for (const HloInstruction* instr : hlo.while_body()->instructions()) {
-        ResourcesVector rv = GetResourcesFromInstructionImpl(*instr);
-        if (rv.empty()) {
-          continue;
-        }
-        for (const auto& [resource, usage] : rv) {
-          if (usage == ResourceUsageType::kResourceOccupy &&
-              !seen_occupied_resources.contains(resource)) {
-            seen_occupied_resources.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          } else if (usage == ResourceUsageType::kResourceRelease &&
-                     !seen_released_resources.contains(resource)) {
-            seen_released_resources.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          } else if (usage == ResourceUsageType::kNoResource &&
-                     !seen_no_resource.contains(resource)) {
-            seen_no_resource.insert(resource);
-            result.push_back(std::make_pair(resource, usage));
-          }
-        }
-      }
-      return result;
-    }
-    default: {
-      // At this point we are dealing with sync instructions that did not fall
-      // into any of the cases above. We model their resources as a
-      // kResourceOccupy and a kResourceRelease that follows immediately after.
-      ResourcesVector res;
-      if (config_.track_sync_op_resource_usage) {
-        ResourceType type = GetResourceTypeForOp(hlo.opcode());
-        if (type != ResourceType::kNoResource) {
-          res.push_back(std::make_pair(ResourceTypeToIndex(type),
-                                       ResourceUsageType::kResourceOccupy));
-          res.push_back(std::make_pair(ResourceTypeToIndex(type),
-                                       ResourceUsageType::kResourceRelease));
-        }
-      }
-      return res;
-    }
-  }
-}
-
-absl::Span<const ResourcePair> AsyncTracker::GetResourcesFromInstruction(
-    const HloInstruction& hlo) const {
-  {
-    absl::ReaderMutexLock lock(&resources_cache_mu_);
-    auto it = resources_cache_.find(&hlo);
-    if (it != resources_cache_.end()) {
-      return *(it->second);
-    }
-  }
-  absl::WriterMutexLock lock(&resources_cache_mu_);
-  auto& val = resources_cache_[&hlo];
-  if (val == nullptr) {
-    val =
-        std::make_unique<ResourcesVector>(GetResourcesFromInstructionImpl(hlo));
-  }
-  return *val;
-}
-
-int64_t AsyncTracker::GetNumResourcesPerInstruction(
-    ResourceType resource_type, const HloInstruction& instr) const {
-  return GetNumResourcesPerInstruction(ResourceTypeToIndex(resource_type),
-                                       instr);
-}
-
-absl::flat_hash_map<int64_t, int64_t>
-AsyncTracker::GetNumResourcesPerInstruction(const HloInstruction& instr) const {
-  absl::flat_hash_map<int64_t, int64_t> num_resources_per_type;
-  if (instr.called_computations().empty() ||
-      instr.opcode() == HloOpcode::kAsyncStart ||
-      instr.opcode() == HloOpcode::kAsyncDone) {
-    for (const auto& [resource_type, usage] :
-         GetResourcesFromInstruction(instr)) {
-      if (usage == ResourceUsageType::kResourceOccupy) {
-        ++num_resources_per_type[resource_type];
-      }
-    }
-  }
-
-  // For instructions calling multiple computations, we assume that the called
-  // computations do not execute in parallel (i.e., they are either mutually
-  // exclusive, as in conditionals, or executed in sequence). Then for each
-  // resource type, the usage across all called computations is the maximum
-  // usage in any of the called computations.
-  for (const HloComputation* computation : instr.called_computations()) {
-    const auto& map = RecursivelyComputeResourceMap(computation);
-    for (const auto& [resource_type, num_resources] : map) {
-      num_resources_per_type[resource_type] =
-          std::max(num_resources_per_type[resource_type], num_resources);
-    }
-  }
-  return num_resources_per_type;
-}
-
-const absl::flat_hash_map<int64_t, int64_t>&
-AsyncTracker::RecursivelyComputeResourceMap(
-    const HloComputation* computation) const {
-  // If the computation has a schedule, use the scheduled instruction order to
-  // estimate the resource usage. We schedule the computation in post-order, so
-  // it is guaranteed that all the callees are already scheduled before we
-  // schedule the caller.
-  auto& schedule = computation->parent()->schedule();
-  if (schedule.is_computation_scheduled(computation)) {
-    return RecursivelyComputeResourceMapForScheduledComputation(computation);
-  }
-  {
-    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
-    auto it = async_in_computation_cache_.find(computation);
-    if (it != async_in_computation_cache_.end()) {
-      return *(it->second);
-    }
-  }
-  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
-  absl::flat_hash_set<int64_t> seen_resources_per_comp;
-  for (HloInstruction* instr : computation->instructions()) {
-    if (IsSupportedAsyncDone(*instr)) {
-      absl::flat_hash_set<int64_t> seen_resources_per_inst;
-      for (const auto& resource : GetResourcesFromInstruction(*instr)) {
-        if (seen_resources_per_comp.contains(resource.first)) {
-          continue;
-        }
-        ++(*m)[resource.first];
-        seen_resources_per_inst.insert(resource.first);
-      }
-      seen_resources_per_comp.insert(seen_resources_per_inst.begin(),
-                                     seen_resources_per_inst.end());
-    }
-    for (const HloComputation* called_comp : instr->called_computations()) {
-      for (const auto& [type, usage] :
-           RecursivelyComputeResourceMap(called_comp)) {
-        if (seen_resources_per_comp.contains(type)) {
-          continue;
-        }
-        (*m)[type] += usage;
-        seen_resources_per_comp.insert(type);
-      }
-    }
-  }
-  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
-  auto& per_opcode_map = async_in_computation_cache_[computation];
-  if (per_opcode_map == nullptr) {
-    per_opcode_map = std::move(m);
-  }
-  return *per_opcode_map;
-}
-
-const absl::flat_hash_map<int64_t, int64_t>&
-AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
-    const HloComputation* computation) const {
-  auto& schedule = computation->parent()->schedule();
-  CHECK(schedule.is_computation_scheduled(computation));
-  {
-    absl::ReaderMutexLock lock(&async_in_computation_cache_mu_);
-    auto it = async_in_computation_cache_.find(computation);
-    if (it != async_in_computation_cache_.end()) {
-      return *(it->second);
-    }
-  }
-  auto m = std::make_unique<absl::flat_hash_map<int64_t, int64_t>>();
-  auto& res_map = *m;
-  auto& inst_sequence = schedule.sequence(computation).instructions();
-  // Traverse the sequence in reverse order and keep a running status of the
-  // resources being used.
-  absl::flat_hash_map<int64_t, int64_t> inflight_resource_usage;
-  for (auto it = inst_sequence.rbegin(); it != inst_sequence.rend(); ++it) {
-    const HloInstruction* inst = *it;
-    if (IsSupportedAsyncDone(*inst)) {
-      for (const auto& [type, _] : GetResourcesFromInstruction(*inst)) {
-        int64_t current_usage = ++inflight_resource_usage[type];
-        int64_t& max_usage = res_map[type];
-        max_usage = std::max(max_usage, current_usage);
-      }
-    } else if (IsSupportedAsyncStart(*inst)) {
-      for (const auto& resource : GetResourcesFromInstruction(*inst)) {
-        --inflight_resource_usage[resource.first];
-      }
-    }
-    if (inst->called_computations().empty()) {
-      continue;
-    }
-    for (const auto& [type, usage] : GetNumResourcesPerInstruction(*inst)) {
-      int64_t current_usage = inflight_resource_usage[type] + usage;
-      int64_t& max_usage = res_map[type];
-      max_usage = std::max(max_usage, current_usage);
-    }
-  }
-  absl::WriterMutexLock lock(&async_in_computation_cache_mu_);
-  auto& per_opcode_map = async_in_computation_cache_[computation];
-  if (per_opcode_map == nullptr) {
-    per_opcode_map = std::move(m);
-  }
-  return *per_opcode_map;
-}
-
-int64_t AsyncTracker::GetNumResourcesPerInstruction(
-    int64_t resource_type, const HloInstruction& instr) const {
-  // For instructions not calling a computation, or async start/done
-  // instructions, we directly check the resources from the instruction.
-  if (instr.called_computations().empty() ||
-      instr.opcode() == HloOpcode::kAsyncStart ||
-      instr.opcode() == HloOpcode::kAsyncDone) {
-    return absl::c_count_if(GetResourcesFromInstruction(instr),
-                            [resource_type](const ResourcePair& resource) {
-                              return resource.second ==
-                                         ResourceUsageType::kResourceOccupy &&
-                                     (resource_type == resource.first);
-                            });
-  }
-  int64_t num_resources = 0;
-  for (const HloComputation* computation : instr.called_computations()) {
-    const auto& map = RecursivelyComputeResourceMap(computation);
-    auto opcode_it = map.find(resource_type);
-    if (opcode_it != map.end()) {
-      num_resources += opcode_it->second;
-      // We can return early if we have found the resource we are looking for.
-      // There is no need to check each called computation.
-      break;
-    }
-  }
-  return num_resources;
-}
-
-void AsyncTracker::SetConcurrentResourceLimits(
-    absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const {
-  // Set the limits for default resources
-  max_concurrent_resource[ResourceTypeToIndex(
-      ResourceType::kCollectiveBroadcast)] =
-      config_.collective_broadcast_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(
-      ResourceType::kCollectivePermute)] =
-      config_.collective_permute_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kCopy)] =
-      config_.copy_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllToAll)] =
-      config_.all_to_all_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kRaggedAllToAll)] =
-      config_.ragged_all_to_all_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
-      config_.all_gather_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllReduce)] =
-      config_.all_reduce_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kReduceScatter)] =
-      config_.reduce_scatter_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendRecv)] =
-      config_.send_recv_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendHost)] =
-      config_.send_recv_host_overlap_limit;
-  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kRecvHost)] =
-      config_.send_recv_host_overlap_limit;
-  // Set the limits for target-defined resources.
-  for (int64_t resource_type = GetTargetDefinedResourceTypeBegin();
-       resource_type <
-       GetTargetDefinedResourceTypeBegin() + GetNumTargetDefinedResources();
-       ++resource_type) {
-    max_concurrent_resource[resource_type] =
-        GetNumAvailableResources(resource_type);
-  }
-}
-
-absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
-  switch (resource_type) {
-    case ResourceTypeToIndex(ResourceType::kNoResource):
-      return "kNoResource";
-    case ResourceTypeToIndex(ResourceType::kAllToAll):
-      return "kAllToAll";
-    case ResourceTypeToIndex(ResourceType::kRaggedAllToAll):
-      return "kRaggedAllToAll";
-    case ResourceTypeToIndex(ResourceType::kAllGather):
-      return "kAllGather";
-    case ResourceTypeToIndex(ResourceType::kAllReduce):
-      return "kAllReduce";
-    case ResourceTypeToIndex(ResourceType::kCollectiveBroadcast):
-      return "kCollectiveBroadcast";
-    case ResourceTypeToIndex(ResourceType::kCollectivePermute):
-      return "kCollectivePermute";
-    case ResourceTypeToIndex(ResourceType::kCopy):
-      return "kCopy";
-    case ResourceTypeToIndex(ResourceType::kSendRecv):
-      return "kSendRecv";
-    case ResourceTypeToIndex(ResourceType::kSendHost):
-      return "kSendHost";
-    case ResourceTypeToIndex(ResourceType::kRecvHost):
-      return "kRecvHost";
-    case ResourceTypeToIndex(ResourceType::kReduceScatter):
-      return "kReduceScatter";
-    default:
-      return "Not a valid default resource";
-  }
-}
-
-absl::string_view AsyncTracker::GetResourceUsageName(
-    ResourceUsageType resource_usage_type) const {
-  return GetResourceUsageName(ResourceUsageTypeToIndex(resource_usage_type));
-}
-
-ResourceHazardType AsyncTracker::GetResourceHazardType(
-    int64_t resource_type) const {
-  if (resource_type == ResourceTypeToIndex(ResourceType::kCopy)) {
-    return ResourceHazardType::kShareable;
-  }
-  return ResourceHazardType::kUnshareable;
-}
-
-absl::string_view AsyncTracker::GetResourceUsageName(
-    int64_t resource_usage_type) const {
-  switch (resource_usage_type) {
-    case ResourceUsageTypeToIndex(ResourceUsageType::kNoResource):
-      return "kNoResource";
-    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceOccupy):
-      return "kResourceOccupy";
-    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceRelease):
-      return "kResourceRelease";
-    default:
-      return "Not a valid resource usage type";
-  }
-}
-
-int64_t AsyncTracker::GetNumTargetDefinedResources() const { return 0; }
-
-int64_t AsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
-  return 0;
-}
-
-// For now, only the target-defined resources have shareable hazard type, so
-// this async tracker does not know which resources are shareable.
-absl::InlinedVector<int64_t, 1>
-AsyncTracker::GetReleasedShareableResourcesFromVector(
-    const ResourcesVector& resources) const {
-  return {};
-}
-
-// For now, only the target-defined resources have shareable hazard type, so
-// this async tracker does not know which resources are shareable.
-absl::InlinedVector<int64_t, 1>
-AsyncTracker::GetOccupiedShareableResourcesFromVector(
-    const ResourcesVector& resources) const {
-  return {};
-}
-
-// For now, only the target-defined resources have serial hazard type, so
-// this async tracker does not know which resources are serial.
-absl::InlinedVector<int64_t, 1>
-AsyncTracker::GetOccupiedSerialResourcesFromVector(
-    const ResourcesVector& resources) const {
-  return {};
-}
-
-// For now, only the target-defined resources have nonextendable hazard type, so
-// this async tracker does not know which resources are nonextendable.
-absl::InlinedVector<int64_t, 1>
-AsyncTracker::GetReleasedNonextendableResourcesFromVector(
-    const ResourcesVector& resources) const {
-  return {};
 }
 
 bool AsyncTracker::ReleasesSelectiveResource(const HloGraphNode* node) const {
@@ -1723,6 +1132,51 @@ int64_t ReadySetLt::GetNumConflictingSerialResources(
 // return true. Otherwise it returns false. *reason is always update to
 // point to a string describing which heuristic ultimately made the
 // decision.
+namespace {
+
+// Returns the async start of `done`, reached through any async updates, or
+// nullptr if `done` has no separate start that `async_tracker` supports (e.g. a
+// synchronous collective that the backend schedules as async), or if the start
+// is not in the computation of `done` (only ops in the scheduled computation
+// are in its reachability map).
+const HloInstruction* GetAsyncStartFromAsyncDone(
+    const HloInstruction& done, const AsyncTracker& async_tracker) {
+  const HloInstruction* op = &done;
+  while (op->operand_count() > 0) {
+    op = op->operand(0);
+    if (op->parent() != done.parent()) {
+      return nullptr;
+    }
+    if (async_tracker.IsSupportedAsyncStart(*op)) {
+      return op;
+    }
+    if (op->opcode() != HloOpcode::kAsyncUpdate) {
+      return nullptr;
+    }
+  }
+  return nullptr;
+}
+
+// Returns true if a data operand of the async start `x` reaches the async start
+// `y` in `reachability`, i.e. `x` transfers data produced before `y` is issued.
+// The start is the only op of an async chain with data operands (async updates
+// and dones only take the previous op of the chain), and every op of `y`'s
+// chain is reachable through `y`. Operands shared by both starts (e.g. common
+// offsets) do not order the transfers, and neither do parameters and constants,
+// which are available from the start and would otherwise relate every two
+// starts reading them.
+bool TransfersEarlierData(const HloInstruction& x, const HloInstruction& y,
+                          const HloReachabilityMap& reachability) {
+  return absl::c_any_of(x.operands(), [&](const HloInstruction* operand) {
+    return operand->opcode() != HloOpcode::kParameter &&
+           operand->opcode() != HloOpcode::kConstant &&
+           !absl::c_linear_search(y.operands(), operand) &&
+           reachability.IsReachable(operand, &y);
+  });
+}
+
+}  // namespace
+
 bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
                                 DefaultSchedulerCore::ScheduleCandidate& b,
                                 const char** reason) const {
@@ -2044,6 +1498,31 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     if (auto res = CmpExplicit(a_increase.first < 0, b_increase.first < 0,
                                "kDecreaseMemory", reason)) {
       return *res;
+    }
+  }
+
+  // Tie-breaker for two ready async-done operations: if a data input of one's
+  // async start is an ancestor of the other's async start (e.g. two dependent
+  // layers each offloading their result), the done transferring the
+  // earlier-produced data completes first in program order. Async ops that
+  // execute in order (e.g. on SparseCore) are then also issued in data order,
+  // right after their data is produced. Unrelated async-dones keep their
+  // original order.
+  if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone()) {
+    const HloInstruction* a_start =
+        GetAsyncStartFromAsyncDone(an->GetInstr(), *sched_state.async_tracker);
+    const HloInstruction* b_start =
+        GetAsyncStartFromAsyncDone(bn->GetInstr(), *sched_state.async_tracker);
+    if (a_start != nullptr && b_start != nullptr) {
+      const HloReachabilityMap& reachability =
+          sched_state.sched_graph->reachability();
+      if (auto res = CmpDirectional(
+              core_->top_down_scheduling_,
+              TransfersEarlierData(*a_start, *b_start, reachability),
+              TransfersEarlierData(*b_start, *a_start, reachability),
+              "kAsyncDoneDataDependency", reason)) {
+        return *res;
+      }
     }
   }
 
@@ -2579,6 +2058,11 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
       chosen_it = ready_node_it;
     }
   }
+  if (chosen_it == annotation_ready.end()) {
+    // Every ready node crosses the overlap limit. Leave the annotation ready
+    // set untouched and let the caller report the failure.
+    return nullptr;
+  }
   // Delete the node from the annotation ready set.
   std::swap(*chosen_it, annotation_ready.back());
   annotation_ready.pop_back();
@@ -2651,20 +2135,14 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
             << annotation_size << "): " << node->GetInstr().name();
   }
-  // If for some reason we could not schedule all the instructions in the
-  // annotation in one go, we clear the annotation for the remaining
-  // instruction. Currently this should only happen for async-start
-  // instructions.
+  // If we could not schedule all the instructions in the annotation in one go
+  // (e.g., due to dynamic dependencies added during scheduling), clear the
+  // annotation for all remaining instructions in the group.
   if (num_scheduled < annotation_size - non_ready_instr) {
     for (auto* inst :
          annotation_tracker_->GetInstructions(computation, annotation)) {
       HloGraphNode& node = sched_state->sched_graph->GetNode(inst);
       if (!node.IsScheduled()) {
-        TF_RET_CHECK(
-            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
-                node.GetInstr()) ||
-            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncDone(
-                node.GetInstr()));
         VLOG(2) << "Could not schedule all annotated nodes with annotation ID "
                 << annotation << " in one go; clearing annotation for "
                 << node.GetInstr().name();

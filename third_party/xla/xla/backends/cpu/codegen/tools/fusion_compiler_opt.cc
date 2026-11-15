@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
@@ -64,35 +63,20 @@ int main(int argc, char** argv) {
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
   xla::xtile::registerXTileTransformsPasses();
-  mlir::stablehlo::registerStablehloLinalgTransformsPasses();
 
   mlir::PassPipelineRegistration<XtileToVectorPassOptions>(
       "xtile-cpu-xtile-to-vector",
       "Run the conversion from XTile to Vector dialect.",
       [](mlir::OpPassManager& pm, const XtileToVectorPassOptions& options) {
-        xla::cpu::AddXtileToVectorPasses(pm, /*msan_enabled=*/false,
-                                         options.prefer_vector_width);
-      });
-  mlir::PassPipelineRegistration<XtileToVectorPassOptions>(
-      "xtile-cpu-new-xtile-to-vector",
-      "Run the conversion from XTile to Vector dialect.",
-      [](mlir::OpPassManager& pm, const XtileToVectorPassOptions& options) {
-        xla::cpu::AddNewXtileToVectorPasses(pm, options.prefer_vector_width);
+        xla::cpu::AddXtileToVectorPasses(pm, options.prefer_vector_width);
       });
   mlir::PassPipelineRegistration<XtileCpuPassOptions>(
       "xtile-cpu-vector-to-llvm",
       "Run the conversion from Vector to LLVM dialect.",
       [](mlir::OpPassManager& pm, const XtileCpuPassOptions& options) {
         xla::cpu::AddVectorToLLVMPasses(pm, options.fast_min_max,
+                                        /*vector_width=*/256,
                                         options.cpu_features.getValue());
-      });
-  mlir::PassPipelineRegistration<XtileCpuPassOptions>(
-      "xtile-cpu-new-vector-to-llvm",
-      "Run the conversion from Vector to LLVM dialect.",
-      [](mlir::OpPassManager& pm, const XtileCpuPassOptions& options) {
-        xla::cpu::AddNewVectorToLLVMPasses(pm, options.fast_min_max,
-                                           /*vector_width=*/256,
-                                           options.cpu_features.getValue());
       });
   return mlir::failed(MlirOptMain(
       argc, argv, "XLA:CPU Fusion compiler pass driver\n", registry));

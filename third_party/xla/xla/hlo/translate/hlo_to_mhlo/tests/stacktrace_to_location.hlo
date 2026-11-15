@@ -119,13 +119,15 @@ stack_frame_index {
 // -----
 
 # Check several frames
-# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#loc7)
-# CHECK: #loc2 = loc("file_name_2":3:4)
-# CHECK-NEXT: #loc3 = loc("file_name":2:8)
+# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#loc9)
+# CHECK: #loc2 = loc("file_name":2:8)
+# CHECK-NEXT: #loc3 = loc("file_name_2":3:4 to :10)
 # CHECK-NEXT: #loc4 = loc("function_name_2"(#loc2))
-# CHECK-NEXT: #loc5 = loc("function_name"(#loc3))
-# CHECK-NEXT: #loc6 = loc(callsite(#loc4 at #loc5))
-# CHECK-NEXT: #loc7 = loc("name(anothername)"(#loc6))
+# CHECK-NEXT: #loc5 = loc("function_name_2"(#loc3))
+# CHECK-NEXT: #loc6 = loc("function_name"(#loc2))
+# CHECK-NEXT: #loc7 = loc(callsite(#loc5 at #loc6))
+# CHECK-NEXT: #loc8 = loc(callsite(#loc4 at #loc7))
+# CHECK-NEXT: #loc9 = loc("name(anothername)"(#loc8))
 name: "main"
 entry_computation_name: "main.3"
 computations {
@@ -146,7 +148,7 @@ computations {
     }
     metadata {
       op_name: "name(anothername)"
-      stack_frame_id: 2
+      stack_frame_id: 3
     }
     id: 2
     operand_ids: 1
@@ -190,6 +192,16 @@ stack_frame_index {
     function_name_id: 2
     line: 3
     column: 4
+    end_line: 3
+    end_column: 10
+  }
+  file_locations {
+    file_name_id: 1
+    function_name_id: 2
+    line: 2
+    column: 8
+    end_line: 2
+    end_column: 8
   }
   stack_frames {
     file_location_id: 1
@@ -197,5 +209,9 @@ stack_frame_index {
   stack_frames {
     file_location_id: 2
     parent_frame_id: 1
+  }
+  stack_frames {
+    file_location_id: 3
+    parent_frame_id: 2
   }
 }

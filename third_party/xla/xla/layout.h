@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
@@ -116,7 +117,7 @@ class Tile {
   absl::InlinedVector<int64_t, 2> dimensions_;
 };
 
-using TileVector = absl::InlinedVector<Tile, 3>;
+using TileVector = absl::InlinedVector<Tile, 2>;
 
 // Describes how data is split between different memories. Each SplitConfig
 // object represents a split in one dimension. Each SplitConfig is associated
@@ -498,7 +499,7 @@ class Layout {
 
   // The split configurations of the shape, which describes how the storage of
   // the tensor is split between different physical memories.
-  absl::InlinedVector<SplitConfig, 1> split_configs_;
+  std::vector<SplitConfig> split_configs_;
 
   // The shape is padded at the end to a multiple of, in terms of number of
   // elements, this value. This is useful when tiling does not bring the shape

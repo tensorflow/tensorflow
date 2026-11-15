@@ -123,7 +123,7 @@ func.func @sht_to_fallback() -> !tfrt.chain {
   %cpu = corert.get_op_handler %ch0 "cpu"
   %cpu_device = "tfrt.get_device"(%ch0) {device_name="CPU:0"} : (!tfrt.chain) -> !tfrt.device
 
-  %th1 = corert.const_string_tensor {shape = [2], value = ["uiuc", "berkeley"]}
+  %th1 = corert.const_string_tensor <shape = [2], value = ["uiuc", "berkeley"]>
 
   // SHT->TFRuntimeFallbackT
   %th2_tensor_type = "tfrt_test.get_static_tensor_type"()

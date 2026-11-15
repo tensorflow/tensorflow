@@ -230,7 +230,8 @@ TEST_F(DelegateTest, MultipleInterpretersSameDelegate) {
 
   // Create a new interpreter, inject into the test framework and build
   // a different graph using the *same* delegate.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter(&error_reporter_));
+  std::unique_ptr<Interpreter> interpreter =
+      std::make_unique<Interpreter>(&error_reporter_);
   interpreter_.swap(interpreter);
   {
     AddTensors(10, {0}, {9}, kTfLiteFloat32, {3});

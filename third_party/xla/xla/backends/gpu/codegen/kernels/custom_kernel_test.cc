@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -36,14 +40,17 @@ using tsl::proto_testing::ParseTextProtoOrDie;
 void SomeKernel(int* x) { *x = 42; }
 
 TEST(CustomKernelTest, ToProto) {
-  CustomKernel custom_kernel(
+  GpuKernelSpec spec{
       "kernel_name",
+      LaunchDimensions{stream_executor::BlockDim(1, 2, 3),
+                       stream_executor::ThreadDim(4, 5, 6)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}}, 7};
+  CustomKernel custom_kernel(
+      spec,
       stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name",
           /*symbol=*/absl::bit_cast<void*>(&SomeKernel), "kernel_name",
-          /*arity=*/42),
-      stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
-      /*shared_memory_bytes=*/7);
+          /*arity=*/42));
   ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(
@@ -61,15 +68,21 @@ TEST(CustomKernelTest, ToProto) {
 }
 
 TEST(CustomKernelTest, ToProtoWithClusterDims) {
-  CustomKernel custom_kernel(
+  GpuKernelSpec spec{
       "kernel_name",
+      LaunchDimensions{stream_executor::BlockDim(1, 2, 3),
+                       stream_executor::ThreadDim(4, 5, 6)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}},
+      10,
+      false,
+      {},
+      stream_executor::ClusterDim(7, 8, 9)};
+  CustomKernel custom_kernel(
+      spec,
       stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           "persistent_kernel_name",
           /*symbol=*/absl::bit_cast<void*>(&SomeKernel), "kernel_name_in_spec",
-          /*arity=*/42),
-      stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
-      stream_executor::ClusterDim(7, 8, 9),
-      /*shared_memory_bytes=*/10);
+          /*arity=*/42));
   ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(

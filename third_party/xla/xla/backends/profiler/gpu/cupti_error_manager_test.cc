@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -120,6 +121,10 @@ class CuptiErrorManagerTest : public ::testing::Test {
 };
 
 class CuptiV2ActivityConfigurationErrorTest
+    : public CuptiErrorManagerTest,
+      public ::testing::WithParamInterface<CUptiResult> {};
+
+class CuptiV2ActivitySetAttributeErrorTest
     : public CuptiErrorManagerTest,
       public ::testing::WithParamInterface<CUptiResult> {};
 
@@ -288,6 +293,112 @@ TEST_P(CuptiV2ActivityConfigurationErrorTest, DoesNotDisableCupti) {
 INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2ActivityConfigurationErrorTest,
                          ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
                                            CUPTI_ERROR_NOT_COMPATIBLE));
+
+TEST_P(CuptiV2ActivitySetAttributeErrorTest, DoesNotDisableCupti) {
+  const CUptiResult result = GetParam();
+  uint8_t attr_value = 1;
+  size_t attr_size = sizeof(attr_value);
+  EXPECT_CALL(*mock_,
+              ActivitySetAttributeV2(
+                  nullptr, kCuptiActivityAttrEnableMultiSubscriberGraphTrace,
+                  &attr_size, &attr_value))
+      .WillOnce(Return(result));
+
+  EXPECT_EQ(cupti_error_manager_->ActivitySetAttributeV2(
+                nullptr, kCuptiActivityAttrEnableMultiSubscriberGraphTrace,
+                &attr_size, &attr_value),
+            result);
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NonfatalErrors, CuptiV2ActivitySetAttributeErrorTest,
+    ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED, CUPTI_ERROR_NOT_COMPATIBLE,
+                      CUPTI_ERROR_INVALID_OPERATION,
+                      CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
+
+TEST_F(CuptiErrorManagerTest,
+       GraphTraceAttributeIsResetOnSubsequentEnableError) {
+  Sequence s1;
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .InSequence(s1)
+      .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .InSequence(s1)
+      .WillOnce(SetTimestampAndReturnSuccess(1));
+  const int cb_enable_times = IsCudaNewEnoughForGraphTraceTest() ? 6 : 1;
+  EXPECT_CALL(*mock_, EnableCallback(1, subscriber, _, _))
+      .Times(cb_enable_times)
+      .InSequence(s1)
+      .WillRepeatedly(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(subscriber))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(
+      *mock_,
+      ActivitySetAttributeV2(
+          nullptr, kCuptiActivityAttrEnableMultiSubscriberGraphTrace, _, _))
+      .InSequence(s1)
+      .WillOnce([](CUpti_SubscriberHandle /*subscriber*/,
+                   CUpti_ActivityAttribute /*attr*/, size_t* value_size,
+                   void* value) {
+        EXPECT_EQ(*value_size, sizeof(uint8_t));
+        EXPECT_EQ(*static_cast<const uint8_t*>(value), 1);
+        return CUPTI_SUCCESS;
+      });
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(subscriber, _, _))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_GRAPH_TRACE, _))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_ERROR_UNKNOWN));
+  EXPECT_CALL(*mock_, GetResultString(CUPTI_ERROR_UNKNOWN, _))
+      .InSequence(s1)
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+  // Undo stack pops in LIFO order: first disable already-enabled activities,
+  // then reset the global multi-subscriber graph trace attribute to 0 while
+  // no activity kinds remain enabled.
+  EXPECT_CALL(*mock_,
+              ActivityDisableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(
+      *mock_,
+      ActivitySetAttributeV2(
+          nullptr, kCuptiActivityAttrEnableMultiSubscriberGraphTrace, _, _))
+      .InSequence(s1)
+      .WillOnce([](CUpti_SubscriberHandle /*subscriber*/,
+                   CUpti_ActivityAttribute /*attr*/, size_t* value_size,
+                   void* value) {
+        EXPECT_EQ(*value_size, sizeof(uint8_t));
+        EXPECT_EQ(*static_cast<const uint8_t*>(value), 0);
+        return CUPTI_SUCCESS;
+      });
+  EXPECT_CALL(*mock_, EnableCallback(0, subscriber, _, _))
+      .Times(cb_enable_times)
+      .InSequence(s1)
+      .WillRepeatedly(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, Unsubscribe(subscriber))
+      .InSequence(s1)
+      .WillOnce(Return(CUPTI_SUCCESS));
+
+  CuptiTracerOptions options;
+  options.activities_selected = {CUPTI_ACTIVITY_KIND_KERNEL,
+                                 CUPTI_ACTIVITY_KIND_GRAPH_TRACE};
+  options.cbids_selected = {CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel};
+  EnableProfiling(options);
+  EXPECT_TRUE(CuptiDisabled());
+}
 
 TEST_P(CuptiV2ActivityRecordErrorTest, DoesNotDisableCuptiOrUseV1Parser) {
   const CUptiResult result = GetParam();

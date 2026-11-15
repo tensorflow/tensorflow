@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
@@ -42,8 +43,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -236,6 +239,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "FissionBackend does not support this instruction.");
+  }
   HloModule* module = instr.GetModule();
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
@@ -330,7 +337,17 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
 }
 
 bool FissionBackend::IsSupported(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kFusion;
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  if (hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
+                                         {HloOpcode::kScaledDot})) {
+    // The scale operands of a cuDNN scaled dot fusion are already padded and
+    // swizzled, so its computation is not a plain kScaledDot to rewrite.
+    return !IsCudnnFusion(instr);
+  }
+  // cuDNN fission only rewrites scaled dots.
+  return codegen_backend_->backend() != autotuner::Backend::CUDNN;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>

@@ -21,6 +21,8 @@
 // mismatch when packing elements for LLVM struct".
 
 // CHECK-LABEL: llvm.func @block_barrier_64_ranks
+// CHECK-COUNT-2: llvm.store {{.*}} atomic release <alignment = 4> : i32, !llvm.ptr<1>
+// CHECK-COUNT-2: llvm.load {{.*}} atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
 tt.func @block_barrier_64_ranks(
   %ptr : !tt.ptr<i64>, %signal_value : i32, %rank : i32) {
   triton_xla.block_barrier %ptr, %rank, %signal_value <world_size = 64> :
@@ -31,23 +33,27 @@ tt.func @block_barrier_64_ranks(
 // -----
 
 // CHECK-LABEL: llvm.func @atomic_write_64_ranks
-tt.func @atomic_write_64_ranks(%base : !tt.ptr<i32>, %value : i32) {
+// CHECK-COUNT-2: llvm.store {{.*}} atomic release <alignment = 4> : i32, !llvm.ptr<1>
+tt.func @atomic_write_64_ranks(%base : !tt.ptr<i32>, %value : i32, %mask_scalar : i1) {
   %range = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
   %splat = tt.splat %base : !tt.ptr<i32> -> tensor<64x!tt.ptr<i32>>
   %ptr = tt.addptr %splat, %range : tensor<64x!tt.ptr<i32>>, tensor<64xi32>
-  triton_xla.atomic_write sys, release, %ptr, %value :
-    (tensor<64x!tt.ptr<i32>>, i32) -> ()
+  %mask = tt.splat %mask_scalar : i1 -> tensor<64xi1>
+  triton_xla.atomic_write sys, release, %ptr, %value, %mask :
+    (tensor<64x!tt.ptr<i32>>, i32, tensor<64xi1>) -> ()
   tt.return
 }
 
 // -----
 
 // CHECK-LABEL: llvm.func @atomic_spin_wait_64_ranks
-tt.func @atomic_spin_wait_64_ranks(%base : !tt.ptr<i32>, %expected : i32) {
+// CHECK-COUNT-2: llvm.load {{.*}} atomic acquire <alignment = 4> : !llvm.ptr<1> -> i32
+tt.func @atomic_spin_wait_64_ranks(%base : !tt.ptr<i32>, %expected : i32, %mask_scalar : i1) {
   %range = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
   %splat = tt.splat %base : !tt.ptr<i32> -> tensor<64x!tt.ptr<i32>>
   %ptr = tt.addptr %splat, %range : tensor<64x!tt.ptr<i32>>, tensor<64xi32>
+  %mask = tt.splat %mask_scalar : i1 -> tensor<64xi1>
   triton_xla.atomic_spin_wait sys, acquire, %ptr, greater_than_or_equal_to,
-    %expected : (tensor<64x!tt.ptr<i32>>, i32) -> ()
+    %expected, %mask : (tensor<64x!tt.ptr<i32>>, i32, tensor<64xi1>) -> ()
   tt.return
 }

@@ -241,9 +241,10 @@ class HloSharding {
     if (!IsTuple()) {
       return IsSingleDeviceLeaf();
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsSingleDevice();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsSingleDevice();
+           });
   }
   bool IsSingleDeviceLeaf() const {
     DCHECK(!IsTuple());
@@ -266,7 +267,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsManualLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsManual(); });
   }
   bool IsManualLeaf() const {
@@ -282,7 +284,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsUnknownLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnknown(); });
   }
   bool IsUnknownLeaf() const {
@@ -298,7 +301,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsUnreducedLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnreduced(); });
   }
   bool IsUnreducedLeaf() const {
@@ -361,9 +365,10 @@ class HloSharding {
       }
       return absl::c_linear_search(subgroup_types_, OpSharding::MANUAL);
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsManualSubgroup();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsManualSubgroup();
+           });
   }
 
   // Returns whether the sharding represents unreduced subgroup sharding.
@@ -374,9 +379,10 @@ class HloSharding {
       }
       return absl::c_linear_search(subgroup_types_, OpSharding::UNREDUCED);
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsUnreducedSubgroup();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsUnreducedSubgroup();
+           });
   }
 
   // Returns true if the sharding has any subgroup that is not REPLICATED.
@@ -571,8 +577,8 @@ class HloSharding {
     // Compare two shardings regardless of their representation in order to
     // support mixed sharding representations in HLO.
     if (sharding.UseNamedShardingLeaf()) {
-      return AbslHashValue(std::move(h),
-                           V3ToV2Sharding(*sharding.named_sharding_));
+      return H::combine(std::move(h),
+                        V3ToV2Sharding(*sharding.named_sharding_));
     }
     return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
                       sharding.unknown_, sharding.unreduced_,
@@ -596,7 +602,7 @@ class HloSharding {
       }
       if (sharding.UseNamedShardingLeaf()) {
         HloSharding v2 = V3ToV2Sharding(*sharding.named_sharding_);
-        return AbslHashValue(std::move(h), HashV2Wrapper{v2});
+        return H::combine(std::move(h), HashV2Wrapper{v2});
       }
       if (sharding.replicated_ || sharding.manual_ || sharding.unknown_ ||
           sharding.unreduced_ || sharding.single_device_) {

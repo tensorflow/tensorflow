@@ -170,7 +170,7 @@ module @jit_my_add attributes {jax.uses_shape_polymorphism = false, mhlo.num_par
 // CHECK-NEXT: opcode: "add"
 // CHECK: metadata {
 // CHECK-NEXT:   op_type: "add"
-// CHECK-NEXT:   op_name: "jit(f)/inner_fn/add"
+// CHECK-NEXT:   op_name: "jit(f)/call/inner_fn/add"
 // CHECK-NEXT:   stack_frame_id: 3
 // CHECK-NEXT: }
 
@@ -218,7 +218,7 @@ module @jit_f attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 :
 #callee_frame_loc = loc("inner_fn"(#callee_file_loc))
 #caller_frame_loc = loc("<module>"(#caller_file_loc))
 #callee_stack_loc = loc(callsite(#callee_frame_loc at #caller_frame_loc))
-#callee_name_loc = loc("jit(f)/inner_fn/add"(#callee_stack_loc))
+#callee_name_loc = loc("inner_fn/add"(#callee_stack_loc))
 #callee_op_loc = loc("add:"(#callee_name_loc))
 #caller_name_loc = loc("jit(f)/call"(#caller_frame_loc))
 #caller_op_loc = loc("call:"(#caller_name_loc))

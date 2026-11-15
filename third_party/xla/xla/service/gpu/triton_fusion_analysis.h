@@ -88,13 +88,6 @@ class TritonFusionAnalysis {
 
   std::string ToString() const;
 
-  // Returns an error if the batch dimension of the parameter with the type S4
-  // is the minor one. This check uses the collected data about the mapping the
-  // dimensions of dot to the corresponding parameters. This is important
-  // because there could be a transpose between the dot and the parameter.
-  bool IsBatchDimMinorForInt4Parameter(const HloInstruction& dot,
-                                       Scope scope) const;
-
   // Block scaled dot support.
   bool is_scaled_dot() const { return is_scaled_dot_; }
 

@@ -1244,5 +1244,39 @@ ENTRY test {
   EXPECT_EQ(alias_info_.GetInPlaceInputOutputPairs(annotated), expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, IsMatchingInPlaceDusReadSlice) {
+  const char* const kHlo = R"hlo(
+HloModule test
+
+ENTRY main {
+  p = f32[8,4]{1,0} parameter(0)
+  p_dyn = f32[<=8,4]{1,0} parameter(1)
+  c0 = s32[] constant(0)
+  c2 = s32[] constant(2)
+  c100 = s32[] constant(100)
+  s_match = f32[2,4]{1,0} slice(p), slice={[2:4], [0:4]}
+  s_mismatch = f32[2,4]{1,0} slice(p), slice={[1:3], [0:4]}
+  dus_match = f32[8,4]{1,0} dynamic-update-slice(p, s_match, c2, c0)
+  s_dyn = f32[2,4]{1,0} slice(p_dyn), slice={[6:8], [0:4]}
+  dus_dyn = f32[<=8,4]{1,0} dynamic-update-slice(p_dyn, s_dyn, c100, c0)
+  ROOT out = tuple(dus_match, s_mismatch, dus_dyn)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* p = FindInstruction(module.get(), "p");
+  const HloInstruction* p_dyn = FindInstruction(module.get(), "p_dyn");
+  const HloInstruction* s_match = FindInstruction(module.get(), "s_match");
+  const HloInstruction* s_mismatch =
+      FindInstruction(module.get(), "s_mismatch");
+  const HloInstruction* dus_match = FindInstruction(module.get(), "dus_match");
+  const HloInstruction* s_dyn = FindInstruction(module.get(), "s_dyn");
+  const HloInstruction* dus_dyn = FindInstruction(module.get(), "dus_dyn");
+
+  EXPECT_TRUE(IsMatchingInPlaceDusReadSlice(s_match, p, dus_match));
+  EXPECT_FALSE(IsMatchingInPlaceDusReadSlice(s_mismatch, p, dus_match));
+  EXPECT_FALSE(IsMatchingInPlaceDusReadSlice(s_dyn, p_dyn, dus_dyn));
+}
+
 }  // namespace
 }  // namespace xla

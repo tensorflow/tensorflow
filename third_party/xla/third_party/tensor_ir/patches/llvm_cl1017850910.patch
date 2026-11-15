@@ -1,0 +1,11 @@
+diff --git a/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp b/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
+--- a/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
++++ b/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
+@@ -809,7 +809,6 @@
+                        cuda_tile::OptimizationHintsAttr optimizationHints,
+                        bool enableExperimentalCudaTileOps,
+                        cuda_tile::BytecodeVersion targetBytecodeVersion) {
+-  llvm::SmallDenseSet<StringRef> kernelNames;
+   for (gpu::GPUModuleOp gpuModule : module.getOps<gpu::GPUModuleOp>()) {
+     for (Operation &op : gpuModule.getBody()->without_terminator()) {
+       auto kernel = dyn_cast<func::FuncOp>(op);

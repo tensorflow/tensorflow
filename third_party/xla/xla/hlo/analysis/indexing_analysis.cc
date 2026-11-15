@@ -1823,6 +1823,11 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
   CHECK(!chain.empty()) << "There is no use chain from parent to root";
   OperandIndexing root_indexing(
       CreateIdentityMap(epilogue_parent.shape(), mlir_context));
+  // Simplify the identity map so that the result is in canonical form even if
+  // the chain is trivial (parent == root). Otherwise, e.g. size-1 dimensions
+  // would be folded to constants only when there is a non-trivial epilogue,
+  // making semantically equal indexings compare unequal.
+  root_indexing.Simplify();
   for (int i = 1; i < chain.size(); ++i) {
     const auto& producer = chain[i - 1].instruction();
     const auto& user = chain[i].instruction();

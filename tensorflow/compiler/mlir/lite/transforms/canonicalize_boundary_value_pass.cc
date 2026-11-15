@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 
+#include <cmath>
+#include <cstdint>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -41,6 +43,41 @@ namespace TFL {
 namespace {
 
 #define DEBUG_TYPE "canonicalize-boundary-value"
+
+// Checks whether `dense_attr` contains any +/-Inf values. For splats and common
+// float types (f32, f64, f16, bf16), inspects raw values directly to avoid
+// constructing an APFloat for every element on large finite constant tensors,
+// falling back to `getValues<APFloat>()` for other float types.
+bool HasInfiniteElement(DenseElementsAttr dense_attr, FloatType float_type) {
+  if (dense_attr.isSplat()) {
+    return dense_attr.getSplatValue<APFloat>().isInfinity();
+  }
+  if (float_type.isF32()) {
+    return llvm::any_of(dense_attr.getValues<float>(),
+                        [](float val) { return std::isinf(val); });
+  }
+  if (float_type.isF64()) {
+    return llvm::any_of(dense_attr.getValues<double>(),
+                        [](double val) { return std::isinf(val); });
+  }
+  if (float_type.isF16() || float_type.isBF16()) {
+    const llvm::fltSemantics& semantics = float_type.getFloatSemantics();
+    const uint16_t pos_inf_bits = APFloat::getInf(semantics, /*Negative=*/false)
+                                      .bitcastToAPInt()
+                                      .getZExtValue();
+    const uint16_t neg_inf_bits = APFloat::getInf(semantics, /*Negative=*/true)
+                                      .bitcastToAPInt()
+                                      .getZExtValue();
+    ArrayRef<char> raw_data = dense_attr.getRawData();
+    ArrayRef<uint16_t> words(reinterpret_cast<const uint16_t*>(raw_data.data()),
+                             raw_data.size() / sizeof(uint16_t));
+    return llvm::any_of(words, [pos_inf_bits, neg_inf_bits](uint16_t bits) {
+      return bits == pos_inf_bits || bits == neg_inf_bits;
+    });
+  }
+  return llvm::any_of(dense_attr.getValues<APFloat>(),
+                      [](const APFloat& val) { return val.isInfinity(); });
+}
 
 // Clamp constant -Inf/Inf to MIN/MAX float value.
 template <typename OpTy>
@@ -71,10 +108,18 @@ struct ClampInfToMinMaxFloat : public OpRewritePattern<OpTy> {
     auto float_type = dyn_cast<FloatType>(tensor_type.getElementType());
     if (!float_type) return failure();
 
+    // If all values are finite, no need to rewrite. Use the DenseElementsAttr
+    // fast path to avoid constructing an APFloat for every element when all
+    // elements are finite.
+    const bool has_inf =
+        llvm::isa<DenseElementsAttr>(tensor_attr)
+            ? HasInfiniteElement(llvm::cast<DenseElementsAttr>(tensor_attr),
+                                 float_type)
+            : llvm::any_of(tensor_attr.getValues<APFloat>(),
+                           [](const APFloat& val) { return val.isInfinity(); });
+    if (!has_inf) return failure();
+
     auto vals_orig = tensor_attr.getValues<APFloat>();
-    // If all values are finite, no need to rewrite.
-    if (llvm::all_of(vals_orig, [&](APFloat val) { return !val.isInfinity(); }))
-      return failure();
 
     SmallVector<APFloat> vals_new(llvm::map_range(vals_orig, [&](APFloat val) {
       return val.isInfinity()

@@ -31,7 +31,7 @@ load(
     "prepare_gpu_backend_data",
 )
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -212,7 +212,7 @@ def lit_test_suite_for_gpus(
         requirement to run on a GPU.
       gpus: string list. GPU names for which a lit test suite should be
         generated. Supported GPU names are: p100, v100, a100_pcie, a6000, h100,
-        b200, mi200, gfx1250.
+        b200, mi200, mi450, gfx1250_strict.
       disabled_on_gpus: string_dict. For a gpu name (key) contains a list of
         test files that should be skipped.
       **kwargs: additional keyword arguments to pass to all generated rules.
@@ -223,7 +223,7 @@ def lit_test_suite_for_gpus(
     # If there are kwargs that need to be passed to only some of the generated
     # rules, they should be extracted into separate named arguments.
 
-    rocm_gpus = ["mi200", "mi300", "mi350", "mi450"]
+    rocm_gpus = ["mi200", "mi300", "mi350", "mi450", "gfx1250_strict"]
 
     for gpu in gpus:
         is_rocm = gpu in rocm_gpus
@@ -433,8 +433,6 @@ def lit_test(
         deps = if_cuda_is_configured([
             "//xla/stream_executor/cuda:all_runtime",
             "//xla/tsl/cuda:nvshmem_stub",
-        ]) + if_nccl([
-            "//xla/tsl/cuda:nccl",
         ]),
         visibility = ["//visibility:private"],
         **kwargs

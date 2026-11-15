@@ -154,8 +154,7 @@ PYBIND11_MODULE(_pywrap_checkpoint_reader, m, py::mod_gil_not_used()) {
            &tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap)
       .def("_GetVariableToDataTypeMap",
            &tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap)
-      .def("_HasTensor", &tensorflow::checkpoint::CheckpointReader::HasTensor,
-           py::call_guard<py::gil_scoped_release>())
+      .def("_HasTensor", &tensorflow::checkpoint::CheckpointReader::HasTensor)
       .def_static("CheckpointReader_GetTensor",
                   &tensorflow::CheckpointReader_GetTensor);
 };

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +48,7 @@ class GpuClique : public Clique {
       GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
       bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-      const GpuClique* parent = nullptr);
+      std::optional<GpuCliqueKey> parent_key = std::nullopt);
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
@@ -87,8 +88,11 @@ class GpuClique : public Clique {
   // Returns true if the clique was cancelled.
   bool IsCancelled() const;
 
-  // Returns a parent clique iff *this one was created by clique splitting.
-  const GpuClique* parent() const { return parent_; }
+  // Returns the key of the parent clique iff *this one was created by clique
+  // splitting. We keep the key by value and not a pointer to the parent clique,
+  // as the parent can be abandoned and destroyed while its split children are
+  // still alive.
+  const std::optional<GpuCliqueKey>& parent_key() const { return parent_key_; }
 
  private:
   friend LockableGpuClique;
@@ -108,8 +112,9 @@ class GpuClique : public Clique {
   // Cancellation token shared with all communicators in the clique.
   std::shared_ptr<CancellationToken> cancel_;
 
-  // A parent GPU clique iff *this clique was constructed by split operation.
-  const GpuClique* parent_;
+  // A key of the parent GPU clique iff *this clique was constructed by split
+  // operation.
+  std::optional<GpuCliqueKey> parent_key_;
 
   // We keep device communicators in a sorted container to guarantee that they
   // are destroyed in deterministic order.
@@ -136,7 +141,7 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
       GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
       bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-      const GpuClique* parent = nullptr);
+      std::optional<GpuCliqueKey> parent_key = std::nullopt);
 
   // Returns true if this clique has a parent whose key is a superset of (or
   // equal to) `clique_key`. When the existing parent is a superset of the new
@@ -156,6 +161,22 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
 
   // Cancels all communicators in the clique without taking the lock.
   void Cancel();
+
+  // Marks the clique as abandoned: it was erased from the process state, and
+  // its users must acquire a new clique instead. Must be called while holding
+  // the clique lock, so that anyone who acquires the lock afterwards (and
+  // synchronizes with its release) observes the flag.
+  void MarkAbandoned() { abandoned_.store(true, std::memory_order_release); }
+
+  // Returns true if the clique was abandoned. If it returns false to a holder
+  // of the clique lock, the clique can't be abandoned until the lock is
+  // released.
+  bool IsAbandoned() const {
+    return abandoned_.load(std::memory_order_acquire);
+  }
+
+ private:
+  std::atomic<bool> abandoned_ = false;
 };
 
 }  // namespace xla::gpu

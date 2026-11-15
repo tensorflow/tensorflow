@@ -2411,6 +2411,65 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
+// UnidirectionalLSTMOpModel whose input-to-output weights can be resized after
+// the model is built.
+class ResizableWeightsUnidirectionalLSTMOpModel
+    : public UnidirectionalLSTMOpModel {
+ public:
+  using UnidirectionalLSTMOpModel::UnidirectionalLSTMOpModel;
+
+  TfLiteStatus ResizeInputToOutputWeights(const std::vector<int>& dims) {
+    return interpreter_->ResizeInputTensor(input_to_output_weights_, dims);
+  }
+};
+
+// Prepare must reject rank-0 input-to-output weights before it reads their
+// first dimension.
+TEST(UnidirectionalLstmOpTest, RankZeroInputToOutputWeightsFailsPrepare) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+
+  ResizableWeightsUnidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/false,
+      /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false,
+      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+      {
+          {sequence_length, n_batch, n_input},  // input tensor
+
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_gate_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // output_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+      });
+  ASSERT_EQ(lstm.ResizeInputToOutputWeights({}), kTfLiteOk);
+  EXPECT_EQ(lstm.AllocateTensors(), kTfLiteError);
+}
+
 class UnidirectionalSequenceLSTMIntegerOpModel : public SingleOpModel {
  public:
   UnidirectionalSequenceLSTMIntegerOpModel(

@@ -31,6 +31,7 @@ package(
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
+        "//waymo/accelerator/alpine/contrib/waymo:__pkg__",
         "//waymo/ml/deploy:__subpackages__",
     ]),
     licenses = ["notice"],

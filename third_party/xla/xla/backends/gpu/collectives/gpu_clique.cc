@@ -44,13 +44,13 @@ GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
     bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-    const GpuClique* parent)
+    std::optional<GpuCliqueKey> parent_key)
     : Clique(std::move(communicators)),
       key_(key),
       ids_(ids),
       peer_access_enabled_(peer_access_enabled),
       cancel_(std::move(cancel)),
-      parent_(parent) {}
+      parent_key_(std::move(parent_key)) {}
 
 std::optional<GpuDeviceCommunicator*> GpuClique::device_comm(
     RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const {
@@ -130,9 +130,9 @@ LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
     bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
-    const GpuClique* parent)
+    std::optional<GpuCliqueKey> parent_key)
     : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
-               peer_access_enabled, std::move(cancel), parent) {}
+               peer_access_enabled, std::move(cancel), std::move(parent_key)) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
@@ -144,9 +144,9 @@ void LockableGpuClique::Cancel() { mutable_value().Cancel(); }
 
 bool LockableGpuClique::IsParentSupersetOf(
     const GpuCliqueKey& clique_key) const {
-  const GpuClique* p = this->value().parent();
-  if (p == nullptr) return false;
-  return clique_key.IsSubsetOf(p->key());
+  const std::optional<GpuCliqueKey>& parent_key = this->value().parent_key();
+  if (!parent_key.has_value()) return false;
+  return clique_key.IsSubsetOf(*parent_key);
 }
 
 std::string LockableGpuClique::DebugString() const {

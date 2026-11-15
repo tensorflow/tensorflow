@@ -104,9 +104,12 @@ struct InterpreterValue {
   bool IsTensor() const;
 
   bool operator==(const InterpreterValue& other) const {
-    if (storage.index() != other.storage.index()) return false;
-    if (IsTensor() || std::holds_alternative<Tuple>(storage))
+    if (storage.index() != other.storage.index()) {
+      return false;
+    }
+    if (IsTensor() || std::holds_alternative<Tuple>(storage)) {
       return storage == other.storage;
+    }
     // Tensors treat NaNs as equal, so just wrap the values.
     return AsUnitTensor() == other.AsUnitTensor();
   }

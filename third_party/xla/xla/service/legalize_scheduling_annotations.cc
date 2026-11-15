@@ -815,6 +815,10 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
 absl::StatusOr<bool> CheckNoDataDependencyInSchedulingAnnotations::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Groups in deep pipelining mode exist to merge a producer with its consumer,
+  // so data dependencies inside them are expected.
+  ABSL_ASSIGN_OR_RETURN(absl::flat_hash_set<AnnotationGroupId> deep_pipeline_groups,
+                   GetDeepPipelineSchedulingGroupIds(*module));
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
@@ -822,6 +826,10 @@ absl::StatusOr<bool> CheckNoDataDependencyInSchedulingAnnotations::RunImpl(
         ABSL_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
                          GetSchedulingAnnotation(instr));
         if (!annotation) {
+          continue;
+        }
+        if (annotation->group_id &&
+            deep_pipeline_groups.contains(*annotation->group_id)) {
           continue;
         }
         for (HloInstruction* operand : instr->operands()) {

@@ -175,6 +175,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "location_exporter_test",
+    srcs = ["location_exporter_test.cc"],
+    deps = [
+        ":location_exporter",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "module_attributes_exporter",
     srcs = ["module_attributes_exporter.cc"],
@@ -200,6 +212,7 @@ cc_library(
     deps = [
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -326,12 +339,19 @@ xla_cc_test(
     srcs = ["mlir_hlo_to_hlo_test.cc"],
     deps = [
         ":mlir_hlo_to_hlo",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/translate:register",
         "//xla/mlir/utils:error_util",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],

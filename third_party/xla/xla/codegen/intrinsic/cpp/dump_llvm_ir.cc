@@ -14,25 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/intrinsic/cpp/atan_ll.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 
-int main(int argc, char** argv) {
-  xla::codegen::intrinsics::IntrinsicOptions options;
-  if (argc > 1) {
-    options.features = argv[1];
-  }
-  const std::string& bitcode_view = xla::codegen::GetCppGenIrString(options);
-
+int main() {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module = xla::codegen::ParseEmbeddedBitcode(
-      context, bitcode_view, "embedded_bitcode");
+      context, llvm_ir::kAtanLlIr, "embedded_bitcode");
 
   module->print(llvm::outs(), nullptr);
 

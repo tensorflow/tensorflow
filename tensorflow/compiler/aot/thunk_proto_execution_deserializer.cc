@@ -417,7 +417,7 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
   absl::string_view rng_thunk_invocation_format = R"(
      // Rng Thunk
      {
-         rng_states[{{RNG_STATE_INDEX}}]->GetAndUpdateState({{RNG_STATE_PTR}});
+         rng_state.GetAndUpdateState({{RNG_STATE_PTR}}, {{RNG_DELTA}});
      })";
 
   if (rng_thunk.state_buffer().size() != sizeof(absl::int128)) {
@@ -429,7 +429,7 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
 
   return absl::StrReplaceAll(
       rng_thunk_invocation_format,
-      {{"{{RNG_STATE_INDEX}}", absl::StrCat(rng_state_index_++)},
+      {{"{{RNG_DELTA}}", absl::StrCat(rng_thunk.delta())},
        {"{{RNG_STATE_PTR}}",
         absl::StrCat("reinterpret_cast<uint64_t*>(",
                      GetBufferAllocationString(rng_thunk.state_buffer()),
@@ -568,19 +568,11 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
        };
 
        // Type alias compatible with `FunctionLibrary::Comparator`.
-       using Comparator = void(bool* result, const void* run_options,
-                               const void** params, const void* buffer_table,
-                               const void* status, const void* prof_counters);
+       using Comparator = bool(const void** data);
        Comparator* comparator = reinterpret_cast<Comparator*>(
            {{SORT_FUNCTION_NAME}});
 
-       absl::AnyInvocable<bool(const void** data)> less_than =
-           [comparator](const void** data) {
-             bool result;
-             (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
-             ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
-             return result;
-           };
+       absl::AnyInvocable<bool(const void** data)> less_than = comparator;
 
        xla::cpu::internal::SortInplace(
          {

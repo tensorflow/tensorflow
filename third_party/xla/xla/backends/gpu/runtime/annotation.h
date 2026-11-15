@@ -165,16 +165,19 @@ class ScopedModuleAnnotations {
   const ModuleAnnotations* restore_;
 };
 
+// Returns the module annotations installed on the calling thread by
+// `ScopedModuleAnnotations`, or nullptr.
 const ModuleAnnotations* GetCurrentModuleAnnotations();
 
 std::optional<tsl::profiler::ScopedAnnotation> GetInstructionAnnotation(
     absl::string_view profile_annotation);
 
-ABSL_DEPRECATE_AND_INLINE()
-inline std::optional<tsl::profiler::ScopedAnnotation> GetKernelAnnotation(
-    absl::string_view profile_annotation) {
-  return GetInstructionAnnotation(profile_annotation);
-}
+// Returns the text that `GetInstructionAnnotation` would push for
+// `profile_annotation`: the pre-built xprof name from the current module's
+// annotations, or `Thunk:#hlo_op=<profile_annotation>#`. Returns an empty
+// string for an empty `profile_annotation`.
+std::string GetInstructionAnnotationString(
+    absl::string_view profile_annotation);
 
 }  // namespace xla::gpu
 

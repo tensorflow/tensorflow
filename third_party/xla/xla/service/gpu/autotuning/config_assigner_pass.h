@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/config_assigner.h"
@@ -71,9 +73,16 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
 ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
                                  bool is_buffer_check_supported = true);
 
-InstructionFilterFn GetShouldAssignConfigToInstructionFn(
+// Returns the backends that the flags enable and that the device supports.
+std::vector<autotuner::Backend> GetEnabledBackendTypes(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version);
+
+// Returns which instructions to assign configs to, given the backends that can
+// assign them.
+InstructionFilterFn GetShouldAssignConfigToInstructionFn(
+    const DebugOptions& debug_options,
+    absl::Span<const autotuner::Backend> enabled_backends);
 
 // HloModulePass that assigns backend configurations.
 class ConfigAssignerPass : public HloModulePass {
@@ -81,22 +90,22 @@ class ConfigAssignerPass : public HloModulePass {
   using GetBackendsFn = std::function<
       absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>()>;
 
+  // Creates the backends of `backend_types` that the platform provides.
   static absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetEnabledBackends(se::StreamExecutor* stream_exec,
-                     se::DeviceAddressAllocator* device_allocator,
-                     const Compiler::GpuTargetConfig* target_config,
-                     const AliasInfo* alias_info,
-                     const DebugOptions& debug_options,
-                     mlir::MLIRContext* mlir_context,
-                     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-                     Compiler* compiler, se::PlatformId platform_id,
-                     tsl::thread::ThreadPool* thread_pool,
-                     MlirContextPool* absl_nonnull mlir_context_pool);
+  CreateBackends(absl::Span<const autotuner::Backend> backend_types,
+                 se::StreamExecutor* stream_exec,
+                 se::DeviceAddressAllocator* device_allocator,
+                 const Compiler::GpuTargetConfig* target_config,
+                 const AliasInfo* alias_info, const DebugOptions& debug_options,
+                 mlir::MLIRContext* mlir_context,
+                 HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+                 Compiler* compiler, se::PlatformId platform_id,
+                 tsl::thread::ThreadPool* thread_pool,
+                 MlirContextPool* absl_nonnull mlir_context_pool);
 
   // Note: the target_config must outlive the pass.
   static absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> Create(
       GetBackendsFn get_backends_fn, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version,
       se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
       const Compiler::GpuTargetConfig* target_config,
       const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,

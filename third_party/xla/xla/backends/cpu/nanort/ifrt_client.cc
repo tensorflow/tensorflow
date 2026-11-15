@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/inlined_vector.h"
@@ -1336,7 +1337,8 @@ class NanoExecutable final
 class NanoCompiler final
     : public xla::ifrt::RTTIExtends<NanoCompiler, ifrt::Compiler> {
  public:
-  explicit NanoCompiler(NanoIfrtClient* client) : client_(client) {}
+  explicit NanoCompiler(NanoIfrtClient* absl_nonnull client)
+      : client_(client) {}
 
   using ifrt::Compiler::Compile;
 
@@ -1360,14 +1362,15 @@ class NanoCompiler final
 
   tsl::Future<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       const absl::Cord& serialized,
-      std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
+      absl_nullable std::unique_ptr<ifrt::DeserializeExecutableOptions> options)
+      override {
     return absl::UnimplementedError(
         "DeserializeLoadedExecutable is not implemented.");
   }
   static char ID;  // NOLINT
 
  private:
-  NanoIfrtClient* client_;
+  NanoIfrtClient* absl_nonnull client_;
 };
 
 [[maybe_unused]] char NanoCompiler::ID = 'C';  // NOLINT
@@ -1723,7 +1726,7 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
 }
 
 absl::StatusOr<ifrt::DeviceListRef> NanoIfrtClient::MakeDeviceList(
-    absl::Span<ifrt::Device* const> devices) const {
+    absl::Span<ifrt::Device* absl_nonnull const> devices) const {
   if (ABSL_PREDICT_TRUE(devices.size() == 1)) {
     return single_device_lists_[devices[0]->Id().value()];
   }
@@ -1733,8 +1736,9 @@ absl::StatusOr<ifrt::DeviceListRef> NanoIfrtClient::MakeDeviceList(
 ifrt::Compiler* NanoIfrtClient::GetDefaultCompiler() { return compiler_.get(); }
 
 absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>>
-NanoIfrtClient::Load(absl::Span<const ifrt::ExecutableRef> executables,
-                     absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) {
+NanoIfrtClient::Load(
+    absl::Span<const ifrt::ExecutableRef> executables,
+    absl::Span<absl_nonnull std::unique_ptr<ifrt::LoadOptions>> options) {
   return absl::UnimplementedError("Load is not implemented.");
 }
 
@@ -1747,7 +1751,7 @@ NanoIfrtClient::GetTopologyForDevices(
 absl::StatusOr<std::shared_ptr<const PjRtLayout>>
 NanoIfrtClient::GetDefaultPjRtLayout(ifrt::DType dtype,
                                      absl::Span<const int64_t> dims,
-                                     ifrt::Device* device,
+                                     ifrt::Device* absl_nonnull device,
                                      ifrt::MemoryKind memory_kind) const {
   return std::make_shared<PjRtLayout>(
       LayoutUtil::MakeDescendingLayout(dims.size()));

@@ -48,25 +48,11 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::PropagateTilesToInputs;
-using ::xla::gpu::PropagateTileToInput;
-using ::xla::gpu::PropagateTileToOutput;
-using ::xla::gpu::Tiles;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::PropagateTilesToInputs;
 using ::xla::gpu::PropagateTileToInput;
 using ::xla::gpu::PropagateTileToOutput;
 using ::xla::gpu::Tiles;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::PropagateTilesToInputs;
-using ::xla::gpu::PropagateTileToInput;
-using ::xla::gpu::PropagateTileToOutput;
-using ::xla::gpu::Tiles;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILE_PROPAGATION_H_

@@ -17,22 +17,32 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/pass/hlo_pipeline.pb.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::Eq;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Optional;
+using ::testing::SizeIs;
+using ::tsl::proto_testing::EqualsProto;
 
 static_assert(!std::is_copy_constructible_v<HloPassOptions>);
 static_assert(std::is_move_constructible_v<HloPassOptions>);
@@ -41,6 +51,7 @@ HloPassOptions::ProtoMap MakeProtoMap() {
   HloPassOptions::ProtoMap proto;
   proto["flag"].set_bool_val(true);
   proto["count"].set_int_val(10);
+  proto["mode"].set_string_val("simple");
   return proto;
 }
 
@@ -57,6 +68,7 @@ TEST(HloPassOptionsTest, CopiesProtoMap) {
 
   EXPECT_THAT(options.Get<bool>("flag"), Optional(true));
   EXPECT_THAT(options.Get<int64_t>("count"), Optional(10));
+  EXPECT_THAT(options.Get<std::string>("mode"), Optional(Eq("simple")));
   EXPECT_EQ(options.Get<int64_t>("missing"), std::nullopt);
 }
 
@@ -69,9 +81,75 @@ TEST(HloPassOptionsTest, InitializerListMapsIntegralTypes) {
   EXPECT_THAT(options.CheckAllConsumed(), IsOk());
 }
 
+TEST(HloPassOptionsTest, InitializerListMapsStringTypes) {
+  const std::string str = "string";
+  HloPassOptions options = {{"literal", "literal"},
+                            {"string", str},
+                            {"view", absl::string_view("view")}};
+
+  EXPECT_THAT(options.Get<std::string>("literal"), Optional(Eq("literal")));
+  EXPECT_THAT(options.Get<std::string>("string"), Optional(Eq("string")));
+  EXPECT_THAT(options.Get<std::string>("view"), Optional(Eq("view")));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+}
+
+TEST(HloPassOptionsTest, StringTypeMismatchIsReportedByCheckAllConsumed) {
+  HloPassOptions options = {{"mode", "simple"}};
+
+  EXPECT_EQ(options.Get<bool>("mode"), std::nullopt);
+  EXPECT_THAT(
+      options.CheckAllConsumed(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Pass option 'mode' (string) was not consumed")));
+}
+
 TEST(HloPassOptionsDeathTest, InitializerListRejectsDuplicateName) {
   EXPECT_DEATH(HloPassOptions({{"flag", true}, {"flag", false}}),
                "Duplicate pass option 'flag'");
+}
+
+enum class TestMode { kSimple, kFull };
+
+const absl::flat_hash_map<absl::string_view, TestMode>& TestModes() {
+  static const absl::NoDestructor<
+      absl::flat_hash_map<absl::string_view, TestMode>>
+      kModes({{"simple", TestMode::kSimple}, {"full", TestMode::kFull}});
+  return *kModes;
+}
+
+TEST(HloPassOptionsTest, GetEnumMapsValue) {
+  HloPassOptions options = {{"mode", "full"}};
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              IsOkAndHolds(TestMode::kFull));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+}
+
+TEST(HloPassOptionsTest, GetEnumRejectsUnknownValue) {
+  HloPassOptions options = {{"mode", "fast"}};
+
+  EXPECT_THAT(
+      options.GetEnum("mode", TestModes()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unknown value 'fast' of pass option 'mode'")));
+}
+
+TEST(HloPassOptionsTest, GetEnumRejectsMissingValue) {
+  HloPassOptions options;
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Missing string pass option 'mode'")));
+}
+
+TEST(HloPassOptionsTest, GetEnumLeavesMistypedValueUnconsumed) {
+  HloPassOptions options = {{"mode", 1}};
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(options.CheckAllConsumed(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("'mode' (int64)")));
 }
 
 TEST(HloPassOptionsTest, TypeMismatchIsReportedByCheckAllConsumed) {
@@ -128,6 +206,108 @@ TEST(HloPassOptionsTest, ToProtoRoundTripsWithoutConsuming) {
   EXPECT_THAT(round_tripped.CheckAllConsumed(), IsOk());
   EXPECT_THAT(options.CheckAllConsumed(),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+// Option messages: HloPassOptionValue has only representable fields,
+// HloPipelineNodeProto also has unrepresentable ones.
+
+TEST(HloPassOptionsTest, FromMessageMapsSetFields) {
+  HloPassOptionValue message;
+  // Explicitly set to the default value; still mapped.
+  message.set_bool_val(false);
+
+  HloPassOptions options(message);
+
+  EXPECT_THAT(options.ToProto(), SizeIs(1));
+  EXPECT_THAT(options.Get<bool>("bool_val"), Optional(false));
+}
+
+TEST(HloPassOptionsTest, FromMessageSkipsUnsetFields) {
+  EXPECT_THAT(HloPassOptions(HloPassOptionValue()).ToProto(), IsEmpty());
+}
+
+TEST(HloPassOptionsDeathTest, FromMessageRejectsUnsupportedType) {
+  HloPipelineNodeProto message;
+  message.set_max_fixed_point_iterations(2);
+
+  EXPECT_DEATH(HloPassOptions{message},
+               "max_fixed_point_iterations' of type int32");
+}
+
+TEST(HloPassOptionsDeathTest, FromMessageRejectsRepeatedField) {
+  HloPipelineNodeProto message;
+  (*message.mutable_options())["flag"].set_bool_val(true);
+
+  EXPECT_DEATH(HloPassOptions{message}, "Repeated field '.*options'");
+}
+
+TEST(HloPassOptionsTest, MergeIntoSetsNamedField) {
+  HloPassOptions options = {{"int_val", 17}};
+  HloPassOptionValue message;
+
+  options.MergeInto(message);
+
+  EXPECT_THAT(message, EqualsProto(R"pb(int_val: 17)pb"));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+}
+
+TEST(HloPassOptionsTest, MergeIntoLeavesMistypedOptionUnconsumed) {
+  HloPassOptions options = {{"bool_val", 1}};
+  HloPassOptionValue message;
+
+  options.MergeInto(message);
+
+  EXPECT_FALSE(message.has_bool_val());
+  EXPECT_THAT(
+      options.CheckAllConsumed(),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("'bool_val'")));
+}
+
+TEST(HloPassOptionsTest, MergeIntoLeavesUnrepresentableFieldOptionUnconsumed) {
+  HloPassOptions options = {{"max_fixed_point_iterations", 1}, {"options", 1}};
+  HloPipelineNodeProto message;
+
+  options.MergeInto(message);
+
+  EXPECT_THAT(message, EqualsProto(""));
+  EXPECT_THAT(options.CheckAllConsumed(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(HloPassOptionsTest, MergeIntoLeavesUnknownOptionUnconsumed) {
+  HloPassOptions options = {{"no_such_field", true}};
+  HloPassOptionValue message;
+
+  options.MergeInto(message);
+
+  EXPECT_THAT(options.CheckAllConsumed(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("'no_such_field'")));
+}
+
+TEST(HloPassOptionsTest, MessageRoundTrip) {
+  HloPassOptionValue message;
+  message.set_int_val(4);
+  HloPassOptions options(message);
+
+  HloPassOptionValue round_tripped;
+  options.MergeInto(round_tripped);
+
+  EXPECT_THAT(round_tripped, EqualsProto(message));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+}
+
+TEST(HloPassOptionsTest, StringMessageRoundTrip) {
+  HloPassOptionValue message;
+  message.set_string_val("simple");
+  HloPassOptions options(message);
+
+  EXPECT_THAT(options.ToProto(), SizeIs(1));
+  HloPassOptionValue round_tripped;
+  options.MergeInto(round_tripped);
+
+  EXPECT_THAT(round_tripped, EqualsProto(message));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
 }
 
 }  // namespace

@@ -132,9 +132,9 @@ RankedTensorType SqueezeTensorType(RankedTensorType type,
         cast<DialectInferLayoutInterface>(&encoding.getDialect());
     Attribute dst_encoding;
     [[maybe_unused]] LogicalResult result =
-        inferLayoutInterface->inferReshapeOpEncoding(
-            type.getShape(), encoding, shape, dst_encoding,
-            /*allowReorder=*/false, /*loc=*/std::nullopt);
+        inferLayoutInterface->inferReshapeOpEncoding(type.getShape(), encoding,
+                                                     shape, dst_encoding,
+                                                     /*loc=*/std::nullopt);
     CHECK(succeeded(result));
     if (dst_encoding_hint &&
         succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
@@ -202,7 +202,7 @@ LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
 // Extracts unit dimensions from the tt.reshape operand and prepends them as
 // squeeze_dims.
 LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
-  if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
+  if (op.getEfficientLayoutAttr()) {
     return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
   }
   auto squeeze_dims = GetDimsToSqueeze(op.getSrc().getType());
@@ -223,7 +223,7 @@ LogicalResult SqueezeReshapeOperand(ReshapeOp op, PatternRewriter& rewriter) {
 // Extracts unit dimensions from the tt.reshape result and appends them as
 // expand_dims.
 LogicalResult ExpandReshapeResult(ReshapeOp op, PatternRewriter& rewriter) {
-  if (op.getAllowReorderAttr() || op.getEfficientLayoutAttr()) {
+  if (op.getEfficientLayoutAttr()) {
     return rewriter.notifyMatchFailure(op, "Unsupported reshape.");
   }
   auto expand_dims = GetDimsToSqueeze(op.getType());

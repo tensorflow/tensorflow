@@ -59,9 +59,9 @@ struct ARReplicaGroups {
 // Contains relevant data to rewrite the AR + DS into AR + DS + AR.
 struct AllReduceRewriteSpec {
   // Determines a dimension on which DS occurs.
-  int split_dim;
+  int64_t split_dim;
   // Determines the size of the process group.
-  int group_size;
+  int64_t group_size;
   // AllReduce instruction to be rewritten.
   HloAllReduceInstruction* all_reduce;
   // DynamicSlice following the `all_reduce` indicating logical RS.
@@ -133,10 +133,10 @@ using RewriteDecision =
 
 // Returns a single dimension which is being split by `ds`. Returns
 // std::nullopt if there are more, or no dimension to be split.
-static std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
-                                      const HloDynamicSliceInstruction& ds) {
-  int split_dim = -1;
-  int num_dims = 0;
+static std::optional<int64_t> GetSplitDim(
+    const HloAllReduceInstruction& ar, const HloDynamicSliceInstruction& ds) {
+  int64_t split_dim = -1;
+  int64_t num_dims = 0;
   for (int64_t dim = 0; dim < ar.shape().dimensions().size(); ++dim) {
     if (ar.shape().dimensions(dim) != ds.shape().dimensions(dim)) {
       num_dims++;
@@ -151,10 +151,10 @@ static std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
 }
 
 // For input collective instruction `ar` get the process group size (# shards).
-static std::optional<int> GetProcessGroupSize(
+static std::optional<int64_t> GetProcessGroupSize(
     const HloAllReduceInstruction& ar, const HloDynamicSliceInstruction& ds) {
   CHECK(ds.operand(0) == &ar) << "Irrelevant AR + DS pair.";
-  std::optional<int> split_dim = GetSplitDim(ar, ds);
+  std::optional<int64_t> split_dim = GetSplitDim(ar, ds);
   if (!split_dim.has_value()) {
     return std::nullopt;
   }
@@ -176,26 +176,27 @@ static ARReplicaGroupMap GetReplicaGroupsMap(HloComputation& computation) {
   return map;
 }
 
-static ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
+static ARReplicaGroups GetNewReplicaGroups(int64_t group_size,
+                                           int64_t num_partitions) {
   CHECK_EQ(num_partitions % group_size, 0);
 
   std::vector<ReplicaGroup> first_ar_rgs, second_ar_rgs;
-  int num_units = num_partitions / group_size;
+  int64_t num_units = num_partitions / group_size;
   first_ar_rgs.reserve(num_units);
   second_ar_rgs.reserve(group_size);
 
   // Construct first AR replica groups.
-  for (int u = 0; u < group_size * num_units; u += group_size) {
+  for (int64_t u = 0; u < group_size * num_units; u += group_size) {
     ReplicaGroup& group = first_ar_rgs.emplace_back();
-    for (int r = u; r < u + group_size; r++) {
+    for (int64_t r = u; r < u + group_size; r++) {
       group.add_replica_ids(r);
     }
   }
 
   // Construct second AR replica groups.
-  for (int g = 0; g < group_size; g++) {
+  for (int64_t g = 0; g < group_size; g++) {
     ReplicaGroup& group = second_ar_rgs.emplace_back();
-    for (int r = g; r < group_size * num_units; r += group_size) {
+    for (int64_t r = g; r < group_size * num_units; r += group_size) {
       group.add_replica_ids(r);
     }
   }
@@ -211,7 +212,7 @@ static ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
 // be resolved or does not imply a follow-on same-shard AR.
 static std::optional<ARReplicaGroups> TryBuildSplitReplicaGroups(
     const HloAllReduceInstruction& ar, const HloDynamicSliceInstruction& ds,
-    int split_dim, int ds_factor, int64_t num_partitions,
+    int64_t split_dim, int64_t ds_factor, int64_t num_partitions,
     int64_t num_replicas) {
   auto split = BuildDSSplitReplicaGroups(
       &ar, &ds, split_dim, ds_factor, ar.replica_groups(), num_partitions,
@@ -341,7 +342,7 @@ static RewriteDecision CanRewrite(const HloModule& module,
     };
   }
 
-  int num_partitions = config.num_partitions();
+  int64_t num_partitions = config.num_partitions();
   std::vector<ReplicaGroup> rgs = ar->replica_groups();
   int64_t input_group_size = 0;
   if (!HasUniformReplicaGroupSizes(rgs, &input_group_size)) {
@@ -351,7 +352,7 @@ static RewriteDecision CanRewrite(const HloModule& module,
     };
   }
 
-  std::optional<int> split_dim = GetSplitDim(*ar, *ds);
+  std::optional<int64_t> split_dim = GetSplitDim(*ar, *ds);
   if (!split_dim.has_value()) {
     return RewriteInfeasibleReason{
         &instruction,
@@ -359,7 +360,7 @@ static RewriteDecision CanRewrite(const HloModule& module,
     };
   }
 
-  std::optional<int> ds_factor = GetProcessGroupSize(*ar, *ds);
+  std::optional<int64_t> ds_factor = GetProcessGroupSize(*ar, *ds);
   if (!ds_factor.has_value()) {
     return RewriteInfeasibleReason{
         &instruction,

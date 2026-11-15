@@ -29,16 +29,16 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor::gpu {
 
 // Process-wide map from `(KeySpace, graph_id)` to the HLO annotation active
 // when XLA created each CUDA graph node. `CudaCommandBuffer` populates entries
-// when command buffer telemetry is enabled and attaches a `CUuserObject` to
-// unregister them when the graph is destroyed (see
-// cuda_command_buffer_telemetry.h); `CuptiTraceCollector` resolves them during
-// harvest.
+// when command buffer telemetry is enabled and unregisters them when the owning
+// command buffers are destroyed (see cuda_command_buffer_telemetry.h);
+// `CuptiTraceCollector` resolves them during harvest.
 //
 // While a `HarvestHold` is active, unregistered entries are marked `destroyed`
 // ("parked", capped at `max_parked_bytes`) instead of erased so graphs
@@ -136,12 +136,26 @@ class CudaGraphAnnotationRegistry {
   CudaGraphAnnotationRegistry& operator=(const CudaGraphAnnotationRegistry&) =
       delete;
 
-  // Starts tracking `graph_id` in `space` unless it has an entry already.
-  // Returns true if this call created the entry: the caller then attaches the
-  // `CUuserObject` that unregisters it when the graph is destroyed. A parked
-  // entry is not revived, since its graph is destroyed.
+  // Identifies an entry: a graph ID in a KeySpace.
+  struct GraphRef {
+    uint32_t graph_id = 0;
+    KeySpace space = KeySpace::kTemplateGraph;
+
+    friend bool operator==(const GraphRef& a, const GraphRef& b) {
+      return a.graph_id == b.graph_id && a.space == b.space;
+    }
+  };
+
+  // Starts tracking `graph_id` in `space` with `num_owners = 1` unless it has
+  // an entry already. Returns true if this call created the entry: the caller
+  // then owns that reference and must balance it with `UnregisterGraphs`. A
+  // parked entry is not revived, since its graph is destroyed.
   bool TrackGraph(uint32_t graph_id, KeySpace space = KeySpace::kTemplateGraph)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  // Increments the owner count of each live entry in `graphs` under a single
+  // lock. Each retained live entry must be balanced by `UnregisterGraphs`.
+  void RetainGraphs(absl::Span<const GraphRef> graphs) ABSL_LOCKS_EXCLUDED(mu_);
 
   // Returns whether `graph_id` has a live entry in `space`. Parked entries
   // don't count: they belong to destroyed graphs.
@@ -172,12 +186,17 @@ class CudaGraphAnnotationRegistry {
                            KeySpace space = KeySpace::kTemplateGraph) const
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  // Unregisters `graph_id` in `space`, parking the entry if a harvest hold is
-  // active or erasing it otherwise. Called from the CUuserObject destructor on
-  // a CUDA driver thread; makes no CUDA calls and does not log.
+  // Decrements the owner count of each live entry in `graphs` under a single
+  // lock, parking or erasing entries whose owner count reaches zero. Makes no
+  // CUDA calls.
+  void UnregisterGraphs(absl::Span<const GraphRef> graphs)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   void UnregisterGraph(uint32_t graph_id,
                        KeySpace space = KeySpace::kTemplateGraph)
-      ABSL_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_) {
+    UnregisterGraphs({GraphRef{graph_id, space}});
+  }
 
   // Takes a harvest hold. Holds are counted, so with overlapping sessions the
   // parked entries are purged only when the last hold is released.
@@ -204,6 +223,7 @@ class CudaGraphAnnotationRegistry {
   }
 
   struct GraphEntry {
+    size_t num_owners = 0;
     // Sum of the annotation sizes.
     size_t bytes = 0;
     absl::flat_hash_map<uint64_t, std::string> nodes;
@@ -223,6 +243,11 @@ class CudaGraphAnnotationRegistry {
   // Returns the annotation of the node, from a live or parked entry.
   const std::string* FindNodeLocked(GraphKey graph_key, uint64_t node_id) const
       ABSL_SHARED_LOCKS_REQUIRED(mu_);
+  // Parks or erases the live entry of `graph_key`, if any. An erased entry is
+  // moved to `garbage`, for the caller to destroy after releasing `mu_`.
+  void UnregisterGraphLocked(GraphKey graph_key,
+                             std::vector<GraphEntry>& garbage)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateNumGraphsLocked() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const size_t max_parked_bytes_;

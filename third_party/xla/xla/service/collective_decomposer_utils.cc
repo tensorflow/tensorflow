@@ -45,28 +45,47 @@ CreateStartIndicesForCollectiveDecomposition(
                                               zero);
   const Shape &scalar_shape = zero->shape();
 
+  auto create_partition_id = [&]() {
+    HloInstruction* partition_id =
+        computation->AddInstruction(HloInstruction::CreatePartitionId());
+    if (update_layout) {
+      update_layout(*partition_id->mutable_shape());
+    }
+    return partition_id;
+  };
+
+  auto create_replica_id = [&]() {
+    HloInstruction* replica_id =
+        computation->AddInstruction(HloInstruction::CreateReplicaId());
+    if (update_layout) {
+      update_layout(*replica_id->mutable_shape());
+    }
+    return replica_id;
+  };
+
   auto create_flattened_id = [&](HloInstruction *replica_index) {
     if (replica_index == zero) {
       // special case for 0 * num_partitions + partition_id
-      return computation->AddInstruction(HloInstruction::CreatePartitionId());
+      return create_partition_id();
     }
     const HloModuleConfig &config = computation->parent()->config();
     HloInstruction *partition_count =
         computation->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<uint32_t>(config.num_partitions())));
+    if (update_layout) {
+      update_layout(*partition_count->mutable_shape());
+    }
     HloInstruction *mul = computation->AddInstruction(
         HloInstruction::CreateBinary(scalar_shape, HloOpcode::kMultiply,
                                      replica_index, partition_count));
     return computation->AddInstruction(HloInstruction::CreateBinary(
-        scalar_shape, HloOpcode::kAdd, mul,
-        computation->AddInstruction(HloInstruction::CreatePartitionId())));
+        scalar_shape, HloOpcode::kAdd, mul, create_partition_id()));
   };
 
   HloInstruction *participant_id;
   switch (group_mode) {
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA:
-      participant_id =
-          computation->AddInstruction(HloInstruction::CreateReplicaId());
+      participant_id = create_replica_id();
       break;
     case CollectiveOpGroupMode::
         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION:
@@ -80,17 +99,19 @@ CreateStartIndicesForCollectiveDecomposition(
       // replica_id) and then accounting for partition_id:
       //    replica_index = map replica_id to index using the replica_groups.
       //    index = replica_index * num_partitions + partition_id;
-      participant_id =
-          computation->AddInstruction(HloInstruction::CreateReplicaId());
+      participant_id = create_replica_id();
       break;
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
-      participant_id =
-          computation->AddInstruction(HloInstruction::CreatePartitionId());
+      participant_id = create_partition_id();
       break;
-    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
-      participant_id = create_flattened_id(
-          computation->AddInstruction(HloInstruction::CreateReplicaId()));
+    case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
+      const HloModuleConfig& config = computation->parent()->config();
+      participant_id = create_flattened_id(config.replica_count() == 1 &&
+                                                   config.num_partitions() > 1
+                                               ? zero
+                                               : create_replica_id());
       break;
+    }
     default: {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported group mode: ", group_mode));
@@ -166,6 +187,9 @@ CreateStartIndicesForCollectiveDecomposition(
   HloInstruction *scale = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(
           shard_shape.dimensions(shard_dimension))));
+  if (update_layout) {
+    update_layout(*scale->mutable_shape());
+  }
   index = computation->AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kMultiply, index, scale));
   start_indices[shard_dimension] = index;

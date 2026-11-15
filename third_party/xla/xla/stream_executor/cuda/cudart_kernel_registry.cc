@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <elf.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -150,56 +151,72 @@ absl::StatusOr<CudaKernelFuncAttributes> FindCudaRuntimeKernelFuncAttributes(
 
 extern "C" {
 
-// Declarations of symbols we want to wrap.
-void** __cudaRegisterFatBinary(void* fat_cubin);
-void __cudaRegisterFunction(void** fat_cubin_handle, const char* host_fun,
-                            char* device_fun, const char* device_name,
-                            int thread_limit, void* tid, void* bid, void* b_dim,
-                            void* g_dim, int* w_size);
+// Weak declarations of CUDA runtime registration functions. They are resolved
+// when `libcudart` is linked into the binary.
+__attribute__((weak)) void** __cudaRegisterFatBinary(void* fat_cubin);
+__attribute__((weak)) void __cudaRegisterFunction(
+    void** fat_cubin_handle, const char* host_fun, char* device_fun,
+    const char* device_name, int thread_limit, void* tid, void* bid,
+    void* b_dim, void* g_dim, int* w_size);
 
-// When this library is linked as a shared object (.so), the linker might omit
-// wrapping of __cudaRegisterFatBinary/__cudaRegisterFunction if there are no
-// references to them in the library. This dummy function forces references to
-// these symbols, ensuring the linker applies the --wrap flags and resolves
-// the corresponding __real_ symbols. We call this from the wrapper to prevent
-// the compiler/linker from optimizing it away.
-uintptr_t dummy_use_to_force_wrap() {
-  volatile uintptr_t p1 = reinterpret_cast<uintptr_t>(&__cudaRegisterFatBinary);
-  volatile uintptr_t p2 = reinterpret_cast<uintptr_t>(&__cudaRegisterFunction);
-  return p1 + p2;
-}
-
-// Declaration of real symbols provided by CUDA runtime.
-void** __real___cudaRegisterFatBinary(void* fat_cubin);
-void __real___cudaRegisterFunction(void** fat_cubin_handle,
-                                   const char* host_fun, char* device_fun,
-                                   const char* device_name, int thread_limit,
-                                   void* tid, void* bid, void* b_dim,
-                                   void* g_dim, int* w_size);
-
-// Linker wrapper intercepting calls to __cudaRegisterFatBinary.
-void** __wrap___cudaRegisterFatBinary(void* fat_cubin) {
-  uintptr_t dummy = dummy_use_to_force_wrap();
-  (void)dummy;
-  void** handle = __real___cudaRegisterFatBinary(fat_cubin);
+// Entry points targeted by `objcopy --redefine-sym` when
+// `embeddable_cuda_library` is configured with `register_with_cudart = True`.
+void** __xla_cudart_cudaRegisterFatBinary(void* fat_cubin) {
+  void** handle = __cudaRegisterFatBinary(fat_cubin);
   ::stream_executor::cuda::GetKernelRegistry().RegisterFatBinary(handle,
                                                                  fat_cubin);
   return handle;
 }
 
-// Linker wrapper intercepting calls to __cudaRegisterFunction.
-void __wrap___cudaRegisterFunction(void** fat_cubin_handle,
-                                   const char* host_fun, char* device_fun,
-                                   const char* device_name, int thread_limit,
-                                   void* tid, void* bid, void* b_dim,
-                                   void* g_dim, int* w_size) {
+void __xla_cudart_cudaRegisterFunction(void** fat_cubin_handle,
+                                       const char* host_fun, char* device_fun,
+                                       const char* device_name,
+                                       int thread_limit, void* tid, void* bid,
+                                       void* b_dim, void* g_dim, int* w_size) {
   ::stream_executor::cuda::GetKernelRegistry().RegisterCudaRuntimeKernel(
       fat_cubin_handle, reinterpret_cast<const void*>(host_fun),
       device_name != nullptr ? device_name : "");
 
-  __real___cudaRegisterFunction(fat_cubin_handle, host_fun, device_fun,
-                                device_name, thread_limit, tid, bid, b_dim,
-                                g_dim, w_size);
+  __cudaRegisterFunction(fat_cubin_handle, host_fun, device_fun, device_name,
+                         thread_limit, tid, bid, b_dim, g_dim, w_size);
 }
+
+// Entry points targeted by `objcopy --redefine-sym` when
+// `embeddable_cuda_library` is configured with `register_with_cudart = False`.
+void** __xla_isolated_cudaRegisterFatBinary(void* fat_cubin) {
+  void** handle = reinterpret_cast<void**>(fat_cubin);
+  ::stream_executor::cuda::GetKernelRegistry().RegisterFatBinary(handle,
+                                                                 fat_cubin);
+  return handle;
+}
+
+void __xla_isolated_cudaRegisterFunction(
+    void** fat_cubin_handle, const char* host_fun, char* /*device_fun*/,
+    const char* device_name, int /*thread_limit*/, void* /*tid*/, void* /*bid*/,
+    void* /*b_dim*/, void* /*g_dim*/, int* /*w_size*/) {
+  ::stream_executor::cuda::GetKernelRegistry().RegisterCudaRuntimeKernel(
+      fat_cubin_handle, reinterpret_cast<const void*>(host_fun),
+      device_name != nullptr ? device_name : "");
+}
+
+void __xla_isolated_cudaRegisterFatBinaryEnd(void** /*fat_cubin_handle*/) {}
+
+void __xla_isolated_cudaUnregisterFatBinary(void** /*fat_cubin_handle*/) {}
+
+void __xla_isolated_cudaRegisterVar(void** /*fat_cubin_handle*/,
+                                    char* /*host_var*/,
+                                    char* /*device_address*/,
+                                    const char* /*device_name*/, int /*ext*/,
+                                    size_t /*size*/, int /*constant*/,
+                                    int /*global*/) {}
+
+void __xla_isolated_cudaRegisterManagedVar(void** /*fat_cubin_handle*/,
+                                           void** /*host_var_ptr_address*/,
+                                           char* /*device_address*/,
+                                           const char* /*device_name*/,
+                                           int /*ext*/, size_t /*size*/,
+                                           int /*constant*/, int /*global*/) {}
+
+char __xla_isolated_cudaInitModule(void** /*fat_cubin_handle*/) { return 0; }
 
 }  // extern "C"

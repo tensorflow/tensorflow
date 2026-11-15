@@ -28,9 +28,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/transforms/compiled_cudnn_graph_cache.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -74,10 +76,6 @@ class NVPTXCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
 
-  bool IsScaledDotSupportedByBackend(
-      const HloInstruction* instr,
-      const GpuTargetConfig& gpu_target_config) const override;
-
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTopology& gpu_topology,
@@ -109,6 +107,8 @@ class NVPTXCompiler : public GpuCompiler {
       bool relocatable, const HloModule* debug_module,
       std::optional<int> shard_number) override;
 
+  absl::StatusOr<absl::string_view> AsmFileExtension() const override;
+
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config,
       const stream_executor::DeviceDescription& device_description,
@@ -123,6 +123,10 @@ class NVPTXCompiler : public GpuCompiler {
  private:
   CompilationProviderFactory compilation_provider_factory_;
   absl::Mutex compilation_providers_mutex_;
+  // cuDNN graphs built by this compiler. Shared between the compilations of
+  // single fusions during autotuning (which run on this compiler) and the
+  // final compilation of a module, and between compilations of modules.
+  CompiledCudnnGraphCache cudnn_graph_cache_;
   absl::flat_hash_map<se::cuda::CompilationProviderOptions,
                       std::unique_ptr<se::cuda::CompilationProvider>>
       compilation_providers_ ABSL_GUARDED_BY(compilation_providers_mutex_);

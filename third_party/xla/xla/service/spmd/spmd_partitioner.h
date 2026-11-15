@@ -82,7 +82,7 @@ struct SpmdPartitionerOptions {
   bool bidirectional_windowed_einsum = false;
 
   // Whether the entry computations' signature could change after partitioning.
-  bool allow_module_signature_change = false;
+  bool allow_module_signature_change = true;
 
   // Whether the entry computations' layout signature could change after
   // partitioning.
@@ -401,7 +401,8 @@ class SpmdPartitioner : public HloModulePass {
       }
     }
     return hlo->opcode() == HloOpcode::kInfeed ||
-           hlo->opcode() == HloOpcode::kOutfeed;
+           hlo->opcode() == HloOpcode::kOutfeed ||
+           hlo->opcode() == HloOpcode::kRngGetAndUpdateState;
   }
 
   // Preprocesses the graph to simplify some communication patterns. E.g., merge
@@ -761,6 +762,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleReshape(HloInstruction* hlo) override;
   absl::Status HandleReverse(HloInstruction* hlo) override;
   absl::Status HandleRng(HloInstruction* hlo) override;
+  absl::Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
   absl::Status HandleScan(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
   absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
@@ -980,16 +982,45 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
 
+  // Writes `piece_update_tensor` into `current_input` at `piece_dus_starts`.
+  // `current_input` is the partitioned `hlo->shape()`, or, if `region_shape`
+  // is given, a region of it with that (unpartitioned) shape, which the
+  // starts are then relative to.
   absl::StatusOr<HloInstruction*> ProcessUpdatePiece(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* piece_update_tensor,
-      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input);
+      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input,
+      const Shape* region_shape = nullptr);
 
   absl::StatusOr<HloInstruction*> ProcessUpdatePieceExtractOperand(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* piece_update_tensor,
       std::vector<int64_t> piece_dus_starts, HloInstruction* current_input,
       HloInstruction* zeroElemOp);
+
+  // For an update that is a chain of single-use elementwise ops over slices
+  // (and scalar broadcasts), builds the chain at the shard shape of the
+  // target directly from the slices' operands, as
+  // ProcessUpdatePieceExtractOperand does for a single slice: a slice at the
+  // update's own window then costs no communication at all, and the rows
+  // outside the window are computed and masked away. Returns nullptr when a
+  // leaf cannot be expanded; `any_comm_free` reports whether some slice was
+  // expanded without communication.
+  absl::StatusOr<HloInstruction*> ExpandElementwiseUpdate(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* update,
+      const std::vector<int64_t>& piece_dus_starts,
+      HloInstruction* current_input, HloInstruction* zeroElemOp,
+      const absl::flat_hash_set<const HloInstruction*>& chain,
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*>& memo,
+      bool* any_comm_free);
+
+  // Whether expanding `slice` to the target of `hlo` at `piece_dus_starts`
+  // moves no data between shards (it is aligned with the window on every
+  // partitioned dimension).
+  bool IsSliceExpansionCommunicationFree(
+      const HloInstruction* hlo, const HloInstruction* leaf,
+      const std::vector<int64_t>& piece_dus_starts) const;
 
   // Handler for operations with no conflicts.
   // go/keep-sorted start

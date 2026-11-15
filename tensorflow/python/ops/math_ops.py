@@ -301,23 +301,31 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """
   if axis is None:
     axis = 0
-
-  if hasattr(axis, "dtype"):
-    allowed_dtypes = {
-        dtypes.int8,
-        dtypes.uint8,
-        dtypes.int16,
-        dtypes.uint16,
-        dtypes.int32,
-        dtypes.int64,
-    }
-    if axis.dtype not in allowed_dtypes:
-      raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
-    castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
-    if axis.dtype in castable_types:
-      axis = cast(axis, dtypes.int32)
   elif not isinstance(axis, int):
-    raise TypeError("axis must be int or Tensor with integer datatype")
+    # NumPy integer scalars and 0-D integer arrays carry a `np.dtype`, not a
+    # `tf.DType`; normalize them to Python `int`.
+    if isinstance(axis, np.integer) or (
+        isinstance(axis, np.ndarray)
+        and axis.ndim == 0
+        and np.issubdtype(axis.dtype, np.integer)
+    ):
+      axis = int(axis)
+    elif hasattr(axis, "dtype") and isinstance(axis.dtype, dtypes.DType):
+      allowed_dtypes = {
+          dtypes.int8,
+          dtypes.uint8,
+          dtypes.int16,
+          dtypes.uint16,
+          dtypes.int32,
+          dtypes.int64,
+      }
+      if axis.dtype not in allowed_dtypes:
+        raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
+      castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
+      if axis.dtype in castable_types:
+        axis = cast(axis, dtypes.int32)
+    else:
+      raise TypeError("axis must be int or Tensor with integer datatype")
 
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
@@ -1188,24 +1196,44 @@ def saturate_cast(value, dtype, name=None):
       # since we only expect to hit this error in cases of bloat16.
       promoted_type = float
 
-    min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-    promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
-    if promoted[0] < promoted[1]:
-      min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
+    if in_dtype.is_integer:
+      # Compare as Python integers, which are exact. Going through float rounds
+      # the int64 and uint64 limits up to a value the input dtype cannot hold,
+      # and converting that back is platform dependent: on x86 it yields
+      # INT64_MIN, which would clamp every value to it. The same goes for int()
+      # on bfloat16, which converts through a C long, so float limits go through
+      # float first.
+      if out_real_dtype.is_integer:
+        out_min, out_max = int(out_real_dtype.min), int(out_real_dtype.max)
+      else:
+        out_min = int(float(out_real_dtype.min))
+        out_max = int(float(out_real_dtype.max))
+      min_limit = np_dtype(max(int(in_dtype.min), out_min))
+      max_limit = np_dtype(min(int(in_dtype.max), out_max))
+    else:
+      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
+      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+      if promoted[0] < promoted[1]:
+        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-    max_limit = np_dtype(
-        np.minimum(float(in_dtype.max), float(out_real_dtype.max))
-    )
-    promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
-    if promoted[0] > promoted[1]:
-      max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
+      max_limit = np_dtype(
+          np.minimum(float(in_dtype.max), float(out_real_dtype.max))
+      )
+      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+      if promoted[0] > promoted[1]:
+        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
-    value = gen_math_ops._clip_by_value(
-        value,
-        ops.convert_to_tensor(min_limit, dtype=in_dtype),
-        ops.convert_to_tensor(max_limit, dtype=in_dtype),
-        name="clamp",
-    )
+    min_limit = ops.convert_to_tensor(min_limit, dtype=in_dtype)
+    max_limit = ops.convert_to_tensor(max_limit, dtype=in_dtype)
+    if in_dtype in (dtypes.uint32, dtypes.uint64):
+      # ClipByValue has no kernels for these dtypes.
+      value = gen_math_ops.minimum(
+          gen_math_ops.maximum(value, min_limit), max_limit, name="clamp"
+      )
+    else:
+      value = gen_math_ops._clip_by_value(
+          value, min_limit, max_limit, name="clamp"
+      )
     return cast(value, dtype, name=name)
 
 
@@ -2783,6 +2811,10 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
         f"Received integer type {means.dtype}."
     )
   diff = input_tensor - means
+  # Rounding error in `means` shifts every element of `diff` by the same
+  # amount. Subtracting the squared mean of `diff` removes that shift from the
+  # result instead of counting it as variance.
+  mean_diff = reduce_mean(diff, axis=axis, keepdims=keepdims)
   if diff.dtype.is_complex:
     # For complex values we need to take the absolute value before squaring.
     # This is achieved by multiplying with the conjugate.
@@ -2790,9 +2822,18 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
     squared_deviations = gen_math_ops.real(
         gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
     )
+    squared_mean_diff = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(mean_diff), mean_diff),
+        Tout=real_dtype,
+    )
   else:
     squared_deviations = gen_math_ops.square(diff)
-  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    squared_mean_diff = gen_math_ops.square(mean_diff)
+  return gen_math_ops.maximum(
+      reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+      - squared_mean_diff,
+      0,
+  )
 
 
 @tf_export("math.reduce_std")

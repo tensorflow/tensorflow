@@ -22,11 +22,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -91,8 +93,16 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
       if (auto all_scatter = mlir::dyn_cast<mlir::TF::DTensorAllScatterOp>(
               *all_reduce->getUsers().begin())) {
         VLOG(2) << "Found potential AllReduce+AllScatter to fuse.";
-        if (VLOG_IS_ON(2)) all_reduce.dump();
-        if (VLOG_IS_ON(2)) all_scatter.dump();
+        if (VLOG_IS_ON(2)) {
+          all_reduce.print(llvm::errs(),
+                           mlir::OpPrintingFlags().useLocalScope());
+          llvm::errs() << "\n";
+        }
+        if (VLOG_IS_ON(2)) {
+          all_scatter.print(llvm::errs(),
+                            mlir::OpPrintingFlags().useLocalScope());
+          llvm::errs() << "\n";
+        }
 
         const Layout original_layout = all_scatter.getInputLayout();
         const Layout desired_layout = all_scatter.getOutputLayout();
@@ -129,7 +139,10 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
             GetScatterGroupAssignment(all_scatter, scatter_dim);
 
         VLOG(2) << "All scatter group assignment: ";
-        if (VLOG_IS_ON(2)) all_scatter_group_assignment_attr.dump();
+        if (VLOG_IS_ON(2)) {
+          all_scatter_group_assignment_attr.print(llvm::errs());
+          llvm::errs() << "\n";
+        }
 
         bool same_group =
             same_group_assignments(all_reduce_group_assignment_attr,

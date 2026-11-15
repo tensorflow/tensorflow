@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/analysis/alias_info.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -492,6 +495,76 @@ std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
   }
 
   return {instruction, operand_index};
+}
+
+bool IsMatchingInPlaceDusReadSlice(const HloInstruction* slice,
+                                   const HloInstruction* base_inst,
+                                   const HloInstruction* dus,
+                                   bool ignore_layout) {
+  Shape::Equal shape_eq = Shape::Equal().IgnoreElementType();
+  if (ignore_layout) {
+    shape_eq.IgnoreLayout();
+  }
+  if (dus->opcode() != HloOpcode::kDynamicUpdateSlice ||
+      slice->operand_count() == 0 || slice->operand(0) != base_inst ||
+      slice->OperandIndices(base_inst).size() != 1 ||
+      !shape_eq(base_inst->shape(), dus->operand(0)->shape()) ||
+      !shape_eq(slice->shape(), dus->operand(1)->shape())) {
+    return false;
+  }
+  if (slice->opcode() == HloOpcode::kDynamicSlice) {
+    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
+      return true;
+    }
+    if (dus->operand_count() != slice->operand_count() + 1) {
+      return false;
+    }
+    for (int64_t i = 1; i < slice->operand_count(); ++i) {
+      if (slice->operand(i) != dus->operand(i + 1)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (slice->opcode() == HloOpcode::kSlice) {
+    if (!absl::c_all_of(slice->slice_strides(),
+                        [](int64_t stride) { return stride == 1; })) {
+      return false;
+    }
+    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
+      return true;
+    }
+    const int64_t rank = slice->shape().dimensions().size();
+    if (dus->operand_count() != rank + 2) {
+      return false;
+    }
+    for (int64_t d = 0; d < rank; ++d) {
+      if (dus->operand(0)->shape().is_dynamic_dimension(d) ||
+          dus->operand(1)->shape().is_dynamic_dimension(d)) {
+        return false;
+      }
+      const HloInstruction* dus_idx = dus->operand(d + 2);
+      if (dus_idx->opcode() != HloOpcode::kConstant ||
+          !ShapeUtil::IsEffectiveScalar(dus_idx->shape())) {
+        return false;
+      }
+      std::optional<int64_t> idx_val = dus_idx->literal().GetFirstInteger();
+      if (!idx_val.has_value()) {
+        return false;
+      }
+      const int64_t max_start = dus->operand(0)->shape().dimensions(d) -
+                                dus->operand(1)->shape().dimensions(d);
+      if (max_start < 0) {
+        return false;
+      }
+      const int64_t clamped_start = std::clamp(*idx_val, int64_t{0}, max_start);
+      if (clamped_start != slice->slice_starts(d)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
 }
 
 }  // namespace xla

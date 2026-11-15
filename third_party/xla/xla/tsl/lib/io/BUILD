@@ -301,6 +301,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:cord",
     ],
 )
@@ -608,6 +609,7 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:str_util",

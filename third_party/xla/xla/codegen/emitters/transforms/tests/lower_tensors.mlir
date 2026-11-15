@@ -84,12 +84,14 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NEXT:     arith.addf
 // CHECK-NEXT:     return
 
+// The kernel only reads the buffer, but other kernels may write it, so the
+// argument is readonly and its loads are not invariant.
 // CHECK:        func.func private @tensorarg(%[[ARG0:.*]]: !llvm.ptr
-// CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
+// CHECK-SAME:        {llvm.readonly, xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
 // CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX]]]
-// CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] invariant
+// CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] : !llvm.ptr -> f32
 // CHECK:           %[[RET:.*]] = call @add(%[[C2]], %[[V2]])
 // CHECK:           return %[[RET]]
 
@@ -1416,7 +1418,134 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
-// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 32> : !llvm.ptr -> vector<8xi64>
+
+// -----
+
+func.func @transfer_read_alignment_partial_offset(%arg0: tensor<16xi64> {llvm.align = 32 : index}) -> vector<2xi64> {
+  %c2 = arith.constant 2 : index
+  %c0_i64 = arith.constant 0 : i64
+  %0 = vector.transfer_read %arg0[%c2], %c0_i64 {in_bounds = [true]} : tensor<16xi64>, vector<2xi64>
+  return %0 : vector<2xi64>
+}
+// CHECK-LABEL: @transfer_read_alignment_partial_offset(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 2]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<2xi64>
+
+// -----
+
+#align_map = #xla.indexing_map<"(d0) -> (d0 * 4 + 8), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_multi_result_map = #xla.indexing_map<"(d0) -> (d0 + 1, d0 * 4 + 8), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing_multi_result(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index, %other: tensor<32xf32>) -> (f32, vector<4xf32>) {
+  %cst = arith.constant 0.0 : f32
+  %0:2 = xla.apply_indexing #align_multi_result_map(%idx)
+  %1 = tensor.extract %other[%0#0] : tensor<32xf32>
+  %2 = vector.transfer_read %arg0[%0#1], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1, %2 : f32, vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_multi_result(
+// CHECK-SAME:  %[[ARG0:[^:]*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]]:2 = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]]#1 : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_max_map = #xla.indexing_map<"(d0) -> (max(d0 * 4, 8)), domain: d0 in [0, 3]">
+func.func @transfer_read_alignment_apply_indexing_max(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_max_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_max(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_mod_min_map = #xla.indexing_map<"(d0) -> (min((d0 * 8) mod 24, 12)), domain: d0 in [0, 7]">
+func.func @transfer_read_alignment_apply_indexing_mod_min(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_mod_min_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_mod_min(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 16> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#align_div_map = #xla.indexing_map<"(d0) -> (d0 floordiv 3), domain: d0 in [0, 11]">
+func.func @transfer_read_alignment_apply_indexing_floordiv(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = xla.apply_indexing #align_div_map(%idx)
+  %1 = vector.transfer_read %arg0[%0], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %1 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_apply_indexing_floordiv(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+func.func @transfer_read_alignment_block_arg_index(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> vector<4xf32> {
+  %cst = arith.constant 0.0 : f32
+  %0 = vector.transfer_read %arg0[%idx], %cst {in_bounds = [true]} : tensor<32xf32>, vector<4xf32>
+  return %0 : vector<4xf32>
+}
+// CHECK-LABEL: @transfer_read_alignment_block_arg_index(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %{{.*}} : index to i64
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<4xf32>
+
+// -----
+
+#write_align_map = #xla.indexing_map<"(d0) -> (d0 * 4 + 4), domain: d0 in [0, 3]">
+func.func @transfer_write_alignment_chained_apply_indexing(%arg0: tensor<32xf32> {llvm.align = 16 : index}, %idx: index) -> tensor<32xf32> {
+  %c0 = arith.constant 0 : index
+  %v = arith.constant dense<0.0> : vector<4xf32>
+  %0 = vector.transfer_write %v, %arg0[%c0] {in_bounds = [true]} : vector<4xf32>, tensor<32xf32>
+  %1 = xla.apply_indexing #write_align_map(%idx)
+  %2 = vector.transfer_write %v, %0[%1] {in_bounds = [true]} : vector<4xf32>, tensor<32xf32>
+  return %2 : tensor<32xf32>
+}
+// CHECK-LABEL: @transfer_write_alignment_chained_apply_indexing(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[V:.*]] = arith.constant dense<0.000000e+00> : vector<4xf32>
+// CHECK:           llvm.store %[[V]], %{{.*}} <alignment = 16> : vector<4xf32>, !llvm.ptr
+// CHECK:           %[[IDX:.*]] = xla.apply_indexing
+// CHECK:           %[[IDX_I64:.*]] = arith.index_castui %[[IDX]] : index to i64
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX_I64]]]
+// CHECK-NEXT:      llvm.store %[[V]], %[[GEP]] <alignment = 16> : vector<4xf32>, !llvm.ptr
 
 // -----
 
@@ -1446,7 +1575,145 @@ func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.al
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 8> : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 32> : vector<8xi64>, !llvm.ptr
+
+// -----
+
+#i4_map = #xla.indexing_map<"(d0) -> (d0 * 8), domain: d0 in [0, 7]">
+func.func @transfer_alignment_subbyte_shared_and_global(
+    %arg0: tensor<64xi4> {llvm.align = 16 : index}, %tid: index) -> tensor<64xi4> {
+  %c0_i4 = arith.constant 0 : i4
+  %shmem = xla_gpu.allocate_shared : tensor<64xi4>
+  %idx = xla.apply_indexing #i4_map(%tid)
+  %v = vector.transfer_read %arg0[%idx], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+  %shmem_w = vector.transfer_write %v, %shmem[%idx] {in_bounds = [true]} : vector<8xi4>, tensor<64xi4>
+  %synced = xla_gpu.sync_threads %shmem_w : tensor<64xi4>
+  %v2 = vector.transfer_read %synced[%idx], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+  %out = vector.transfer_write %v2, %arg0[%idx] {in_bounds = [true]} : vector<8xi4>, tensor<64xi4>
+  return %out : tensor<64xi4>
+}
+// CHECK-LABEL: @transfer_alignment_subbyte_shared_and_global(
+// CHECK:           %[[LD0:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
+// CHECK:           llvm.store %[[LD0]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
+// CHECK:           gpu.barrier
+// CHECK:           %[[LD1:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
+// CHECK:           llvm.store %[[LD1]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @transfer_read_non_entry_block_arg(
+    %arg0: tensor<8xi64> {llvm.align = 32 : index},
+    %cond: i1, %p0: !llvm.ptr, %p1: !llvm.ptr) -> vector<8xi64> {
+  llvm.cond_br %cond,
+      ^bb2(%p0, %p1, %p0, %p1, %p0 : !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr),
+      ^bb1
+^bb1:
+  "dummy.side_effect"() : () -> ()
+  llvm.br ^bb2(%p1, %p0, %p1, %p0, %p1 : !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr)
+^bb2(%bb0: !llvm.ptr, %bb1: !llvm.ptr, %bb2: !llvm.ptr, %bb3: !llvm.ptr, %bb4: !llvm.ptr):
+  "dummy.use"(%bb0, %bb1, %bb2, %bb3, %bb4)
+      : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
+  %c0 = arith.constant 0 : index
+  %c0_i64 = arith.constant 0 : i64
+  %t0 = builtin.unrealized_conversion_cast %bb0 : !llvm.ptr to tensor<8xi64>
+  %t4 = builtin.unrealized_conversion_cast %bb4 : !llvm.ptr to tensor<8xi64>
+  %v0 = vector.transfer_read %t0[%c0], %c0_i64 {in_bounds = [true]} : tensor<8xi64>, vector<8xi64>
+  %v4 = vector.transfer_read %t4[%c0], %c0_i64 {in_bounds = [true]} : tensor<8xi64>, vector<8xi64>
+  %sum = arith.addi %v0, %v4 : vector<8xi64>
+  return %sum : vector<8xi64>
+}
+// CHECK-LABEL: @transfer_read_non_entry_block_arg(
+// CHECK:         ^bb2(%[[BB0:.*]]: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %[[BB4:.*]]: !llvm.ptr):
+// CHECK:           %[[GEP0:.*]] = llvm.getelementptr inbounds %[[BB0]][0, 0]
+// CHECK-NEXT:      llvm.load %[[GEP0]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
+// CHECK:           %[[GEP4:.*]] = llvm.getelementptr inbounds %[[BB4]][0, 0]
+// CHECK-NEXT:      llvm.load %[[GEP4]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
+
+// -----
+
+func.func @transfer_read_scf_if_mismatched_alignment(
+    %cond: i1,
+    %arg0: tensor<16xi64> {llvm.align = 32 : index},
+    %arg1: tensor<16xi64> {llvm.align = 16 : index}) -> vector<2xi64> {
+  %t = scf.if %cond -> tensor<16xi64> {
+    scf.yield %arg0 : tensor<16xi64>
+  } else {
+    scf.yield %arg1 : tensor<16xi64>
+  }
+  %c0 = arith.constant 0 : index
+  %c0_i64 = arith.constant 0 : i64
+  %0 = vector.transfer_read %t[%c0], %c0_i64 {in_bounds = [true]} : tensor<16xi64>, vector<2xi64>
+  return %0 : vector<2xi64>
+}
+// CHECK-LABEL: @transfer_read_scf_if_mismatched_alignment(
+// CHECK:           llvm.load %{{.*}} <alignment = 16> : !llvm.ptr -> vector<2xi64>
+
+// -----
+
+func.func @transfer_alignment_scf_for(
+    %arg0: tensor<64xi4> {llvm.align = 16 : index},
+    %arg1: tensor<64xi4> {llvm.align = 16 : index}) -> tensor<64xi4> {
+  %c0 = arith.constant 0 : index
+  %c8 = arith.constant 8 : index
+  %c64 = arith.constant 64 : index
+  %c0_i4 = arith.constant 0 : i4
+  %out = scf.for %iv = %c0 to %c64 step %c8 iter_args(%acc = %arg1) -> (tensor<64xi4>) {
+    %v = vector.transfer_read %arg0[%iv], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+    %w = vector.transfer_write %v, %acc[%iv] {in_bounds = [true]} : vector<8xi4>, tensor<64xi4>
+    scf.yield %w : tensor<64xi4>
+  }
+  return %out : tensor<64xi4>
+}
+// CHECK-LABEL: @transfer_alignment_scf_for(
+// CHECK:           %[[LD:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
+// CHECK:           llvm.store %[[LD]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+#div_mod_map = #xla.indexing_map<"(d0) -> ((d0 floordiv 2) + (d0 mod 16)), domain: d0 in [0, 63]">
+func.func @transfer_alignment_div_mod_shl(
+    %arg0: tensor<64xi4> {llvm.align = 16 : index}, %tid: index) -> vector<8xi4> {
+  %c3 = arith.constant 3 : index
+  %c2 = arith.constant 2 : index
+  %c0_i4 = arith.constant 0 : i4
+  %shifted = arith.shli %tid, %c3 : index
+  %scaled = arith.muli %shifted, %c2 : index
+  %idx = xla.apply_indexing #div_mod_map(%scaled)
+  %v = vector.transfer_read %arg0[%idx], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+  return %v : vector<8xi4>
+}
+// CHECK-LABEL: @transfer_alignment_div_mod_shl(
+// CHECK:           llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
+
+// -----
+
+module {
+  llvm.mlir.global private @raw_shmem() {addr_space = 3 : i32} : !llvm.array<32 x i8>
+  llvm.mlir.global private @aligned_shmem() {addr_space = 3 : i32, alignment = 16 : i64} : !llvm.array<32 x i8>
+
+  func.func @transfer_alignment_global_ops() -> (vector<8xi4>, vector<8xi4>, vector<2xi64>) {
+    %c0 = arith.constant 0 : index
+    %c0_i4 = arith.constant 0 : i4
+    %c0_i64 = arith.constant 0 : i64
+    %raw_ptr3 = llvm.mlir.addressof @raw_shmem : !llvm.ptr<3>
+    %raw_ptr = llvm.addrspacecast %raw_ptr3 : !llvm.ptr<3> to !llvm.ptr
+    %raw_t = builtin.unrealized_conversion_cast %raw_ptr : !llvm.ptr to tensor<64xi4>
+    %v_raw = vector.transfer_read %raw_t[%c0], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+
+    %al_ptr3 = llvm.mlir.addressof @aligned_shmem : !llvm.ptr<3>
+    %al_ptr = llvm.addrspacecast %al_ptr3 : !llvm.ptr<3> to !llvm.ptr
+    %al_t = builtin.unrealized_conversion_cast %al_ptr : !llvm.ptr to tensor<64xi4>
+    %v_al = vector.transfer_read %al_t[%c0], %c0_i4 {in_bounds = [true]} : tensor<64xi4>, vector<8xi4>
+
+    %cst = arith.constant dense<[1, 2, 3, 4, 5, 6, 7, 8]> : tensor<8xi64>
+    %v_cst = vector.transfer_read %cst[%c0], %c0_i64 {in_bounds = [true]} : tensor<8xi64>, vector<2xi64>
+    return %v_raw, %v_al, %v_cst : vector<8xi4>, vector<8xi4>, vector<2xi64>
+  }
+}
+// CHECK-LABEL: @transfer_alignment_global_ops(
+// CHECK:           llvm.load %{{.*}} <alignment = 1> : !llvm.ptr -> i32
+// CHECK:           llvm.load %{{.*}} <alignment = 16> : !llvm.ptr -> i32
+// CHECK:           llvm.load %{{.*}} <alignment = 8> : !llvm.ptr -> vector<2xi64>
 
 // -----
 
@@ -1553,8 +1820,9 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
 // CHECK-LABEL: @transfer_read_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
 // CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
-// CHECK: llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr -> vector<2xi4>
-// CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
+// CHECK: %[[LD:.*]] = llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr -> i8
+// CHECK: %[[VEC:.*]] = llvm.bitcast %[[LD]] : i8 to vector<2xi4>
+// CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %[[VEC]] : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
 
 // -----
@@ -1568,6 +1836,8 @@ func.func @transfer_write_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1},
 // CHECK-LABEL: @transfer_write_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[0, 5] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xf4E2M1FN> to vector<2xi4>
+// CHECK: %[[INT:.*]] = llvm.bitcast %[[OUT]] : vector<2xi4> to i8
+// CHECK: llvm.store %[[INT]], %[[PTR]] <alignment = 1> : i8, !llvm.ptr
 
 // -----
 
@@ -1587,11 +1857,191 @@ func.func @get_dynamic_dim_size_sub_byte_width(%arg0: tensor<512xi4>) -> i32 {
 // CHECK-LABEL: @get_dynamic_dim_size_sub_byte_width
 // CHECK: llvm.mlir.constant(260 : i64) : i64
 
-// // -----
+// -----
 
 func.func @get_dynamic_dim_size_unaligned(%arg0: tensor<7xf16>) -> i32 {
-// expected-error @+1 {{'xla.get_dynamic_dim_size' op dynamic size offset is not 4-byte aligned}}
   %0 = xla.get_dynamic_dim_size %arg0 1 : tensor<7xf16>
   func.return %0 : i32
 }
+// CHECK-LABEL: @get_dynamic_dim_size_unaligned
+// CHECK: llvm.mlir.constant(18 : i64) : i64
+// CHECK: llvm.load %{{.*}} <alignment = 1> : !llvm.ptr -> i32
+
+// -----
+
+func.func @get_dynamic_dim_size_unaligned_odd(%arg0: tensor<3xi8>) -> i32 {
+  %0 = xla.get_dynamic_dim_size %arg0 0 : tensor<3xi8>
+  func.return %0 : i32
+}
+// CHECK-LABEL: @get_dynamic_dim_size_unaligned_odd
+// CHECK: llvm.mlir.constant(3 : i64) : i64
+// CHECK: llvm.load %{{.*}} <alignment = 1> : !llvm.ptr -> i32
+
+// -----
+
+func.func @set_dynamic_dim_size(%arg0: tensor<512xf32>, %size: i32) -> tensor<512xf32> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[1] : tensor<512xf32>
+  func.return %0 : tensor<512xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: llvm.mlir.constant(2052 : i64) : i64
+// CHECK: llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte(%arg0: tensor<5xi4>, %size: i32) -> tensor<5xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-SAME:    (%[[ARG0:.*]]: !llvm.ptr, %[[SIZE:.*]]: i32)
+// CHECK-CPU:     llvm.mlir.constant(3 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(16777215 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT24:.*]] = llvm.mlir.constant(24 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT16:.*]] = llvm.mlir.constant(16 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU-DAG: %[[TOP_OFF:.*]] = llvm.mlir.constant(6 : i64) : i64
+// CHECK-GPU:     %[[SHL:.*]] = llvm.shl %[[SIZE]], %[[SHIFT24]] : i32
+// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[ARG0]] : !llvm.ptr -> i32
+// CHECK-GPU:     scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32 {
+// CHECK-GPU:       %[[KEPT:.*]] = llvm.and %[[CUR]], %[[MASK]] : i32
+// CHECK-GPU:       %[[NEW:.*]] = llvm.or %[[KEPT]], %[[SHL]] : i32
+// CHECK-GPU:       llvm.cmpxchg %[[ARG0]], %[[CUR]], %[[NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:       scf.condition
+// CHECK-GPU:     }
+// CHECK-GPU:     %[[TAIL_INT:.*]] = llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     %[[TAIL_PTR:.*]] = llvm.inttoptr %[[TAIL_INT]] : i64 to !llvm.ptr
+// CHECK-GPU:     %[[HIGH_SHIFTED:.*]] = llvm.lshr %[[SIZE]], %[[SHIFT8]] : i32
+// CHECK-GPU:     %[[LOW_I16:.*]] = llvm.trunc %[[HIGH_SHIFTED]] : i32 to i16
+// CHECK-GPU:     llvm.store %[[LOW_I16]], %[[TAIL_PTR]] <alignment = 2> : i16, !llvm.ptr
+// CHECK-GPU:     %[[TOP_SHIFTED:.*]] = llvm.lshr %[[HIGH_SHIFTED]], %[[SHIFT16]] : i32
+// CHECK-GPU:     %[[TOP_I8:.*]] = llvm.trunc %[[TOP_SHIFTED]] : i32 to i8
+// CHECK-GPU:     %[[TOP_INT:.*]] = llvm.add %{{.*}}, %[[TOP_OFF]] : i64
+// CHECK-GPU:     %[[TOP_PTR:.*]] = llvm.inttoptr %[[TOP_INT]] : i64 to !llvm.ptr
+// CHECK-GPU:     llvm.store %[[TOP_I8]], %[[TOP_PTR]] <alignment = 1> : i8, !llvm.ptr
+// CHECK-GFX908-MI100-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-GFX908-MI100: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign1(%arg0: tensor<9xi4>, %size: i32) -> tensor<9xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<9xi4>
+  func.return %0 : tensor<9xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign1
+// CHECK-CPU:     llvm.mlir.constant(5 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[WORD_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(255 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(8 : i64) : i64
+// CHECK-GPU-DAG: %[[SHIFT24:.*]] = llvm.mlir.constant(24 : i32) : i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[WORD_OFF]] : i64
+// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i8, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign2(%arg0: tensor<3xi4>, %size: i32) -> tensor<3xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<3xi4>
+  func.return %0 : tensor<3xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign2
+// CHECK-CPU:     llvm.mlir.constant(2 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(65535 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT16:.*]] = llvm.mlir.constant(16 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 2> : i16, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_sub_byte_dim1(%arg0: tensor<5xi4>, %size: i32) -> tensor<5xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[1] : tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_sub_byte_dim1
+// CHECK-NOT:     llvm.cmpxchg
+// CHECK:         llvm.mlir.constant(7 : i64) : i64
+// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_aligned_sub_byte(%arg0: tensor<8xi4>, %size: i32) -> tensor<8xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<8xi4>
+  func.return %0 : tensor<8xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_aligned_sub_byte
+// CHECK-NOT:     llvm.cmpxchg
+// CHECK:         llvm.mlir.constant(4 : i64) : i64
+// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_before_sub_byte_insert(
+    %arg0: tensor<5xi4>, %size: i32, %val: i4, %idx: index, %cond0: i1,
+    %cond1: i1) -> tensor<5xi4> {
+  %with_dim = scf.if %cond0 -> (tensor<5xi4>) {
+    %updated = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+    scf.yield %updated : tensor<5xi4>
+  } else {
+    scf.yield %arg0 : tensor<5xi4>
+  }
+  %res = scf.if %cond1 -> (tensor<5xi4>) {
+    %ins = tensor.insert %val into %with_dim[%idx] : tensor<5xi4>
+    scf.yield %ins : tensor<5xi4>
+  } else {
+    scf.yield %with_dim : tensor<5xi4>
+  }
+  func.return %res : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_before_sub_byte_insert
+// CHECK: scf.if %{{.*}} {
+// CHECK-GPU:   llvm.cmpxchg
+// CHECK-CPU:   llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK: }
+// CHECK: scf.if %{{.*}} {
+// CHECK-GPU: llvm.cmpxchg
+// CHECK-CPU: llvm.store
+// CHECK: return
+
+// -----
+
+func.func @get_destination_buffer_through_cast(
+    %arg0: tensor<2x4xf32>, %val: f32, %idx: index) -> tensor<2x4xf32> {
+  %flat = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xf32> to tensor<8xf32>
+  %ins = tensor.insert %val into %flat[%idx] : tensor<8xf32>
+  %res = builtin.unrealized_conversion_cast %ins : tensor<8xf32> to tensor<2x4xf32>
+  func.return %res : tensor<2x4xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_cast(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+
+// -----
+
+func.func @get_destination_buffer_through_atomic_rmw(
+    %arg0: tensor<8xf32>, %val: f32, %idx: index) -> tensor<8xf32> {
+  %rmw = xla.atomic_rmw %arg0[%idx] : tensor<8xf32> {
+    ^bb0(%cur: f32):
+      %add = arith.addf %cur, %val : f32
+      xla.yield %add : f32
+  }
+  %ins = tensor.insert %val into %rmw[%idx] : tensor<8xf32>
+  func.return %ins : tensor<8xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_atomic_rmw(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK-GPU:     llvm.atomicrmw ignore_denormal_mode fadd
+// CHECK-CPU:     llvm.cmpxchg
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
 

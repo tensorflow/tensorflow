@@ -290,13 +290,15 @@ TEST(BatchTaskCriticalityTest, CriticalitySuccessfullyPropagated) {
 }
 
 TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
+  int num_requests = 6;
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options batcher_options;
+  batcher_options.num_batch_threads = num_requests;
   std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
   TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
-      SharedBatchScheduler<BatchResourceBase::BatchTask>::Options(), &batcher));
+      batcher_options, &batcher));
   std::vector<int32_t> allowed_batch_sizes = {4, 8, 12, 16};
   int max_batch_size = 16;
   int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(3));
-  int num_requests = 6;
   // Make the low priority batch timeout longer than the high priority batch
   // so the low priority tasks can be padded to the high priority batch instead
   // of forming a separate batch.
@@ -378,13 +380,15 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
 
 TEST_F(BatchResourceBaseWithPriorityTest,
        PriorityAwareSchedulerExportsQueueStateMetrics) {
+  int num_requests = 6;
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options batcher_options;
+  batcher_options.num_batch_threads = num_requests;
   std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
   TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
-      SharedBatchScheduler<BatchResourceBase::BatchTask>::Options(), &batcher));
+      batcher_options, &batcher));
   std::vector<int32_t> allowed_batch_sizes = {4, 8, 12, 16};
   int max_batch_size = 16;
   int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(3));
-  int num_requests = 6;
   BatchResourceBase::BatcherT::QueueOptions queue_options =
       TestBatchResourceBase::GetBatcherQueueOptions(
           /*num_batch_threads=*/num_requests, /*max_batch_size=*/max_batch_size,
@@ -1606,7 +1610,9 @@ TEST_F(BatchResourceBaseTest, PassesCorrectModelBatchStatsToSbs) {
   // AddQueue as queue_options().
   class MySharedBatchScheduler : public SharedBatchScheduler {
    public:
-    MySharedBatchScheduler() : SharedBatchScheduler::SharedBatchScheduler({}) {}
+    MySharedBatchScheduler()
+        : SharedBatchScheduler::SharedBatchScheduler({.num_batch_threads = 1}) {
+    }
 
     absl::Status AddQueue(
         const QueueOptions& options,
@@ -1662,7 +1668,8 @@ TEST_F(BatchResourceBaseTest, ProcessFuncBatchPropagatesError) {
   using SharedBatchScheduler = SharedBatchScheduler<BatchTask>;
 
   std::shared_ptr<SharedBatchScheduler> batcher;
-  TF_ASSERT_OK(SharedBatchScheduler::Create({}, &batcher));
+  TF_ASSERT_OK(
+      SharedBatchScheduler::Create({.num_batch_threads = 1}, &batcher));
 
   tsl::core::RefCountPtr<FailBatchResource> batch_resource(
       new FailBatchResource(/*has_process_batch_function=*/true, batcher, {},
@@ -1688,8 +1695,8 @@ TEST_F(BatchResourceBaseTest, ConfiguredBatchPaddingPolicyMetric) {
       "/tensorflow/serving/batching/configured_batch_padding_policy");
 
   std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
-  TF_CHECK_OK(
-      SharedBatchScheduler<BatchResourceBase::BatchTask>::Create({}, &batcher));
+  TF_CHECK_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      {.num_batch_threads = 1}, &batcher));
 
   MyBatchResource* my_batch_resource = new MyBatchResource(
       /* has_process_batch_function */ true,
@@ -1809,11 +1816,13 @@ class BatchResourceBaseMaxExecutionBatchSizeTest
 
 TEST_P(BatchResourceBaseMaxExecutionBatchSizeTest,
        MaxExecutionBatchSizeIsRespected) {
+  int num_requests = 10;
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options batcher_options;
+  batcher_options.num_batch_threads = num_requests;
   std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
   TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
-      SharedBatchScheduler<BatchResourceBase::BatchTask>::Options(), &batcher));
+      batcher_options, &batcher));
   int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(3));
-  int num_requests = 10;
   BatchResourceBase::BatcherT::QueueOptions queue_options =
       TestBatchResourceBase::GetBatcherQueueOptions(
           /*num_batch_threads=*/num_requests,

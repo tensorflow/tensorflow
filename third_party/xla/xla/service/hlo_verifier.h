@@ -225,6 +225,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleStochasticConvert(HloInstruction* convert) override;
   absl::Status HandleCopy(HloInstruction* copy) override;
   absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleDotGeneral(HloInstruction* dot) override;
   absl::Status HandleConvolution(HloInstruction* convolution) override;
   absl::Status HandleFft(HloInstruction* fft) override;
   absl::Status HandleCholesky(HloInstruction* hlo) override;

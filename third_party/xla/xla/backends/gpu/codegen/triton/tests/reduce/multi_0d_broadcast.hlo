@@ -1,6 +1,5 @@
 // RUN: fusion_to_triton %s | FileCheck %s
 // RUN: triton_test_correctness %s --abs_error_bound=1e-1 --rel_error_bound=1e-1
-// TODO: b/502907772 - enable experimental tiling after fixing crash.
 
 add {
   p0 = f32[] parameter(0)

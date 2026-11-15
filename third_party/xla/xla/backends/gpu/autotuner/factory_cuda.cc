@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/tensor_ir.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
@@ -75,6 +76,13 @@ std::unique_ptr<HloPassPipeline> GetCublasLtRewriterPipeline(
   return pipeline;
 }
 
+std::unique_ptr<HloPassPipeline> GetCudnnScaledDotRewriterPipeline() {
+  auto pipeline =
+      std::make_unique<HloPassPipeline>("cudnn_scaled_dot_rewriter_pipeline");
+  pipeline->AddPass(std::make_unique<CudnnScaledDotRewriter>());
+  return pipeline;
+}
+
 }  // namespace
 
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
@@ -93,6 +101,14 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context_pool));
+  // cuDNN fusions only compile with a stream executor, unless deviceless
+  // compilation is enabled.
+  backends.push_back(std::make_unique<FissionBackend>(
+      debug_options, compiler, target_config,
+      std::make_unique<CudnnBackend>(stream_executor, debug_options, compiler,
+                                     target_config),
+      GetCudnnScaledDotRewriterPipeline(), alias_info, mlir_context_pool,
+      stream_executor));
   backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor, debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<FissionBackend>(

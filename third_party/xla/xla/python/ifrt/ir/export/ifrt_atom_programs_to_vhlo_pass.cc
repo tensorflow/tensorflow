@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 #include "tsl/platform/protobuf.h"
 
 namespace vhlo = ::mlir::vhlo;

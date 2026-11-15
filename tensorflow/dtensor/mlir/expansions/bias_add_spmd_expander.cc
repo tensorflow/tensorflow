@@ -150,8 +150,6 @@ StatusOr<llvm::DenseMap<int, Layout>> BiasAddExpander::ComputeLayoutBackward(
   if (output_layouts.find(0) == output_layouts.end())
     return llvm::DenseMap<int, Layout>();
 
-  llvm::DenseMap<int, Layout> input_layouts;
-
   // If output layout is given, match input_layout and bias layout to match
   // it.
   Layout output_layout = output_layouts.lookup(0);

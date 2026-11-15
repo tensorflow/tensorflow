@@ -1294,7 +1294,9 @@ PopulateTensorVisualizations(const HloModule& module,
 
   absl::flat_hash_map<std::string, const MismatchDetails*> instr_to_mismatch;
   for (const MismatchDetails& mismatch : mismatches) {
-    instr_to_mismatch[mismatch.target_instruction_name] = &mismatch;
+    if (!mismatch.verified_match) {
+      instr_to_mismatch[mismatch.target_instruction_name] = &mismatch;
+    }
   }
 
   for (const HloComputation* comp : module.computations()) {
@@ -1389,6 +1391,9 @@ PopulateTensorVisualizations(const HloModule& module,
   }
 
   for (const MismatchDetails& mismatch : mismatches) {
+    if (mismatch.verified_match) {
+      continue;
+    }
     auto [it, inserted] =
         visualizations.try_emplace(mismatch.target_instruction_name);
     if (inserted) {
@@ -1742,6 +1747,10 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
           *mismatch.percentage_of_elems_exceeding_both_errors == 0.0) ||
          (mismatch.diff_score.has_value() && *mismatch.diff_score == 0.0));
     ann.background_color = is_zero_both_errors ? "lightgreen" : "pink";
+    if (mismatch.verified_match) {
+      annotations[key] = std::move(ann);
+      continue;
+    }
 
     std::vector<std::string> tooltip_parts;
     tooltip_parts.push_back("<b>Numeric Mismatch:</b>");

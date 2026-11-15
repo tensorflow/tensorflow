@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 
+#include <cstdint>
+#include <initializer_list>
+#include <limits>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -66,6 +73,11 @@ class LoopOptimizerTest : public GrapplerTest {
   void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_loop_invariant_node_motion = true;
+  }
+
+  void EnableOnlyDeadBranchRemoval(LoopOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.enable_dead_branch_removal = true;
   }
 
   void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
@@ -1803,6 +1815,419 @@ versions {
     }
   }
   EXPECT_TRUE(found);
+}
+
+TEST_F(LoopOptimizerTest, LoopInvariantEnterValidParallelIterations_Control) {
+  GraphDef graph;
+  AddSimpleNode("In", "Identity", {}, &graph);
+  AddEnterNode("InvariantEnter", "while/while_context", true, 10, {"In"},
+               &graph);
+  AddSimpleNode("InvariantAdd", "Add", {"InvariantEnter", "InvariantEnter"},
+                &graph);
+  AddSimpleNode("VariantAdd", "Add", {"InvariantAdd", "Identity"}, &graph);
+  AddEnterNode("VariantEnter", "while/while_context", false, 1, {"In"}, &graph);
+  AddSimpleNode("Merge", "Merge", {"VariantEnter", "NextIteration"}, &graph);
+  AddSimpleNode("Less/y", "Const", {"^Identity"}, &graph);
+  AddSimpleNode("Less", "Less", {"VariantAdd", "Less/y"}, &graph);
+  AddSimpleNode("LoopCond", "LoopCond", {"Less"}, &graph);
+  AddSimpleNode("Switch", "Switch", {"Merge", "LoopCond"}, &graph);
+  AddSimpleNode("Identity", "Identity", {"Switch:1"}, &graph);
+  AddSimpleNode("NextIteration", "NextIteration", {"VariantAdd"}, &graph);
+  AddSimpleNode("Exit", "Exit", {"Switch"}, &graph);
+  AddSimpleNode("Out", "Identity", {"Exit"}, &graph);
+
+  GrapplerItem item;
+  item.graph = graph;
+
+  LoopOptimizer optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&optimizer);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  absl::Status view_status;
+  utils::GraphView view(&output, &view_status);
+  TF_ASSERT_OK(view_status);
+  FrameView frames;
+  TF_EXPECT_OK(frames.InferFromGraphView(view));
+  const auto* invariant_add_node = view.GetNode("InvariantAdd");
+  ASSERT_NE(invariant_add_node, nullptr);
+  EXPECT_EQ(frames.Frames(*invariant_add_node->node()).size(), 0);
+  int hoisted_enters = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Enter" && node.input_size() > 0 &&
+        node.input(0) == "InvariantAdd") {
+      ++hoisted_enters;
+      EXPECT_EQ(node.attr().at("parallel_iterations").i(), 10);
+    }
+  }
+  EXPECT_GT(hoisted_enters, 0);
+}
+
+TEST_F(LoopOptimizerTest,
+       RejectsInvalidInvariantNodeAndMalformedDeadBranchInputs) {
+  const auto make_base_loop = [&](GraphDef* graph) {
+    graph->Clear();
+    AddSimpleNode("In", "Identity", {}, graph);
+    AddEnterNode("InvariantEnter", "while/while_context", true, 1, {"In"},
+                 graph);
+    AddSimpleNode("InvariantAdd", "Add", {"InvariantEnter", "InvariantEnter"},
+                  graph);
+    AddSimpleNode("VariantAdd", "Add", {"InvariantAdd", "Identity"}, graph);
+    AddEnterNode("VariantEnter", "while/while_context", false, 1, {"In"},
+                 graph);
+    AddSimpleNode("Merge", "Merge", {"VariantEnter", "NextIteration"}, graph);
+    AddSimpleNode("Less/y", "Const", {"^Identity"}, graph);
+    AddSimpleNode("Less", "Less", {"VariantAdd", "Less/y"}, graph);
+    AddSimpleNode("LoopCond", "LoopCond", {"Less"}, graph);
+    AddSimpleNode("Switch", "Switch", {"Merge", "LoopCond"}, graph);
+    AddSimpleNode("Identity", "Identity", {"Switch:1"}, graph);
+    AddSimpleNode("NextIteration", "NextIteration", {"VariantAdd"}, graph);
+    AddSimpleNode("Exit", "Exit", {"Switch"}, graph);
+    AddSimpleNode("Out", "Identity", {"Exit"}, graph);
+  };
+
+  LoopOptimizer linm_optimizer;
+  EnableOnlyLoopInvariantNodeMotion(&linm_optimizer);
+
+  // 1. Negative parallel_iterations on invariant Enter must fail with
+  // InvalidArgument rather than emitting a malformed Enter node.
+  {
+    GrapplerItem item;
+    make_base_loop(&item.graph);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "InvariantEnter") {
+        (*node.mutable_attr())["parallel_iterations"].set_i(-1);
+      }
+    }
+    GraphDef output;
+    absl::Status status = linm_optimizer.Optimize(nullptr, item, &output);
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("parallel_iterations"));
+  }
+
+  // 2. Out-of-range output port on an invariant node consumed by a variant
+  // node must fail with InvalidArgument instead of indexing output_types OOB.
+  {
+    GrapplerItem item;
+    make_base_loop(&item.graph);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "VariantAdd") {
+        node.set_input(0, "InvariantAdd:2");
+      }
+    }
+    GraphDef output;
+    absl::Status status = linm_optimizer.Optimize(nullptr, item, &output);
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("output port"));
+  }
+
+  // 3. Missing parallel_iterations attribute on invariant Enter.
+  {
+    GrapplerItem item;
+    make_base_loop(&item.graph);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "InvariantEnter") {
+        node.mutable_attr()->erase("parallel_iterations");
+      }
+    }
+    GraphDef output;
+    absl::Status status = linm_optimizer.Optimize(nullptr, item, &output);
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("parallel_iterations"));
+  }
+
+  // Reject zero, unset, out-of-range, and non-integer attribute values.
+  for (int invalid_case = 0; invalid_case < 4; ++invalid_case) {
+    SCOPED_TRACE(invalid_case);
+    GrapplerItem item;
+    make_base_loop(&item.graph);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() != "InvariantEnter") continue;
+      AttrValue& attr = (*node.mutable_attr())["parallel_iterations"];
+      switch (invalid_case) {
+        case 0:
+          attr.set_i(0);
+          break;
+        case 1:
+          attr.Clear();
+          break;
+        case 2:
+          attr.set_i(static_cast<int64_t>(std::numeric_limits<int>::max()) + 1);
+          break;
+        case 3:
+          attr.set_s("10");
+          break;
+      }
+    }
+    GraphDef output;
+    absl::Status status = linm_optimizer.Optimize(nullptr, item, &output);
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("parallel_iterations"));
+  }
+
+  // 4. Omitted is_constant attribute on non-invariant Enter defaults to false
+  // in raw GraphDef without throwing on map lookup.
+  {
+    GrapplerItem item;
+    make_base_loop(&item.graph);
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "VariantEnter") {
+        node.mutable_attr()->erase("is_constant");
+      }
+    }
+    GraphDef output;
+    TF_EXPECT_OK(linm_optimizer.Optimize(nullptr, item, &output));
+  }
+
+  // 5. Malformed Switch fanins and constant predicates in dead-branch removal
+  // must be skipped cleanly without null dereference or CHECK-failure.
+  const auto expect_switch_preserved = [](const GraphDef& graph) {
+    GrapplerItem item;
+    item.graph = graph;
+    item.fetch = {"Out"};
+    LoopOptimizer aggressive_optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+    GraphDef output;
+    TF_EXPECT_OK(aggressive_optimizer.Optimize(nullptr, item, &output));
+    bool found_switch = false;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "Switch" && node.op() == "Switch") {
+        found_switch = true;
+      }
+    }
+    EXPECT_TRUE(found_switch);
+  };
+
+  // 5a. Switch missing predicate input (port 1).
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("Switch", "Switch", {"In"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+
+  // 5b. Switch constant predicate missing "value" attribute.
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("BadPred", "Const", {}, &graph);
+    AddSimpleNode("Switch", "Switch", {"In", "BadPred"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+
+  // 5c. Switch constant predicate with empty "value" AttrValue (no tensor).
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("BadPred", "Const", {}, &graph);
+    for (NodeDef& node : *graph.mutable_node()) {
+      if (node.name() == "BadPred") {
+        (*node.mutable_attr())["value"];
+      }
+    }
+    AddSimpleNode("Switch", "Switch", {"In", "BadPred"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+
+  // 5d. Switch constant predicate with invalid TensorProto (negative dim).
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("BadPred", "Const", {}, &graph);
+    for (NodeDef& node : *graph.mutable_node()) {
+      if (node.name() == "BadPred") {
+        TensorProto* tensor = (*node.mutable_attr())["value"].mutable_tensor();
+        tensor->set_dtype(DT_BOOL);
+        tensor->mutable_tensor_shape()->add_dim()->set_size(-1);
+      }
+    }
+    AddSimpleNode("Switch", "Switch", {"In", "BadPred"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+
+  // 5e. Switch constant predicate with non-bool scalar TensorProto (DT_INT32).
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("BadPred", "Const", {}, &graph);
+    for (NodeDef& node : *graph.mutable_node()) {
+      if (node.name() == "BadPred") {
+        test::AsScalar<int32_t>(1).AsProtoField(
+            (*node.mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    AddSimpleNode("Switch", "Switch", {"In", "BadPred"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+
+  // 5f. Switch constant predicate with non-scalar DT_BOOL TensorProto (rank 1).
+  {
+    GraphDef graph;
+    AddSimpleNode("In", "Identity", {}, &graph);
+    AddSimpleNode("BadPred", "Const", {}, &graph);
+    for (NodeDef& node : *graph.mutable_node()) {
+      if (node.name() == "BadPred") {
+        test::AsTensor<bool>({true, false})
+            .AsProtoField((*node.mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    AddSimpleNode("Switch", "Switch", {"In", "BadPred"}, &graph);
+    AddSimpleNode("Out", "Identity", {"Switch"}, &graph);
+    expect_switch_preserved(graph);
+  }
+}
+
+namespace {
+
+GraphDef MakeZeroIterationLoopForTest() {
+  GraphDef graph;
+  auto add = [&](const char* name, const char* op,
+                 std::initializer_list<const char*> inputs) {
+    NodeDef* node = graph.add_node();
+    node->set_name(name);
+    node->set_op(op);
+    for (const char* input : inputs) node->add_input(input);
+    (*node->mutable_attr())["T"].set_type(DT_FLOAT);
+    return node;
+  };
+  for (const auto& entry :
+       {std::make_pair("Init", 20.0f), std::make_pair("Limit", 10.0f)}) {
+    NodeDef* node = add(entry.first, "Const", {});
+    (*node->mutable_attr())["dtype"].set_type(DT_FLOAT);
+    test::AsScalar<float>(entry.second)
+        .AsProtoField((*node->mutable_attr())["value"].mutable_tensor());
+  }
+  add("Control", "NoOp", {});
+  NodeDef* enter = add("Enter", "Enter", {"Init"});
+  (*enter->mutable_attr())["frame_name"].set_s("while");
+  (*enter->mutable_attr())["is_constant"].set_b(false);
+  (*enter->mutable_attr())["parallel_iterations"].set_i(1);
+  NodeDef* merge = add("Merge", "Merge", {"Enter", "NextIteration"});
+  (*merge->mutable_attr())["N"].set_i(2);
+  add("Less", "Less", {"Merge", "Limit"});
+  add("LoopCond", "LoopCond", {"Less"});
+  add("Switch", "Switch", {"Merge", "LoopCond"});
+  add("NextIteration", "NextIteration", {"Switch:1"});
+  add("Exit", "Exit", {"Switch"});
+  add("Out", "Identity", {"Exit"});
+  return graph;
+}
+
+void ExpectZeroIterationLoopPreserved(const GraphDef& graph) {
+  bool found_switch = false;
+  bool found_next_iteration = false;
+  const NodeDef* merge = nullptr;
+  for (const NodeDef& node : graph.node()) {
+    if (node.name() == "Switch" && node.op() == "Switch") found_switch = true;
+    if (node.name() == "NextIteration") found_next_iteration = true;
+    if (node.name() == "Merge") merge = &node;
+  }
+  EXPECT_TRUE(found_switch);
+  EXPECT_TRUE(found_next_iteration);
+  ASSERT_NE(merge, nullptr);
+  EXPECT_EQ(merge->op(), "Merge");
+}
+
+}  // namespace
+
+TEST_F(LoopOptimizerTest, ZeroIterationLoopSkipsMalformedConstantOperands) {
+  for (const char* operand : {"Init", "Limit"}) {
+    for (int invalid_case = 0; invalid_case < 4; ++invalid_case) {
+      SCOPED_TRACE(operand);
+      SCOPED_TRACE(invalid_case);
+      GrapplerItem item;
+      item.graph = MakeZeroIterationLoopForTest();
+      item.fetch = {"Out"};
+      NodeMap node_map(&item.graph);
+      NodeDef* node = node_map.GetNode(operand);
+      switch (invalid_case) {
+        case 0:
+          node->mutable_attr()->erase("value");
+          break;
+        case 1:
+          (*node->mutable_attr())["value"].Clear();
+          break;
+        case 2: {
+          TensorProto* tensor =
+              (*node->mutable_attr())["value"].mutable_tensor();
+          tensor->mutable_tensor_shape()->add_dim()->set_size(-1);
+          break;
+        }
+        case 3:
+          test::AsTensor<float>({20.0f, 30.0f})
+              .AsProtoField((*node->mutable_attr())["value"].mutable_tensor());
+          break;
+      }
+      LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+      EnableOnlyDeadBranchRemoval(&optimizer);
+      GraphDef output;
+      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+      ExpectZeroIterationLoopPreserved(output);
+    }
+  }
+}
+
+TEST_F(LoopOptimizerTest, ZeroIterationLoopAcceptsQualifiedAndControlInputs) {
+  for (bool qualified : {false, true}) {
+    SCOPED_TRACE(qualified);
+    GrapplerItem item;
+    item.graph = MakeZeroIterationLoopForTest();
+    item.fetch = {"Out"};
+    NodeMap node_map(&item.graph);
+    for (const char* name : {"Less", "Merge", "Enter"}) {
+      NodeDef* node = node_map.GetNode(name);
+      if (qualified) {
+        for (std::string& input : *node->mutable_input()) input += ":0";
+      }
+      if (node->name() != "Merge") node->add_input("^Control");
+    }
+    LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+    EnableOnlyDeadBranchRemoval(&optimizer);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+    NodeMap output_nodes(&output);
+    EXPECT_EQ(output_nodes.GetNode("NextIteration"), nullptr);
+    const NodeDef* merge = output_nodes.GetNode("Merge");
+    ASSERT_NE(merge, nullptr);
+    EXPECT_EQ(merge->op(), "Identity");
+  }
+}
+
+TEST_F(LoopOptimizerTest, ZeroIterationLoopSkipsMissingAndControlFanins) {
+  for (const char* name : {"Switch", "LoopCond", "Less", "Merge", "Enter"}) {
+    SCOPED_TRACE(name);
+    GrapplerItem item;
+    item.graph = MakeZeroIterationLoopForTest();
+    item.fetch = {"Out"};
+    NodeMap node_map(&item.graph);
+    node_map.GetNode(name)->set_input(0, "Missing:0");
+    LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+    EnableOnlyDeadBranchRemoval(&optimizer);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+    ExpectZeroIterationLoopPreserved(output);
+  }
+  for (const char* name : {"Switch", "LoopCond", "Merge"}) {
+    SCOPED_TRACE(name);
+    GrapplerItem item;
+    item.graph = MakeZeroIterationLoopForTest();
+    item.fetch = {"Out"};
+    NodeMap node_map(&item.graph);
+    NodeDef* node = node_map.GetNode(name);
+    node->add_input("^Control");
+    for (int i = node->input_size() - 1; i > 0; --i) {
+      node->mutable_input()->SwapElements(i, i - 1);
+    }
+    LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+    EnableOnlyDeadBranchRemoval(&optimizer);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+    ExpectZeroIterationLoopPreserved(output);
+  }
 }
 
 }  // namespace grappler

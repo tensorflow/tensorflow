@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMPILER_H_
 #define XLA_PJRT_PJRT_COMPILER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -262,6 +264,44 @@ bool PjRtIsCompilerVariantRegistered(absl::string_view platform_name,
                                      absl::string_view variant_name);
 
 class PjRtClient;
+
+// The location and shape of a subslice within a full slice.
+struct PjRtSubsliceBounds {
+  // Chip coordinates of the subslice's minimum corner in the full slice.
+  PjRtDeviceDimensions origin;
+  PjRtDeviceDimensions chips_per_host_bounds;
+  PjRtDeviceDimensions host_bounds;
+
+  // Returns the total chip bounds of the subslice along each dimension.
+  PjRtDeviceDimensions ChipBounds() const {
+    CHECK_EQ(chips_per_host_bounds.size(), host_bounds.size());
+    std::vector<int32_t> bounds(chips_per_host_bounds.size());
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      bounds[i] = chips_per_host_bounds[i] * host_bounds[i];
+    }
+    return PjRtDeviceDimensions(bounds);
+  }
+
+  friend bool operator==(const PjRtSubsliceBounds& lhs,
+                         const PjRtSubsliceBounds& rhs) {
+    return lhs.origin == rhs.origin &&
+           lhs.chips_per_host_bounds == rhs.chips_per_host_bounds &&
+           lhs.host_bounds == rhs.host_bounds;
+  }
+
+  friend bool operator!=(const PjRtSubsliceBounds& lhs,
+                         const PjRtSubsliceBounds& rhs) {
+    return !(lhs == rhs);
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const PjRtSubsliceBounds& bounds) {
+    sink.Append(absl::StrCat(
+        "{origin: ", bounds.origin.ToString(),
+        ", chips_per_host_bounds: ", bounds.chips_per_host_bounds.ToString(),
+        ", host_bounds: ", bounds.host_bounds.ToString(), "}"));
+  }
+};
 
 // Abstract interface to represent device topology that is used by the compiler.
 class PjRtTopologyDescription {
@@ -505,6 +545,18 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("Subslice is not supported.");
   }
 
+  // Computes the subslice of this topology formed by the default-type logical
+  // devices with IDs `device_ids`.
+  //
+  // This topology must be a full physical slice (`is_subslice_topology()` must
+  // be false). A single chip and the full slice are valid subslices; callers
+  // decide whether subslicing is worthwhile.
+  virtual absl::StatusOr<PjRtSubsliceBounds> ComputeSubsliceForDevices(
+      absl::Span<const int> device_ids) const {
+    return absl::UnimplementedError(
+        "ComputeSubsliceForDevices is not supported.");
+  }
+
   virtual absl::StatusOr<xla::Shape> UpdateLayoutForDynamicShapes(
       int memory_space_kind_id, xla::Shape shape) const {
     return std::move(shape);
@@ -620,6 +672,14 @@ class PjRtCompiler {
 // REQUIRES: No default compiler has been registered for the platform.
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler);
+
+// Returns an unowned pointer to the compiler for `topology`, respecting
+// `topology.compiler()` if present and falling back to the global compiler
+// registry otherwise. The returned PjRtCompiler pointer is owned by topology,
+// and therefore must not outlive it.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    const PjRtTopologyDescription& topology,
+    std::optional<PjRtCompilerVariant> variant = std::nullopt);
 
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler
 // registered for the platform using PjRtRegisterCompiler. The returned

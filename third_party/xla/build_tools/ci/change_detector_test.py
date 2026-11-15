@@ -28,16 +28,63 @@ class ChangeDetectorTest(parameterized.TestCase):
 
   @parameterized.parameters(
       (["MODULE.bazel"], True),
+      (["MODULE.bazel.lock"], True),
       (["REPO.bazel"], True),
       (["WORKSPACE"], True),
       (["WORKSPACE.bzlmod"], True),
       ([".bazelrc"], True),
       ([".bazelversion"], True),
+      (["workspace0.bzl"], True),
+      (["workspace1.bzl"], True),
+      (["workspace2.bzl"], True),
+      (["workspace3.bzl"], True),
+      (["workspace4.bzl"], True),
+      (["requirements_lock_3_11.txt"], True),
+      (["requirements_lock_3_12.txt"], True),
+      (["models.BUILD"], True),
+      (["arm_compiler.BUILD"], True),
+      (["tools/def_file_filter/def_file_filter.BUILD"], True),
+      (["third_party/repo.bzl"], True),
+      (["third_party/quilt_repo.bzl"], True),
+      (["third_party/extensions/third_party.bzl"], True),
+      (["third_party/extensions/llvm.bzl"], True),
+      (["third_party/cccl/cccl_extension.bzl"], True),
+      (["third_party/libdrm/extension.bzl"], True),
+      (["third_party/llvm/setup.bzl"], True),
+      (["third_party/gpus/cuda_configure.bzl"], True),
+      (["third_party/gpus/rocm_configure.bzl"], True),
+      (
+          ["third_party/gpus/cuda/hermetic/cuda_redist_init_repositories.bzl"],
+          True,
+      ),
+      (["third_party/py/python_init_repositories.bzl"], True),
+      (["third_party/mkl_dnn/workspace.bzl"], True),
+      (["third_party/mkl_dnn/mkldnn_v1_async.BUILD"], True),
+      (["third_party/mkl_dnn/onednn_acl_aarch64_build_fixes.patch"], True),
+      (["third_party/mkl_dnn/BUILD"], True),
+      (["third_party/triton/intel_xpu/workspace.bzl"], True),
+      (["third_party/triton/common/series"], True),
+      (["third_party/cuda_tile/patches/series"], True),
+      (["third_party/xz/xz.BUILD.bazel"], True),
+      (["third_party/xz/config/BUILD.bazel"], True),
+      (["third_party/xz/patches/remove_have_config.diff"], True),
+      (["third_party/sqlite/BUILD"], True),
+      (["third_party/hwloc/BUILD.system"], True),
+      (["third_party/boringssl.BUILD"], True),
+      (["third_party/boringssl.patch"], True),
+      (["third_party/gpus/cuda/hermetic/cuda_Automatic.BUILD.tpl"], True),
       (["xla/flags.bzl"], False),
       (["third_party/tsl/tsl/platform/default/rules.bzl"], False),
       (["third_party/tsl/REPO.bazel"], True),
       (["third_party/tsl/tsl/BUILD"], False),
       (["third_party/tsl/tsl/platform/denormal.cc"], False),
+      (["third_party/py/rules_pywrap/pywrap.default.bzl"], False),
+      (["third_party/py/rules_pywrap/BUILD"], False),
+      (["third_party/py/numpy/BUILD"], False),
+      (["third_party/py/numpy/tf_numpy_dummy.py"], False),
+      (["third_party/rules_python/python/defs.bzl"], False),
+      (["third_party/rules_python/python/BUILD"], False),
+      (["third_party/compute_library/build_defs.bzl"], False),
       (["xla/service/cpu/cpu_compiler.cc"], False),
       (["docs/overview.md", "xla/BUILD"], False),
   )
@@ -311,6 +358,166 @@ class ChangeDetectorTest(parameterized.TestCase):
     self.assertLen(changed_files, decision.changed_files_count)
     mock_fetch.assert_called_once_with(
         "base_sha", "head_sha", cwd="/workspace/openxla/xla"
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="matching_second_parent",
+          original_head="merge_sha",
+          head_sha="pr_head_sha",
+          cat_file_stdout=(
+              "tree 1111111111111111111111111111111111111111\n"
+              "parent main_first_parent_sha\n"
+              "parent pr_head_sha\n"
+              "\n"
+              "Merge pr_head_sha into main_first_parent_sha\n"
+          ),
+          expected="main_first_parent_sha",
+      ),
+      dict(
+          testcase_name="single_parent_commit",
+          original_head="commit_sha",
+          head_sha="pr_head_sha",
+          cat_file_stdout=(
+              "tree 1111111111111111111111111111111111111111\n"
+              "parent main_first_parent_sha\n"
+              "\n"
+              "parent pr_head_sha in body is ignored\n"
+          ),
+          expected=None,
+      ),
+      dict(
+          testcase_name="mismatched_second_parent",
+          original_head="merge_sha",
+          head_sha="pr_head_sha",
+          cat_file_stdout=(
+              "tree 1111111111111111111111111111111111111111\n"
+              "parent main_first_parent_sha\n"
+              "parent other_sha\n"
+              "\n"
+              "Merge other_sha\n"
+          ),
+          expected=None,
+      ),
+      dict(
+          testcase_name="octopus_merge_ignored",
+          original_head="merge_sha",
+          head_sha="pr_head_sha",
+          cat_file_stdout=(
+              "tree 1111111111111111111111111111111111111111\n"
+              "parent main_first_parent_sha\n"
+              "parent pr_head_sha\n"
+              "parent third_parent_sha\n"
+              "\n"
+              "Octopus merge\n"
+          ),
+          expected=None,
+      ),
+      dict(
+          testcase_name="invalid_first_parent_ref",
+          original_head="merge_sha",
+          head_sha="pr_head_sha",
+          cat_file_stdout=(
+              "tree 1111111111111111111111111111111111111111\n"
+              "parent --bad-ref\n"
+              "parent pr_head_sha\n"
+              "\n"
+              "Merge\n"
+          ),
+          expected=None,
+      ),
+  )
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  def test_get_merge_commit_first_parent(
+      self, mock_git, original_head, head_sha, cat_file_stdout, expected
+  ):
+    mock_git.return_value = subprocess.CompletedProcess(
+        args=["git", "cat-file", "-p", original_head],
+        returncode=0,
+        stdout=cat_file_stdout,
+    )
+    self.assertEqual(
+        change_detector.get_merge_commit_first_parent(original_head, head_sha),
+        expected,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="same_head",
+          original_head="same_sha",
+          head_sha="same_sha",
+      ),
+      dict(
+          testcase_name="unsafe_original_head",
+          original_head="--bad-flag",
+          head_sha="pr_head_sha",
+      ),
+      dict(
+          testcase_name="unsafe_head_sha",
+          original_head="merge_sha",
+          head_sha="--bad-flag",
+      ),
+  )
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  def test_get_merge_commit_first_parent_guard_skips_git(
+      self, mock_git, original_head, head_sha
+  ):
+    self.assertIsNone(
+        change_detector.get_merge_commit_first_parent(original_head, head_sha)
+    )
+    mock_git.assert_not_called()
+
+  @mock.patch.object(
+      change_detector, "ensure_base_fetched", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_changed_files", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  def test_evaluate_skip_pr_merge_commit_diffs_against_first_parent(
+      self, mock_git, mock_changed, mock_fetch
+  ):
+    mock_git.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="merge_commit_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "cat-file", "-p", "merge_commit_sha"],
+            returncode=0,
+            stdout=(
+                "tree 1111111111111111111111111111111111111111\n"
+                "parent main_first_parent_sha\n"
+                "parent pr_head_sha\n"
+                "\n"
+                "Merge pr_head_sha into main_first_parent_sha\n"
+            ),
+        ),
+    ]
+    mock_changed.return_value = ["README.md"]
+    decision = change_detector.evaluate_skip(
+        "stale_base_sha",
+        "pr_head_sha",
+        cwd="/workspace/openxla/xla",
+        is_jax_build=False,
+    )
+    self.assertTrue(decision.should_skip)
+    mock_fetch.assert_called_once_with(
+        "main_first_parent_sha",
+        "merge_commit_sha",
+        cwd="/workspace/openxla/xla",
+    )
+    mock_changed.assert_called_once_with(
+        "main_first_parent_sha",
+        "merge_commit_sha",
+        cwd="/workspace/openxla/xla",
     )
 
   @mock.patch.object(

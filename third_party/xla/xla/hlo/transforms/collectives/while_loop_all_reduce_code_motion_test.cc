@@ -2397,6 +2397,66 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(WhileLoopAllReduceCodeMotionTest, LargeOffsetDUS) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule large_offset_dus
+
+    %reduction {
+      ROOT %max = f32[] maximum(f32[] parameter(0), f32[] parameter(1))
+    }
+
+    %while_condition {
+      %param = (s64[], f32[16], f32[16,3000000000]) parameter(0)
+      %indvar = s64[] get-tuple-element(%param), index=0
+      ROOT %result = pred[] compare(%indvar, s64[] constant(16)), direction=LT
+    }
+
+    %while_body {
+      %param = (s64[], f32[16], f32[16,3000000000]) parameter(0)
+      %gte.0 = s64[] get-tuple-element(%param), index=0
+      %gte.1 = f32[16] get-tuple-element(%param), index=1
+      %gte.2 = f32[16,3000000000] get-tuple-element(%param), index=2
+      %next = s64[] add(%gte.0, s64[] constant(1))
+      %max.local = f32[] reduce(%gte.1, f32[] constant(0)), dimensions={0}, to_apply=%reduction
+      %max.global = f32[] all-reduce(%max.local), channel_id=1, replica_groups=[1,4]<=[4], use_global_device_ids=true, to_apply=%reduction
+      %update = f32[1,1] reshape(%max.global)
+      %col_offset = s64[] constant(2500000000)
+      %dus = f32[16,3000000000] dynamic-update-slice(%gte.2, %update, %gte.0, %col_offset)
+      ROOT %loop_result = (s64[], f32[16], f32[16,3000000000]) tuple(%next, %gte.1, %dus)
+    }
+
+    ENTRY %main {
+      %while_init = (s64[], f32[16], f32[16,3000000000]) tuple(s64[] constant(0), f32[16] parameter(0), f32[16,3000000000] parameter(1))
+      ROOT %while = (s64[], f32[16], f32[16,3000000000]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  WhileLoopAllReduceCodeMotion pass;
+  ASSERT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  EXPECT_THAT(RunFileCheck(entry->ToString(), R"(
+    CHECK: %[[while:.+]] = ({{.+}}) while({{.+}})
+    CHECK: %[[gte:.+]] = f32[16,3000000000]{1,0} get-tuple-element(%[[while]]), index=2
+    CHECK: %[[slice:.+]] = f32[16,1]{1,0} slice(%[[gte]]), slice={[0:16], [2500000000:2500000001]}
+    CHECK: %[[ar:.+]] = f32[16,1]{1,0} all-reduce(%[[slice]]){{.*}}, to_apply=%reduction
+    CHECK: %[[zero:.+]] = s64[] constant(0)
+    CHECK: %[[offset:.+]] = s64[] constant(2500000000)
+    CHECK: %[[dus:.+]] = f32[16,3000000000]{1,0} dynamic-update-slice(%[[gte]], %[[ar]], %[[zero]], %[[offset]])
+    CHECK: tuple({{.+}}, {{.+}}, %[[dus]])
+  )"),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(WhileLoopAllReduceCodeMotionTest, NestedAllReduceAccumulate) {
   constexpr absl::string_view kHloModule = R"(
     HloModule nested_all_reduce_accumulate

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_computation_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -169,22 +169,10 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
 
-  absl::flat_hash_set<const HloComputation*> cloner_candidates;
-  auto is_cloner_candidate = [&](const HloComputation* computation) {
-    return cloner_candidates.contains(computation) ||
-           absl::c_any_of(computation->instructions(),
-                          [&](const HloInstruction* instruction) {
-                            return (*skip_cloning_if_does_not_contain_handler_)(
-                                *instruction);
-                          });
-  };
-  auto should_skip_cloning = [&](const HloComputation& computation) {
-    return (skip_cloning_if_does_not_contain_handler_.has_value() &&
-            !cloner_candidates.contains(&computation)) ||
-           skip_cloning_handler_(computation);
-  };
-
   for (auto* computation : computations) {
+    if (skip_cloning_handler_(*computation)) {
+      continue;
+    }
     absl::InlinedVector<HloInstruction*, 1> callers;
     for (HloInstruction* caller : computation->caller_instructions()) {
       if ((execution_threads.empty() ||
@@ -192,18 +180,6 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
           !HasIncludedAsyncChainStart(caller, execution_threads)) {
         callers.push_back(caller);
       }
-    }
-
-    if (skip_cloning_if_does_not_contain_handler_.has_value() &&
-        is_cloner_candidate(computation)) {
-      cloner_candidates.insert(computation);
-      for (HloInstruction* caller : callers) {
-        cloner_candidates.insert(caller->parent());
-      }
-    }
-
-    if (should_skip_cloning(*computation)) {
-      continue;
     }
 
     if (callers.empty()) {
@@ -247,27 +223,12 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
         }
       }
 
-      auto clone_callee = [&](HloComputation* callee) {
-        HloComputation* clone_ptr = nullptr;
-        if (!module->has_schedule() ||
-            !module->schedule().is_computation_scheduled(callee)) {
-          clone_ptr = module->AddEmbeddedComputation(callee->Clone());
-        } else {
-          auto [clone, clone_sequence] = callee->CloneWithSchedule();
-          clone_ptr = module->AddEmbeddedComputation(std::move(clone));
-          module->schedule().set_sequence(clone_ptr, clone_sequence);
-        }
-        if (skip_cloning_if_does_not_contain_handler_.has_value()) {
-          cloner_candidates.insert(clone_ptr);
-        }
-        return clone_ptr;
-      };
-
       changed = true;
       std::vector<HloComputation*> worklist;
       caller->ReplaceCalledComputations([&](HloComputation* callee) {
-        if (callee == computation && !should_skip_cloning(*callee)) {
-          HloComputation* clone = clone_callee(callee);
+        if (callee == computation && !skip_cloning_handler_(*callee)) {
+          HloComputation* clone =
+              hlo_computation_utils::CloneComputation(callee);
           worklist.push_back(clone);
           return clone;
         }
@@ -284,10 +245,11 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
             continue;
           }
           instruction->ReplaceCalledComputations([&](HloComputation* callee) {
-            if (should_skip_cloning(*callee)) {
+            if (skip_cloning_handler_(*callee)) {
               return callee;
             }
-            HloComputation* clone = clone_callee(callee);
+            HloComputation* clone =
+                hlo_computation_utils::CloneComputation(callee);
             worklist.push_back(clone);
             return clone;
           });

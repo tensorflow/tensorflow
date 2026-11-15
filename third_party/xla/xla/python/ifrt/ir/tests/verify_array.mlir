@@ -217,3 +217,72 @@ func.func @array_token_cannot_be_sharded() {
       !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param<2 to [0,1] on 2x2>, [0,1,2,3]>
   return
 }
+
+// -----
+
+func.func @array_devices_cannot_be_empty() {
+  // expected-error@+4 {{expected integer value}}
+  // expected-error@+3 {{failed to parse Ifrt_DevicesAttr parameter 'ids'}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'devices_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_unspecified, []>
+  return
+}
+
+// -----
+
+func.func @array_axis_sizes_must_be_positive() {
+  // expected-error@+3 {{`axis_sizes` must be positive, got 0 in [0]}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x1 to [0] on 0>, [0]>
+  return
+}
+
+// -----
+
+func.func @array_axis_sizes_cannot_overflow_int32() {
+  // expected-error@+4 {{`axis_sizes` value 4294967297 overflows 32-bit signed integer}}
+  // expected-error@+3 {{failed to parse Ifrt_ShardingParamAttr parameter 'sharding'}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x1 to [0] on 4294967297>, [0]>
+  return
+}
+
+// -----
+
+func.func @array_dim_shards_cannot_overflow_int32() {
+  // expected-error@+3 {{`dim_shards` product overflows}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<4294967297x1 to [0] on 1>, [0]>
+  return
+}
+
+// -----
+
+func.func @array_shape_cannot_have_encoding() {
+  // expected-error@+3 {{Unexpected tensor encoding on array shape}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32, "enc">, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+  return
+}
+
+// -----
+
+func.func @array_unsupported_element_type() {
+  // expected-error@+3 {{Unsupported array element type: '!ifrt.control'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<2x!ifrt.control>, #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+  return
+}
+
+// -----
+
+func.func @array_shape_element_count_overflow() {
+  // expected-error@+3 {{Array shape element count overflows 64-bit signed integer}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4611686018427387904x4xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+  return
+}

@@ -164,6 +164,7 @@ tf_cc_test(
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",
+        ":thunk_proto_execution_deserializer",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -173,6 +174,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
         "@xla//xla:shape_util",
+        "@xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@xla//xla/service/cpu:cpu_aot_compilation_result",
     ] + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep

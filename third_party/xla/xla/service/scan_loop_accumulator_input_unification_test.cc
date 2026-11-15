@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -34,6 +38,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::xla::RunFileCheck;
 using ScanLoopAccumulatorInputUnificationTest = HloTestBase;
 
 HloInstruction* GetTopLevelWhileInstruction(HloModule* module) {
@@ -733,5 +739,776 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest,
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       AccumulatorAllocatedByCallOpLeavesDeadCall) {
+  const std::string hlo_string = R"(
+  HloModule acc_alloc_call
+
+  alloc_fn {
+    c0 = s32[] constant(0)
+    ROOT broadcast = s32[8] broadcast(c0), dimensions={}
+  }
+
+  inner_body {
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    state = s32[] get-tuple-element(p), index=1
+    acc = s32[8] get-tuple-element(p), index=2
+    input = s32[8] get-tuple-element(p), index=3
+
+    // CHECK-LABEL: %inner_body
+    // CHECK: dynamic-slice(%[[ACC:.*]], %[[IDX:.*]]), dynamic_slice_sizes={1}
+    // CHECK: dynamic-update-slice(%[[ACC]], {{.*}}, %[[IDX]])
+    // CHECK: ROOT {{.*}} = (s32[], s32[], s32[8]{{.*}}) tuple(
+    dynamic-slice.0 = s32[1] dynamic-slice(input, i), dynamic_slice_sizes={1}
+    reshape.2 = s32[] reshape(dynamic-slice.0)
+    add.1 = s32[] add(state, reshape.2)
+
+    reshape.3 = s32[1] reshape(add.1)
+    dynamic-update-slice.0 = s32[8] dynamic-update-slice(acc, reshape.3, i)
+
+    const = s32[] constant(1)
+    add.0 = s32[] add(i, const)
+    ROOT tuple.10 = (s32[], s32[], s32[8], s32[8]) tuple(add.0, add.1, dynamic-update-slice.0, input)
+  }
+
+  inner_cond {
+    limit = s32[] constant(8)
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    ROOT cmp = pred[] compare(i, limit), direction=LT
+  }
+
+  outer_body {
+    outer_p = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(outer_p), index=0
+    o_state = s32[] get-tuple-element(outer_p), index=1
+    o_arr = s32[8] get-tuple-element(outer_p), index=2
+
+    // CHECK-LABEL: %outer_body
+    // CHECK: %acc_call = s32[8]{{.*}} call(), to_apply=%alloc_fn
+    // CHECK: %[[TUPLE:.*]] = (s32[], s32[], s32[8]{{.*}}) tuple(
+    // CHECK-NOT: %acc_call
+    // CHECK: (s32[], s32[], s32[8]{{.*}}) while(%[[TUPLE]])
+    acc_call = s32[8] call(), to_apply=alloc_fn
+
+    c0 = s32[] constant(0)
+    tuple.8 = (s32[], s32[], s32[8], s32[8]) tuple(c0, o_state, acc_call, o_arr)
+    while = (s32[], s32[], s32[8], s32[8]) while(tuple.8), condition=inner_cond, body=inner_body
+    get_acc = s32[8] get-tuple-element(while), index=2
+
+    c1 = s32[] constant(1)
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out = (s32[], s32[], s32[8]) tuple(next_o_iter, o_state, get_acc)
+  }
+
+  outer_cond {
+    limit = s32[] constant(8)
+    outer_p = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(outer_p), index=0
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    init_state = s32[] constant(0)
+    array = s32[8] constant({1,2,3,4,5,6,7,8})
+    init_tuple = (s32[], s32[], s32[8]) tuple(c0, init_state, array)
+    while = (s32[], s32[], s32[8]) while(init_tuple), condition=outer_cond, body=outer_body
+    ROOT res = s32[8] get-tuple-element(while), index=2
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ScanLoopAccumulatorInputUnification().Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DynamicSliceWrappedInCallDoesNotMatch) {
+  const std::string hlo_string = R"(
+  HloModule slice_call
+
+  slice_fn {
+    arr = s32[8] parameter(0)
+    idx = s32[] parameter(1)
+    ROOT ds = s32[1] dynamic-slice(arr, idx), dynamic_slice_sizes={1}
+  }
+
+  inner_body {
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    state = s32[] get-tuple-element(p), index=1
+    acc = s32[8] get-tuple-element(p), index=2
+    input = s32[8] get-tuple-element(p), index=3
+
+    slice_call = s32[1] call(input, i), to_apply=slice_fn
+    reshape.2 = s32[] reshape(slice_call)
+    add.1 = s32[] add(state, reshape.2)
+
+    reshape.3 = s32[1] reshape(add.1)
+    dynamic-update-slice.0 = s32[8] dynamic-update-slice(acc, reshape.3, i)
+
+    const = s32[] constant(1)
+    add.0 = s32[] add(i, const)
+    ROOT tuple.10 = (s32[], s32[], s32[8], s32[8]) tuple(add.0, add.1, dynamic-update-slice.0, input)
+  }
+
+  inner_cond {
+    limit = s32[] constant(8)
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    ROOT cmp = pred[] compare(i, limit), direction=LT
+  }
+
+  outer_body {
+    outer_p = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(outer_p), index=0
+    o_state = s32[] get-tuple-element(outer_p), index=1
+    o_arr = s32[8] get-tuple-element(outer_p), index=2
+
+    c0 = s32[] constant(0)
+    broadcast = s32[8] broadcast(c0), dimensions={}
+
+    tuple.8 = (s32[], s32[], s32[8], s32[8]) tuple(c0, o_state, broadcast, o_arr)
+    while = (s32[], s32[], s32[8], s32[8]) while(tuple.8), condition=inner_cond, body=inner_body
+    get_acc = s32[8] get-tuple-element(while), index=2
+
+    c1 = s32[] constant(1)
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out = (s32[], s32[], s32[8]) tuple(next_o_iter, o_state, get_acc)
+  }
+
+  outer_cond {
+    limit = s32[] constant(8)
+    outer_p = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(outer_p), index=0
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    init_state = s32[] constant(0)
+    array = s32[8] constant({1,2,3,4,5,6,7,8})
+    init_tuple = (s32[], s32[], s32[8]) tuple(c0, init_state, array)
+    while = (s32[], s32[], s32[8]) while(init_tuple), condition=outer_cond, body=outer_body
+    ROOT res = s32[8] get-tuple-element(while), index=2
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ScanLoopAccumulatorInputUnification().Run(module.get()),
+              IsOkAndHolds(false));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenUpdatedAccumulatorUsedInBody) {
+  constexpr absl::string_view kModule = R"(
+  HloModule live_dus_in_body
+
+  add_s32 {
+    lhs = s32[] parameter(0)
+    rhs = s32[] parameter(1)
+    ROOT sum = s32[] add(lhs, rhs)
+  }
+
+  inner_body {
+    p = (s32[], s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    running_sum = s32[] get-tuple-element(p), index=1
+    acc = s32[4] get-tuple-element(p), index=2
+    in_arr = s32[4] get-tuple-element(p), index=3
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    acc_sum = s32[] reduce(dus, c0), dimensions={0}, to_apply=add_s32
+    next_sum = s32[] add(running_sum, acc_sum)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[], s32[4], s32[4]) tuple(next_iter, next_sum, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_sum = s32[] get-tuple-element(op), index=1
+    o_arr = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[], s32[4], s32[4]) tuple(c0, o_sum, zero_buf, o_arr)
+    w = (s32[], s32[], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_sum = s32[] get-tuple-element(w), index=1
+    out_arr = s32[4] get-tuple-element(w), index=2
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[], s32[4]) tuple(next_o_iter, out_sum, out_arr)
+  }
+
+  outer_cond {
+    op = (s32[], s32[], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    o_init = (s32[], s32[], s32[4]) tuple(c0, c0, arr)
+    w_out = (s32[], s32[], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_sum = s32[] get-tuple-element(w_out), index=1
+    final_arr = s32[4] get-tuple-element(w_out), index=2
+    sum_bcast = s32[4] broadcast(final_sum), dimensions={}
+    ROOT out = s32[4] add(final_arr, sum_bcast)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenLoopInputUsedAfterInnerLoop) {
+  constexpr absl::string_view kModule = R"(
+  HloModule input_used_after_inner_loop
+
+  inner_body {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4]) tuple(next_iter, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    o_hist = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4]) tuple(c0, zero_buf, o_arr)
+    w = (s32[], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    passthrough_in = s32[4] get-tuple-element(w), index=2
+    next_hist = s32[4] add(o_hist, passthrough_in)
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) tuple(next_o_iter, out_arr, next_hist)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    zero_hist = s32[4] broadcast(c0), dimensions={}
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, arr, zero_hist)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_arr = s32[4] get-tuple-element(w_out), index=1
+    final_hist = s32[4] get-tuple-element(w_out), index=2
+    ROOT out = s32[4] add(final_arr, final_hist)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenInnerLoopHasNonGteUser) {
+  constexpr absl::string_view kModule = R"(
+  HloModule non_gte_post_loop_user
+
+  inner_body {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4]) tuple(next_iter, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    o_hist = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4]) tuple(c0, zero_buf, o_arr)
+    w = (s32[], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    w_bar = (s32[], s32[4], s32[4]) opt-barrier(w)
+    out_arr = s32[4] get-tuple-element(w), index=1
+    passthrough_in = s32[4] get-tuple-element(w_bar), index=2
+    next_hist = s32[4] add(o_hist, passthrough_in)
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) tuple(next_o_iter, out_arr, next_hist)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    zero_hist = s32[4] broadcast(c0), dimensions={}
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, arr, zero_hist)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_arr = s32[4] get-tuple-element(w_out), index=1
+    final_hist = s32[4] get-tuple-element(w_out), index=2
+    ROOT out = s32[4] add(final_arr, final_hist)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenBodyParamHasDuplicateGte) {
+  constexpr absl::string_view kModule = R"(
+  HloModule duplicate_body_param_gte
+
+  inner_body {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    in_arr_dup = s32[4] get-tuple-element(p), index=2
+    sum_arr = s32[4] get-tuple-element(p), index=3
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_sum = s32[4] add(sum_arr, in_arr_dup)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4], s32[4]) tuple(next_iter, dus, in_arr, next_sum)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    o_sum = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4], s32[4]) tuple(c0, zero_buf, o_arr, o_sum)
+    w = (s32[], s32[4], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    out_sum = s32[4] get-tuple-element(w), index=3
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) tuple(next_o_iter, out_arr, out_sum)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    zero_sum = s32[4] broadcast(c0), dimensions={}
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, arr, zero_sum)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_arr = s32[4] get-tuple-element(w_out), index=1
+    final_sum = s32[4] get-tuple-element(w_out), index=2
+    ROOT out = s32[4] add(final_arr, final_sum)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenWhileInitHasMultipleUsers) {
+  constexpr absl::string_view kModule = R"(
+  HloModule shared_while_init
+
+  inner_body {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4]) tuple(next_iter, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    o_acc_init = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4]) tuple(c0, zero_buf, o_arr)
+    t_init_bar = (s32[], s32[4], s32[4]) opt-barrier(t_init)
+    w = (s32[], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    saved_zero = s32[4] get-tuple-element(t_init_bar), index=1
+    next_acc_init = s32[4] add(o_acc_init, saved_zero)
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) tuple(next_o_iter, out_arr, next_acc_init)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    zero_acc = s32[4] broadcast(c0), dimensions={}
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, arr, zero_acc)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_arr = s32[4] get-tuple-element(w_out), index=1
+    final_acc = s32[4] get-tuple-element(w_out), index=2
+    ROOT out = s32[4] add(final_arr, final_acc)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenBodyParamHasNonGteUser) {
+  constexpr absl::string_view kModule = R"(
+  HloModule body_param_non_gte_user
+
+  inner_body {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    p_bar = (s32[], s32[4], s32[4], s32[4]) opt-barrier(p)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    sum_arr = s32[4] get-tuple-element(p), index=3
+    in_from_bar = s32[4] get-tuple-element(p_bar), index=2
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_sum = s32[4] add(sum_arr, in_from_bar)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4], s32[4]) tuple(next_iter, dus, in_arr, next_sum)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    o_sum = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4], s32[4]) tuple(c0, zero_buf, o_arr, o_sum)
+    w = (s32[], s32[4], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    out_sum = s32[4] get-tuple-element(w), index=3
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) tuple(next_o_iter, out_arr, out_sum)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    zero_sum = s32[4] broadcast(c0), dimensions={}
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, arr, zero_sum)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    final_arr = s32[4] get-tuple-element(w_out), index=1
+    final_sum = s32[4] get-tuple-element(w_out), index=2
+    ROOT out = s32[4] add(final_arr, final_sum)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       DoNotUnifyWhenOuterRootIsNotTuple) {
+  constexpr absl::string_view kModule = R"(
+  HloModule outer_root_call
+
+  swap_slots {
+    p0 = s32[] parameter(0)
+    p1 = s32[4] parameter(1)
+    p2 = s32[4] parameter(2)
+    ROOT t = (s32[], s32[4], s32[4]) tuple(p0, p2, p1)
+  }
+
+  inner_body {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_a = s32[4] get-tuple-element(p), index=2
+    in_b = s32[4] get-tuple-element(p), index=3
+    c1 = s32[] constant(1)
+    ds_a = s32[1] dynamic-slice(in_a, iter), dynamic_slice_sizes={1}
+    ds_b = s32[1] dynamic-slice(in_b, iter), dynamic_slice_sizes={1}
+    sum_slice = s32[1] add(ds_a, ds_b)
+    dus = s32[4] dynamic-update-slice(acc, sum_slice, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4], s32[4]) tuple(next_iter, dus, in_a, in_b)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_other = s32[4] get-tuple-element(op), index=1
+    o_arr = s32[4] get-tuple-element(op), index=2
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4], s32[4]) tuple(c0, zero_buf, o_other, o_arr)
+    w = (s32[], s32[4], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4], s32[4]) call(next_o_iter, out_arr, o_other), to_apply=swap_slots
+  }
+
+  outer_cond {
+    op = (s32[], s32[4], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    other = s32[4] constant({10, 20, 30, 40})
+    arr = s32[4] constant({1, 2, 3, 4})
+    o_init = (s32[], s32[4], s32[4]) tuple(c0, other, arr)
+    w_out = (s32[], s32[4], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    ROOT final_arr = s32[4] get-tuple-element(w_out), index=2
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest,
+       UnifyWhenRootPrecedesDynamicSliceInInputUsers) {
+  constexpr absl::string_view kModule = R"(
+  HloModule root_first_in_users
+
+  inner_body {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[4] get-tuple-element(p), index=1
+    in_arr = s32[4] get-tuple-element(p), index=2
+    c1 = s32[] constant(1)
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    elem = s32[] reshape(ds)
+    inc = s32[] add(elem, c1)
+    inc_1d = s32[1] reshape(inc)
+    dus = s32[4] dynamic-update-slice(acc, inc_1d, iter)
+    next_iter = s32[] add(iter, c1)
+    ROOT t = (s32[], s32[4], s32[4]) tuple(next_iter, dus, in_arr)
+  }
+
+  inner_cond {
+    p = (s32[], s32[4], s32[4]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(4)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body {
+    op = (s32[], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_arr = s32[4] get-tuple-element(op), index=1
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    zero_buf = s32[4] broadcast(c0), dimensions={}
+    t_init = (s32[], s32[4], s32[4]) tuple(c0, zero_buf, o_arr)
+    w = (s32[], s32[4], s32[4]) while(t_init), condition=inner_cond, body=inner_body
+    out_arr = s32[4] get-tuple-element(w), index=1
+    next_o_iter = s32[] add(o_iter, c1)
+    ROOT out_t = (s32[], s32[4]) tuple(next_o_iter, out_arr)
+  }
+
+  outer_cond {
+    op = (s32[], s32[4]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[4] constant({1, 2, 3, 4})
+    o_init = (s32[], s32[4]) tuple(c0, arr)
+    w_out = (s32[], s32[4]) while(o_init), condition=outer_cond, body=outer_body
+    ROOT final_arr = s32[4] get-tuple-element(w_out), index=1
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
+  HloComputation* inner_body = module->GetComputationWithName("inner_body");
+  ASSERT_NE(inner_body, nullptr);
+  HloInstruction* acc = inner_body->GetInstructionWithName("acc");
+  HloInstruction* in_arr = inner_body->GetInstructionWithName("in_arr");
+  HloInstruction* ds = inner_body->GetInstructionWithName("ds");
+  ASSERT_NE(acc, nullptr);
+  ASSERT_NE(in_arr, nullptr);
+  ASSERT_NE(ds, nullptr);
+  ASSERT_TRUE(ds->ReplaceOperandWith(0, acc).ok());
+  ASSERT_TRUE(ds->ReplaceOperandWith(0, in_arr).ok());
+  ASSERT_EQ(in_arr->users().at(0), inner_body->root_instruction());
+
+  std::unique_ptr<HloModule> module_clone = module->Clone();
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(module), std::move(module_clone), {}, std::nullopt, true));
+}
 }  // namespace
 }  // namespace xla

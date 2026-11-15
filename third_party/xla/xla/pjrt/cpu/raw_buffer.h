@@ -75,27 +75,29 @@ PjRtDeviceEventRef ToCpuEvent(tsl::Future<void> future);
 
 class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:
-  CpuRawBuffer(PjRtMemorySpace* memory_space,
+  CpuRawBuffer(PJRT_Memory* memory_space,
                tsl::AsyncValueRef<CpuDeviceMemory> buffer, size_t buffer_size,
-               bool is_mutable)
+               bool is_mutable, AsyncWorkRunner* async_work_runner)
       : memory_space_(memory_space),
         buffer_(std::move(buffer)),
         buffer_size_(buffer_size),
-        is_mutable_(is_mutable) {}
+        is_mutable_(is_mutable),
+        async_work_runner_(async_work_runner) {}
 
   absl::Status ValidateSlice(int64_t offset, int64_t slice_size);
 
   // Allocates owning memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> Allocate(
-      PjRtMemorySpace* memory_space, size_t size_bytes,
+      PJRT_Memory* memory_space, size_t size_bytes,
+      AsyncWorkRunner* async_work_runner,
       const CpuDeviceMemory::Allocator& allocator =
           CpuDeviceMemory::DefaultAllocator());
 
   // Imports foreign memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> ImportForeignMemory(
       void* data, absl::AnyInvocable<void() &&> on_delete_callback,
-      size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
-      bool is_mutable);
+      size_t on_device_bytes_count, PJRT_Memory* memory_space, bool is_mutable,
+      AsyncWorkRunner* async_work_runner);
 
   size_t GetOnDeviceSizeInBytes() const override;
 
@@ -111,7 +113,7 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
 
   const tsl::AsyncValueRef<CpuDeviceMemory>& buffer() const { return buffer_; }
 
-  PjRtMemorySpace* memory_space() const override { return memory_space_; }
+  PJRT_Memory* c_memory_space() const override { return memory_space_; }
 
   bool is_mutable() const final { return is_mutable_; }
 
@@ -138,10 +140,11 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
   }
 
  private:
-  PjRtMemorySpace* const memory_space_;
+  PJRT_Memory* const memory_space_;
   tsl::AsyncValueRef<CpuDeviceMemory> buffer_;
   size_t buffer_size_;
   bool is_mutable_;
+  AsyncWorkRunner* async_work_runner_;
 };
 
 }  // namespace xla

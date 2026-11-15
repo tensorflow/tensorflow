@@ -1613,7 +1613,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
   const bool should_pad = options_.enable_priority_queue &&
                           options_.mixed_priority_batching_policy ==
                               MixedPriorityBatchingPolicy::kPriorityMerge &&
-                          batches.size() == 1 && IsOpenBatchSchedulable();
+                          batches.size() == 1;
   if (!should_pad) {
     return;
   }
@@ -1897,11 +1897,11 @@ Queue<TaskType>::ScheduleBatch() {
       batch_to_schedule = tasks_priority_queue_.ScheduleBatch();
     } else {
       std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-      // Just in time merging of low priority tasks into the open batch.
-      PadOpenBatchWithLowPriorityTasks();
 
       // Consider closing the open batch at this time, to schedule it.
       if (batches.size() == 1 && IsOpenBatchSchedulable()) {
+        // Just in time merging of low priority tasks into the open batch.
+        PadOpenBatchWithLowPriorityTasks();
         // Support BatchPaddingPolicy::kBatchDown and
         // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
         // starting a new batch because starting a new batch will close the old

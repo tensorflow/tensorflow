@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <set>
 #include <string>
 #include <utility>
@@ -32,7 +33,9 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/trace_filter_utils.h"
 #include "xla/tsl/profiler/utils/traceme_global_flags.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tsl {
@@ -40,6 +43,7 @@ namespace profiler {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 
 MATCHER_P(Named, name, "") { return arg.name == name; }
 
@@ -285,6 +289,93 @@ TEST(RecorderTest, FlushComplexLifetimes) {
   EXPECT_FALSE(found_dead);
 
   TraceMeRecorder::Stop();
+}
+
+// traceme.h cannot depend on trace_filter_utils.h, so it keeps its own copies
+// of the TraceMeFilter bits it uses.
+static_assert(kTraceMeHostEnqueueCallbackFilter ==
+                  static_cast<int>(TraceMeFilter::kTraceHostEnqueueCallback),
+              "kTraceMeHostEnqueueCallbackFilter must match "
+              "TraceMeFilter::kTraceHostEnqueueCallback");
+static_assert(kTraceMeDefaultFilter ==
+                  static_cast<int>(TraceMeFilter::kTraceDefault),
+              "kTraceMeDefaultFilter must match TraceMeFilter::kTraceDefault");
+
+// Records one TraceMe of each kind in a session with `session_filter_mask`:
+// "tagged" carries the default bit plus kTraceHostEnqueueCallback (as in
+// RealProgramContinuator), "untagged" passes no mask, "memory" carries only
+// kTraceMemory.
+std::vector<std::string> RecordFilteredTraceMes(int level,
+                                                uint64_t session_filter_mask) {
+  const uint64_t host_enqueue_callback_mask =
+      kTraceMeDefaultFilterMask |
+      TraceMeFiltersToMask({TraceMeFilter::kTraceHostEnqueueCallback});
+  TraceMeRecorder::Stop();  // Ensure a clean state from previous tests
+  TraceMeRecorder::Start(level, session_filter_mask);
+  {
+    TraceMe tagged("tagged", /*level=*/1, host_enqueue_callback_mask);
+  }
+  {
+    TraceMe untagged("untagged", /*level=*/1);
+  }
+  {
+    TraceMe memory("memory", /*level=*/1,
+                   TraceMeFiltersToMask({TraceMeFilter::kTraceMemory}));
+  }
+  std::vector<std::string> names;
+  for (const auto& thread : TraceMeRecorder::Stop()) {
+    for (const auto& event : thread.events) {
+      names.push_back(event.name);
+    }
+  }
+  return names;
+}
+
+TEST(RecorderTest, UntaggedTraceMeCarriesOnlyDefaultFilterBit) {
+  EXPECT_EQ(kTraceMeDefaultFilterMask,
+            TraceMeFiltersToMask({TraceMeFilter::kTraceDefault}));
+}
+
+TEST(RecorderTest, HostEnqueueCallbackFilterRecordsOnlyTaggedTraceMe) {
+  EXPECT_THAT(RecordFilteredTraceMes(
+                  /*level=*/1, TraceMeFiltersToMask(
+                                   {TraceMeFilter::kTraceHostEnqueueCallback})),
+              ElementsAre("tagged"));
+}
+
+TEST(RecorderTest, NoFilterRecordsTaggedAndUntaggedTraceMe) {
+  EXPECT_THAT(
+      RecordFilteredTraceMes(/*level=*/1, std::numeric_limits<uint64_t>::max()),
+      ElementsAre("tagged", "untagged", "memory"));
+}
+
+TEST(RecorderTest, MemoryFilterRecordsOnlyMemoryTraceMe) {
+  EXPECT_THAT(
+      RecordFilteredTraceMes(
+          /*level=*/1, TraceMeFiltersToMask({TraceMeFilter::kTraceMemory})),
+      ElementsAre("memory"));
+}
+
+TEST(RecorderTest, MemoryAndDefaultFilterRecordsMemoryAndDefaultTraceMe) {
+  EXPECT_THAT(
+      RecordFilteredTraceMes(
+          /*level=*/1, TraceMeFiltersToMask({TraceMeFilter::kTraceMemory,
+                                             TraceMeFilter::kTraceDefault})),
+      ElementsAre("tagged", "untagged", "memory"));
+}
+
+TEST(RecorderTest, DefaultFilterRecordsTraceMeWithDefaultBit) {
+  EXPECT_THAT(
+      RecordFilteredTraceMes(
+          /*level=*/1, TraceMeFiltersToMask({TraceMeFilter::kTraceDefault})),
+      ElementsAre("tagged", "untagged"));
+}
+
+TEST(RecorderTest, UnusedFilterBitRecordsNoUntaggedTraceMe) {
+  // A filter bit that no TraceMe carries (e.g. a newly added filter) must not
+  // record untagged events.
+  EXPECT_THAT(RecordFilteredTraceMes(/*level=*/1, uint64_t{1} << 10),
+              IsEmpty());
 }
 
 }  // namespace

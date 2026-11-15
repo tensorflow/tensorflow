@@ -1,0 +1,77 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/pybind11_abseil/BUILD b/pybind11_abseil/BUILD
+--- a/pybind11_abseil/BUILD
++++ b/pybind11_abseil/BUILD
+@@ -163,7 +163,11 @@
+     name = "import_status_module",
+     srcs = ["import_status_module.cc"],
+     hdrs = ["import_status_module.h"],
+-    data = ["status.so"],
++    deps = [
++        ":check_status_module_imported",
++        ":register_status_bindings",
++        "@com_google_absl//absl/status",
++    ],
+ )
+ 
+ pybind_library(
+diff --git a/pybind11_abseil/import_status_module.cc b/pybind11_abseil/import_status_module.cc
+--- a/pybind11_abseil/import_status_module.cc
++++ b/pybind11_abseil/import_status_module.cc
+@@ -1,6 +1,10 @@
+ #include "pybind11_abseil/import_status_module.h"
+ 
+ #include <pybind11/pybind11.h>
++
++#include "absl/status/status.h"
++#include "pybind11_abseil/check_status_module_imported.h"
++#include "pybind11_abseil/register_status_bindings.h"
+ 
+ namespace pybind11 {
+ namespace google {
+@@ -10,10 +14,16 @@
+     pybind11_fail("ImportStatusModule() PyGILState_Check() failure.");
+   }
+   if (bypass_regular_import) {
+-    throw std::runtime_error(
+-        "ImportStatusModule(bypass_regular_import=true) is no longer supported."
+-        " Please change the calling code to"
+-        " call this function without arguments.");
++    auto parent =
++        reinterpret_borrow<module_>(PyImport_AddModule("pybind11_abseil"));
++    auto m = reinterpret_borrow<module_>(PyImport_AddModule(
++        PYBIND11_TOSTRING(PYBIND11_ABSEIL_STATUS_MODULE_PATH)));
++    parent.attr("status") = m;
++    if (!internal::IsStatusModuleImported()) {
++      internal::RegisterStatusBindings(m);
++    }
++    // else no-op because bindings are already loaded.
++    return m;
+   }
+   return module_::import(PYBIND11_TOSTRING(PYBIND11_ABSEIL_STATUS_MODULE_PATH));
+ }
+diff --git a/pybind11_abseil/import_status_module.h b/pybind11_abseil/import_status_module.h
+--- a/pybind11_abseil/import_status_module.h
++++ b/pybind11_abseil/import_status_module.h
+@@ -20,7 +20,7 @@
+ // this function (enforced).
+ // TODO(b/225205409): Remove bypass_regular_import.
+ // bypass_regular_import is deprecated and can only be false (enforced).
+-module_ ImportStatusModule(bool bypass_regular_import = false);
++module_ ImportStatusModule(bool bypass_regular_import = true);
+ 
+ }  // namespace google
+ }  // namespace pybind11

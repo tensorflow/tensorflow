@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <utility>
@@ -32,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -58,10 +62,17 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
+#include "xla/primitive_util.h"
+#include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
+#include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -108,15 +119,19 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
                               buffer_alignment_, entry_function_name_));
   SetBackendKind(&mlir_context_, entry_func, backend_kind_);
 
-  std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion_, &mlir_context_);
-  emitters::PartitionedComputations computations(
-      fusion_.fused_instructions_computation(), &mlir_context_, epilogues);
-  ABSL_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                          *module, computations));
+  if (ShouldEmitFastCpuCopy()) {
+    ABSL_RETURN_IF_ERROR(EmitFastCpuEntryFunction(entry_func, fusion_));
+  } else {
+    std::vector<emitters::EpilogueSpecification> epilogues =
+        GetEpilogues(fusion_, &mlir_context_);
+    emitters::PartitionedComputations computations(
+        fusion_.fused_instructions_computation(), &mlir_context_, epilogues);
+    ABSL_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+                                            *module, computations));
 
-  ABSL_RETURN_IF_ERROR(
-      EmitEntryFunction(computations, call_targets, entry_func, fusion_));
+    ABSL_RETURN_IF_ERROR(
+        EmitEntryFunction(computations, call_targets, entry_func, fusion_));
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto kernel_spec,
                    GetKernelSpec(entry_function_name_, fusion_,
@@ -149,6 +164,170 @@ int ConcatenateFusionKernelEmitter::GetValidUnrollFactor(
     unroll_factor = std::gcd(unroll_factor, operand->shape().dimensions(dim));
   }
   return unroll_factor;
+}
+
+bool ConcatenateFusionKernelEmitter::CanEmitFastCpuCopy(
+    const HloFusionSpec& fusion_spec, BackendKind backend_kind) {
+  if (backend_kind != BackendKind::kCpu) {
+    return false;
+  }
+  if (fusion_spec.fusion_root_count() != 1) {
+    return false;
+  }
+  const HloInstruction& root = fusion_spec.fusion_root(0).instruction();
+  if (root.opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
+  const Shape& output_shape = root.shape();
+  if (!output_shape.has_layout()) {
+    return false;
+  }
+  int bit_width = primitive_util::StorageBitWidth(output_shape.element_type());
+  if (bit_width < 8 || bit_width % 8 != 0) {
+    return false;
+  }
+  for (const HloInstruction* operand : root.operands()) {
+    if (operand->opcode() != HloOpcode::kParameter) {
+      return false;
+    }
+    if (!operand->shape().has_layout() ||
+        !LayoutUtil::Equal(operand->shape().layout(), output_shape.layout())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ConcatenateFusionKernelEmitter::ShouldEmitFastCpuCopy() const {
+  if (!CanEmitFastCpuCopy(fusion_spec_, backend_kind_)) {
+    return false;
+  }
+  if (work_dimensions_.num_work_clusters.x != 1 ||
+      work_dimensions_.num_work_clusters.y != 1 ||
+      work_dimensions_.num_work_clusters.z != 1 ||
+      work_dimensions_.num_work_items.x != 1 ||
+      work_dimensions_.num_work_items.y != 1 ||
+      work_dimensions_.num_work_items.z != 1 ||
+      work_dimensions_.num_work_groups.y != 1 ||
+      work_dimensions_.num_work_groups.z != 1) {
+    return false;
+  }
+  const HloInstruction& concat = fusion_spec_.fusion_root(0).instruction();
+  const Shape& output_shape = concat.shape();
+  auto min2maj = LayoutUtil::MinorToMajor(output_shape.layout());
+  auto concat_dim_it = absl::c_find(min2maj, concat.concatenate_dimension());
+  bool has_outer_dims = std::next(concat_dim_it) != min2maj.end();
+  return has_outer_dims || work_dimensions_.num_work_groups.x == 1;
+}
+
+absl::Status ConcatenateFusionKernelEmitter::EmitFastCpuEntryFunction(
+    mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  const auto* concat = Cast<HloConcatenateInstruction>(
+      &fusion_spec_.fusion_root(0).instruction());
+  const Shape& output_shape = concat->shape();
+  int64_t concat_dim = concat->concatenate_dimension();
+  auto output_min2maj = LayoutUtil::MinorToMajor(output_shape.layout());
+  auto concat_dim_it = absl::c_find(output_min2maj, concat_dim);
+
+  int64_t inner_dims_product = 1;
+  for (auto it = output_min2maj.begin(); it != concat_dim_it; ++it) {
+    inner_dims_product *= output_shape.dimensions(*it);
+  }
+  std::vector<int64_t> outer_dims(std::next(concat_dim_it),
+                                  output_min2maj.end());
+
+  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  builder.setInsertionPointToStart(entry_function.addEntryBlock());
+
+  int num_inputs = fusion.fused_instructions_computation()->num_parameters();
+  llvm::SmallVector<mlir::Value> input_tensors(
+      entry_function.getArguments().take_front(num_inputs));
+  mlir::Value output_tensor = entry_function.getArguments()[num_inputs];
+
+  if (ShapeUtil::IsZeroElementArray(output_shape)) {
+    mlir::func::ReturnOp::create(builder, output_tensor);
+    return absl::OkStatus();
+  }
+
+  mlir::Value c0 = mlir::arith::ConstantIndexOp::create(builder, 0);
+  llvm::SmallVector<mlir::Value> output_multi_index(
+      output_shape.dimensions().size(), c0);
+
+  auto emit_copies = [&](mlir::ImplicitLocOpBuilder& b,
+                         mlir::Value current_dest) -> mlir::Value {
+    int64_t concat_offset = 0;
+    for (const HloInstruction* operand : concat->operands()) {
+      int64_t operand_concat_dim = operand->shape().dimensions(concat_dim);
+      int64_t element_count = inner_dims_product * operand_concat_dim;
+      if (element_count > 0) {
+        int64_t param_num =
+            Cast<HloParameterInstruction>(operand)->parameter_number();
+        mlir::Value src_tensor = input_tensors[param_num];
+        llvm::SmallVector<mlir::Value> src_indices = output_multi_index;
+        src_indices[concat_dim] = c0;
+        llvm::SmallVector<mlir::Value> dst_indices = output_multi_index;
+        dst_indices[concat_dim] =
+            concat_offset == 0
+                ? c0
+                : mlir::arith::ConstantIndexOp::create(b, concat_offset)
+                      .getResult();
+        current_dest =
+            CopySliceOp::create(b, src_tensor, current_dest, src_indices,
+                                dst_indices, element_count);
+      }
+      concat_offset += operand_concat_dim;
+    }
+    return current_dest;
+  };
+
+  std::function<mlir::Value(int, mlir::ImplicitLocOpBuilder&, mlir::Value)>
+      emit_outer_loops = [&](int outer_idx, mlir::ImplicitLocOpBuilder& b,
+                             mlir::Value current_dest) -> mlir::Value {
+    if (outer_idx < 0) {
+      return emit_copies(b, current_dest);
+    }
+    int64_t dim = outer_dims[outer_idx];
+    int64_t dim_size = output_shape.dimensions(dim);
+    mlir::Value lb;
+    mlir::Value ub;
+    int64_t num_wg = static_cast<int64_t>(work_dimensions_.num_work_groups.x);
+    if (outer_idx == static_cast<int>(outer_dims.size()) - 1 && num_wg > 1) {
+      auto wg_id = WorkGroupIdOp::create(b, WorkGroupDimension::x);
+      wg_id->setAttr("xla.range", b.getIndexArrayAttr({0, num_wg - 1}));
+      int64_t wg_size = CeilOfRatio(dim_size, num_wg);
+      mlir::Value wg_size_val =
+          mlir::arith::ConstantIndexOp::create(b, wg_size);
+      mlir::Value c1 = mlir::arith::ConstantIndexOp::create(b, 1);
+      mlir::Value dim_size_val =
+          mlir::arith::ConstantIndexOp::create(b, dim_size);
+      lb = mlir::arith::MulIOp::create(b, wg_id, wg_size_val);
+      mlir::Value next_wg_id = mlir::arith::AddIOp::create(b, wg_id, c1);
+      mlir::Value ub_unclamped =
+          mlir::arith::MulIOp::create(b, next_wg_id, wg_size_val);
+      ub = mlir::arith::MinSIOp::create(b, ub_unclamped, dim_size_val);
+    } else {
+      lb = c0;
+      ub = mlir::arith::ConstantIndexOp::create(b, dim_size);
+    }
+    mlir::Value step = mlir::arith::ConstantIndexOp::create(b, 1);
+    auto for_op = mlir::scf::ForOp::create(
+        b, lb, ub, step, mlir::ValueRange{current_dest},
+        [&](mlir::OpBuilder& body_builder, mlir::Location loc, mlir::Value iv,
+            mlir::ValueRange iter_args) {
+          mlir::ImplicitLocOpBuilder nested_b(loc, body_builder);
+          output_multi_index[dim] = iv;
+          mlir::Value next_dest =
+              emit_outer_loops(outer_idx - 1, nested_b, iter_args[0]);
+          mlir::scf::YieldOp::create(nested_b, next_dest);
+        });
+    return for_op.getResult(0);
+  };
+
+  mlir::Value result = emit_outer_loops(static_cast<int>(outer_dims.size()) - 1,
+                                        builder, output_tensor);
+  mlir::func::ReturnOp::create(builder, result);
+  return absl::OkStatus();
 }
 
 IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(

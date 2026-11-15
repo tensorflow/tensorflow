@@ -64,20 +64,20 @@ def embedding_column(categorical_column,
 
   Args:
     categorical_column: A categorical_column returned from
-        categorical_column_with_identity, weighted_categorical_column,
-        categorical_column_with_vocabulary_file,
-        categorical_column_with_vocabulary_list,
-        sequence_categorical_column_with_identity,
-        sequence_categorical_column_with_vocabulary_file,
-        sequence_categorical_column_with_vocabulary_list
+      categorical_column_with_identity, weighted_categorical_column,
+      categorical_column_with_vocabulary_file,
+      categorical_column_with_vocabulary_list,
+      sequence_categorical_column_with_identity,
+      sequence_categorical_column_with_vocabulary_file,
+      sequence_categorical_column_with_vocabulary_list
     dimension: An integer specifying dimension of the embedding, must be > 0.
-    combiner: A string specifying how to reduce if there are multiple entries
-      in a single row for a non-sequence column. For more information, see
+    combiner: A string specifying how to reduce if there are multiple entries in
+      a single row for a non-sequence column. For more information, see
       `tf.feature_column.embedding_column`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
-      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and
-      standard deviation `1/sqrt(dimension)`.
+      `tf.compat.v1.truncated_normal_initializer` with mean `0.0` and standard
+      deviation `1/sqrt(dimension)`.
     max_sequence_length: An non-negative integer specifying the max sequence
       length. Any sequence shorter then this will be padded with 0 embeddings
       and any sequence longer will be truncated. This must be positive for
@@ -85,7 +85,7 @@ def embedding_column(categorical_column,
     learning_rate_fn: A function that takes global step and returns learning
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
-      python function to all calls of embedding_column, otherwise performence
+      python function to all calls of embedding_column, otherwise performance
       may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
@@ -171,15 +171,15 @@ def shared_embedding_columns(categorical_columns,
 
   Args:
     categorical_columns: A list of categorical_columns returned from
-        categorical_column_with_identity, weighted_categorical_column,
-        categorical_column_with_vocabulary_file,
-        categorical_column_with_vocabulary_list,
-        sequence_categorical_column_with_identity,
-        sequence_categorical_column_with_vocabulary_file,
-        sequence_categorical_column_with_vocabulary_list
+      categorical_column_with_identity, weighted_categorical_column,
+      categorical_column_with_vocabulary_file,
+      categorical_column_with_vocabulary_list,
+      sequence_categorical_column_with_identity,
+      sequence_categorical_column_with_vocabulary_file,
+      sequence_categorical_column_with_vocabulary_list
     dimension: An integer specifying dimension of the embedding, must be > 0.
-    combiner: A string specifying how to reduce if there are multiple entries
-      in a single row for a non-sequence column. For more information, see
+    combiner: A string specifying how to reduce if there are multiple entries in
+      a single row for a non-sequence column. For more information, see
       `tf.feature_column.embedding_column`.
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
@@ -189,8 +189,8 @@ def shared_embedding_columns(categorical_columns,
       shared embedding weights are added. If not given, a reasonable name will
       be chosen based on the names of `categorical_columns`. This is also used
       in `variable_scope` when creating shared embedding weights.
-    max_sequence_lengths: An list of non-negative integers, either None or
-      empty or the same length as the argument categorical_columns. Entries
+    max_sequence_lengths: An list of non-negative integers, either None or empty
+      or the same length as the argument categorical_columns. Entries
       corresponding to non-sequence columns must be 0 and entries corresponding
       to sequence columns specify the max sequence length for the column. Any
       sequence shorter then this will be padded with 0 embeddings and any
@@ -199,7 +199,7 @@ def shared_embedding_columns(categorical_columns,
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
       python function to all calls of shared_embedding_columns, otherwise
-      performence may suffer.
+      performance may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the

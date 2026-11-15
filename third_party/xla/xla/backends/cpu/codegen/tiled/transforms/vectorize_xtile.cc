@@ -574,6 +574,35 @@ struct VectorizeDotGeneralOp
     llvm::ArrayRef<int64_t> rhs_contracting =
         dimension_numbers.getRhsContractingDimensions();
 
+    if (result_vector_type.getRank() == 0) {
+      mlir::Location loc = op.getLoc();
+      rewriter.setInsertionPoint(add_op);
+      llvm::SmallVector<int64_t> perm(lhs_rank);
+      for (auto [lhs_dim, rhs_dim] :
+           llvm::zip(lhs_contracting, rhs_contracting)) {
+        perm[lhs_dim] = rhs_dim;
+      }
+      mlir::Value rhs_aligned = rhs_vector;
+      if (!llvm::is_sorted(perm)) {
+        rhs_aligned = mv::TransposeOp::create(rewriter, loc, rhs_vector, perm);
+      }
+      mlir::Value product =
+          mlir::isa<mlir::FloatType>(lhs_vector.getType().getElementType())
+              ? mlir::Value(
+                    ma::MulFOp::create(rewriter, loc, lhs_vector, rhs_aligned))
+              : mlir::Value(
+                    ma::MulIOp::create(rewriter, loc, lhs_vector, rhs_aligned));
+      mlir::Value acc = mv::ExtractOp::create(rewriter, loc, acc_vector);
+      llvm::SmallVector<bool> reduction_mask(lhs_rank, true);
+      mlir::Value reduction = mv::MultiDimReductionOp::create(
+          rewriter, loc, product, acc, reduction_mask, mv::CombiningKind::ADD);
+      mlir::Value result =
+          mv::BroadcastOp::create(rewriter, loc, result_vector_type, reduction);
+      rewriter.replaceOp(add_op, result);
+      rewriter.eraseOp(op);
+      return mlir::success();
+    }
+
     int64_t lhs_free_dims =
         lhs_rank - lhs_batch.size() - lhs_contracting.size();
     int64_t rhs_free_dims =
@@ -838,11 +867,12 @@ struct VectorizeReshapeOp : public mlir::OpConversionPattern<shlo::ReshapeOp> {
   }
 };
 
-struct VectorizeConstantOp : public mlir::OpConversionPattern<ma::ConstantOp> {
-  using OpConversionPattern::OpConversionPattern;
+template <typename ConstantOpType>
+struct VectorizeConstantOp : public mlir::OpConversionPattern<ConstantOpType> {
+  using mlir::OpConversionPattern<ConstantOpType>::OpConversionPattern;
 
   mlir::LogicalResult matchAndRewrite(
-      ma::ConstantOp op, OpAdaptor adaptor,
+      ConstantOpType op, typename ConstantOpType::Adaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
     auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
     if (!tensor_type) {
@@ -993,12 +1023,12 @@ class VectorizeXTilePass
         ma::ArithDialect, mlir::memref::MemRefDialect, mm::MathDialect,
         ms::SCFDialect, mlir::tensor::TensorDialect, mv::VectorDialect,
         shlo::StablehloDialect, xla::XlaDialect, xtile::XTileDialect>();
-    target.addIllegalOp<shlo::BroadcastInDimOp, shlo::ConcatenateOp,
-                        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp,
-                        shlo::ReshapeOp, shlo::SliceOp, shlo::TransposeOp,
-                        mlir::tensor::BitcastOp, mlir::tensor::ExtractOp,
-                        mlir::tensor::FromElementsOp, xtile::ExtractTileOp,
-                        xtile::InsertTileOp, xtile::MaskOp>();
+    target.addIllegalOp<
+        shlo::BroadcastInDimOp, shlo::ConcatenateOp, shlo::ConstantOp,
+        shlo::DotGeneralOp, shlo::IotaOp, shlo::ReduceOp, shlo::ReshapeOp,
+        shlo::SliceOp, shlo::TransposeOp, mlir::tensor::BitcastOp,
+        mlir::tensor::ExtractOp, mlir::tensor::FromElementsOp,
+        xtile::ExtractTileOp, xtile::InsertTileOp, xtile::MaskOp>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addDynamicallyLegalDialect<ma::ArithDialect, mm::MathDialect>(
         [&](mlir::Operation* op) { return type_converter.isLegal(op); });
@@ -1017,7 +1047,8 @@ class VectorizeXTilePass
       VectorizeReshapeOp,
       VectorizeSliceOp,
       VectorizeBroadcastInDimOp,
-      VectorizeConstantOp,
+      VectorizeConstantOp<ma::ConstantOp>,
+      VectorizeConstantOp<shlo::ConstantOp>,
       VectorizeFromElementsOp,
       VectorizeReduceOp,
       VectorizeTransposeOp

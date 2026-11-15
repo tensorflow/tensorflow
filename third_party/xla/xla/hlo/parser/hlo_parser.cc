@@ -154,6 +154,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExp2:
@@ -1660,39 +1661,42 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
     }
   }
+  // In the syntax sugar form (`<op>-start`, `<op>-update`, `<op>-done`), the
+  // wrapped computation is synthesized without its own attribute list, so the
+  // async ops' shared attributes also populate the wrapped instruction, the
+  // last op of the chain winning. In the full form (`calls=`), the wrapped
+  // computation was already parsed with its own attributes.
+  HloInstruction* const wrapped = async_wrapped_opcode.has_value()
+                                      ? instruction->async_wrapped_instruction()
+                                      : nullptr;
   if (metadata) {
     instruction->set_metadata(*metadata);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_metadata(*metadata);
+    if (wrapped != nullptr) {
+      wrapped->set_metadata(*metadata);
     }
   }
   if (original_value) {
     instruction->set_original_value(*original_value);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_original_value(
-          *original_value);
+    if (wrapped != nullptr) {
+      wrapped->set_original_value(*original_value);
     }
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(*backend_config);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_raw_backend_config_string(
-          *backend_config);
+    if (wrapped != nullptr) {
+      wrapped->set_raw_backend_config_string(*backend_config);
     }
   }
   if (frontend_attributes) {
     instruction->set_frontend_attributes(*frontend_attributes);
-    if (instruction->IsAsynchronous() &&
-        instruction->async_wrapped_instruction() != nullptr) {
-      instruction->async_wrapped_instruction()->set_frontend_attributes(
-          *frontend_attributes);
+    if (wrapped != nullptr) {
+      wrapped->set_frontend_attributes(*frontend_attributes);
     }
   }
   if (statistics_viz) {
     instruction->set_statistics_viz(*statistics_viz);
-    if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_statistics_viz(
-          *statistics_viz);
+    if (wrapped != nullptr) {
+      wrapped->set_statistics_viz(*statistics_viz);
     }
   }
 
@@ -2285,14 +2289,18 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // and pass them to construct the async-wrapped computation.
           // Any mismatch between the actual operands and the expected shapes
           // in the wrapped computation will be caught by the verifier.
-          async_computation = CreateAsyncWrappedComputation(
-              *async_wrapped_opcode, /*result_shape=*/shape->tuple_shapes(1),
-              /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(), attrs,
-              allow_attributes);
-
-          if (!async_computation) {
+          HloComputation* async_wrapped_computation =
+              CreateAsyncWrappedComputation(
+                  *async_wrapped_opcode,
+                  /*result_shape=*/shape->tuple_shapes(1),
+                  /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(),
+                  attrs, allow_attributes);
+          // Check the raw pointer: storing it would engage the optional even
+          // when it is null.
+          if (async_wrapped_computation == nullptr) {
             return nullptr;
           }
+          async_computation = async_wrapped_computation;
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
@@ -2681,8 +2689,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
-            return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
-                                                   *index);
+            return ShapeInference::InferGetTupleElementShape(
+                operands[0]->shape(), *index);
           })) {
         return nullptr;
       }
@@ -3701,7 +3709,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       *custom_call_instr->mutable_precision_config() = precision_config;
       return instruction;
     }
-    case HloOpcode::kDot: {
+    case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
       attrs["lhs_contracting_dims"] = {
           /*required=*/false, AttrTy::kBracedInt64List, &lhs_contracting_dims};
@@ -3762,13 +3771,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
+        // A dot-general only has precisions for lhs and rhs.
         precision_config.mutable_operand_precision()->Resize(
-            operands.size(), PrecisionConfig::DEFAULT);
+            opcode == HloOpcode::kDotGeneral ? 2 : operands.size(),
+            PrecisionConfig::DEFAULT);
       }
       if (algorithm) {
         precision_config.set_algorithm(*algorithm);
       }
       SparsityConfig sp = parsed_sparsity_config.value_or(SparsityConfig());
+      BlockScalingConfig bs =
+          parsed_block_scaling_config.value_or(BlockScalingConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
@@ -3776,9 +3789,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      if (opcode == HloOpcode::kDotGeneral) {
+        return builder->AddInstruction(HloInstruction::CreateDotGeneral(
+            *shape, operands, dnum, precision_config, sp, bs));
+      }
       return builder->AddInstruction(HloInstruction::CreateDot(
-          *shape, operands, dnum, precision_config, sp,
-          parsed_block_scaling_config.value_or(BlockScalingConfig())));
+          *shape, operands, dnum, precision_config, sp, bs));
     }
     case HloOpcode::kRaggedDot: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
@@ -5028,6 +5044,12 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
     if (last_tile_dim_replicate) {
       CHECK(subgroup_types.empty());
       subgroup_types.push_back(OpSharding::REPLICATED);
+    }
+    if (subgroup_types.size() > tile_assignment_dimensions.size()) {
+      return Error(
+          loc, absl::StrCat("last_tile_dims has ", subgroup_types.size(),
+                            " entries, but the tile assignment only has ",
+                            tile_assignment_dimensions.size(), " dimensions"));
     }
     if (!iota_reshape_dims.empty()) {
       CHECK(devices.empty());
@@ -7863,6 +7885,14 @@ bool HloParserImpl::ParseTensorBlockScalingConfig(
         for (int64_t s : steps) {
           result->add_steps(s);
         }
+      } else if (attribute == "block_sizes") {
+        std::vector<int64_t> block_sizes;
+        if (!ParseDxD("block_sizes", &block_sizes)) {
+          return Error(lexer_.GetLoc(), "expects block_sizes in form NxMxK");
+        }
+        for (int64_t b : block_sizes) {
+          result->add_block_sizes(b);
+        }
       } else {
         return Error(lexer_.GetLoc(), "unknown attribute");
       }
@@ -9224,6 +9254,7 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
   // async-wrapped computation later.
   int64_t min_arity = HloOpcodeArity(async_wrapped_opcode).value_or(0);
   if (async_wrapped_opcode == HloOpcode::kDot ||
+      async_wrapped_opcode == HloOpcode::kDotGeneral ||
       async_wrapped_opcode == HloOpcode::kConvolution) {
     min_arity = 2;
   }

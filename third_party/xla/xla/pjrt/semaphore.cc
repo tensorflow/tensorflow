@@ -29,26 +29,31 @@ Semaphore::Semaphore(int64_t capacity)
   CHECK_GE(capacity, 0);
 }
 
-bool Semaphore::CanAcquire(CanAcquireArgs* args) {
-  return args->semaphore->value_ >= args->amount;
-}
-
 void Semaphore::Acquire(int64_t amount) {
   CHECK_GE(amount, 0);
+  absl::MutexLock lock(mu_);
+  if (value_ >= amount) {
+    value_ -= amount;
+    return;
+  }
 
-  CanAcquireArgs args;
-  args.semaphore = this;
-  args.amount = amount;
+  Waiter waiter{amount};
+  if (tail_ != nullptr) {
+    tail_->next = &waiter;
+  } else {
+    head_ = &waiter;
+  }
+  tail_ = &waiter;
 
-  mu_.LockWhen(absl::Condition(&CanAcquire, &args));
-  value_ -= amount;
-  mu_.unlock();
+  while (!waiter.granted) {
+    waiter.cv.Wait(&mu_);
+  }
 }
 
 bool Semaphore::TryAcquire(int64_t amount) {
   CHECK_GE(amount, 0);
   absl::MutexLock lock(mu_);
-  if (value_ >= amount) {
+  if (head_ == nullptr && value_ >= amount) {
     value_ -= amount;
     return true;
   }
@@ -59,6 +64,26 @@ void Semaphore::Release(int64_t amount) {
   CHECK_GE(amount, 0);
   absl::MutexLock lock(mu_);
   value_ += amount;
+  Waiter* prev = nullptr;
+  for (Waiter* w = head_; w != nullptr && value_ > 0;) {
+    Waiter* next = w->next;
+    if (w->amount <= value_) {
+      value_ -= w->amount;
+      if (prev != nullptr) {
+        prev->next = next;
+      } else {
+        head_ = next;
+      }
+      if (next == nullptr) {
+        tail_ = prev;
+      }
+      w->granted = true;
+      w->cv.Signal();
+    } else {
+      prev = w;
+    }
+    w = next;
+  }
 }
 
 Semaphore::ScopedReservation::~ScopedReservation() {

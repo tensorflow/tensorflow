@@ -48,7 +48,8 @@ namespace gpu {
 
 class TransposeFusionBase : public MlirKernelEmitter {
  public:
-  explicit TransposeFusionBase(const HloFusionAnalysis& analysis);
+  TransposeFusionBase(const HloFusionAnalysis& analysis,
+                      int64_t num_threads_per_block);
 
  protected:
   absl::Status EmitEntryFunction(

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_loop_simplifier.h"
@@ -76,6 +78,10 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
                           const WhileLoopConfig& config) {
   HloComputation* computation = while_instr->while_body();
   HloInstruction* body_param = computation->parameter_instruction(0);
+  HloInstruction* root = computation->root_instruction();
+  auto in_root = [&](auto* x) { return absl::c_count(root->operands(), x); };
+  auto is_gte = [](auto* u) { return Match(u, match::GetTupleElement()); };
+  auto all_gte = [&](auto* i) { return absl::c_all_of(i->users(), is_gte); };
 
   // Finding the accumulator instructions
   std::vector<HloInstruction*> possible_acc;
@@ -97,7 +103,9 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
             gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
             .has_value()) {
       // The accumulator should be written at the same index
-      if (computation->root_instruction()->operand(param_idx) == gte_user) {
+      if (hlo_query::GetUniqueGteInstruction(body_param, param_idx) == gte &&
+          gte_user->user_count() == 1 && gte_user->operand(1) != gte &&
+          in_root(gte_user) == 1 && root->operand(param_idx) == gte_user) {
         possible_acc.push_back(gte);
         VLOG(3) << "accumulator index: " << param_idx << " = " << gte->name();
       }
@@ -158,7 +166,9 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     if (!check_single_user_not_null(input_gte_outer)) {
       continue;
     }
-    if (input_gte_outer->users().at(0) != while_instr->while_init()) {
+    if (input_gte_outer->users().at(0) != while_instr->while_init() ||
+        while_instr->while_init()->user_count() != 1 || !all_gte(body_param) ||
+        while_instr->while_init()->IsRoot() || !all_gte(while_instr)) {
       continue;
     }
     VLOG(3) << "Input parameter outer body = " << input_gte_outer->name()
@@ -172,7 +182,7 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     }
 
     HloInstruction* input_gte_inner =
-        find_gte_instr(computation->parameter_instruction(0), input_idx_inner);
+        hlo_query::GetUniqueGteInstruction(body_param, input_idx_inner);
     // An unused loop input is technically valid, skip it.
     if (input_gte_inner == nullptr) {
       continue;
@@ -185,12 +195,14 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
 
     // Input must have two users, one is the dynamic-slice and the other is the
     // root of the loop body.
-    if (input_gte_inner->user_count() != 2) {
+    if (input_gte_inner->user_count() != 2 || in_root(input_gte_inner) != 1 ||
+        find_gte_instr(while_instr, input_idx_inner) != nullptr) {
       continue;
     }
     // Get the first user of the input and check if it is a shape covering
     // dynamic-slice.
-    HloInstruction* gte_user = input_gte_inner->users().at(0);
+    HloInstruction* gte_user =
+        input_gte_inner->users()[input_gte_inner->users()[0] == root];
     VLOG(3) << "User of the inner loop input = " << gte_user->ToString();
     std::optional<int64_t> slice_dim =
         MatchShapeCoveringDynamicIndexInstruction(
@@ -212,7 +224,9 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
     const HloDataflowAnalysis& dataflow_analysis,
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops) {
   auto is_while_body = [&](HloComputation* comp) {
-    return !comp->caller_instructions(HloOpcode::kWhile).empty();
+    return comp->root_instruction()->opcode() == HloOpcode::kTuple &&
+           absl::c_any_of(comp->caller_instructions(HloOpcode::kWhile),
+                          [&](auto* w) { return w->while_body() == comp; });
   };
 
   std::vector<HloInstruction*> changed_loops;

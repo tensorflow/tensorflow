@@ -141,10 +141,11 @@ TEST(CudaElfUtilsTest, CudaElfSizeCalculations) {
 
   EXPECT_EQ(CudaElfSize(buffer), 520);
 
-  absl::Span<const uint8_t> truncated(buffer.data(), 500);
+  absl::Span<const uint8_t> truncated = absl::MakeConstSpan(buffer).first(500);
   EXPECT_EQ(CudaElfSize(truncated), std::nullopt);
 
-  absl::Span<const uint8_t> too_small(buffer.data(), sizeof(Elf64_Ehdr) - 1);
+  absl::Span<const uint8_t> too_small =
+      absl::MakeConstSpan(buffer).first(sizeof(Elf64_Ehdr) - 1);
   EXPECT_EQ(CudaElfSize(too_small), std::nullopt);
 
   // Overflow / wrap-around tests

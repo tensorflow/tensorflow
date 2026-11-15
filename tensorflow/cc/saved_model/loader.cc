@@ -92,9 +92,18 @@ uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
 static absl::Status ValidateNode(const NodeDef& node) {
   const auto node_iterator = node.attr().find("value");
   if (node_iterator != node.attr().end()) {
-    AttrValue node_value = node_iterator->second;
+    const AttrValue& node_value = node_iterator->second;
     if (node_value.has_tensor()) {
-      const PartialTensorShape node_shape(node_value.tensor().tensor_shape());
+      PartialTensorShape node_shape;
+      const absl::Status shape_status =
+          PartialTensorShape::BuildPartialTensorShape(
+              node_value.tensor().tensor_shape(), &node_shape);
+      if (!shape_status.ok()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Saved model contains node \"", node.name(), "\" (op \"", node.op(),
+            "\") which initializes from a tensor with an invalid shape: ",
+            shape_status.message()));
+      }
       if (node_shape.num_elements() < 0) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Saved model contains node \"", node.name(), "\" (op \"", node.op(),

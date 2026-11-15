@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
@@ -29,10 +30,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_call.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/gpu/launch_dimensions.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
     const HloCustomCallInstruction* instr, IrEmitterContext* context) {
@@ -56,11 +56,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
                        context->buffer_assignment(), buffer_alignment, instr,
                        call.output_indices));
 
-  ABSL_ASSIGN_OR_RETURN(
-      CustomKernel ptx_custom_kernel,
-      kernel::GetOwnedPtxCustomKernel(
-          call.name, call.kernel_data, kernel_arguments.args().size(),
-          call.block_dim, call.thread_dim, call.shared_mem));
+  GpuKernelSpec spec{call.name,
+                     LaunchDimensions{call.block_dim, call.thread_dim},
+                     kernel_arguments, call.shared_mem};
+
+  ABSL_ASSIGN_OR_RETURN(CustomKernel ptx_custom_kernel,
+                   kernel::GetOwnedPtxCustomKernel(spec, call.kernel_data));
 
   Thunk::ThunkInfo thunk_info =
       Thunk::ThunkInfo::WithProfileAnnotation(instr, context->GetNextThunkId());
@@ -69,5 +70,4 @@ absl::StatusOr<std::unique_ptr<Thunk>> EmitPtxCustomKernelThunk(
       context->gpu_topology().num_devices_per_process());
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

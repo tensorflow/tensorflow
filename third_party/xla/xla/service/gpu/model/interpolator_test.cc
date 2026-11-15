@@ -246,5 +246,35 @@ TEST(EuclideanWeightedAverage2DInterpolatorTest, ReturnsWeightedAverage) {
   EXPECT_NEAR(interpolator->Eval(p), 1.00, kEpsilon);
 }
 
+TEST(InterpolatorLargeCoordinateTest, HandlesLargeInt64Coordinates) {
+  EuclideanNNInterpolator<int64_t, 2> nn;
+  std::array<int64_t, 2> small_point = {8, 8};
+  std::array<int64_t, 2> large_point = {(int64_t{1} << 31) + 10, 8};
+  nn.Add(small_point, 10);
+  nn.Add(large_point, 20);
+
+  std::array<int64_t, 2> query_near_large = {(int64_t{1} << 31) + 10, 8};
+  EXPECT_EQ(nn.Eval(query_near_large), 20);
+  std::array<int64_t, 2> query_near_small = {10, 8};
+  EXPECT_EQ(nn.Eval(query_near_small), 10);
+
+  EuclideanWeightedAverageInterpolator<2> weighted(
+      /*next_context=*/{-1, -1}, /*next_power_context=*/{1, 1},
+      /*max_context=*/{16, 16}, /*min_context=*/{8, 8});
+  std::array<int64_t, 2> p1 = {8, 16};
+  std::array<int64_t, 2> p2 = {8, 8};
+  std::array<int64_t, 2> p3 = {16, 8};
+  std::array<int64_t, 2> p4 = {16, 16};
+  weighted.Add(p1, 1.0);
+  weighted.Add(p2, 2.0);
+  weighted.Add(p3, 3.0);
+  weighted.Add(p4, 4.0);
+
+  std::array<int64_t, 2> far_query = {(int64_t{1} << 31) + 10, 12};
+  double eval = weighted.Eval(far_query);
+  EXPECT_GE(eval, 1.0);
+  EXPECT_LE(eval, 4.0);
+}
+
 }  // namespace
 }  // namespace xla::gpu

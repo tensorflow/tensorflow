@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 
+#include <cstdint>
+#include <limits>
+#include <vector>
+
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -690,6 +695,117 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
   ASSERT_EQ(tensors_expected.size(), 2);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
   test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
+}
+
+TEST_F(GenericLayoutOptimizerTest,
+       CancelTransposeAroundPadAcceptsValidSelfInversePermutation) {
+  using test::function::NDef;
+
+  GenericLayoutOptimizer optimizer(
+      RewriterConfig::AGGRESSIVE,
+      RewriterConfig::NCHW_TO_NHWC /* CPU settings*/);
+
+  // {0, 2, 1, 3} is its own inverse, so the pair around Pad still cancels.
+  const Tensor kPermute = test::AsTensor<int32_t>({0, 2, 1, 3});
+  const Tensor kPad = test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
+
+  GrapplerItem item;
+  item.graph = test::function::GDef({
+      NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+
+      NDef("paddings", "Const", {}, {{"dtype", DT_INT32}, {"value", kPad}}),
+      NDef("perm_before", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermute}}),
+      NDef("perm_after", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermute}}),
+
+      NDef("transpose_0", "Transpose", {"x", "perm_before"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+      NDef("pad", "Pad", {"transpose_0", "paddings"},
+           {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
+      NDef("transpose_1", "Transpose", {"pad", "perm_after"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+  });
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  int num_transposes = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Transpose") ++num_transposes;
+  }
+  EXPECT_EQ(num_transposes, 0);
+
+  Tensor x = GenerateRandomTensor<DT_FLOAT>({2, 3, 5, 7});
+  item.fetch = {"transpose_1"};
+  item.feed.emplace_back("x", x);
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized = item.WithGraph(std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors.size(), 1);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
+TEST_F(GenericLayoutOptimizerTest,
+       CancelTransposeAroundPadRejectsOutOfRangePermutation) {
+  using test::function::NDef;
+
+  GenericLayoutOptimizer optimizer(
+      RewriterConfig::AGGRESSIVE,
+      RewriterConfig::NCHW_TO_NHWC /* CPU settings*/);
+
+  const Tensor kPermuteNchwToNhwc = test::AsTensor<int32_t>({0, 2, 3, 1});
+  const Tensor kPad = test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
+
+  // Each permutation has four elements, like kPermuteNchwToNhwc, but holds an
+  // index outside [0, 4), so the two Transpose nodes are not cancellable.
+  const std::vector<std::vector<int32_t>> kOutOfRangePermutations = {
+      {0, 4, 1, 2},
+      {-1, 3, 1, 2},
+      {0, 3, 1, std::numeric_limits<int32_t>::max()},
+  };
+
+  for (const auto& permutation : kOutOfRangePermutations) {
+    SCOPED_TRACE(absl::StrJoin(permutation, ","));
+    const Tensor kPermuteBefore = test::AsTensor<int32_t>(permutation);
+
+    GrapplerItem item;
+    item.graph = test::function::GDef({
+        NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+
+        NDef("paddings", "Const", {}, {{"dtype", DT_INT32}, {"value", kPad}}),
+        NDef("perm_before", "Const", {},
+             {{"dtype", DT_INT32}, {"value", kPermuteBefore}}),
+        NDef("perm_nchw_to_nhwc", "Const", {},
+             {{"dtype", DT_INT32}, {"value", kPermuteNchwToNhwc}}),
+
+        NDef("transpose_0", "Transpose", {"x", "perm_before"},
+             {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+        NDef("pad", "Pad", {"transpose_0", "paddings"},
+             {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
+        NDef("transpose_1", "Transpose", {"pad", "perm_nchw_to_nhwc"},
+             {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+    });
+
+    GraphDef output;
+    TF_EXPECT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+    // Both Transpose nodes are kept and the paddings are not permuted.
+    int num_checked = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "transpose_0" || node.name() == "transpose_1") {
+        EXPECT_EQ(node.op(), "Transpose");
+        ++num_checked;
+      } else if (node.name() == "paddings") {
+        Tensor paddings;
+        ASSERT_TRUE(paddings.FromProto(node.attr().at("value").tensor()));
+        EXPECT_EQ(paddings.tensor_data(), kPad.tensor_data());
+        ++num_checked;
+      }
+    }
+    EXPECT_EQ(num_checked, 3);
+  }
 }
 
 TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {

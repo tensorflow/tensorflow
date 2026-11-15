@@ -17,7 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_VERSION_H_
 
 // An increasing version number to protect jax code against breaking changes.
-// In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER 82  // Mosaic serde downgrade signature change
+// In JAX, reference this via jax._src.lib.xla_version.
+#define JAX_XLA_VERSION_NUMBER 88  // CPU log and log1p precision
+
+// TODO(phawkins): Remove JAX_IFRT_VERSION_NUMBER once JAX no longer references
+// it.
+#define JAX_IFRT_VERSION_NUMBER JAX_XLA_VERSION_NUMBER
 
 #endif  // XLA_PYTHON_VERSION_H_

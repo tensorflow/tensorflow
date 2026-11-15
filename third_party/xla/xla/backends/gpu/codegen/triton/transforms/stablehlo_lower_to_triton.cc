@@ -368,9 +368,12 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
 
     mlir::IRMapping combine_mapping;
     for (std::size_t i = 0; i < num_inputs; ++i) {
-      combine_mapping.map(old_block.getArgument(i), res_tensors[i]);
+      // Argument i is the accumulator, argument num_inputs + i is the current
+      // element. The tt.reduce result plays the role of the element here, the
+      // init value the role of the accumulator.
+      combine_mapping.map(old_block.getArgument(i), broadcasted_inits[i]);
       combine_mapping.map(old_block.getArgument(num_inputs + i),
-                          broadcasted_inits[i]);
+                          res_tensors[i]);
     }
 
     for (mlir::Operation& body_op : old_block.without_terminator()) {

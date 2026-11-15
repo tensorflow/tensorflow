@@ -710,24 +710,30 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:macos",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "macos_arm64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:macos",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
     },
     visibility = ["//visibility:public"],
 )
@@ -1362,6 +1368,7 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:mlir_bytecode_to_tflite",
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",

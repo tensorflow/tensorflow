@@ -17,13 +17,16 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
@@ -106,10 +109,22 @@ class CollectiveMemory {
   std::optional<se::DeviceAddress<T>> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank, se::DeviceAddress<T> addr) const;
 
+  // A key and the unique id (`SymmetricMemory::id`) of the symmetric memory
+  // that serves it. Several keys can share one symmetric memory, so the key is
+  // part of the identity.
+  using SymmetricMemoryId = std::pair<Key, uint64_t>;
+
+  // Returns the keys of all symmetric memories with the ids of the symmetric
+  // memories serving them, sorted by key.
+  absl::Span<const SymmetricMemoryId> symmetric_memory_ids() const {
+    return symmetric_memory_ids_;
+  }
+
  private:
   const BufferAllocations& buffers_;
   absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories_;
   absl::flat_hash_map<Key, PeerMemory> peer_memories_;
+  std::vector<SymmetricMemoryId> symmetric_memory_ids_;
 };
 
 // Acquires collective memory using the given collective parameters for all

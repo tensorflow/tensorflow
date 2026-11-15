@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace xla {
 XlaOp Relu(XlaOp x) { return Max(ScalarLike(x, 0), x); }
@@ -64,8 +65,8 @@ REGISTER_XLA_OP(Name("ReluGrad"), MlirXlaOpKernel);
 class Relu6GradOp : public XlaOpKernel {
  public:
   explicit Relu6GradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
-  // otherwise return 0.
+  // Return input feature if input feature is NaN, lhs (incoming gradient) if
+  // 0 < input feature < 6, otherwise return 0.
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const TensorShape shape = ctx->InputShape(0);
@@ -73,9 +74,13 @@ class Relu6GradOp : public XlaOpKernel {
         xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
     const auto six = xla::Broadcast(
         XlaHelpers::IntegerLiteral(b, input_type(0), 6), shape.dim_sizes());
-    auto out = xla::Select(
-        xla::And(xla::Lt(ctx->Input(1), six), xla::Gt(ctx->Input(1), zero)),
-        ctx->Input(0), zero);
+    const auto feature = ctx->Input(1);
+    auto out =
+        xla::Select(xla::And(xla::Lt(feature, six), xla::Gt(feature, zero)),
+                    ctx->Input(0), zero);
+    if (DataTypeIsFloating(input_type(1))) {
+      out = xla::Select(xla::Ne(feature, feature), feature, out);
+    }
     ctx->SetOutput(0, out);
   }
 };
@@ -86,13 +91,16 @@ class LeakyReluGradOp : public XlaOpKernel {
   explicit LeakyReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
   }
+  // Return input feature if input feature is NaN, gradients if input
+  // feature > 0, otherwise gradients * alpha.
   void Compile(XlaOpKernelContext* ctx) override {
     auto gradients = ctx->Input("gradients");
     auto features = ctx->Input("features");
-    auto output =
+    auto is_nan = xla::Ne(features, features);
+    auto normal_grad =
         xla::Select(xla::Gt(features, xla::ScalarLike(features, 0)), gradients,
                     gradients * xla::ScalarLike(gradients, alpha_));
-    ctx->SetOutput(0, output);
+    ctx->SetOutput(0, xla::Select(is_nan, features, normal_grad));
   }
   float alpha_;
 };

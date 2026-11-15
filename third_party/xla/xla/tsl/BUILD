@@ -634,7 +634,6 @@ bzl_library(
     srcs = if_google(["tsl.google.bzl"]),
     visibility = ["//visibility:public"],
     deps = [
-        ":package_groups_bzl",
         ":tsl_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
     ] + tsl_google_bzl_deps(),

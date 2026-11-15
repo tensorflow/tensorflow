@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 
 namespace mlir {
@@ -257,12 +256,6 @@ void AddPreQuantizationStableHloToTfPasses(
     AddPytorchPasses(pass_manager);
   }
 
-  // Legalize MHLO to StableHLO should be moved closer to where it is needed
-  // There are some entry points that start with HLO->MHLO like
-  // jax_to_tfl_flatbuffer.cc which can likely be updated to emit StableHLO
-  // to be consistent with other entrypoints.
-  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-
   // Expand backward compatibility with the given StableHLO version by
   // decomposing newer StableHLO operations into equivalent operations supported
   // by that older version.
@@ -312,21 +305,16 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass(
           {entry_function_name.str()}));
-  mlir::odml::AddMhloOptimizationPasses(
+  mlir::odml::AddCoreStablehloOptimizationPasses(
       pass_manager,
       /*add_fold_broadcast_pass=*/pass_config.enable_stablehlo_quantizer);
 
-  // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants. This
-  // pass must be added right before the legalization because pattern rewriter
-  // driver applies folding by default.
-  // TODO: b/295966255 - Remove this pass after moving MHLO folders to a
-  // separate pass.
-  pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
-
   if (pass_config.enable_stablehlo_quantizer) {
-    // When using StableHLO Quantizer, MHLO ops should be transformed back into
-    // StableHLO because the quantizer takes StableHLO dialect as its input.
-    pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+    // Undo the BroadcastInDimOp folding on splat constants before the
+    // StableHLO Quantizer runs.
+    // TODO: b/295966255 - Remove this pass once broadcast folding of splats is
+    // no longer applied before this point.
+    pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
   }
 }
 
@@ -339,9 +327,6 @@ void AddPostQuantizationStableHloToTfPasses(
     // quantized types.
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreateUniformQuantizedStableHloToTflPass());
-
-    // StableHLO -> MHLO
-    pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
 
   if (pass_config.enable_composite_direct_lowering) {
@@ -351,6 +336,10 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
+    // Fold and simplify StableHLO into the canonical form the legalization
+    // expects (MHLO did this through its folders and canonicalizations).
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::odml::CreateSimplifyHloPass());
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreatePrepareHloPass());
     // This pass must be added right before the legalization because pattern
@@ -381,9 +370,6 @@ void AddPostQuantizationStableHloToTfPasses(
   // Canonicalization after TF legalization.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
-
-  // Legalize all remaining mhlo ops to stableHLO
-  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // Translate "stablehlo.custom_call @stablehlo.composite" to
   // "stablehlo.composite"

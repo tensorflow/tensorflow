@@ -41,14 +41,21 @@ class ServiceExecutableRunOptions {
   using StreamBorrower =
       std::function<absl::StatusOr<std::vector<StreamPool::Ptr>>(
           int, int, se::StreamPriority)>;
+  using LocalityDomainStreamBorrower =
+      std::function<absl::StatusOr<StreamPool::Ptr>(int, int,
+                                                    se::StreamPriority)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
 
-  explicit ServiceExecutableRunOptions(const ExecutableRunOptions& run_options,
-                                       StreamBorrower stream_borrower = nullptr)
+  explicit ServiceExecutableRunOptions(
+      const ExecutableRunOptions& run_options,
+      StreamBorrower stream_borrower = nullptr,
+      LocalityDomainStreamBorrower locality_domain_stream_borrower = nullptr)
       : run_options_(run_options),
-        stream_borrower_(std::move(stream_borrower)) {}
+        stream_borrower_(std::move(stream_borrower)),
+        locality_domain_stream_borrower_(
+            std::move(locality_domain_stream_borrower)) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.
   const ExecutableRunOptions& run_options() const { return run_options_; }
@@ -90,9 +97,23 @@ class ServiceExecutableRunOptions {
 
   bool HasStreamBorrower() const { return stream_borrower_ != nullptr; }
 
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal,
+                                               se::StreamPriority priority,
+                                               int locality_domain_id) const {
+    return locality_domain_stream_borrower_
+               ? locality_domain_stream_borrower_(device_ordinal,
+                                                  locality_domain_id, priority)
+               : absl::UnimplementedError("No locality-domain stream borrower");
+  }
+
+  bool HasLocalityDomainStreamBorrower() const {
+    return locality_domain_stream_borrower_ != nullptr;
+  }
+
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower stream_borrower_;
+  LocalityDomainStreamBorrower locality_domain_stream_borrower_;
 };
 
 }  // namespace xla

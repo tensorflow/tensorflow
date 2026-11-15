@@ -148,7 +148,13 @@ HloInstructionT* TraceAsyncDataflowImpl(
         return nullptr;
       }
       if (index.empty()) {
-        for (int64_t idx = 0; idx < instr->operand_count(); ++idx) {
+        // An empty ShapeIndex at a kTuple rebuilds an async context tuple
+        // `((operands...), output, sync_state...)`. Visit producer defined
+        // elements 1..n-1 before element 0, which may forward an input operand
+        // shared with a sibling async op.
+        const int64_t n = instr->operand_count();
+        for (int64_t i = 1; i <= n; ++i) {
+          const int64_t idx = i % n;
           record_step(idx);
           HloInstructionT* res =
               TraceAsyncDataflowImpl(GetHloOperand(instr, idx), is_target,

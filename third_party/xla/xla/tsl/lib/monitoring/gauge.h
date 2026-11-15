@@ -135,7 +135,7 @@ template <typename T>
 class GaugeCell {
  public:
   explicit GaugeCell(const T& value) : value_(value) {}
-  ~GaugeCell() {}
+  ~GaugeCell() = default;
 
   // Atomically sets the value.
   void Set(const T& value) ABSL_LOCKS_EXCLUDED(mu_);
@@ -158,7 +158,7 @@ template <>
 class GaugeCell<int64_t> {
  public:
   explicit GaugeCell(int64_t value) : value_(value) {}
-  ~GaugeCell() {}
+  ~GaugeCell() = default;
 
   // Atomically sets the value.
   void Set(int64_t value);
@@ -180,7 +180,7 @@ template <>
 class GaugeCell<bool> {
  public:
   explicit GaugeCell(bool value) : value_(value) {}
-  ~GaugeCell() {}
+  ~GaugeCell() = default;
 
   // Atomically sets the value.
   void Set(bool value);

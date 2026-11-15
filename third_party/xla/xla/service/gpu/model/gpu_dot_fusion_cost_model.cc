@@ -688,10 +688,12 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
       rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
       dim_numbers.rhs_batch_dimensions());
 
-  if (lhs_non_contracting_dims.size() > 1 ||
-      rhs_non_contracting_dims.size() > 1) {
+  // `DotProblemInfo` reads `m` and `n` from the first non-contracting
+  // dimension of each operand, so both operands need exactly one.
+  if (lhs_non_contracting_dims.size() != 1 ||
+      rhs_non_contracting_dims.size() != 1) {
     return absl::UnimplementedError(absl::StrCat(
-        "Multiple non-contracting dimensions are not supported, got LHS: [",
+        "Exactly one non-contracting dimension is supported, got LHS: [",
         absl::StrJoin(lhs_non_contracting_dims, ","), "], RHS: [",
         absl::StrJoin(rhs_non_contracting_dims, ","), "]"));
   }

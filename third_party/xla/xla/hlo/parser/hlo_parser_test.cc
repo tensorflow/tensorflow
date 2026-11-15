@@ -3616,6 +3616,17 @@ ENTRY e {
                         "product"));
 }
 
+TEST_F(HloParserTest, ShardingLastTileDimsExceedsTileAssignmentRank) {
+  for (const char* sharding :
+       {"{devices=[2]0,1 last_tile_dims={manual, replicated}}",
+        "{devices=[2]<=[2] last_tile_dims={manual, replicated}}"}) {
+    auto result = ParseSharding(sharding);
+    EXPECT_FALSE(result.ok()) << sharding;
+    EXPECT_THAT(result.status().message(),
+                HasSubstr("but the tile assignment only has 1 dimensions"));
+  }
+}
+
 TEST_F(HloParserTest, CollectiveDeviceListIotaSizeMismatch) {
   const std::string original = R"(HloModule m
 ENTRY e {
@@ -6653,6 +6664,42 @@ ENTRY %main {
             module->ToString(fp_options));
 }
 
+// In the full form that HLO dumps print, the wrapped instruction of an async op
+// is parsed with its own attributes, and the async ops' attributes do not leak
+// onto it. That includes an async start's tuple shaped origin, which does not
+// fit the wrapped instruction's shape.
+TEST_F(HloParserTest, FullFormAsyncOpsKeepWrappedInstructionAttributes) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+%async_wrapped () -> token[] {
+  ROOT %bar = token[] custom-call(), custom_call_target="Barrier", metadata={op_name="bar"}, backend_config={"wrapped":1}, frontend_attributes={inner="1"}
+}
+
+ENTRY %main () -> token[] {
+  %start = ((), token[], s32[]) async-start(), calls=%async_wrapped, metadata={op_name="start"}, backend_config={"start":1}, frontend_attributes={outer="1"}, origin={((), {}, {"start" {2}})}
+  ROOT %done = token[] async-done(((), token[], s32[]) %start), backend_config={"done":1}, frontend_attributes={outer="2"}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* wrapped = module->entry_computation()
+                                      ->root_instruction()
+                                      ->async_wrapped_instruction();
+  EXPECT_EQ(wrapped->raw_backend_config_string(), R"({"wrapped":1})");
+  EXPECT_EQ(wrapped->metadata().op_name(), "bar");
+  EXPECT_THAT(wrapped->frontend_attributes().map(),
+              ::testing::UnorderedElementsAre(::testing::Pair("inner", "1")));
+  EXPECT_EQ(wrapped->original_value(), nullptr);
+
+  const HloPrintOptions options =
+      HloPrintOptions().set_syntax_sugar_async_ops(false);
+  const std::string printed = module->ToString(options);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reparsed,
+                       ParseAndReturnVerifiedModule(printed));
+  EXPECT_EQ(reparsed->ToString(options), printed);
+}
+
 TEST_F(HloParserTest, LexesAsJsonDict) {
   EXPECT_TRUE(LexesAsJsonDict("{}"));
   EXPECT_TRUE(LexesAsJsonDict("{abc: 123}"));
@@ -7654,6 +7701,39 @@ ENTRY DotBlockScalingConfig {
             sp_before.DebugString());
 }
 
+TEST_F(HloParserTest, DotGeneralRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule DotGeneralModule, entry_computation_layout={(f8e4m3fn[128,256]{1,0}, f8e4m3fn[64,128]{1,0}, f8e8m0fnu[128,8]{1,0}, f8e8m0fnu[8,128]{1,0}, u8[64,128]{1,0})->f32[128,128]{1,0}}
+
+ENTRY %main (lhs: f8e4m3fn[128,256], rhs: f8e4m3fn[64,128], lhs_scale: f8e8m0fnu[128,8], rhs_scale: f8e8m0fnu[8,128], rhs_indices: u8[64,128]) -> f32[128,128] {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[64,128]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  %rhs_indices = u8[64,128]{1,0} parameter(4)
+  ROOT %dot-general = f32[128,128]{1,0} dot-general(%lhs, %rhs, %lhs_scale, %rhs_scale, %rhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,high}, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1 idx=4}}, block_scaling_config={lhs={scale_idx=2 strides=0x128 steps=0x8 block_sizes=1x32} rhs={scale_idx=3 strides=128x0 steps=8x0}}
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kDotGeneral);
+  EXPECT_EQ(root->operand_count(), 5);
+  EXPECT_EQ(root->precision_config().operand_precision_size(), 2);
+  EXPECT_EQ(root->sparsity_config().rhs().idx(), 4);
+  EXPECT_EQ(root->block_scaling_config().lhs().scale_idx(), 2);
+  EXPECT_EQ(root->block_scaling_config().rhs().scale_idx(), 3);
+  EXPECT_THAT(root->block_scaling_config().lhs().block_sizes(),
+              ::testing::ElementsAre(1, 32));
+  EXPECT_EQ(module->ToString(), hlo_string);
+
+  // The proto form carries the same configs.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> from_proto,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  EXPECT_EQ(from_proto->ToString(), hlo_string);
+}
+
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
   const char* const hlo = R"(
 HloModule async_dot_example
@@ -8129,6 +8209,39 @@ ENTRY main {
   HloComputation* called_computation = async_done->async_wrapped_computation();
   EXPECT_EQ(called_computation->num_parameters(), 2);
   EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CallStart_InvalidToApply) {
+  // The braces open a nested computation, and `%nope` is not a valid
+  // instruction inside it.
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  call-start = ((), (), s32[]) call-start(), to_apply={%nope}
+  ROOT call-done = s32[] call-done(call-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("expects '=' in instruction"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CustomCallStart_MissingTarget) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  cc-start = ((), (), s32[]) custom-call-start()
+  ROOT cc-done = s32[] custom-call-done(cc-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(
+      module_or_status.status().message(),
+      HasSubstr("attribute custom_call_target is expected but not seen"));
 }
 
 TEST_F(HloParserTest,
@@ -9115,6 +9228,50 @@ ENTRY %entry (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
   EXPECT_EQ(root->opcode(), HloOpcode::kFma);
   EXPECT_EQ(module->ToString(HloPrintOptions().set_print_operand_shape(false)),
             original);
+}
+
+TEST_F(HloParserTest, GetTupleElementNonTupleOperand) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = f32[8] parameter(0)
+  ROOT g = get-tuple-element(p), index=0
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "failed to infer shape for opcode: get-tuple-element, error: "
+                  "Cannot infer shape: attempting to index into non-tuple");
+}
+
+TEST_F(HloParserTest, GetTupleElementIndexOutOfBounds) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = (f32[8], s32[]) parameter(0)
+  ROOT g = get-tuple-element(p), index=2
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "failed to infer shape for opcode: get-tuple-element, error: "
+      "Cannot infer shape: attempt to index out of tuple bounds: 2 >= 2");
+}
+
+TEST_F(HloParserTest, GetTupleElementNegativeIndex) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = (f32[8], s32[]) parameter(0)
+  ROOT g = get-tuple-element(p), index=-1
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "failed to infer shape for opcode: get-tuple-element, error: "
+      "Cannot infer shape: attempt to index out of tuple bounds: -1");
 }
 
 }  // namespace

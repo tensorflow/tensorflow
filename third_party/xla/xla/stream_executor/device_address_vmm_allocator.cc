@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/gpu/locality_domain_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/memory_space.h"
@@ -50,6 +51,19 @@ namespace stream_executor {
 namespace {
 
 thread_local const xla::DeviceAssignment* current_device_assignment = nullptr;
+
+// Locality-domain memory is served by dedicated BFC pools. This allocator has
+// no domain placement, so it must not hand out ordinary memory for those
+// colors.
+absl::Status RejectLocalityDomainMemorySpace(int64_t memory_space) {
+  if (gpu::IsLocalityDomainMemorySpace(memory_space)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The VMM allocator does not support locality-domain memory space %d; "
+        "use the BFC allocator with locality_domain_memory_size",
+        memory_space));
+  }
+  return absl::OkStatus();
+}
 
 // Bounds on how much deferred teardown may accumulate in a single open batch
 // before it is flushed with a stream timeline write.
@@ -673,6 +687,7 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
                                     bool retry_on_failure,
                                     int64_t memory_space) {
+  ABSL_RETURN_IF_ERROR(RejectLocalityDomainMemorySpace(memory_space));
   if (size == 0) {
     return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(), device_ordinal,
                                         this);
@@ -787,6 +802,7 @@ DeviceAddressVmmAllocator::Allocate(
     int device_ordinal, uint64_t allocation_size, bool /*retry_on_failure*/,
     int64_t memory_space, MemoryReservation* reservation,
     uint64_t reservation_offset, uint64_t mapping_size) {
+  ABSL_RETURN_IF_ERROR(RejectLocalityDomainMemorySpace(memory_space));
   if (allocation_size != mapping_size) {
     return absl::InvalidArgumentError(
         "allocation_size must equal mapping_size for mapped Allocate");

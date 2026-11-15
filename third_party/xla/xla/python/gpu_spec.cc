@@ -102,6 +102,7 @@ NB_MODULE(_gpu_spec, m) {
       .value("MI300", gpu::GpuModel::MI300)
       .value("MI350", gpu::GpuModel::MI350)
       .value("MI450", gpu::GpuModel::MI450)
+      .value("GFX1250_STRICT", gpu::GpuModel::GFX1250_STRICT)
       .value("P100", gpu::GpuModel::P100)
       .value("PVC", gpu::GpuModel::PVC)
       .value("VR_NVL72", gpu::GpuModel::VR_NVL72)

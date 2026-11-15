@@ -140,19 +140,15 @@ struct DotOpWorkGroupDim {
 // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
 // for Matrix-vector products.
 //
-// If `allow_runtime_calls` is false and DotEmitter tries to emit a call to a
-// runtime API, it will return an error.
-//
 // Returns the number of workgroups along the X dimension that can be used to
 // parallelize the dot operation.
 absl::StatusOr<DotOpWorkGroupDim> EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
     const llvm_ir::IrArray* addend_array, DotOpWorkGroupId work_group_id,
-    llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
-    const HloModuleConfig& hlo_module_config,
+    llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
-    bool allow_runtime_calls = true, bool allow_parallelism = true);
+    bool allow_parallelism = true);
 
 }  // namespace xla::cpu
 

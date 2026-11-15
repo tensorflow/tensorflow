@@ -28,8 +28,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -911,6 +913,51 @@ ENTRY entry_computation {
             kF32MultiplyFlopsPerElement * kNumElements);
   EXPECT_EQ(analysis.flop_count(*tanh), kF32TanhFlopsPerElement * kNumElements);
 };
+
+TEST_F(GpuHloCostAnalysisTest, ConcatenatePenaltyUsesDeviceWarpSize) {
+  // A boundary at 32 splits a wave64 wavefront but not a warp of 32.
+  // The fusion covers nested analyses.
+  absl::string_view hlo_string = R"(
+HloModule m
+
+fused_concat {
+  param_0 = f32[32,32] parameter(0)
+  param_1 = f32[32,32] parameter(1)
+  ROOT fused_root = f32[32,64] concatenate(param_0, param_1), dimensions={1}
+}
+
+ENTRY entry_computation {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  concat = f32[32,64] concatenate(p0, p1), dimensions={1}
+  fusion = f32[32,64] fusion(p0, p1), kind=kLoop, calls=fused_concat
+  ROOT tuple = (f32[32,64], f32[32,64]) tuple(concat, fusion)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* concat = entry->GetInstructionWithName("concat");
+  const HloInstruction* fusion = entry->GetInstructionWithName("fusion");
+  ASSERT_NE(concat, nullptr);
+  ASSERT_NE(fusion, nullptr);
+  constexpr int64_t kNumElements = 32 * 64;
+
+  const se::DeviceDescription wave32_device =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  ASSERT_EQ(wave32_device.threads_per_warp(), 32);
+  GpuHloCostAnalysis wave32_analysis(options_, wave32_device);
+  ASSERT_OK(entry->Accept(&wave32_analysis));
+  EXPECT_EQ(wave32_analysis.flop_count(*concat), 6 * kNumElements);
+  EXPECT_EQ(wave32_analysis.flop_count(*fusion), 6 * kNumElements);
+
+  const se::DeviceDescription wave64_device =
+      TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  ASSERT_EQ(wave64_device.threads_per_warp(), 64);
+  GpuHloCostAnalysis wave64_analysis(options_, wave64_device);
+  ASSERT_OK(entry->Accept(&wave64_analysis));
+  EXPECT_EQ(wave64_analysis.flop_count(*concat), 400 * kNumElements);
+  EXPECT_EQ(wave64_analysis.flop_count(*fusion), 400 * kNumElements);
+}
 
 TEST_F(GpuHloCostAnalysisTest,
        TritonCustomCallEscapedJsonBackendConfigMissingProperty) {

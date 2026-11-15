@@ -1,0 +1,21 @@
+// RUN: gpu_test_correctness %s
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+
+scatter {
+  %operand = f32[42,12,1,3,512]{4,3,2,1,0} parameter(0)
+  %indices = s32[1512,4]{1,0} parameter(1)
+  %update_in = f32[512,42,12,3]{3,2,1,0} parameter(2)
+  %update = f32[1512,1,1,1,1,512]{0,5,4,3,2,1} bitcast(%update_in)
+  ROOT %scatter = f32[42,12,1,3,512]{4,3,2,1,0}
+    scatter(%operand, %indices, %update),
+    update_window_dims={1,2,3,4,5},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0,1,2,3},
+    index_vector_dim=1,
+    to_apply=add
+}

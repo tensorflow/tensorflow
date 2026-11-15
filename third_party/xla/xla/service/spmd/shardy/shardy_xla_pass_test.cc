@@ -1965,6 +1965,146 @@ TEST_P(ShardyXLATest, InspectShardingCallbackErrorPropagated) {
                        HasSubstr("simulated inspect_sharding error")));
 }
 
+// Verifies end-to-end `ShardyXLA` HLO round-trip (`HloModule -> StableHLO ->
+// Shardy -> VerifiedHloModule`) for a 2D batch-and-database-sharded
+// `@PartialReduce` under `kConvertGlobalToLocal`. Detailed lowering variants
+// are covered in `test/partial_reduce_export.mlir`.
+TEST_P(ShardyXLATest, PartialReduceConvertGlobalToLocal) {
+  const char* const hloString = R"(
+    HloModule main, num_partitions=8, allow_spmd_sharding_propagation_to_output={true}
+
+    %gt_comparator (lhs_val: f32[], rhs_val: f32[], lhs_idx: s32[], rhs_idx: s32[]) -> pred[] {
+      %lhs_val = f32[] parameter(0)
+      %rhs_val = f32[] parameter(1)
+      %lhs_idx = s32[] parameter(2)
+      %rhs_idx = s32[] parameter(3)
+      ROOT %cmp = pred[] compare(%lhs_val, %rhs_val), direction=GT
+    }
+
+    ENTRY %main {
+      %scores = f32[8,10000] parameter(0), sharding={devices=[2,4]<=[8]}
+      %iota = s32[8,10000] iota(), iota_dimension=1, sharding={devices=[2,4]<=[8]}
+      %init_val = f32[] constant(-inf)
+      %init_idx = s32[] constant(-1)
+      ROOT %pr = (f32[8,384]{1,0:T(4,128)}, s32[8,384]{1,0:T(4,128)}) custom-call(%scores, %iota, %init_val, %init_idx),
+        custom_call_target="PartialReduce",
+        called_computations={%gt_comparator},
+        backend_config="{\"log2_reduction\": 5, \"reduction_dim\": 1, \"to_apply_type\": \"comparator\", \"top_k\": 10, \"recall_target\": 0.95}"
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  const HloInstruction* stageOneCall =
+      FindInstruction(module.get(), xla::HloOpcode::kCustomCall);
+  ASSERT_NE(stageOneCall, nullptr);
+  EXPECT_EQ(stageOneCall->custom_call_target(), "PartialReduce");
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      stageOneCall->shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 128}),
+                                 ShapeUtil::MakeShape(S32, {4, 128})})));
+  EXPECT_THAT(stageOneCall->raw_backend_config_string(),
+              HasSubstr("\"log2_reduction\":5"));
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kAllGather), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kReduce), nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      module->entry_computation()->root_instruction()->shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 384}),
+                                 ShapeUtil::MakeShape(S32, {4, 384})})));
+}
+
+TEST_P(ShardyXLATest, InvertDiagBlocksAndCompactWyConvertGlobalToLocal) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule main, num_partitions=4, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true}
+
+    ENTRY %main {
+      %p0 = f32[8,8]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+      %lower = f32[8,8]{0,1} custom-call(%p0),
+        custom_call_target="InvertDiagBlocksLowerTriangular",
+        operand_layout_constraints={f32[8,8]{1,0}},
+        sharding={devices=[2,2]<=[4]}
+      %upper = f32[8,8]{0,1} custom-call(%p0),
+        custom_call_target="InvertDiagBlocksUpperTriangular",
+        operand_layout_constraints={f32[8,8]{1,0}},
+        sharding={devices=[2,2]<=[4]}
+      %p1 = f32[6,16,16]{1,2,0} parameter(1), sharding={devices=[2,1,2]<=[4]}
+      %wy = f32[6,16,16]{2,1,0} custom-call(%p1),
+        custom_call_target="CompactWyHelper",
+        operand_layout_constraints={f32[6,16,16]{1,2,0}},
+        sharding={devices=[2,1,2]<=[4]}
+      %p2_re = f32[4,16,16]{1,2,0} parameter(2), sharding={devices=[2,1,2]<=[4]}
+      %p2_im = f32[4,16,16]{1,2,0} parameter(3), sharding={devices=[2,1,2]<=[4]}
+      %wy_c64 = (f32[4,16,16]{2,1,0}, f32[4,16,16]{2,1,0}) custom-call(%p2_re, %p2_im),
+        custom_call_target="CompactWyHelper",
+        operand_layout_constraints={f32[4,16,16]{1,2,0}, f32[4,16,16]{1,2,0}},
+        sharding={{devices=[2,1,2]<=[4]}, {devices=[2,1,2]<=[4]}}
+      %wy_re = f32[4,16,16]{2,1,0} get-tuple-element(%wy_c64), index=0
+      %p3 = f32[64,1,16,16]{0,3,2,1} parameter(4), sharding={devices=[2,1,2,1]<=[2,2]T(1,0)}
+      %lane_batched = f32[64,1,16,16]{0,2,3,1} custom-call(%p3),
+        custom_call_target="InvertDiagBlocksLowerTriangular",
+        operand_layout_constraints={f32[64,1,16,16]{0,3,2,1}},
+        sharding={devices=[2,1,1,2]<=[4]}
+      %p4_re = f32[4,16,8]{2,1,0} parameter(5), sharding={devices=[2,2,1]<=[2,2]T(1,0)}
+      %p4_im = f32[4,16,8]{2,1,0} parameter(6), sharding={devices=[2,2,1]<=[2,2]T(1,0)}
+      %qr_c64 = (f32[4,16,8]{2,1,0}, f32[4,16,8]{2,1,0}, f32[4,8]{1,0}, f32[4,8]{1,0}) custom-call(%p4_re, %p4_im),
+        custom_call_target="QrDecompositionBlock",
+        operand_layout_constraints={f32[4,16,8]{2,1,0}, f32[4,16,8]{2,1,0}},
+        sharding={{devices=[2,1,2]<=[4]}, {devices=[2,1,2]<=[4]}, {devices=[2,2]<=[4]}, {devices=[2,2]<=[4]}}
+      %qr_re = f32[4,16,8]{2,1,0} get-tuple-element(%qr_c64), index=0
+      ROOT %out = (f32[8,8]{0,1}, f32[8,8]{0,1}, f32[6,16,16]{2,1,0}, f32[4,16,16]{2,1,0}, f32[64,1,16,16]{0,2,3,1}, f32[4,16,8]{2,1,0}) tuple(%lower, %upper, %wy, %wy_re, %lane_batched, %qr_re)
+    })"));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kAllGather), nullptr);
+  int customCallCount = 0;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->opcode() != xla::HloOpcode::kCustomCall) {
+      continue;
+    }
+    ++customCallCount;
+    if (inst->custom_call_target() == "InvertDiagBlocksLowerTriangular" ||
+        inst->custom_call_target() == "InvertDiagBlocksUpperTriangular") {
+      if (inst->shape().dimensions().size() == 4) {
+        EXPECT_EQ(inst->shape(), ShapeUtil::MakeShapeWithDenseLayout(
+                                     F32, {16, 1, 16, 16}, {0, 2, 3, 1}));
+      } else {
+        EXPECT_TRUE(ShapeUtil::Compatible(inst->shape(),
+                                          ShapeUtil::MakeShape(F32, {8, 8})));
+      }
+    } else if (inst->custom_call_target() == "QrDecompositionBlock") {
+      EXPECT_TRUE(ShapeUtil::Compatible(
+          inst->shape(),
+          ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2, 16, 8}),
+                                     ShapeUtil::MakeShape(F32, {2, 16, 8}),
+                                     ShapeUtil::MakeShape(F32, {2, 8}),
+                                     ShapeUtil::MakeShape(F32, {2, 8})})));
+    } else if (inst->custom_call_target() == "CompactWyHelper") {
+      if (inst->shape().IsTuple()) {
+        EXPECT_TRUE(ShapeUtil::Compatible(
+            inst->shape(), ShapeUtil::MakeTupleShape(
+                               {ShapeUtil::MakeShape(F32, {1, 16, 16}),
+                                ShapeUtil::MakeShape(F32, {1, 16, 16})})));
+      } else {
+        EXPECT_TRUE(ShapeUtil::Compatible(
+            inst->shape(), ShapeUtil::MakeShape(F32, {3, 16, 16})));
+      }
+    }
+  }
+  EXPECT_EQ(customCallCount, 6);
+}
+
 // NOLINTEND(misc-override-with-different-visibility)
 
 INSTANTIATE_TEST_SUITE_P(

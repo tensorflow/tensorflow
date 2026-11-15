@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
@@ -339,6 +342,45 @@ TEST_F(RpcRendezvousMgrTest, RemoteRecvAsyncMany) {
     }
     counter.Wait();
     TF_ASSERT_OK(status);
+  }
+  rmgr_.Cleanup(step_id);
+}
+
+TEST_F(RpcRendezvousMgrTest, RemoteRecvWhileCancelling) {
+  const int64_t step_id = 123;
+  const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
+      "/job:worker/replica:1/task:2/cpu:0", 7890,
+      "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
+  {
+    tsl::core::RefCountPtr<RemoteRendezvous> rendez = rmgr_.Find(step_id);
+    TF_ASSERT_OK(rendez->Initialize(&worker_session_));
+
+    CancellationManager cm;
+    absl::Notification cancel_started;
+    absl::Notification allow_cancel_finish;
+    absl::Notification cancel_finished;
+    CancellationToken token = cm.get_cancellation_token();
+    ASSERT_TRUE(cm.RegisterCallback(token, [&]() {
+      cancel_started.Notify();
+      allow_cancel_finish.WaitForNotification();
+    }));
+
+    SchedClosure([&]() {
+      cm.StartCancel();
+      cancel_finished.Notify();
+    });
+    cancel_started.WaitForNotification();
+    EXPECT_FALSE(cm.IsCancelled());
+    EXPECT_TRUE(cm.IsCancelling());
+
+    Rendezvous::Args args;
+    args.cancellation_manager = &cm;
+    Tensor val(DT_STRING);
+    bool val_dead = false;
+    EXPECT_TRUE(absl::IsCancelled(rendez->Recv(key, args, &val, &val_dead)));
+
+    allow_cancel_finish.Notify();
+    cancel_finished.WaitForNotification();
   }
   rmgr_.Cleanup(step_id);
 }

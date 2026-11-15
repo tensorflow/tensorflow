@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/codegen/emitters/kernel_arguments.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
@@ -69,6 +70,11 @@ class KernelArgument {
 
   int64_t slice_index() const { return slice_index_; }
   void set_slice_index(int64_t slice_index) { slice_index_ = slice_index; }
+
+  static absl::StatusOr<KernelArgument> FromProto(
+      const KernelArgumentProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+  absl::StatusOr<KernelArgumentProto> ToProto() const;
 
  private:
   Kind kind_;
@@ -229,6 +235,11 @@ class KernelArguments {
     return kinds;
   }
 
+  static absl::StatusOr<KernelArguments> FromProto(
+      const KernelArgumentsProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+  absl::StatusOr<KernelArgumentsProto> ToProto() const;
+
  private:
   // Where each operand and each result of the originating instruction ended up
   // in `args_`. Only populated by the `Create` factories.
@@ -238,6 +249,10 @@ class KernelArguments {
     // Position in `args_` of each result array leaf, paired with its shape
     // index. Result shapes have few leaves, so a linear scan is fine.
     std::vector<std::pair<ShapeIndex, int64_t>> results;
+
+    static ArgumentPositions FromProto(
+        const KernelArgumentsProto::ArgumentPositionsProto& proto);
+    KernelArgumentsProto::ArgumentPositionsProto ToProto() const;
   };
 
   KernelArguments(std::vector<KernelArgument> args, ArgumentPositions positions)

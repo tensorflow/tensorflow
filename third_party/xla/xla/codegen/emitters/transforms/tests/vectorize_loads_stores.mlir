@@ -829,3 +829,22 @@ func.func @no_vectorize_trunc_through_intermediate_op(%arg0: tensor<1024xi8>)
 // CHECK-ONEAPI-LABEL: @no_vectorize_trunc_through_intermediate_op
 // CHECK-ONEAPI-NOT:   vector.transfer_read
 // CHECK-ONEAPI:       tensor.extract
+
+// -----
+
+func.func @no_fold_mismatched_vector_size(
+    %src: vector<4xf32>, %dst: tensor<16xf32>) -> tensor<16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %out = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %dst) -> tensor<16xf32> {
+    %elem = vector.extract %src[%j] : f32 from vector<4xf32>
+    %ins = tensor.insert %elem into %iter[%j] : tensor<16xf32>
+    scf.yield %ins : tensor<16xf32>
+  }
+  return %out : tensor<16xf32>
+}
+// CHECK-LABEL: @no_fold_mismatched_vector_size
+// CHECK: scf.for {{.*}} -> (vector<2xf32>)
+// CHECK: vector.transfer_write {{.*}} : vector<2xf32>, tensor<16xf32>
+// CHECK-NOT: vector.transfer_write {{.*}} : vector<4xf32>

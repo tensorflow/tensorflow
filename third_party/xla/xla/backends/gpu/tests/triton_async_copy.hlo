@@ -19,6 +19,9 @@
 // CHECK-mi450: call void @llvm.amdgcn.global.load.async.to.lds.b{{(32|64|128)}}
 // CHECK-mi450: ret void
 
+// CHECK-gfx1250_strict: call void @llvm.amdgcn.global.load.async.to.lds.b{{(32|64|128)}}
+// CHECK-gfx1250_strict: ret void
+
 HloModule triton_async_copy, is_scheduled=true, entry_computation_layout={(f32[32,2,64]{1,2,0},f32[64,2,64]{2,0,1})->f32[2,32,64]{2,1,0}}
 
 dot_computation {

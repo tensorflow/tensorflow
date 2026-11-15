@@ -349,7 +349,6 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   let dependentDialects = [
     "TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect",
-    "TF::TensorFlowDialect",
     "stablehlo::StablehloDialect"
   ];
 }
@@ -386,6 +385,21 @@ def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "m
   let dependentDialects = [
     "TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect"
+  ];
+}
+
+def LowerBlockwiseDequantizePass : Pass<"tfl-lower-blockwise-dequantize", "mlir::func::FuncOp"> {
+  let summary = "Lowers constant blockwise dequantizes to dequantizes of blockwise quantized constants.";
+  let description = [{
+      Rewrites a `tfl.blockwise_dequantize` whose input, scales and zero points
+      are all constants into a `tfl.pseudo_qconst` with a
+      `!tfl.blockwise_quant` element type feeding a `tfl.dequantize`. Unlike
+      `tfl.blockwise_dequantize`, the result can be exported: the parameters
+      are serialized as `BlockwiseQuantization` with a `block_shape`.
+  }];
+  let constructor = "CreateLowerBlockwiseDequantizePass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect"
   ];
 }
 

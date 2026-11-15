@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offload_legalize.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -36,14 +37,38 @@ limitations under the License.
 namespace xla {
 namespace {
 
+class Compact2DTileHostOffloadLegalize : public HostOffloadLegalize {
+ public:
+  void UpdateLayout(Shape* shape) override {
+    if (!shape->IsArray() || !shape->has_layout() ||
+        shape->dimensions().size() < 2) {
+      return;
+    }
+    Layout* layout = shape->mutable_layout();
+    layout->clear_tiles();
+    const int64_t second_minor_dim =
+        shape->dimensions(layout->minor_to_major(1));
+    int64_t sublane_tile = 8;
+    if (second_minor_dim <= 1) {
+      sublane_tile = 1;
+    } else if (second_minor_dim <= 2) {
+      sublane_tile = 2;
+    } else if (second_minor_dim <= 4) {
+      sublane_tile = 4;
+    }
+    *layout->add_tiles() = Tile{{sublane_tile, 128}};
+  }
+};
+
 class HostOffloadLegalizeTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloadLegalize(
+      HloModule* module, HostOffloadLegalize&& pass = HostOffloadLegalize()) {
     ABSL_RETURN_IF_ERROR(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-    return RunHloPass(HostOffloadLegalize(), module);
+    return RunHloPass(pass, module);
   }
 };
 
@@ -689,6 +714,110 @@ ENTRY main {
   ASSERT_NE(offload, nullptr);
   EXPECT_EQ(sort->operand(0), offload);
   EXPECT_EQ(FindInstruction(module.get(), "cp"), nullptr);
+}
+
+TEST_F(HostOffloadLegalizeTest,
+       MoveCopyOverDynamicSliceInWhileUpdatesAfterCopyTiling) {
+  absl::string_view hlo_string = R"(
+HloModule host_offload_repro, entry_computation_layout={(f32[10,103,44]{1,2,0:T(8,128)S(5)})->f32[10,1,44]{2,1,0:T(1,128)}}
+
+while_cond {
+  param = (s32[]{:T(128)}, f32[10,1,44]{2,1,0:T(1,128)}, f32[10,103,44]{2,1,0:T(8,128)}) parameter(0)
+  step = s32[]{:T(128)} get-tuple-element(param), index=0
+  limit = s32[]{:T(128)} constant(8)
+  ROOT cond = pred[] compare(step, limit), direction=LT
+}
+
+while_body {
+  param = (s32[]{:T(128)}, f32[10,1,44]{2,1,0:T(1,128)}, f32[10,103,44]{2,1,0:T(8,128)}) parameter(0)
+  step = s32[]{:T(128)} get-tuple-element(param), index=0
+  acc = f32[10,1,44]{2,1,0:T(1,128)} get-tuple-element(param), index=1
+  x = f32[10,103,44]{2,1,0:T(8,128)} get-tuple-element(param), index=2
+  c0 = s32[]{:T(128)} constant(0)
+  c1 = s32[]{:T(128)} constant(1)
+  c4 = s32[]{:T(128)} constant(4)
+  div = s32[]{:T(128)} divide(step, c4)
+  aligned_start = s32[]{:T(128)} multiply(div, c4)
+  slice_4 = f32[10,4,44]{2,1,0:T(4,128)} dynamic-slice(x, c0, aligned_start, c0), dynamic_slice_sizes={10,4,44}
+  move_to_dev = f32[10,4,44]{2,1,0:T(4,128)} custom-call(slice_4), custom_call_target="MoveToDevice"
+  rel_start = s32[]{:T(128)} subtract(step, aligned_start)
+  slice_1 = f32[10,1,44]{2,1,0:T(1,128)} dynamic-slice(move_to_dev, c0, rel_start, c0), dynamic_slice_sizes={10,1,44}
+  new_acc = f32[10,1,44]{2,1,0:T(1,128)} add(acc, slice_1)
+  next_step = s32[]{:T(128)} add(step, c1)
+  ROOT out = (s32[]{:T(128)}, f32[10,1,44]{2,1,0:T(1,128)}, f32[10,103,44]{2,1,0:T(8,128)}) tuple(next_step, new_acc, x)
+}
+
+ENTRY main {
+  x_host = f32[10,103,44]{1,2,0:T(8,128)} parameter(0)
+  copy = f32[10,103,44]{2,1,0:T(8,128)} copy(x_host)
+  c0_s32 = s32[]{:T(128)} constant(0)
+  c0_f32 = f32[]{:T(128)} constant(0)
+  init_acc = f32[10,1,44]{2,1,0:T(1,128)} broadcast(c0_f32), dimensions={}
+  init_tuple = (s32[]{:T(128)}, f32[10,1,44]{2,1,0:T(1,128)}, f32[10,103,44]{2,1,0:T(8,128)}) tuple(c0_s32, init_acc, copy)
+  loop = (s32[]{:T(128)}, f32[10,1,44]{2,1,0:T(1,128)}, f32[10,103,44]{2,1,0:T(8,128)}) while(init_tuple), condition=while_cond, body=while_body
+  ROOT res = f32[10,1,44]{2,1,0:T(1,128)} get-tuple-element(loop), index=1
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHostOffloadLegalize(module.get(), Compact2DTileHostOffloadLegalize()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* slice_4 = FindInstruction(module.get(), "slice_4");
+  ASSERT_NE(slice_4, nullptr);
+  EXPECT_EQ(slice_4->shape().layout(),
+            LayoutUtil::MakeLayout({1, 2, 0}, {Tile{{8, 128}}}));
+  ASSERT_EQ(slice_4->user_count(), 1);
+  HloInstruction* move_to_dev = slice_4->users()[0];
+  EXPECT_TRUE(move_to_dev->IsCustomCall(
+      memory_annotations::kMoveToDeviceCustomCallTarget));
+  EXPECT_EQ(move_to_dev->shape().layout(),
+            LayoutUtil::MakeLayout({1, 2, 0}, {Tile{{8, 128}}}));
+  ASSERT_EQ(move_to_dev->user_count(), 1);
+  HloInstruction* sunk_copy = move_to_dev->users()[0];
+  EXPECT_EQ(sunk_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(sunk_copy->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{4, 128}}}));
+}
+
+TEST_F(HostOffloadLegalizeTest,
+       MoveCopyOverDynamicSliceUpdatesBeforeCopyTiling) {
+  absl::string_view hlo_string = R"(
+HloModule host_offload_before_tiling, entry_computation_layout={(f32[10,103,44]{2,1,0:T(8,128)S(5)})->f32[10,4,44]{1,2,0:T(8,128)}}
+
+ENTRY main {
+  x_host = f32[10,103,44]{2,1,0:T(8,128)} parameter(0)
+  copy = f32[10,103,44]{1,2,0:T(8,128)} copy(x_host)
+  c0 = s32[]{:T(128)} constant(0)
+  slice_4 = f32[10,4,44]{1,2,0:T(8,128)} dynamic-slice(copy, c0, c0, c0), dynamic_slice_sizes={10,4,44}
+  move_to_dev = f32[10,4,44]{1,2,0:T(8,128)} custom-call(slice_4), custom_call_target="MoveToDevice"
+  ROOT res = f32[10,4,44]{1,2,0:T(8,128)} add(move_to_dev, move_to_dev)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHostOffloadLegalize(module.get(), Compact2DTileHostOffloadLegalize()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* slice_4 = FindInstruction(module.get(), "slice_4");
+  ASSERT_NE(slice_4, nullptr);
+  EXPECT_EQ(slice_4->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{4, 128}}}));
+  ASSERT_EQ(slice_4->user_count(), 1);
+  HloInstruction* move_to_dev = slice_4->users()[0];
+  EXPECT_TRUE(move_to_dev->IsCustomCall(
+      memory_annotations::kMoveToDeviceCustomCallTarget));
+  EXPECT_EQ(move_to_dev->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{4, 128}}}));
+  ASSERT_EQ(move_to_dev->user_count(), 1);
+  HloInstruction* sunk_copy = move_to_dev->users()[0];
+  EXPECT_EQ(sunk_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(sunk_copy->shape().layout(),
+            LayoutUtil::MakeLayout({1, 2, 0}, {Tile{{8, 128}}}));
 }
 
 }  // namespace

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -51,7 +52,15 @@ class TopkRewriter : public HloModulePass {
 
   // Check if the sort instruction is in TopK.
   std::optional<int64_t> SortIsInTopK(HloInstruction* inst,
-                                      ComparisonOrder* order = nullptr);
+                                      ComparisonOrder* order = nullptr,
+                                      bool* is_stable_expanded = nullptr);
+
+  // Replaces `slice` with `topk_output` when `slice` starts at 0 (so its
+  // dimensions match `topk_output`), or retargets operand 0 of `slice` to
+  // `topk_output` when `slice` has a non-zero start index (so its dimensions
+  // differ from `topk_output`).
+  static absl::Status ReplaceSliceWithTopKOutput(HloInstruction* slice,
+                                                 HloInstruction* topk_output);
 
   // Transform to CustomCall.
   absl::StatusOr<bool> TransformToCustomCall(

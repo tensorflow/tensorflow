@@ -103,6 +103,7 @@ TEST_F(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -168,6 +169,7 @@ TEST_F(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -235,6 +237,133 @@ TEST_F(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   }
 
   EXPECT_FALSE(builder.StartBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+}
+
+TEST_F(WeightCacheBuilderTest, EmptyBuildStepEndsTheStep) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string payload1 = "First step payload.";
+  const std::string payload2 = "Third step payload.";
+  const PackIdentifier id1{1, 2, 3};
+  const PackIdentifier id2{4, 5, 6};
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // Write the first buffer in step 1.
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(
+      builder
+          .Append(id1, payload1.data(), payload1.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // Reserve without Append in step 2: the step is empty and exits early,
+  // releasing the staging buffer and resetting `is_build_step_`.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_NE(builder.Reserve(1024), nullptr);
+  ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+  EXPECT_EQ(builder.LastBuildStepSize(), 0);
+
+  // Starting step 3 after an empty step reuses the in-memory buffer list and
+  // skips re-reading the on-disk flatbuffer, so corrupting the old buffer list
+  // on disk before step 3 does not cause `StartBuildStep` to fail.
+  ASSERT_NE(file_descriptor.SetPos(builder.LastBuildStepStart() + 1), -1);
+  const std::string garbage(8, 'a');
+  ASSERT_TRUE(file_descriptor.Write(garbage.data(), garbage.size()));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(
+      builder
+          .Append(id2, payload2.data(), payload2.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // Verify that both steps' buffers are present in the finalized cache.
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
+  const auto& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+  ASSERT_NE(packed_weights, nullptr);
+  ASSERT_NE(packed_weights->buffers(), nullptr);
+  EXPECT_EQ(packed_weights->buffers()->size(), 2);
+}
+
+TEST_F(WeightCacheBuilderTest, FailedAppendDoesNotCorruptSchema) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string bad_payload = "Unwritten payload.";
+  const std::string good_payload = "Valid packed payload.";
+  const PackIdentifier bad_id{9, 9, 9};
+  const PackIdentifier good_id{1, 2, 3};
+
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // A failed Append (fingerprint_id == 0) on step 0 followed by a restarted
+  // step and another failed Append must not leave unwritten BufferT entries.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  const BufferLocation loc =
+      builder.Append(good_id, good_payload.data(), good_payload.size(),
+                     kDefaultFingerprint.id);
+  ASSERT_FALSE(loc.IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  auto verify_single_good_buffer = [&]() {
+    MMapHandle handle;
+    ASSERT_TRUE(handle.Map(cache_path.c_str()));
+    const auto& header =
+        *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+    ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+    ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
+    const cache::schema::BufferList* const packed_weights =
+        cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+    ASSERT_NE(packed_weights, nullptr);
+    ASSERT_NE(packed_weights->buffers(), nullptr);
+    ASSERT_EQ(packed_weights->buffers()->size(), 1);
+    const auto* entry = packed_weights->buffers()->Get(0);
+    EXPECT_EQ(entry->weights_id(), good_id.weights_id);
+    EXPECT_EQ(entry->size(), good_payload.size());
+    std::tuple<const char*, size_t> cache_data(
+        reinterpret_cast<const char*>(
+            handle.data() + packed_weights->base_offset() + entry->offset()),
+        entry->size());
+    EXPECT_THAT(cache_data, ElementsAreArray(good_payload));
+  };
+  verify_single_good_buffer();
+
+  // Restarting when header.buffer_list_size == 0 also clears stale in-memory
+  // schema entries while preserving base_offset.
+  XNNPackCacheHeader empty_header{XNNPackCacheHeader::kInvalidHeader};
+  empty_header.buffer_list_offset = sizeof(empty_header);
+  ASSERT_EQ(file_descriptor.SetPos(0), 0);
+  ASSERT_TRUE(file_descriptor.Write(&empty_header, sizeof(empty_header)));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(builder
+                   .Append(good_id, good_payload.data(), good_payload.size(),
+                           kDefaultFingerprint.id)
+                   .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+  verify_single_good_buffer();
 }
 
 TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
@@ -319,6 +448,7 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
       *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
 
   ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+  ASSERT_EQ(header.magic_value, XNNPackCacheHeader::kMagicValue);
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
@@ -1234,6 +1364,24 @@ TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintMismatches) {
 
 TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintIsNotFound) {
   xnn_clear_fingerprints();
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenVersionMismatches) {
+  constexpr decltype(XNNPackCacheHeader::version) bad_version =
+      XNNPackCacheHeader::kInvalidHeader;
+  constexpr size_t version_offset = offsetof(XNNPackCacheHeader, version);
+  ASSERT_EQ(fd_.SetPos(version_offset), version_offset);
+  ASSERT_TRUE(fd_.Write(&bad_version, sizeof(bad_version)));
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenMagicValueMismatches) {
+  constexpr decltype(XNNPackCacheHeader::magic_value) bad_magic =
+      ~XNNPackCacheHeader::kMagicValue;
+  constexpr size_t magic_offset = offsetof(XNNPackCacheHeader, magic_value);
+  ASSERT_EQ(fd_.SetPos(magic_offset), magic_offset);
+  ASSERT_TRUE(fd_.Write(&bad_magic, sizeof(bad_magic)));
   EXPECT_FALSE(CallIsCompatibleCacheFile());
 }
 

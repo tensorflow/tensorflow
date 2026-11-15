@@ -235,3 +235,76 @@ func.func @QuantizeSharedBiases3(
 // CHECK-DAG: "tfl.conv_2d"({{.*}}, {{.*}}, %[[DQ_BIAS]])
 // CHECK-DAG: tfl.add {{.*}}, %[[CST]]
 }
+
+// -----
+
+// The bias of an SRQ FULLY_CONNECTED with a blockwise filter is quantized per
+// output channel with the input scale times the largest block scale of each
+// channel.
+// CHECK-LABEL: QuantizeFullyConnectedBlockwiseFilterBias
+func.func @QuantizeFullyConnectedBlockwiseFilterBias(%arg0: tensor<2x8x!quant.uniform<i8:f32, 0.5:-2>>) -> tensor<2x4x!quant.uniform<i8:f32, 0.25:1>> {
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[0.5, 0.25], [1.0, 2.0], [1.5, 1.5], [0.25, 0.125]]> : tensor<4x2xf32>} : () -> tensor<4x2xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 4], symmetric = false} : (tensor<4x8xi2>, tensor<4x2xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %bias = arith.constant dense<1.0> : tensor<4xf32>
+  %in_dq = "tfl.dequantize"(%arg0) : (tensor<2x8x!quant.uniform<i8:f32, 0.5:-2>>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_dq, %w_dq, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+  %out_q = "tfl.quantize"(%fc) <{qtype = tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>
+  func.return %out_q : tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>
+
+// CHECK: %[[Q_BIAS:.*]] = "tfl.quantize"(%{{.*}}) <{qtype = tensor<4x!quant.uniform<i32:f32:0, {2.500000e-01,1.000000e+00,7.500000e-01,1.250000e-01}>>}>
+// CHECK: %[[DQ_BIAS:.*]] = "tfl.dequantize"(%[[Q_BIAS]])
+// CHECK: "tfl.fully_connected"({{.*}}, {{.*}}, %[[DQ_BIAS]])
+}
+
+// -----
+
+// A float input (weight-only) leaves the bias of a blockwise filter float.
+// CHECK-LABEL: NotQuantizeWeightOnlyFullyConnectedBlockwiseFilterBias
+func.func @NotQuantizeWeightOnlyFullyConnectedBlockwiseFilterBias(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: "tfl.quantize"
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %none) {block_shape = [1, 8], symmetric = true} : (tensor<4x8xi2>, tensor<4x1xf32>, none) -> tensor<4x8xf32>
+  %bias = arith.constant dense<1.0> : tensor<4xf32>
+  %fc = "tfl.fully_connected"(%arg0, %w_dq, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}
+
+// -----
+
+// A unit block of 2 shares each scale between two output channels.
+// CHECK-LABEL: QuantizeFullyConnectedUnitBlockedBlockwiseFilterBias
+func.func @QuantizeFullyConnectedUnitBlockedBlockwiseFilterBias(%arg0: tensor<2x8x!quant.uniform<i8:f32, 0.5:-2>>) -> tensor<2x4x!quant.uniform<i8:f32, 0.25:1>> {
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[0.5], [2.0]]> : tensor<2x1xf32>} : () -> tensor<2x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [2, 8], symmetric = false} : (tensor<4x8xi2>, tensor<2x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %bias = arith.constant dense<1.0> : tensor<4xf32>
+  %in_dq = "tfl.dequantize"(%arg0) : (tensor<2x8x!quant.uniform<i8:f32, 0.5:-2>>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_dq, %w_dq, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+  %out_q = "tfl.quantize"(%fc) <{qtype = tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>
+  func.return %out_q : tensor<2x4x!quant.uniform<i8:f32, 0.25:1>>
+
+// CHECK: "tfl.quantize"(%{{.*}}) <{qtype = tensor<4x!quant.uniform<i32:f32:0, {2.500000e-01,2.500000e-01,1.000000e+00,1.000000e+00}>>}>
+}
+
+// -----
+
+// The FULLY_CONNECTED blockwise filter kernel needs int8 input and output, so
+// the filter of a 16x8 op is not folded and its bias stays float.
+// CHECK-LABEL: NotQuantizeInt16FullyConnectedBlockwiseFilterBias
+func.func @NotQuantizeInt16FullyConnectedBlockwiseFilterBias(%arg0: tensor<2x8x!quant.uniform<i16:f32, 0.5>>) -> tensor<2x4x!quant.uniform<i16:f32, 0.25>> {
+  // CHECK-NOT: i32:f32
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %cst = arith.constant dense<1.0> : tensor<4xf32>
+  %in_dq = "tfl.dequantize"(%arg0) : (tensor<2x8x!quant.uniform<i16:f32, 0.5>>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_dq, %w_dq, %cst) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+  %out_q = "tfl.quantize"(%fc) <{qtype = tensor<2x4x!quant.uniform<i16:f32, 0.25>>}> : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i16:f32, 0.25>>
+  func.return %out_q : tensor<2x4x!quant.uniform<i16:f32, 0.25>>
+}

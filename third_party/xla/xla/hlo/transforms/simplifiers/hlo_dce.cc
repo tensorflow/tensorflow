@@ -45,13 +45,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -66,7 +66,7 @@ const absl::string_view kDceSideEffectFrontendAttribute =
 bool IsRemovableWhile(const HloInstruction* instruction,
                       bool remove_cross_partition_collective_ops) {
   if (instruction->opcode() != HloOpcode::kWhile ||
-      HasDisableWhileLoopDceAttr(instruction)) {
+      frontend::HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 
@@ -229,7 +229,7 @@ bool CanRemoveInstruction(
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
   if (instruction->parent() == nullptr || !instruction->IsDead() ||
-      HasDisableWhileLoopDceAttr(instruction)) {
+      frontend::HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 
@@ -469,6 +469,9 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   }
   return changed;
 }
+
+const HloPassFactory* const kHloDCERegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<HloDCE>>("dce");
 
 }  // namespace
 

@@ -16,54 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 
 #include <gtest/gtest.h>
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-class TargetUtilTest : public testing::Test {
- public:
-  TargetUtilTest() : module_("test", ctx_), builder_(ctx_) {}
-
- protected:
-  void SetUp() override {
-    auto fn = llvm::Function::Create(
-        llvm::FunctionType::get(llvm::Type::getVoidTy(ctx_), {}),
-        llvm::Function::LinkageTypes::ExternalLinkage, "fn", module_);
-    auto block = llvm::BasicBlock::Create(ctx_, "blk", fn);
-    builder_.SetInsertPoint(block);
-  }
-
-  llvm::LLVMContext ctx_;
-  llvm::Module module_;
-  llvm::IRBuilder<> builder_;
-};
-
-TEST_F(TargetUtilTest, NVPTXGroupBarrier) {
-  module_.setTargetTriple(llvm::Triple("nvptx"));
-  EmitCallToTargetIntrinsic(TargetIntrinsicID::kGroupBarrierId,
-                            {/*membermask=*/builder_.getInt32(-1)}, {},
-                            &builder_);
-  builder_.CreateRetVoid();
-  EXPECT_FALSE(llvm::verifyModule(module_, &llvm::errs()));
-}
-
-TEST_F(TargetUtilTest, AMDGCNGroupBarrier) {
-  module_.setTargetTriple(llvm::Triple("amdgcn"));
-  EmitCallToTargetIntrinsic(TargetIntrinsicID::kGroupBarrierId, {}, {},
-                            &builder_);
-  builder_.CreateRetVoid();
-  EXPECT_FALSE(llvm::verifyModule(module_, &llvm::errs()));
-}
 
 TEST(TargetUtil, ObtainDeviceFunctionNameExp) {
   llvm::Triple triple("nvptx64-unknown-unknown");

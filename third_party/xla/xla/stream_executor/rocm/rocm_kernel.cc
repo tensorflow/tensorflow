@@ -91,7 +91,10 @@ absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
     int32_t expected_number_of_arguments =
         Arity() + (packed.number_of_shared_bytes() > 0);
 
-    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+    // Kernels loaded without a typed signature (e.g. FFI registered kernels)
+    // report arity 0, so their argument count can't be checked here.
+    CHECK(Arity() == 0 ||
+          expected_number_of_arguments == packed.number_of_arguments())
         << "Kernel " << name() << " has " << packed.number_of_arguments()
         << " arguments, but expected " << expected_number_of_arguments
         << "; arity=" << Arity()

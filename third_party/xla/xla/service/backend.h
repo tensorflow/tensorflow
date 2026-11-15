@@ -139,6 +139,13 @@ class Backend {
       int device_ordinal, int num_streams,
       se::StreamPriority priority = se::StreamPriority::Default);
 
+  // Borrows a stream scoped to `locality_domain_id`. Locality-domain pools are
+  // independent from generic stream pools and keyed by executor and domain;
+  // priority is handled by StreamPool.
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal,
+                                               se::StreamPriority priority,
+                                               int locality_domain_id);
+
   // Returns a function to borrow streams with a given priority,
   // as `BorrowStreams` above does.
   // Purely for convenience, the caller could rather make this anonymous
@@ -149,6 +156,14 @@ class Backend {
     return [this](int device_ordinal, int num_streams,
                   se::StreamPriority priority) {
       return BorrowStreams(device_ordinal, num_streams, priority);
+    };
+  }
+
+  std::function<absl::StatusOr<StreamPool::Ptr>(int, int, se::StreamPriority)>
+  LocalityDomainStreamBorrowerWithPriority() {
+    return [this](int device_ordinal, int locality_domain_id,
+                  se::StreamPriority priority) {
+      return BorrowStream(device_ordinal, priority, locality_domain_id);
     };
   }
 
@@ -199,6 +214,12 @@ class Backend {
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
       stream_pools_ ABSL_GUARDED_BY(mu_);
+
+  // Mapping from stream executor and locality domain to green stream pools.
+  // Each StreamPool maintains independent free lists by priority.
+  absl::flat_hash_map<se::StreamExecutor*,
+                      absl::flat_hash_map<int, std::unique_ptr<StreamPool>>>
+      locality_domain_stream_pools_ ABSL_GUARDED_BY(mu_);
 
   // Streams used by the memory allocator (e.g. for TfAllocatorAdapter).
   // Must outlive memory_allocator_.

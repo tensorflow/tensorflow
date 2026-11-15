@@ -185,6 +185,33 @@ func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
   func.return %0 : tensor<? x f32>
 }
 
+// -----
+
+// CHECK-LABEL: testNegCompatibleShapes
+func.func @testNegCompatibleShapes(%arg0: tensor<*xf32>) -> tensor<4xf32> {
+  // CHECK: "tfl.neg"(%arg0) : (tensor<*xf32>) -> tensor<4xf32>
+  %0 = "tfl.neg"(%arg0) : (tensor<*xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// -----
+
+func.func @testNegShapeMismatch(%arg0: tensor<2xf32>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.neg"(%arg0) : (tensor<2xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
+func.func @testNegElementTypeMismatch(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires compatible element types for all operands and results}}
+  %0 = "tfl.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: testRsqrt
 func.func @testRsqrt(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -322,6 +349,25 @@ func.func @testDequantize(tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x
   %0 = "tfl.dequantize"(%arg0): (tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x f32>
   func.return %0 : tensor<? x f32>
 }
+
+// CHECK-LABEL: testDequantizeF16
+func.func @testDequantizeF16(tensor<? x !quant.uniform<i8:f16, 0.1>>) -> tensor<? x f16> {
+^bb0(%arg0: tensor<? x !quant.uniform<i8:f16, 0.1>>):
+  // CHECK: "tfl.dequantize"(%arg0) : (tensor<?x!quant.uniform<i8:f16, 1.000000e-01>>) -> tensor<?xf16>
+  %0 = "tfl.dequantize"(%arg0): (tensor<? x !quant.uniform<i8:f16, 0.1>>) -> tensor<? x f16>
+  func.return %0 : tensor<? x f16>
+}
+
+// -----
+
+func.func @testDequantizeWrongResultType(tensor<? x !quant.uniform<i8:bf16, 0.1>>) -> tensor<? x bf16> {
+^bb0(%arg0: tensor<? x !quant.uniform<i8:bf16, 0.1>>):
+  // expected-error @+1 {{'tfl.dequantize' op result #0 must be tensor of 32-bit float or 16-bit float values}}
+  %0 = "tfl.dequantize"(%arg0): (tensor<? x !quant.uniform<i8:bf16, 0.1>>) -> tensor<? x bf16>
+  func.return %0 : tensor<? x bf16>
+}
+
+// -----
 
 // CHECK-LABEL: testLogicalNot
 func.func @testLogicalNot(tensor<? x i1>) -> tensor<? x i1> {
@@ -558,6 +604,13 @@ func.func @testGreaterEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x
   func.return %0#0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testGreaterF16
+func.func @testGreaterF16(%arg0: tensor<512xf16>, %arg1: tensor<f16>) -> tensor<512xi1> {
+  // CHECK: tfl.greater(%arg0, %arg1)
+  %0 = "tfl.greater"(%arg0, %arg1) : (tensor<512xf16>, tensor<f16>) -> tensor<512xi1>
+  func.return %0 : tensor<512xi1>
+}
+
 // -----
 
 // CHECK-LABEL: testFloorDivI32
@@ -652,6 +705,25 @@ func.func @testQuantize(tensor<? x f32>) -> tensor<? x !quant.uniform<u8:f32, 0.
   %0 = "tfl.quantize"(%arg0) {qtype = tensor<? x !quant.uniform<u8:f32, 0.1:128>>} : (tensor<? x f32>) -> tensor<? x !quant.uniform<u8:f32, 0.1:128>>
   func.return %0 : tensor<? x !quant.uniform<u8:f32, 0.1:128>>
 }
+
+// CHECK-LABEL: testQuantizeF16
+func.func @testQuantizeF16(tensor<? x f16>) -> tensor<? x !quant.uniform<i8:f16, 0.1>> {
+^bb0(%arg0: tensor<? x f16>):
+  // CHECK: %0 = "tfl.quantize"(%arg0) <{qtype = tensor<?x!quant.uniform<i8:f16, 1.000000e-01>>}>
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<? x !quant.uniform<i8:f16, 0.1>>} : (tensor<? x f16>) -> tensor<? x !quant.uniform<i8:f16, 0.1>>
+  func.return %0 : tensor<? x !quant.uniform<i8:f16, 0.1>>
+}
+
+// -----
+
+func.func @testQuantizeWrongOperandType(tensor<? x bf16>) -> tensor<? x !quant.uniform<i8:bf16, 0.1>> {
+^bb0(%arg0: tensor<? x bf16>):
+  // expected-error @+1 {{'tfl.quantize' op operand #0 must be tensor of 32-bit float or 16-bit float or QI4 type or QUI4 type or QI8 type or QUI8 type or QI16 type or TFLite quint8 type values}}
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<? x !quant.uniform<i8:bf16, 0.1>>} : (tensor<? x bf16>) -> tensor<? x !quant.uniform<i8:bf16, 0.1>>
+  func.return %0 : tensor<? x !quant.uniform<i8:bf16, 0.1>>
+}
+
+// -----
 
 // CHECK-LABEL: testLogicalAnd
 func.func @testLogicalAnd(tensor<? x i1>, tensor<? x i1>) -> tensor<? x i1> {
@@ -838,10 +910,19 @@ func.func @testLogistic(tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32> {
 
 // -----
 
+// CHECK-LABEL: testLogisticF16
+func.func @testLogisticF16(%arg0: tensor<1x2x3xf16>) -> tensor<1x2x3xf16> {
+  // CHECK: "tfl.logistic"(%arg0)
+  %0 = "tfl.logistic"(%arg0): (tensor<1x2x3xf16>) -> tensor<1x2x3xf16>
+  func.return %0 : tensor<1x2x3xf16>
+}
+
+// -----
+
 // test invalid Logistic input
 func.func @testLogisticWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{'tfl.logistic' op operand #0 must be tensor of 32-bit float or QI8 type or QUI8 type or QI16 type or TFLite quint8 type values, but got 'tensor<?xi32>'}}
+  // expected-error @+1 {{'tfl.logistic' op operand #0 must be tensor of 32-bit float or 16-bit float or QI8 type or QUI8 type or QI16 type or TFLite quint8 type values, but got 'tensor<?xi32>'}}
   %0 = "tfl.logistic"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
@@ -2992,6 +3073,13 @@ func.func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi
   // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
   %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32>
   func.return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}
+
+// CHECK-LABEL: testBroadcastToF16
+func.func @testBroadcastToF16(%arg0: tensor<4096xf16>, %arg1: tensor<3xi64>) -> tensor<8x1x4096xf16> {
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<4096xf16>, tensor<3xi64>) -> tensor<8x1x4096xf16>
+  func.return %0 : tensor<8x1x4096xf16>
 }
 
 // -----

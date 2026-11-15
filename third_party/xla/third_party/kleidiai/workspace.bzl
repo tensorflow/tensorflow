@@ -20,7 +20,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "a424e81535ebb6d0117e9282fba45d70aee0bedb481f603df55e1805bed0e21b",
-        strip_prefix = "kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/5147983e14600ce7f8a6583dc04ba07753ac54c4/kleidiai-5147983e14600ce7f8a6583dc04ba07753ac54c4.zip"),
+        sha256 = "0119fa3e386c27a10c8b4bb5673eec1c4e32a1c09943e8d84cdda2c6660fb79c",
+        strip_prefix = "kleidiai-0ec849c4ee7eecc8e79e6808d20bcdd10e8d137f",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/0ec849c4ee7eecc8e79e6808d20bcdd10e8d137f/kleidiai-0ec849c4ee7eecc8e79e6808d20bcdd10e8d137f.zip"),
     )

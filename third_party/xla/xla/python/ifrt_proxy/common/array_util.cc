@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/common/array_util.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -81,11 +82,18 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
   // is different from mem_region_start.
   void* const mem_region_start = const_cast<void*>(zeroth_element);
 
+  ABSL_ASSIGN_OR_RETURN(const int64_t num_elements, shape.NumElements());
   if (!byte_strides.has_value() ||
       (byte_strides->empty() && shape.dims().empty())) {
-    return ArrayMemRegion(mem_region_start, byte_size * shape.num_elements());
+    size_t mem_region_size = 0;
+    if (__builtin_mul_overflow(byte_size, num_elements, &mem_region_size)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Byte size overflows size_t for dtype ", dtype,
+                       " and shape ", shape));
+    }
+    return ArrayMemRegion(mem_region_start, mem_region_size);
   }
-  if (shape.num_elements() == 0) {
+  if (num_elements == 0) {
     return ArrayMemRegion(mem_region_start, 0);
   }
   if (shape.dims().size() != byte_strides->size()) {
@@ -106,10 +114,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
   uint64_t last_element_byte_offset = 0;
   for (int i = 0; i < byte_strides->size(); ++i) {
     int64_t stride = (*byte_strides)[i];
-    if (shape.dims()[i] < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("A shape dimension is negative: ", shape));
-    } else if (shape.dims()[i] == 1) {
+    if (shape.dims()[i] == 1) {
       // The stride shouldn't matter in this case, so continue without checking
       // validity of the given stride.
       continue;
@@ -122,8 +127,8 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
           "byte_stride[", i, "] is not a multiple of the data-type's size: ",
           StridesAsStr(byte_strides), ", dtype=", dtype));
     } else {
-      // `shape.dims()[i]` cannot be negative (we explicitly check for this
-      // above) or zero (we return early for `shape.num_elements() == 0`).
+      // `shape.dims()[i]` cannot be negative (rejected by `shape.NumElements()`
+      // above) or zero (we return early for `num_elements == 0`).
       DCHECK_GT(shape.dims()[i], 0);
       int64_t product;
       if (__builtin_mul_overflow(stride, shape.dims()[i] - 1, &product)) {

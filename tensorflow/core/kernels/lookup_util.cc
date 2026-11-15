@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include <cstdint>
+#include <limits>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
@@ -141,8 +144,8 @@ class TextFileLineIterator
     std::vector<std::string> tokens;
     if (!ignore_split_) {
       tokens = str_util::Split(line, delimiter_);
-      const auto expected_size =
-          static_cast<size_t>(std::max(key_index_, value_index_) + 1);
+      const uint64_t expected_size =
+          static_cast<uint64_t>(std::max(key_index_, value_index_)) + 1;
       if (tokens.size() < expected_size) {
         status_ = absl::InvalidArgumentError(
             absl::StrCat("Invalid number of columns in ", filename_, " line ",
@@ -211,6 +214,13 @@ class TextFileLineIterator
                         const std::vector<std::string>& tokens, int64_t index,
                         Tensor* tensor) {
     if (index == kLineNumber) {
+      if (offset_ > 0 &&
+          next_id_ > std::numeric_limits<int64_t>::max() - offset_) {
+        valid_ = false;
+        return absl::InvalidArgumentError(absl::StrCat("Line number ", next_id_,
+                                                       " with offset ", offset_,
+                                                       " overflows int64."));
+      }
       tensor->flat<int64_t>()(0) = next_id_ + offset_;
       return absl::OkStatus();
     }
@@ -225,7 +235,18 @@ class TextFileLineIterator
               absl::StrCat("Field ", token, " in line ", next_id_,
                            " is not a valid int32."));
         }
-        tensor->flat<int32_t>()(0) = value + offset_;
+        // Compare before adding: offset_ can be any int64, so even the int64
+        // sum could overflow.
+        if ((offset_ > 0 &&
+             value > std::numeric_limits<int32_t>::max() - offset_) ||
+            (offset_ < 0 &&
+             value < std::numeric_limits<int32_t>::min() - offset_)) {
+          valid_ = false;
+          return absl::InvalidArgumentError(
+              absl::StrCat("Field ", token, " in line ", next_id_,
+                           " with offset ", offset_, " overflows int32."));
+        }
+        tensor->flat<int32_t>()(0) = static_cast<int32_t>(value + offset_);
       } break;
       case DT_INT64: {
         int64_t value;
@@ -374,7 +395,7 @@ absl::Status CheckTableDataTypes(const LookupInterface& table,
 // Helper function to initialize an InitializableLookupTable from a text file.
 absl::Status InitializeTableFromTextFile(const std::string& filename,
                                          int64_t vocab_size, char delimiter,
-                                         int32_t key_index, int32_t value_index,
+                                         int64_t key_index, int64_t value_index,
                                          int64_t offset, Env* env,
                                          InitializableLookupTable* table) {
   return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
@@ -384,9 +405,14 @@ absl::Status InitializeTableFromTextFile(const std::string& filename,
 
 absl::Status InitializeTableFromTextFile(
     const std::string& filename, int64_t vocab_size, char delimiter,
-    int32_t key_index, int32_t value_index, int64_t offset, Env* env,
+    int64_t key_index, int64_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table) {
+  if (key_index < kWholeLine || value_index < kWholeLine) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Key and value indices must be >= -2, got key_index=", key_index,
+        ", value_index=", value_index));
+  }
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Key index for line number requires table key dtype of int64, got ",

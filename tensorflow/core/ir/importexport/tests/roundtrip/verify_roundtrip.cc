@@ -127,7 +127,8 @@ int main(int argc, char **argv) {
   if (!Matches(::testing::proto::TreatingNaNsAsEqual(
           ::testing::proto::IgnoringRepeatedFieldOrdering(
               ::testing::EquivToProto(new_graphdef))))(graphdef)) {
-    module->dump();
+    module->print(llvm::errs());
+    llvm::errs() << "\n";
     EXPECT_THAT(new_graphdef,
                 ::testing::proto::TreatingNaNsAsEqual(
                     ::testing::proto::IgnoringRepeatedFieldOrdering(

@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -489,13 +490,16 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
   if (profile.has_value()) {
     std::unique_ptr<LatencyEstimator> base_estimator;
     if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
-      auto cost_analysis =
-          std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+      // Default op profile, device warp size.
+      auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+          GpuHloCostAnalysis::Options{
               ShapeSizeBytesFunction(pointer_size),
               /*per_second_rates=*/{},
               /*min_latencies_seconds=*/{},
               /*count_multiple_input_accesses=*/true,
-          });
+          },
+          HloOpProfiles::Singleton().GetDefaultProfile(),
+          gpu_device_info.threads_per_warp());
       if (absl::Status status =
               module.entry_computation()->Accept(cost_analysis.get());
           status.ok()) {
@@ -536,13 +540,16 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
     VLOG(1) << "Using unified latency estimator";
-    auto cost_analysis =
-        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+    // Default op profile, device warp size.
+    auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+        GpuHloCostAnalysis::Options{
             ShapeSizeBytesFunction(pointer_size),
             /*per_second_rates=*/{},
             /*min_latencies_seconds=*/{},
             /*count_multiple_input_accesses=*/true,
-        });
+        },
+        HloOpProfiles::Singleton().GetDefaultProfile(),
+        gpu_device_info.threads_per_warp());
     if (absl::Status status =
             module.entry_computation()->Accept(cost_analysis.get());
         !status.ok()) {
@@ -580,15 +587,17 @@ bool NeedAccuracyChecker(const DebugOptions& options,
          level == DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR;
 }
 
-// For now, only allow cublas gemm custom calls and triton gemm fusions to
-// be overlapped as the compute ops in the annotated scheduling groups.
+// For now, only allow cublas gemm custom calls, mosaic_gpu_v2 custom calls,
+// and triton gemm fusions to be overlapped as the compute ops in the annotated
+// scheduling groups.
 LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
   LegalizeSchedulingAnnotations::Config annotation_config;
   annotation_config.keep_sync_annotation = [](const HloInstruction* hlo) {
     if (hlo == nullptr) {
       return false;
     }
-    if (hlo->IsCustomCall("__cublas$gemm")) {
+    if (hlo->IsCustomCall("__cublas$gemm") ||
+        hlo->IsCustomCall("mosaic_gpu_v2")) {
       return true;
     }
     if (hlo->opcode() == HloOpcode::kFusion) {

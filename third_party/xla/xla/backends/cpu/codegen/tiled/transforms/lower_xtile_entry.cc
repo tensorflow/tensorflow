@@ -114,6 +114,12 @@ class LowerXTileEntryPass
         module->emitError() << "entry function is itself called.";
         return mlir::failure();
       }
+      // Multi-device collective arguments are GPU-only and have no CPU ABI.
+      if (entry_func.getHasRank()) {
+        entry_func.emitOpError()
+            << "collective entry arguments are not supported on CPU.";
+        return mlir::failure();
+      }
 
       llvm::StringRef kernel_name = entry_func.getName();
       std::string kernel_impl_name =

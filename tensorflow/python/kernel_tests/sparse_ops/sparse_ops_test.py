@@ -1293,6 +1293,28 @@ class SparseTransposeTest(test.TestCase):
       ):
         sparse_ops.sparse_transpose(sp_input, perm=invalid_perm)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTransposeSparseTensorValue(self):
+    sp_input = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 1], [2, 3]]),
+        values=np.array([1.0, 2.0]),
+        dense_shape=np.array([4, 5]),
+    )
+    sp_trans = sparse_ops.sparse_transpose(sp_input)
+    self.assertAllEqual([[1, 0], [3, 2]], self.evaluate(sp_trans.indices))
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_trans.values))
+    self.assertAllEqual([5, 4], self.evaluate(sp_trans.dense_shape))
+
+    sp_trans_perm = sparse_ops.sparse_transpose(sp_input, perm=[1, 0])
+    self.assertAllEqual([[1, 0], [3, 2]], self.evaluate(sp_trans_perm.indices))
+    self.assertAllEqual([1.0, 2.0], self.evaluate(sp_trans_perm.values))
+    self.assertAllEqual([5, 4], self.evaluate(sp_trans_perm.dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTransposeInvalidInput(self):
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_transpose([[1, 2], [3, 4]])
+
 
 class SparsePlaceholderTest(test.TestCase):
 

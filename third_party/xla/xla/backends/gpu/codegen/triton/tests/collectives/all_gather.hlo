@@ -31,36 +31,39 @@ ENTRY entry {
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:    %[[INPUT:[^:]+]]: memref<128x128xf32>,
 // CHECK-SAME:    %[[OUTPUT:[^:]+]]: memref<256x128xf32>,
-// CHECK-SAME:    %[[RANK:[^:]+]]: i32,
-// CHECK-SAME:    %{{[^:]+}}: i32,
-// CHECK-SAME:    %[[SIGNAL_BUFFERS:[^:]+]]: !tt.ptr<i64>,
-// CHECK-SAME:    %[[REMOTE_BUFFERS:[^:]+]]: !tt.ptr<i64>,
-// CHECK-SAME:    attributes {num_opaque_args = 4 : i32}
+// CHECK-SAME:    %[[REMOTE_BUFFERS:[^:]+]]: memref<2xi64>,
+// CHECK-SAME:    %[[SIGNAL_BUFFERS:[^:]+]]: memref<2xi64>,
+// CHECK-SAME:    %[[RANK_IDX:[^:]+]]: index {xla.range = [0 : index, 1 : index]},
+// CHECK-SAME:    %{{[^:]+}}: index {xla.range = [0 : index, 127 : index]})
+// CHECK-SAME:    attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32}
 // CHECK-DAG:   %[[WORLD_SIZE:.*]] = arith.constant 2 : i32
 // CHECK-DAG:   %[[TILES_PER_RANK:.*]] = arith.constant 64 : i32
+// CHECK:       %[[RANK:.*]] = arith.index_cast %[[RANK_IDX]] : index to i32
 // CHECK:       %[[PID:.*]] = tt.get_program_id x
 // CHECK:       %[[SLICE:.*]] = arith.divui %[[PID]], %[[TILES_PER_RANK]]
 // CHECK:       %[[PEER:.*]] = arith.remui %[[SLICE]], %[[WORLD_SIZE]]
 
 // The invocation count is loaded from this rank's signal buffer at
 // (pid * 2) + rank.
+// CHECK:       %[[SIGNAL_PTR:.*]] = triton_xla.memref_to_ptr %[[SIGNAL_BUFFERS]]
 // CHECK:       %[[PID_OFFSET:.*]] = arith.muli %[[PID]], %[[WORLD_SIZE]]
 // CHECK:       %[[COUNTER_IDX:.*]] = arith.addi %[[PID_OFFSET]], %[[RANK]]
 // CHECK:       tt.addptr %{{.*}}, %[[COUNTER_IDX]] : !tt.ptr<i32>, i32
 
 // Push this program's local tile into the peer's scratch buffer at slice `rank`.
 // CHECK:       %[[LOCAL_TILE:.*]] = xtile.extract %[[INPUT]]{{.*}} [16, 16] [1, 1]
-// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[PEER]]
+// CHECK:       %[[REMOTE_PTR:.*]] = triton_xla.memref_to_ptr %[[REMOTE_BUFFERS]]
+// CHECK:       tt.addptr %[[REMOTE_PTR]], %[[PEER]]
 // CHECK:       %[[PEER_SCRATCH:.*]] = triton_xla.ptr_to_memref
 // CHECK:       xtile.insert %[[LOCAL_TILE]] into %[[PEER_SCRATCH]]
 
 // Wait until the peer has pushed its tile into this rank's scratch buffer.
 // CHECK:       ttg.barrier local
-// CHECK:       triton_xla.block_barrier %[[SIGNAL_BUFFERS]], %[[RANK]], %{{.*}}, %[[PEER]]
+// CHECK:       triton_xla.block_barrier %[[SIGNAL_PTR]], %[[RANK]], %{{.*}}, %[[PEER]]
 // CHECK-SAME:    <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
 
 // Copy the tile from this rank's scratch buffer at slice `peer` to the output.
-// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[RANK]]
+// CHECK:       tt.addptr %[[REMOTE_PTR]], %[[RANK]]
 // CHECK:       %[[OWN_SCRATCH:.*]] = triton_xla.ptr_to_memref
 // CHECK:       %[[TILE:.*]] = xtile.extract %[[OWN_SCRATCH]]{{.*}} [16, 16] [1, 1]
 // CHECK:       xtile.insert %[[TILE]] into %[[OUTPUT]]

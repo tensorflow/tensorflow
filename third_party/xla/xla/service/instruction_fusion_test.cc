@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/instruction_fusion.h"
 
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
@@ -1114,6 +1115,140 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
       add, root, &alias_info_, std::nullopt);
   EXPECT_TRUE(fusion_decision.IsForbidden());
 }
+
+namespace {
+
+using ::testing::HasSubstr;
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithSliceTruncated64BitIndex) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[4294967304] parameter(0)
+    slice = f32[7] slice(p0), slice={[1:8]}
+    one = f32[] constant(1)
+    bcast = f32[7] broadcast(one), dimensions={}
+    add = f32[7] add(slice, bcast)
+    offset = s64[] constant(4294967297)
+    ROOT dus = f32[4294967304] dynamic-update-slice(p0, add, offset)
+  })hlo"));
+
+  HloInstruction* dus = module->entry_computation()->root_instruction();
+  HloInstruction* slice =
+      module->entry_computation()->GetInstructionWithName("slice");
+  FusionDecision decision = InstructionFusion::ShouldFuseInPlaceOp(
+      slice, dus, &alias_info_, std::nullopt);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(), HasSubstr("DUS and slice index mismatch"));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
+}
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithDynamicSliceTruncated64BitIndex) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[4294967304] parameter(0)
+    ds_offset = s64[] constant(1)
+    ds = f32[7] dynamic-slice(p0, ds_offset), dynamic_slice_sizes={7}
+    one = f32[] constant(1)
+    bcast = f32[7] broadcast(one), dimensions={}
+    add = f32[7] add(ds, bcast)
+    dus_offset = s64[] constant(4294967297)
+    ROOT dus = f32[4294967304] dynamic-update-slice(p0, add, dus_offset)
+  })hlo"));
+
+  HloInstruction* dus = module->entry_computation()->root_instruction();
+  HloInstruction* ds =
+      module->entry_computation()->GetInstructionWithName("ds");
+  FusionDecision decision = InstructionFusion::ShouldFuseInPlaceOp(
+      ds, dus, &alias_info_, std::nullopt);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(), HasSubstr("DUS and DS index mismatch"));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Fusion(op::Parameter())));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSliceSame64BitIndex) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[4294967304] parameter(0)
+    slice = f32[7] slice(p0), slice={[4294967297:4294967304]}
+    one = f32[] constant(1)
+    bcast = f32[7] broadcast(one), dimensions={}
+    add = f32[7] add(slice, bcast)
+    offset = s64[] constant(4294967297)
+    ROOT dus = f32[4294967304] dynamic-update-slice(p0, add, offset)
+  })hlo"));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
+}
+
+// Tests that a multi-operand producer initially marked `do_not_duplicate` can
+// still fuse once bottom-up fusion merges all of its consumers into one fusion:
+// 1. Up front, `ComputeGloballyUnfusible` places `add(p0, p1)` (two full array
+//    inputs) in `do_not_duplicate` because `CanFuseOnAllPaths(add, sub)` fails
+//    along `add -> sqrt -> ... -> mul -> sub`: `sqrt` is expensive and
+//    initially has three unfused users (`neg`, `mul`, and `res`).
+// 2. During reverse-post-order fusion in `RunImpl`, `sub`, `mul`, and `neg`
+//    fuse into `res`, leaving that single fusion as `sqrt`'s sole user so
+//    `sqrt` fuses into it as well.
+// 3. The fusion is now `add`'s sole user (`!FusionWouldDuplicate`), so `add`
+//    must fuse into it rather than remaining unfused as `fusion(add(p0, p1))`.
+TEST_F(InstructionFusionTest, FuseMultiOperandProducerOnceConsumersMerge) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = f32[16,16]{1,0} parameter(0)
+    p1 = f32[16,16]{1,0} parameter(1)
+    add = f32[16,16]{1,0} add(p0, p1)
+    sqrt = f32[16,16]{1,0} sqrt(add)
+    neg = f32[16,16]{1,0} negate(sqrt)
+    mul = f32[16,16]{1,0} multiply(sqrt, neg)
+    sub = f32[16,16]{1,0} subtract(add, mul)
+    ROOT res = f32[16,16]{1,0} add(sub, sqrt)
+  })hlo"));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()))
+      << module->ToString();
+}
+
+}  // namespace
 
 class FusionDecisionTest : public HloHardwareIndependentTestBase {};
 

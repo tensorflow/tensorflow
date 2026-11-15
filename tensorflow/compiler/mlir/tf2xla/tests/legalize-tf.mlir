@@ -1945,7 +1945,9 @@ func.func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -
     // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg1) <{value = 0.000000e+00 : f32}> : (tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
     // CHECK-NEXT: %[[LEAKYGRAD:.*]] = mhlo.multiply %[[GRADIENT:.*]], %[[ALPHA]] : tensor<1x4x4xf32>
     // CHECK-NEXT: %[[CMP:.*]] = mhlo.compare GT, %[[INP:.*]], %[[ZERO]] : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xi1>
-    // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]] : tensor<1x4x4xi1>, tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[IS_NAN:.*]] = mhlo.compare NE, %[[INP]], %[[INP]] : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xi1>
+    // CHECK-NEXT: %[[NORM:.*]] = mhlo.select %[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]] : tensor<1x4x4xi1>, tensor<1x4x4xf32>
+    // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[IS_NAN]], %[[INP]], %[[NORM]] : tensor<1x4x4xi1>, tensor<1x4x4xf32>
     // CHECK-NEXT: return %[[RES]] : tensor<1x4x4xf32>
     %0 = "tf.LeakyReluGrad"(%arg0, %arg1) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<1x4x4xf32>, tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
     func.return %0 : tensor<1x4x4xf32>
@@ -2808,4 +2810,25 @@ func.func @func_xla_sharding_consistent(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "{devices=[2,1]0,1}", _XlaShardingV2 = "{devices=[2,1]<=[2]}"} : (tensor<4x8xi32>) -> tensor<4x8xi32>
   %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
   func.return %1 : tensor<4x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_sub_scalar_updates
+func.func @tensor_scatter_sub_scalar_updates(%tensor: tensor<4x3xf32>, %indices: tensor<2x1xi32>, %updates: tensor<f32>) -> tensor<4x3xf32> {
+  // CHECK: %[[SHAPE:.*]] = mhlo.constant dense<[2, 3]> : tensor<2xi64>
+  // CHECK: %[[BCAST:.*]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, %[[SHAPE]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>, tensor<2xi64>) -> tensor<2x3xf32>
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %[[BCAST]])
+  // CHECK: mhlo.subtract
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<4x3xf32>, tensor<2x1xi32>, tensor<f32>) -> tensor<4x3xf32>
+  func.return %0 : tensor<4x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_sub_scalar_updates_invalid_index_depth
+func.func @tensor_scatter_sub_scalar_updates_invalid_index_depth(%tensor: tensor<4xf32>, %indices: tensor<2x2xi32>, %updates: tensor<f32>) -> tensor<4xf32> {
+  // CHECK: tf.TensorScatterSub
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<4xf32>, tensor<2x2xi32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }

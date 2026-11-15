@@ -1,0 +1,31 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  param_0 = f32[9]{0} parameter(0)
+  c42 = f32[] constant(42)
+  pad = f32[25]{0} pad(param_0, c42), padding=0_16
+  ROOT slice = f32[8]{0} slice(pad), slice={[1:25:3]}
+}
+// CHECK: xtile.entry_func @{{.*}}(%[[IN:.*]]: memref<9xf32>, %[[OUT:.*]]: memref<8xf32>
+// CHECK-DAG: %[[PAD_VALUE:.*]] = arith.constant dense<4.200000e+01> : tensor<4xf32>
+// CHECK-DAG: %[[STRIDE:.*]] = arith.constant dense<3>
+// CHECK: %[[EXTRACT:.*]] = xtile.extract %[[IN]][{{.*}}] [4] [3] : memref<9xf32> -> tensor<4xf32>
+// CHECK: %[[IOTA:.*]] = tt.make_range {end = 4 : i32, start = 0 : i32}
+// CHECK: %[[STRIDED:.*]] = arith.muli {{.*}}, %[[STRIDE]]
+// CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[STRIDED]], {{.*}}
+// CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_VALUE]]
+// CHECK: xtile.insert %[[SELECT]] into %[[OUT]]
+
+ENTRY main {
+  param_0 = f32[9]{0} parameter(0)
+  ROOT triton_fusion = f32[8]{0} fusion(param_0), kind=kCustom,
+    calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -59,8 +60,13 @@ struct CompiledMemoryStats {
 
   static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
 
+  // Populates memory stats from `allocs`. If `assignment` is set, it is used
+  // for determining whether each allocation is host or device memory (otherwise
+  // `alloc->color()` is used).
+  // TODO(b/580899672): Remove `assignment` and always use `alloc.color()`.
   void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation* const> allocs);
+      absl::Span<const BufferAllocation* const> allocs,
+      const BufferAssignment* absl_nullable assignment);
 };
 
 }  // namespace xla

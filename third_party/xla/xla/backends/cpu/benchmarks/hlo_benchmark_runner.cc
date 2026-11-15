@@ -359,6 +359,9 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
+  // Disable HLO module upload for benchmarks.
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_enable_hlo_modules_upload(false);
 
   for (auto _ : state) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,

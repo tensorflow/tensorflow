@@ -23,13 +23,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -111,10 +114,114 @@ void PjRtMemorySpaceCApiDelegator::SetUserDataImpl(PJRT_Memory* memory,
       return vtable;
     }();
 
+namespace {
+
+struct FfiContextMap {
+  mutable absl::Mutex ffi_context_mu_;
+  absl::flat_hash_map<const void*, std::weak_ptr<void>> ffi_context_
+      ABSL_GUARDED_BY(ffi_context_mu_);
+};
+
+const char kFfiContextMapKey = 0;
+
+FfiContextMap* LookupFfiContextMap(const PjRtMemorySpace* memory_space) {
+  if (memory_space == nullptr) {
+    return nullptr;
+  }
+  PJRT_Memory* c_mem = const_cast<PjRtMemorySpace*>(memory_space)->ToCApiPtr();
+  if (c_mem == nullptr || c_mem->vtable == nullptr ||
+      c_mem->vtable->get_user_data == nullptr) {
+    return nullptr;
+  }
+  return static_cast<FfiContextMap*>(
+      c_mem->vtable->get_user_data(c_mem, &kFfiContextMapKey));
+}
+
+}  // namespace
+
 PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
-    PjRtMemorySpace* owner)
+    PjRtMemorySpace* owner, int32_t local_device_id, int32_t memory_kind_id)
     : owner_(owner) {
   c_memory_.vtable = &kDelegatorVtable;
+  c_memory_.local_device_id = local_device_id;
+  c_memory_.memory_kind_id = memory_kind_id;
+  SetUserDataImpl(&c_memory_, &kFfiContextMapKey, new FfiContextMap(),
+                  [](void* p) { delete static_cast<FfiContextMap*>(p); });
+}
+
+PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
+    PjRtMemorySpace* owner, const PjRtDevice* device, int32_t memory_kind_id)
+    : PjRtMemorySpaceCApiDelegator(
+          owner,
+          (device != nullptr && device->IsAddressable())
+              ? device->local_device_id().value()
+              : -1,
+          memory_kind_id) {}
+
+absl::Status SetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                           std::weak_ptr<void> context) {
+  if (key == nullptr) {
+    return absl::InvalidArgumentError("FFI context key must be non-null.");
+  }
+  std::shared_ptr<void> incoming = context.lock();
+  if (incoming == nullptr) {
+    UnsetFfiContext(memory_space, key);
+    return absl::OkStatus();
+  }
+  FfiContextMap* map = LookupFfiContextMap(memory_space);
+  if (map == nullptr) {
+    return absl::FailedPreconditionError(
+        "FfiContextMap is not installed on PjRtMemorySpace.");
+  }
+  std::shared_ptr<void> existing;
+  {
+    absl::MutexLock lock(map->ffi_context_mu_);
+    auto [it, inserted] = map->ffi_context_.try_emplace(key, context);
+    if (!inserted) {
+      existing = it->second.lock();
+      if (existing != nullptr && existing.get() != incoming.get()) {
+        return absl::AlreadyExistsError(absl::StrCat(
+            "PjRtMemorySpace (id=", memory_space->id(),
+            ") already has a different live FFI context registered for key."));
+      }
+      it->second = std::move(context);
+    }
+  }
+  return absl::OkStatus();
+}
+
+void UnsetFfiContext(PjRtMemorySpace* memory_space, const void* key,
+                     const void* expected_context) {
+  FfiContextMap* map = LookupFfiContextMap(memory_space);
+  if (map == nullptr) {
+    return;
+  }
+  std::shared_ptr<void> existing;
+  {
+    absl::MutexLock lock(map->ffi_context_mu_);
+    auto it = map->ffi_context_.find(key);
+    if (it == map->ffi_context_.end()) {
+      return;
+    }
+    if (expected_context != nullptr) {
+      existing = it->second.lock();
+      if (existing != nullptr && existing.get() != expected_context) {
+        return;
+      }
+    }
+    map->ffi_context_.erase(it);
+  }
+}
+
+std::shared_ptr<void> GetFfiContext(const PjRtMemorySpace* memory_space,
+                                    const void* key) {
+  FfiContextMap* map = LookupFfiContextMap(memory_space);
+  if (map == nullptr) {
+    return nullptr;
+  }
+  absl::ReaderMutexLock lock(map->ffi_context_mu_);
+  auto it = map->ffi_context_.find(key);
+  return it != map->ffi_context_.end() ? it->second.lock() : nullptr;
 }
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;

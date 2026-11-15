@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -213,6 +214,30 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
   HloSharding sharding = HloSharding::FromProto(proto).value();
 
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
+}
+
+TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 2
+    tile_assignment_devices: 0
+    tile_assignment_devices: 1
+    last_tile_dims: MANUAL
+    last_tile_dims: REPLICATED
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto).status().message(),
+              ::testing::HasSubstr("last_tile_dims has 2 entries"));
+
+  proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 2
+    iota_reshape_dims: 2
+    iota_transpose_perm: 0
+    last_tile_dims: MANUAL
+    last_tile_dims: REPLICATED
+  )pb");
+  EXPECT_THAT(HloSharding::FromProto(proto).status().message(),
+              ::testing::HasSubstr("last_tile_dims has 2 entries"));
 }
 
 using TileTest = HloShardingTest;
@@ -632,6 +657,21 @@ INSTANTIATE_TEST_SUITE_P(HloShardingRepresentationTest,
                          HloShardingRepresentationTest,
                          ::testing::Values(false, true));
 
+// Tests that an empty tuple without sharding has no sharding properties.
+TEST_F(HloShardingTest, EmptyTupleWithoutShardingProperties) {
+  HloSharding sharding = HloSharding::Tuple(ShapeUtil::MakeTupleShape({}), {});
+
+  EXPECT_TRUE(sharding.IsTuple());
+  EXPECT_TRUE(sharding.tuple_elements().empty());
+  EXPECT_FALSE(sharding.IsSingleDevice());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnknown());
+  EXPECT_FALSE(sharding.IsUnreduced());
+  EXPECT_FALSE(sharding.IsManualSubgroup());
+  EXPECT_FALSE(sharding.IsUnreducedSubgroup());
+  EXPECT_FALSE(sharding.UniqueDevice().has_value());
+}
+
 TEST_F(HloShardingTest, NestedTuple) {
   // nested_tuple_shape = (f32[], (f32[3]), f32[4, 6])
   Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({
@@ -811,6 +851,54 @@ TEST_F(HloShardingTest, HasherV2) {
   // Inserting V1 shardings crashes.
   HloSharding v1_sharding = HloSharding::Tile(Array<int64_t>({2}, {0, 1}));
   EXPECT_DEATH(map[v1_sharding] = 7, ".*");
+}
+
+TEST_F(HloShardingTest, ImplementsAbslHashCorrectly) {
+  Mesh mesh({6}, {"x"});
+  HloSharding tuple_sharding = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {4})}),
+      {HloSharding::Replicate(), HloSharding::SingleDevice(0)});
+  // Shardings are compared regardless of their representation, so V1, V2 and
+  // named shardings that are equal must hash equally.
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      HloSharding::Replicate(),
+      HloSharding(NamedSharding::Replicate()),
+      HloSharding::SingleDevice(5),
+      HloSharding(NamedSharding::SingleDevice(5)),
+      HloSharding::Manual(),
+      HloSharding::IotaTile({2, 2}),
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3})),
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1})),
+      HloSharding::IotaTile({6, 1}),
+      HloSharding(test_utils::FromAxisNames(mesh, {{"x"}, {}})),
+      tuple_sharding,
+  }));
+}
+
+TEST_F(HloShardingTest, HashV2WrapperImplementsAbslHashCorrectly) {
+  Mesh mesh({6}, {"x"});
+  HloSharding replicated = HloSharding::Replicate();
+  HloSharding named_replicated(NamedSharding::Replicate());
+  HloSharding single_device = HloSharding::SingleDevice(5);
+  HloSharding named_single_device(NamedSharding::SingleDevice(5));
+  HloSharding iota = HloSharding::IotaTile({6, 1});
+  HloSharding named_tile(test_utils::FromAxisNames(mesh, {{"x"}, {}}));
+  HloSharding iota_2x2 = HloSharding::IotaTile({2, 2});
+  using Wrapper = HloSharding::HashV2Wrapper;
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
+      {
+          Wrapper{replicated},
+          Wrapper{named_replicated},
+          Wrapper{single_device},
+          Wrapper{named_single_device},
+          Wrapper{iota},
+          Wrapper{named_tile},
+          Wrapper{iota_2x2},
+      },
+      [](const Wrapper& a, const Wrapper& b) {
+        return a.sharding == b.sharding;
+      }));
 }
 
 using ShardingWithMetadataParamType =
@@ -1536,6 +1624,28 @@ TEST_F(HloShardingTest, CopyAndMoveWithNamedSharding) {
   move_assign_sharding = std::move(assign_sharding);
   EXPECT_TRUE(move_assign_sharding.UseNamedShardingLeaf());
   EXPECT_EQ(move_assign_sharding.named_sharding(), named_sharding);
+}
+
+TEST_F(HloShardingTest, UnreducedLeafNumTilesFails) {
+  const HloSharding unreduced_v2 = HloSharding::Unreduced();
+  EXPECT_DEATH((void)unreduced_v2.NumTiles(), "!IsUnreducedLeaf\\(\\)");
+  EXPECT_DEATH((void)unreduced_v2.TotalNumTiles(), "!IsUnreducedLeaf\\(\\)");
+
+  const Mesh mesh({2, 2}, {"a", "b"});
+  const HloSharding unreduced_v3(NamedSharding::Unreduced(mesh));
+  EXPECT_DEATH((void)unreduced_v3.NumTiles(), "!IsUnreducedLeaf\\(\\)");
+  EXPECT_DEATH((void)unreduced_v3.TotalNumTiles(), "!IsUnreducedLeaf\\(\\)");
+
+  const HloSharding subgroup_v2 =
+      HloSharding::Subgroup(TileAssignment({2, 2}), {OpSharding::UNREDUCED});
+  EXPECT_EQ(subgroup_v2.NumTiles(), 2);
+  EXPECT_EQ(subgroup_v2.TotalNumTiles(), 4);
+
+  const HloSharding subgroup_v3(
+      test_utils::FromAxisNames(mesh, {{"a"}}, /*replicated_axes=*/{},
+                                /*unreduced_axes=*/{"b"}));
+  EXPECT_EQ(subgroup_v3.NumTiles(), 2);
+  EXPECT_EQ(subgroup_v3.TotalNumTiles(), 4);
 }
 
 }  // namespace

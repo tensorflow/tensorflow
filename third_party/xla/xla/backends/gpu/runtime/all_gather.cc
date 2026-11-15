@@ -205,7 +205,7 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   codegen_config.copy_input_to_scratch = false;
   codegen_config.sync_count_increment = 1u;
   // Argument layout (must match the Triton entry function): inputs, outputs,
-  // rank, invocation count, signal flags, one remote scratch table per operand.
+  // one remote scratch table per operand, signal flags, rank.
   for (int32_t i = 0; i < num_operands; ++i) {
     codegen_config.input_buffer_specs.push_back(
         {/*requires_multimem=*/false, SymmetricMemoryType::kNone});
@@ -218,12 +218,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     codegen_config.argument_descriptors.push_back(
         {KernelArgType::kOutputBuffer, /*index=*/i});
   }
-  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
-  codegen_config.argument_descriptors.push_back(
-      {KernelArgType::kInvocationCount});
-  // Signal buffers.
-  codegen_config.argument_descriptors.push_back(
-      {KernelArgType::kScratchBuffer, /*index=*/0});
   kernel_spec.scratch_buffers.push_back({signal_size,
                                          /*requires_multimem=*/false,
                                          scratch_memory_type,
@@ -244,6 +238,9 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
                                            /*should_memzero=*/false,
                                            /*should_double_buffer=*/true});
   }
+  codegen_config.argument_descriptors.push_back(
+      {KernelArgType::kScratchBuffer, /*index=*/0});
+  codegen_config.argument_descriptors.push_back({KernelArgType::kRuntimeRank});
   return kernel_spec;
 }
 

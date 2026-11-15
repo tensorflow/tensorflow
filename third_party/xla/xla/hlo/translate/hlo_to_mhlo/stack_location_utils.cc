@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
@@ -30,6 +32,22 @@ limitations under the License.
 
 namespace mlir {
 namespace hlo {
+
+mlir::Location GetFileLineColLocOrRange(mlir::MLIRContext* context,
+                                        llvm::StringRef file_name,
+                                        int32_t start_line,
+                                        int32_t start_column, int32_t end_line,
+                                        int32_t end_column) {
+  // If the end line is not set or the start and end are the same, return a
+  // FileLineColLoc. Otherwise, return a FileLineColRange.
+  if (end_line == 0 || (end_line == start_line && end_column == start_column)) {
+    return mlir::FileLineColLoc::get(context, file_name, start_line,
+                                     start_column);
+  }
+  return mlir::FileLineColRange::get(context, file_name, start_line,
+                                     start_column, end_line, end_column);
+}
+
 mlir::Location GetLocationFromFrameIndex(
     int frame_id, mlir::Builder& builder, const xla::HloModule* hlo_module,
     llvm::SmallVectorImpl<mlir::LocationAttr>* frame_locations) {
@@ -73,11 +91,12 @@ mlir::Location GetLocationFromFrameIndex(
   // so the result nests as CallSiteLoc(leaf, CallSiteLoc(parent, ... root)),
   // the shape CallSiteLoc::get(leaf, parents) produces.
   for (const auto& [pending_id, frame] : llvm::reverse(frames)) {
+    mlir::Location file_location = GetFileLineColLocOrRange(
+        builder.getContext(), xla::ToStringRef(frame.file_name), frame.line,
+        frame.column, frame.end_line, frame.end_column);
     mlir::Location frame_location = mlir::NameLoc::get(
         builder.getStringAttr(xla::ToStringRef(frame.function_name)),
-        mlir::FileLineColLoc::get(
-            builder.getStringAttr(xla::ToStringRef(frame.file_name)),
-            frame.line, frame.column));
+        file_location);
     location = location ? mlir::CallSiteLoc::get(frame_location, location)
                         : frame_location;
     if (mlir::LocationAttr* slot = memoized(pending_id)) {

@@ -35,7 +35,7 @@ using ::absl_testing::IsOkAndHolds;
 
 class HloModuleDceTest : public HloHardwareIndependentTestBase {
  protected:
-  HloModuleDceTest() {}
+  HloModuleDceTest() = default;
 
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,

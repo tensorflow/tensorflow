@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -85,6 +86,13 @@ static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
   SetModuleMemoryRegionName(*m, "jit_compiler_test");
 
   return llvm::orc::ThreadSafeModule(std::move(m), context);
+}
+
+using ScalarFn = void(float*);
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI static void CallScalarFn(ScalarFn* fn,
+                                                        float* value) {
+  fn(value);
 }
 
 TEST(JitCompilerTest, Compile) {
@@ -163,10 +171,10 @@ TEST(JitCompilerTest, Compile) {
   EXPECT_NE(mul_in_place, nullptr);
 
   float value = 1.0f;
-  add_in_place(&value);
+  CallScalarFn(add_in_place, &value);
   EXPECT_EQ(value, 2.0f);
 
-  mul_in_place(&value);
+  CallScalarFn(mul_in_place, &value);
   EXPECT_EQ(value, 4.0f);
 }
 
@@ -239,7 +247,7 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
       function_library->ResolveFunction<ScalarFn>("CallExternalFn"));
 
   float value = 1.0f;
-  call_external_fn(&value);
+  CallScalarFn(call_external_fn, &value);
   EXPECT_EQ(value, 2.0f);
 }
 

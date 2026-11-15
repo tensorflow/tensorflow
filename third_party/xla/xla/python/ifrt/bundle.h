@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
@@ -40,7 +41,7 @@ namespace ifrt {
 class Client;
 
 class Bundle;
-using BundleRef = tsl::RCReference<Bundle>;
+using BundleRef = absl_nonnull tsl::RCReference<Bundle>;
 
 // A runtime-managed data structure that represents an ordered list of
 // `ValueRef`s.

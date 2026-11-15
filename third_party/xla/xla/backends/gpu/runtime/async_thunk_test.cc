@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/async_thunk.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -42,15 +48,41 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 
 namespace xla::gpu {
 namespace {
+
+class RecordingThunk : public Thunk {
+ public:
+  explicit RecordingThunk(se::Stream** executed_stream)
+      : Thunk(kKernel, ThunkInfo()), executed_stream_(executed_stream) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    *executed_stream_ = params.stream;
+    return absl::OkStatus();
+  }
+
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError(
+        "RecordingThunk::ToProto is not implemented");
+  }
+
+ private:
+  se::Stream** executed_stream_;
+};
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
   ABSL_ASSIGN_OR_RETURN(std::string platform_name,
@@ -131,7 +163,8 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
       /*collective_memory=*/nullptr, additional_streams, &state);
 
   // Initialize and execute all thunks via ThunkExecutor.
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(thunk_executor.Initialize(init_params));
@@ -199,7 +232,8 @@ TEST(AsyncThunkTest, MemcpyStreamDispatch) {
   params.device_to_host_stream = d2h_stream.get();
   params.host_to_device_stream = h2d_stream.get();
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(thunk_executor.Initialize(init_params));
@@ -228,7 +262,8 @@ TEST(AsyncThunkTest, MemcpyStreamNullReturnsError) {
   ASSERT_EQ(params.device_to_host_stream, nullptr);
   ASSERT_EQ(params.host_to_device_stream, nullptr);
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(d2h_start.Initialize(init_params));
@@ -324,6 +359,146 @@ TEST(AsyncThunkTest, AsyncDoneRecordCommandBuffer) {
                                    Command::RecordUpdate{/*.command=*/cmd},
                                    command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);
+}
+
+TEST(AsyncThunkTest, LocalityDomainStreamSelection) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto main_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto locality_stream, executor->CreateStream());
+
+  Thunk::ThunkInfo info;
+  info.thunk_id = ThunkId(1);
+  se::Stream* executed_stream = nullptr;
+  ThunkSequence nested = ThunkSequence::Of<RecordingThunk>(&executed_stream);
+  AsyncStartThunk start(std::move(info), LocalityDomainStreamId(3),
+                        std::move(nested), /*devices_per_host=*/1);
+
+  Thunk::ExecutionScopedState state;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = executor;
+  init_params.execution_scoped_state = &state;
+  ASSERT_OK(start.Initialize(init_params));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, main_stream.get(), main_stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state,
+      std::nullopt, {{LocalityDomainStreamId(3), locality_stream.get()}});
+
+  ASSERT_OK(start.ExecuteOnStream(params));
+  EXPECT_EQ(executed_stream, locality_stream.get());
+}
+
+TEST(AsyncThunkTest,
+     LocalityDomainsExecuteIndependentDefaultMemoryReadsAndSynchronize) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, CreateExecutor());
+  const se::DeviceDescription& device = executor->GetDeviceDescription();
+  if (std::min(device.driver_version(), device.compile_time_toolkit_version()) <
+      se::SemanticVersion{13, 4, 0}) {
+    GTEST_SKIP() << "Requires CUDA toolkit and driver 13.4 or newer";
+  }
+  if (device.locality_domain_count() < 2) {
+    GTEST_SKIP() << "Requires at least two usable locality domains";
+  }
+  absl::StatusOr<std::unique_ptr<se::CommandBuffer>> command_buffer =
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary);
+  if (!command_buffer.ok()) {
+    GTEST_SKIP() << "Command buffers unavailable: " << command_buffer.status();
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> primary,
+                       executor->CreateStream());
+  std::array<std::unique_ptr<se::Stream>, 2> locality_streams;
+  for (int domain = 0; domain < static_cast<int>(locality_streams.size());
+       ++domain) {
+    absl::StatusOr<std::unique_ptr<se::Stream>> stream =
+        executor->CreateStreamInLocalityDomain(domain);
+    if (!stream.ok()) {
+      GTEST_SKIP() << "Locality domain " << domain
+                   << " is unusable: " << stream.status();
+    }
+    locality_streams[domain] = std::move(*stream);
+  }
+
+  constexpr int64_t kLength = 4;
+  constexpr int64_t kBytes = kLength * sizeof(int32_t);
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ASSERT_OK_AND_ASSIGN(auto source,
+                       allocator.Allocate(executor->device_ordinal(), kBytes));
+  ASSERT_OK_AND_ASSIGN(auto output0,
+                       allocator.Allocate(executor->device_ordinal(), kBytes));
+  ASSERT_OK_AND_ASSIGN(auto output1,
+                       allocator.Allocate(executor->device_ordinal(), kBytes));
+
+  ASSERT_OK(primary->Memset32(source.ptr(), 42, kBytes));
+  ASSERT_OK(primary->MemZero(output0.ptr(), kBytes));
+  ASSERT_OK(primary->MemZero(output1.ptr(), kBytes));
+
+  BufferAllocation source_alloc(/*index=*/0, kBytes, /*color=*/0);
+  BufferAllocation output0_alloc(/*index=*/1, kBytes, /*color=*/0);
+  BufferAllocation output1_alloc(/*index=*/2, kBytes, /*color=*/0);
+  Shape shape = ShapeUtil::MakeShape(S32, {kLength});
+  ShapedSlice source_slice{
+      BufferAllocation::Slice(&source_alloc, /*offset=*/0, kBytes), shape};
+  std::array<ShapedSlice, 2> output_slices = {
+      ShapedSlice{BufferAllocation::Slice(&output0_alloc, /*offset=*/0, kBytes),
+                  shape},
+      ShapedSlice{BufferAllocation::Slice(&output1_alloc, /*offset=*/0, kBytes),
+                  shape}};
+
+  std::array<se::Stream*, 2> executed_streams = {nullptr, nullptr};
+  ThunkSequence thunks;
+  std::array<std::shared_ptr<AsyncExecution>, 2> async_executions;
+  for (int domain = 0; domain < static_cast<int>(locality_streams.size());
+       ++domain) {
+    ThunkSequence nested;
+    nested.Emplace<RecordingThunk>(&executed_streams[domain]);
+    nested.Emplace<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), source_slice,
+                                            output_slices[domain], kBytes);
+    Thunk::ThunkInfo start_info;
+    start_info.thunk_id = ThunkId(domain + 1);
+    auto start = std::make_unique<AsyncStartThunk>(
+        std::move(start_info), LocalityDomainStreamId(domain),
+        std::move(nested), /*devices_per_host=*/1);
+    async_executions[domain] = start->async_execution();
+    thunks.push_back(std::move(start));
+  }
+  for (const std::shared_ptr<AsyncExecution>& execution : async_executions) {
+    thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(), execution);
+  }
+  ThunkExecutor thunk_executor(std::move(thunks));
+
+  BufferAllocations allocations({source.cref(), output0.cref(), output1.cref()},
+                                executor->device_ordinal(), &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecutionScopedState state;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
+  initialize_params.executor = executor;
+  initialize_params.execution_scoped_state = &state;
+  ASSERT_OK(thunk_executor.Initialize(initialize_params));
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, primary.get(), primary.get(), nullptr, nullptr,
+      nullptr, /*additional_compute_streams=*/{}, &state, std::nullopt,
+      {{LocalityDomainStreamId(0), locality_streams[0].get()},
+       {LocalityDomainStreamId(1), locality_streams[1].get()}});
+  ASSERT_OK(thunk_executor.ExecuteOnStream(params));
+
+  std::array<int32_t, kLength> result0;
+  std::array<int32_t, kLength> result1;
+  ASSERT_OK(primary->Memcpy(result0.data(), output0.cref(), kBytes));
+  ASSERT_OK(primary->Memcpy(result1.data(), output1.cref(), kBytes));
+  ASSERT_OK(primary->BlockHostUntilDone());
+
+  EXPECT_EQ(executed_streams[0], locality_streams[0].get());
+  EXPECT_EQ(executed_streams[1], locality_streams[1].get());
+  EXPECT_EQ(result0, (std::array<int32_t, kLength>{42, 42, 42, 42}));
+  EXPECT_EQ(result1, (std::array<int32_t, kLength>{42, 42, 42, 42}));
 }
 
 }  // namespace

@@ -71,7 +71,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   PjRtStreamExecutorRawBuffer(
-      PjRtStreamExecutorRawClient* client, PjRtMemorySpace* memory_space,
+      PjRtStreamExecutorRawClient* client, PJRT_Memory* memory_space,
       LocalDeviceState* local_device,
       tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer, size_t buffer_size)
       : client_(client),
@@ -80,7 +80,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
         device_buffer_(device_buffer),
         buffer_size_(buffer_size) {}
 
-  PjRtMemorySpace* memory_space() const override { return memory_space_; }
+  PJRT_Memory* c_memory_space() const override { return memory_space_; }
 
   LocalDeviceState* local_device() const { return local_device_; }
 
@@ -91,8 +91,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
   }
 
   void* GetHostPointer() const override {
-    return client_->IsOnCpu(memory_space()) ? device_buffer_->opaque()
-                                            : nullptr;
+    return client_->IsOnCpu(memory_space_) ? device_buffer_->opaque() : nullptr;
   }
 
   void* OpaqueDeviceMemoryDataPointer() const override {
@@ -133,7 +132,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
  private:
   PjRtStreamExecutorRawClient* client_;
-  PjRtMemorySpace* memory_space_;
+  PJRT_Memory* memory_space_;
   LocalDeviceState* local_device_;
   tsl::AsyncValueRef<RawSEDeviceMemory> device_buffer_;
   size_t buffer_size_;

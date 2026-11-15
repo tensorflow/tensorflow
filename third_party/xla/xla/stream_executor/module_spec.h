@@ -79,7 +79,7 @@ class MultiModuleLoaderSpec {
   bool has_cuda_cubin_in_memory() const { return has_cuda_cubin_in_memory_; }
   absl::Span<const uint8_t> cuda_cubin_in_memory() const {
     CHECK(has_cuda_cubin_in_memory());
-    return {cuda_cubin_in_memory_.data(), cuda_cubin_in_memory_.size()};
+    return absl::MakeConstSpan(cuda_cubin_in_memory_);
   }
 
   bool has_cuda_ptx_in_memory() const { return has_cuda_ptx_in_memory_; }

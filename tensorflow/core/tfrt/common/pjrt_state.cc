@@ -23,13 +23,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -41,6 +39,11 @@ absl::StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     return it->second.get();
   }
+  if (device_type == DeviceType("XLA_GPU")) {
+    if (auto it = clients_.find(DeviceType(DEVICE_GPU)); it != clients_.end()) {
+      return it->second.get();
+    }
+  }
   return errors::NotFound("PjRt client not found for device type ",
                           device_type);
 }
@@ -50,6 +53,11 @@ absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
   absl::MutexLock lock(mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     return it->second.get();
+  }
+  if (device_type == DeviceType("XLA_GPU")) {
+    if (auto it = clients_.find(DeviceType(DEVICE_GPU)); it != clients_.end()) {
+      return it->second.get();
+    }
   }
   std::unique_ptr<xla::PjRtClient> pjrt_client;
   // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
@@ -86,6 +94,18 @@ absl::Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
   }
   return errors::NotFound("PjRt client not found for device type ",
                           device_type);
+}
+
+absl::Status PjRtState::TestOnlyResetPjRtClient(const DeviceType& device_type) {
+  absl::MutexLock lock(mu_);
+  if (auto it = clients_.find(device_type); it != clients_.end()) {
+    unused_.push_back(std::move(it->second));
+    clients_.erase(it);
+  }
+  if (device_type == DeviceType(DEVICE_GPU)) {
+    pjrt_gpu_client_creation_info_.reset();
+  }
+  return absl::OkStatus();
 }
 
 absl::Status PjRtState::SetPjRtGpuClientCreationInfo(

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
@@ -33,8 +34,8 @@ char LoadOptions::ID = 0;
 char Client::ID = 0;
 
 absl::StatusOr<CustomLayoutRef> Client::GetDefaultLayout(
-    DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
-    xla::ifrt::MemoryKind memory_kind) const {
+    DType dtype, absl::Span<const int64_t> shard_dims,
+    Device* absl_nonnull device, xla::ifrt::MemoryKind memory_kind) const {
   return GetDefaultLayout(dtype, Shape(shard_dims),
                           SingleDeviceSharding::Create(device, memory_kind));
 }

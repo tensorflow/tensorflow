@@ -731,5 +731,45 @@ entry {
 )");
 }
 
+TEST_F(ReduceWindowRewriterTest, MultipleVariadicCumSumsAreSupported) {
+  CheckReduceWindowRewrite(R"hlo(
+add_pair {
+  l0 = s32[] parameter(0)
+  l1 = s32[] parameter(1)
+  r0 = s32[] parameter(2)
+  r1 = s32[] parameter(3)
+  sum0 = s32[] add(l0, r0)
+  sum1 = s32[] add(l1, r1)
+  ROOT t = (s32[], s32[]) tuple(sum0, sum1)
+}
+
+cumsum_a {
+  p = s32[256] parameter(0)
+  z = s32[] constant(0)
+  ROOT rw = (s32[256], s32[256]) reduce-window(p, p, z, z),
+      window={size=256 pad=255_0}, to_apply=add_pair
+}
+
+cumsum_b {
+  p = s32[256] parameter(0)
+  z = s32[] constant(0)
+  ROOT rw = (s32[256], s32[256]) reduce-window(p, p, z, z),
+      window={size=256 pad=255_0}, to_apply=add_pair
+}
+
+ENTRY entry {
+  p = s32[256] parameter(0)
+  a = (s32[256], s32[256]) call(p), to_apply=cumsum_a
+  b = (s32[256], s32[256]) call(p), to_apply=cumsum_b
+  ROOT r = ((s32[256], s32[256]), (s32[256], s32[256])) tuple(a, b)
+})hlo",
+                           R"(
+// CHECK-LABEL: %cumsum_a
+// CHECK: window={size=1x128 pad=0_0x127_0}
+// CHECK-LABEL: %cumsum_b
+// CHECK: window={size=1x128 pad=0_0x127_0}
+)");
+}
+
 }  // namespace
 }  // namespace xla

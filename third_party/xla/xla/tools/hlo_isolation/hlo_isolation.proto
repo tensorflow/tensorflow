@@ -64,6 +64,7 @@ message HloIsolationTestResult {
   google.protobuf.Any platform_payload = 6;
   optional bool module_contains_constant_inf_or_nan = 7;
   optional bool is_intentional_inf_nan = 8;
+  repeated string verified_instructions = 9;
 }
 
 message HloIsolationTestSummary {

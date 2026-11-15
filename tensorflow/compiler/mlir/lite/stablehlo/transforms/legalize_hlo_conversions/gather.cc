@@ -26,30 +26,31 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
-std::optional<bool> IsGatherLegal(mhlo::GatherOp op) { return std::nullopt; }
+std::optional<bool> IsGatherLegal(stablehlo::GatherOp op) {
+  return std::nullopt;
+}
 
-class LegalizeGatherToSlice : public OpConversionPattern<mhlo::GatherOp> {
+class LegalizeGatherToSlice : public OpConversionPattern<stablehlo::GatherOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::GatherOp op, OpAdaptor adaptor,
+      stablehlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeGatherToSlice::matchAndRewrite(
-    mhlo::GatherOp gather_op, OpAdaptor adaptor,
+    stablehlo::GatherOp gather_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   Value operand = gather_op.getOperand();
   Value start_indices = gather_op.getStartIndices();
@@ -68,7 +69,8 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
       !result_type.hasStaticShape()) {
     return rewriter.notifyMatchFailure(
         gather_op,
-        "Dynamic shaped inputs are not supported when legalizing mhlo.gather "
+        "Dynamic shaped inputs are not supported when legalizing "
+        "stablehlo.gather "
         "op to tf.slice.");
   }
 
@@ -77,11 +79,8 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
       gather_op.getDimensionNumbers().getCollapsedSliceDims();
   auto offset_dims = gather_op.getDimensionNumbers().getOffsetDims();
   auto slice_sizes = gather_op.getSliceSizes();
-  llvm::SmallVector<int64_t, 2> slice_sizes_vector;
-  slice_sizes_vector.reserve(slice_sizes.size());
-  for (int64_t s : slice_sizes.getValues<int64_t>()) {
-    slice_sizes_vector.push_back(s);
-  }
+  llvm::SmallVector<int64_t, 2> slice_sizes_vector(slice_sizes.begin(),
+                                                   slice_sizes.end());
 
   llvm::SmallVector<int64_t, 1> batch_dims;
   // Offset dims are guaranteed to be sorted.
@@ -194,13 +193,6 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
 
 namespace {
 
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder* builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
 // Transform the canonicalized result produced by tf.GatherNd with the
 // canonicalized operand and start indices back into the original result.
 // The canonicalized result will have the start indices batching dimensions
@@ -210,16 +202,14 @@ DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
 // - Introduce trivial index dimensions that aren't in `collapsed_slice_dims`.
 // - Transpose dimensions back based on `offset_dims` and
 //   `start_indices_batching_dims`.
-Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
-                           ShapedType canonical_result_type,
-                           ShapedType original_result_type,
-                           ArrayRef<int64_t> offset_dims,
-                           ArrayRef<int64_t> operand_batching_dims,
-                           ArrayRef<int64_t> start_indices_batching_dims,
-                           ArrayRef<int64_t> start_index_map,
-                           ArrayRef<int64_t> slice_sizes,
-                           ArrayRef<int64_t> collapsed_slice_dims,
-                           ConversionPatternRewriter& rewriter) {
+Value UncanonicalizeResult(
+    stablehlo::GatherOp gather_op, Value canonical_result,
+    ShapedType canonical_result_type, ShapedType original_result_type,
+    ArrayRef<int64_t> offset_dims, ArrayRef<int64_t> operand_batching_dims,
+    ArrayRef<int64_t> start_indices_batching_dims,
+    ArrayRef<int64_t> start_index_map, ArrayRef<int64_t> slice_sizes,
+    ArrayRef<int64_t> collapsed_slice_dims,
+    ConversionPatternRewriter& rewriter) {
   // For those dims NOT inside the original_offset_dims are considered "batch
   // dims".
   std::vector<int64_t> batch_dims;
@@ -290,14 +280,13 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
     auto unflattened_result_type = RankedTensorType::get(
         unflattened_shape, original_result_type.getElementType());
     canonical_result =
-        mhlo::ReshapeOp::create(rewriter, gather_op.getLoc(),
-                                unflattened_result_type, canonical_result);
+        ReshapeUnlessIdentity(rewriter, gather_op.getLoc(),
+                              unflattened_result_type, canonical_result);
   }
   // Transpose back to the original result shape.
-  return mhlo::TransposeOp::create(
+  return TransposeUnlessIdentity(
       rewriter, gather_op.getLoc(), original_result_type, canonical_result,
-      rewriter.getI64TensorAttr(
-          GetInversePermutationArray(permutation_to_canonical)));
+      GetInversePermutationArray(permutation_to_canonical));
 }
 
 // Canonicalize `operand` to handle operand batching dimensions and non-iota
@@ -305,7 +294,7 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
 // - Transpose so that the leading dimensions are the operand batching
 //   dimensions followed by the indexed dimensions (in order).
 // - Flatten the batching dimensions.
-Value CanonicalizeOperand(mhlo::GatherOp gather_op, Value operand,
+Value CanonicalizeOperand(stablehlo::GatherOp gather_op, Value operand,
                           ShapedType operand_type,
                           ArrayRef<int64_t> operand_batching_dims,
                           ArrayRef<int64_t> start_index_map,
@@ -342,14 +331,12 @@ Value CanonicalizeOperand(mhlo::GatherOp gather_op, Value operand,
   // Transpose the dimensions and flatten the batching dimensions.
   RankedTensorType transposed_type =
       RankedTensorType::get(transposed_shape, operand_type.getElementType());
-  auto transposed_operand = mhlo::TransposeOp::create(
-      rewriter, gather_op.getLoc(), transposed_type, operand,
-      rewriter.getI64TensorAttr(permutation));
+  Value transposed_operand = TransposeUnlessIdentity(
+      rewriter, gather_op.getLoc(), transposed_type, operand, permutation);
   auto flattened_type =
       RankedTensorType::get(flattened_shape, operand_type.getElementType());
-  auto flattened_operand = mhlo::ReshapeOp::create(
-      rewriter, gather_op.getLoc(), flattened_type, transposed_operand);
-  return flattened_operand;
+  return ReshapeUnlessIdentity(rewriter, gather_op.getLoc(), flattened_type,
+                               transposed_operand);
 }
 
 // Canonicalize `start_indices` to handle start indices batching dimensions so
@@ -359,7 +346,8 @@ Value CanonicalizeOperand(mhlo::GatherOp gather_op, Value operand,
 // - For each indexed dimension with non-trivial slicing, introduce a new
 //   dimension, and broadcast and add iota values to the indices.
 // - Add iota index values for the operand batching dimensions.
-Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
+Value CanonicalizeStartIndices(stablehlo::GatherOp gather_op,
+                               Value start_indices,
                                ShapedType start_indices_type,
                                ArrayRef<int64_t> start_indices_batching_dims,
                                ArrayRef<int64_t> start_index_map,
@@ -407,12 +395,12 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
   reshaped_shape.push_back(index_vector_size);
 
   // Transpose the dimensions and flatten the batching dimensions.
-  auto transposed_start_indices = mhlo::TransposeOp::create(
+  Value transposed_start_indices = TransposeUnlessIdentity(
       rewriter, gather_op.getLoc(),
       RankedTensorType::get(transposed_shape,
                             start_indices_type.getElementType()),
-      start_indices, rewriter.getI64TensorAttr(permutation));
-  start_indices = mhlo::ReshapeOp::create(
+      start_indices, permutation);
+  start_indices = ReshapeUnlessIdentity(
       rewriter, gather_op.getLoc(),
       RankedTensorType::get(reshaped_shape,
                             start_indices_type.getElementType()),
@@ -449,11 +437,11 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     llvm::SmallVector<int64_t> offsets_shape(start_indices_shape.size(), 1);
     offsets_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
     start_indices_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
-    auto offsets = mhlo::IotaOp::create(
+    auto offsets = stablehlo::IotaOp::create(
         rewriter, gather_op.getLoc(),
         RankedTensorType::get(offsets_shape,
                               start_indices_type.getElementType()),
-        rewriter.getI64IntegerAttr(non_trivial_sliced_dim));
+        static_cast<uint64_t>(non_trivial_sliced_dim));
     non_trivial_sliced_dim++;
 
     // Pad with 0s on the other operand dimensions.
@@ -467,11 +455,11 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     llvm::SmallVector<int64_t> padding_interior(rank, 0);
     padding_low.back() = i;
     padding_high.back() = start_indices_shape.back() - i - 1;
-    auto padded_offsets =
-        mhlo::PadOp::create(rewriter, gather_op.getLoc(), offsets, zero,
-                            GetI64ElementsAttr(padding_low, &rewriter),
-                            GetI64ElementsAttr(padding_high, &rewriter),
-                            GetI64ElementsAttr(padding_interior, &rewriter));
+    auto padded_offsets = stablehlo::PadOp::create(
+        rewriter, gather_op.getLoc(), offsets, zero,
+        /*edge_padding_low=*/rewriter.getDenseI64ArrayAttr(padding_low),
+        /*edge_padding_high=*/rewriter.getDenseI64ArrayAttr(padding_high),
+        /*interior_padding=*/rewriter.getDenseI64ArrayAttr(padding_interior));
 
     // Add the padded offsets to the start indices (with broadcasting).
     start_indices = TFL::AddOp::create(
@@ -485,26 +473,25 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     // operand.
     llvm::SmallVector<int64_t> offsets_shape = start_indices_shape;
     offsets_shape.back() = 1;
-    auto offsets = mhlo::IotaOp::create(
+    auto offsets = stablehlo::IotaOp::create(
         rewriter, gather_op.getLoc(),
         RankedTensorType::get(offsets_shape,
                               start_indices_type.getElementType()),
-        rewriter.getI64IntegerAttr(0));
+        static_cast<uint64_t>(0));
 
     start_indices_shape.back()++;
-    start_indices = mhlo::ConcatenateOp::create(
+    start_indices = stablehlo::ConcatenateOp::create(
         rewriter, gather_op.getLoc(),
         RankedTensorType::get(start_indices_shape,
                               start_indices_type.getElementType()),
-        ValueRange{offsets, start_indices},
-        rewriter.getI32IntegerAttr(start_indices_shape.size() - 1));
+        ValueRange{offsets, start_indices}, start_indices_shape.size() - 1);
   }
 
   return start_indices;
 }
 }  // namespace
 
-// Tries to convert an mhlo::GatherOp into a TFL::GatherNdOp.
+// Tries to convert an stablehlo::GatherOp into a TFL::GatherNdOp.
 //
 // Consider the following example:
 //  operand_shape = [B1, I1, O1, B2, I2, O2]
@@ -539,16 +526,17 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
 //
 // The canonical result is unflattened and transpose as needed to get back to
 // the original result shape.
-class LegalizeGatherToGatherND : public OpConversionPattern<mhlo::GatherOp> {
+class LegalizeGatherToGatherND
+    : public OpConversionPattern<stablehlo::GatherOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::GatherOp op, OpAdaptor adaptor,
+      stablehlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
-    mhlo::GatherOp gather_op, OpAdaptor adaptor,
+    stablehlo::GatherOp gather_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   Value operand = gather_op.getOperand();
   Value start_indices = gather_op.getStartIndices();
@@ -579,6 +567,7 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
       gather_op.emitOpError()
           << "Dynamic shaped start indices aren't supported when there are "
              "batching dimensions.";
+      return failure();
     }
 
     // Verify that start_index_map and collapsed_slice_dims contains the same
@@ -608,11 +597,8 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
   // Verify that slice_sizes is 1 for the batching dimensions and the full
   // shape for non-indexed dimensions.
   auto slice_sizes = gather_op.getSliceSizes();
-  llvm::SmallVector<int64_t> slice_sizes_vector;
-  slice_sizes_vector.reserve(slice_sizes.size());
-  for (int64_t s : slice_sizes.getValues<int64_t>()) {
-    slice_sizes_vector.push_back(s);
-  }
+  llvm::SmallVector<int64_t> slice_sizes_vector(slice_sizes.begin(),
+                                                slice_sizes.end());
   for (int i = 0; i < slice_sizes_vector.size(); ++i) {
     int s = slice_sizes_vector[i];
     if (llvm::count(operand_batching_dims, i)) {
@@ -683,7 +669,7 @@ void PopulateGatherPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
   // simpler IR.
   patterns.add<LegalizeGatherToSlice>(ctx, /*benefit=*/2);
   patterns.add<LegalizeGatherToGatherND>(ctx);
-  target.addDynamicallyLegalOp<mhlo::GatherOp>(IsGatherLegal);
+  target.addDynamicallyLegalOp<stablehlo::GatherOp>(IsGatherLegal);
 }
 
 }  // namespace mlir::odml

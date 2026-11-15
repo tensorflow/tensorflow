@@ -41,9 +41,14 @@ namespace stream_executor {
 // Thin tsl::Allocator wrapper around StreamExecutor for a given memory space.
 // Used to plug StreamExecutor memory spaces into MultiDeviceAdapter via
 // TfAllocatorAdapter without BFC caching or pooling.
+//
+// `free_visitors` are run before each deallocation, like the free visitors of
+// a tsl::SubAllocator.
 class StreamExecutorMemoryAllocator : public tsl::Allocator {
  public:
-  StreamExecutorMemoryAllocator(StreamExecutor* executor, int64_t memory_space);
+  StreamExecutorMemoryAllocator(
+      StreamExecutor* executor, int64_t memory_space,
+      std::vector<tsl::SubAllocator::Visitor> free_visitors = {});
 
   std::string Name() override;
 
@@ -56,6 +61,7 @@ class StreamExecutorMemoryAllocator : public tsl::Allocator {
  private:
   StreamExecutor* executor_;
   int64_t memory_space_;
+  std::vector<tsl::SubAllocator::Visitor> free_visitors_;
 };
 
 // Adapter class that wraps a Tensorflow allocator.

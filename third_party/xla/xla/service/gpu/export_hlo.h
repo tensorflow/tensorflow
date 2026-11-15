@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 
 // Functionality to enable HLO uploads from XLA to HLO repositories. Unoptimized
@@ -45,7 +47,7 @@ class SymbolUploader {
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;
 
   virtual std::optional<std::string> MaybeUploadOptimizedHloModule(
-      HloModule* module) = 0;
+      const HloProto& hlo_proto) = 0;
 
   virtual void MaybeUploadSymbolMapping(
       absl::string_view unoptimized_fingerprint,
@@ -60,8 +62,9 @@ class SymbolUploader {
 class SymbolUploaderRegistry {
  public:
   SymbolUploaderRegistry() : xsymbol_uploader_(nullptr) {}
-  void Register(std::unique_ptr<SymbolUploader> xsymbol_uploader) {
-    xsymbol_uploader_ = std::move(xsymbol_uploader);
+  std::unique_ptr<SymbolUploader> Register(
+      std::unique_ptr<SymbolUploader> xsymbol_uploader) {
+    return std::exchange(xsymbol_uploader_, std::move(xsymbol_uploader));
   }
 
   SymbolUploader* uploader() const { return xsymbol_uploader_.get(); }
@@ -76,35 +79,37 @@ inline SymbolUploaderRegistry& GetGlobalSymbolUploaderRegistry() {
 }
 
 // The actual entry points from XLA start here.
-inline std::optional<std::string> MaybeUploadUnoptimizedGpuSymbols(
+inline void MaybeUploadUnoptimizedGpuSymbols(
     HloModule* module,
     const stream_executor::GpuTargetConfigProto& gpu_target_config) {
-  if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
-      uploader != nullptr) {
-    return uploader->MaybeUploadUnoptimizedHloModule(module, gpu_target_config);
+  SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
+  if (uploader == nullptr) {
+    return;
   }
-
-  return std::nullopt;
+  std::optional<std::string> unoptimized_fingerprint =
+      uploader->MaybeUploadUnoptimizedHloModule(module, gpu_target_config);
+  if (!unoptimized_fingerprint.has_value()) {
+    return;
+  }
+  module->set_unoptimized_fingerprint(*unoptimized_fingerprint);
 }
 
-inline std::optional<std::string> MaybeUploadOptimizedGpuSymbols(
-    HloModule* module) {
-  if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
-      uploader != nullptr) {
-    return uploader->MaybeUploadOptimizedHloModule(module);
+inline void MaybeUploadOptimizedGpuSymbols(
+    const HloModule& module, const BufferAssignmentProto& buffer_assignment) {
+  SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
+  if (uploader == nullptr) {
+    return;
   }
-
-  return std::nullopt;
-}
-
-inline void MaybeUploadGpuSymbolMapping(
-    absl::string_view unoptimized_fingerprint,
-    absl::string_view optimized_fingerprint) {
-  if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
-      uploader != nullptr) {
-    return uploader->MaybeUploadSymbolMapping(unoptimized_fingerprint,
-                                              optimized_fingerprint);
+  HloProto hlo_proto = MakeHloProto(module);
+  *hlo_proto.mutable_buffer_assignment() = buffer_assignment;
+  std::optional<std::string> optimized_fingerprint =
+      uploader->MaybeUploadOptimizedHloModule(hlo_proto);
+  if (module.unoptimized_fingerprint().empty() ||
+      !optimized_fingerprint.has_value()) {
+    return;
   }
+  uploader->MaybeUploadSymbolMapping(module.unoptimized_fingerprint(),
+                                     *optimized_fingerprint);
 }
 
 inline void MaybeWaitForUploads() {

@@ -32,7 +32,7 @@ namespace xla {
 // instructions.
 class HostComputeAsyncifier : public HloModulePass {
  public:
-  explicit HostComputeAsyncifier(std::function<bool(HloInstruction*)>
+  explicit HostComputeAsyncifier(std::function<bool(const HloInstruction*)>
                                      backend_config_device_type_is_host_fn)
       : backend_config_device_type_is_host_fn_(
             std::move(backend_config_device_type_is_host_fn)) {}
@@ -47,7 +47,8 @@ class HostComputeAsyncifier : public HloModulePass {
  private:
   // Function that returns true if the instruction should be executed on the
   // host. Implementation of the function is device specific.
-  std::function<bool(HloInstruction*)> backend_config_device_type_is_host_fn_;
+  std::function<bool(const HloInstruction*)>
+      backend_config_device_type_is_host_fn_;
 };
 
 }  // namespace xla

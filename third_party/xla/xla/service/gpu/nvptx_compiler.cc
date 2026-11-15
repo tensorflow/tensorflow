@@ -59,10 +59,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -103,8 +101,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -113,9 +109,9 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
+constexpr absl::string_view kAsmFileExtension = "ptx";
 
 class ConvBfloat16Support : public FloatSupport {
  public:
@@ -275,18 +271,6 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
-bool NVPTXCompiler::IsScaledDotSupportedByBackend(
-    const HloInstruction* instr,
-    const GpuTargetConfig& gpu_target_config) const {
-  if (GpuCompiler::IsScaledDotSupportedByBackend(instr, gpu_target_config)) {
-    return true;
-  }
-  if (const auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
-    return CudnnScaledDotHelper::IsSupported(scaled_dot);
-  }
-  return false;
-}
-
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTopology& gpu_topology,
@@ -374,8 +358,8 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   const absl::flat_hash_set<absl::string_view> execution_threads = {
       HloInstruction::kMainExecutionThread,
       HloInstruction::kParallelExecutionThread};
-  CuDnnFusionCompiler fusion_compiler(stream_exec, gpu_device_info,
-                                      *dnn_compiled_graphs);
+  CuDnnFusionCompiler fusion_compiler(
+      stream_exec, gpu_device_info, *dnn_compiled_graphs, &cudnn_graph_cache_);
   ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
   CuDnnCustomCallCompiler call_compiler(stream_exec, gpu_device_info,
                                         *dnn_compiled_graphs);
@@ -546,6 +530,10 @@ std::unique_ptr<GpuAliasInfo> NVPTXCompiler::GetAliasInfo(
   return std::make_unique<NVPTXAliasInfo>(device_description);
 }
 
+absl::StatusOr<absl::string_view> NVPTXCompiler::AsmFileExtension() const {
+  return kAsmFileExtension;
+}
+
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
@@ -594,23 +582,6 @@ NVPTXCompiler::CompileTargetBinary(
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
-
-    if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   debug_options) &&
-        DumpingEnabledForEmitter("ptx", debug_options)) {
-      if (debug_module) {
-        DumpToFileInDirOrStdout(*debug_module, "",
-                                shard_number.has_value()
-                                    ? (std::to_string(*shard_number) + ".ptx")
-                                    : "ptx",
-                                ptx);
-      } else {
-        LOG(ERROR)
-            << "Dumping is not implemented since the file name cannot be "
-               "inferred. Please implement (potentially MLIR) module -> "
-               "filename heuristic.";
-      }
-    }
   }
 
   if (ptx.empty()) {
@@ -721,5 +692,4 @@ std::vector<std::string> NVPTXCompiler::GetLLVMCommandLineOptions(
     const DebugOptions& debug_options) const {
   return nvptx::GetNVPTXBackendOptions(debug_options);
 }
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

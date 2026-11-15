@@ -82,6 +82,16 @@ absl::Status CheckSparseToDenseShapes(const Tensor& indices,
                      sparse_values.shape().DebugString(), ", should be [] or [",
                      num_elems, "]"));
   }
+  // A scalar sparse_values is broadcast to num_elems values. When
+  // sparse_indices has no columns it holds no data, so num_elems is not
+  // bounded by the size of any input. The output is then a scalar, which has a
+  // single element.
+  if (sparse_values.dims() == 0 && num_dims == 0 && num_elems > 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "sparse_indices for a scalar output should have at most 1 row when "
+        "sparse_values is a scalar, got ",
+        num_elems, " rows"));
+  }
 
   // default_value
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {

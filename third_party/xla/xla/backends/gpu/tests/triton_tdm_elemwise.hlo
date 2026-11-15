@@ -9,6 +9,10 @@
 // CHECK-mi450: @llvm.amdgcn.s.wait.tensorcnt
 // CHECK-mi450: @llvm.amdgcn.tensor.store.from.lds
 
+// CHECK-gfx1250_strict: @llvm.amdgcn.tensor.load.to.lds
+// CHECK-gfx1250_strict: @llvm.amdgcn.s.wait.tensorcnt
+// CHECK-gfx1250_strict: @llvm.amdgcn.tensor.store.from.lds
+
 // CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
 // CHECK-mi200: @llvm.amdgcn.raw.ptr.buffer.load
 // CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}

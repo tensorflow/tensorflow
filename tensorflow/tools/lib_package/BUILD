@@ -124,6 +124,7 @@ genrule(
         "//third_party/icu/data:LICENSE",
         "@curl//:COPYING",
         "@ducc//:LICENSE",
+        "@fpnge//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@jpegxl//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",

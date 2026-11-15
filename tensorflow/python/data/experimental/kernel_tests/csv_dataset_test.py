@@ -620,12 +620,24 @@ class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     with gzip.GzipFile(self._compressed, 'wb') as f:
       f.write(contents)
 
+    header = ','.join('col%d' % i for i in range(self._num_cols))
+    contents_with_header = header.encode('utf-8') + b'\n' + contents
+    self._filename_with_header = os.path.join(self.get_temp_dir(), 'header.csv')
+    self._compressed_with_header = os.path.join(
+        self.get_temp_dir(), 'comp_header.csv'
+    )
+    with open(self._filename_with_header, 'wb') as f:
+      f.write(contents_with_header)
+    with gzip.GzipFile(self._compressed_with_header, 'wb') as f:
+      f.write(contents_with_header)
+
   def ds_func(self, **kwargs):
     compression_type = kwargs.get('compression_type', None)
+    header = kwargs.get('header', False)
     if compression_type == 'GZIP':
-      filename = self._compressed
+      filename = self._compressed_with_header if header else self._compressed
     elif compression_type is None:
-      filename = self._filename
+      filename = self._filename_with_header if header else self._filename
     else:
       raise ValueError('Invalid compression type:', compression_type)
 
@@ -638,6 +650,28 @@ class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     defs = [[0]] * self._num_cols
     verify_fn(self, lambda: self.ds_func(record_defaults=defs, buffer_size=2),
               self._num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              buffer_size=[2, 16, None], compression_type=[None, 'GZIP']
+          ),
+      )
+  )
+  def testHeader(self, verify_fn, buffer_size, compression_type):
+    defs = [[0]] * self._num_cols
+    verify_fn(
+        self,
+        lambda: self.ds_func(
+            record_defaults=defs,
+            header=True,
+            buffer_size=buffer_size,
+            compression_type=compression_type,
+        ),
+        self._num_outputs,
+    )
 
 
 if __name__ == '__main__':

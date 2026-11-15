@@ -54,7 +54,6 @@ void SetModuleMemoryRegionName(llvm::Module& llvm_module,
 class KernelApiIrBuilder {
  public:
   struct Options {
-    bool enable_invariant_load_metadata;
     int32_t prefer_vector_width;
     bool generate_unique_c_style_kernel_entry_points;
 
@@ -136,8 +135,9 @@ class KernelApiIrBuilder {
   // Get the kernel name for the given HLO instruction.
   // If generate_unique_c_style_kernel_entry_points is enabled, the name will
   // be converted to a valid C name and prefixed with the HLO module name.
-  absl::StatusOr<std::string> GetKernelName(
-      const HloInstruction* instr, absl::string_view suffix = "") const;
+  static absl::StatusOr<std::string> GetKernelName(
+      const Options& options, const HloInstruction* instr,
+      absl::string_view suffix = "");
 
   // Create a module with the given name, the name is given a prefix that is
   // specific to XLA and relied on further down the pipeline.
@@ -154,6 +154,15 @@ class KernelApiIrBuilder {
                              const BufferAssignment* buffer_assignment);
 
   void SetKernelFunctionAttributes(llvm::Function* function);
+
+  // LLVM types of the XLA:CPU Kernel C API (see kernel_c_api.h).
+  llvm::StructType* num_workgroups_type() const { return num_workgroups_ty_; }
+  llvm::StructType* workgroup_id_type() const { return workgroup_id_ty_; }
+  llvm::StructType* kernel_arg_type() const { return arg_ty_; }
+  llvm::StructType* call_frame_type() const { return call_frame_ty_; }
+  llvm::FunctionType* kernel_function_type() const {
+    return kernel_function_ty_;
+  }
 
  private:
   NumWorkGroups EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,

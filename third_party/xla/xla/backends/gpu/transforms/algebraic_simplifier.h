@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier_options.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -41,6 +41,8 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
         compute_capability_(std::move(compute_capability)) {}
 
   absl::Status HandleAdd(HloInstruction* add) override;
+  absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
 
  private:
   bool ConvIsLowerable(HloInstruction* conv) const override;
@@ -65,6 +67,27 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   absl::StatusOr<bool> TryToSinkBroadcastOperandsOfChainedAdds(
       HloInstruction* add);
 
+  // Tries to convert reduce_sum(select(compare(broadcast(idx), iota, EQ),
+  // on_true, broadcast(0))) over the iota dimension into
+  // select(in_bounds, gather(on_true, ...), broadcast(0)).
+  absl::StatusOr<bool> TryToSimplifyOneHotReduceToGather(
+      HloInstruction* reduce);
+
+  // Sinks an unstrided slice (optionally preceded by unary elementwise,
+  // bitcast, or reshape operations) through a reduce into its input operand
+  // when all consumers of the reduce map to unstrided slices whose total
+  // element count does not exceed the reduce output size. This allows each
+  // consumer branch to fuse its own reduction over only the sliced subset of
+  // elements.
+  absl::StatusOr<bool> TryToSinkReduceThroughSlice(HloInstruction* slice);
+
+  // Returns true if `slice` is a live, static, non-trivial unstrided slice of
+  // `operand` that can be sunk through a reduce, i.e. it has no control
+  // dependencies, no non-replicated sharding and (if layout sensitive) the
+  // same layout as `operand`.
+  bool IsFusibleUnstridedSlice(const HloInstruction* slice,
+                               const HloInstruction* operand) const;
+
   se::GpuComputeCapability compute_capability_;
 };
 
@@ -85,10 +108,6 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
  private:
   se::GpuComputeCapability compute_capability_;
 };
-
-// Returns the options shared by every GpuAlgebraicSimplifier invocation.
-// HloPassOptions of "gpu-algebraic-simplifier" are relative to these.
-AlgebraicSimplifierOptions GpuAlgebraicSimplifierBaseOptions();
 
 }  // namespace xla::gpu
 

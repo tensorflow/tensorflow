@@ -636,6 +636,7 @@ tf_py_strict_test(
     size = "small",
     srcs = ["nest_test.py"],
     main = "nest_test.py",
+    shard_count = 4,
     deps = [
         ":nest_test_main_lib",
     ],

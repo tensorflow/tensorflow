@@ -366,7 +366,9 @@ class CSVDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_buffer_reads"),
                                                 &num_buffer_reads));
 
-          TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
+          // `num_buffer_reads` counts from the start of the file and includes
+          // the reads for the header, so don't skip the header here.
+          TF_RETURN_IF_ERROR(OpenStreamsLocked(ctx->env()));
 
           num_buffer_reads_ = size_t(num_buffer_reads - 1);
 
@@ -863,7 +865,9 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       // Sets up reader streams to read from the file at `current_file_index_`.
-      absl::Status SetupStreamsLocked(Env* env)
+      // Opens the file at `current_file_index_` and resets the buffer state
+      // without skipping the header record.
+      absl::Status OpenStreamsLocked(Env* env)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (current_file_index_ >= dataset()->filenames_.size()) {
           return absl::InvalidArgumentError(absl::StrCat(
@@ -888,6 +892,14 @@ class CSVDatasetOp : public DatasetOpKernel {
         buffer_.clear();
         pos_ = 0;
         num_buffer_reads_ = 0;
+        return absl::OkStatus();
+      }
+
+      // Opens the file at `current_file_index_` and skips the header record
+      // when `dataset()->header_` is true.
+      absl::Status SetupStreamsLocked(Env* env)
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_RETURN_IF_ERROR(OpenStreamsLocked(env));
         if (dataset()->header_) {
           // Read one line, but don't include it. Pass nullptrs as dummy
           // pointers to objects that shouldn't be invoked anyway

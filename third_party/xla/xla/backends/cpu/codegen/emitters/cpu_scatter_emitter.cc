@@ -22,8 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
@@ -70,12 +68,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/scatter_simplifier.h"
-#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -290,43 +289,12 @@ CpuScatterFusion::EmitKernelDefinition() {
   ABSL_RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, *fusion_));
 
-  // Convert kernel arguments to fake allocations and buffer uses.
-  KernelSpec::Buffers argument_buffers;
-  KernelSpec::Buffers result_buffers;
-
-  for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_->shape())) {
-    ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                     buffer_assignment_.GetUniqueSlice(fusion_, indexed.index));
-    result_buffers.push_back({slice, indexed.shape});
-  }
-
-  // TODO(willfroom): Move this to common method that can be shared across
-  // emitters.
-  absl::flat_hash_set<int64_t> invariant_arguments;
-  int64_t operand_index = 0;
-  for (HloInstruction* operand : fusion_->operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      ABSL_ASSIGN_OR_RETURN(
-          BufferAllocation::Slice slice,
-          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
-
-      bool invariant = absl::c_none_of(
-          result_buffers, [&slice](const ShapedSlice& result_slice) {
-            return result_slice.slice.OverlapsWith(slice);
-          });
-      if (invariant) {
-        invariant_arguments.insert(operand_index);
-      }
-
-      argument_buffers.push_back({slice, indexed.shape});
-      ++operand_index;
-    }
-  }
-
-  KernelSpec kernel_spec(module_name,
-                         NumWorkGroups{static_cast<uint64_t>(num_threads_)},
-                         std::move(argument_buffers), std::move(result_buffers),
-                         std::move(invariant_arguments));
+  WorkDimensions work_dimensions;
+  work_dimensions.num_work_groups.x = static_cast<uint64_t>(num_threads_);
+  ABSL_ASSIGN_OR_RETURN(
+      KernelSpec kernel_spec,
+      emitters::GetKernelSpec(module_name, *fusion_, &buffer_assignment_,
+                              work_dimensions));
 
   return KernelDefinition(std::move(kernel_spec),
                           MlirKernelSource(std::move(mlir_module)));
@@ -352,14 +320,9 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   mlir::MLIRContext* context = entry_function.getContext();
   ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
-  // %arg1 and %arg4 do alias -- they point to the same address!
-  // Therefore we simply don't explicitly use %arg4, and perform all
-  // input/output accesses on %arg1.
-  SmallVector<Value> output_tensors;
-  output_tensors.reserve(scatter_operands.size());
-  for (int i = 0; i < scatter_operands.size(); ++i) {
-    output_tensors.push_back(entry_function.getArgument(i));
-  }
+  ValueRange output_args =
+      entry_function.getArguments().take_back(scatter_operands.size());
+  SmallVector<Value> output_tensors(output_args.begin(), output_args.end());
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
@@ -368,9 +331,33 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
 
   const Shape& update_shape = scatter_updates.front()->shape();
 
-  WorkGroupIdOp workgroup_id = b.create<WorkGroupIdOp>(WorkGroupDimension::x);
+  WorkGroupIdOp workgroup_id = WorkGroupIdOp::create(b, WorkGroupDimension::x);
   workgroup_id->setAttr("xla.range",
                         b.getIndexArrayAttr({0, num_threads_ - 1}));
+
+  // CopyInsertion shares each result buffer with its scatter operand.
+  for (int64_t i = 0; i < scatter_operands.size(); ++i) {
+    ShapeIndex result_index =
+        fusion.shape().IsTuple() ? ShapeIndex{i} : ShapeIndex{};
+    ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                     buffer_assignment_.GetUniqueSlice(&fusion, result_index));
+    const HloInstruction* base = scatter_operands[i];
+    while (base->opcode() == HloOpcode::kBitcast) {
+      base = base->operand(0);
+    }
+    bool in_place = false;
+    if (base->opcode() == HloOpcode::kParameter) {
+      const HloInstruction* fusion_operand =
+          fusion.operand(base->parameter_number());
+      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice operand_slice,
+                       buffer_assignment_.GetUniqueSlice(fusion_operand, {}));
+      in_place = operand_slice == result_slice;
+    }
+    if (!in_place) {
+      return Internal(
+          "CpuScatterFusion requires scatter operands to share result buffers");
+    }
+  }
 
   IndexingMap map = GetScatterIndexingMap(update_shape.dimensions(),
                                           num_threads_, vector_size_, context);
@@ -458,7 +445,9 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   b.create<mlir::func::ReturnOp>(results);
 
   if (VLOG_IS_ON(5)) {
-    entry_function->getParentOfType<mlir::ModuleOp>().dump();
+    entry_function->getParentOfType<mlir::ModuleOp>().print(
+        llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
   }
   return absl::OkStatus();
 }

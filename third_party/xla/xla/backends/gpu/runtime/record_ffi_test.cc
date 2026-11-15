@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/kernel_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"

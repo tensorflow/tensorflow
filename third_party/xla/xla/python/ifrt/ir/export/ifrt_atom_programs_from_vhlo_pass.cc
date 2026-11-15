@@ -17,9 +17,12 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBufferRef.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/TypeID.h"
@@ -67,9 +70,26 @@ class IfrtAtomProgramsFromVhloPass
 void IfrtAtomProgramsFromVhloPass::runOnOperation() {
   mlir::ModuleOp module = getOperation();
   mlir::MLIRContext& context = getContext();
-  for (const auto& atom_program_proto : atom_programs_) {
-    auto atom_program_module = mlir::stablehlo::deserializePortableArtifact(
-        absl::Cord(atom_program_proto.program()).Flatten(), &context);
+  for (const IfrtIrAtomProgramProto& atom_program_proto : atom_programs_) {
+    // Atom programs can be large, so we avoid copying them whenever possible.
+    // Copying an `absl::Cord` shares its data, and `Flatten()` copies the data
+    // only if the `absl::Cord` is fragmented.
+    absl::Cord atom_program_cord = atom_program_proto.program();
+    llvm::StringRef atom_program = atom_program_cord.Flatten();
+    // Atom programs are always serialized as MLIR bytecode. Reject non-bytecode
+    // inputs upfront rather than letting `deserializePortableArtifact` fall
+    // back to the MLIR text parser.
+    if (!mlir::isBytecode(
+            llvm::MemoryBufferRef(atom_program, /*Identifier=*/""))) {
+      module->emitOpError()
+          << "Failed to deserialize atom program `" << atom_program_proto.name()
+          << "` from VHLO version " << atom_program_proto.version()
+          << ": atom program is not MLIR bytecode";
+      signalPassFailure();
+      return;
+    }
+    mlir::OwningOpRef<mlir::ModuleOp> atom_program_module =
+        mlir::stablehlo::deserializePortableArtifact(atom_program, &context);
     if (!atom_program_module) {
       module->emitOpError()
           << "Failed to deserialize atom program `" << atom_program_proto.name()

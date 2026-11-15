@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -35,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
+absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* absl_nonnull client,
                                                const ArraySpecProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
   if (version_number != SerDesVersionNumber(0)) {

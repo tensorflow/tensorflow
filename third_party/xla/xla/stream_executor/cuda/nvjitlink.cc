@@ -253,15 +253,15 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   }
 
   nvJitLinkResult linking_result = nvJitLinkComplete(link_handle);
+  ABSL_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
 
+  // Print the verbose output of ptxas.
+  VLOG(3) << "libnvjitlink error log output: " << error_log;
+
+  // Return status can be NVJITLINK_SUCCESS with error in the log.
+  ABSL_RETURN_IF_ERROR(
+      CreateErrorFromPTXASLog(error_log, architecture, cancel_if_reg_spill));
   if (linking_result != NVJITLINK_SUCCESS) {
-    ABSL_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
-
-    // Print the verbose output of ptxas.
-    VLOG(3) << "libnvjitlink error log output: " << error_log;
-
-    ABSL_RETURN_IF_ERROR(
-        CreateErrorFromPTXASLog(error_log, architecture, cancel_if_reg_spill));
     return ToStatus(linking_result, error_log);
   }
 

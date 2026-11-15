@@ -54,6 +54,15 @@ class DenseDataIntermediate {
                               : std::get<1>(data_);
   }
 
+  // Returns a data-owning instance of DenseDataIntermediate. Aliased data gets
+  // copied, owned data gets moved without copying it.
+  DenseDataIntermediate ToOwned() && {
+    if (const auto* aliased = std::get_if<absl::Span<const uint8_t>>(&data_)) {
+      return Own(std::vector<uint8_t>(aliased->begin(), aliased->end()));
+    }
+    return std::move(*this);
+  }
+
   // Converts `this` into its protobuf representation.
   // Note that the protobuf message will always contain a copy of the data -
   // also for non-owning instances of DenseDataIntermediate.

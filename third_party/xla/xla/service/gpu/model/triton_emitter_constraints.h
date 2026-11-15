@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace experimental {
 
 // Evaluates a subset of Triton hardware and emitter constraints on candidate
 // tile sizes without requiring construction of concrete tiled HLO instructions.
@@ -38,11 +37,6 @@ Decision VerifySubsetOfTritonConstraints(
 
 Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
                                  const se::DeviceDescription& device_info);
-
-}  // namespace experimental
-
-using experimental::VerifySubsetOfTritonConstraints;
-using experimental::VerifyTritonConstraints;
 
 }  // namespace gpu
 }  // namespace xla

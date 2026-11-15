@@ -44,9 +44,9 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -101,10 +101,12 @@ LogicalResult ReadNumericElements(ElementsAttr attr,
   if (blob == nullptr) return failure();
 
   const Type element_type = dense_resource.getType().getElementType();
-  if (element_type.isF32()) {
-    AppendBlobAs<float>(blob, out);
-  } else if (element_type.isF64()) {
-    AppendBlobAs<double>(blob, out);
+  if (mlir::isa<FloatType>(element_type)) {
+    // f16, bf16, f32 and f64 (shared with the bias quantizer).
+    std::optional<SmallVector<double>> values =
+        ReadFloatElementsAsDoubles(attr);
+    if (!values.has_value()) return failure();
+    out.append(values->begin(), values->end());
   } else if (element_type.isInteger(8)) {
     AppendBlobAs<int8_t>(blob, out);
   } else if (element_type.isInteger(16)) {
@@ -695,22 +697,22 @@ class RewriteFakeQuantCompositeOp
   }
 };
 
-class RemovePreventGradient : public OpRewritePattern<TF::PreventGradientOp> {
-  using OpRewritePattern<TF::PreventGradientOp>::OpRewritePattern;
+// Removes the TF identity-like ops (`tf.PreventGradient` and `tf.Identity`)
+// that the TensorFlow export path may leave around the quantization
+// annotations. They are matched by name so that this pass does not depend on
+// the TensorFlow dialect, which is not loaded when converting StableHLO
+// programs from PyTorch or JAX.
+class RemoveTFIdentityLikeOp : public RewritePattern {
+ public:
+  RemoveTFIdentityLikeOp(StringRef op_name, MLIRContext* context)
+      : RewritePattern(op_name, /*benefit=*/1, context) {}
 
-  LogicalResult matchAndRewrite(TF::PreventGradientOp op,
+  LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, op.getInput());
-    return success();
-  }
-};
-
-class RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
-  using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::IdentityOp op,
-                                PatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, op.getInput());
+    if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+      return failure();
+    }
+    rewriter.replaceOp(op, op->getOperand(0));
     return success();
   }
 };
@@ -764,7 +766,8 @@ void LowerQuantAnnotationsPass::runOnOperation() {
   auto module = getOperation();
 
   RewritePatternSet prepare_patterns(&ctx);
-  prepare_patterns.add<RemovePreventGradient, RemoveIdentity>(&ctx);
+  prepare_patterns.add<RemoveTFIdentityLikeOp>("tf.PreventGradient", &ctx);
+  prepare_patterns.add<RemoveTFIdentityLikeOp>("tf.Identity", &ctx);
 
   GreedyRewriteConfig greedy_config;
   greedy_config.enableFolding(true);

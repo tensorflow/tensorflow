@@ -1012,6 +1012,7 @@ cc_library(
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/program_memory_trace.pb.h"
 #include "xla/service/hlo.pb.h"
@@ -136,6 +137,8 @@ class ProgramMemoryTracer {
   absl::Status GenerateEvents(CopyArraysOp copy_arrays_op)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   absl::Status GenerateEvents(mlir::func::ReturnOp return_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status TraceAndFreePairwiseInputs(IfrtPairwiseArrayOpInterface op)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Gets the per-device size of the array in bytes.

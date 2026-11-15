@@ -61,7 +61,7 @@ absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                        const OpRegistryInterface& op_registry,
                                        int node_offset, bool skip_unknown_ops) {
-  if (node_offset > graph_def->node_size()) {
+  if (node_offset < 0 || node_offset > graph_def->node_size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Tried to add default attrs to GraphDef "
         "starting at offset ",

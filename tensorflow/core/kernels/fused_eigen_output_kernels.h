@@ -127,15 +127,12 @@ struct Sigmoid {
 // Applies `Elu` to the passed input expression.
 struct Elu {
   template <typename XprType>
-  static auto apply(XprType expr) -> decltype(
-      (expr < std::declval<typename XprType::Scalar>())
-          .select(expr.exp() -
-                      expr.constant(std::declval<typename XprType::Scalar>()),
-                  expr)) {
+  // Use expm1 (exp(x) - 1) to avoid catastrophic cancellation for small x.
+  static auto apply(XprType expr)
+      -> decltype((expr < std::declval<typename XprType::Scalar>())
+                      .select(expr.expm1(), expr)) {
     return (expr < static_cast<typename XprType::Scalar>(0))
-        .select(expr.exp() -
-                    expr.constant(static_cast<typename XprType::Scalar>(1)),
-                expr);
+        .select(expr.expm1(), expr);
   };
 };
 

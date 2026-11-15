@@ -41,6 +41,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_memory",
         "//xla/backends/gpu/runtime:collective_memory_requests",
         "//xla/backends/gpu/runtime:collective_params",
+        "//xla/backends/gpu/runtime:command_buffer_requests",
         "//xla/ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",

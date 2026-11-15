@@ -29,6 +29,10 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -48,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
@@ -269,6 +275,111 @@ TEST_F(HostResidentVarsEnabledTest, AcceleratorVariableIsRejected) {
                        HasSubstr("only host-resident variables can be "
                                  "staged")));
   EXPECT_EQ(device_context_->num_copies(), 0);
+}
+
+TEST_F(VariableInfoUtilTest,
+       LockVariablesKeepsSharedLockForReadOnlyVariableByDefault) {
+  // Even when `tf_xla_use_device_api.IsEnabledForGpu()` is enabled globally by
+  // default, `LockVariables` must keep shared reader locks for read-only
+  // variables unless `upgrade_read_only_for_pjrt_tensor_buffer` is requested.
+  ASSERT_TRUE(GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu());
+
+  Tensor handle = CreateVariable(executing_device_, "v",
+                                 test::AsTensor<float>({1.0f, 2.0f}));
+  std::set<int> variables_updated;
+
+  absl::Notification second_locked;
+  absl::Notification release_second;
+  absl::Status second_lock_status;
+  bool second_shared_lock_held = false;
+  bool second_lock_held = false;
+  std::unique_ptr<Thread> reader_thread;
+
+  {
+    std::vector<VariableInfo> first_infos;
+    ASSERT_THAT(GetVariableInfos(handle, &variables_updated, &first_infos),
+                IsOk());
+    ASSERT_EQ(first_infos.size(), 1);
+    ASSERT_TRUE(first_infos[0].read_only());
+
+    ASSERT_THAT(LockVariables(absl::MakeSpan(first_infos)), IsOk());
+    EXPECT_TRUE(first_infos[0].shared_lock_held());
+    EXPECT_FALSE(first_infos[0].lock_held());
+
+    reader_thread.reset(Env::Default()->StartThread(
+        ThreadOptions(), "concurrent_reader", [&]() {
+          std::vector<VariableInfo> second_infos;
+          second_lock_status =
+              GetVariableInfos(handle, &variables_updated, &second_infos);
+          if (second_lock_status.ok()) {
+            second_lock_status = LockVariables(absl::MakeSpan(second_infos));
+            if (second_lock_status.ok()) {
+              second_shared_lock_held = second_infos[0].shared_lock_held();
+              second_lock_held = second_infos[0].lock_held();
+            }
+          }
+          second_locked.Notify();
+          release_second.WaitForNotification();
+        }));
+
+    EXPECT_TRUE(second_locked.WaitForNotificationWithTimeout(absl::Seconds(5)));
+  }
+
+  release_second.Notify();
+  reader_thread.reset();
+
+  EXPECT_THAT(second_lock_status, IsOk());
+  EXPECT_TRUE(second_shared_lock_held);
+  EXPECT_FALSE(second_lock_held);
+}
+
+TEST_F(VariableInfoUtilTest,
+       LockVariablesUpgradesReadOnlyVariableWhenRequested) {
+  Tensor initialized_handle = CreateVariable(
+      executing_device_, "v_init", test::AsTensor<float>({1.0f, 2.0f}));
+  Tensor empty_handle = CreateVariable(executing_device_, "v_empty",
+                                       Tensor(DT_FLOAT, TensorShape({0})));
+  Tensor uninitialized_handle =
+      CreateVariable(executing_device_, "v_uninit", /*value=*/std::nullopt);
+  std::set<int> variables_updated;
+
+  {
+    std::vector<VariableInfo> infos;
+    ASSERT_THAT(
+        GetVariableInfos(initialized_handle, &variables_updated, &infos),
+        IsOk());
+    ASSERT_THAT(
+        LockVariables(absl::MakeSpan(infos),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true),
+        IsOk());
+    EXPECT_TRUE(infos[0].lock_held());
+    EXPECT_FALSE(infos[0].shared_lock_held());
+  }
+
+  {
+    std::vector<VariableInfo> infos;
+    ASSERT_THAT(GetVariableInfos(empty_handle, &variables_updated, &infos),
+                IsOk());
+    ASSERT_THAT(
+        LockVariables(absl::MakeSpan(infos),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true),
+        IsOk());
+    EXPECT_FALSE(infos[0].lock_held());
+    EXPECT_TRUE(infos[0].shared_lock_held());
+  }
+
+  {
+    std::vector<VariableInfo> infos;
+    ASSERT_THAT(
+        GetVariableInfos(uninitialized_handle, &variables_updated, &infos),
+        IsOk());
+    ASSERT_THAT(
+        LockVariables(absl::MakeSpan(infos),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true),
+        IsOk());
+    EXPECT_FALSE(infos[0].lock_held());
+    EXPECT_TRUE(infos[0].shared_lock_held());
+  }
 }
 
 }  // namespace

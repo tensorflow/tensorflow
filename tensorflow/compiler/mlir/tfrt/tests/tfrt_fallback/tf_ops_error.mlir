@@ -22,9 +22,9 @@ func.func @register_op_handlers() {
 
 // CHECK-LABEL: --- Running 'test_parse_example_v2_error'
 func.func @test_parse_example_v2_error() -> !tfrt_fallback.tf_tensor {
-  %serialized_th = corert.const_string_tensor {shape = [2, 1], value = ["", ""]}
-  %names_th = corert.const_string_tensor {shape = [0], value = []}
-  %dense_keys_th = corert.const_string_tensor {shape = [7], value = ["has_login_page_feature", "num_terms_inside_postform", "num_terms_outside_postform", "num_terms_outside_postform_without_bp", "query_params_contains_url", "title_with_login_phase", "url_contains_login_terms"]}
+  %serialized_th = corert.const_string_tensor <shape = [2, 1], value = ["", ""]>
+  %names_th = corert.const_string_tensor <shape = [0], value = []>
+  %dense_keys_th = corert.const_string_tensor <shape = [7], value = ["has_login_page_feature", "num_terms_inside_postform", "num_terms_outside_postform", "num_terms_outside_postform_without_bp", "query_params_contains_url", "title_with_login_phase", "url_contains_login_terms"]>
 
   %ch = tfrt.new.chain
   %ch0 = tfrt_fallback_async.createop(%ch) key(0) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<i64>} num_args(0)

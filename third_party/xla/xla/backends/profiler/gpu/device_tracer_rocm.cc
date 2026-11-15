@@ -45,7 +45,7 @@ class GpuTracer : public profiler::ProfilerInterface {
   explicit GpuTracer(RocmTracer* rocm_tracer) : rocm_tracer_(rocm_tracer) {
     LOG(INFO) << "GpuTracer created.";
   }
-  ~GpuTracer() override {}
+  ~GpuTracer() override = default;
 
   // GpuTracer interface:
   absl::Status Start() override;

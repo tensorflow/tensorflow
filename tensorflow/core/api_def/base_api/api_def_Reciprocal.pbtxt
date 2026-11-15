@@ -3,5 +3,8 @@ op {
   summary: "Computes the reciprocal of x element-wise."
   description: <<END
 I.e., \\(y = 1 / x\\).
+
+CPU kernels support only floating-point and complex types. GPU kernels also
+support `int64`. There are no CPU or GPU kernels for `int8`, `int16`, or `int32`.
 END
 }

@@ -19,7 +19,6 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor::gpu {
@@ -59,6 +59,7 @@ bool CudaGraphAnnotationRegistry::TrackGraph(uint32_t graph_id,
     // so it belongs to this graph.
     auto [it, inserted] = graphs_.try_emplace(graph_key);
     if (inserted) {
+      it->second.num_owners = 1;
       UpdateNumGraphsLocked();
       return true;
     }
@@ -71,6 +72,20 @@ bool CudaGraphAnnotationRegistry::TrackGraph(uint32_t graph_id,
         << graph_id << " (possible 32-bit graph ID wraparound, b/515425329).";
   }
   return false;
+}
+
+void CudaGraphAnnotationRegistry::RetainGraphs(
+    absl::Span<const GraphRef> graphs) {
+  if (graphs.empty()) {
+    return;
+  }
+  absl::MutexLock lock(mu_);
+  for (const GraphRef& graph : graphs) {
+    if (GraphEntry* entry =
+            FindLiveEntryLocked(MakeGraphKey(graph.space, graph.graph_id))) {
+      ++entry->num_owners;
+    }
+  }
 }
 
 bool CudaGraphAnnotationRegistry::IsGraphTracked(uint32_t graph_id,
@@ -140,19 +155,34 @@ bool CudaGraphAnnotationRegistry::VisitNodeAnnotation(
   return true;
 }
 
-void CudaGraphAnnotationRegistry::UnregisterGraph(uint32_t graph_id,
-                                                  KeySpace space) {
-  const GraphKey graph_key = MakeGraphKey(space, graph_id);
-  // Declared before the lock, so destroyed after it is released: freeing a
-  // large graph's strings must not lengthen the critical section.
-  std::optional<GraphEntry> garbage;
+void CudaGraphAnnotationRegistry::UnregisterGraphs(
+    absl::Span<const GraphRef> graphs) {
+  if (graphs.empty()) {
+    return;
+  }
+  // Declared and reserved before the lock, so no heap allocation happens under
+  // `mu_` and erased entries are destroyed after it is released.
+  std::vector<GraphEntry> garbage;
+  garbage.reserve(graphs.size());
   absl::MutexLock lock(mu_);
+  for (const GraphRef& graph : graphs) {
+    UnregisterGraphLocked(MakeGraphKey(graph.space, graph.graph_id), garbage);
+  }
+  UpdateNumGraphsLocked();
+}
+
+void CudaGraphAnnotationRegistry::UnregisterGraphLocked(
+    GraphKey graph_key, std::vector<GraphEntry>& garbage) {
   auto it = graphs_.find(graph_key);
   if (it == graphs_.end() || it->second.destroyed) {
     // `ClearForTesting()` already removed the entry, or it is parked already.
     return;
   }
   GraphEntry& entry = it->second;
+  DCHECK_GT(entry.num_owners, 0u);
+  if (--entry.num_owners > 0) {
+    return;
+  }
   // Without a hold nobody will resolve the entry's nodes any more, and an
   // entry without nodes has nothing to resolve.
   if (active_holds_ > 0 && !entry.nodes.empty()) {
@@ -163,9 +193,8 @@ void CudaGraphAnnotationRegistry::UnregisterGraph(uint32_t graph_id,
     }
     ++park_dropped_in_session_;
   }
-  garbage.emplace(std::move(entry));
+  garbage.push_back(std::move(entry));
   graphs_.erase(it);
-  UpdateNumGraphsLocked();
 }
 
 CudaGraphAnnotationRegistry::HarvestHold

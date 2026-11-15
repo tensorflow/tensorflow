@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/tests/aot_compatibility/gpu/collective_aot_test_base.h"
+#include "xla/tests/aot_compatibility/gpu/gpu_aot_test_params.h"
 #include "xla/tests/aot_compatibility/test_lib.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"

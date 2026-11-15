@@ -25,18 +25,22 @@ namespace odml {
 // `skip_resize` enables or disables skipping conversion of tf.ResizeBilinear
 // and tf.ResizeNearestNeighbor ops.
 // `smuggle_disallowed_ops` enables or disables converting disallowed ops
-// like tf.ResizeBilinear or tf.ResizeNearestNeighbor to mhlo.custom_call ops.
+// like tf.ResizeBilinear or tf.ResizeNearestNeighbor to stablehlo.custom_call
+// ops.
 void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops);
 
 // This function is a common entry point for all graph optimizations that are
-// not specific to any hardware. It legalizes SHLO->MHLO, does MHLO->MHLO
-// optimizations by calling `AddMhloOptimizationPasses` internally, and
-// legalizes MHLO->SHLO
+// not specific to any hardware: the core passes below, followed by
+// `FoldBroadcast` and `SimplifyHlo`.
 void AddStablehloOptimizationPasses(OpPassManager& pm);
 
-// Adds all the backend-agonstic stableHLO optimization passes
-void AddMhloOptimizationPasses(OpPassManager& pm, bool add_fold_broadcast_pass);
+// Adds the core backend-agnostic StableHLO optimization passes (optimizations
+// and legalization of legacy ops such as einsum and torch_index_select).
+// `add_fold_broadcast_pass` additionally runs `FoldBroadcast` right after the
+// optimize pass.
+void AddCoreStablehloOptimizationPasses(OpPassManager& pm,
+                                        bool add_fold_broadcast_pass);
 
 }  // namespace odml
 }  // namespace mlir

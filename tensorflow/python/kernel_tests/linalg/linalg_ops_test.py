@@ -415,6 +415,22 @@ class MatrixRankDynamic64Test(test.TestCase, _MatrixRankTest):
   use_static_shape = False
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class MatrixRankNumpyInputTest(test.TestCase):
+
+  def test_float64_numpy_input_keeps_precision(self):
+    # In float32 the 1e-9 singular value falls below the default tolerance.
+    x_ = np.diag([1.0, 1e-9])
+    self.assertAllEqual(2, self.evaluate(linalg.matrix_rank(x_)))
+
+  def test_complex_numpy_input_raises(self):
+    # Same as for a complex Tensor, instead of using only the real part.
+    for dtype in (np.complex64, np.complex128):
+      x_ = np.array([[1.0, 1j], [1j, -1.0]], dtype=dtype)
+      with self.assertRaisesRegex(TypeError, "float"):
+        linalg.matrix_rank(x_)
+
+
 class _PinvTest(object):
 
   def expected_pinv(self, a, rcond):
@@ -539,6 +555,25 @@ class _LUReconstruct(object):
       self.assertAllEqual(x_.shape, y.shape)
     self.assertAllClose(x_, y_, atol=0., rtol=1e-3)
 
+  def test_batch_int64_perm(self):
+    x_ = np.array(
+        [
+            [[3, 4], [1, 2]],
+            [[7, 8], [3, 4]],
+        ],
+        dtype=self.dtype,
+    )
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None
+    )
+
+    y = linalg.lu_reconstruct(
+        *linalg.lu(x, output_idx_type=dtypes.int64), validate_args=True
+    )
+    y_ = self.evaluate(y)
+
+    self.assertAllClose(x_, y_, atol=0.0, rtol=1e-3)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LUReconstructStatic(test.TestCase, _LUReconstruct):
@@ -581,6 +616,26 @@ class _LUMatrixInverse(object):
 
     if self.use_static_shape:
       self.assertAllEqual(x_.shape, y.shape)
+    self.assertAllClose(np.linalg.inv(x_), y_, atol=0.0, rtol=1e-3)
+
+  def test_batch_int64_perm(self):
+    x_ = np.array(
+        [
+            [[1, 2], [3, 4]],
+            [[7, 8], [3, 4]],
+            [[0.25, 0.5], [0.75, -2.0]],
+        ],
+        dtype=self.dtype,
+    )
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None
+    )
+
+    y = linalg.lu_matrix_inverse(
+        *linalg.lu(x, output_idx_type=dtypes.int64), validate_args=True
+    )
+    y_ = self.evaluate(y)
+
     self.assertAllClose(np.linalg.inv(x_), y_, atol=0., rtol=1e-3)
 
 
@@ -637,6 +692,30 @@ class _LUSolve(object):
     expected_ = np.linalg.solve(x_, rhs_[np.newaxis])
     if self.use_static_shape:
       self.assertAllEqual(expected_.shape, y.shape)
+    self.assertAllClose(expected_, y_, atol=0.0, rtol=1e-3)
+
+  def test_batch_broadcast_int64_perm(self):
+    x_ = np.array(
+        [
+            [[1, 2], [3, 4]],
+            [[7, 8], [3, 4]],
+            [[0.25, 0.5], [0.75, -2.0]],
+        ],
+        dtype=self.dtype,
+    )
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None
+    )
+    rhs_ = np.array([[1, 1]], dtype=self.dtype).T
+    rhs = array_ops.placeholder_with_default(
+        rhs_, shape=rhs_.shape if self.use_static_shape else None
+    )
+
+    lower_upper, perm = linalg.lu(x, output_idx_type=dtypes.int64)
+    y = linalg.lu_solve(lower_upper, perm, rhs, validate_args=True)
+    y_ = self.evaluate(y)
+
+    expected_ = np.linalg.solve(x_, rhs_[np.newaxis])
     self.assertAllClose(expected_, y_, atol=0., rtol=1e-3)
 
 
@@ -648,6 +727,32 @@ class LUSolveStatic(test.TestCase, _LUSolve):
 @test_util.run_all_in_graph_and_eager_modes
 class LUSolveDynamic(test.TestCase, _LUSolve):
   use_static_shape = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LUNumpyInputTest(test.TestCase):
+
+  def test_float64_and_complex_numpy_inputs_keep_dtype(self):
+    # These used to be converted to float32, dropping the imaginary part.
+    rng = np.random.RandomState(0)
+    z_ = rng.randn(3, 3) + 1j * rng.randn(3, 3)
+    for x_, tol in [
+        (rng.randn(3, 3), 1e-10),
+        (z_.astype(np.complex64), 1e-3),
+        (z_, 1e-10),
+    ]:
+      lower_upper_, perm_ = self.evaluate(linalg.lu(x_))
+      rhs_ = np.ones((3, 1), dtype=x_.dtype)
+      for y, expected in [
+          (linalg.lu_reconstruct(lower_upper_, perm_), x_),
+          (linalg.lu_matrix_inverse(lower_upper_, perm_), np.linalg.inv(x_)),
+          (
+              linalg.lu_solve(lower_upper_, perm_, rhs_),
+              np.linalg.solve(x_, rhs_),
+          ),
+      ]:
+        self.assertEqual(y.dtype, x_.dtype)
+        self.assertAllClose(expected, self.evaluate(y), rtol=tol, atol=tol)
 
 
 @test_util.run_all_in_graph_and_eager_modes

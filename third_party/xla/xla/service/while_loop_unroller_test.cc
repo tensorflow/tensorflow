@@ -1443,6 +1443,66 @@ TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSClamp) {
                   .has_value());
 }
 
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSLargeDimensionSize) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule LargeDimLoop
+  body {
+    loop_var = (s64[], s32[{{DIM_SIZE}},1]{1,0}) parameter(0)
+    iv = s64[] get-tuple-element(loop_var), index=0
+    step = s64[] constant(549755813888)
+    next_iv = s64[] add(iv, step)
+    buf = s32[{{DIM_SIZE}},1]{1,0} get-tuple-element(loop_var), index=1
+    zero_s32 = s32[] constant(0)
+    zero_s64 = s64[] constant(0)
+    slice_val = s32[549755813888,1]{1,0} broadcast(zero_s32), dimensions={}
+    updated = s32[{{DIM_SIZE}},1]{1,0} dynamic-update-slice(buf, slice_val, iv, zero_s64)
+    ROOT tuple = (s64[], s32[{{DIM_SIZE}},1]{1,0}) tuple(next_iv, updated)
+  }
+  condition {
+    loop_var = (s64[], s32[{{DIM_SIZE}},1]{1,0}) parameter(0)
+    iv = s64[] get-tuple-element(loop_var), index=0
+    stop = s64[] constant(1099511627776)
+    ROOT cmp = pred[] compare(iv, stop), direction=LT
+  }
+  ENTRY main {
+    init_iv = s64[] constant(0)
+    init_buf = s32[{{DIM_SIZE}},1]{1,0} parameter(0)
+    tuple = (s64[], s32[{{DIM_SIZE}},1]{1,0}) tuple(init_iv, init_buf)
+    ROOT while = (s64[], s32[{{DIM_SIZE}},1]{1,0}) while(tuple), condition=condition, body=body
+  }
+  )";
+
+  // 2 iterations with step 2^39 and slice size 2^39 cover [0, 2^40), leaving
+  // index 2^40 uncovered when dimension_size is 2^40 + 1.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> uncovered_module,
+                       ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                           kHlo, {{"{{DIM_SIZE}}", "1099511627777"}})));
+  HloInstruction* uncovered_loop =
+      uncovered_module->entry_computation()->root_instruction();
+  std::optional<WhileLoopConfig> uncovered_config =
+      WhileLoopUnroller::IsLoopUnrollable(uncovered_loop);
+  ASSERT_TRUE(uncovered_config.has_value());
+  ASSERT_OK_AND_ASSIGN(bool uncovered_result,
+                       IsInputShapeCoveredByDynamicUpdateSliceInstructions(
+                           1, *uncovered_config));
+  EXPECT_FALSE(uncovered_result);
+
+  // When dimension_size is 2^40, the 2 slices of size 2^39 cover the entire
+  // dimension.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> covered_module,
+                       ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                           kHlo, {{"{{DIM_SIZE}}", "1099511627776"}})));
+  HloInstruction* covered_loop =
+      covered_module->entry_computation()->root_instruction();
+  std::optional<WhileLoopConfig> covered_config =
+      WhileLoopUnroller::IsLoopUnrollable(covered_loop);
+  ASSERT_TRUE(covered_config.has_value());
+  ASSERT_OK_AND_ASSIGN(
+      bool covered_result,
+      IsInputShapeCoveredByDynamicUpdateSliceInstructions(1, *covered_config));
+  EXPECT_TRUE(covered_result);
+}
+
 // Unroller pass must remove all the DynamicGte custom-calls.
 TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
   std::string hlo_string = R"(

@@ -15,22 +15,33 @@ limitations under the License.
 
 #include "xla/pjrt/tf_pjrt_client.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -106,6 +117,45 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
 
   auto* tf_pjrt_client = absl::down_cast<TfPjRtClient*>(client.get());
   tf_pjrt_client->DestroyWrappedBuffersAndClient();
+}
+
+TEST(TfClientTest, ForwardsGetExecutableAndGetCompiledMemoryStats) {
+  constexpr char kProgram[] = R"hlo(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> cpu_client,
+                       xla::GetXlaPjrtCpuClient(xla::CpuClientOptions{}));
+  std::unique_ptr<TfPjRtClient> client =
+      TfPjRtClient::CreateTfPjRtClient(std::move(cpu_client));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  auto* tf_executable =
+      absl::down_cast<TfPjRtExecutable*>(pjrt_executable.get());
+  ASSERT_NE(tf_executable, nullptr);
+  EXPECT_NE(pjrt_executable->GetExecutable(), nullptr);
+  EXPECT_EQ(pjrt_executable->GetExecutable(),
+            tf_executable->wrapped()->GetExecutable());
+
+  ASSERT_OK_AND_ASSIGN(CompiledMemoryStats stats,
+                       pjrt_executable->GetCompiledMemoryStats());
+  ASSERT_OK_AND_ASSIGN(CompiledMemoryStats wrapped_stats,
+                       tf_executable->wrapped()->GetCompiledMemoryStats());
+  EXPECT_EQ(stats.generated_code_size_in_bytes,
+            wrapped_stats.generated_code_size_in_bytes);
+  EXPECT_EQ(stats.argument_size_in_bytes, wrapped_stats.argument_size_in_bytes);
+  EXPECT_EQ(stats.output_size_in_bytes, wrapped_stats.output_size_in_bytes);
+
+  client->DestroyWrappedBuffersAndClient();
 }
 
 }  // namespace

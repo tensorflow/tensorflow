@@ -18,16 +18,13 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
-#include "xla/stream_executor/cuda/cuda_user_object.h"
 
 // Selected by BUILD only with CUDA 13.2+ headers; see
 // cuda_command_buffer_telemetry_stub.cc for older ones.
@@ -36,37 +33,6 @@ namespace {
 
 using Registry = CudaGraphAnnotationRegistry;
 using KeySpace = CudaGraphAnnotationRegistry::KeySpace;
-
-// The object that `TrackAndAttach` attaches to a graph as a `CUuserObject`.
-// Its destructor unregisters the graph's entry once CUDA destroys the user
-// object.
-class GraphTelemetryCleanup {
- public:
-  GraphTelemetryCleanup(uint32_t graph_id, KeySpace space)
-      : graph_id_(graph_id), space_(space) {}
-
-  // A moved-from cleanup is disarmed, so only one of the two unregisters the
-  // entry.
-  GraphTelemetryCleanup(GraphTelemetryCleanup&& other) noexcept
-      : graph_id_(other.graph_id_),
-        space_(other.space_),
-        armed_(std::exchange(other.armed_, false)) {}
-  GraphTelemetryCleanup& operator=(GraphTelemetryCleanup&&) = delete;
-
-  // Because of `CU_USER_OBJECT_NO_DESTRUCTOR_SYNC`, this runs on a CUDA driver
-  // thread, possibly long after the graph was destroyed: it must not call
-  // CUDA. `UnregisterGraph` makes no CUDA calls and doesn't log.
-  ~GraphTelemetryCleanup() {
-    if (armed_) {
-      Registry::Default().UnregisterGraph(graph_id_, space_);
-    }
-  }
-
- private:
-  uint32_t graph_id_;
-  KeySpace space_;
-  bool armed_ = true;
-};
 
 }  // namespace
 
@@ -163,32 +129,18 @@ void ForEachSubgraphPair(
   }
 }
 
-std::optional<TrackedGraph> TrackAndAttach(uint32_t graph_id, CUgraph attach_to,
-                                           KeySpace space) {
-  Registry& registry = Registry::Default();
-  if (!registry.TrackGraph(graph_id, space)) {
-    // Whoever created the entry attached its cleanup.
-    return TrackedGraph{graph_id, space};
+TrackedGraph Track(uint32_t graph_id, std::vector<TrackedGraph>& owned,
+                   KeySpace space) {
+  const TrackedGraph tracked{graph_id, space};
+  if (Registry::Default().TrackGraph(graph_id, space)) {
+    owned.push_back(tracked);
   }
-  const absl::Status status =
-      CudaUserObject<GraphTelemetryCleanup>::Create(
-          GraphTelemetryCleanup(graph_id, space), attach_to)
-          .status();
-  if (!status.ok()) {
-    // Without a cleanup the entry would outlive the graph, so remove it now,
-    // together with anything other threads registered in the meantime. If
-    // `cuUserObjectCreate` failed, destroying the cleanup already removed it.
-    // If only the attach failed, `CudaUserObject` released the user object,
-    // and its destructor, which may run later, finds no entry, unless the
-    // graph was tracked again in the meantime: then it removes that entry,
-    // and the graph's annotations may be missing.
-    registry.UnregisterGraph(graph_id, space);
-    LOG_EVERY_N_SEC(WARNING, 60)
-        << "Command buffer telemetry is disabled for CUDA graph " << graph_id
-        << ": failed to attach the cleanup of its annotations: " << status;
-    return std::nullopt;
-  }
-  return TrackedGraph{graph_id, space};
+  // Otherwise the entry's creator owns it.
+  return tracked;
+}
+
+void UnregisterTrackedGraphs(absl::Span<const TrackedGraph> graphs) {
+  Registry::Default().UnregisterGraphs(graphs);
 }
 
 void RegisterNode(const TrackedGraph& graph, CUgraphNode node,
@@ -203,7 +155,8 @@ void RegisterNode(const TrackedGraph& graph, CUgraphNode node,
 }
 
 void RegisterGraphNodes(CUgraph graph, const TrackedGraph& tracked,
-                        CUgraph original, absl::string_view fallback) {
+                        CUgraph original, absl::string_view fallback,
+                        std::vector<TrackedGraph>& owned) {
   const std::optional<uint32_t> original_id = GetGraphId(original);
   if (!original_id.has_value() && fallback.empty()) {
     return;
@@ -242,7 +195,7 @@ void RegisterGraphNodes(CUgraph graph, const TrackedGraph& tracked,
     ForEachSubgraphPair(
         node, orig_node, [&](CUgraph child, CUgraph orig_child) {
           // A copy-only walk can only copy from a tracked original, so don't
-          // track the child (and attach a cleanup) for nothing.
+          // track the child for nothing.
           if (fallback.empty()) {
             const std::optional<uint32_t> orig_child_id =
                 GetGraphId(orig_child);
@@ -258,10 +211,9 @@ void RegisterGraphNodes(CUgraph graph, const TrackedGraph& tracked,
               registry.IsGraphTracked(*child_id, tracked.space)) {
             return;
           }
-          if (std::optional<TrackedGraph> child_tracked =
-                  TrackAndAttach(*child_id, child, tracked.space)) {
-            RegisterGraphNodes(child, *child_tracked, orig_child, fallback);
-          }
+          const TrackedGraph child_tracked =
+              Track(*child_id, owned, tracked.space);
+          RegisterGraphNodes(child, child_tracked, orig_child, fallback, owned);
         });
   }
 }

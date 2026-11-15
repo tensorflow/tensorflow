@@ -29,6 +29,10 @@ limitations under the License.
 
 namespace xla::emitters {
 
+// Calculates a fingerprint of `kernel_arguments` for kernel reuse checks.
+std::string GetArgumentFingerprint(
+    absl::Span<const emitters::KernelArgument> kernel_arguments);
+
 // Calculates the fingerprint of a (fused_computation, kernel_arguments,
 // discriminator) tuple.
 //
