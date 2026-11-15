@@ -13,17 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
-
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
@@ -34,9 +41,11 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/port.h"
 
 namespace tensorflow {

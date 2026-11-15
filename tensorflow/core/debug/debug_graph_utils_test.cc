@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
+#include <string>
+#include <unordered_map>
+
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

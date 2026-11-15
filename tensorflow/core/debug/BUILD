@@ -87,6 +87,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":debugger_state_impl",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:debug_ops_op_lib",
         # Depends on grpc and hence should stay out of
@@ -106,6 +107,8 @@ tf_cuda_library(
         ":debug_graph_utils",
         ":debug_io_utils",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -123,8 +126,13 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = 1,
 )
@@ -140,6 +148,7 @@ tf_cuda_library(
         ":debug_callback_registry",
         ":debug_node_key",
         ":debug_service_cc_grpc_proto",
+        ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -147,7 +156,9 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -162,11 +173,17 @@ tf_cuda_library(
         ":debug_graph_utils",
         ":debug_io_utils",
         ":debug_service_cc_grpc_proto",
+        ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/util:event_proto_cc",
+        "//third_party/protobuf/util:json_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -180,6 +197,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -219,6 +237,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -249,9 +269,15 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "//tensorflow/core/util:event_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -266,12 +292,16 @@ tf_cc_test(
         ":debug_graph_utils",
         ":debug_grpc_testlib",
         ":debug_io_utils",
+        ":debug_service_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -296,7 +326,13 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:regexp",
+        "//third_party/re2",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@xla//xla/tsl/protobuf:bfc_memory_map_proto_cc",
     ],
 )
 
