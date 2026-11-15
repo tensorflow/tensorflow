@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/inlined_vector.h"
@@ -59,6 +60,18 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
+
+// Adapts a jit-compiled comparator to LessThan.  Jit-compiled functions have no
+// CFI type hashes, so the indirect call into them must skip the CFI check.
+namespace {
+struct JitComparator {
+  FunctionLibrary::Comparator* comparator;
+
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI bool operator()(const void** data) const {
+    return comparator(data);
+  }
+};
+}  // namespace
 
 // Conceptually we have a 3-dimensional shape:
 //
@@ -202,9 +215,14 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       // `less_than_` may already be initialized in the constructor.
       return;
     }
-    less_than_ =
+    absl::StatusOr<FunctionLibrary::Comparator*> comparator =
         params.function_library->ResolveFunction<FunctionLibrary::Comparator>(
             comparator_name_);
+    if (!comparator.ok()) {
+      less_than_ = comparator.status();
+      return;
+    }
+    less_than_ = LessThan(JitComparator{*comparator});
   });
 
   ABSL_RETURN_IF_ERROR(less_than_.status());
