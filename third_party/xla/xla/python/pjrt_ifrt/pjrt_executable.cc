@@ -1175,6 +1175,10 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
           "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
           args[i] ? args[i]->DebugString() : "null");
     }
+    if (pjrt_array->IsDeleted()) {
+      return InvalidArgument("Argument %d has already been deleted or donated",
+                             i);
+    }
     if (pjrt_array->pjrt_buffers().size() != num_computations) {
       return InvalidArgument(
           "Argument %d has %d buffers, but executable expects %d computations",

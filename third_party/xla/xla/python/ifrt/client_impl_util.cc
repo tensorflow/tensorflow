@@ -335,6 +335,17 @@ LoadedExecutableExecuteBundle(
     LoadedExecutable* absl_nonnull executable, absl::Span<BundleRef> args,
     const ExecuteOptions& options,
     const std::optional<std::vector<int>>& outputs_bundle_slice_sizes) {
+  int64_t expected_total_output_size = 0;
+  if (outputs_bundle_slice_sizes.has_value()) {
+    for (int size : *outputs_bundle_slice_sizes) {
+      if (size < 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Output bundle slice size must be non-negative: ", size));
+      }
+      expected_total_output_size += size;
+    }
+  }
+
   int total_args_size = 0;
   for (const BundleRef& bundle : args) {
     total_args_size += bundle->num_values();
@@ -367,15 +378,10 @@ LoadedExecutableExecuteBundle(
 
   std::vector<BundleRef> output_bundles;
   if (outputs_bundle_slice_sizes.has_value()) {
-    int total_output_size = 0;
-    for (int size : *outputs_bundle_slice_sizes) {
-      total_output_size += size;
-    }
-    if (total_output_size != result.outputs.size()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Output bundle slice sizes do not match the number of "
-                       "outputs: ",
-                       total_output_size, " vs. ", result.outputs.size()));
+    if (expected_total_output_size != result.outputs.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Output bundle slice sizes do not match the number of outputs: ",
+          expected_total_output_size, " vs. ", result.outputs.size()));
     }
     output_bundles.reserve(outputs_bundle_slice_sizes->size());
 

@@ -946,6 +946,11 @@ class NanoExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<ifrt::DeviceListRef> devices) override {
+    if (devices.has_value() &&
+        (*devices == nullptr || **devices != *devices_)) {
+      return InvalidArgument(
+          "Cannot execute with devices that differ from the bound devices");
+    }
     if (ABSL_PREDICT_FALSE(args.size() != input_shardings_.size())) {
       return InvalidArgument(
           "Number of arguments %d is not what executable expects %d",

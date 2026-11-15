@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
@@ -532,7 +533,9 @@ TEST_P(LoadedExecutableImplTest,
                     absl::MakeSpan(&input_bundle, 1), execute_options));
   }
   ASSERT_OK(result.status.Await());
+  EXPECT_FALSE(input_bundle->IsDeleted());
   ASSERT_THAT(result.outputs, SizeIs(1));
+  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
   ASSERT_OK_AND_ASSIGN(
       std::vector<ValueRef> retrieved_outputs,
@@ -620,9 +623,13 @@ TEST_P(LoadedExecutableImplTest,
                                                  execute_options));
   }
   ASSERT_OK(result.status.Await());
+  EXPECT_FALSE(input_bundle1->IsDeleted());
+  EXPECT_FALSE(input_bundle2->IsDeleted());
   ASSERT_THAT(result.outputs, SizeIs(2));
   EXPECT_EQ(result.outputs[0]->num_values(), 2);
   EXPECT_EQ(result.outputs[1]->num_values(), 1);
+  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(result.outputs[1]->user_context()->Id(), UserContextId(100));
 
   ASSERT_OK_AND_ASSIGN(
       std::vector<ValueRef> retrieved_outputs0,
@@ -1184,6 +1191,98 @@ TEST_P(LoadedExecutableImplTest,
       StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_P(LoadedExecutableImplTest,
+       CompileAndExecuteBundleWithNegativeOutputSliceSizeFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+
+  EXPECT_THAT(
+      CompileAndExecuteBundleWithOutputSliceSizes(
+          client.get(), client->GetDefaultCompiler(),
+          client->addressable_devices().at(0),
+          /*serialize=*/GetParam(), /*outputs_bundle_slice_sizes=*/{-1, 4}),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(LoadedExecutableImplTest, CompileAndExecuteBundleDoNotFillStatus) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_executable,
+      CompileOnDevices(client.get(), compiler, module_add_one, {device},
+                       /*replicated=*/false,
+                       /*serialize=*/GetParam()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), device));
+  std::vector<ValueRef> values = {array};
+  ASSERT_OK_AND_ASSIGN(
+      BundleRef input_bundle,
+      client->Bundle(absl::MakeSpan(values), ArrayCopySemantics::kReuseInput));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = false;
+
+  ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                       loaded_executable->ExecuteBundle(
+                           absl::MakeSpan(&input_bundle, 1), execute_options));
+  EXPECT_FALSE(result.status.IsValid());
+  ASSERT_THAT(result.outputs, SizeIs(1));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ValueRef> out_values,
+      result.outputs[0]->GetValues(ArrayCopySemantics::kReuseInput));
+  ASSERT_THAT(out_values, SizeIs(1));
+  auto* const out_array = dyn_cast<Array>(out_values[0].get());
+  ASSERT_NE(out_array, nullptr);
+  std::vector<float> out_data(6);
+  ASSERT_OK(out_array
+                ->CopyToHostBuffer(out_data.data(),
+                                   /*byte_strides=*/std::nullopt,
+                                   ArrayCopySemantics::kAlwaysCopy)
+                .Await());
+  EXPECT_THAT(out_data, ElementsAre(2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f));
+}
+
+TEST_P(LoadedExecutableImplTest, CompileAndExecutePortableWithoutDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* const compiler = client->GetDefaultCompiler();
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_executable,
+                       CompileOnDevices(client.get(), compiler, module_add_one,
+                                        /*devices=*/{}, /*replicated=*/false,
+                                        /*serialize=*/GetParam()));
+  Device* const device = client->addressable_devices().at(0);
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), device));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(
+      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                 /*devices=*/std::nullopt),
+      Not(IsOk()));
+}
+
+TEST_P(LoadedExecutableImplTest, ExecuteWithMismatchedDevicesFails) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "Requires at least 2 addressable devices.";
+  }
+  Compiler* const compiler = client->GetDefaultCompiler();
+  ASSERT_OK_AND_ASSIGN(LoadedExecutableRef loaded_executable,
+                       CompileOnDevices(client.get(), compiler, module_add_one,
+                                        {devices[0]}, /*replicated=*/false,
+                                        /*serialize=*/GetParam()));
+  ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                       MakeF32TwoByThreeArray(client.get(), devices[0]));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef wrong_devices,
+                       client->MakeDeviceList({devices[1]}));
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  EXPECT_THAT(loaded_executable->Execute(absl::MakeSpan(&array, 1),
+                                         execute_options, wrong_devices),
+              Not(IsOk()));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     LoadedExecutableImplTest, LoadedExecutableImplTest,
     /*serialize=*/testing::Bool(),
@@ -1682,6 +1781,17 @@ TEST(ExecutableTest, UnloadedExecutableSerialization) {
     GTEST_SKIP() << "Compile is not supported on this platform.";
   }
   ASSERT_OK(executable);
+
+  EXPECT_THAT((*executable)->GetParameterShardings(), Optional(SizeIs(2)));
+  EXPECT_THAT((*executable)->GetOutputShardings(), Optional(SizeIs(2)));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> param_layouts,
+      (*executable)->GetParameterLayouts());
+  EXPECT_THAT(param_layouts, SizeIs(2));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts,
+      (*executable)->GetOutputLayouts());
+  EXPECT_THAT(output_layouts, SizeIs(2));
 
   absl::StatusOr<std::string> serialized_executable =
       (*executable)->Serialize();
