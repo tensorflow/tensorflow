@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bucketize_op.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,7 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -42,12 +45,33 @@ struct BucketizeFunctor<CPUDevice, T> {
                               const typename TTypes<T, 1>::ConstTensor& input,
                               const std::vector<float>& boundaries_vector,
                               typename TTypes<int32_t, 1>::Tensor& output) {
-    const int N = input.size();
-    for (int i = 0; i < N; i++) {
-      auto first_bigger_it = std::upper_bound(
-          boundaries_vector.begin(), boundaries_vector.end(), input(i));
-      output(i) = first_bigger_it - boundaries_vector.begin();
+    const int64_t N = input.size();
+    const float* const boundaries_begin = boundaries_vector.data();
+    const float* const boundaries_end =
+        boundaries_begin + boundaries_vector.size();
+    const T* const input_data = input.data();
+    int32_t* const output_data = output.data();
+    auto work = [&](int64_t start, int64_t limit) {
+      for (int64_t i = start; i < limit; ++i) {
+        output_data[i] = static_cast<int32_t>(
+            std::upper_bound(boundaries_begin, boundaries_end, input_data[i]) -
+            boundaries_begin);
+      }
+    };
+
+    // Each element is an independent binary search, so shard the input across
+    // the CPU worker threads. The cost estimate (in cycles) grows with the
+    // number of comparisons per search. Small inputs stay on the caller thread,
+    // where dispatch overhead would outweigh the work.
+    constexpr int64_t kMinParallelElements = 4096;
+    if (N < kMinParallelElements) {
+      work(0, N);
+      return absl::OkStatus();
     }
+    const int64_t cost_per_unit =
+        8 * (Log2Ceiling64(boundaries_vector.size() + 1) + 1);
+    context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
+        N, cost_per_unit, work);
 
     return absl::OkStatus();
   }
