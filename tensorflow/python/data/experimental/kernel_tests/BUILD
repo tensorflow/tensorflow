@@ -463,8 +463,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "matching_files_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["matching_files_dataset_test.py"],
+    shard_count = 7,  # b/585894060
     deps = [
         "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
