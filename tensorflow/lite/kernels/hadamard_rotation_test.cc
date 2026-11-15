@@ -39,7 +39,8 @@ using ::testing::Values;
 class BaseHadamardRotationOpModel : public SingleOpModel {
  public:
   BaseHadamardRotationOpModel(const int size, const TensorData& input,
-                              const TensorData& output) {
+                              const TensorData& output,
+                              bool allocate_and_delegate = true) {
     input1_ = AddInput(input);
     output1_ = AddOutput(output);
 
@@ -55,7 +56,9 @@ class BaseHadamardRotationOpModel : public SingleOpModel {
     fbb.Finish();
     SetCustomOp("aeq.hadamard_rotation", fbb.GetBuffer(),
                 Register_HADAMARD_ROTATION);
-    BuildInterpreter({GetShape(input1_)});
+    BuildInterpreter({GetShape(input1_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
   }
 
   int input1() { return input1_; }
@@ -162,6 +165,31 @@ TEST_P(HadamardRotationOpTest, RandomInputTest) {
   for (int i = 0; i < size * 2; ++i) {
     EXPECT_NEAR(output[i], randoms[i], 1e-5);
   }
+}
+
+TEST(HadamardRotationOpPrepareTest, OutputIsResizedToInputShape) {
+  // Eval copies the whole input into the output, so an output declared smaller
+  // than the input in the model must not be used as is.
+  BaseHadamardRotationOpModel m(4, {TensorType_FLOAT32, {1, 8}},
+                                {TensorType_FLOAT32, {1, 2}});
+  m.SetInput1<float>({1, 1, 1, 1, 1, 1, 1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape1(), ElementsAre(1, 8));
+  EXPECT_THAT(m.GetOutput1<float>(), ElementsAre(2, 0, 0, 0, 2, 0, 0, 0));
+}
+
+TEST(HadamardRotationOpPrepareTest, RejectsRank1Input) {
+  BaseHadamardRotationOpModel m(4, {TensorType_FLOAT32, {8}},
+                                {TensorType_FLOAT32, {8}},
+                                /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(HadamardRotationOpPrepareTest, RejectsNonPositiveHadamardSize) {
+  BaseHadamardRotationOpModel m(0, {TensorType_FLOAT32, {1, 8}},
+                                {TensorType_FLOAT32, {1, 8}},
+                                /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
 INSTANTIATE_TEST_SUITE_P(HadamardSizes, HadamardRotationOpTest,
