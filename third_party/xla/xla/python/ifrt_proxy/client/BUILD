@@ -266,6 +266,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:cleanup",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt_proxy/common:array_util",

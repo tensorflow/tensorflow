@@ -104,7 +104,7 @@ TEST(BundleImplTest, Roundtrip) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -112,7 +112,7 @@ TEST(BundleImplTest, Roundtrip) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array1, array2};
   ASSERT_OK_AND_ASSIGN(
@@ -149,7 +149,7 @@ TEST(BundleImplTest, ConcatBundles) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -157,7 +157,7 @@ TEST(BundleImplTest, ConcatBundles) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values1 = {array1};
   ASSERT_OK_AND_ASSIGN(
@@ -206,7 +206,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array2,
@@ -214,7 +214,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   ASSERT_OK_AND_ASSIGN(
       ArrayRef array3,
@@ -222,7 +222,7 @@ TEST(BundleImplTest, Slice) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array1, array2, array3};
   ASSERT_OK_AND_ASSIGN(
@@ -274,7 +274,7 @@ TEST(BundleImplTest, Alias) {
             data.data(), dtype, shape,
             /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
+            /*host_buffer_hold=*/nullptr));
   }
 
   ASSERT_OK_AND_ASSIGN(
@@ -309,7 +309,7 @@ TEST(BundleImplTest, CopyArrays) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array};
 
@@ -354,7 +354,7 @@ TEST(BundleImplTest, ReshardArrays) {
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, sharding, /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          /*on_done_with_host_buffer=*/nullptr));
+          /*host_buffer_hold=*/nullptr));
 
   std::vector<ValueRef> values = {array};
 
@@ -409,7 +409,7 @@ TEST(BundleImplTest, CopyArraysExhaustive) {
                 /*byte_strides=*/std::nullopt, sharding,
                 /*layout=*/nullptr,
                 Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                /*on_done_with_host_buffer=*/{}));
+                /*host_buffer_hold=*/{}));
         EXPECT_EQ(array->sharding(), *sharding);
 
         std::vector<ValueRef> values = {array};
@@ -475,7 +475,7 @@ TEST(BundleImplTest, CopyArraysSubByteDType) {
                 /*byte_strides=*/std::nullopt, sharding,
                 /*layout=*/nullptr,
                 Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                /*on_done_with_host_buffer=*/{}));
+                /*host_buffer_hold=*/{}));
         EXPECT_EQ(array->sharding(), *sharding);
 
         std::vector<ValueRef> values = {array};
@@ -550,16 +550,16 @@ TEST(BundleImplTest, CopyArraysWithPartialReuse) {
         /*buffers=*/{
             {{0},
              {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data0]() {}}},
+              /*on_done=*/data0}},
             {{1},
              {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data1]() {}}},
+              /*on_done=*/data1}},
             {{2},
              {data2->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data2]() {}}},
+              /*on_done=*/data2}},
             {{3},
              {data3->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
-              /*on_done_with_host_buffer=*/[data3]() {}}},
+              /*on_done=*/data3}},
         },
         /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
     });
@@ -638,7 +638,7 @@ TEST(BundleImplTest, CopyArraysDifferentDeviceLists) {
             /*byte_strides=*/std::nullopt, std::move(sharding),
             /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
+            /*host_buffer_hold=*/nullptr));
   }
 
   ASSERT_OK_AND_ASSIGN(

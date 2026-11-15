@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/python/ifrt/client_impl_util.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -106,6 +106,13 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* absl_nonnull client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics) {
+  absl::Cleanup release_host_buffers = [&]() {
+    for (Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
+      for (auto& [shard_indices, host_buffer] : spec.buffers) {
+        host_buffer.on_done.reset();
+      }
+    }
+  };
   for (int i = 1; i < specs.size(); ++i) {
     const Client::MakeArraysFromHostBufferShardsSpec& spec = specs[i];
     if (specs[0].array_spec.sharding->devices() !=
@@ -155,24 +162,12 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     addressable_shards.resize(addressable_devices.size());
     int64_t num_processed_shards = 0;
 
-    // Note that `host_buffer` is const reference. We cannot move any member
-    // from it because the same instance may be used multiple times if the same
-    // index domain shows up in `addressable_index_domains` multiple times.
-    for (const auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
+    for (auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
       ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      std::function<void()> on_done_with_host_buffer_per_device;
-      if (host_buffer.on_done != nullptr) {
-        auto shared_on_done = std::shared_ptr<void>(
-            nullptr,
-            [on_done = std::move(host_buffer.on_done)](void*) { on_done(); });
-        on_done_with_host_buffer_per_device =
-            [shared_on_done = std::move(shared_on_done)]() mutable {
-              shared_on_done.reset();
-            };
-      }
-
-      for (int64_t addressable_shard_index : addressable_shard_indices) {
+      std::shared_ptr<const void> on_done = std::move(host_buffer.on_done);
+      for (int64_t i = 0; i < addressable_shard_indices.size(); ++i) {
+        const int64_t addressable_shard_index = addressable_shard_indices[i];
         if (addressable_shard_index < 0 ||
             addressable_shard_index >= addressable_devices.size()) {
           return absl::InvalidArgumentError(absl::StrCat(
@@ -191,12 +186,14 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         if (spec.array_spec.layout != nullptr) {
           layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
         }
-        ABSL_ASSIGN_OR_RETURN(
-            shard, client->MakeArrayFromHostBuffer(
-                       host_buffer.data, host_buffer.dtype, host_buffer.shape,
-                       host_buffer.byte_strides, std::move(sharding),
-                       std::move(layout), semantics,
-                       on_done_with_host_buffer_per_device));
+        std::shared_ptr<const void> per_shard_on_done =
+            (i + 1 == addressable_shard_indices.size()) ? std::move(on_done)
+                                                        : on_done;
+        ABSL_ASSIGN_OR_RETURN(shard, client->MakeArrayFromHostBuffer(
+                                    host_buffer.data, host_buffer.dtype,
+                                    host_buffer.shape, host_buffer.byte_strides,
+                                    std::move(sharding), std::move(layout),
+                                    semantics, std::move(per_shard_on_done)));
       }
       num_processed_shards += addressable_shard_indices.size();
     }

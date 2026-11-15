@@ -133,10 +133,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                          std::optional<absl::Span<const int64_t>> byte_strides,
                          ShardingRef sharding, LayoutRef layout,
                          HostBufferSemantics semantics,
-                         std::function<void()> on_done_with_host_buffer) {
+                         std::shared_ptr<const void> host_buffer_hold) {
         return delegated_->MakeArrayFromHostBuffer(
             data, dtype, std::move(shape), byte_strides, std::move(sharding),
-            std::move(layout), semantics, std::move(on_done_with_host_buffer));
+            std::move(layout), semantics, std::move(host_buffer_hold));
       });
   ON_CALL(*this, MakeArraysFromHostBufferShards)
       .WillByDefault(

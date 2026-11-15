@@ -118,7 +118,7 @@ class ProxyWithMockBackend {
                          /*byte_strides=*/std::nullopt, sharding,
                          /*layout=*/nullptr,
                          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-                         /*on_done_with_host_buffer=*/nullptr));
+                         /*host_buffer_hold=*/nullptr));
 
     return client_arr;
   }
@@ -147,12 +147,12 @@ class ProxyWithMockBackend {
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout,
       Client::HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) {
+      std::shared_ptr<const void> host_buffer_hold) {
     ArrayId array_id = *reinterpret_cast<const uint64_t*>(data);
     ABSL_ASSIGN_OR_RETURN(auto delegated,
                      mock_backend_->delegated()->MakeArrayFromHostBuffer(
                          data, dtype, shape, byte_strides, sharding, layout,
-                         semantics, on_done_with_host_buffer));
+                         semantics, std::move(host_buffer_hold)));
     auto result = tsl::MakeRef<NiceMock<MockArray>>(delegated);
     testing::Mock::AllowLeak(result.get());
 

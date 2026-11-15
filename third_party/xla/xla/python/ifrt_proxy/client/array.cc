@@ -42,6 +42,7 @@
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
@@ -79,7 +80,7 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::shared_ptr<const void> host_buffer_hold) {
   absl::string_view mem_region;
   if (dtype.kind() != DType::kString) {
     ABSL_ASSIGN_OR_RETURN(auto array_mem_region,
@@ -95,13 +96,8 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
             static_cast<const absl::Cord*>(data), shape.num_elements())));
     mem_region = *owned_data;
     semantics = HostBufferSemantics::kImmutableUntilTransferCompletes;
-    std::function<void()> on_done(std::move(on_done_with_host_buffer));
-    on_done_with_host_buffer = [owned_data = std::move(owned_data),
-                                on_done = std::move(on_done)]() {
-      if (on_done) {
-        std::move(on_done)();
-      }
-    };
+    host_buffer_hold.reset();
+    host_buffer_hold = std::move(owned_data);
   }
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       [s = mem_region.size(), semantics]() {
@@ -119,15 +115,10 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
       char* alloc = static_cast<char*>(malloc(mem_region.size()));
       memcpy(alloc, mem_region.data(), mem_region.size());
       mem_region = absl::string_view(alloc, mem_region.size());
-      if (on_done_with_host_buffer != nullptr) {
-        std::move(on_done_with_host_buffer)();
-      }
-      on_done_with_host_buffer = [alloc]() { free(alloc); };
+      host_buffer_hold.reset();
+      host_buffer_hold = MakeSharedCleanup([alloc]() { free(alloc); });
     } else {
-      if (on_done_with_host_buffer != nullptr) {
-        std::move(on_done_with_host_buffer)();
-        on_done_with_host_buffer = nullptr;
-      }
+      host_buffer_hold.reset();
     }
   }
 
@@ -140,7 +131,7 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
   // from the server.
   rpc_helper->host_buffer_store()
       ->Store(host_buffer_handle, mem_region)
-      .OnReady([on_done = std::move(on_done_with_host_buffer),
+      .OnReady([on_done = std::move(host_buffer_hold),
                 rpc_helper = std::weak_ptr<RpcHelper>(rpc_helper)](
                    absl::Status s) mutable {
         if (!s.ok()) {
@@ -151,9 +142,7 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
             locked->Disconnect();
           }
         };
-        if (on_done != nullptr) {
-          std::move(on_done)();
-        }
+        on_done.reset();
       });
   return host_buffer_handle;
 }
@@ -167,7 +156,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     LayoutRef layout, HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::shared_ptr<const void> host_buffer_hold) {
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   dtype.ToProto(*req->mutable_dtype(), rpc_helper->ifrt_serdes_version());
   shape.ToProto(*req->mutable_shape(), rpc_helper->ifrt_serdes_version());
@@ -194,7 +183,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
   ABSL_ASSIGN_OR_RETURN(
       const uint64_t host_buffer_handle,
       MakeHostBuffer(client, rpc_helper, data, dtype, shape, byte_strides,
-                     semantics, std::move(on_done_with_host_buffer)));
+                     semantics, std::move(host_buffer_hold)));
   req->set_host_buffer_handle(host_buffer_handle);
   // Reuse the host_buffer_handle as also the client-generated array_handle.
   req->set_array_handle(host_buffer_handle);
@@ -217,6 +206,13 @@ Array::MakeArraysFromHostBufferShards(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
     xla::ifrt::Client::HostBufferSemantics semantics) {
+  absl::Cleanup release_host_buffers = [&]() {
+    for (xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
+      for (auto& [shard_indices, host_buffer] : spec.buffers) {
+        host_buffer.on_done.reset();
+      }
+    }
+  };
   absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
       host_buffer_handles_for_specs;
   auto cleanup = absl::MakeCleanup([&]() {
@@ -233,16 +229,16 @@ Array::MakeArraysFromHostBufferShards(
     }
   });
   host_buffer_handles_for_specs.reserve(specs.size());
-  for (const auto& spec : specs) {
+  for (xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
     auto& host_buffer_handles = host_buffer_handles_for_specs.emplace_back();
     host_buffer_handles.reserve(spec.buffers.size());
-    for (const auto& [_, host_buffer] : spec.buffers) {
+    for (auto& [shard_indices, host_buffer] : spec.buffers) {
       ABSL_ASSIGN_OR_RETURN(
           const uint64_t host_buffer_handle,
           MakeHostBuffer(client, rpc_helper, host_buffer.data,
                          host_buffer.dtype, host_buffer.shape,
                          host_buffer.byte_strides, semantics,
-                         /*on_done_with_host_buffer=*/host_buffer.on_done));
+                         /*host_buffer_hold=*/std::move(host_buffer.on_done)));
       host_buffer_handles.push_back(host_buffer_handle);
     }
   }

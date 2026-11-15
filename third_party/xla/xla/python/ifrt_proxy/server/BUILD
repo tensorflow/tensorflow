@@ -143,6 +143,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:cleanup",
         "//xla/python/ifrt:mpmd_executable",
         "//xla/python/ifrt:program_serdes",
         "//xla/python/ifrt:serdes",

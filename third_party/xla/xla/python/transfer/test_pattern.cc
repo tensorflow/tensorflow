@@ -50,7 +50,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> CopyTestPatternToDevice(
       xla::ifrt::SingleDeviceSharding::Create(dest_device,
                                               xla::ifrt::MemoryKind()),
       /*layout=*/nullptr,
-      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall, [] {});
+      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*host_buffer_hold=*/nullptr);
 }
 
 }  // namespace aux::tests

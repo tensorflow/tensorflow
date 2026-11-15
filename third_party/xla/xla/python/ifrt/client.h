@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CLIENT_H_
 #define XLA_PYTHON_IFRT_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,8 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/bundle.h"
+// TODO(b/585751512): Remove once legacy callable shims are deleted.
+#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -102,26 +105,25 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // The runtime may not hold references to `data` after the call to
   // `MakeArrayFromHostBuffer` completes. The caller promises that `data` is
   // immutable and will not be freed only for the duration of the
-  // `MakeArrayFromHostBuffer` call. `on_done_with_host_buffer` will be called
-  // before `MakeArrayFromHostBuffer` returns.
+  // `MakeArrayFromHostBuffer` call. `host_buffer_hold` is released before
+  // `MakeArrayFromHostBuffer` returns.
 
   // kImmutableUntilTransferCompletes:
   // The runtime may hold onto `data` after the call to
   // `MakeArrayFromHostBuffer` returns while the runtime completes transfers to
   // devices. The caller promises not to mutate or free `data` until the
-  // transfer completes, at which point the runtime will call
-  // `on_done_with_host_buffer`. It is also correct to wait (directly or
-  // indirectly) for the `Array`'s ready event. The runtime does not promise a
-  // certain ordering between an `on_done_with_host_buffer` call and the
-  // `Array`'s ready event.
+  // transfer completes, at which point the runtime releases `host_buffer_hold`.
+  // It is also correct to wait (directly or indirectly) for the `Array`'s ready
+  // event. The runtime does not promise a certain ordering between releasing
+  // `host_buffer_hold` and the `Array`'s ready event.
 
   // kZeroCopy:
   // The `Array` may alias `data` internally and the runtime may use the `data`
   // contents as long as the buffer is alive. The caller promises to keep `data`
   // alive and not to mutate its contents as long as the buffer is alive; to
-  // notify the caller that the buffer may be freed, the runtime will call
-  // `on_done_with_host_buffer` when the `Array` is freed. The implementation is
-  // free to make a copy and downgrade the semantics to
+  // notify the caller that the buffer may be freed, the runtime releases
+  // `host_buffer_hold` when the `Array` is freed. The implementation is free to
+  // make a copy and downgrade the semantics to
   // `kImmutableUntilTransferCompletes`. Many non-CPU runtimes will make a copy
   // by default.
   using HostBufferSemantics = ::xla::PjRtClient::HostBufferSemantics;
@@ -136,25 +138,106 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // in major-to-minor order. The runtime may return `UNIMPLEMENTED` if
   // `byte_strides` does not equate to a reordering of the dimensions.
   //
-  // `layout` specifies the layout of the array. If `layout` is nullptr, the a
-  // device-default layout used.
+  // `layout` specifies the layout of the array. If `layout` is nullptr, a
+  // device-default layout is used.
   //
-  // `on_done_with_host_buffer` is optional and may be null.
-  // `on_done_with_host_buffer` will be called iff OK is returned.
-  //
-  // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `tsl::Future<>` for consistency with other IFRT APIs.
+  // `host_buffer_hold` is optional and may be null. Ownership transfers
+  // unconditionally to `MakeArrayFromHostBuffer`, which releases its reference
+  // once the runtime no longer accesses `data` on both success and failure. See
+  // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup callback
+  // when needed.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) = 0;
+      std::shared_ptr<const void> host_buffer_hold) = 0;
+
+  // Transitional overload accepting legacy zero-argument cleanup callables
+  // while callers migrate to `host_buffer_hold`.
+  // TODO(b/585751512): Remove once all callers pass `std::shared_ptr`.
+  template <
+      typename F,
+      std::enable_if_t<!std::is_convertible_v<F, std::shared_ptr<const void>> &&
+                           std::is_invocable_r_v<void, F>,
+                       int> = 0>
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
+      F&& on_done_with_host_buffer) {
+    return MakeArrayFromHostBuffer(
+        data, dtype, std::move(shape), byte_strides, std::move(sharding),
+        std::move(layout), semantics,
+        MakeSharedCleanup(std::forward<F>(on_done_with_host_buffer)));
+  }
 
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
   // available in IFRT.
   struct HostBuffer {
+    using ByteStrides = std::vector<int64_t>;
+
+    // Transitional wrapper around `std::shared_ptr<const void>` that also
+    // accepts legacy zero-argument cleanup callables while callers migrate.
+    // TODO(b/585751512): Replace with `std::shared_ptr<const void>` once all
+    // callers are migrated.
+    class OnDone {
+     public:
+      using Hold = std::shared_ptr<const void>;
+
+      OnDone() noexcept : hold_(nullptr) {}
+      OnDone(std::nullptr_t) noexcept  // NOLINT(google-explicit-constructor)
+          : hold_(nullptr) {}
+
+      template <typename T>
+      OnDone(std::shared_ptr<T> hold)  // NOLINT(google-explicit-constructor)
+          noexcept
+          : hold_(std::move(hold)) {}
+
+      template <typename F,
+                std::enable_if_t<!std::is_same_v<std::decay_t<F>, OnDone> &&
+                                     !std::is_convertible_v<F, Hold> &&
+                                     std::is_invocable_r_v<void, F>,
+                                 int> = 0>
+      OnDone(F&& on_done)  // NOLINT(google-explicit-constructor)
+          : hold_(MakeSharedCleanup(std::forward<F>(on_done))) {}
+
+      OnDone& operator=(std::nullptr_t) noexcept {
+        hold_.reset();
+        return *this;
+      }
+
+      void reset() noexcept { hold_.reset(); }
+
+      operator Hold() const& noexcept {  // NOLINT(google-explicit-constructor)
+        return hold_;
+      }
+      operator Hold() && noexcept {  // NOLINT(google-explicit-constructor)
+        return std::move(hold_);
+      }
+
+      explicit operator bool() const noexcept { return hold_ != nullptr; }
+
+      void operator()() noexcept { hold_.reset(); }
+
+      friend bool operator==(const OnDone& lhs, std::nullptr_t) noexcept {
+        return lhs.hold_ == nullptr;
+      }
+      friend bool operator==(std::nullptr_t, const OnDone& rhs) noexcept {
+        return rhs.hold_ == nullptr;
+      }
+      friend bool operator!=(const OnDone& lhs, std::nullptr_t) noexcept {
+        return lhs.hold_ != nullptr;
+      }
+      friend bool operator!=(std::nullptr_t, const OnDone& rhs) noexcept {
+        return rhs.hold_ != nullptr;
+      }
+
+     private:
+      Hold hold_;
+    };
+
     // `data` points to the backing array of the host buffer. Caution:
     // `byte_strides` are allowed to be negative, in which case `data` may need
     // to point to the interior of the buffer, not necessarily its start.
@@ -171,20 +254,19 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
     //
     // TODO(hyeontaek): Consider generalizing `byte_strides` to a more general
     // layout representation.
-    using ByteStrides = std::vector<int64_t>;
     std::optional<ByteStrides> byte_strides;
 
-    // `on_done` is optional and may be null. `on_done` will be called when the
-    // host buffer is no longer used by the runtime. It will not be called if
-    // the API processing the host buffer has returned an error. For simple and
-    // robust cleanup, it is strongly recommended to capture RAII objects in the
-    // closure of the callback and leave the callback's function body empty.
+    // `on_done` is optional and may be null. APIs that consume `HostBuffer`
+    // take ownership of `on_done` unconditionally and release it once the host
+    // buffer is no longer used by the runtime on both success and failure. See
+    // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup
+    // callback when needed.
     //
-    // If a host buffer is used with a zero-copy semantics, the host buffer data
-    // should not be accessed by the user until `on_done` is called; the data
+    // If a host buffer is used with zero-copy semantics, the host buffer data
+    // should not be accessed by the user until `on_done` is released; the data
     // may be read by the runtime throughout the life of the array created with
-    // the host buffer, and it may be even mutated.
-    std::function<void()> on_done;
+    // the host buffer, and it may even be mutated.
+    OnDone on_done;
   };
 
   // Represents the specification of creating an array following an array spec
@@ -209,7 +291,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // created from a host buffer shard. The resulting array will match the array
   // spec.
   //
-  // `specs` may be consumed by the implementation.
+  // `specs` is consumed by the call on both success and failure.
   //
   // All resulting arrays should use the same device list and memory kind. i.e.,
   // `specs[i].sharding->devices()` and `specs[i].sharding->memory_kind()` must

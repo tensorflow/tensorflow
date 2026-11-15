@@ -67,7 +67,7 @@ class Array final : public RTTIExtends<Array, xla::ifrt::Array> {
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout,
       xla::ifrt::Client::HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer);
+      std::shared_ptr<const void> host_buffer_hold);
 
   // `Array::MakeArraysFromHostBufferShards()` implements
   // `Client::MakeArraysFromHostBufferShards()`.
