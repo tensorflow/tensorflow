@@ -2522,7 +2522,11 @@ class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
   ~FoldConjugateIntoTranspose() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsConj(*node) || IsTranspose(*node) || IsConjugateTranspose(*node);
+    if (IsConj(*node)) return HasExactRegularInputs(*node, 1);
+    if (IsTranspose(*node) || IsConjugateTranspose(*node)) {
+      return HasExactRegularInputs(*node, 2);
+    }
+    return false;
   }
 
   absl::Status TrySimplify(NodeDef* node,
@@ -2540,6 +2544,10 @@ class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
 
     if ((IsTranspose(*transpose_op) || IsConjugateTranspose(*transpose_op)) &&
         IsConj(*conj_op)) {
+      if (!HasExactRegularInputs(*transpose_op, 2) ||
+          !HasExactRegularInputs(*conj_op, 1)) {
+        return absl::OkStatus();
+      }
       NodeDef* new_op = AddCopyNode(optimized_node_name, transpose_op);
 
       // Flip the type of transpose op to absorb the conjugation.
@@ -2553,6 +2561,16 @@ class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
     }
 
     return absl::OkStatus();
+  }
+
+ private:
+  // True if `node` has exactly `regular` regular inputs, optionally followed by
+  // control inputs. Conj takes one regular input and Transpose and
+  // ConjugateTranspose take two, and a GraphDef handed to Grappler has not
+  // necessarily been validated against the op definitions.
+  static bool HasExactRegularInputs(const NodeDef& node, int regular) {
+    return NumNonControlInputs(node) == regular &&
+           NumControlInputs(node) == node.input_size() - regular;
   }
 };
 
