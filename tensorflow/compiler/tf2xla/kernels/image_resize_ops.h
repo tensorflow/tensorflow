@@ -64,8 +64,8 @@ class ResizeNearestNeighborGradOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  protected:
-  bool align_corners_;
-  bool half_pixel_centers_ = true;
+  bool align_corners_ = false;
+  bool half_pixel_centers_ = false;
 };
 
 }  // namespace tensorflow
