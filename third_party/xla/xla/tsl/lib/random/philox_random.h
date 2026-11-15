@@ -113,7 +113,7 @@ class PhiloxRandom {
   using Key = Array<uint32_t, 2>;
 
   PHILOX_DEVICE_INLINE
-  PhiloxRandom() {}
+  PhiloxRandom() = default;
 
   PHILOX_DEVICE_INLINE
   explicit PhiloxRandom(uint64_t seed) {

@@ -94,7 +94,7 @@ std::string GetAlphaSmallestFunctionName(const llvm::Module& module) {
 
 class GpuOptProvider : public CompiledOptProvider {
  public:
-  GpuOptProvider() : CompiledOptProvider() {}
+  GpuOptProvider() : = default;
 
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {

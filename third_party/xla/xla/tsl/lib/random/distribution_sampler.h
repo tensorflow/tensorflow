@@ -47,7 +47,7 @@ class DistributionSampler {
  public:
   explicit DistributionSampler(const absl::Span<const float> weights);
 
-  ~DistributionSampler() {}
+  ~DistributionSampler() = default;
 
   int Sample(SimplePhilox* rand) const {
     float r = rand->RandFloat();
