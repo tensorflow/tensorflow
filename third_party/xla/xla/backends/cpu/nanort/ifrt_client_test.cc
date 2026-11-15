@@ -479,6 +479,12 @@ int main(int argc, char** argv) {
       // NanoRT does not handle CopyArrays with re-ordered devices correctly.
       "ArrayImplTest.CopyArraysWithPartialReuse:"
       "ArrayImplTest.CopyToDifferentDevice:"
+      // NanoRT does not mark donated CopyArrays sources as deleted.
+      "ArrayImplTest.CopyToHostBufferOnDonatedCrossDeviceCopySourceFails:"
+      // NanoRT FullyReplicatedShard returns `this` without validating or
+      // extracting a single-device shard.
+      "ArrayImplTest.FullyReplicatedShardExtractsSingleDeviceArray:"
+      "ArrayImplTest.FullyReplicatedShardOnPartitionedArrayFails:"
       // NanoRT does not support tokens.
       "ArrayImplTest.HostBufferTokens:"
       "ArrayImplTest.PoisonedTokenArrays:"

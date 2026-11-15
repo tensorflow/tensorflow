@@ -319,6 +319,9 @@ Array::MakeArraysFromHostBufferShards(
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     const absl::Status& error, absl::Span<const ArraySpec> array_specs) {
+  if (error.ok()) {
+    return absl::InvalidArgumentError("Error status must not be OK");
+  }
   auto req = std::make_unique<MakeErrorArraysRequest>();
   *req->mutable_error() = tsl::StatusToProto(error);
 
@@ -661,6 +664,14 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointFullyReplicatedShard");
+  if (array_spec_.dtype.kind() != DType::kToken) {
+    absl::StatusOr<Shape> shard_shape =
+        array_spec_.sharding->GetShardShape(array_spec_.shape);
+    if (shard_shape.ok() && *shard_shape != array_spec_.shape) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Array is not fully replicated: ", array_spec_));
+    }
+  }
   auto req = std::make_unique<FullyReplicatedShardRequest>();
   ABSL_ASSIGN_OR_RETURN(ArrayHandle handle, GetHandle(semantics));
   req->set_array_handle(handle.handle);

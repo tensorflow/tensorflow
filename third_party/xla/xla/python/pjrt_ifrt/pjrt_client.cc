@@ -1209,11 +1209,10 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
               error, xla_shape,
               absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), layout));
     }
-    ABSL_ASSIGN_OR_RETURN(
-        arrays.emplace_back(),
-        PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
-                          array_spec.sharding, std::move(buffers),
-                          array_spec.layout));
+    ABSL_ASSIGN_OR_RETURN(arrays.emplace_back(),
+                     PjRtArray::Create(this, array_spec.dtype, array_spec.shape,
+                                       array_spec.sharding, std::move(buffers),
+                                       array_spec.layout));
   }
   return arrays;
 }
@@ -1236,6 +1235,10 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
           "When the sharding is SingleDeviceSharding, the input arrays size "
           "must be one, but the actual size is %d",
           arrays.size());
+    }
+    if (arrays[0]->IsDeleted()) {
+      return InvalidArgument(
+          "Input array 0 has already been deleted or donated");
     }
     return arrays[0];
   }
@@ -1274,6 +1277,10 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
           arrays[i]->DebugString());
     }
     auto* array = static_cast<PjRtCompatibleArray*>(arrays[i].get());
+    if (array->IsDeleted()) {
+      return InvalidArgument(
+          "Input array %d has already been deleted or donated", i);
+    }
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %v (shard 0) vs. %v (shard "
@@ -1457,6 +1464,12 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                                    DeviceListRef dst_devices,
                                    std::optional<MemoryKind> memory_kind,
                                    ArrayCopySemantics semantics) {
+  for (size_t i = 0; i < arrays.size(); ++i) {
+    if (arrays[i]->IsDeleted()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "CopyArrays input array %d has already been deleted or donated", i));
+    }
+  }
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   std::vector<std::vector<std::shared_ptr<PjRtBuffer>>> recv_buffers;
@@ -1876,6 +1889,10 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
       return absl::InvalidArgumentError(
           absl::StrFormat("Array %d is not a PjRtArray", i));
     }
+    if (pjrt_array->IsDeleted()) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Array %d has already been deleted or donated", i));
+    }
 
     absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
         pjrt_array->pjrt_buffers();
@@ -1922,6 +1939,10 @@ tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
     if (pjrt_array == nullptr) {
       return absl::UnimplementedError(
           "PjRtClient::HashValues requires PjRtCompatibleArray");
+    }
+    if (pjrt_array->IsDeleted()) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Value %d has already been deleted or donated", i));
     }
     if (!pjrt_array->sharding().devices()->IsFullyAddressable()) {
       return absl::UnimplementedError(

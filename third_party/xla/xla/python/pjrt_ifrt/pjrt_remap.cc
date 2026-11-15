@@ -61,6 +61,10 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
           "Only PjRtCompatibleArray is supported, but input#%d is %s", i,
           arrays[i]->DebugString());
     }
+    if (arrays[i]->IsDeleted()) {
+      return InvalidArgument(
+          "RemapArrays input #%d has already been deleted or donated", i);
+    }
 
     if (plan.input_specs()[i].dtype != arrays[i]->dtype()) {
       return InvalidArgument(
@@ -217,6 +221,11 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
                           plan.output_specs()[i].sharding,
                           std::move(out_buffers_list[i]), std::move(layout)));
     output_arrays.push_back(std::move(output_array));
+  }
+  if (semantics == ArrayCopySemantics::kDonateInput) {
+    for (xla::ifrt::ArrayRef& array : arrays) {
+      array->Delete();
+    }
   }
   return output_arrays;
 }

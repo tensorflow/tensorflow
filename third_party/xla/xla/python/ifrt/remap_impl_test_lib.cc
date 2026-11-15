@@ -51,6 +51,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
+using ::testing::Not;
 using ::testing::SizeIs;
 
 // Returns a shape for an array whose first dimension is fully sharded across
@@ -243,6 +244,7 @@ TEST_F(RemapImplTest, ExtractSingleShard) {
                                              ArrayCopySemantics::kDonateInput));
     ASSERT_THAT(out_arrays, SizeIs(1));
     EXPECT_TRUE(arrays[0]->IsDeleted());
+    EXPECT_THAT(arrays[0]->GetReadyFuture().Await(), Not(absl_testing::IsOk()));
     EXPECT_THAT(arrays[0]->Delete().Await(), absl_testing::IsOk());
     // `out_arrays[0].shards[0] == arrays[0].shards[1]`.
     AssertArrayContent<int32_t>(client.get(), out_arrays[0].get(),
