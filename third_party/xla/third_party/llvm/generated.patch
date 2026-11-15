@@ -3521,17 +3521,3 @@ diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/powf_test.cpp b/libc/te
      volatile float two = 2.0f;
      volatile float d = min_denormal;
      EXPECT_FP_EQ(1.0f, func(two, d));
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
---- a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
-+++ b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
-@@ -406,8 +406,8 @@
-     ]
-     libc_function(
-         name = name,
--        srcs = ["//libc/src/math:generic/" + name + ".cpp"],
--        hdrs = ["//libc/src/math:" + name + ".h"],
-+        srcs = ["//libc/src/math:generic/{}.cpp".format(name)],
-+        hdrs = ["//libc/src/math:{}.h".format(name)],
-         deps = [
-             "//libc/src/__support:common",
-             "//libc/src/__support/macros:config",
