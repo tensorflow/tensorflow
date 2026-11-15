@@ -652,7 +652,8 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
                               const RuntimeShape& updates_shape,
                               const UpdatesT* updates_data,
                               const RuntimeShape& output_shape,
-                              UpdatesT* output_data) {
+                              UpdatesT* output_data,
+                              UpdatesT zero_point = UpdatesT()) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int64_t n_slices = 1;
@@ -679,7 +680,9 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
   if (static_cast<int64_t>(n_slices) * slice_size > updates_shape.FlatSize()) {
     return kTfLiteError;
   }
-  memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
+  // Elements that no update writes hold the real value zero. For quantized
+  // tensors that is `zero_point`, which `updates` and `output` share.
+  std::fill_n(output_data, output_flat_size, zero_point);
   for (int64_t i = 0; i < n_slices; ++i) {
     int64_t to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
@@ -694,8 +697,10 @@ inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
       return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
+      // Updates add up as real values: zero_point + sum(update - zero_point).
       output_data[to_pos + j] = WrappingAdd<UpdatesT>(
-          output_data[to_pos + j], updates_data[i * slice_size + j]);
+          output_data[to_pos + j],
+          WrappingSub<UpdatesT>(updates_data[i * slice_size + j], zero_point));
     }
   }
   return kTfLiteOk;

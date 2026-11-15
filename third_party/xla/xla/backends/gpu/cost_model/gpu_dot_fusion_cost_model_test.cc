@@ -40,26 +40,28 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using gpu_dot_fusion_cost_model::detail::
-    CalculateComputeTimeWithTileAndWaveQuantization;
-using gpu_dot_fusion_cost_model::detail::CalculateHardwareLaunchWaves;
-using gpu_dot_fusion_cost_model::detail::CalculateLoopIterBytes;
-using gpu_dot_fusion_cost_model::detail::
-    CalculatePipelinedLoopTimeWithLaunchWaves;
-using gpu_dot_fusion_cost_model::detail::CalculateRegistersPerThread;
-using gpu_dot_fusion_cost_model::detail::CalculateSharedMemoryPerBlockBytes;
-using gpu_dot_fusion_cost_model::detail::CalculateSmOccupancy;
-using gpu_dot_fusion_cost_model::detail::ComputeAndFlops;
-using gpu_dot_fusion_cost_model::detail::DotProblemInfo;
-using gpu_dot_fusion_cost_model::detail::DotTileSize;
-using gpu_dot_fusion_cost_model::detail::FactorWarpGrid;
-using gpu_dot_fusion_cost_model::detail::GetEffectiveFlopsPerNsForTileSize;
-using gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth;
-using gpu_dot_fusion_cost_model::detail::HbmEstimates;
-using gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
-using gpu_dot_fusion_cost_model::detail::LaunchConfig;
-using gpu_dot_fusion_cost_model::detail::SmOccupancy;
 using ::testing::FieldsAre;
+using ::xla::gpu::gpu_dot_fusion_cost_model::
+    CalculateComputeTimeWithTileAndWaveQuantization;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateComputeUtilization;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateHardwareLaunchWaves;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateLoopIterBytes;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateMemoryUtilization;
+using ::xla::gpu::gpu_dot_fusion_cost_model::
+    CalculatePipelinedLoopTimeWithLaunchWaves;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateRegistersPerThread;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateSharedMemoryPerBlockBytes;
+using ::xla::gpu::gpu_dot_fusion_cost_model::CalculateSmOccupancy;
+using ::xla::gpu::gpu_dot_fusion_cost_model::ComputeAndFlops;
+using ::xla::gpu::gpu_dot_fusion_cost_model::DotProblemInfo;
+using ::xla::gpu::gpu_dot_fusion_cost_model::DotTileSize;
+using ::xla::gpu::gpu_dot_fusion_cost_model::FactorWarpGrid;
+using ::xla::gpu::gpu_dot_fusion_cost_model::GetEffectiveFlopsPerNsForTileSize;
+using ::xla::gpu::gpu_dot_fusion_cost_model::GetEffectiveHbmBandwidth;
+using ::xla::gpu::gpu_dot_fusion_cost_model::HbmEstimates;
+using ::xla::gpu::gpu_dot_fusion_cost_model::kLoopLatencyTax;
+using ::xla::gpu::gpu_dot_fusion_cost_model::LaunchConfig;
+using ::xla::gpu::gpu_dot_fusion_cost_model::SmOccupancy;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
@@ -640,16 +642,12 @@ TEST_F(GpuDotFusionCostModelTest, CalculateComputeUtilization) {
 
   // Compute Utilization: flops / (theoretical * exec_time(4s)) = 0.5
   EXPECT_DOUBLE_EQ(
-      gpu_dot_fusion_cost_model::detail::CalculateComputeUtilization(
-          estimates, ddh100_, PrimitiveType::F32),
-      0.5);
+      CalculateComputeUtilization(estimates, ddh100_, PrimitiveType::F32), 0.5);
 
   estimates.exec_time = absl::ZeroDuration();
   // We default to 0.0 compute utilization if the execution time is zero.
   EXPECT_DOUBLE_EQ(
-      gpu_dot_fusion_cost_model::detail::CalculateComputeUtilization(
-          estimates, ddh100_, PrimitiveType::F32),
-      0.0);
+      CalculateComputeUtilization(estimates, ddh100_, PrimitiveType::F32), 0.0);
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateMemoryUtilization) {
@@ -662,25 +660,16 @@ TEST_F(GpuDotFusionCostModelTest, CalculateMemoryUtilization) {
 
   // Memory roofline: (1000 + 2000) / 3000 B/s = 1.0s
   // Memory Utilization: roofline (1s) / exec_time (4s) = 0.25
-  EXPECT_DOUBLE_EQ(
-      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
-                                                                    ddh100_),
-      0.25);
+  EXPECT_DOUBLE_EQ(CalculateMemoryUtilization(estimates, ddh100_), 0.25);
 
   estimates.exec_time = absl::ZeroDuration();
   // We default to 0.0 memory utilization if the execution time is zero.
-  EXPECT_DOUBLE_EQ(
-      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
-                                                                    ddh100_),
-      0.0);
+  EXPECT_DOUBLE_EQ(CalculateMemoryUtilization(estimates, ddh100_), 0.0);
 
   estimates.exec_time = absl::Seconds(4);
   ddh100_.set_memory_bandwidth(0);
   // We default to 0.0 memory utilization if peak memory bandwidth is zero.
-  EXPECT_DOUBLE_EQ(
-      gpu_dot_fusion_cost_model::detail::CalculateMemoryUtilization(estimates,
-                                                                    ddh100_),
-      0.0);
+  EXPECT_DOUBLE_EQ(CalculateMemoryUtilization(estimates, ddh100_), 0.0);
 }
 
 TEST_F(GpuDotFusionCostModelTest,

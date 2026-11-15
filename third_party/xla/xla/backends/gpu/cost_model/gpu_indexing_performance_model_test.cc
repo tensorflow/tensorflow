@@ -72,7 +72,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
+namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model;
 
 using ::testing::Contains;
 using ::testing::Each;
@@ -223,11 +223,9 @@ ENTRY e {
 
   ASSERT_OK_AND_ASSIGN(
       const auto expected_compute_and_flops,
-      gpu_dot_fusion_cost_model::detail::
-          CalculateComputeTimeWithTileAndWaveQuantization(
-              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot_instr),
-              gpu_dot_fusion_cost_model::detail::DotTileSize{128, 128},
-              device_info_));
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot_instr),
+          dot_model::DotTileSize{128, 128}, device_info_));
 
   // For num_stages=1, exec_time is sequentially added: compute + mem + write.
   // We expect it to be significantly larger than just compute_time.
@@ -269,15 +267,12 @@ ENTRY e {
 
   ASSERT_OK_AND_ASSIGN(
       const auto expected_compute_and_flops,
-      gpu_dot_fusion_cost_model::detail::
-          CalculateComputeTimeWithTileAndWaveQuantization(
-              gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot_instr),
-              gpu_dot_fusion_cost_model::detail::DotTileSize{128, 128},
-              device_info_));
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot_instr),
+          dot_model::DotTileSize{128, 128}, device_info_));
 
   const absl::Duration expected_time =
-      expected_compute_and_flops.compute_time +
-      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+      expected_compute_and_flops.compute_time + dot_model::kLoopLatencyTax;
   // For pipelined loops, execution time is bounded by the dominant cost
   // (compute in this case). We allow up to 10% overhead.
   EXPECT_GE(runtime.exec_time, expected_time);
@@ -313,11 +308,10 @@ ENTRY e {
 
   const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
   const float approx_hbm_bandwidth =
-      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
-          approx_total_bytes, device_info_);
+      dot_model::GetEffectiveHbmBandwidth(approx_total_bytes, device_info_);
   const absl::Duration approx_hbm_time =
       absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
-      gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
+      dot_model::kLoopLatencyTax;
 
   // For pipelined loops, execution time is bounded by the dominant cost (memory
   // in this case), but imperfect overlap or pipeline setup/teardown costs may

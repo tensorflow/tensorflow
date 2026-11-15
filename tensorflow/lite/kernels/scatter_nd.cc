@@ -129,10 +129,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename IndicesT, typename UpdatesT>
 TfLiteStatus ScatterNd(const TfLiteTensor* indices, const TfLiteTensor* updates,
                        TfLiteTensor* output) {
+  // The zero point is 0 unless the output is quantized.
   return reference_ops::ScatterNd(
       GetTensorShape(indices), GetTensorData<IndicesT>(indices),
       GetTensorShape(updates), GetTensorData<UpdatesT>(updates),
-      GetTensorShape(output), GetTensorData<UpdatesT>(output));
+      GetTensorShape(output), GetTensorData<UpdatesT>(output),
+      static_cast<UpdatesT>(output->params.zero_point));
 }
 
 template <typename IndicesT>
