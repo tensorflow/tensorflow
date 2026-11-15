@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <cstddef>
 #include <limits>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -51,17 +53,17 @@ struct UniqueOpHashMap<tstring, TIndex> {
   using map_type = absl::flat_hash_map<absl::string_view, TIndex>;
 };
 
-// NOTE(mrry): `absl::flat_hash_map<float, ...>` does not allow `NaN` as a key,
-// because `NaN != NaN`, so we fall back to `std::unordered_map<>` for
-// floating-point types.
-template <typename TIndex>
-struct UniqueOpHashMap<float, TIndex> {
-  using map_type = std::unordered_map<float, TIndex>;
-};
-template <typename TIndex>
-struct UniqueOpHashMap<double, TIndex> {
-  using map_type = std::unordered_map<double, TIndex>;
-};
+// NOTE: `absl::flat_hash_map<float, ...>` does not allow `NaN` as a key,
+// because `NaN != NaN`. For `float` and `double` the 1-D fast path below never
+// inserts NaNs into the map (each NaN is assigned a fresh output slot, which is
+// what `std::unordered_map` did implicitly), so the open-addressing map can be
+// used. `absl::Hash` maps -0.0 and +0.0 to the same hash, so they still
+// collapse to the first one seen. `Eigen::half` and `bfloat16` keep
+// `std::unordered_map`.
+template <typename T>
+constexpr bool kUniqueSkipsNaNKeys =
+    std::is_same_v<T, float> || std::is_same_v<T, double>;
+
 template <typename TIndex>
 struct UniqueOpHashMap<Eigen::half, TIndex> {
   using map_type = std::unordered_map<Eigen::half, TIndex>;
@@ -155,7 +157,17 @@ class UniqueOp : public OpKernel {
 
       typename UniqueOpHashMap<T, TIndex>::map_type uniq;
       uniq.reserve(2 * N);
-      for (Eigen::Index i = 0, j = 0; i < N; ++i) {
+      // Input positions of NaNs, which are never inserted into `uniq`.
+      std::vector<Eigen::Index> nan_positions;
+      Eigen::Index j = 0;
+      for (Eigen::Index i = 0; i < N; ++i) {
+        if constexpr (kUniqueSkipsNaNKeys<T>) {
+          if (TF_PREDICT_FALSE(std::isnan(Tin(i)))) {
+            idx_vec(i) = j++;
+            nan_positions.push_back(i);
+            continue;
+          }
+        }
         auto it = uniq.emplace(Tin(i), j);
         idx_vec(i) = it.first->second;
         if (it.second) {
@@ -163,7 +175,7 @@ class UniqueOp : public OpKernel {
         }
       }
 
-      uniq_size = static_cast<int64_t>(uniq.size());
+      uniq_size = static_cast<int64_t>(j);
       TensorShape output_shape(input.shape());
       output_shape.set_dim(axis, uniq_size);
       Tensor* output = nullptr;
@@ -173,6 +185,9 @@ class UniqueOp : public OpKernel {
 
       for (const auto& it : uniq) {
         Tout(it.second) = it.first;
+      }
+      for (const Eigen::Index i : nan_positions) {
+        Tout(idx_vec(i)) = Tin(i);
       }
     } else {
       // General implementation when unique is run over multiple elements.
