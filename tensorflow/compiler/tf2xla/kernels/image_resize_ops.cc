@@ -943,9 +943,10 @@ void ResizeNearestNeighborGradOp::Compile(XlaOpKernelContext* ctx) {
                                ",", in_size[1], "]")));
 
   TensorShape grad_shape = ctx->InputShape(0);
-  OP_REQUIRES(ctx, grad_shape.dims() == 4,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "gradient must be 4-dimensional", grad_shape.DebugString())));
+  OP_REQUIRES(
+      ctx, grad_shape.dims() == 4,
+      absl::InvalidArgumentError(absl::StrCat(
+          "gradient must be 4-dimensional, got ", grad_shape.DebugString())));
   const int64_t grad_batch = grad_shape.dim_size(0);
   const std::vector<int64_t> grad_size = {grad_shape.dim_size(1),
                                           grad_shape.dim_size(2)};
