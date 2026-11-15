@@ -155,6 +155,11 @@ class ArrayCreationTest(test.TestCase):
       self.match_shape(actual, expected, msg)
       self.match_dtype(actual, expected, msg)
 
+    actual = np_array_ops.empty_like([1, 2], order='K', subok=True)
+    expected = np.empty_like([1, 2], order='K', subok=True)
+    self.match_shape(actual, expected)
+    self.match_dtype(actual, expected)
+
   def testZeros(self):
     for s in self.all_shapes:
       actual = np_array_ops.zeros(s)
@@ -188,6 +193,9 @@ class ArrayCreationTest(test.TestCase):
     self.match(
         np_array_ops.zeros_like([1, 2], dtype=np.float32, shape=(2, 3)),
         np.zeros_like([1, 2], dtype=np.float32, shape=(2, 3)))
+    self.match(
+        np_array_ops.zeros_like([1, 2], order='K', subok=True),
+        np.zeros_like([1, 2], order='K', subok=True))
 
   def testOnes(self):
     for s in self.all_shapes:
@@ -222,6 +230,9 @@ class ArrayCreationTest(test.TestCase):
     self.match(
         np_array_ops.ones_like([1, 2], dtype=np.float32, shape=(2, 3)),
         np.ones_like([1, 2], dtype=np.float32, shape=(2, 3)))
+    self.match(
+        np_array_ops.ones_like([1, 2], order='K', subok=True),
+        np.ones_like([1, 2], order='K', subok=True))
 
   def testEye(self):
     n_max = 3

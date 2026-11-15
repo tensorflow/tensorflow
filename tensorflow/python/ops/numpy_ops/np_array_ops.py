@@ -58,8 +58,8 @@ def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.empty_like', v1=[])
 @np_utils.np_doc('empty_like')
-def empty_like(a, dtype=None, shape=None):
-  return zeros_like(a, dtype, shape)
+def empty_like(a, dtype=None, order='K', subok=True, shape=None):
+  return zeros_like(a, dtype, order, subok, shape)
 
 
 @tf_export.tf_export('experimental.numpy.zeros', v1=[])
@@ -73,7 +73,12 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.zeros_like', v1=[])
 @np_utils.np_doc('zeros_like')
-def zeros_like(a, dtype=None, shape=None):  # pylint: disable=missing-docstring
+def zeros_like(a, dtype=None, order='K', subok=True, shape=None):  # pylint: disable=missing-docstring
+  if order != 'K':
+    raise ValueError('Non-standard orders are not supported.')
+  if not subok:
+    raise ValueError('subok being False is not supported.')
+
   dtype = np_utils.result_type_unary(a, dtype)
 
   dtype = dtypes.as_dtype(dtype)  # Work around b/149877262
@@ -92,7 +97,12 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.ones_like', v1=[])
 @np_utils.np_doc('ones_like')
-def ones_like(a, dtype=None, shape=None):
+def ones_like(a, dtype=None, order='K', subok=True, shape=None):
+  if order != 'K':
+    raise ValueError('Non-standard orders are not supported.')
+  if not subok:
+    raise ValueError('subok being False is not supported.')
+
   dtype = np_utils.result_type_unary(a, dtype)
   if shape is not None:
     return array_ops.ones(shape, dtype=dtype)
