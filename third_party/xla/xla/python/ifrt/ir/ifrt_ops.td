@@ -98,7 +98,9 @@ def Ifrt_AssembleOp
     Builds a larger array out of individual per-device arrays.
 
     On each device, the local shard of the result array is the input array.
-    Thus, in an efficient implementation, no buffer transfer is needed.
+    By default (`donated = false`), the output array aliases the input buffers;
+    when `donated = true`, the input arrays are donated to construct the
+    output array.
 
     The inputs' `device` parameter must have size 1. They should be distinct and
     combine to the output's `device` list.
@@ -106,13 +108,14 @@ def Ifrt_AssembleOp
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$control_inputs);
+    Variadic<Ifrt_ControlType>:$control_inputs,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
   let results = (outs
     Ifrt_ArrayType:$output,
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `(` $inputs `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($inputs, $output)
   }];
 
@@ -125,7 +128,9 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble", [NestedInIfrtFunc]> {
     Breaks an array up into per-device arrays.
 
     On each device, the result array is its local shard in the input array.
-    Thus, in an efficient implementation, no buffer transfer is needed.
+    By default (`donated = false`), the output arrays alias the local shards of
+    the input array; when `donated = true`, the input array is donated to
+    construct the output arrays.
 
     The outputs' `devices` parameter must have size 1. They should be distinct
     and combine to the input's `devices` list.
@@ -133,13 +138,14 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble", [NestedInIfrtFunc]> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
-    Variadic<Ifrt_ControlType>:$control_inputs);
+    Variadic<Ifrt_ControlType>:$control_inputs,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
   let results = (
     outs Variadic<Ifrt_ArrayType>:$outputs,
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $input `)` oilist(`after` $control_inputs) attr-dict
+    `(` $input `)` oilist(`after` $control_inputs) prop-dict attr-dict
     `:` functional-type($input, $outputs)
   }];
 

@@ -125,6 +125,7 @@ func.func @op_assemble(%arg0: !array_ad0, %arg1: !array_ad1)
     attributes {ifrt.function} {
   // CHECK: "vifrt.AssembleV1"(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 2, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -137,6 +138,7 @@ func.func @op_assemble(%arg0: !array_ad0, %arg1: !array_ad1)
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @op_disassemble(%arg0: !array_ad2) attributes {ifrt.function} {
   // CHECK: "vifrt.DisassembleV1"(%[[ARG0]])
+  // CHECK-SAME: <{donated = false}>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
     : (!array_ad2) -> (!array_ad0, !array_ad1)

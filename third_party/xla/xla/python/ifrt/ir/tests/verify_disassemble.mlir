@@ -31,6 +31,22 @@ func.func @good_disassemble(
 
 // -----
 
+func.func @good_disassemble_donated(
+    %arg0: !ifrt.array<tensor<2x4xi32>,
+                       #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]> {ifrt.donated})
+    attributes {ifrt.function} {
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0) <donated=true>
+      : (!ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
+      -> (!ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>,
+          !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>)
+  return
+}
+
+// -----
+
 func.func @disassemble_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x4xi32>,
                        #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>) {

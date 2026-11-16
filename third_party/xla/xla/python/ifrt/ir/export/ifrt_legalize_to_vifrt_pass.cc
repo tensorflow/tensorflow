@@ -294,21 +294,23 @@ mlir::LogicalResult addDefaultAttrs(
         convertGeneric(ifrt_attr, pattern.getTypeConverter()));
   };
 
-  if constexpr (std::is_same<IfrtOpTy, CopyArraysOp>::value) {
+  if constexpr (std::is_same_v<IfrtOpTy, CopyArraysOp>) {
     if (!ifrt_op.getDonatedAttr()) {
       add_default_attr("donated", builder.getBoolAttr(false));
     }
     if (!ifrt_op.getReuseAttr()) {
       add_default_attr("reuse", builder.getBoolAttr(false));
     }
-  } else if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
-                       std::is_same<IfrtOpTy, RemapArraysOp>::value ||
-                       std::is_same<IfrtOpTy, BitcastArraysOp>::value) {
+  } else if constexpr (std::is_same_v<IfrtOpTy, ReshardOp> ||
+                       std::is_same_v<IfrtOpTy, AssembleOp> ||
+                       std::is_same_v<IfrtOpTy, DisassembleOp> ||
+                       std::is_same_v<IfrtOpTy, RemapArraysOp> ||
+                       std::is_same_v<IfrtOpTy, BitcastArraysOp>) {
     if (!ifrt_op.getDonatedAttr()) {
       add_default_attr("donated", builder.getBoolAttr(false));
     }
-  } else if constexpr (std::is_same<IfrtOpTy, CallOp>::value ||
-                       std::is_same<IfrtOpTy, CallLoadedExecutableOp>::value) {
+  } else if constexpr (std::is_same_v<IfrtOpTy, CallOp> ||
+                       std::is_same_v<IfrtOpTy, CallLoadedExecutableOp>) {
     if (!ifrt_op.getIoAliasesAttr()) {
       add_default_attr("io_aliases", builder.getArrayAttr({}));
     }
@@ -316,7 +318,7 @@ mlir::LogicalResult addDefaultAttrs(
       add_default_attr("donated_input_indices",
                        builder.getDenseI32ArrayAttr({}));
     }
-  } else if constexpr (std::is_same<IfrtOpTy, mlir::func::FuncOp>::value) {
+  } else if constexpr (std::is_same_v<IfrtOpTy, mlir::func::FuncOp>) {
     if (!ifrt_op.getSymVisibilityAttr()) {
       add_default_attr(
           "sym_visibility",
@@ -363,7 +365,7 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
 
     // Special case ops.
     llvm::DenseSet<mlir::StringAttr> already_converted_attrs;
-    if constexpr (std::is_same<IfrtOpTy, CallOp>::value) {
+    if constexpr (std::is_same_v<IfrtOpTy, CallOp>) {
       auto call_op = static_cast<CallOp>(ifrt_op);
       // Convert the callee from SymbolRefAttr to StringAttr so that DCE
       // can remove the atom programs, which have independently legalized to

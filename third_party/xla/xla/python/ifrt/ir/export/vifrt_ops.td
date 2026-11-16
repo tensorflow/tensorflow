@@ -84,7 +84,8 @@ def Vifrt_AssembleOpV1
     : Vifrt_Op<"AssembleV1", "0.1.0", "current", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Variadic<Vifrt_AnyType>:$inputs,
-    Variadic<Vifrt_AnyType>:$control_inputs);
+    Variadic<Vifrt_AnyType>:$control_inputs,
+    Vifrt_AnyAttr:$donated);
   let results = (outs
     Vifrt_AnyType:$output,
     Vifrt_AnyType:$control_output);
@@ -93,7 +94,8 @@ def Vifrt_AssembleOpV1
 def Vifrt_DisassembleOpV1 : Vifrt_Op<"DisassembleV1", "0.1.0", "current", []> {
   let arguments = (ins
     Vifrt_AnyType:$input,
-    Variadic<Vifrt_AnyType>:$control_inputs);
+    Variadic<Vifrt_AnyType>:$control_inputs,
+    Vifrt_AnyAttr:$donated);
   let results = (outs
     Variadic<Vifrt_AnyType>:$outputs,
     Vifrt_AnyType:$control_output);
