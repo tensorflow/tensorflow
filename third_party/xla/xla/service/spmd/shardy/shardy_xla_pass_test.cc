@@ -1648,8 +1648,7 @@ TEST_P(ShardyXLATest, ComputeOnStartDoneShmapAg) {
   EXPECT_THAT(
       start,
       op::Sharding("{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
-  EXPECT_FALSE(start->frontend_attributes().map().contains(
-      "xla.sdy.is_compute_on_start"));
+  EXPECT_FALSE(start->has_frontend_attribute("xla.sdy.is_compute_on_start"));
   ASSERT_EQ(start->called_computations().size(), 1);
   const HloComputation* computeOn = start->called_computations()[0];
   // Verify %compute_on.2 parameter and root shardings.
@@ -1704,8 +1703,7 @@ TEST_P(ShardyXLATest, ComputeOnStartDoneReshardAg) {
   EXPECT_THAT(
       start,
       op::Sharding("{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
-  EXPECT_FALSE(start->frontend_attributes().map().contains(
-      "xla.sdy.is_compute_on_start"));
+  EXPECT_FALSE(start->has_frontend_attribute("xla.sdy.is_compute_on_start"));
   ASSERT_EQ(start->called_computations().size(), 1);
   const HloComputation* computeOn = start->called_computations()[0];
   // Verify %compute_on.1 parameter and root shardings across the reshard.

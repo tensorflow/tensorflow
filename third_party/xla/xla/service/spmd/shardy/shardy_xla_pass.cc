@@ -503,10 +503,9 @@ absl::StatusOr<bool> eraseInlineableAttrForShardyManualComputations(
       if (instruction->opcode() == HloOpcode::kCall &&
           absl::StrContains(instruction->to_apply()->name(),
                             sdy::kManualComputationFuncName.str())) {
-        auto it =
-            instruction->frontend_attributes().map().find(kXlaInlineableAttr);
-        if (it != instruction->frontend_attributes().map().end()) {
-          absl::string_view value = it->second;
+        if (std::optional<std::string> inlineable =
+                instruction->get_frontend_attribute(kXlaInlineableAttr)) {
+          absl::string_view value = *inlineable;
           TF_RET_CHECK(value == "false" || value == "xla_late" ||
                        value == "auto")
               << "Unexpected inlineable attribute value: " << value;
