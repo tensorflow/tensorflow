@@ -222,6 +222,8 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -229,6 +231,7 @@ tsl_cc_test(
         "@riegeli//riegeli/records:record_reader",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
