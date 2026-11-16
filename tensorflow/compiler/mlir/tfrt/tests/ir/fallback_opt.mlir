@@ -31,7 +31,7 @@ func.func @const_dense_tensor() -> !tfrt_fallback.tf_tensor {
 // CHECK-LABEL: func @const_string_tensor
 func.func @const_string_tensor() -> !tfrt_fallback.tf_tensor {
   // CHECK: tfrt_fallback_async.const_string_tensor
-  %0 = tfrt_fallback_async.const_string_tensor {shape = [1, 2], value = ["const", "string"], _tfrt_cost = 1 : i64}
+  %0 = tfrt_fallback_async.const_string_tensor <shape = [1, 2], value = ["const", "string"]> {_tfrt_cost = 1 : i64}
   tfrt.return %0 : !tfrt_fallback.tf_tensor
 }
 
@@ -39,11 +39,11 @@ func.func @const_string_tensor() -> !tfrt_fallback.tf_tensor {
 func.func @convert() -> !corert.tensorhandle {
   %0 = corert.const_dense_tensor dense<0.0> : tensor<f32>
   // CHECK: tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor
-  %1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %0 {_tfrt_cost = 1 : i64, device = "cpu"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
+  %1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %0 <device = "cpu"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   // CHECK: tfrt_fallback_async.executeop key(0) cost(100) device("cpu") "tf.Relu"(%{{.*}}) {T = f32} : 1
   %2 = tfrt_fallback_async.executeop key(0) cost(100) device("cpu") "tf.Relu"(%1) {T = f32} : 1
   // CHECK: tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle
-  %3 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %2 {_tfrt_cost = 1 : i64, device="cpu"} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
+  %3 = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle %2 <device = "cpu"> {_tfrt_cost = 1 : i64} : (!tfrt_fallback.tf_tensor) -> (!corert.tensorhandle)
   tfrt.return %3 : !corert.tensorhandle
 }
 
@@ -71,12 +71,12 @@ func.func @fallback_resource(%ch0: !tfrt.chain) -> !tfrt.chain {
   %ra = tfrt_fallback_async.const_dense_tensor dense<0.0> : tensor<f32> {_tfrt_cost = 1 : i64}
   %rb = tfrt_fallback_async.const_dense_tensor dense<0.5> : tensor<f32> {_tfrt_cost = 1 : i64}
 
-  // CHECK: tfrt_fallback_async.set_resource {{%.*}}, {{%.*}} {device = "cpu", index = 0 : i64}
-  // CHECK: tfrt_fallback_async.set_resource {{%.*}}, {{%.*}} {device = "cpu", index = 1 : i64}
-  // CHECK: tfrt_fallback_async.get_resource {{%.*}} {_tfrt_cost = 1 : i64, device = "cpu", indices = [0, 1]}
-  %ch1 = tfrt_fallback_async.set_resource %ch0, %ra {device = "cpu", index = 0 : i64}
-  %ch2 = tfrt_fallback_async.set_resource %ch1, %rb {device = "cpu", index = 1 : i64}
-  %ch3, %a, %b = tfrt_fallback_async.get_resource %ch2 {_tfrt_cost = 1 : i64, device = "cpu", indices = [0 : i64, 1 : i64]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  // CHECK: tfrt_fallback_async.set_resource {{%.*}}, {{%.*}} <device = "cpu", index = 0>
+  // CHECK: tfrt_fallback_async.set_resource {{%.*}}, {{%.*}} <device = "cpu", index = 1>
+  // CHECK: tfrt_fallback_async.get_resource {{%.*}} <device = "cpu", indices = [0, 1]> {_tfrt_cost = 1 : i64}
+  %ch1 = tfrt_fallback_async.set_resource %ch0, %ra <device = "cpu", index = 0>
+  %ch2 = tfrt_fallback_async.set_resource %ch1, %rb <device = "cpu", index = 1>
+  %ch3, %a, %b = tfrt_fallback_async.get_resource %ch2 <device = "cpu", indices = [0, 1]> {_tfrt_cost = 1 : i64} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   tfrt.return %ch3: !tfrt.chain
 }

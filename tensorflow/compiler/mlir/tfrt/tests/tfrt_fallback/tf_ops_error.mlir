@@ -36,7 +36,7 @@ func.func @test_parse_example_v2_error() -> !tfrt_fallback.tf_tensor {
   %ch3, %zero = tfrt_fallback_async.executeop.seq(%ch2) key(0) cost(100) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<0> : tensor<i64>} : 1
   %ch4, %one = tfrt_fallback_async.executeop.seq(%ch2) key(1) cost(100) device("CPU:0") "tf.Const"() {dtype = i64, value = dense<1> : tensor<i64>} : 1
 
-  %serialized, %names, %dense_keys = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th, %names_th, %dense_keys_th {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %serialized, %names, %dense_keys = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %serialized_th, %names_th, %dense_keys_th <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   // expected-error @+1 {{Expected serialized to be a scalar or vector, got shape: [2,1]}}
   %dense_values:7 = tfrt_fallback_async.executeop key(2) cost(100) device("CPU:0")
@@ -51,7 +51,7 @@ func.func @test_assign_variable_error() -> !tfrt.chain {
   %ch0 = tfrt.new.chain
   %th0 = corert.const_dense_tensor dense<1> : tensor<i32>
   %th1 = corert.const_dense_tensor dense<1.0> : tensor<f32>
-  %0, %1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %th0, %th1 {_tfrt_cost = 1 : i64, device = "CPU:0"} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
+  %0, %1 = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %th0, %th1 <device = "CPU:0"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle, !corert.tensorhandle) -> (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
 
   %ch1 = tfrt_fallback_async.createop(%ch0) key(3) device("CPU:0") "tf.VarHandleOp"() {container = "", dtype = f32, shape = #corert.shape<>, shared_name = "x"} num_args(0)
   %ch2 = tfrt_fallback_async.createop(%ch1) key(4) device("CPU:0") "tf.AssignVariableOp"() {dtype = f32} num_args(2)

@@ -28,7 +28,7 @@ func.func @init(%in_ch: !tfrt.chain) -> !tfrt.chain {
 
 func.func @run(%in_ch: !tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor){
   %x_th= corert.const_dense_tensor dense<1> : tensor<i32>
-  %x = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %x_th {_tfrt_cost = 1 : i64, device = "cpu"} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
+  %x = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor %x_th <device = "cpu"> {_tfrt_cost = 1 : i64} : (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   %res = tfrt_fallback_async.executeop key(0) cost(100) device("cpu") "tf.AddV2"(%x, %x) { T = i32 } : 1
   tfrt.return %in_ch, %res : !tfrt.chain, !tfrt_fallback.tf_tensor
 }

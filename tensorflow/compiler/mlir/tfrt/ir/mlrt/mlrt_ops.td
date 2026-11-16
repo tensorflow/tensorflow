@@ -68,7 +68,7 @@ def AsyncOp: Mlrt_Op<"async", []> {
     MlrtAsyncHandleType:$handle
   );
 
-  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $handle)";
+  let assemblyFormat = "`(` $args `)` prop-dict attr-dict `:` functional-type($args, $handle)";
 }
 
 def AwaitHandleOp: Mlrt_Op<"await_handle", []> {

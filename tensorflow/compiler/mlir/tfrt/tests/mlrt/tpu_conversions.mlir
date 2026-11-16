@@ -90,9 +90,9 @@ func.func @test_fuse_dynamic_dimension_ops(%arg0: tensor<*xi32>, %arg1: tensor<*
   %1 = "tf.Shape"(%arg0) {__op_key = 1: i32, device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
   %2 = "tf.Shape"(%0) {__op_key = 2: i32, device = "/CPU:0"} : (tensor<*xi32>) -> tensor<?xi64>
   // CHECK: [[rendezvous_key_base:%.*]], [[result_future:%.*]] = tf_mlrt_tpu.compile_and_execute
-  // CHECK-SAME: constant_operand_indices = array<i32: 2>
+  // CHECK-SAME: constant_operand_indices = [2]
   // CHECK-SAME: num_operands = 4
-  // CHECK-SAME: operands_with_static_shape = array<i32: 0, 1, 3>
+  // CHECK-SAME: operands_with_static_shape = [0, 1, 3]
   %rendezvous_key_base, %results = "tf.TPUCompileMlirAndExecute"(%arg0, %2, %0, %1, %arg5, %arg6, %arg7) {operands_with_static_shape = [0 : i32, 1 : i32, 3 : i32], metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 4, 3>, producer_name = "producer_name"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
   func.return %results : tensor<*xi32>
 }
@@ -140,7 +140,7 @@ func.func @preserve_constant_args(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.r
   // CHECK-SAME: Cast
   %0 = "tf.Cast"(%arg0) {__op_key = 3: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
   // CHECK: tf_mlrt_tpu.compile_and_execute({{%.*}}, [[cast]]
-  // CHECK-SAME: constant_operand_indices = array<i32: 1, 3, 4>
+  // CHECK-SAME: constant_operand_indices = [1, 3, 4]
   %1, %2 = "tf.TPUCompileMlirAndExecute"(%0, %v1, %0, %v2, %v0, %arg0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 6, 0>, producer_name = "producer_name"} : (tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
   func.return %2 : tensor<i32>
 }

@@ -33,7 +33,6 @@ def FallbackAsync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_async";
-  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 class FallbackAsync_Op<string mnemonic, list<Trait> traits = []> :
@@ -63,7 +62,7 @@ def SetResourceOp : FallbackAsync_Op<"set_resource", [CoreRT_TypedAttributeTrait
     TFRT_ChainType:$out_ch
   );
 
-  let assemblyFormat = "operands attr-dict";
+  let assemblyFormat = "operands prop-dict attr-dict";
 }
 
 def GetResourceOp : FallbackAsync_Op<"get_resource",
@@ -91,7 +90,7 @@ def GetResourceOp : FallbackAsync_Op<"get_resource",
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "operands attr-dict `:` `(` type($in_ch) `)` `->` `(` type($out_ch) `,` type($results) `)`";
+  let assemblyFormat = "operands prop-dict attr-dict `:` `(` type($in_ch) `)` `->` `(` type($out_ch) `,` type($results) `)`";
 }
 
 def ConstTensorProtoOp : FallbackAsync_Op<"const_tensor_proto",
@@ -151,12 +150,12 @@ def ConstStringTensorOp : FallbackAsync_Op<"const_string_tensor",
     ConstStringTensorOp creates a constant string tensorflow tensor.
 
     Example:
-      %tensor = tfrt_fallback_async.const_string_tensor {shape = [1, 2], value = ["const", "string"]}
+      %tensor = tfrt_fallback_async.const_string_tensor <shape = [1, 2], value = ["const", "string"]>
 
     Note: if the entries in `value` are all the same, we can just keep one copy.
       In other words, the following two lines are effectively the same.
-      %tensor = tfrt_fallback_async.const_string_tensor {shape = [1, 2], value = ["string", "string"]}
-      %tensor = tfrt_fallback_async.const_string_tensor {shape = [1, 2], value = ["string"]}
+      %tensor = tfrt_fallback_async.const_string_tensor <shape = [1, 2], value = ["string", "string"]>
+      %tensor = tfrt_fallback_async.const_string_tensor <shape = [1, 2], value = ["string"]>
   }];
 
   let arguments = (ins
@@ -168,7 +167,7 @@ def ConstStringTensorOp : FallbackAsync_Op<"const_string_tensor",
     TFTensorType:$result
   );
 
-  let assemblyFormat = "attr-dict";
+  let assemblyFormat = "prop-dict attr-dict";
 }
 
 def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
@@ -196,7 +195,7 @@ def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
     Variadic<CoreRT_TensorHandleType>:$results
   );
 
-  let assemblyFormat = "operands attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
+  let assemblyFormat = "operands prop-dict attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
 }
 
 def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
@@ -224,7 +223,7 @@ def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "operands attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
+  let assemblyFormat = "operands prop-dict attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
 
   let hasCanonicalizer = 1;
 }
