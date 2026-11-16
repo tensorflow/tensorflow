@@ -1,0 +1,80 @@
+--- a/test/Conversion/warp_specialize_to_llvm.mlir
++++ b/test/Conversion/warp_specialize_to_llvm.mlir
+@@ -257,11 +257,8 @@
+ 
+   // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+-  // CHECK-NEXT: llvm.br [[DEFAULT_PARTITION:\^.*]]
+-  // CHECK: [[DEFAULT_PARTITION]]:
+   // CHECK-NEXT: "default"
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+-  // CHECK-NEXT: llvm.br [[AFTER:\^.*]]
+ 
+   // AMD: [[WID:%.*]] = rocdl.wave.id : i32
+   // AMD-NEXT: [[IS_DEFAULT:%.*]] = llvm.icmp "ult" [[WID]], [[C4]]
+@@ -328,11 +325,8 @@
+ 
+   // AMD: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+-  // AMD-NEXT: llvm.br [[DEFAULT_PARTITION:\^bb[0-9]+]]
+-  // AMD: [[DEFAULT_PARTITION]]:
+   // AMD-NEXT: "default"
+   // AMD-NEXT: rocdl.barrier
+-  // AMD-NEXT: llvm.br [[AFTER:\^bb[0-9]+]]
+ 
+   "before"() : () -> ()
+   ttg.warp_specialize() attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4, 8, 10>}
+@@ -352,7 +346,6 @@
+     "partition2"() : () -> ()
+     ttg.warp_return
+   } : () -> ()
+-  // CHECK: [[AFTER]]:
+   // CHECK-NEXT: "after"
+ 
+   // CHECK-NEXT: [[SMEM_BASE:%.*]] = llvm.getelementptr [[SMEM_ADDR]][32]
+@@ -373,7 +366,6 @@
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: llvm.return
+ 
+-  // AMD: [[AFTER:\^bb[0-9]+]]:
+   // AMD-NEXT: "after"
+ 
+   // AMD-NEXT: [[SMEM_BASE:%.*]] = llvm.getelementptr [[SMEM_ADDR]][32]
+@@ -881,8 +873,6 @@
+ 
+   // CHECK: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+-  // CHECK: llvm.br [[DEFAULT:\^.*]]
+-  // CHECK: [[DEFAULT]]:
+   // CHECK-NEXT: "something"()[[[A:\^.*]], [[B:\^.*]]]
+   // CHECK: [[A]]:
+   // CHECK-NEXT: "A"
+@@ -907,8 +897,6 @@
+ 
+   // AMD: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+-  // AMD: llvm.br [[DEFAULT:\^bb[0-9]+]]
+-  // AMD: [[DEFAULT]]:
+   // AMD-NEXT: "something"()[[[A:\^bb[0-9]+]], [[B:\^bb[0-9]+]]]
+   // AMD: [[A]]:
+   // AMD-NEXT: "A"
+@@ -978,7 +966,6 @@
+   %0 = builtin.unrealized_conversion_cast %cap : !llvm.ptr<1> to !tt.ptr<i32>
+   %1 = ttg.warp_specialize(%0) attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4>}
+   default {
+-    // COMMON: llvm.br [[AFTER:\^.*]]([[CAP]] : !llvm.ptr<1>)
+     ttg.warp_yield %0 : !tt.ptr<i32>
+   }
+   partition0(%arg1: !tt.ptr<i32>) num_warps(2) {
+@@ -986,9 +973,8 @@
+     %4 = llvm.load %3 : !llvm.ptr<1> -> i32
+     ttg.warp_return
+   } : (!tt.ptr<i32>) -> !tt.ptr<i32>
+-  // COMMON: [[AFTER]]([[OUT:%.*]]: !llvm.ptr<1>):
+   %2 = builtin.unrealized_conversion_cast %1 : !tt.ptr<i32> to !llvm.ptr<1>
+-  // COMMON-NEXT: "use"([[OUT]])
++  // COMMON: "use"([[CAP]])
+   "use"(%2) : (!llvm.ptr<1>) -> ()
+   llvm.return
+ }
+
