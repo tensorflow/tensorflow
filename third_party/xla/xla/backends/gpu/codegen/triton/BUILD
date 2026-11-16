@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["fusion.h"],
     visibility = [
         "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends/gpu/transforms:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [

@@ -435,5 +435,199 @@ ENTRY main {
 )"));
   EXPECT_TRUE(filecheck_matched) << module->ToString();
 }
+
+TEST_F(HorizontalFusionTest, FusesLoopAndTritonFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_loop {
+  p0 = f32[256]{0} parameter(0)
+  ROOT neg = f32[256]{0} negate(p0)
+}
+
+fused_triton {
+  p1 = f32[64,64]{1,0} parameter(0)
+  ROOT exp = f32[64,64]{1,0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[256]{0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  f0 = f32[256]{0} fusion(p0), kind=kLoop, calls=fused_loop
+  f1 = f32[64,64]{1,0} fusion(p1), kind=kCustom, calls=fused_triton,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16","64"]}],
+        "num_warps":"2",
+        "num_ctas":1,
+        "num_stages":1
+      }
+    }}
+  ROOT out = (f32[256]{0}, f32[64,64]{1,0}) tuple(f0, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: horizontal_fusion_computation
+// CHECK-DAG: %[[LOOP:.*]] = f32[256]{0} fusion({{.*}}), kind=kLoop, calls=%fused_loop
+// CHECK-DAG: %[[TRITON:.*]] = f32[64,64]{1,0} fusion({{.*}}), kind=kCustom, calls=%fused_triton{{.*}}, backend_config={{.*}}"kind":"__triton"
+// CHECK: ROOT %{{.*}} = (f32[256]{0}, f32[64,64]{1,0}) tuple(%[[LOOP]], %[[TRITON]])
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
+
+TEST_F(HorizontalFusionTest,
+       DoesNotFuseTritonFusionWithoutBlockLevelFusionConfig) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_loop {
+  p0 = f32[256]{0} parameter(0)
+  ROOT neg = f32[256]{0} negate(p0)
+}
+
+fused_triton {
+  p1 = f32[64,64]{1,0} parameter(0)
+  ROOT exp = f32[64,64]{1,0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[256]{0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  f0 = f32[256]{0} fusion(p0), kind=kLoop, calls=fused_loop
+  f1 = f32[64,64]{1,0} fusion(p1), kind=kCustom, calls=fused_triton,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  ROOT out = (f32[256]{0}, f32[64,64]{1,0}) tuple(f0, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(HorizontalFusionTest, FusesPhasedBlockClusterAndLoopFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+phase0_comp {
+  p0 = f32[512]{0} parameter(0)
+  ROOT neg = f32[512]{0} negate(p0)
+}
+
+phase1_comp {
+  p0 = f32[512]{0} parameter(0)
+  ROOT rev = f32[512]{0} reverse(p0), dimensions={0}
+}
+
+phased_cluster {
+  p0 = f32[512]{0} parameter(0)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=phase0_comp
+  f1 = f32[512]{0} fusion(f0), kind=kLoop, calls=phase1_comp
+  ROOT t = (f32[512]{0}, f32[512]{0}) tuple(f0, f1)
+}
+
+fused_loop {
+  p1 = f32[1024]{0} parameter(0)
+  ROOT exp = f32[1024]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[1024]{0} parameter(1)
+  c0 = (f32[512]{0}, f32[512]{0}) fusion(p0), kind=kCustom,
+    calls=phased_cluster,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c0_1 = f32[512]{0} get-tuple-element(c0), index=1
+  f1 = f32[1024]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  ROOT out = (f32[512]{0}, f32[1024]{0}) tuple(c0_1, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: horizontal_fusion_computation
+// CHECK-DAG: %[[PHASED:.*]] = (f32[512]{0}, f32[512]{0}) fusion({{.*}}), kind=kCustom, calls=%phased_cluster{{.*}}, backend_config={{.*}}"kind":"__phased_block_cluster"
+// CHECK-DAG: %[[LOOP:.*]] = f32[1024]{0} fusion({{.*}}), kind=kLoop, calls=%fused_loop
+// CHECK: ROOT %{{.*}} = (f32[512]{0}, f32[512]{0}, f32[1024]{0}) tuple(%[[PHASED]]#0, %[[PHASED]]#1, %[[LOOP]])
+// CHECK: ENTRY %main
+// CHECK: %[[HF:.*]] = (f32[512]{0}, f32[512]{0}, f32[1024]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation, backend_config={{.*}}"kind":"__thread_block_specialized"
+// CHECK: ROOT %{{.*}} = (f32[512]{0}, f32[1024]{0}) tuple(%[[HF]]#1, %[[HF]]#2)
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
+
+TEST_F(HorizontalFusionTest,
+       DoesNotFuseTritonFusionWithTmaOrWarpSpecialization) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_loop {
+  p0 = f32[256]{0} parameter(0)
+  ROOT neg = f32[256]{0} negate(p0)
+}
+
+fused_triton_tma {
+  p1 = f32[64,64]{1,0} parameter(0)
+  ROOT exp = f32[64,64]{1,0} exponential(p1)
+}
+
+fused_triton_ws {
+  p2 = f32[64,64]{1,0} parameter(0)
+  ROOT tanh = f32[64,64]{1,0} tanh(p2)
+}
+
+ENTRY main {
+  p0 = f32[256]{0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  p2 = f32[64,64]{1,0} parameter(2)
+  f0 = f32[256]{0} fusion(p0), kind=kLoop, calls=fused_loop
+  f1 = f32[64,64]{1,0} fusion(p1), kind=kCustom, calls=fused_triton_tma,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16","64"]}],
+        "num_warps":"2",
+        "num_ctas":1,
+        "num_stages":1,
+        "is_tma_allowed":true
+      }
+    }}
+  f2 = f32[64,64]{1,0} fusion(p2), kind=kCustom, calls=fused_triton_ws,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16","64"]}],
+        "num_warps":"2",
+        "num_ctas":1,
+        "num_stages":1,
+        "is_warp_specialization_allowed":true
+      }
+    }}
+  ROOT out = (f32[256]{0}, f32[64,64]{1,0}, f32[64,64]{1,0}) tuple(f0, f1, f2)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace xla::gpu

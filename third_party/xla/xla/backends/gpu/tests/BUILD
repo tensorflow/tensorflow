@@ -289,6 +289,8 @@ xla_test(
         "//xla/backends/gpu/transforms:horizontal_fusion",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:status_matchers",

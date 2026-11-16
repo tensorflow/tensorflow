@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
@@ -406,6 +408,147 @@ ENTRY main {
 
   ROOT result = (f32[1024]{0}, f32[1024]{0}, f32[512]{0})
       tuple(gte0, gte1, f_single)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(HorizontalFusionTest, LoopPlusTritonSoftmaxNestedKernel) {
+  const auto* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton requires Ampere or newer CUDA GPU.";
+  }
+
+  constexpr absl::string_view kHloText = R"(
+HloModule loop_plus_triton_softmax, is_scheduled=true
+
+max_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT max = f32[] maximum(lhs, rhs)
+}
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+fused_loop {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  mul0 = f32[512]{0} multiply(p0, p1)
+  ROOT out_loop = f32[512]{0} add(mul0, p0)
+}
+
+triton_softmax_computation {
+  p = f32[8,128]{1,0} parameter(0)
+  neg_inf = f32[] constant(-inf)
+  row_max = f32[8]{0} reduce(p, neg_inf), dimensions={1}, to_apply=max_f32
+  row_max_bcast = f32[8,128]{1,0} broadcast(row_max), dimensions={0}
+  shifted = f32[8,128]{1,0} subtract(p, row_max_bcast)
+  exps = f32[8,128]{1,0} exponential(shifted)
+  zero = f32[] constant(0)
+  row_sum = f32[8]{0} reduce(exps, zero), dimensions={1}, to_apply=add_f32
+  row_sum_bcast = f32[8,128]{1,0} broadcast(row_sum), dimensions={0}
+  ROOT softmax = f32[8,128]{1,0} divide(exps, row_sum_bcast)
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  p2 = f32[8,128]{1,0} parameter(2)
+
+  out_loop = f32[512]{0} fusion(p0, p1), kind=kLoop, calls=fused_loop
+
+  out_triton = f32[8,128]{1,0} fusion(p2), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","128"]}],
+        "num_warps":"2",
+        "num_ctas":1,
+        "num_stages":1,
+        "is_tma_allowed":false}}}
+
+  ROOT result = (f32[512]{0}, f32[8,128]{1,0}) tuple(out_loop, out_triton)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: %horizontal_fusion_computation
+// CHECK-DAG: fusion({{.*}}), kind=kLoop, calls=%fused_loop
+// CHECK-DAG: fusion({{.*}}), kind=kCustom, calls=%triton_softmax_computation
+// CHECK: ROOT {{.*}} = (f32[512]{0}, f32[8,128]{1,0}) tuple(
+// CHECK: ENTRY %main
+// CHECK: fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
+)"));
+  EXPECT_TRUE(filecheck_matched);
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(HorizontalFusionTest, PhasedBlockClusterPlusLoopNestedKernel) {
+  const auto* cuda_cc =
+      device_description().gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr || !cuda_cc->IsAtLeastHopper()) {
+    GTEST_SKIP() << "PhasedBlockCluster requires Hopper or newer CUDA GPU.";
+  }
+
+  constexpr absl::string_view kHloText = R"(
+HloModule phased_plus_loop, is_scheduled=true
+
+phase0_comp {
+  p0 = f32[512]{0} parameter(0)
+  ROOT neg = f32[512]{0} negate(p0)
+}
+
+phase1_comp {
+  p0 = f32[512]{0} parameter(0)
+  ROOT rev = f32[512]{0} reverse(p0), dimensions={0}
+}
+
+phased_cluster {
+  p0 = f32[512]{0} parameter(0)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=phase0_comp
+  f1 = f32[512]{0} fusion(f0), kind=kLoop, calls=phase1_comp
+  ROOT t = (f32[512]{0}, f32[512]{0}) tuple(f0, f1)
+}
+
+fused_loop {
+  p1 = f32[1024]{0} parameter(0)
+  ROOT exp = f32[1024]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[1024]{0} parameter(1)
+
+  c0 = (f32[512]{0}, f32[512]{0}) fusion(p0), kind=kCustom,
+    calls=phased_cluster,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c0_1 = f32[512]{0} get-tuple-element(c0), index=1
+  f1 = f32[1024]{0} fusion(p1), kind=kLoop, calls=fused_loop
+
+  ROOT result = (f32[512]{0}, f32[1024]{0}) tuple(c0_1, f1)
 }
 )";
 

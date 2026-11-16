@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/thread_block_specialized.h"
+#include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -82,13 +83,6 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  // Native MLIR fusions only. This is only a first filter. The call to
-  // CreateNativeNestedEmitter below verifies that fusion actually can be
-  // emitted with a native emitter.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return std::nullopt;
-  }
-
   // Dead or side-effecting fusions are not supported.
   if (fusion->IsDead() || fusion->HasSideEffect() ||
       !fusion->output_to_operand_aliasing().empty()) {
@@ -105,15 +99,31 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  // TODO(b/480040242): Consider unrolling small fusions in grid-bound
-  // horizontal fusions as well.
-  std::unique_ptr<MlirKernelEmitter> emitter =
-      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
-          analysis, /*unroll_small_fusions=*/false);
-  if (emitter == nullptr) {
+  LaunchDimensions launch_dims;
+  if (analysis.emitter_fusion_kind() ==
+      HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized) {
+    launch_dims = ThreadBlockSpecializedFusion(analysis).launch_dimensions();
+  } else if (analysis.emitter_fusion_kind() ==
+             HloFusionAnalysis::EmitterFusionKind::kTriton) {
+    std::optional<TritonFusion::LaunchConfig> launch_config =
+        TritonFusion::GetLaunchConfig(&analysis);
+    if (!launch_config.has_value()) {
+      return std::nullopt;
+    }
+    if (launch_config->block_level_parameters.is_tma_allowed ||
+        launch_config->block_level_parameters.is_warp_specialization_allowed) {
+      return std::nullopt;
+    }
+    launch_dims = launch_config->launch_dimensions;
+  } else if (std::unique_ptr<MlirKernelEmitter> emitter =
+                 // TODO(b/480040242): Consider unrolling small fusions in
+                 // grid-bound horizontal fusions as well.
+             ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+                 analysis, /*unroll_small_fusions=*/false)) {
+    launch_dims = emitter->launch_dimensions();
+  } else {
     return std::nullopt;
   }
-  LaunchDimensions launch_dims = emitter->launch_dimensions();
 
   // If a nested kernel has less than max_threads and uses a barrier, we need to
   // use `bar.sync 0, T_i` in PTX. The instruction has a requirement that T_i

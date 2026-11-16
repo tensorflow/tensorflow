@@ -4637,6 +4637,7 @@ cc_library(
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen:thread_block_specialized",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
+        "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/codegen:ir_emission_utils",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
