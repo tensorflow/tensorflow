@@ -2302,6 +2302,13 @@ absl::Status DynamicDimensionInferenceVisitor::HandleWhile(
   if (operands_to_add.empty()) {
     return absl::OkStatus();
   }
+  // The dynamic sizes are passed through the loop as extra tuple elements,
+  // which requires tuple-shaped loop state.
+  if (!original_shape.IsTuple()) {
+    return Unimplemented(
+        "Dynamic dimension in non-tuple while loop state is not supported: %s",
+        hlo->ToString());
+  }
 
   HloInstruction* old_tuple_operand = hlo->mutable_operand(0);
   HloInstruction* old_body_root = hlo->while_body()->root_instruction();
