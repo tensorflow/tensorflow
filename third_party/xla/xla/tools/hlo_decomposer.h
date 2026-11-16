@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +35,14 @@ namespace xla {
 // instructions are sorted, names are ignored etc).
 absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     const HloModule& module, bool deduplicate_modules);
+
+// Returns whether `module`'s entry root is an `async-done` on the `sparsecore`
+// execution thread.
+bool IsSparseCoreOffloadUnit(const HloModule& module);
+
+// Trivially schedules `module`, placing entry parameters first when `module` is
+// a SparseCore offload unit.
+absl::Status ScheduleIsolatedModule(HloModule* module);
 
 // Extracts an HLO instruction into a new HLO module replacing its operands
 // with parameter instructions.

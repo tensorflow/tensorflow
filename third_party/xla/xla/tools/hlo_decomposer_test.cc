@@ -16,20 +16,43 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOk;
+using ::testing::Contains;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::Not;
+using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
+using ::xla::testing::opcode_matchers::AsyncDone;
+using ::xla::testing::opcode_matchers::AsyncStart;
+using ::xla::testing::opcode_matchers::AsyncUpdate;
+using ::xla::testing::opcode_matchers::Parameter;
 
 class HloDecomposerTest : public HloTestBase {
  protected:
@@ -390,6 +413,244 @@ CHECK-THEN: %[[GTE1:.*]] = f32[10,10]{1,0} get-tuple-element(%[[FUSION]]), index
 CHECK-THEN: ROOT %{{.*}} = (f32[10,10]{1,0}, f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(%[[GTE0]], %[[GTE1]], %[[SUB]])
   )"));
   EXPECT_TRUE(filecheck_result);
+}
+
+std::vector<std::string> ModuleNames(
+    const std::vector<std::unique_ptr<HloModule>>& modules) {
+  std::vector<std::string> names;
+  names.reserve(modules.size());
+  for (const std::unique_ptr<HloModule>& module : modules) {
+    names.push_back(module->name());
+  }
+  return names;
+}
+
+absl::Status VerifyExtractedModule(HloModule* module) {
+  return HloVerifier(/*layout_sensitive=*/false,
+                     /*allow_mixed_precision=*/false)
+      .Run(module)
+      .status();
+}
+
+constexpr absl::string_view kSparseCoreOffloadHlo = R"hlo(
+HloModule main
+
+wrapped {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT add = f32[8] add(p0, p1)
+}, execution_thread="sparsecore"
+
+wrapped.1 {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT add.1 = f32[8] add(p0, p1)
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  exp = f32[8] exponential(x)
+  offload_start = ((f32[8], f32[8]), f32[8]) async-start(exp, y), async_execution_thread="sparsecore", calls=wrapped, backend_config={"sparse_core_config":{"core_ids":["0"]}}
+  offload_done = f32[8] async-done(offload_start)
+  offload_start.1 = ((f32[8], f32[8]), f32[8]) async-start(exp, y), async_execution_thread="sparsecore", calls=wrapped.1, backend_config={"sparse_core_config":{"core_ids":["1"]}}
+  offload_done.1 = f32[8] async-done(offload_start.1)
+  ROOT tuple = (f32[8], f32[8]) tuple(offload_done, offload_done.1)
+}
+)hlo";
+
+TEST_F(HloDecomposerTest, SparseCoreOffloadChainIsOneUnit) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSparseCoreOffloadHlo));
+  module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+      "test_disabled_pass");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<HloModule>> units,
+      DecomposeHloModule(*module, /*deduplicate_modules=*/true));
+  EXPECT_THAT(ModuleNames(units),
+              UnorderedElementsAre("exp", "offload_done", "offload_done.1"));
+  for (const std::unique_ptr<HloModule>& unit : units) {
+    EXPECT_THAT(VerifyExtractedModule(unit.get()), IsOk()) << unit->ToString();
+  }
+
+  auto offload_it =
+      absl::c_find_if(units, [](const std::unique_ptr<HloModule>& unit) {
+        return unit->name() == "offload_done";
+      });
+  ASSERT_NE(offload_it, units.end());
+  EXPECT_THAT((*offload_it)->config().debug_options().xla_disable_hlo_passes(),
+              Contains("test_disabled_pass"));
+  const HloInstruction* done =
+      (*offload_it)->entry_computation()->root_instruction();
+  EXPECT_THAT(done, AsyncDone(AsyncStart(Parameter(0), Parameter(1))));
+  EXPECT_THAT(done->operand(0)->raw_backend_config_string(),
+              HasSubstr("\"core_ids\":[\"0\"]"));
+}
+
+TEST_F(HloDecomposerTest,
+       CompiledSparseCoreOffloadRestoresCallAndSchedulesParametersFirst) {
+  constexpr absl::string_view kCompiledOffloadHlo = R"hlo(
+HloModule main
+
+program {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT sub = f32[8] subtract(p0, p1)
+}, execution_thread="sparsecore"
+
+wrapped {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT caller = f32[8] custom-call(p0, p1), custom_call_target="TODO(embedded_program)", called_computations={program}
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  start = ((), (), (f32[8])) async-start(), async_execution_thread="sparsecore", calls=wrapped, output_to_operand_aliasing={{2, 0}: (0, {})}, backend_config={"sparse_core_config":{"core_ids":["0"]}}
+  update = ((f32[8], f32[8]), f32[8], (f32[8])) async-update(start, x, x)
+  ROOT done = f32[8] async-done(update)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kCompiledOffloadHlo));
+  ASSERT_OK(HloTrivialScheduler().Run(module.get()));
+  ASSERT_TRUE(module->has_schedule());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<HloModule>> units,
+      DecomposeHloModule(*module, /*deduplicate_modules=*/true));
+  ASSERT_THAT(units, SizeIs(1));
+  HloModule* unit = units[0].get();
+  EXPECT_THAT(VerifyExtractedModule(unit), IsOk()) << unit->ToString();
+
+  // Duplicate external uses of `x` share a single entry parameter(0).
+  EXPECT_EQ(unit->entry_computation()->num_parameters(), 1);
+  const HloInstruction* done = unit->entry_computation()->root_instruction();
+  EXPECT_THAT(done,
+              AsyncDone(AsyncUpdate(AsyncStart(), Parameter(0), Parameter(0))));
+
+  const auto* start = Cast<HloAsyncStartInstruction>(done->async_chain_start());
+  EXPECT_EQ(start->async_wrapped_instruction()->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(start->async_wrapped_instruction()->to_apply()->name(), "program");
+  EXPECT_THAT(unit->ToString(), Not(HasSubstr("TODO(embedded_program)")));
+
+  ASSERT_TRUE(unit->has_schedule());
+  EXPECT_THAT(
+      unit->schedule().sequence(unit->entry_computation()).instructions(),
+      ElementsAre(Parameter(0), AsyncStart(), AsyncUpdate(), AsyncDone()));
+}
+
+TEST_F(HloDecomposerTest, UnextractableSparseCoreOffloadsAreSkipped) {
+  constexpr absl::string_view kLoopCrossingHlo = R"hlo(
+HloModule main
+
+wrapped {
+  p0 = f32[8] parameter(0)
+  ROOT neg = f32[8] negate(p0)
+}, execution_thread="sparsecore"
+
+body {
+  p = (((f32[8]), f32[8])) parameter(0)
+  carried = ((f32[8]), f32[8]) get-tuple-element(p), index=0
+  ROOT t = (((f32[8]), f32[8])) tuple(carried)
+}
+
+cond {
+  p = (((f32[8]), f32[8])) parameter(0)
+  ROOT c = pred[] constant(false)
+}
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  exp = f32[8] exponential(x)
+  start = ((f32[8]), f32[8]) async-start(exp), async_execution_thread="sparsecore", calls=wrapped
+  init = (((f32[8]), f32[8])) tuple(start)
+  loop = (((f32[8]), f32[8])) while(init), condition=cond, body=body
+  carried = ((f32[8]), f32[8]) get-tuple-element(loop), index=0
+  ROOT done = f32[8] async-done(carried)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loop_module,
+                       ParseAndReturnVerifiedModule(kLoopCrossingHlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<HloModule>> loop_units,
+      DecomposeHloModule(*loop_module, /*deduplicate_modules=*/true));
+  EXPECT_THAT(ModuleNames(loop_units), ElementsAre("exp"));
+  for (const std::unique_ptr<HloModule>& unit : loop_units) {
+    EXPECT_THAT(VerifyExtractedModule(unit.get()), IsOk()) << unit->ToString();
+  }
+
+  constexpr absl::string_view kBranchingHlo = R"hlo(
+HloModule main
+
+wrapped {
+  p0 = f32[8] parameter(0)
+  ROOT neg = f32[8] negate(p0)
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  exp = f32[8] exponential(x)
+  start = ((f32[8]), f32[8]) async-start(exp), async_execution_thread="sparsecore", calls=wrapped, backend_config={"sparse_core_config":{"core_ids":["0"]}}
+  done = f32[8] async-done(start)
+  done.1 = f32[8] async-done(start)
+  ROOT tuple = (f32[8], f32[8]) tuple(done, done.1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> branch_module,
+                       ParseAndReturnUnverifiedModule(kBranchingHlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<HloModule>> branch_units,
+      DecomposeHloModule(*branch_module, /*deduplicate_modules=*/true));
+  EXPECT_THAT(ModuleNames(branch_units), ElementsAre("exp"));
+  for (const std::unique_ptr<HloModule>& unit : branch_units) {
+    EXPECT_THAT(VerifyExtractedModule(unit.get()), IsOk()) << unit->ToString();
+  }
+}
+
+TEST_F(HloDecomposerTest, SparseCoreOffloadInsideWhileBodyIsExtractedAlone) {
+  constexpr absl::string_view kWhileOffloadHlo = R"hlo(
+HloModule main
+
+program {
+  p0 = f32[8] parameter(0)
+  ROOT doubled = f32[8] add(p0, p0)
+}, execution_thread="sparsecore"
+
+wrapped {
+  p0 = f32[8] parameter(0)
+  ROOT caller = f32[8] custom-call(p0), custom_call_target="TODO(embedded_program)", called_computations={program}
+}, execution_thread="sparsecore"
+
+body {
+  state = (f32[8]) parameter(0)
+  val = f32[8] get-tuple-element(state), index=0
+  start = ((f32[8]), f32[8]) async-start(val), async_execution_thread="sparsecore", calls=wrapped, backend_config={"sparse_core_config":{"core_ids":["0"]}}
+  done = f32[8] async-done(start)
+  ROOT next = (f32[8]) tuple(done)
+}
+
+cond {
+  state = (f32[8]) parameter(0)
+  ROOT c = pred[] constant(false)
+}
+
+ENTRY main {
+  x = f32[8] parameter(0)
+  init = (f32[8]) tuple(x)
+  ROOT loop = (f32[8]) while(init), condition=cond, body=body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kWhileOffloadHlo));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<HloModule>> units,
+      DecomposeHloModule(*module, /*deduplicate_modules=*/true));
+  EXPECT_THAT(ModuleNames(units), ElementsAre("done"));
+  EXPECT_THAT(VerifyExtractedModule(units[0].get()), IsOk())
+      << units[0]->ToString();
+  EXPECT_THAT(units[0]->ToString(), Not(HasSubstr("TODO(embedded_program)")));
 }
 
 }  // namespace

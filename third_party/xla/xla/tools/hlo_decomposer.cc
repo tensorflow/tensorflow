@@ -15,28 +15,41 @@ limitations under the License.
 
 #include "xla/tools/hlo_decomposer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/call_graph.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/service/compilation_environments.h"
-#include "tsl/platform/statusor.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 namespace {
+
+constexpr absl::string_view kSparseCoreThread = "sparsecore";
 
 // Appends the leaf elements of `instruction` to `elements`, decomposing any
 // tuple-shaped instruction via GetTupleElement instructions so that a flat
@@ -68,30 +81,206 @@ void AddFlatTupleRoot(const std::vector<HloInstruction*>& instructions,
 // (e.g. whether it can run without dependent instructions).
 bool ShouldIsolateOpcode(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
+    case HloOpcode::kWhile:
       return false;
     default:
       return true;
   }
 }
 
+// Walks forward from `async_start` along direct `operand(0)` async links within
+// `async_start.parent()` and returns `[async-start, async-update...,
+// async-done]`.
+absl::StatusOr<std::vector<const HloInstruction*>>
+FindSparseCoreOffloadChainFromStart(const HloInstruction& async_start) {
+  const HloComputation* computation = async_start.parent();
+  std::vector<const HloInstruction*> chain;
+  const HloInstruction* current = &async_start;
+  while (current != nullptr) {
+    chain.push_back(current);
+    if (chain.size() > computation->instruction_count()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Cycle in async chain starting at ", async_start.name()));
+    }
+    if (current->opcode() == HloOpcode::kAsyncDone) {
+      return chain;
+    }
+    const HloInstruction* next = nullptr;
+    for (const HloInstruction* user : current->users()) {
+      if (user->parent() != computation || user->operands().empty() ||
+          user->operand(0) != current) {
+        continue;
+      }
+      if (user->opcode() == HloOpcode::kAsyncUpdate ||
+          user->opcode() == HloOpcode::kAsyncDone) {
+        if (next != nullptr) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Branching async chain starting at ", async_start.name()));
+        }
+        next = user;
+      }
+    }
+    current = next;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Incomplete or loop crossing async chain starting at ",
+                   async_start.name()));
+}
+
+// Returns `[async-start, async-update..., async-done]` when `async_done` ends a
+// complete main thread "sparsecore" direct operand async chain.
+absl::StatusOr<std::vector<const HloInstruction*>> FindSparseCoreOffloadChain(
+    const HloInstruction& async_done) {
+  if (async_done.opcode() != HloOpcode::kAsyncDone) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(async_done.name(), " is not an async-done instruction."));
+  }
+  const HloComputation* computation = async_done.parent();
+  if (computation == nullptr ||
+      computation->execution_thread() != HloInstruction::kMainExecutionThread) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        async_done.name(), " is not in a main thread computation."));
+  }
+
+  const HloInstruction* current = &async_done;
+  for (int64_t steps = 0; current->opcode() != HloOpcode::kAsyncStart;
+       ++steps) {
+    if (steps > computation->instruction_count()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cycle in async chain at ", async_done.name()));
+    }
+    if ((current != &async_done &&
+         current->opcode() != HloOpcode::kAsyncUpdate) ||
+        current->operands().empty() ||
+        current->operand(0)->parent() != computation) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Incomplete async chain at ", async_done.name()));
+    }
+    current = current->operand(0);
+  }
+  if (current->async_execution_thread() != kSparseCoreThread) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Async chain at ", async_done.name(), " is not on sparsecore thread."));
+  }
+  ABSL_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> chain,
+                   FindSparseCoreOffloadChainFromStart(*current));
+  if (chain.back() != &async_done) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Async chain from ", current->name(),
+                     " does not uniquely end at ", async_done.name()));
+  }
+  return chain;
+}
+
+// Restores an embedded program `custom-call` wrapper on
+// `async_wrapped_computation` back to a standard `call` instruction so
+// reference evaluators can execute it.
+absl::Status RestoreSparseCoreProgramCall(HloInstruction* async_done) {
+  HloComputation* wrapped =
+      Cast<HloAsyncInstruction>(async_done)->async_wrapped_computation();
+  if (wrapped == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(async_done->name(), " was extracted without its chain."));
+  }
+  HloInstruction* caller = wrapped->root_instruction();
+  if (caller->opcode() != HloOpcode::kCustomCall ||
+      !absl::StartsWith(caller->custom_call_target(), "TODO(")) {
+    return absl::OkStatus();
+  }
+  if (caller->called_computations().size() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(caller->name(), " does not call one SparseCore program."));
+  }
+  HloInstruction* call = wrapped->AddInstruction(HloInstruction::CreateCall(
+      caller->shape(), caller->operands(), caller->to_apply()));
+  call->set_raw_backend_config_string(caller->raw_backend_config_string());
+  call->set_metadata(caller->metadata());
+  wrapped->set_root_instruction(call);
+  return wrapped->RemoveInstruction(caller);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> ExtractSparseCoreOffloadChain(
+    const std::vector<const HloInstruction*>& chain) {
+  const HloInstruction& async_done = *chain.back();
+  const HloModule* source_module = async_done.GetModule();
+  HloModuleConfig config;
+  config.set_debug_options(source_module->config().debug_options());
+  auto new_hlo_module = std::make_unique<HloModule>(
+      std::string(async_done.name()), config,
+      std::make_unique<CompilationEnvironments>(source_module->comp_envs()));
+
+  HloComputation::Builder builder("entry_computation");
+  HloCloneContext clone_context(new_hlo_module.get());
+  absl::flat_hash_set<const HloInstruction*> chain_set(chain.begin(),
+                                                       chain.end());
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> param_map;
+  int64_t parameter_number = 0;
+  for (const HloInstruction* inst : chain) {
+    for (const HloInstruction* operand : inst->operands()) {
+      if (chain_set.contains(operand)) {
+        continue;
+      }
+      auto [param_it, inserted] = param_map.try_emplace(operand, nullptr);
+      if (inserted) {
+        param_it->second =
+            builder.AddInstruction(HloInstruction::CreateParameter(
+                parameter_number++, operand->shape(), operand->name()));
+      }
+    }
+  }
+
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> chain_map;
+  for (const HloInstruction* inst : chain) {
+    std::vector<HloInstruction*> mapped_operands;
+    mapped_operands.reserve(inst->operand_count());
+    for (const HloInstruction* operand : inst->operands()) {
+      if (auto it = chain_map.find(operand); it != chain_map.end()) {
+        mapped_operands.push_back(it->second);
+      } else {
+        mapped_operands.push_back(param_map.at(operand));
+      }
+    }
+    HloInstruction* cloned = builder.AddInstruction(inst->CloneWithNewOperands(
+        inst->shape(), mapped_operands, &clone_context));
+    chain_map[inst] = cloned;
+  }
+
+  HloComputation* entry_computation =
+      new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  entry_computation->SetExecutionThread(
+      async_done.parent()->execution_thread());
+
+  ABSL_RETURN_IF_ERROR(
+      RestoreSparseCoreProgramCall(entry_computation->root_instruction()));
+  if (source_module->has_schedule()) {
+    ABSL_RETURN_IF_ERROR(ScheduleIsolatedModule(new_hlo_module.get()));
+  }
+  return new_hlo_module;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> Decompose(
     const HloModule& module) {
   std::vector<std::unique_ptr<HloModule>> modules;
 
-  absl::flat_hash_set<const HloComputation*> computations_to_visit{
+  std::vector<const HloComputation*> computations_to_visit{
       module.entry_computation()};
-  absl::flat_hash_set<const HloComputation*> visited_computations;
+  absl::flat_hash_set<const HloComputation*> visited_computations{
+      module.entry_computation()};
 
   // Traverse the computation tree, starting from the entry computation, and
   // recursing into the called computations.
-  while (!computations_to_visit.empty()) {
-    const HloComputation* computation = *computations_to_visit.begin();
-    computations_to_visit.erase(computations_to_visit.begin());
-    visited_computations.insert(computation);
+  for (size_t visit_idx = 0; visit_idx < computations_to_visit.size();
+       ++visit_idx) {
+    const HloComputation* computation = computations_to_visit[visit_idx];
 
     for (const HloInstruction* instruction : computation->instructions()) {
       // Skip called computations in the embedded context (fusion, reduce, map,
@@ -101,9 +290,40 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> Decompose(
           CallContext::kEmbedded) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          if (!visited_computations.contains(called_computation)) {
-            computations_to_visit.insert(called_computation);
+          if (called_computation->execution_thread() == kSparseCoreThread) {
+            continue;
           }
+          if (visited_computations.insert(called_computation).second) {
+            computations_to_visit.push_back(called_computation);
+          }
+        }
+      }
+      if (computation->execution_thread() ==
+          HloInstruction::kMainExecutionThread) {
+        if (instruction->opcode() == HloOpcode::kAsyncStart &&
+            instruction->async_execution_thread() == kSparseCoreThread) {
+          if (absl::Status status =
+                  FindSparseCoreOffloadChainFromStart(*instruction).status();
+              !status.ok()) {
+            LOG(WARNING) << "Skipping SparseCore offload: " << status;
+          }
+          continue;
+        }
+        if (instruction->opcode() == HloOpcode::kAsyncDone) {
+          absl::StatusOr<std::vector<const HloInstruction*>> chain =
+              FindSparseCoreOffloadChain(*instruction);
+          if (chain.ok()) {
+            absl::StatusOr<std::unique_ptr<HloModule>> offload_module =
+                ExtractSparseCoreOffloadChain(*chain);
+            if (!offload_module.ok()) {
+              LOG(WARNING) << "Skipping SparseCore offload "
+                           << instruction->name() << ": "
+                           << offload_module.status();
+              continue;
+            }
+            modules.push_back(*std::move(offload_module));
+          }
+          continue;
         }
       }
       if (ShouldIsolateOpcode(instruction->opcode())) {
@@ -126,11 +346,14 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     if (!deduplicate_modules) {
       return true;
     }
-    const std::string fingerprint = module->GetFingerprint128();
-    if (module_fingerprints.contains(fingerprint)) {
+    HloPrintOptions print_options = HloPrintOptions::ModuleFingerprint();
+    if (IsSparseCoreOffloadUnit(*module)) {
+      print_options.set_print_backend_config(true);
+    }
+    const std::string fingerprint = module->GetFingerprint128(print_options);
+    if (!module_fingerprints.insert(fingerprint).second) {
       return false;
     }
-    module_fingerprints.insert(fingerprint);
     return true;
   };
 
@@ -142,6 +365,26 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     }
   }
   return modules;
+}
+
+bool IsSparseCoreOffloadUnit(const HloModule& module) {
+  const HloInstruction* root = module.entry_computation()->root_instruction();
+  return root->opcode() == HloOpcode::kAsyncDone &&
+         root->async_execution_thread() == kSparseCoreThread;
+}
+
+absl::Status ScheduleIsolatedModule(HloModule* module) {
+  ABSL_RETURN_IF_ERROR(HloTrivialScheduler().Run(module).status());
+  if (IsSparseCoreOffloadUnit(*module)) {
+    HloComputation* entry = module->entry_computation();
+    std::vector<HloInstruction*> sequence =
+        module->schedule().sequence(entry).instructions();
+    absl::c_stable_partition(sequence, [](const HloInstruction* instruction) {
+      return instruction->opcode() == HloOpcode::kParameter;
+    });
+    module->schedule().set_sequence(entry, std::move(sequence));
+  }
+  return absl::OkStatus();
 }
 
 std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
