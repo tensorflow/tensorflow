@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_runtime_fields.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
@@ -339,6 +340,71 @@ TEST(TestLibTest,
       }
     }
   )pb");
+  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
+                  fresh_kernel_name, golden),
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("kernel_name")));
+}
+
+TEST(TestLibTest, CompareGPUExecutables_IgnoresHostSpecificHostExecuteFields) {
+  constexpr absl::string_view kGolden = R"pb(
+    gpu_executable {
+      thunks {
+        host_execute_start_thunk {
+          executable_proto {
+            hlo_module { name: "offloaded" id: 2 }
+            aot_compilation_result {
+              hlo_module { hlo_module { name: "golden_optimized" id: 3 } }
+              thunk_sequence {
+                thunks {
+                  info { module_id: 3 }
+                  kernel_thunk { kernel_name: "subtract_kernel" }
+                }
+              }
+              object_files { contents: "golden_code" name: "golden.o" }
+              target_machine_options {
+                cpu: "sapphirerapids"
+                features: "+avx512f"
+              }
+            }
+          }
+        }
+      }
+    }
+  )pb";
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(kGolden);
+  // Differs in the module ids, the CPU-optimized module, the machine code and
+  // the target CPU.
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        host_execute_start_thunk {
+          executable_proto {
+            hlo_module { name: "offloaded" id: 12 }
+            aot_compilation_result {
+              hlo_module { hlo_module { name: "fresh_optimized" id: 13 } }
+              thunk_sequence {
+                thunks {
+                  info { module_id: 13 }
+                  kernel_thunk { kernel_name: "subtract_kernel" }
+                }
+              }
+              object_files { contents: "fresh_code_1" name: "fresh_1.o" }
+              object_files { contents: "fresh_code_0" name: "fresh_0.o" }
+              target_machine_options {
+                cpu: "emeraldrapids"
+                features: "+avx512f,+amx-tile"
+              }
+            }
+          }
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
+
+  // The embedded CPU thunks are still compared.
+  auto fresh_kernel_name = ParseTextProtoOrDie<HumanReadableAotExecutable>(
+      absl::StrReplaceAll(kGolden, {{"subtract_kernel", "divide_kernel"}}));
   EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
                   fresh_kernel_name, golden),
               StatusIs(absl::StatusCode::kInternal, HasSubstr("kernel_name")));
