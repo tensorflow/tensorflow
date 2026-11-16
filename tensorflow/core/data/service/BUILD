@@ -213,7 +213,11 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@xla//xla/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -540,6 +544,7 @@ cc_library(
     hdrs = ["grpc_dispatcher_impl.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":credentials_factory",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_impl",
         ":export_proto_cc",
@@ -608,6 +613,7 @@ cc_library(
     hdrs = ["grpc_worker_impl.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":credentials_factory",
         ":export_proto_cc",
         ":worker_cc_grpc_proto",
         ":worker_impl",
@@ -696,6 +702,9 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
     ],
 )
 

@@ -158,11 +158,7 @@ void DispatchGrpcDataServer::StopServiceInternal() { service_->Stop(); }
 absl::Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
-  ::grpc::ServerContext ctx;
-  ::grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get workers", s);
-  }
+  TF_RETURN_IF_ERROR(service_->impl().GetWorkers(&req, &resp));
   *num_workers = resp.workers_size();
   return absl::OkStatus();
 }
@@ -172,11 +168,7 @@ absl::Status DispatchGrpcDataServer::SnapshotStreams(
   GetSnapshotStreamsRequest req;
   req.set_path(path);
   GetSnapshotStreamsResponse resp;
-  ::grpc::ServerContext ctx;
-  ::grpc::Status s = service_->GetSnapshotStreams(&ctx, &req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get snapshot streams", s);
-  }
+  TF_RETURN_IF_ERROR(service_->impl().GetSnapshotStreams(&req, &resp));
   for (const auto& stream : resp.streams()) {
     streams->push_back(SnapshotStreamInfoWrapper(stream));
   }
@@ -280,11 +272,7 @@ void WorkerGrpcDataServer::StopServiceInternal() { service_->Stop(); }
 absl::Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   GetWorkerTasksRequest req;
   GetWorkerTasksResponse resp;
-  ::grpc::ServerContext ctx;
-  ::grpc::Status s = service_->GetWorkerTasks(&ctx, &req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get tasks", s);
-  }
+  TF_RETURN_IF_ERROR(service_->impl().GetWorkerTasks(&req, &resp));
   *num_tasks = resp.tasks_size();
   return absl::OkStatus();
 }
@@ -293,11 +281,7 @@ absl::Status WorkerGrpcDataServer::SnapshotTaskProgresses(
     std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses) {
   GetSnapshotTaskProgressesRequest req;
   GetSnapshotTaskProgressesResponse resp;
-  ::grpc::ServerContext ctx;
-  ::grpc::Status s = service_->GetSnapshotTaskProgresses(&ctx, &req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get tasks", s);
-  }
+  TF_RETURN_IF_ERROR(service_->impl().GetSnapshotTaskProgresses(&req, &resp));
   for (const auto& progress : resp.snapshot_task_progresses()) {
     snapshot_task_progresses->push_back(SnapshotTaskProgressWrapper(progress));
   }
