@@ -154,13 +154,15 @@ message HostSendThunkProto {
   int64 channel_id = 3;
   map<string, string> frontend_attrs = 4;
   optional int64 device_constraint = 5;
-  uint64 async_events_unique_id = 6;
+  reserved 6;
+  reserved "async_events_unique_id";
 }
 
 message HostSendDoneThunkProto {
   int64 channel_id = 1;
   optional int64 device_constraint = 2;
-  uint64 async_events_unique_id = 3;
+  reserved 3;
+  reserved "async_events_unique_id";
   ShapedSliceProto buffer = 4;
 }
 
@@ -170,13 +172,15 @@ message HostRecvThunkProto {
   int64 channel_id = 3;
   map<string, string> frontend_attrs = 4;
   optional int64 device_constraint = 5;
-  uint64 async_events_unique_id = 6;
+  reserved 6;
+  reserved "async_events_unique_id";
 }
 
 message HostRecvDoneThunkProto {
   int64 channel_id = 1;
   optional int64 device_constraint = 2;
-  uint64 async_events_unique_id = 3;
+  reserved 3;
+  reserved "async_events_unique_id";
   ShapedSliceProto buffer = 4;
 }
 

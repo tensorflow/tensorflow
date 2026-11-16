@@ -31,12 +31,17 @@ limitations under the License.
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 using ::testing::Return;
+using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(HostSendRecvAsyncEventsTest, EmplaceAndExtractAcrossDevices) {
@@ -54,28 +59,50 @@ TEST(HostSendRecvAsyncEventsTest, EmplaceAndExtractAcrossDevices) {
 
   ASSERT_OK(events.Emplace(&executor0, /*channel_id=*/42, event0));
   ASSERT_OK(events.Emplace(&executor1, /*channel_id=*/42, event1));
-  EXPECT_THAT(events.Emplace(&executor0, /*channel_id=*/42, event0),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(
+      events.Emplace(&executor0, /*channel_id=*/42, event0),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("already exists")));
 
   ASSERT_OK_AND_ASSIGN(auto extracted0,
                        events.Extract(&executor0, /*channel_id=*/42));
   EXPECT_EQ(extracted0.GetAsyncValue(), event0.GetAsyncValue());
-  EXPECT_THAT(events.Extract(&executor0, /*channel_id=*/42),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(
+      events.Extract(&executor0, /*channel_id=*/42),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("was not found")));
 
   ASSERT_OK_AND_ASSIGN(auto extracted1,
                        events.Extract(&executor1, /*channel_id=*/42));
   EXPECT_EQ(extracted1.GetAsyncValue(), event1.GetAsyncValue());
 }
 
-TEST(HostSendRecvThunkTest, LinkSendAndSendDone) {
+TEST(HostSendRecvAsyncEventsTest, EmplaceAndExtractAcrossChannels) {
+  se::MockStreamExecutor executor;
+  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
+
+  HostSendRecvAsyncEvents events(/*devices_per_host=*/1);
+  auto send_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(nullptr);
+  auto recv_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(nullptr);
+
+  ASSERT_OK(events.Emplace(&executor, /*channel_id=*/10, send_event));
+  ASSERT_OK(events.Emplace(&executor, /*channel_id=*/20, recv_event));
+
+  ASSERT_OK_AND_ASSIGN(auto extracted_recv,
+                       events.Extract(&executor, /*channel_id=*/20));
+  EXPECT_EQ(extracted_recv.GetAsyncValue(), recv_event.GetAsyncValue());
+  ASSERT_OK_AND_ASSIGN(auto extracted_send,
+                       events.Extract(&executor, /*channel_id=*/10));
+  EXPECT_EQ(extracted_send.GetAsyncValue(), send_event.GetAsyncValue());
+}
+
+TEST(HostSendRecvThunkTest, LinkSendAndSendDoneAndIgnoreLegacyId) {
   Thunk::ThunkInfo thunk_info;
-  Shape shape = ShapeUtil::MakeShape(F32, {1});
   std::vector<BufferAllocation> buffer_allocations;
   buffer_allocations.emplace_back(/*index=*/0, /*size=*/4, /*color=*/0);
 
   HostSendThunkProto send_proto = ParseTextProtoOrDie<HostSendThunkProto>(R"pb(
-    shape { element_type: F32 dimensions: 1 }
+    shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
     buffer { buffer_allocation_index: 0 offset: 0 size: 4 }
     channel_id: 42
     async_events_unique_id: 100
@@ -84,43 +111,49 @@ TEST(HostSendRecvThunkTest, LinkSendAndSendDone) {
   HostSendDoneThunkProto done_proto =
       ParseTextProtoOrDie<HostSendDoneThunkProto>(R"pb(
         channel_id: 42
-        async_events_unique_id: 100
+        async_events_unique_id: 200
       )pb");
 
-  HostSendRecvAsyncEventsMap async_events_map;
+  std::shared_ptr<HostSendRecvAsyncEvents> async_events;
 
   // It can happen that the HostSendDoneThunk is deserialized before the
   // HostSendThunk.
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostSendDoneThunk> done_thunk,
       HostSendDoneThunk::FromProto(thunk_info, done_proto, buffer_allocations,
-                                   async_events_map));
+                                   async_events));
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostSendThunk> send_thunk,
       HostSendThunk::FromProto(thunk_info, send_proto, buffer_allocations,
-                               async_events_map));
+                               async_events));
 
-  // Verify they share the same events.
-  EXPECT_EQ(send_thunk->GetAsyncEventsUniqueId(),
-            done_thunk->GetAsyncEventsUniqueId());
+  ASSERT_NE(async_events, nullptr);
+  EXPECT_EQ(send_thunk->async_events(), async_events.get());
+  EXPECT_EQ(done_thunk->async_events(), async_events.get());
 
-  // Verify ToProto generates the same ID for both
-  ASSERT_OK_AND_ASSIGN(ThunkProto send_thunk_proto, send_thunk->ToProto());
-  ASSERT_OK_AND_ASSIGN(ThunkProto done_thunk_proto, done_thunk->ToProto());
-
-  EXPECT_EQ(send_thunk_proto.host_send_thunk().async_events_unique_id(),
-            done_thunk_proto.host_send_done_thunk().async_events_unique_id());
+  EXPECT_THAT(
+      send_thunk->ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+        thunk_info {}
+        host_send_thunk {
+          shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
+          buffer { buffer_allocation_index: 0 offset: 0 size: 4 }
+          channel_id: 42
+        }
+      )pb")));
+  EXPECT_THAT(done_thunk->ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+                thunk_info {}
+                host_send_done_thunk { channel_id: 42 }
+              )pb")));
 }
 
-TEST(HostSendRecvThunkTest, LinkRecvAndRecvDone) {
+TEST(HostSendRecvThunkTest, LinkRecvAndRecvDoneAndIgnoreLegacyId) {
   Thunk::ThunkInfo thunk_info;
-  Shape shape = ShapeUtil::MakeShape(F32, {1});
   std::vector<BufferAllocation> buffer_allocations;
   buffer_allocations.emplace_back(/*index=*/0, /*size=*/4, /*color=*/0);
 
   HostRecvThunkProto recv_proto = ParseTextProtoOrDie<HostRecvThunkProto>(R"pb(
-    shape { element_type: F32 dimensions: 1 }
+    shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
     buffer { buffer_allocation_index: 0 offset: 0 size: 4 }
     channel_id: 42
     async_events_unique_id: 100
@@ -129,31 +162,38 @@ TEST(HostSendRecvThunkTest, LinkRecvAndRecvDone) {
   HostRecvDoneThunkProto done_proto =
       ParseTextProtoOrDie<HostRecvDoneThunkProto>(R"pb(
         channel_id: 42
-        async_events_unique_id: 100
+        async_events_unique_id: 200
       )pb");
 
-  HostSendRecvAsyncEventsMap async_events_map;
+  std::shared_ptr<HostSendRecvAsyncEvents> async_events;
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostRecvThunk> recv_thunk,
       HostRecvThunk::FromProto(thunk_info, recv_proto, buffer_allocations,
-                               async_events_map));
+                               async_events));
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostRecvDoneThunk> done_thunk,
       HostRecvDoneThunk::FromProto(thunk_info, done_proto, buffer_allocations,
-                                   async_events_map));
+                                   async_events));
 
-  // Verify they share the same events.
-  EXPECT_EQ(recv_thunk->GetAsyncEventsUniqueId(),
-            done_thunk->GetAsyncEventsUniqueId());
+  ASSERT_NE(async_events, nullptr);
+  EXPECT_EQ(recv_thunk->async_events(), async_events.get());
+  EXPECT_EQ(done_thunk->async_events(), async_events.get());
 
-  // Verify ToProto generates the same ID for both
-  ASSERT_OK_AND_ASSIGN(ThunkProto recv_thunk_proto, recv_thunk->ToProto());
-  ASSERT_OK_AND_ASSIGN(ThunkProto done_thunk_proto, done_thunk->ToProto());
-
-  EXPECT_EQ(recv_thunk_proto.host_recv_thunk().async_events_unique_id(),
-            done_thunk_proto.host_recv_done_thunk().async_events_unique_id());
+  EXPECT_THAT(
+      recv_thunk->ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+        thunk_info {}
+        host_recv_thunk {
+          shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
+          buffer { buffer_allocation_index: 0 offset: 0 size: 4 }
+          channel_id: 42
+        }
+      )pb")));
+  EXPECT_THAT(done_thunk->ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+                thunk_info {}
+                host_recv_done_thunk { channel_id: 42 }
+              )pb")));
 }
 
 }  // namespace

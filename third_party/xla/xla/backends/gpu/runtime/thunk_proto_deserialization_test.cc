@@ -1058,12 +1058,11 @@ TEST(ThunkProtoDeserializationTest, HostSendRecvThunksRoundTrip) {
               }
               buffer { buffer_allocation_index: 0 }
               channel_id: 123
-              async_events_unique_id: 1
             }
           }
           thunks {
             thunk_info {}
-            host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
+            host_send_done_thunk { channel_id: 123 }
           }
           thunks {
             thunk_info {}
@@ -1076,12 +1075,11 @@ TEST(ThunkProtoDeserializationTest, HostSendRecvThunksRoundTrip) {
               }
               buffer { buffer_allocation_index: 0 }
               channel_id: 456
-              async_events_unique_id: 2
             }
           }
           thunks {
             thunk_info {}
-            host_recv_done_thunk { channel_id: 456 async_events_unique_id: 2 }
+            host_recv_done_thunk { channel_id: 456 }
           }
         }
       )pb");
@@ -1117,34 +1115,11 @@ TEST(ThunkProtoDeserializationTest, HostSendRecvThunksRoundTrip) {
       dynamic_cast<HostRecvDoneThunk*>(sequential_thunk->thunks()[3].get());
   ASSERT_NE(recv_done_thunk, nullptr);
 
-  EXPECT_TRUE(send_thunk->GetAsyncEventsUniqueId().has_value());
-  EXPECT_TRUE(send_done_thunk->GetAsyncEventsUniqueId().has_value());
-  EXPECT_EQ(send_thunk->GetAsyncEventsUniqueId(),
-            send_done_thunk->GetAsyncEventsUniqueId());
+  EXPECT_NE(send_thunk->async_events(), nullptr);
+  EXPECT_EQ(send_thunk->async_events(), send_done_thunk->async_events());
+  EXPECT_EQ(send_thunk->async_events(), recv_thunk->async_events());
+  EXPECT_EQ(send_thunk->async_events(), recv_done_thunk->async_events());
 
-  EXPECT_TRUE(recv_thunk->GetAsyncEventsUniqueId().has_value());
-  EXPECT_TRUE(recv_done_thunk->GetAsyncEventsUniqueId().has_value());
-  EXPECT_EQ(recv_thunk->GetAsyncEventsUniqueId(),
-            recv_done_thunk->GetAsyncEventsUniqueId());
-
-  // The unique id is regenerated on deserialization. Overwrite it with the
-  // original value for the purpose of the roundtrip test.
-  round_trip_proto.mutable_sequential_thunk()
-      ->mutable_thunks(0)
-      ->mutable_host_send_thunk()
-      ->set_async_events_unique_id(1);
-  round_trip_proto.mutable_sequential_thunk()
-      ->mutable_thunks(1)
-      ->mutable_host_send_done_thunk()
-      ->set_async_events_unique_id(1);
-  round_trip_proto.mutable_sequential_thunk()
-      ->mutable_thunks(2)
-      ->mutable_host_recv_thunk()
-      ->set_async_events_unique_id(2);
-  round_trip_proto.mutable_sequential_thunk()
-      ->mutable_thunks(3)
-      ->mutable_host_recv_done_thunk()
-      ->set_async_events_unique_id(2);
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

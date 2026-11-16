@@ -3708,10 +3708,7 @@ xla_cc_test(
 cc_library(
     name = "host_async_thunk",
     hdrs = ["host_async_thunk.h"],
-    deps = [
-        ":thunk",
-        "//xla/tsl/lib/gtl:int_type",
-    ],
+    deps = ["//xla/tsl/lib/gtl:int_type"],
 )
 
 cc_library(
@@ -3719,7 +3716,6 @@ cc_library(
     srcs = ["host_send_recv_thunk.cc"],
     hdrs = ["host_send_recv_thunk.h"],
     deps = [
-        ":host_async_thunk",
         ":per_device_state",
         ":thunk",
         ":thunk_proto_cc",
@@ -3734,7 +3730,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -3761,6 +3756,7 @@ xla_cc_test(
         "//xla/stream_executor:mock_stream_executor",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",

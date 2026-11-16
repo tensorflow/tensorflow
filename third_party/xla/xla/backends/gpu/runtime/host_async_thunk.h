@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_HOST_ASYNC_THUNK_H_
 
 #include <cstdint>
-#include <optional>
 
-#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
@@ -27,20 +25,6 @@ namespace xla::gpu {
 // Unique identifier for async events. The same identifier is expected to be
 // shared between a pair of host async start and corresponding done thunks.
 TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncEventsUniqueId, uint64_t);
-
-// Base class for host async thunks that provides async event tracking APIs.
-// Host send/recv and host execute thunks inherit from this class.
-class HostAsyncThunk : public Thunk {
- public:
-  using Thunk::Thunk;
-
-  virtual std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const {
-    return std::nullopt;
-  }
-
-  virtual bool IsAsyncStart() const { return false; }
-  virtual bool IsAsyncDone() const { return false; }
-};
 
 }  // namespace xla::gpu
 
