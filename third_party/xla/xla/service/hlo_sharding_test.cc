@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array3d.h"
@@ -47,6 +48,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
@@ -214,6 +217,28 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
   HloSharding sharding = HloSharding::FromProto(proto).value();
 
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
+}
+
+TEST_F(HloShardingTest, FromProtoFailsWithNegativeOrOverflowingDimensions) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 4
+    iota_reshape_dims: [ -2, -2 ]
+    iota_transpose_perm: [ 0, 1 ]
+  )pb");
+  EXPECT_THAT(
+      HloSharding::FromProto(proto),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("!any_overflow")));
+
+  // 3 * 6148914691236517206 == 2^64 + 2, which wraps modulo 2^64 to 2.
+  proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: [ 3, 6148914691236517206 ]
+    tile_assignment_devices: [ 0, 1 ]
+  )pb");
+  EXPECT_THAT(
+      HloSharding::FromProto(proto),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("!any_overflow")));
 }
 
 TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
