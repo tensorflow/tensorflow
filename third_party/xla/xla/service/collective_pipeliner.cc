@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
@@ -1979,14 +1980,6 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
         MapNewOperands(instr->operands(), while_body_to_peeled);
     HloInstruction* cloned_instr = loop_computation->AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
-    if (cloned_instr->opcode() == HloOpcode::kWhile) {
-      cloned_instr->set_while_condition(
-          loop_computation->parent()->AddEmbeddedComputation(
-              instr->while_condition()->CloneWithReplacements(nullptr)));
-      cloned_instr->set_while_body(
-          loop_computation->parent()->AddEmbeddedComputation(
-              instr->while_body()->CloneWithReplacements(nullptr)));
-    }
     ABSL_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id,
@@ -3303,14 +3296,6 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
       if (cloned_instr == nullptr) {
         cloned_instr = body_builder.AddInstruction(
             instr->CloneWithNewOperands(instr->shape(), new_operands));
-        if (cloned_instr->opcode() == HloOpcode::kWhile) {
-          cloned_instr->set_while_condition(
-              while_loop->GetModule()->AddEmbeddedComputation(
-                  instr->while_condition()->CloneWithReplacements(nullptr)));
-          cloned_instr->set_while_body(
-              while_loop->GetModule()->AddEmbeddedComputation(
-                  instr->while_body()->CloneWithReplacements(nullptr)));
-        }
         ABSL_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                   while_body_replacement_map));
         UpdateInstructionChannelId(cloned_instr, next_channel_id,
@@ -3607,6 +3592,9 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           << GetPipelineDirectionString(config_.pipelining_direction);
   // Run necessary cleanup to make sure unused code doesn't trigger HloVerifier.
   if (changed) {
+    ABSL_RETURN_IF_ERROR(FlattenCallGraph(FlattenCallGraph::SkipCloningForCalls)
+                        .Run(module, execution_threads)
+                        .status());
     ABSL_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }
 
