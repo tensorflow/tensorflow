@@ -200,9 +200,6 @@ class RocmExecutor : public GpuExecutor {
   absl::flat_hash_set<const Kernel*> loaded_kernels_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
-  // GPU ISA version for device_.
-  int version_;
-
   // RocmContext for this device.  Owned as a value — on ROCm a "context"
   // is just a device ordinal, so there is no heavyweight object to manage.
   // Mutable because SetActive() (hipSetDevice) is logically const — it does

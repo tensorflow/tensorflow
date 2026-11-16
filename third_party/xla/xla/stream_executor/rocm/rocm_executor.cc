@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/core_info.h"
-#include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -96,10 +95,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/numa.h"
-#include "tsl/platform/numbers.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -192,117 +188,6 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
   }
 }
 
-// Returns the name of the device.
-absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
-  static const size_t kCharLimit = 64;
-  absl::InlinedVector<char, 4> chars(kCharLimit);
-  ABSL_RETURN_IF_ERROR(
-      ToStatus(hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
-               "Failed to get device name"));
-  chars[kCharLimit - 1] = '\0';
-  return chars.begin();
-}
-
-absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
-  hipDeviceProp_t props;
-  hipError_t result = hipGetDeviceProperties(&props, device);
-  if (result == hipSuccess) {
-    std::string gcnName = props.gcnArchName;
-    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
-    std::string amdgpu_version = gcnName;
-    if (!tokens.empty() && tokens[0].size() >= 3) {
-      amdgpu_version = tokens[0].substr(3);
-    }
-    int version = std::stoi(amdgpu_version);
-    return version;
-  }
-  return absl::InternalError(absl::StrFormat(
-      "failed to determine AMDGpu ISA version for device %d", device));
-}
-
-// Return the full GCN Architecture Name for the device
-// for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
-absl::StatusOr<std::string> GetGpuGCNArchName(hipDevice_t device) {
-  hipDeviceProp_t props;
-  hipError_t result = hipGetDeviceProperties(&props, device);
-  if (result == hipSuccess) {
-    return props.gcnArchName;
-  }
-  return absl::InternalError(absl::StrFormat(
-      "failed to determine AMDGpu GCN Arch Name for device %d", device));
-}
-
-// Helper function that turns the integer output of hipDeviceGetAttribute to
-// type T and wraps it in a absl::StatusOr.
-template <typename T>
-static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
-                                            hipDeviceAttribute_t attribute) {
-  int value = -1;
-  hipError_t result = hipDeviceGetAttribute(&value, attribute, device);
-  if (result != hipSuccess) {
-    return absl::NotFoundError(
-        absl::StrCat("could not retrieve ROCM device attribute (", attribute,
-                     "): ", ToString(result)));
-  }
-  T converted = value;
-  return converted;
-}
-
-// Returns the number of multiprocessors on the device (note that the device
-// may be multi-GPU-per-board).
-
-absl::StatusOr<int> GetMultiprocessorCount(hipDevice_t device) {
-  return GetSimpleAttribute<int>(device, hipDeviceAttributeMultiprocessorCount);
-}
-
-absl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(
-      device, hipDeviceAttributeMaxSharedMemoryPerMultiprocessor);
-}
-
-absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(device,
-                                     hipDeviceAttributeMaxSharedMemoryPerBlock);
-}
-
-absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(
-      device, hipDeviceAttributeMaxThreadsPerMultiProcessor);
-}
-
-absl::StatusOr<int64_t> GetMaxRegistersPerBlock(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(device,
-                                     hipDeviceAttributeMaxRegistersPerBlock);
-}
-
-absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
-}
-
-absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
-  int value;
-  ABSL_RETURN_IF_ERROR(ToStatus(
-      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, device),
-      "failed to query max grid dim x"));
-  *x = value;
-
-  ABSL_RETURN_IF_ERROR(ToStatus(
-      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY, device),
-      "failed to query max grid dim y"));
-  *y = value;
-
-  ABSL_RETURN_IF_ERROR(ToStatus(
-      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ, device),
-      "failed to query max grid dim z"));
-  *z = value;
-  return absl::OkStatus();
-}
-
-absl::StatusOr<int64_t> GetMaxRegistersPerMultiprocessor(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(
-      device, hipDeviceAttributeMaxRegistersPerMultiprocessor);
-}
-
 // Returns the device associated with the given device_ordinal.
 absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
   hipDevice_t device;
@@ -369,37 +254,15 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   return absl::OkStatus();
 }
 
-std::string GetPCIBusID(hipDevice_t device) {
-  std::string pci_bus_id;
-  static const int kBufferSize = 64;
-  absl::InlinedVector<char, 4> chars(kBufferSize);
-  chars[kBufferSize - 1] = '\0';
-  hipError_t res = hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
-    return pci_bus_id;
-  }
-  pci_bus_id = chars.begin();
-  return pci_bus_id;
-}
+absl::StatusOr<std::string> GetPCIBusID(int device_ordinal) {
+  std::array<char, 64> chars{};
+  ABSL_RETURN_IF_ERROR(
+      ToStatus(hipDeviceGetPCIBusId(chars.begin(), chars.size() - 1,
+                                    static_cast<hipDevice_t>(device_ordinal)),
+               "failed to query PCI bus id for device"));
 
-absl::StatusOr<bool> IsEccEnabled(hipDevice_t device) {
-  int value = 0;
-  ABSL_RETURN_IF_ERROR(ToStatus(
-      hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
-      "hipDeviceGetAttribute(hipDeviceAttributeEccEnabled) failed"));
-  return value != 0;
-}
-
-bool GetDeviceProperties(hipDeviceProp_t* device_properties,
-                         int device_ordinal) {
-  hipError_t res = hipGetDeviceProperties(device_properties, device_ordinal);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query device properties: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  // Lower the hex characters to match sysfs.
+  return absl::AsciiStrToLower(absl::string_view(chars.begin()));
 }
 
 // Allocates memory on the GPU device.
@@ -641,8 +504,6 @@ void RocmExecutor::UnloadKernel(const Kernel* kernel) {
 
 absl::Status RocmExecutor::Init() {
   ABSL_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
-  ABSL_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
-
   // Initialize peer access cache for all devices
   int device_count = 0;
   ABSL_RETURN_IF_ERROR(
@@ -1088,22 +949,6 @@ absl::StatusOr<DeviceAddressBase> RocmExecutor::GetSymbol(
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
-namespace {
-absl::Status FillBlockDimLimit(hipDevice_t device, BlockDim* block_dim_limit) {
-  // The BlockDim name is a mismatch against these GRID_DIM_* queries because
-  // we use BlockDims to express the dimensions of blocks within a grid
-  // (as opposed to ThreadDim which expresses the dimensions of threads
-  // within a block).
-  int x, y, z;
-  ABSL_RETURN_IF_ERROR(GetGridLimits(&x, &y, &z, device));
-
-  block_dim_limit->x = x;
-  block_dim_limit->y = y;
-  block_dim_limit->z = z;
-  return absl::OkStatus();
-}
-}  // namespace
-
 absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
   ABSL_ASSIGN_OR_RETURN(auto event, RocmEvent::Create(this, /*allow_timing=*/false));
   return std::make_unique<RocmEvent>(std::move(event));
@@ -1139,50 +984,60 @@ int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
-  ABSL_ASSIGN_OR_RETURN(hipDevice_t device, GetDevice(device_ordinal));
-
-  ABSL_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
-
   DeviceDescription desc;
+  hipDeviceProp_t prop;
+  ABSL_RETURN_IF_ERROR(ToStatus(hipGetDeviceProperties(&prop, device_ordinal),
+                           "failed to query device properties"));
 
-  std::string pci_bus_id = GetPCIBusID(device);
-  pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
-  desc.set_pci_bus_id(pci_bus_id);
   {
-    // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
-    std::optional<int> numa_node = ReadNumaNode(pci_bus_id, device_ordinal);
-    // If the kernel reports -1, adjust to 0; leave as -1 if no value could be
-    // obtained.
-    desc.set_numa_node(numa_node.has_value() ? std::max(0, *numa_node)
-                                             : tsl::port::kNUMANoAffinity);
+    ABSL_ASSIGN_OR_RETURN(std::string pci_bus_id, GetPCIBusID(device_ordinal));
+    desc.set_pci_bus_id(pci_bus_id);
   }
 
-  hipDeviceProp_t prop;
-  if (GetDeviceProperties(&prop, device_ordinal)) {
-    desc.set_threads_per_block_limit(prop.maxThreadsPerBlock);
+  {
+    int32_t numa_node;
+    ABSL_RETURN_IF_ERROR(ToStatus(
+        hipDeviceGetAttribute(&numa_node, hipDeviceAttributeHostNumaId,
+                              static_cast<hipDevice_t>(device_ordinal)),
+        "failed to get device host numa id"));
 
+    desc.set_numa_node(numa_node);
+  }
+  {
+    std::string gcn_arch_name(prop.gcnArchName);
+    desc.set_name(prop.name[0] == '\0' ? gcn_arch_name
+                                       : std::string(prop.name));
+    desc.set_platform_version(
+        absl::StrCat("AMDGPU ISA version: ", gcn_arch_name));
+    desc.set_rocm_compute_capability(std::move(gcn_arch_name));
+  }
+
+  desc.set_threads_per_block_limit(prop.maxThreadsPerBlock);
+  {
     ThreadDim thread_dim_limit;
     thread_dim_limit.x = prop.maxThreadsDim[0];
     thread_dim_limit.y = prop.maxThreadsDim[1];
     thread_dim_limit.z = prop.maxThreadsDim[2];
     desc.set_thread_dim_limit(thread_dim_limit);
-
-    float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
-    desc.set_clock_rate_ghz(clock_rate_ghz);
-
-    // HIP reports the memory controller clock (UCLK), not the data-rate clock,
-    // so the legacy `2 * bus * clock` formula undercounts on HBM3+/GDDR6.
-    // GetRocmMemoryBandwidth prefers the SMI firmware peak, then a per-gfx
-    // peak, then that formula.
-    desc.set_memory_bandwidth(gpu::GetRocmMemoryBandwidth(
-        pci_bus_id, RocmComputeCapability(gcn_arch_name), prop.memoryBusWidth,
-        prop.memoryClockRate));
-
-    desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
+  float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
+  desc.set_clock_rate_ghz(clock_rate_ghz);
+
+  // HIP reports the memory controller clock (UCLK), not the data-rate clock,
+  // so the legacy `2 * bus * clock` formula undercounts on HBM3+/GDDR6.
+  // GetRocmMemoryBandwidth prefers the SMI firmware peak, then a per-gfx
+  // peak, then that formula.
+  desc.set_memory_bandwidth(gpu::GetRocmMemoryBandwidth(
+      desc.pci_bus_id(),
+      *desc.gpu_compute_capability().rocm_compute_capability(),
+      prop.memoryBusWidth, prop.memoryClockRate));
+
+  desc.set_l2_cache_size(prop.l2CacheSize);
+
   {
-    absl::StatusOr<int64_t> pcie_bw = gpu::GetRocmPcieBandwidth(pci_bus_id);
+    absl::StatusOr<int64_t> pcie_bw =
+        gpu::GetRocmPcieBandwidth(desc.pci_bus_id());
     if (pcie_bw.ok()) {
       desc.set_pcie_bandwidth(*pcie_bw);
     } else {
@@ -1196,7 +1051,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     absl::StatusOr<gpu::XgmiTopologyInfo> xgmi =
-        gpu::GetRocmXgmiTopology(pci_bus_id);
+        gpu::GetRocmXgmiTopology(desc.pci_bus_id());
     if (!xgmi.ok()) {
       LOG(WARNING) << "Could not determine xGMI topology for device "
                    << device_ordinal << " via SMI: " << xgmi.status().message();
@@ -1210,81 +1065,50 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     }
   }
 
-  {
-    auto ecc_enabled_or = IsEccEnabled(device);
-    if (!ecc_enabled_or.ok()) {
-      LOG(ERROR) << "Device " << device_ordinal
-                 << ": ECC status query failed: " << ecc_enabled_or.status();
-      return ecc_enabled_or.status();
-    }
-    desc.set_ecc_enabled(*ecc_enabled_or);
-  }
-
-  uint64_t device_memory_size = 0;
-  {
-    size_t value = 0;
-    hipError_t res = hipDeviceTotalMem(&value, device);
-    if (res == hipSuccess) {
-      device_memory_size = value;
-    } else {
-      LOG(ERROR) << "failed to query total available memory: " << ToString(res);
-    }
-  }
-  desc.set_device_memory_size(device_memory_size);
-
+  desc.set_ecc_enabled(prop.ECCEnabled);
+  desc.set_device_memory_size(prop.totalGlobalMem);
   {
     BlockDim block_dim_limit;
-    ABSL_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
+    block_dim_limit.x = prop.maxGridSize[0];
+    block_dim_limit.y = prop.maxGridSize[1];
+    block_dim_limit.z = prop.maxGridSize[2];
     desc.set_block_dim_limit(block_dim_limit);
   }
 
-  {
-    ABSL_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
-    desc.set_name(device_name.empty() ? gcn_arch_name : device_name);
-  }
-
-  desc.set_platform_version(
-      absl::StrCat("AMDGPU ISA version: ", gcn_arch_name));
-
-  // TODO(leary) should be a way to query this from the driver, but this is
-  // unlikely to change for us any time soon.
   desc.set_device_address_bits(64);
 
   desc.set_device_vendor("Advanced Micro Devices, Inc");
-  desc.set_rocm_compute_capability(gcn_arch_name);
 
-  desc.set_shared_memory_per_core(GetMaxSharedMemoryPerCore(device).value());
-  desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
-  desc.set_shared_memory_per_block_optin(
-      GetMaxSharedMemoryPerBlock(device).value());
-  int core_count = GetMultiprocessorCount(device).value();
-  desc.set_core_count(core_count);
+  desc.set_shared_memory_per_core(prop.maxSharedMemoryPerMultiProcessor);
+  desc.set_shared_memory_per_block(prop.sharedMemPerBlock);
+  desc.set_shared_memory_per_block_optin(prop.sharedMemPerBlockOptin);
+  desc.set_core_count(prop.multiProcessorCount);
   {
-    const GpuComputeCapability cc{RocmComputeCapability(gcn_arch_name)};
-    desc.set_fpus_per_core(GetFpusPerCore(cc));
-    FillExecutionUnitDesc(cc, desc.clock_rate_ghz(), desc);
+    desc.set_fpus_per_core(GetFpusPerCore(desc.gpu_compute_capability()));
+    FillExecutionUnitDesc(desc.gpu_compute_capability(), desc.clock_rate_ghz(),
+                          desc);
   }
-  desc.set_threads_per_core_limit(
-      GetMaxThreadsPerMultiprocessor(device).value());
-  desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
-  desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
-  {
-    ABSL_ASSIGN_OR_RETURN(int64_t regs_per_mp,
-                     GetMaxRegistersPerMultiprocessor(device));
-    desc.set_registers_per_core_limit(regs_per_mp);
-  }
+  desc.set_threads_per_core_limit(prop.maxThreadsPerMultiProcessor);
+  desc.set_registers_per_block_limit(prop.regsPerBlock);
+  desc.set_threads_per_warp(prop.warpSize);
+  desc.set_registers_per_core_limit(prop.regsPerMultiprocessor);
+
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
-  int32_t runtime_version;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipRuntimeGetVersion(&runtime_version),
-                           "Failed call to hipRuntimeGetVersion"));
-  desc.set_runtime_version(
-      ParseRocmVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
-  int32_t driver_version;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipDriverGetVersion(&driver_version),
-                           "Could not get driver version"));
-  desc.set_driver_version(
-      ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
+  {
+    int32_t runtime_version;
+    ABSL_RETURN_IF_ERROR(ToStatus(hipRuntimeGetVersion(&runtime_version),
+                             "Failed call to hipRuntimeGetVersion"));
+    desc.set_runtime_version(
+        ParseRocmVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
+  }
+  {
+    int32_t driver_version;
+    ABSL_RETURN_IF_ERROR(ToStatus(hipDriverGetVersion(&driver_version),
+                             "Could not get driver version"));
+    desc.set_driver_version(
+        ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
+  }
   // This is currently hardcoded in rocm_dnn.cc.
   // TODO(ROCm): Query MIOpen version instead of hardcoding.
   desc.set_dnn_version(SemanticVersion(1, 3, 0));
@@ -1298,8 +1122,8 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  desc.set_model_str(
-      absl::StrFormat("%dB RAM, %d cores", device_memory_size, core_count));
+  desc.set_model_str(absl::StrFormat(
+      "%dB RAM, %d cores", desc.device_memory_size(), desc.core_count()));
 
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
