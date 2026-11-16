@@ -251,6 +251,25 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
+  def testGrayscaleToRGBNonTensorInput(self):
+    # NumPy arrays and nested lists are converted, as in rgb_to_grayscale.
+    x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2, 1])
+    y_np = np.array([[1, 1, 1], [2, 2, 2]], dtype=np.uint8).reshape([1, 2, 3])
+
+    for x in (x_np, x_np.tolist(), x_np[np.newaxis]):
+      y = image_ops.grayscale_to_rgb(x)
+      self.assertAllEqual(
+          self.evaluate(y), np.broadcast_to(y_np, np.shape(x)[:-1] + (3,)))
+    self.assertEqual(image_ops.grayscale_to_rgb(x_np).dtype, dtypes.uint8)
+
+    # The shape is still validated.
+    err_msg = "Last dimension of a grayscale image should be size 1"
+    with self.assertRaisesRegex(ValueError, err_msg):
+      image_ops.grayscale_to_rgb(np.zeros([1, 2, 3], dtype=np.uint8))
+    err_msg = "must be at least two-dimensional"
+    with self.assertRaisesRegex(ValueError, err_msg):
+      image_ops.grayscale_to_rgb(np.zeros([2], dtype=np.uint8))
+
   def testGrayscaleToRGBInputValidation(self):
     # tests whether the grayscale_to_rgb function raises
     # an exception if the input images' last dimension is
