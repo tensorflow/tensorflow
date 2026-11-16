@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <sstream>
-#include <string>
 
 #include "absl/log/check.h"
 #include "llvm/Support/Compiler.h"
@@ -28,55 +26,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
-#include "xla/tsl/platform/statusor.h"
-
-// TODO: Instead of CHECK_EQs, can we do something like TF_RET_CHECK but with
-// MLIR diagnostics?
-// e.g.
-// #define MLIR_RET_CHECK_EQ(a, b, diagnostic) \
-//   do { \
-//     const auto a_ = a; \
-//     const auto b_ = b; \
-//     if (LLVM_UNLIKELY(a_ != b_)) { \
-//       return diagnostic << "Check failed: " << #a << " != " << #b << "(" <<
-//       a_  << " vs. " << b_ << ")"; \
-//     } \
-//   } while (false)
-
-// All the macros below here are to handle the case in
-// FAILUREOR_ASSIGN_OR_RETURN where the LHS is wrapped in parentheses. See a
-// more detailed discussion at https://stackoverflow.com/a/62984543
-#define FAILUREOR_ASSIGN_OR_RETURN_UNPARENTHESIZE_IF_PARENTHESIZED(X) \
-  FAILUREOR_ASSIGN_OR_RETURN_ESCAPE(FAILUREOR_ASSIGN_OR_RETURN_EMPTY X)
-#define FAILUREOR_ASSIGN_OR_RETURN_EMPTY(...) \
-  FAILUREOR_ASSIGN_OR_RETURN_EMPTY __VA_ARGS__
-#define FAILUREOR_ASSIGN_OR_RETURN_ESCAPE(...) \
-  FAILUREOR_ASSIGN_OR_RETURN_ESCAPE_(__VA_ARGS__)
-#define FAILUREOR_ASSIGN_OR_RETURN_ESCAPE_(...) \
-  FAILUREOR_ASSIGN_OR_RETURN_##__VA_ARGS__
-#define FAILUREOR_ASSIGN_OR_RETURN_FAILUREOR_ASSIGN_OR_RETURN_EMPTY
-
-#define FAILUREOR_ASSIGN_OR_RETURN_IMPL(failureor, lhs, rhs)        \
-  auto failureor = rhs;                                             \
-  if (mlir::failed(failureor)) {                                    \
-    return mlir::failure();                                         \
-  }                                                                 \
-  FAILUREOR_ASSIGN_OR_RETURN_UNPARENTHESIZE_IF_PARENTHESIZED(lhs) = \
-      (std::move(failureor).value())
-
-#define FAILUREOR_ASSIGN_OR_RETURN(lhs, rhs) \
-  FAILUREOR_ASSIGN_OR_RETURN_IMPL(           \
-      TF_STATUS_MACROS_CONCAT_NAME(failureor, __COUNTER__), lhs, rhs)
-
-#define RETURN_IF_FAILED(...)        \
-  do {                               \
-    if (mlir::failed(__VA_ARGS__)) { \
-      return mlir::failure();        \
-    }                                \
-  } while (false)
+#include "xla/mosaic/util.h"  // IWYU pragma: export
 
 namespace mlir::tpu {
 
@@ -146,26 +100,14 @@ inline unsigned getElementTypeBitwidth(MemRefType ty) {
   return getElementTypeBitwidth(ty.getElementType());
 }
 
-// Debug only util.
-template <typename T>
-std::string shapeToString(const T& shape) {
-  std::ostringstream os;
-  os << "(";
-  for (auto it = shape.begin(); it != shape.end(); ++it) {
-    if (it != shape.begin()) {
-      os << ",";
-    }
-    os << *it;
-  }
-  os << ")";
-  return os.str();
-}
-
 // Computes the dimensions that were squeezed from the source shape to match the
 // target shape. Returns the dimensions in increasing order.
-FailureOr<SmallVector<int64_t>> computeSqueezedDimsChecked(
+inline FailureOr<SmallVector<int64_t>> computeSqueezedDimsChecked(
     Operation* op, ArrayRef<int64_t> source_shape,
-    ArrayRef<int64_t> target_shape);
+    ArrayRef<int64_t> target_shape) {
+  return ::mlir::mosaic::computeSqueezedDimsChecked(op, source_shape,
+                                                    target_shape);
+}
 
 // Determines whether the given MemRefType has the given memory space.
 bool HasMemorySpace(MemRefType ty, tpu::MemorySpace space,

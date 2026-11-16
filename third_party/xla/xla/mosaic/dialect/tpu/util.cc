@@ -15,58 +15,13 @@ limitations under the License.
 
 #include "xla/mosaic/dialect/tpu/util.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <optional>
 
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 
 namespace mlir::tpu {
-
-FailureOr<SmallVector<int64_t>> computeSqueezedDimsChecked(
-    Operation* op, ArrayRef<int64_t> source_shape,
-    ArrayRef<int64_t> target_shape) {
-  SmallVector<int64_t> squeezed;
-  int64_t source_index = source_shape.size() - 1;
-  int64_t target_index = target_shape.size() - 1;
-
-  while (source_index >= 0 || target_index >= 0) {
-    int64_t target_dim = (target_index >= 0) ? target_shape[target_index] : -1;
-    if (source_index < 0) {
-      op->emitError() << llvm::formatv(
-          "Target shape is not valid. Source: {0}, Target: {1}.",
-          shapeToString(source_shape), shapeToString(target_shape));
-      return failure();
-    }
-    int64_t source_dim = source_shape[source_index];
-    if (source_dim == target_dim) {
-      source_index--;
-      target_index--;
-    } else {
-      if (source_dim != 1) {
-        op->emitError() << llvm::formatv(
-            "Target shape is not valid. Source: {0}, Target: {1}.",
-            shapeToString(source_shape), shapeToString(target_shape));
-        return failure();
-      }
-      squeezed.push_back(source_index);
-      source_index--;
-    }
-  }
-
-  if (source_index != -1 || target_index != -1) {
-    op->emitError() << "Shape mismatch after traversal. Source shape: "
-                    << shapeToString(source_shape)
-                    << ", target shape: " << shapeToString(target_shape);
-    return failure();
-  }
-  std::reverse(squeezed.begin(), squeezed.end());
-  return squeezed;
-}
 
 bool HasMemorySpace(MemRefType ty, tpu::MemorySpace space,
                     std::optional<CoreType> type) {

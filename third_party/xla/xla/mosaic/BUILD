@@ -43,8 +43,8 @@ cc_library(
         ":stringify_util",
         ":tpu_enums_inc_gen",
         ":tpu_inc_gen",
+        ":util",
         "//xla:shape_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
@@ -303,4 +303,16 @@ cc_library(
     hdrs = ["dialect/tpu/stringify_util.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
