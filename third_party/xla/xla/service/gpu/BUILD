@@ -842,6 +842,7 @@ cc_library(
         "//xla/backends/gpu/runtime:command_buffer_conversion_pass",
         "//xla/backends/gpu/runtime:command_buffer_requests",
         "//xla/backends/gpu/runtime:execution_stream_id",
+        "//xla/backends/gpu/runtime:ffi_kernel_registry",
         "//xla/backends/gpu/runtime:per_device_state",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",

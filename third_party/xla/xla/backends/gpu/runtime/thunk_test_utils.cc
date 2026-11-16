@@ -57,7 +57,7 @@ Thunk::PrepareParams TestThunkParams::PrepareParams() & {
       effective_collective_memory_requests(), executor_,
       effective_buffer_allocations(), execution_scoped_state_,
       custom_options_.value_or(run_options_->run_options().custom_options()),
-      command_buffer_requests_);
+      command_buffer_requests_, ffi_kernel_registry_);
 }
 
 Thunk::InitializeParams TestThunkParams::InitializeParams() & {
@@ -70,7 +70,7 @@ Thunk::InitializeParams TestThunkParams::InitializeParams() & {
           run_options_->run_options().ffi_execution_context()),
       local_device_count_.value_or(run_options_->local_device_count()),
       execution_scoped_state_, effective_persistent_alloc_indices(),
-      command_buffer_requests_);
+      command_buffer_requests_, ffi_kernel_registry_);
 }
 
 Thunk::ExecuteParams TestThunkParams::ExecuteParams() & {

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/backends/gpu/runtime/record_ffi.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/collectives_c_api.h"
+#include "xla/ffi/api/kernel_registry_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -538,6 +540,12 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
   CommandBufferRequests::ScopedCommand scoped_command(
       *params.command_buffer_requests, this);
 
+  // Handlers may register kernels during Prepare.
+  TF_RET_CHECK(params.ffi_kernel_registry != nullptr);
+  TF_RET_CHECK(params.executor != nullptr);
+  KernelRegistrationExtension registration_ext(params.ffi_kernel_registry,
+                                               params.executor);
+
   if (c_bundle && c_bundle->prepare) {
     return ExecuteFfiHandler(
         run_id, c_bundle->prepare, XLA_FFI_ExecutionStage_PREPARE,
@@ -551,7 +559,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         /*command_buffer_requests=*/params.command_buffer_requests,
         /*collective_cliques=*/nullptr,
         /*collective_memory=*/nullptr,
-        /*computation_streams=*/{});
+        /*computation_streams=*/{}, registration_ext.base());
   }
   if (owned_bundle && owned_bundle->prepare) {
     return ExecuteFfiHandler(
@@ -566,7 +574,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         /*command_buffer_requests=*/params.command_buffer_requests,
         /*collective_cliques=*/nullptr,
         /*collective_memory=*/nullptr,
-        /*computation_streams=*/{});
+        /*computation_streams=*/{}, registration_ext.base());
   }
 
   return absl::OkStatus();
@@ -594,6 +602,16 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
+  // Handlers may register kernels during Initialize.
+  se::StreamExecutor* executor =
+      params.executor != nullptr
+          ? params.executor
+          : (params.stream != nullptr ? params.stream->parent() : nullptr);
+  TF_RET_CHECK(params.ffi_kernel_registry != nullptr);
+  TF_RET_CHECK(executor != nullptr);
+  KernelRegistrationExtension registration_ext(params.ffi_kernel_registry,
+                                               executor);
+
   if (c_bundle && c_bundle->initialize) {
     return ExecuteFfiHandler(
         run_id, *c_bundle->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
@@ -604,7 +622,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         /*collective_memory_requests=*/nullptr,
         /*command_buffer_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
-        /*computation_streams=*/{});
+        /*computation_streams=*/{}, registration_ext.base());
   }
   if (owned_bundle && owned_bundle->initialize) {
     return ExecuteFfiHandler(
@@ -617,7 +635,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         /*collective_memory_requests=*/nullptr,
         /*command_buffer_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
-        /*computation_streams=*/{});
+        /*computation_streams=*/{}, registration_ext.base());
   }
   return absl::OkStatus();
 }
@@ -628,6 +646,14 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   const RunId run_id =
       params.collective_params ? params.collective_params->run_id : RunId{-1};
 
+  // Handlers may launch registered kernels during Execute.
+  std::optional<XLA_FFI_KernelRegistry_Extension> launch_ext;
+  const XLA_FFI_Extension* extension_start = nullptr;
+  if (stream != nullptr) {
+    launch_ext = MakeKernelLaunchExtension(stream);
+    extension_start = &launch_ext->extension_base;
+  }
+
   if (const auto* c_bundle = std::get_if<XLA_FFI_Handler_Bundle>(&bundle_)) {
     return ExecuteFfiHandler(
         run_id, c_bundle->execute, XLA_FFI_ExecutionStage_EXECUTE, stream,
@@ -637,7 +663,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr,
         /*command_buffer_requests=*/nullptr, params.collective_cliques,
-        params.collective_memory, params.additional_compute_streams);
+        params.collective_memory, params.additional_compute_streams,
+        extension_start);
   }
   if (const auto* owned_bundle = std::get_if<OwnedHandlerBundle>(&bundle_)) {
     if (!owned_bundle->execute) {
@@ -651,7 +678,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr,
         /*command_buffer_requests=*/nullptr, params.collective_cliques,
-        params.collective_memory, params.additional_compute_streams);
+        params.collective_memory, params.additional_compute_streams,
+        extension_start);
   }
 
   return absl::InternalError("No FFI handler bundle set");

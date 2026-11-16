@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/custom_options.h"
 #include "xla/ffi/execution_context.h"
@@ -156,6 +158,12 @@ class TestThunkParams {
     command_buffer_requests_ = command_buffer_requests;
     return *this;
   }
+  TestThunkParams& WithFfiKernelRegistry(
+      FfiKernelRegistry* absl_nonnull ffi_kernel_registry) & {
+    CHECK_NE(ffi_kernel_registry, nullptr);
+    ffi_kernel_registry_ = ffi_kernel_registry;
+    return *this;
+  }
   TestThunkParams& WithPersistentAllocIndices(
       absl::Span<const BufferAllocation::Index> persistent_alloc_indices) & {
     persistent_alloc_indices_.emplace(persistent_alloc_indices.begin(),
@@ -181,6 +189,11 @@ class TestThunkParams {
     return *command_buffer_requests_;
   }
   const CommandBufferRequests& command_buffer_requests() const&& = delete;
+  FfiKernelRegistry& ffi_kernel_registry() & { return *ffi_kernel_registry_; }
+  const FfiKernelRegistry& ffi_kernel_registry() const& {
+    return *ffi_kernel_registry_;
+  }
+  const FfiKernelRegistry& ffi_kernel_registry() const&& = delete;
   CollectiveCliqueRequests& collective_clique_requests() & {
     CHECK_NE(collective_clique_requests_, nullptr);
     return *collective_clique_requests_;
@@ -242,6 +255,8 @@ class TestThunkParams {
   CommandBufferRequests owned_command_buffer_requests_;
   CommandBufferRequests* command_buffer_requests_ =
       &owned_command_buffer_requests_;
+  FfiKernelRegistry owned_ffi_kernel_registry_{/*num_devices=*/0};
+  FfiKernelRegistry* ffi_kernel_registry_ = &owned_ffi_kernel_registry_;
 
   std::optional<std::vector<BufferAllocation::Index>> persistent_alloc_indices_;
   std::vector<se::Stream*> additional_compute_streams_;

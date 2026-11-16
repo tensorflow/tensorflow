@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
@@ -215,10 +216,12 @@ class Thunk {
   struct PrepareParams {
     PrepareParams(se::StreamExecutor* absl_nonnull executor,
                   const BufferAllocations* absl_nonnull buffer_allocations,
-                  CommandBufferRequests* absl_nonnull command_buffer_requests)
+                  CommandBufferRequests* absl_nonnull command_buffer_requests,
+                  FfiKernelRegistry* absl_nonnull ffi_kernel_registry)
         : executor(executor),
           buffer_allocations(buffer_allocations),
-          command_buffer_requests(command_buffer_requests) {}
+          command_buffer_requests(command_buffer_requests),
+          ffi_kernel_registry(ffi_kernel_registry) {}
 
     PrepareParams(const CollectiveParams* collective_params,
                   CollectiveCliqueRequests* collective_clique_requests,
@@ -227,7 +230,8 @@ class Thunk {
                   const BufferAllocations* absl_nonnull buffer_allocations,
                   ExecutionScopedState* execution_scoped_state,
                   const CustomOptions* custom_options,
-                  CommandBufferRequests* absl_nonnull command_buffer_requests)
+                  CommandBufferRequests* absl_nonnull command_buffer_requests,
+                  FfiKernelRegistry* absl_nonnull ffi_kernel_registry)
         : collective_params(collective_params),
           collective_clique_requests(collective_clique_requests),
           collective_memory_requests(collective_memory_requests),
@@ -235,7 +239,8 @@ class Thunk {
           buffer_allocations(buffer_allocations),
           execution_scoped_state(execution_scoped_state),
           custom_options(custom_options),
-          command_buffer_requests(command_buffer_requests) {}
+          command_buffer_requests(command_buffer_requests),
+          ffi_kernel_registry(ffi_kernel_registry) {}
 
     // Parameters for executing collective operations.
     const CollectiveParams* collective_params = nullptr;
@@ -256,6 +261,9 @@ class Thunk {
 
     // Command buffer execution requests configured during prepare.
     CommandBufferRequests* absl_nonnull command_buffer_requests;
+
+    // Executable-scoped registry of FFI device kernels.
+    FfiKernelRegistry* absl_nonnull ffi_kernel_registry;
   };
 
   //===--------------------------------------------------------------------===//
@@ -266,21 +274,25 @@ class Thunk {
   // launch any "work" on device and only initialize thunks for execution, i.e.
   // we pre-load kernels on device and instantiate all command buffers.
   struct InitializeParams {
-    explicit InitializeParams(
-        const CommandBufferRequests* absl_nonnull command_buffer_requests)
-        : command_buffer_requests(command_buffer_requests) {}
+    InitializeParams(
+        const CommandBufferRequests* absl_nonnull command_buffer_requests,
+        FfiKernelRegistry* absl_nonnull ffi_kernel_registry)
+        : command_buffer_requests(command_buffer_requests),
+          ffi_kernel_registry(ffi_kernel_registry) {}
 
     InitializeParams(
         se::StreamExecutor* executor, ExecutableSource src,
         const BufferAllocations* buffer_allocations, se::Stream* stream,
         se::Stream* command_buffer_trace_stream,
-        const CommandBufferRequests* absl_nonnull command_buffer_requests)
+        const CommandBufferRequests* absl_nonnull command_buffer_requests,
+        FfiKernelRegistry* absl_nonnull ffi_kernel_registry)
         : executor(executor),
           src(std::move(src)),
           buffer_allocations(buffer_allocations),
           stream(stream),
           command_buffer_trace_stream(command_buffer_trace_stream),
-          command_buffer_requests(command_buffer_requests) {}
+          command_buffer_requests(command_buffer_requests),
+          ffi_kernel_registry(ffi_kernel_registry) {}
 
     InitializeParams(
         se::StreamExecutor* executor, ExecutableSource src,
@@ -294,7 +306,8 @@ class Thunk {
         int local_device_count, ExecutionScopedState* execution_scoped_state,
         std::optional<absl::Span<const BufferAllocation::Index>>
             persistent_alloc_indices,
-        const CommandBufferRequests* absl_nonnull command_buffer_requests)
+        const CommandBufferRequests* absl_nonnull command_buffer_requests,
+        FfiKernelRegistry* absl_nonnull ffi_kernel_registry)
         : executor(executor),
           src(std::move(src)),
           buffer_allocations(buffer_allocations),
@@ -308,7 +321,8 @@ class Thunk {
           local_device_count(local_device_count),
           execution_scoped_state(execution_scoped_state),
           persistent_alloc_indices(persistent_alloc_indices),
-          command_buffer_requests(command_buffer_requests) {}
+          command_buffer_requests(command_buffer_requests),
+          ffi_kernel_registry(ffi_kernel_registry) {}
 
     se::StreamExecutor* executor = nullptr;
     ExecutableSource src;
@@ -361,6 +375,9 @@ class Thunk {
 
     // Command buffer execution requests collected during prepare.
     const CommandBufferRequests* absl_nonnull command_buffer_requests;
+
+    // Executable-scoped registry of FFI device kernels.
+    FfiKernelRegistry* absl_nonnull ffi_kernel_registry;
   };
 
   //===--------------------------------------------------------------------===//

@@ -590,6 +590,8 @@ GpuExecutable::GpuExecutable(
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
       locality_domain_count_(device_description.locality_domain_count()),
+      ffi_kernel_registry_(
+          gpu_topology.has_value() ? gpu_topology->num_devices_per_host() : 0),
       thunk_executor_(std::move(executable)),
       definition_plan_(ThunkExecutor::BuildDefinitionPlan(*thunk_executor_)),
       num_additional_streams_(
@@ -724,6 +726,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         persistent_alloc_indices,
     const GpuExecutable::NumAdditionalStreams& num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
+    FfiKernelRegistry& ffi_kernel_registry,
     bool collective_use_minimal_resource, int compiled_locality_domain_count) {
   const GpuExecutableRunOptions* gpu_run_options =
       run_options->run_options().gpu_executable_run_options();
@@ -931,7 +934,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         &buffer_allocations,
         &execution_scoped_state,
         run_options->run_options().custom_options(),
-        &command_buffer_requests};
+        &command_buffer_requests,
+        &ffi_kernel_registry};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     ABSL_RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -980,7 +984,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         run_options->local_device_count(),
         &execution_scoped_state,
         persistent_alloc_indices,
-        &command_buffer_requests};
+        &command_buffer_requests,
+        &ffi_kernel_registry};
 
     tsl::profiler::TraceMe trace_initialize("Thunks::Initialize");
     ABSL_RETURN_IF_ERROR(thunk_executor.Initialize(initialize_params));
@@ -1552,8 +1557,8 @@ absl::Status GpuExecutable::ExecuteThunks(
       runtime_debug_options_, module_name_, *thunk_executor_, executable_source,
       run_options, buffer_allocations, block_host_until_done,
       persistent_alloc_indices, num_additional_streams_,
-      collective_memory_cache_, collective_use_minimal_resource_,
-      locality_domain_count_);
+      collective_memory_cache_, ffi_kernel_registry_,
+      collective_use_minimal_resource_, locality_domain_count_);
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {

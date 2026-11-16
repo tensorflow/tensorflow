@@ -46,11 +46,13 @@ limitations under the License.
 #include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/kernel_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/kernel_registry_ffi.h"
 #include "xla/ffi/record_ffi.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -972,11 +975,12 @@ absl::StatusOr<Slices> AllocateAndCopy(se::Stream& stream,
 }
 
 struct FfiRecordTestSetup {
+  // Declared first so its owned FfiKernelRegistry outlives thunk and commands.
+  TestThunkParams thunk_params;
   std::unique_ptr<se::Stream> stream;
   std::unique_ptr<RecordTestAlloc> alloc;
   std::unique_ptr<CustomCallThunk> thunk;
   std::unique_ptr<CommandStateManager> state;
-  TestThunkParams thunk_params;
   std::optional<Thunk::ExecuteParams> execute_params;
   std::optional<Command::RecordParams> record_params;
 
@@ -1345,6 +1349,108 @@ TEST(CustomCallThunkTest, PrepareSetsCommandBufferRequiresWarmup) {
         thunk_params.command_buffer_requests().requires_warmup(thunk.get()),
         true);
   }
+}
+
+TEST(CustomCallThunkTest, KernelRegistryInitializeAndExecute) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+
+  const XLA_FFI_Kernel* registered_kernel = nullptr;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(executor->GetPlatform()->Name()));
+
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.initialize = ffi::Ffi::BindInitialize().Ctx<ffi::KernelRegistry>().To(
+      [&](ffi::InitializeKernelRegistry registry) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(
+            registered_kernel,
+            registry.Register("AddI32",
+                              reinterpret_cast<const char*>(fatbin.data()),
+                              fatbin.size(), ffi::SourceFormat::kCubin,
+                              /*uses_pdl=*/false));
+        return absl::OkStatus();
+      });
+  bundle.execute =
+      ffi::Ffi::BindExecute()
+          .Ctx<ffi::KernelRegistry>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Ret<ffi::AnyBuffer>()
+          .To([&](ffi::ExecuteKernelRegistry registry, ffi::AnyBuffer input_0,
+                  ffi::AnyBuffer input_1, ffi::Result<ffi::AnyBuffer> result) {
+            const std::vector<void*> args = {input_0.untyped_data(),
+                                             input_1.untyped_data(),
+                                             (*result).untyped_data()};
+            return registry.Launch(registered_kernel,
+                                   /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+                                   /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
+                                   args);
+          });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      FfiRecordTestSetup::Create(executor, std::move(bundle),
+                                 "add_i32_kernel_registry", {10, 20}, {0}));
+  ASSERT_NE(registered_kernel, nullptr);
+
+  ASSERT_OK(setup->thunk->ExecuteOnStream(*setup->execute_params));
+  ASSERT_OK(setup->stream->BlockHostUntilDone());
+  int32_t host_exec = 0;
+  ASSERT_OK(setup->stream->Memcpy(&host_exec, setup->alloc->result_dev_ptrs[0],
+                                  sizeof(int32_t)));
+  EXPECT_EQ(host_exec, 30);
+}
+
+TEST(CustomCallThunkTest, KernelRegistryPrepareAndExecute) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+
+  const XLA_FFI_Kernel* registered_kernel = nullptr;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(executor->GetPlatform()->Name()));
+
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.prepare = ffi::Ffi::BindPrepare().Ctx<ffi::KernelRegistry>().To(
+      [&](ffi::PrepareKernelRegistry registry) -> absl::Status {
+        ABSL_ASSIGN_OR_RETURN(
+            registered_kernel,
+            registry.Register("AddI32",
+                              reinterpret_cast<const char*>(fatbin.data()),
+                              fatbin.size(), ffi::SourceFormat::kCubin,
+                              /*uses_pdl=*/false));
+        return absl::OkStatus();
+      });
+  bundle.execute =
+      ffi::Ffi::BindExecute()
+          .Ctx<ffi::KernelRegistry>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Ret<ffi::AnyBuffer>()
+          .To([&](ffi::ExecuteKernelRegistry registry, ffi::AnyBuffer input_0,
+                  ffi::AnyBuffer input_1, ffi::Result<ffi::AnyBuffer> result) {
+            const std::vector<void*> args = {input_0.untyped_data(),
+                                             input_1.untyped_data(),
+                                             (*result).untyped_data()};
+            return registry.Launch(registered_kernel,
+                                   /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+                                   /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
+                                   args);
+          });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto setup,
+      FfiRecordTestSetup::Create(executor, std::move(bundle),
+                                 "add_i32_prepare_registry", {7, 8}, {0}));
+
+  ASSERT_OK(setup->thunk->Prepare(setup->thunk_params.PrepareParams()));
+  ASSERT_NE(registered_kernel, nullptr);
+
+  ASSERT_OK(setup->thunk->ExecuteOnStream(*setup->execute_params));
+  ASSERT_OK(setup->stream->BlockHostUntilDone());
+  int32_t host_exec = 0;
+  ASSERT_OK(setup->stream->Memcpy(&host_exec, setup->alloc->result_dev_ptrs[0],
+                                  sizeof(int32_t)));
+  EXPECT_EQ(host_exec, 15);
 }
 
 }  // namespace

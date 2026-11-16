@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
@@ -52,6 +53,7 @@ TEST(ThunkTestUtilsTest, WiresOwnedStateByDefault) {
   EXPECT_EQ(prepare.executor, &executor);
   EXPECT_NE(prepare.buffer_allocations, nullptr);
   EXPECT_EQ(prepare.command_buffer_requests, &params.command_buffer_requests());
+  EXPECT_EQ(prepare.ffi_kernel_registry, &params.ffi_kernel_registry());
   EXPECT_EQ(prepare.execution_scoped_state, &params.execution_scoped_state());
   EXPECT_EQ(prepare.collective_clique_requests,
             &params.collective_clique_requests());
@@ -63,6 +65,7 @@ TEST(ThunkTestUtilsTest, WiresOwnedStateByDefault) {
   EXPECT_EQ(init.buffer_allocations, nullptr);
   EXPECT_EQ(init.local_device_count, 2);
   EXPECT_EQ(init.command_buffer_requests, &params.command_buffer_requests());
+  EXPECT_EQ(init.ffi_kernel_registry, &params.ffi_kernel_registry());
   EXPECT_EQ(init.execution_scoped_state, &params.execution_scoped_state());
 
   Thunk::ExecuteParams execute = params.ExecuteParams();
@@ -81,6 +84,7 @@ TEST(ThunkTestUtilsTest, PropagatesOverrides) {
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
   CommandBufferRequests cb_requests;
+  FfiKernelRegistry ffi_kernel_registry(/*num_devices=*/1);
   Thunk::ExecutionScopedState scoped_state;
   ExecutableRunOptions exec_run_options;
   exec_run_options.set_run_id(RunId(7));
@@ -96,6 +100,7 @@ TEST(ThunkTestUtilsTest, PropagatesOverrides) {
       .WithCollectiveMemoryRequests(&memory_requests)
       .WithCollectiveCliques(&cliques)
       .WithCommandBufferRequests(&cb_requests)
+      .WithFfiKernelRegistry(&ffi_kernel_registry)
       .WithExecutionScopedState(&scoped_state)
       .WithCustomOptions(&custom_options)
       .WithFfiExecutionContext(&ffi_ctx)
@@ -105,6 +110,7 @@ TEST(ThunkTestUtilsTest, PropagatesOverrides) {
 
   const TestThunkParams& const_params = params;
   EXPECT_EQ(&const_params.command_buffer_requests(), &cb_requests);
+  EXPECT_EQ(&const_params.ffi_kernel_registry(), &ffi_kernel_registry);
   EXPECT_EQ(&params.collective_clique_requests(), &clique_requests);
   EXPECT_EQ(&params.collective_memory_requests(), &memory_requests);
   EXPECT_EQ(&params.execution_scoped_state(), &scoped_state);
@@ -115,6 +121,7 @@ TEST(ThunkTestUtilsTest, PropagatesOverrides) {
   EXPECT_EQ(prepare.collective_clique_requests, &clique_requests);
   EXPECT_EQ(prepare.collective_memory_requests, &memory_requests);
   EXPECT_EQ(prepare.command_buffer_requests, &cb_requests);
+  EXPECT_EQ(prepare.ffi_kernel_registry, &ffi_kernel_registry);
   EXPECT_EQ(prepare.execution_scoped_state, &scoped_state);
   EXPECT_EQ(prepare.custom_options, &custom_options);
 
@@ -125,6 +132,7 @@ TEST(ThunkTestUtilsTest, PropagatesOverrides) {
   EXPECT_EQ(init.command_buffer_trace_stream, &trace_stream);
   EXPECT_EQ(init.collective_cliques, &cliques);
   EXPECT_EQ(init.command_buffer_requests, &cb_requests);
+  EXPECT_EQ(init.ffi_kernel_registry, &ffi_kernel_registry);
   EXPECT_EQ(init.execution_scoped_state, &scoped_state);
   EXPECT_EQ(init.custom_options, &custom_options);
   EXPECT_EQ(init.ffi_execution_context, &ffi_ctx);
