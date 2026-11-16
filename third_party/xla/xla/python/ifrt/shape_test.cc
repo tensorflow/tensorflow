@@ -196,8 +196,25 @@ TEST(ShapeTest, Hash) {
   }));
 }
 
+TEST(BoundedDynamicShapeTagTest, Create) {
+  ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag,
+                       BoundedDynamicShapeTag::Create({false, true}));
+  EXPECT_THAT(tag.DynamicDims(), ElementsAre(false, true));
+
+  EXPECT_THAT(
+      BoundedDynamicShapeTag::Create({}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("At least one dimension needs to be dynamically")));
+  EXPECT_THAT(
+      BoundedDynamicShapeTag::Create({false, false}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("At least one dimension needs to be dynamically")));
+}
+
 TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
-  EXPECT_DEATH(BoundedDynamicShapeTag tag({false, false}),
+  EXPECT_DEATH((void)BoundedDynamicShapeTag({}),
+               "At least one dimension needs to be dynamically sized");
+  EXPECT_DEATH((void)BoundedDynamicShapeTag({false, false}),
                "At least one dimension needs to be dynamically sized");
 }
 
@@ -206,9 +223,30 @@ class BoundedDynamicShapeTagSerDesTest : public ShapeSerDesTest {};
 TEST_P(BoundedDynamicShapeTagSerDesTest, ToFromProto) {
   BoundedDynamicShapeTag tag({true, false});
   BoundedDynamicShapeTagProto proto = tag.ToProto(version());
-  TF_ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
-                          tag.FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
+                       BoundedDynamicShapeTag::FromProto(proto));
   EXPECT_EQ(tag_copy, tag);
+}
+
+TEST(BoundedDynamicShapeTagTest, FromProtoRejectsStaticOrEmptyDims) {
+  {
+    BoundedDynamicShapeTagProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    EXPECT_THAT(
+        BoundedDynamicShapeTag::FromProto(proto),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("At least one dimension needs to be dynamically")));
+  }
+  {
+    BoundedDynamicShapeTagProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.add_is_dynamic_dims(false);
+    proto.add_is_dynamic_dims(false);
+    EXPECT_THAT(
+        BoundedDynamicShapeTag::FromProto(proto),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("At least one dimension needs to be dynamically")));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(

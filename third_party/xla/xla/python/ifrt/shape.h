@@ -25,10 +25,9 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -119,12 +118,14 @@ class BoundedDynamicShapeTag {
 
   using DynamicDimensions = absl::InlinedVector<bool, kInlineDimensionSize>;
 
-  explicit BoundedDynamicShapeTag(absl::Span<const bool> dynamic_dims)
-      : dynamic_dims_(
-            DynamicDimensions(dynamic_dims.begin(), dynamic_dims.end())) {
-    CHECK(absl::c_any_of(dynamic_dims_, [](bool b) { return b; }))
-        << "At least one dimension needs to be dynamically sized.";
-  }
+  // Constructs a `BoundedDynamicShapeTag` from `dynamic_dims`. Returns
+  // `InvalidArgumentError` if no dimension is dynamically sized.
+  static absl::StatusOr<BoundedDynamicShapeTag> Create(
+      absl::Span<const bool> dynamic_dims);
+
+  // Constructs a `BoundedDynamicShapeTag` from `dynamic_dims`. `CHECK`-fails if
+  // `Create(dynamic_dims)` returns an error.
+  explicit BoundedDynamicShapeTag(absl::Span<const bool> dynamic_dims);
 
   BoundedDynamicShapeTag(const BoundedDynamicShapeTag&) = default;
   BoundedDynamicShapeTag(BoundedDynamicShapeTag&&) = default;
@@ -165,6 +166,10 @@ class BoundedDynamicShapeTag {
   }
 
  private:
+  struct UncheckedTag {};
+  BoundedDynamicShapeTag(UncheckedTag, DynamicDimensions dynamic_dims)
+      : dynamic_dims_(std::move(dynamic_dims)) {}
+
   // This vector is the same size as `Shape`'s 'dims()' and indicates whether
   // the respective dimension is dynamically sized.
   DynamicDimensions dynamic_dims_;
