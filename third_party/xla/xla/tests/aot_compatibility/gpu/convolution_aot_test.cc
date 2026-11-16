@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// AOT compatibility of ConvolutionThunk (cuDNN convolution), on 1 GPU.
-// Autotuning is off, so the golden holds cuDNN's first heuristic algorithm.
+// AOT compatibility of ConvolutionThunk (cuDNN convolution), on 1 GPU. The
+// cuDNN algorithm is pinned.
 
 #include <memory>
 #include <utility>
@@ -45,6 +45,18 @@ class ConvolutionAotTest : public AotCompatibilityTest,
   ConvolutionAotTest() : AotCompatibilityTest(GetParam()) {}
 };
 
+// The `xla_force_config` value: cuDNN engine 0 with its default knobs, on every
+// arch. The heuristic's pick changes with the GPU and with the cuDNN version
+// (on GB200, engine 28 at 9.23.0 and engine 0 at 9.25.1), and so would a golden
+// left to it. Engine 0 needs no workspace, hence the empty `workspace_size`. If
+// cuDNN no longer accepts the engine, the test fails: the runtime has no
+// heuristic fallback yet. The config applies to every instruction that gets a
+// config assigned, so the module must hold one convolution and no other such op
+// (e.g. a dot).
+constexpr absl::string_view kForcedCudnnConfig =
+    "backend: CUDNN "
+    "backend_config { algorithm { algo_id: 0 workspace_size {} } }";
+
 // A sliding 2x2 window.
 TEST_P(ConvolutionAotTest, Convolution) {
   constexpr absl::string_view kHlo = R"hlo(
@@ -57,7 +69,12 @@ TEST_P(ConvolutionAotTest, Convolution) {
     }
   )hlo";
   HloModuleConfig config = GetModuleConfigForTest();
-  config.mutable_debug_options().set_xla_gpu_autotune_level(0);
+  DebugOptions& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_autotune_level(0);
+  debug_options.set_xla_force_config(kForcedCudnnConfig);
+  // As a conv fusion the convolution would lower to CuDnnThunk, and the forced
+  // algo_id would be read as a cuDNN plan index.
+  debug_options.set_xla_gpu_experimental_enable_conv_fusion(false);
   Literal input =
       LiteralUtil::CreateR4<float>({{{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}}});
   Literal filter = LiteralUtil::CreateR4<float>({{{{1, 2}, {3, 4}}}});
