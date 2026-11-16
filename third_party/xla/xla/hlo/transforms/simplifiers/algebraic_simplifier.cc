@@ -4887,6 +4887,50 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
   }
   return std::unique_ptr<HloInstruction>();
 }
+
+// Returns whether `lhs <= rhs` holds for every element: `lhs` and `rhs` are
+// the same instruction, or both are effective scalar constants, possibly
+// broadcast, that compare less than or equal. Returns false when this cannot be
+// established, which includes a NaN on either side.
+absl::StatusOr<bool> IsKnownLessThanOrEqual(HloInstruction* lhs,
+                                            HloInstruction* rhs,
+                                            AlgebraicSimplifier* simplifier) {
+  if (lhs == rhs) {
+    return true;
+  }
+  auto match_effective_scalar_constant = [](HloInstruction* hlo,
+                                            HloInstruction** constant) {
+    return Match(hlo, m::ConstantEffectiveScalar(constant)) ||
+           Match(hlo, m::Broadcast(m::ConstantEffectiveScalar(constant)));
+  };
+  HloInstruction* lhs_constant;
+  HloInstruction* rhs_constant;
+  if (!match_effective_scalar_constant(lhs, &lhs_constant) ||
+      !match_effective_scalar_constant(rhs, &rhs_constant)) {
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      Literal lhs_literal,
+      Cast<HloConstantInstruction>(lhs_constant)->literal().Reshape({}));
+  ABSL_ASSIGN_OR_RETURN(
+      Literal rhs_literal,
+      Cast<HloConstantInstruction>(rhs_constant)->literal().Reshape({}));
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(std::move(lhs_literal));
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(std::move(rhs_literal));
+
+  Shape compare_shape = ShapeUtil::ChangeElementType(lhs_instr->shape(), PRED);
+  simplifier->UpdateLayout(&compare_shape);
+  std::unique_ptr<HloInstruction> compare =
+      HloInstruction::CreateCompare(compare_shape, lhs_instr.get(),
+                                    rhs_instr.get(), ComparisonDirection::kLe);
+
+  HloEvaluator evaluator;
+  ABSL_ASSIGN_OR_RETURN(Literal result, evaluator.Evaluate(compare.get()));
+  return result.IsAll(true);
+}
 }  // namespace
 
 bool AlgebraicSimplifierVisitor::IsNondecreasingSublinear(
@@ -4967,6 +5011,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
     }
   }
 
+  // max(a, clamp(a, x, b)) -> clamp(a, x, b)
+  // This holds only if a <= b: for a > b, clamp(a, x, b) is b, and the maximum
+  // is a.
   HloInstruction* clamp_lower_bound;
   HloInstruction* clamp_upper_bound;
   HloInstruction* max_operand;
@@ -4975,9 +5022,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
             m::MaximumAnyOrder(
                 m::Op(&max_operand),
                 m::Clamp(&clamp, m::Op(&clamp_lower_bound), m::Op(&to_clamp),
-                         m::Op(&clamp_upper_bound))))) {
-    if (max_operand == clamp_lower_bound &&
-        ReplaceInstructionIfCompatible(maximum, clamp)) {
+                         m::Op(&clamp_upper_bound)))) &&
+      max_operand == clamp_lower_bound) {
+    ABSL_ASSIGN_OR_RETURN(bool bounds_are_ordered,
+                     IsKnownLessThanOrEqual(clamp_lower_bound,
+                                            clamp_upper_bound, simplifier_));
+    if (bounds_are_ordered && ReplaceInstructionIfCompatible(maximum, clamp)) {
       return absl::OkStatus();
     }
   }

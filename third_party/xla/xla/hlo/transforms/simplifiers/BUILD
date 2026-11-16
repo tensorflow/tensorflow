@@ -565,6 +565,7 @@ xla_cc_test(
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass",

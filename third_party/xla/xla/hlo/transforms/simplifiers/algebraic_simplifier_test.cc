@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -12458,21 +12459,89 @@ TEST_F(AlgebraicSimplifierTest, ClampOfClamp) {
 }
 
 TEST_F(AlgebraicSimplifierTest, MaxOfClamp) {
-  constexpr absl::string_view kModuleStr = R"(
+  constexpr absl::string_view kModuleStr = R"hlo(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      lo = f32[] constant(3.0)
+      hi = f32[] constant(4.0)
+      c0 = f32[] clamp(lo, p0, hi)
+      ROOT m0 = f32[] maximum(lo, c0)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Clamp(m::ConstantScalar(3.0), m::Parameter(0),
+                                  m::ConstantScalar(4.0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithSameBounds) {
+  constexpr absl::string_view kModuleStr = R"hlo(
     HloModule m
     test {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      p2 = f32[] parameter(2)
-      c0 = f32[] clamp(p0, p1, p2)
-      ROOT m0 = f32[] maximum(p0, c0)
+      c0 = f32[] clamp(p0, p1, p0)
+      ROOT m0 = f32[] maximum(c0, p0)
     }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
-      GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
+      GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(0))));
+}
+
+// max(a, clamp(a, b, c)) is not clamp(a, b, c) when a > c: for (a, b, c) =
+// (10, 5, 0), the clamp is 0 and the maximum is 10.
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithUnknownBoundsIsNotSimplified) {
+  for (absl::string_view root : {"maximum(p0, c0)", "maximum(c0, p0)"}) {
+    const std::string module_str = absl::StrFormat(R"hlo(
+      HloModule m
+      test {
+        p0 = s32[] parameter(0)
+        p1 = s32[] parameter(1)
+        p2 = s32[] parameter(2)
+        c0 = s32[] clamp(p0, p1, p2)
+        ROOT m0 = s32[] %s
+      }
+    )hlo",
+                                                   root);
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+    ASSERT_OK(AlgebraicSimplifier(default_options_).Run(m.get()).status());
+    EXPECT_THAT(m->entry_computation()->root_instruction(),
+                GmockMatch(m::MaximumAnyOrder(
+                    m::Parameter(0), m::Clamp(m::Parameter(0), m::Parameter(1),
+                                              m::Parameter(2)))));
+
+    const Literal a = LiteralUtil::CreateR0<int32_t>(10);
+    const Literal b = LiteralUtil::CreateR0<int32_t>(5);
+    const Literal c = LiteralUtil::CreateR0<int32_t>(0);
+    HloEvaluator evaluator;
+    ASSERT_OK_AND_ASSIGN(Literal result, evaluator.Evaluate(*m, {&a, &b, &c}));
+    EXPECT_EQ(result.Get<int32_t>({}), 10);
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithReversedBoundsIsNotSimplified) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      lo = f32[] constant(10.0)
+      hi = f32[] constant(0.0)
+      b_lo = f32[4] broadcast(lo), dimensions={}
+      b_hi = f32[4] broadcast(hi), dimensions={}
+      c0 = f32[4] clamp(b_lo, p0, b_hi)
+      ROOT m0 = f32[4] maximum(b_lo, c0)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK(AlgebraicSimplifier(default_options_).Run(m.get()).status());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Broadcast(m::ConstantScalar(10.0)),
+                                    m::Clamp())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
