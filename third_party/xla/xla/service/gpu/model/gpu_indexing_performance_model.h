@@ -93,12 +93,10 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
             enable_same_shape_multi_output_fusion) {}
 
   // Returns the number of warps for `tiled_hlo_computation`, a tiling of
-  // `fusion_adaptor`. When `device_info` is provided, clamps the result to the
-  // hardware threads-per-block limit.
+  // `fusion_adaptor`.
   static int64_t EstimateNumWarps(
       const HloFusionAdaptor& fusion_adaptor,
-      const TiledHloComputation& tiled_hlo_computation,
-      const se::DeviceDescription* device_info = nullptr);
+      const TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
@@ -187,15 +185,14 @@ bool DoesTilingFitInRegisters(
     const se::DeviceDescription& device_info);
 
 // Estimates the shared memory usage in bytes per block for a tiled HLO
-// computation launched with `num_warps` warps.
+// computation.
 int64_t EstimateSharedMemoryUsagePerBlock(
     const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription& device_info, int64_t num_warps);
+    const se::DeviceDescription& device_info);
 
 // Checks if the tiles of a symbolic tiled computation fit in shared memory for
 // the given tile sizes.
 bool DoesTilingFitInSharedMemory(
-    const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputation& symbolic_tiled_computation,
     absl::Span<const int64_t> tile_sizes,
     const se::DeviceDescription& device_info);

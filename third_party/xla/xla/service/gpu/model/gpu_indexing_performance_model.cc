@@ -41,10 +41,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
-#include "llvm/ADT/bit.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -179,30 +177,22 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
   return result;
 }
 
-llvm::SmallVector<int64_t> GetStaticTileSizes(const Tile& tile) {
-  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
-      tile.GetStaticTileSizes();
-  CHECK_OK(tile_sizes);
-  return *std::move(tile_sizes);
-}
-
 int64_t GetStaticPaddedTileSize(const TiledHloInstruction& tiled_hlo) {
-  return GetPaddedTileSize(GetStaticTileSizes(tiled_hlo.tile(0)));
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+      tiled_hlo.tile(0).GetStaticTileSizes();
+  CHECK_OK(tile_sizes);
+  return GetPaddedTileSize(*tile_sizes);
 }
 
-// Evaluates the symbolic tile sizes of `tile` for `variable_values`, the values
-// of all tiling space variables.
-llvm::SmallVector<int64_t> EvaluateTileSizes(
-    const Tile& tile, absl::Span<const int64_t> variable_values) {
-  return llvm::map_to_vector(tile.dim_tiles(), [&](const DimTile& dim_tile) {
-    return dim_tile.size.Evaluate(variable_values);
-  });
-}
-
+// Evaluates the symbolic tile sizes of `tiled_hlo` for `variable_values`, the
+// values of all tiling space variables.
 llvm::SmallVector<int64_t> EvaluateTileSizes(
     const TiledHloInstruction& tiled_hlo,
     absl::Span<const int64_t> variable_values) {
-  return EvaluateTileSizes(tiled_hlo.tile(), variable_values);
+  return llvm::map_to_vector(tiled_hlo.tile().dim_tiles(),
+                             [&](const DimTile& dim_tile) {
+                               return dim_tile.size.Evaluate(variable_values);
+                             });
 }
 
 // Constructs the values of all tiling space variables for `tiling_space` and
@@ -491,18 +481,6 @@ int64_t GetNumWarps(int64_t largest_live_tile_size) {
   return 8;
 }
 
-// Returns the maximum padded tile size across all tiles in `tiled_hlo`.
-int64_t GetMaxPaddedTileSize(
-    const TiledHloInstruction& tiled_hlo,
-    absl::FunctionRef<llvm::SmallVector<int64_t>(const Tile&)> get_tile_sizes) {
-  int64_t padded_tile_size = 1;
-  for (const Tile& tile : tiled_hlo.tiles()) {
-    padded_tile_size =
-        std::max(padded_tile_size, GetPaddedTileSize(get_tile_sizes(tile)));
-  }
-  return padded_tile_size;
-}
-
 // Returns the size of the `tiled_hlo` tile that is used to pick the number of
 // warps.
 //
@@ -511,25 +489,24 @@ int64_t GetMaxPaddedTileSize(
 // tiles. A non-root iota counts only its extent along `iota_dimension`, from
 // which it is broadcast. Other intermediates are scaled by
 // `min(element_bytes, 4) / 4`, a discount for narrow types such as `pred`.
-int64_t GetLiveTileSizeForNumWarps(
-    const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloInstruction* tiled_hlo, bool is_root,
-    absl::FunctionRef<llvm::SmallVector<int64_t>(const Tile&)> get_tile_sizes) {
+int64_t GetLiveTileSizeForNumWarps(const HloFusionAdaptor& fusion_adaptor,
+                                   const TiledHloInstruction* tiled_hlo,
+                                   bool is_root) {
   const HloInstruction* hlo = tiled_hlo->hlo();
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+      tiled_hlo->tile(0).GetStaticTileSizes();
+  CHECK_OK(tile_sizes);
   if (is_root || !fusion_adaptor.ContainsInstruction(hlo)) {
-    return GetMaxPaddedTileSize(*tiled_hlo, get_tile_sizes);
+    return GetPaddedTileSize(*tile_sizes);
   }
   if (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kConstant>(hlo)) {
     return 1;
   }
-  int64_t padded_tile_size;
-  if (hlo->opcode() == HloOpcode::kIota) {
-    llvm::SmallVector<int64_t> tile_sizes = get_tile_sizes(tiled_hlo->tile(0));
-    padded_tile_size = llvm::PowerOf2Ceil(
-        tile_sizes[Cast<HloIotaInstruction>(hlo)->iota_dimension()]);
-  } else {
-    padded_tile_size = GetMaxPaddedTileSize(*tiled_hlo, get_tile_sizes);
-  }
+  int64_t padded_tile_size =
+      hlo->opcode() == HloOpcode::kIota
+          ? llvm::PowerOf2Ceil(
+                (*tile_sizes)[Cast<HloIotaInstruction>(hlo)->iota_dimension()])
+          : GetPaddedTileSize(*tile_sizes);
   // Tuple-shaped instructions (e.g. variadic reduce) are not scaled.
   if (!hlo->shape().IsArray()) {
     return padded_tile_size;
@@ -541,195 +518,9 @@ int64_t GetLiveTileSizeForNumWarps(
   return CeilOfRatio(padded_tile_size * element_bytes, kBytesPerRegister);
 }
 
-// Per-fusion statistics collected over a tiled HLO computation to pick the
-// number of warps.
-struct NumWarpsStats {
-  int64_t largest_live_tile_size = 1;
-  int64_t total_reduced_elements = 0;
-  bool has_dot = false;
-  llvm::SmallVector<const TiledHloInstruction*, 4> reduce_instructions;
-  // Fusion parameters and other in-fusion leaves with tiles >= 16K elements.
-  llvm::SmallVector<const TiledHloInstruction*, 8> large_leaf_inputs;
-  // In-fusion non-reduce ops with >= 2 operands and tiles >= 16K elements.
-  llvm::SmallVector<const TiledHloInstruction*, 16> large_multi_input_ops;
-};
-
-NumWarpsStats CollectNumWarpsStats(
-    const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation,
-    absl::FunctionRef<llvm::SmallVector<int64_t>(const Tile&)> get_tile_sizes) {
-  NumWarpsStats stats;
-  const absl::Span<const TiledHloInstruction* const> roots =
-      tiled_hlo_computation.roots();
-  ForEachInstructionInTiledHloComputation(
-      tiled_hlo_computation, /*num_blocks_at_root=*/0,
-      [&](const TiledHloInstruction* tiled_hlo,
-          const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
-        const HloInstruction* hlo = tiled_hlo->hlo();
-        const bool is_in_fusion = fusion_adaptor.ContainsInstruction(hlo);
-        if (is_in_fusion &&
-            HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot,
-                             HloOpcode::kRaggedDot>(hlo)) {
-          stats.has_dot = true;
-        }
-
-        const bool is_root = absl::c_linear_search(roots, tiled_hlo);
-        stats.largest_live_tile_size =
-            std::max(stats.largest_live_tile_size,
-                     GetLiveTileSizeForNumWarps(fusion_adaptor, tiled_hlo,
-                                                is_root, get_tile_sizes));
-
-        if (is_in_fusion && hlo->opcode() == HloOpcode::kReduce) {
-          stats.reduce_instructions.push_back(tiled_hlo);
-          const int64_t reduce_output_tile_size =
-              GetMaxPaddedTileSize(*tiled_hlo, get_tile_sizes);
-          const int64_t num_inputs = hlo->operand_count() / 2;
-          for (int64_t i = 0;
-               i < num_inputs && i < tiled_hlo->operands().size(); ++i) {
-            const int64_t operand_tile_size =
-                GetMaxPaddedTileSize(*tiled_hlo->operand(i), get_tile_sizes);
-            // Multi-row reductions with `< 16K` reduced elements per row only
-            // reach large operand tiles by packing independent parallel rows;
-            // scaling past 8 warps narrows per-row vector loads or splits warps
-            // across rows and amplifies multi-row barrier staging.
-            if (operand_tile_size /
-                    std::max<int64_t>(1, reduce_output_tile_size) >=
-                16384) {
-              stats.total_reduced_elements += GetLiveTileSizeForNumWarps(
-                  fusion_adaptor, tiled_hlo->operand(i), /*is_root=*/false,
-                  get_tile_sizes);
-            }
-          }
-          return;
-        }
-        if (GetMaxPaddedTileSize(*tiled_hlo, get_tile_sizes) < 16384) {
-          return;
-        }
-        if (!is_in_fusion ||
-            (tiled_hlo->operands().empty() &&
-             tiled_hlo->hlo_regions().empty() &&
-             !HloPredicateIsOp<HloOpcode::kConstant, HloOpcode::kIota>(hlo))) {
-          stats.large_leaf_inputs.push_back(tiled_hlo);
-        } else if (tiled_hlo->operands().size() >= 2) {
-          stats.large_multi_input_ops.push_back(tiled_hlo);
-        }
-      });
-  return stats;
-}
-
-// Returns the number of distinct large leaf inputs that feed a parallel branch
-// bypassing every reduction (e.g. `gate * residual` in the gated residual
-// `gate * residual + norm`). Post-reduction epilogue-only operands
-// (`norm * scale + bias` or `norm * scale + residual`) are excluded because
-// their loads are scheduled after the reduction barrier.
-int64_t CountBypassLeafInputs(const NumWarpsStats& stats) {
-  // Transitive operands of the reductions, including the reductions.
-  llvm::SmallPtrSet<const TiledHloInstruction*, 32> reduce_ancestors(
-      stats.reduce_instructions.begin(), stats.reduce_instructions.end());
-  llvm::SmallVector<const TiledHloInstruction*, 16> stack(
-      stats.reduce_instructions.begin(), stats.reduce_instructions.end());
-  while (!stack.empty()) {
-    for (const TiledHloInstruction* operand :
-         stack.pop_back_val()->operands()) {
-      if (reduce_ancestors.insert(operand).second) {
-        stack.push_back(operand);
-      }
-    }
-  }
-
-  // Memoized check whether an instruction transitively uses a reduction.
-  absl::flat_hash_map<const TiledHloInstruction*, bool> reduce_descendant_memo;
-  for (const TiledHloInstruction* reduce : stats.reduce_instructions) {
-    reduce_descendant_memo[reduce] = true;
-  }
-  auto is_reduce_descendant = [&](auto& self,
-                                  const TiledHloInstruction* inst) -> bool {
-    if (auto it = reduce_descendant_memo.find(inst);
-        it != reduce_descendant_memo.end()) {
-      return it->second;
-    }
-    const bool result = absl::c_any_of(
-        inst->operands(),
-        [&](const TiledHloInstruction* op) { return self(self, op); });
-    reduce_descendant_memo[inst] = result;
-    return result;
-  };
-
-  // Transitive operands of multi-input ops that neither feed nor consume a
-  // reduction, i.e. ops on a parallel branch bypassing the reduction.
-  llvm::SmallPtrSet<const TiledHloInstruction*, 32> bypass_ancestors;
-  for (const TiledHloInstruction* op : stats.large_multi_input_ops) {
-    if (!reduce_ancestors.contains(op) &&
-        !is_reduce_descendant(is_reduce_descendant, op) &&
-        bypass_ancestors.insert(op).second) {
-      stack.push_back(op);
-    }
-  }
-  while (!stack.empty()) {
-    for (const TiledHloInstruction* operand :
-         stack.pop_back_val()->operands()) {
-      if (!reduce_ancestors.contains(operand) &&
-          bypass_ancestors.insert(operand).second) {
-        stack.push_back(operand);
-      }
-    }
-  }
-
-  llvm::SmallPtrSet<const TiledHloInstruction*, 8> unique_bypass_leaves;
-  for (const TiledHloInstruction* leaf : stats.large_leaf_inputs) {
-    if (!reduce_ancestors.contains(leaf) && bypass_ancestors.contains(leaf)) {
-      unique_bypass_leaves.insert(leaf);
-    }
-  }
-  return unique_bypass_leaves.size();
-}
-
-// Clamps `num_warps` to the largest power of two that fits within the
-// device's threads-per-block limit.
-int64_t ClampNumWarpsToDevice(int64_t num_warps,
-                              const se::DeviceDescription* device_info) {
-  if (device_info == nullptr || device_info->threads_per_block_limit() <= 0) {
-    return num_warps;
-  }
-  const int64_t warp_size = std::max<int64_t>(WarpSize(*device_info), 1);
-  const int64_t max_warps =
-      static_cast<int64_t>(llvm::bit_floor<uint64_t>(std::max<int64_t>(
-          device_info->threads_per_block_limit() / warp_size, 1)));
-  return std::min(num_warps, max_warps);
-}
-
-int64_t EstimateNumWarpsImpl(
-    const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription* device_info,
-    absl::FunctionRef<llvm::SmallVector<int64_t>(const Tile&)> get_tile_sizes) {
-  const NumWarpsStats stats = CollectNumWarpsStats(
-      fusion_adaptor, tiled_hlo_computation, get_tile_sizes);
-  int64_t num_warps = GetNumWarps(stats.largest_live_tile_size);
-  // At 8 warps (256 threads), a block exceeding 32K registers (>128 regs/thread
-  // on 64K-register SMs) drops SM residency to 1 block (8 warps) or spills
-  // (>64K registers). Scale non-dot fusions up to 16 or 32 warps only when live
-  // tile footprint exceeds 32K/64K registers, avoiding unnecessary cross-warp
-  // reduction barriers when 2+ blocks/SM already fit at 8 warps.
-  if (!stats.has_dot && num_warps >= 8) {
-    if (stats.largest_live_tile_size >= 65536 ||
-        stats.total_reduced_elements >= 65536) {
-      num_warps = 32;
-    } else if (stats.largest_live_tile_size >= 32768 ||
-               stats.total_reduced_elements >= 32768) {
-      num_warps = 16;
-    } else if (stats.total_reduced_elements >= 16384 &&
-               stats.large_leaf_inputs.size() >= 3 &&
-               CountBypassLeafInputs(stats) >= 2) {
-      num_warps = 16;
-    }
-  }
-  return ClampNumWarpsToDevice(num_warps, device_info);
-}
-
 int64_t EstimateSharedMemoryUsagePerBlockImpl(
     const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription& device_info, int64_t num_warps,
+    const se::DeviceDescription& device_info,
     absl::FunctionRef<int64_t(const TiledHloInstruction&)>
         get_padded_tile_size) {
   // For transposes, we consider the largest tile size that needs to be
@@ -743,17 +534,21 @@ int64_t EstimateSharedMemoryUsagePerBlockImpl(
   // reduction is performed entirely in registers and does not need shared
   // memory.
   const int64_t warp_size = WarpSize(device_info);
+  int64_t largest_live_tile_size = 1;
   int64_t reduce_shmem_bytes_per_warp = 0;
 
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/0,
       [&](const TiledHloInstruction* instruction,
           const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
+        const int64_t padded_tile_size = get_padded_tile_size(*instruction);
+        largest_live_tile_size =
+            std::max(largest_live_tile_size, padded_tile_size);
+
         if (instruction->operands().empty()) {
           return;
         }
 
-        const int64_t padded_tile_size = get_padded_tile_size(*instruction);
         const HloInstruction* hlo = instruction->hlo();
         const int64_t tile_bytes =
             padded_tile_size * ShapeUtil::ByteSizeOfPrimitiveType(
@@ -782,23 +577,9 @@ int64_t EstimateSharedMemoryUsagePerBlockImpl(
       });
 
   const int64_t reduce_shmem_per_block =
-      reduce_shmem_bytes_per_warp * num_warps;
+      reduce_shmem_bytes_per_warp * GetNumWarps(largest_live_tile_size);
 
   return std::max(transpose_shmem_per_block, reduce_shmem_per_block);
-}
-
-// Shared memory pre-filters assume at most this many warps; see
-// `DoesTilingFitInSharedMemory`.
-constexpr int64_t kMaxNumWarpsForSymbolicSharedMemoryCheck = 8;
-
-// Returns whether a block using `shared_memory_bytes` leaves room for at least
-// 2 blocks per SM, which allows hiding latency of block-level synchronization
-// barriers.
-bool FitsInSharedMemoryBudget(int64_t shared_memory_bytes,
-                              const se::DeviceDescription& device_info) {
-  constexpr double kFractionOfSharedMemoryAvailable = 0.5;
-  return shared_memory_bytes <= kFractionOfSharedMemoryAvailable *
-                                    device_info.shared_memory_per_core();
 }
 
 }  // namespace
@@ -829,38 +610,29 @@ bool DoesTilingFitInRegisters(
 
 int64_t EstimateSharedMemoryUsagePerBlock(
     const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription& device_info, int64_t num_warps) {
+    const se::DeviceDescription& device_info) {
   return EstimateSharedMemoryUsagePerBlockImpl(
-      tiled_hlo_computation, device_info, num_warps, GetStaticPaddedTileSize);
+      tiled_hlo_computation, device_info, GetStaticPaddedTileSize);
 }
 
 bool DoesTilingFitInSharedMemory(
-    const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputation& symbolic_tiled_computation,
     absl::Span<const int64_t> tile_sizes,
     const se::DeviceDescription& device_info) {
   llvm::SmallVector<int64_t> variable_values = GetTilingSpaceVariableValues(
       symbolic_tiled_computation.tiling_space(), tile_sizes);
-  auto evaluate_tile_sizes = [&](const Tile& tile) {
-    return EvaluateTileSizes(tile, variable_values);
-  };
-  // Before `AssignTileSizes`, trivial parallel dimensions and untiled reduction
-  // dimensions stay distinct in the symbolic computation, so shared ops and
-  // inner reductions can be duplicated into multiple `TiledHloInstruction`s
-  // and overcount the 16/32-warp scaling. Use a lower bound of at most 8 warps
-  // here so valid tilings are not rejected; the exact warp count is re-checked
-  // against the shared memory budget on the concrete tiling in
-  // `EstimateTiledRunTimeDataImpl`.
-  const int64_t num_warps = std::min<int64_t>(
-      EstimateNumWarpsImpl(fusion_adaptor, symbolic_tiled_computation,
-                           &device_info, evaluate_tile_sizes),
-      kMaxNumWarpsForSymbolicSharedMemoryCheck);
   const int64_t shared_memory_usage = EstimateSharedMemoryUsagePerBlockImpl(
-      symbolic_tiled_computation, device_info, num_warps,
+      symbolic_tiled_computation, device_info,
       [&](const TiledHloInstruction& tiled_hlo) {
-        return GetPaddedTileSize(evaluate_tile_sizes(tiled_hlo.tile()));
+        return GetPaddedTileSize(EvaluateTileSizes(tiled_hlo, variable_values));
       });
-  return FitsInSharedMemoryBudget(shared_memory_usage, device_info);
+
+  // Having at least 2 blocks per SM allows for hiding latency of block-level
+  // synchronization barriers.
+  constexpr double kFractionOfSharedMemoryAvailable = 0.5;
+
+  return shared_memory_usage <= kFractionOfSharedMemoryAvailable *
+                                    device_info.shared_memory_per_core();
 }
 }  // namespace internal
 
@@ -1220,8 +992,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   const int64_t estimated_shared_memory_per_block =
       has_dot ? dot_estimates.shared_memory_per_block_bytes
               : internal::EstimateSharedMemoryUsagePerBlock(
-                    tiled_hlo_computation, device_info,
-                    block_level_parameters.num_warps);
+                    tiled_hlo_computation, device_info);
 
   return EstimateRunTimeData{
       /*flops=*/flops + dot_flops,
@@ -1323,7 +1094,7 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
       BlockLevelParametersForTiling(tiled_hlo_computation);
   block_level_parameters.num_warps =
       GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-          fusion_adaptor, tiled_hlo_computation, &device_info);
+          fusion_adaptor, tiled_hlo_computation);
 
   ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData estimate_run_time_data,
@@ -1333,15 +1104,6 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
 
   // Skip tilings with infinite runtime (e.g., due to register spilling).
   if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
-    return std::nullopt;
-  }
-
-  // `DoesTilingFitInSharedMemory` pre-filters with at most 8 warps; reject
-  // non-dot tilings whose exact warp count overflows the shared memory budget.
-  if (block_level_parameters.num_warps >
-          kMaxNumWarpsForSymbolicSharedMemoryCheck &&
-      !FitsInSharedMemoryBudget(
-          estimate_run_time_data.shared_memory_per_block_bytes, device_info)) {
     return std::nullopt;
   }
 
@@ -1652,8 +1414,7 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
 
     if (symbolic_tiled_computation.ok() &&
         !internal::DoesTilingFitInSharedMemory(
-            fusion_adaptor, *symbolic_tiled_computation, padded_tile_sizes,
-            device_info)) {
+            *symbolic_tiled_computation, padded_tile_sizes, device_info)) {
       VLOG(3) << "Pre-filtering candidate exceeding shared memory limit: "
               << absl::StrJoin(padded_tile_sizes, ",");
       continue;
@@ -1831,10 +1592,21 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
 /*static*/
 int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
     const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription* device_info) {
-  return EstimateNumWarpsImpl(fusion_adaptor, tiled_hlo_computation,
-                              device_info, GetStaticTileSizes);
+    const TiledHloComputation& tiled_hlo_computation) {
+  // Decide on the number of warps to use based on the largest live tile size
+  // at any given point within the computation.
+  int64_t largest_live_tile_size = 1;
+  const auto roots = tiled_hlo_computation.roots();
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation, /*num_blocks_at_root=*/1,
+      [&](const TiledHloInstruction* tiled_hlo,
+          const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
+        bool is_root = absl::c_linear_search(roots, tiled_hlo);
+        largest_live_tile_size = std::max(
+            largest_live_tile_size,
+            GetLiveTileSizeForNumWarps(fusion_adaptor, tiled_hlo, is_root));
+      });
+  return GetNumWarps(largest_live_tile_size);
 }
 
 namespace internal {
