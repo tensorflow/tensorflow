@@ -140,6 +140,33 @@ cc_library(
     deps = ["@llvm-project//llvm:Support"],
 )
 
+cc_library(
+    name = "shardy_manual_computation_inliner",
+    srcs = ["shardy_manual_computation_inliner.cc"],
+    hdrs = ["shardy_manual_computation_inliner.h"],
+    deps = [
+        ":constants",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_registry",
+        "//xla/service:call_inliner",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "shardy_manual_computation_inliner_test",
+    srcs = ["shardy_manual_computation_inliner_test.cc"],
+    deps = [
+        ":shardy_manual_computation_inliner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "shardy_xla_pass_test",
     srcs = ["shardy_xla_pass_test.cc"],
