@@ -153,7 +153,9 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
-    CHECK-NEXT: %[[NUM_WORKGROUPS:.+]] = load ptr, ptr %0
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 0
+    CHECK:      %[[NUM_WORKGROUPS:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 0
     CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 8
     CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 16
     CHECK:      load i64
@@ -162,6 +164,7 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 8
     CHECK:      %[[WORKGROUP_ID:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 0
     CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 8
     CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 16
     CHECK:      load i64
@@ -170,6 +173,7 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 0
     CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
@@ -187,16 +191,20 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
     CHECK:      getelementptr i8, ptr %{{.+}}, i64 48
     CHECK:      %[[ARG3:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: load float, ptr %[[ARG0]], align 4,
+    CHECK-NEXT: %[[ARG0_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG0]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG0_PTR]], align 4,
     CHECK-SAME:                            !noalias ![[SCOPE1:.+]]
 
-    CHECK-NEXT: load float, ptr %[[ARG1]], align 4,
+    CHECK-NEXT: %[[ARG1_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG1]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG1_PTR]], align 4,
     CHECK-SAME:                            !noalias ![[SCOPE1]]
 
-    CHECK-NEXT: load float, ptr %[[ARG2]], align 4, !alias.scope ![[SCOPE2:.+]],
+    CHECK-NEXT: %[[ARG2_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG2]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG2_PTR]], align 4, !alias.scope ![[SCOPE2:.+]],
     CHECK:                                          !noalias ![[SCOPE3:.+]]
 
-    CHECK-NEXT: load float, ptr %[[ARG3]], align 4, !alias.scope ![[SCOPE3]],
+    CHECK-NEXT: %[[ARG3_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG3]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG3_PTR]], align 4, !alias.scope ![[SCOPE3]],
     CHECK:                                          !noalias ![[SCOPE2]]
 
     CHECK:      ret ptr null
@@ -360,7 +368,9 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
                             absl::StrCat(R"(
     CHECK: define ptr @test(ptr noundef nonnull %0) #0 {
 
-    CHECK-NEXT: %[[NUM_WORKGROUPS:.+]] = load ptr, ptr %0
+    CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 0
+    CHECK:      %[[NUM_WORKGROUPS:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 0
     CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 8
     CHECK:      getelementptr inbounds nuw i8, ptr %[[NUM_WORKGROUPS]], i64 16
     CHECK:      load i64
@@ -369,6 +379,7 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 8
     CHECK:      %[[WORKGROUP_ID:.+]] = load ptr
+    CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 0
     CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 8
     CHECK:      getelementptr inbounds nuw i8, ptr %[[WORKGROUP_ID]], i64 16
     CHECK:      load i64
@@ -377,6 +388,7 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
     CHECK:      load ptr
+    CHECK:      getelementptr i8, ptr %{{.+}}, i64 0
     CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds nuw i8, ptr %0, i64 24
@@ -399,19 +411,24 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
     CHECK:      getelementptr i8, ptr %{{.+}}, i64 64
     CHECK:      %[[ARG4:.+]] = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES]], !align ![[ALIGNMENT]]
 
-    CHECK-NEXT: load float, ptr %[[ARG0]], align 4,
+    CHECK-NEXT: %[[ARG0_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG0]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG0_PTR]], align 4,
     CHECK-SAME:                            !noalias ![[ARG0_NOALIAS:.+]]
 
-    CHECK-NEXT: load float, ptr %[[ARG1]], align 4,
+    CHECK-NEXT: %[[ARG1_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG1]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG1_PTR]], align 4,
     CHECK-SAME:                            !noalias ![[ARG1_NOALIAS:.+]]
 
-    CHECK-NEXT: load float, ptr %[[ARG2]], align 4, !alias.scope ![[ARG2_SCOPE:.+]],
+    CHECK-NEXT: %[[ARG2_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG2]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG2_PTR]], align 4, !alias.scope ![[ARG2_SCOPE:.+]],
     CHECK:                                          !noalias ![[ARG4_SCOPE:.+]]
 
-    CHECK-NEXT: load float, ptr %[[ARG3]], align 4, !alias.scope ![[ARG3_SCOPE:.+]],
+    CHECK-NEXT: %[[ARG3_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG3]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG3_PTR]], align 4, !alias.scope ![[ARG3_SCOPE:.+]],
     CHECK:                                          !noalias ![[ARG4_SCOPE]]
 
-    CHECK-NEXT: load float, ptr %[[ARG4]], align 4, !alias.scope ![[ARG4_SCOPE]],
+    CHECK-NEXT: %[[ARG4_PTR:.+]] = getelementptr inbounds i8, ptr %[[ARG4]], i64 0
+    CHECK-NEXT: load float, ptr %[[ARG4_PTR]], align 4, !alias.scope ![[ARG4_SCOPE]],
     CHECK:                                          !noalias ![[ARG4_NOALIAS:.+]]
 
     CHECK:      ret ptr null
