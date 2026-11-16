@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
@@ -154,21 +154,13 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
 
   // Set up execute params.
   BufferAllocations allocations({buf.cref()}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecutionScopedState state;
-
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, additional_streams, &state);
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithAdditionalComputeStreams(additional_streams);
 
   // Initialize and execute all thunks via ThunkExecutor.
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = executor;
-  init_params.execution_scoped_state = &state;
-  ASSERT_OK(thunk_executor.Initialize(init_params));
-  ASSERT_OK(thunk_executor.ExecuteOnStream(params));
+  ASSERT_OK(thunk_executor.Initialize(thunk_params.InitializeParams()));
+  ASSERT_OK(thunk_executor.ExecuteOnStream(thunk_params.ExecuteParams()));
 
   // Wait for everything to complete.
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -221,22 +213,13 @@ TEST(AsyncThunkTest, MemcpyStreamDispatch) {
 
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecutionScopedState state;
-
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, main_stream.get(), main_stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state);
-
+  TestThunkParams thunk_params(executor, &allocations, main_stream.get());
+  thunk_params.WithCommandBufferTraceStream(main_stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   params.device_to_host_stream = d2h_stream.get();
   params.host_to_device_stream = h2d_stream.get();
 
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = executor;
-  init_params.execution_scoped_state = &state;
-  ASSERT_OK(thunk_executor.Initialize(init_params));
+  ASSERT_OK(thunk_executor.Initialize(thunk_params.InitializeParams()));
   ASSERT_OK(thunk_executor.ExecuteOnStream(params));
   ASSERT_OK(main_stream->BlockHostUntilDone());
 }
@@ -252,20 +235,13 @@ TEST(AsyncThunkTest, MemcpyStreamNullReturnsError) {
 
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecutionScopedState state;
-
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, main_stream.get(), main_stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state);
+  TestThunkParams thunk_params(executor, &allocations, main_stream.get());
+  thunk_params.WithCommandBufferTraceStream(main_stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_EQ(params.device_to_host_stream, nullptr);
   ASSERT_EQ(params.host_to_device_stream, nullptr);
 
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = executor;
-  init_params.execution_scoped_state = &state;
+  Thunk::InitializeParams init_params = thunk_params.InitializeParams();
   ASSERT_OK(d2h_start.Initialize(init_params));
   ASSERT_OK(h2d_start.Initialize(init_params));
 
@@ -331,13 +307,9 @@ TEST(AsyncThunkTest, AsyncDoneRecordCommandBuffer) {
   // Set up minimal execute params (not used by AsyncDoneThunk::Record()).
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecutionScopedState thunk_state;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
-      &thunk_state);
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
@@ -373,21 +345,14 @@ TEST(AsyncThunkTest, LocalityDomainStreamSelection) {
   AsyncStartThunk start(std::move(info), LocalityDomainStreamId(3),
                         std::move(nested), /*devices_per_host=*/1);
 
-  Thunk::ExecutionScopedState state;
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = executor;
-  init_params.execution_scoped_state = &state;
-  ASSERT_OK(start.Initialize(init_params));
-
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, main_stream.get(), main_stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state,
-      std::nullopt, {{LocalityDomainStreamId(3), locality_stream.get()}});
+  TestThunkParams thunk_params(executor, &allocations, main_stream.get());
+  thunk_params.WithCommandBufferTraceStream(main_stream.get())
+      .WithLocalityDomainStreams(
+          {{LocalityDomainStreamId(3), locality_stream.get()}});
+  ASSERT_OK(start.Initialize(thunk_params.InitializeParams()));
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK(start.ExecuteOnStream(params));
   EXPECT_EQ(executed_stream, locality_stream.get());
@@ -474,19 +439,14 @@ TEST(AsyncThunkTest,
 
   BufferAllocations allocations({source.cref(), output0.cref(), output1.cref()},
                                 executor->device_ordinal(), &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecutionScopedState state;
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams initialize_params(&command_buffer_requests);
-  initialize_params.executor = executor;
-  initialize_params.execution_scoped_state = &state;
-  ASSERT_OK(thunk_executor.Initialize(initialize_params));
+  TestThunkParams thunk_params(executor, &allocations, primary.get());
+  thunk_params.WithCommandBufferTraceStream(primary.get())
+      .WithLocalityDomainStreams(
+          {{LocalityDomainStreamId(0), locality_streams[0].get()},
+           {LocalityDomainStreamId(1), locality_streams[1].get()}});
+  ASSERT_OK(thunk_executor.Initialize(thunk_params.InitializeParams()));
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, primary.get(), primary.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{}, &state, std::nullopt,
-      {{LocalityDomainStreamId(0), locality_streams[0].get()},
-       {LocalityDomainStreamId(1), locality_streams[1].get()}});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
   ASSERT_OK(thunk_executor.ExecuteOnStream(params));
 
   std::array<int32_t, kLength> result0;

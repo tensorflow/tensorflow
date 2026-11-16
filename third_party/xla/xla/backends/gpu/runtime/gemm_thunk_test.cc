@@ -27,15 +27,14 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -216,21 +215,12 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/executor,
-                        /*src=*/source,
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(source).WithCommandBufferTraceStream(
+      trace_stream.get());
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(),
-      /*command_buffer_trace_stream=*/trace_stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -312,21 +302,12 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/executor,
-                        /*src=*/source,
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(source).WithCommandBufferTraceStream(
+      trace_stream.get());
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(),
-      /*command_buffer_trace_stream=*/trace_stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};

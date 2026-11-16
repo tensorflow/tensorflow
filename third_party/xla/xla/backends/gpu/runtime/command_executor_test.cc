@@ -34,12 +34,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -204,14 +204,10 @@ class CommandExecutorUpdateTest : public ::testing::Test {
     std::vector<se::DeviceAddressBase> buffers(2);
     BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                   /*memory_allocator=*/nullptr);
-    ServiceExecutableRunOptions run_options;
-    Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-        run_options, allocations, /*stream=*/nullptr,
-        /*command_buffer_trace_stream=*/nullptr,
-        /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
-        /*execution_scoped_state=*/nullptr,
-        absl::MakeConstSpan(persistent_alloc_indices));
+    TestThunkParams thunk_params;
+    thunk_params.WithBufferAllocations(&allocations)
+        .WithPersistentAllocIndices(persistent_alloc_indices);
+    Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
     CommandStateManager state_manager;
     Command::RecordParams create_params{state_manager};
@@ -359,12 +355,9 @@ TEST_F(CommandExecutorUpdateTest,
   std::vector<se::DeviceAddressBase> buffers(1);
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, allocations, /*stream=*/nullptr,
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params;
+  thunk_params.WithBufferAllocations(&allocations);
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state_manager;
   Command::RecordParams create_params{state_manager};
@@ -450,13 +443,9 @@ absl::Status RecordCreateAndUpdate(const CommandExecutor& executor,
   std::vector<se::DeviceAddressBase> buffers(1);
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, allocations, /*stream=*/nullptr,
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr, /*persistent_alloc_indices=*/{});
+  TestThunkParams thunk_params;
+  thunk_params.WithBufferAllocations(&allocations);
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state_manager;
   ::testing::NiceMock<se::MockCommandBuffer> command_buffer;

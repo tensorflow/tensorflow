@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -414,13 +414,9 @@ TEST(CollectivePermuteThunkTest, RecordCommandBufferCreate) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({src, dst}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   /*command_buffer_trace_stream=*/stream.get(),
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -466,15 +462,10 @@ TEST(CollectivePermuteThunkTest, RecordCommandBufferUpdate) {
       MakeNoOpThunk(alloc_src, alloc_dst, length);
 
   se::StreamExecutorAddressAllocator allocator(executor);
-  ServiceExecutableRunOptions run_options;
-
   BufferAllocations allocations1({src1, dst1}, 0, &allocator);
-  Thunk::ExecuteParams params1 =
-      Thunk::ExecuteParams::Create(run_options, allocations1, stream.get(),
-                                   /*command_buffer_trace_stream=*/stream.get(),
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocations1, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params1 = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -494,11 +485,7 @@ TEST(CollectivePermuteThunkTest, RecordCommandBufferUpdate) {
 
   BufferAllocations allocations2({src2, dst2}, 0, &allocator);
   Thunk::ExecuteParams params2 =
-      Thunk::ExecuteParams::Create(run_options, allocations2, stream.get(),
-                                   /*command_buffer_trace_stream=*/stream.get(),
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+      thunk_params.WithBufferAllocations(&allocations2).ExecuteParams();
 
   std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
   Command::RecordParams record_params2 = {state, std::move(updated_allocs)};

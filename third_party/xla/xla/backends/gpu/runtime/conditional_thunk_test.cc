@@ -32,15 +32,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -245,12 +244,8 @@ TEST(ConditionalThunkTest, PreparePropagatesToCommandBufferBranchExecutors) {
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
 
-  CommandBufferRequests command_buffer_requests;
-  Thunk::PrepareParams prepare_params{
-      /*executor=*/executor,
-      /*buffer_allocations=*/&allocations,
-      /*command_buffer_requests=*/&command_buffer_requests};
-  ASSERT_OK(thunk.Prepare(prepare_params));
+  TestThunkParams thunk_params(executor, &allocations);
+  ASSERT_OK(thunk.Prepare(thunk_params.PrepareParams()));
 
   EXPECT_EQ(branch0_counts.prepares, 1);
   EXPECT_EQ(branch1_counts.prepares, 1);
@@ -285,11 +280,9 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
       se::DeviceAddressBase(&branch_index, sizeof(branch_index))};
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, allocations, /*stream=*/nullptr,
-      /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params;
+  thunk_params.WithBufferAllocations(&allocations);
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state_manager;
   Command::RecordParams record_params{state_manager};

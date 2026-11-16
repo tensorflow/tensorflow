@@ -23,19 +23,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
-#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
@@ -140,41 +139,33 @@ absl::Status SetupCollectiveThunksDevice(
       CollectiveParams params,
       CollectiveParams::Create(state.run_options, /*async_streams=*/{},
                                LocalDeviceId(device_ordinal)));
+  state.collective_params = std::move(params);
 
   BufferAllocations allocations =
       MakeBufferAllocations(state, state.create_buffers);
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMemoryRequests memory_requests(allocations);
-  CommandBufferRequests command_buffer_requests;
-  Thunk::PrepareParams prepare_params{
-      /*collective_params=*/&params,
-      /*collective_clique_requests=*/&clique_requests,
-      /*collective_memory_requests=*/&memory_requests,
-      /*executor=*/state.executor,
-      /*buffer_allocations=*/&allocations,
-      /*execution_scoped_state=*/nullptr,
-      /*custom_options=*/nullptr,
-      /*command_buffer_requests=*/&command_buffer_requests};
+  state.thunk_params = std::make_unique<TestThunkParams>(
+      state.executor, &allocations, state.stream.get());
+  absl::Cleanup clear_allocations = [&state] {
+    state.thunk_params->WithBufferAllocations(nullptr);
+  };
+  state.thunk_params->WithRunOptions(&state.run_options)
+      .WithCommandBufferTraceStream(state.stream.get())
+      .WithCollectiveParams(&*state.collective_params);
+  Thunk::PrepareParams prepare_params = state.thunk_params->PrepareParams();
   for (CollectiveThunk* thunk : thunks) {
     ABSL_RETURN_IF_ERROR(thunk->Prepare(prepare_params));
   }
 
   ABSL_ASSIGN_OR_RETURN(state.collective_cliques,
-                   AcquireCollectiveCliques(params, clique_requests));
+                   AcquireCollectiveCliques(
+                       *state.collective_params,
+                       state.thunk_params->collective_clique_requests()));
 
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = state.executor;
-  init_params.buffer_allocations = &allocations;
-  init_params.stream = state.stream.get();
-  init_params.command_buffer_trace_stream = state.stream.get();
-  init_params.collective_params = &params;
-  init_params.collective_cliques = &state.collective_cliques;
-  init_params.local_device_count = num_devices;
+  state.thunk_params->WithCollectiveCliques(&state.collective_cliques);
+  Thunk::InitializeParams init_params = state.thunk_params->InitializeParams();
   for (CollectiveThunk* thunk : thunks) {
     ABSL_RETURN_IF_ERROR(thunk->Initialize(init_params));
   }
-
-  state.collective_params = std::move(params);
   return absl::OkStatus();
 }
 
@@ -188,11 +179,8 @@ BufferAllocations MakeBufferAllocations(
 Thunk::ExecuteParams MakeExecuteParams(
     CollectiveThunkMultiGpuTestState& state,
     const BufferAllocations& buffer_allocations) {
-  return Thunk::ExecuteParams::Create(
-      state.run_options, buffer_allocations, state.stream.get(),
-      /*command_buffer_trace_stream=*/state.stream.get(),
-      &*state.collective_params, &state.collective_cliques,
-      /*collective_memory=*/nullptr);
+  return Thunk::ExecuteParams::CloneWithNewAllocations(
+      state.thunk_params->ExecuteParams(), buffer_allocations);
 }
 
 absl::Status ExecuteOnStreamAndBlock(CollectiveThunk& thunk,

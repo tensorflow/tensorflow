@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -135,13 +135,8 @@ TEST(MemzeroThunkTest, RecordCommandBuffer) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({dest}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream.get(),
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &buffer_allocations, stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -189,13 +184,8 @@ TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
 
   // First recording: RecordCreate pointing at dest_first.
   BufferAllocations allocs_first({dest_first}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams params_first =
-      Thunk::ExecuteParams::Create(run_options, allocs_first, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocs_first, stream.get());
+  Thunk::ExecuteParams params_first = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -220,11 +210,7 @@ TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
   // Second recording: RecordUpdate pointing at dest_second.
   BufferAllocations allocs_second({dest_second}, 0, &allocator);
   Thunk::ExecuteParams params_second =
-      Thunk::ExecuteParams::Create(run_options, allocs_second, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+      thunk_params.WithBufferAllocations(&allocs_second).ExecuteParams();
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(
@@ -261,13 +247,8 @@ TEST(Memset32BitValueThunkTest, RecordCommandBuffer) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({dest}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream.get(),
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &buffer_allocations, stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -314,13 +295,8 @@ TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
 
   // First recording: RecordCreate pointing at dest_first.
   BufferAllocations allocs_first({dest_first}, 0, &allocator);
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams params_first =
-      Thunk::ExecuteParams::Create(run_options, allocs_first, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocs_first, stream.get());
+  Thunk::ExecuteParams params_first = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -345,11 +321,7 @@ TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
   // Second recording: RecordUpdate pointing at dest_second.
   BufferAllocations allocs_second({dest_second}, 0, &allocator);
   Thunk::ExecuteParams params_second =
-      Thunk::ExecuteParams::Create(run_options, allocs_second, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+      thunk_params.WithBufferAllocations(&allocs_second).ExecuteParams();
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(

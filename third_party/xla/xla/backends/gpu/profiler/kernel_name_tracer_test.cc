@@ -30,19 +30,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -181,30 +179,21 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
-
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr, nullptr,
-      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
-      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
 
   // This is where we're getting the 'AddI32' kernel from.
   ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
                        stream_executor::gpu::GetGpuTestKernelsFatbin(
                            executor->GetPlatform()->Name()));
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_THAT(
-      thunk.Initialize({/*executor=*/executor,
-                        /*src=*/
-                        Thunk::ExecutableSource{/*text=*/"", fatbin,
-                                                /*dnn_compiled_graphs=*/{}},
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream,
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}),
-      IsOk());
+  TestThunkParams thunk_params(executor, &allocations, stream);
+  thunk_params.WithExecutableSource(
+      Thunk::ExecutableSource{/*text=*/"", fatbin, /*dnn_compiled_graphs=*/{}});
+  ASSERT_THAT(thunk.Initialize(thunk_params.InitializeParams()), IsOk());
+
+  thunk_params.WithCommandBufferTraceStream(stream).WithPersistentAllocIndices(
+      {});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value.
   ASSERT_THAT(thunk.ExecuteOnStream(params), IsOk());

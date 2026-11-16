@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -197,13 +197,8 @@ TEST(DeviceToDeviceCopyThunkTest, RecordCommandBuffer) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({src, dst}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream.get(),
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &buffer_allocations, stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -253,16 +248,10 @@ TEST(DeviceToDeviceCopyThunkTest, RecordCommandBufferUpdate) {
                                 {slice_dst, shape}, byte_length);
 
   se::StreamExecutorAddressAllocator allocator(executor);
-  ServiceExecutableRunOptions run_options;
-
   // First recording: src -> dst_first.
   BufferAllocations allocs_first({src, dst_first}, 0, &allocator);
-  Thunk::ExecuteParams params_first =
-      Thunk::ExecuteParams::Create(run_options, allocs_first, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocs_first, stream.get());
+  Thunk::ExecuteParams params_first = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -285,11 +274,7 @@ TEST(DeviceToDeviceCopyThunkTest, RecordCommandBufferUpdate) {
   // Update recording: src -> dst_second using the same command node.
   BufferAllocations allocs_second({src, dst_second}, 0, &allocator);
   Thunk::ExecuteParams params_second =
-      Thunk::ExecuteParams::Create(run_options, allocs_second, stream.get(),
-                                   /*command_buffer_trace_stream=*/nullptr,
-                                   /*collective_params=*/nullptr,
-                                   /*collective_cliques=*/nullptr,
-                                   /*collective_memory=*/nullptr);
+      thunk_params.WithBufferAllocations(&allocs_second).ExecuteParams();
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(

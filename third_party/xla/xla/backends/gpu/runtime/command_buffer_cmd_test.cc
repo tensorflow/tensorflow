@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/backends/gpu/runtime/traced_command_buffer.h"
 #include "xla/runtime/buffer_use.h"
@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -283,22 +282,17 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(executor.Initialize(
-      {/*executor=*/stream_executor,
-       /*src=*/source,
-       /*buffer_allocations=*/nullptr,
-       /*stream=*/nullptr,
-       /*command_buffer_trace_stream=*/nullptr,
-       /*command_buffer_requests=*/&command_buffer_requests}));
-
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
+  thunk_params.WithExecutableSource(source);
+  ASSERT_OK(executor.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -366,22 +360,17 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(executor.Initialize(
-      {/*executor=*/stream_executor,
-       /*src=*/source,
-       /*buffer_allocations=*/nullptr,
-       /*stream=*/nullptr,
-       /*command_buffer_trace_stream=*/nullptr,
-       /*command_buffer_requests=*/&command_buffer_requests}));
-
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
+  thunk_params.WithExecutableSource(source);
+  ASSERT_OK(executor.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -563,37 +552,22 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   Thunk::ExecutableSource source_empty = {/*text=*/{}, /*binary=*/{}};
   Thunk::ExecutableSource source_fatbin = {/*text=*/{}, /*binary=*/fatbin};
 
-  CommandBufferRequests command_buffer_requests;
+  TestThunkParams thunk_params(stream_executor, /*buffer_allocations=*/nullptr);
   ASSERT_OK(exec_a.Initialize(
-      {/*executor=*/stream_executor,
-       /*src=*/source_empty,
-       /*buffer_allocations=*/nullptr,
-       /*stream=*/nullptr,
-       /*command_buffer_trace_stream=*/nullptr,
-       /*command_buffer_requests=*/&command_buffer_requests}));
+      thunk_params.WithExecutableSource(source_empty).InitializeParams()));
   ASSERT_OK(exec_b.Initialize(
-      {/*executor=*/stream_executor,
-       /*src=*/source_fatbin,
-       /*buffer_allocations=*/nullptr,
-       /*stream=*/nullptr,
-       /*command_buffer_trace_stream=*/nullptr,
-       /*command_buffer_requests=*/&command_buffer_requests}));
+      thunk_params.WithExecutableSource(source_fatbin).InitializeParams()));
   ASSERT_OK(exec_c.Initialize(
-      {/*executor=*/stream_executor,
-       /*src=*/source_empty,
-       /*buffer_allocations=*/nullptr,
-       /*stream=*/nullptr,
-       /*command_buffer_trace_stream=*/nullptr,
-       /*command_buffer_requests=*/&command_buffer_requests}));
+      thunk_params.WithExecutableSource(source_empty).InitializeParams()));
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
-  Thunk::ExecuteParams exec_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  thunk_params.WithBufferAllocations(&allocations)
+      .WithStream(stream.get())
+      .WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams exec_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -684,17 +658,15 @@ TEST(CommandBufferCmdTest,
   ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
                        CommandExecutor::Create(std::move(commands), serialize));
 
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations0({buf0}, 0, &allocator);
   BufferAllocations allocations1({buf1}, 0, &allocator);
 
-  Thunk::ExecuteParams params0 = Thunk::ExecuteParams::Create(
-      run_options, allocations0, stream.get(), trace_stream.get(), nullptr,
-      nullptr, nullptr);
-  Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
-      run_options, allocations1, stream.get(), trace_stream.get(), nullptr,
-      nullptr, nullptr);
+  TestThunkParams test_params(stream_executor, &allocations0, stream.get());
+  test_params.WithCommandBufferTraceStream(trace_stream.get());
+  Thunk::ExecuteParams params0 = test_params.ExecuteParams();
+  Thunk::ExecuteParams params1 =
+      test_params.WithBufferAllocations(&allocations1).ExecuteParams();
 
   CommandStateManager state;
   ASSERT_OK_AND_ASSIGN(

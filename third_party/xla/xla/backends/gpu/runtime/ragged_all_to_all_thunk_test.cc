@@ -33,14 +33,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
-#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
-#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -48,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -294,37 +292,22 @@ TEST(RaggedAllToAllThunkTest, RecordCommandBufferCreateAndUpdate) {
 
   BufferAllocations allocations1(phase1_buffers, /*device_ordinal=*/0,
                                  allocator.get());
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMemoryRequests memory_requests(allocations1);
-  CommandBufferRequests command_buffer_requests;
-  Thunk::PrepareParams prepare_params{
-      /*collective_params=*/&collective_params,
-      /*collective_clique_requests=*/&clique_requests,
-      /*collective_memory_requests=*/&memory_requests,
-      /*executor=*/executor,
-      /*buffer_allocations=*/&allocations1,
-      /*execution_scoped_state=*/nullptr,
-      /*custom_options=*/nullptr,
-      /*command_buffer_requests=*/&command_buffer_requests};
-  ASSERT_OK(thunk.Prepare(prepare_params));
+  TestThunkParams thunk_params(executor, &allocations1, stream.get());
+  thunk_params.WithRunOptions(&run_options)
+      .WithCommandBufferTraceStream(stream.get())
+      .WithCollectiveParams(&collective_params)
+      .WithLocalDeviceCount(1);
+  ASSERT_OK(thunk.Prepare(thunk_params.PrepareParams()));
   ASSERT_OK_AND_ASSIGN(
       CollectiveCliques collective_cliques,
-      AcquireCollectiveCliques(collective_params, clique_requests));
+      AcquireCollectiveCliques(collective_params,
+                               thunk_params.collective_clique_requests()));
 
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = executor;
-  init_params.buffer_allocations = &allocations1;
-  init_params.stream = stream.get();
-  init_params.collective_params = &collective_params;
-  init_params.collective_cliques = &collective_cliques;
-  init_params.local_device_count = 1;
-  ASSERT_OK(thunk.Initialize(init_params));
+  thunk_params.WithCollectiveCliques(&collective_cliques);
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 
   ASSERT_OK(PrepareOneRankInputs(*stream, phase1_buffers, /*phase=*/1));
-  Thunk::ExecuteParams execute_params1 = Thunk::ExecuteParams::Create(
-      run_options, allocations1, stream.get(),
-      /*command_buffer_trace_stream=*/stream.get(), &collective_params,
-      &collective_cliques, /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams execute_params1 = thunk_params.ExecuteParams();
 
   ASSERT_OK(thunk.ExecuteOnStream(execute_params1));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -348,10 +331,8 @@ TEST(RaggedAllToAllThunkTest, RecordCommandBufferCreateAndUpdate) {
   ASSERT_OK(PrepareOneRankInputs(*stream, phase2_buffers, /*phase=*/2));
   BufferAllocations allocations2(phase2_buffers, /*device_ordinal=*/0,
                                  allocator.get());
-  Thunk::ExecuteParams execute_params2 = Thunk::ExecuteParams::Create(
-      run_options, allocations2, stream.get(),
-      /*command_buffer_trace_stream=*/stream.get(), &collective_params,
-      &collective_cliques, /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams execute_params2 =
+      thunk_params.WithBufferAllocations(&allocations2).ExecuteParams();
 
   std::vector<BufferAllocation::Index> updated_allocs;
   updated_allocs.reserve(kNumRaggedBuffers);

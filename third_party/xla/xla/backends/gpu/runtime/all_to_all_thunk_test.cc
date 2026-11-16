@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -354,12 +355,12 @@ TEST(AllToAllThunkTest, RecordCommandBufferCreate) {
   BufferAllocations allocations({src, dst}, 0, &allocator);
 
   ASSERT_OK(FillDeviceBuffer(*stream, dst, length, 1.0f));
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      collective_state.run_options, allocations, stream.get(),
-      /*command_buffer_trace_stream=*/stream.get(),
-      &*collective_state.collective_params,
-      &collective_state.collective_cliques,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocations, stream.get());
+  thunk_params.WithRunOptions(&collective_state.run_options)
+      .WithCommandBufferTraceStream(stream.get())
+      .WithCollectiveParams(&*collective_state.collective_params)
+      .WithCollectiveCliques(&collective_state.collective_cliques);
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -413,12 +414,12 @@ TEST(AllToAllThunkTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(FillDeviceBuffer(*stream, dst1, length, 1.0f));
   BufferAllocations allocations1({src1, dst1}, 0, &allocator);
-  Thunk::ExecuteParams params1 = Thunk::ExecuteParams::Create(
-      collective_state.run_options, allocations1, stream.get(),
-      /*command_buffer_trace_stream=*/stream.get(),
-      &*collective_state.collective_params,
-      &collective_state.collective_cliques,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &allocations1, stream.get());
+  thunk_params.WithRunOptions(&collective_state.run_options)
+      .WithCommandBufferTraceStream(stream.get())
+      .WithCollectiveParams(&*collective_state.collective_params)
+      .WithCollectiveCliques(&collective_state.collective_cliques);
+  Thunk::ExecuteParams params1 = thunk_params.ExecuteParams();
 
   CommandStateManager state;
   Command::RecordParams record_params = {state};
@@ -441,12 +442,8 @@ TEST(AllToAllThunkTest, RecordCommandBufferUpdate) {
 
   ASSERT_OK(FillDeviceBuffer(*stream, dst2, length, 2.0f));
   BufferAllocations allocations2({src2, dst2}, 0, &allocator);
-  Thunk::ExecuteParams params2 = Thunk::ExecuteParams::Create(
-      collective_state.run_options, allocations2, stream.get(),
-      /*command_buffer_trace_stream=*/stream.get(),
-      &*collective_state.collective_params,
-      &collective_state.collective_cliques,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams params2 =
+      thunk_params.WithBufferAllocations(&allocations2).ExecuteParams();
 
   std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
   Command::RecordParams record_params2 = {state, std::move(updated_allocs)};

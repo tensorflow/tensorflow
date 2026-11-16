@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -200,19 +199,6 @@ class CountingDeviceToDeviceCopyThunk : public DeviceToDeviceCopyThunk {
   int* record_count_;
 };
 
-// Creates execute params with a valid persistent allocation indices span
-// (empty by default). Command buffer lowering is enabled only when the span
-// is valid; production code always passes a valid - possibly empty - span.
-Thunk::ExecuteParams CreateExecuteParams(
-    const ServiceExecutableRunOptions& run_options,
-    const BufferAllocations& allocations, se::Stream* stream,
-    absl::Span<const BufferAllocation::Index> persistent_alloc_indices = {}) {
-  return Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr, nullptr,
-      /*additional_compute_streams=*/{}, /*execution_scoped_state=*/nullptr,
-      persistent_alloc_indices);
-}
-
 }  // namespace
 
 TEST(CommandBufferThunkTest, DeviceToDeviceCopy) {
@@ -252,11 +238,12 @@ TEST(CommandBufferThunkTest, DeviceToDeviceCopy) {
                            /*devices_in_process=*/1);
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it copied the memory.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -324,13 +311,11 @@ TEST(CommandBufferThunkTest, UpdatePolicyIgnoresVaRemappedAllocations) {
   std::vector<BufferAllocation::Index> persistent_alloc_indices = {0};
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, &allocator);
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::MakeConstSpan(persistent_alloc_indices));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices(persistent_alloc_indices);
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK(thunk.ExecuteOnStream(params));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -341,11 +326,8 @@ TEST(CommandBufferThunkTest, UpdatePolicyIgnoresVaRemappedAllocations) {
 
   ASSERT_OK(stream->MemZero(&b, byte_length));
   BufferAllocations source_changed_allocations({c, b}, 0, &allocator);
-  params = Thunk::ExecuteParams::Create(
-      run_options, source_changed_allocations, stream.get(), stream.get(),
-      nullptr, nullptr, nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::MakeConstSpan(persistent_alloc_indices));
+  params = thunk_params.WithBufferAllocations(&source_changed_allocations)
+               .ExecuteParams();
 
   ASSERT_OK(thunk.ExecuteOnStream(params));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -355,11 +337,8 @@ TEST(CommandBufferThunkTest, UpdatePolicyIgnoresVaRemappedAllocations) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 
   BufferAllocations dynamic_changed_allocations({c, d}, 0, &allocator);
-  params = Thunk::ExecuteParams::Create(
-      run_options, dynamic_changed_allocations, stream.get(), stream.get(),
-      nullptr, nullptr, nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::MakeConstSpan(persistent_alloc_indices));
+  params = thunk_params.WithBufferAllocations(&dynamic_changed_allocations)
+               .ExecuteParams();
 
   ASSERT_OK(thunk.ExecuteOnStream(params));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -411,23 +390,17 @@ TEST(CommandBufferThunkTest, AbsentPersistentAllocIndicesFallsBackToThunks) {
                                Thunk::ThunkInfo(), std::move(fallback_thunks)));
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, /*device_ordinal=*/0, &allocator);
 
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams initialize_params(&command_buffer_requests);
-  initialize_params.executor = stream_executor;
-  initialize_params.buffer_allocations = &allocations;
-  initialize_params.stream = stream.get();
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
 
   // With absent persistent allocation indices, initialization skips command
   // buffer creation and execution falls back to the thunk sequence.
-  ASSERT_OK(thunk.Initialize(initialize_params));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
   EXPECT_EQ(record_count, 0);
 
-  Thunk::ExecuteParams absent_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  Thunk::ExecuteParams absent_params = thunk_params.ExecuteParams();
 
   std::vector<int32_t> result(kLength, 0);
   for (int i = 0; i < 3; ++i) {
@@ -444,14 +417,11 @@ TEST(CommandBufferThunkTest, AbsentPersistentAllocIndicesFallsBackToThunks) {
   // Once persistent allocation indices become available, the thunk records
   // and executes the command buffer.
   std::vector<BufferAllocation::Index> persistent_alloc_indices = {0, 1};
-  initialize_params.persistent_alloc_indices =
-      absl::MakeConstSpan(persistent_alloc_indices);
-  ASSERT_OK(thunk.Initialize(initialize_params));
+  thunk_params.WithPersistentAllocIndices(persistent_alloc_indices);
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
   EXPECT_EQ(record_count, 1);
 
-  Thunk::ExecuteParams present_params =
-      CreateExecuteParams(run_options, allocations, stream.get(),
-                          absl::MakeConstSpan(persistent_alloc_indices));
+  Thunk::ExecuteParams present_params = thunk_params.ExecuteParams();
 
   ASSERT_OK(stream->MemZero(&b, kByteLength));
   ASSERT_OK(thunk.ExecuteOnStream(present_params));
@@ -493,12 +463,11 @@ TEST(CommandBufferThunkTest,
                            /*devices_in_process=*/1);
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({destination}, /*device_ordinal=*/0,
                                 &allocator);
-  Thunk::ExecuteParams absent_params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams absent_params = thunk_params.ExecuteParams();
 
   EXPECT_THAT(thunk.ExecuteOnStream(absent_params),
               ::absl_testing::StatusIs(absl::StatusCode::kInternal));
@@ -526,14 +495,12 @@ TEST(CommandBufferThunkTest,
 
   std::vector<BufferAllocation::Index> persistent_alloc_indices = {0};
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({destination}, /*device_ordinal=*/0,
                                 &allocator);
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::MakeConstSpan(persistent_alloc_indices));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices(persistent_alloc_indices);
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK(thunk.ExecuteOnStream(params));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -573,12 +540,13 @@ TEST(CommandBufferThunkTest, MemzeroThunk) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it zeroes the memory.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -620,12 +588,13 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it set the memory.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -679,12 +648,13 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
                            /*devices_in_process=*/1, std::move(seq_thunks),
                            options);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                        tsl::profiler::ProfilerLock::Acquire());
@@ -740,12 +710,13 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
                            /*devices_in_process=*/1, std::move(seq_thunks),
                            options);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                        tsl::profiler::ProfilerLock::Acquire());
@@ -791,12 +762,13 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it set the memory.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -852,22 +824,18 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/static_cast<Thunk::ExecutableSource>(source),
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(
+      static_cast<Thunk::ExecutableSource>(source));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -968,22 +936,18 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/static_cast<Thunk::ExecutableSource>(source),
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(
+      static_cast<Thunk::ExecutableSource>(source));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1103,22 +1067,17 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/source,
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/stream.get(),
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithExecutableSource(source);
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1258,22 +1217,17 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
         stream_executor->AllocateArray<float>(1024 * 1024);
     ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
-    ServiceExecutableRunOptions run_options;
     stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
     BufferAllocations allocations({a, b, c, d, workspace}, 0, &allocator);
 
-    Thunk::ExecuteParams params =
-        CreateExecuteParams(run_options, allocations, stream.get());
-
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-    CommandBufferRequests command_buffer_requests;
-    ASSERT_OK(thunk.Initialize(
-        {/*executor=*/stream_executor,
-         /*src=*/source,
-         /*buffer_allocations=*/&allocations,
-         /*stream=*/stream.get(),
-         /*command_buffer_trace_stream=*/stream.get(),
-         /*command_buffer_requests=*/&command_buffer_requests}));
+    TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+    thunk_params.WithCommandBufferTraceStream(stream.get())
+        .WithExecutableSource(source);
+    ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+    thunk_params.WithPersistentAllocIndices({});
+    Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
     // Execute command buffer thunk and verify that it executed a GEMM.
     ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1384,22 +1338,18 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
                            /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c, d}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/static_cast<Thunk::ExecutableSource>(source),
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(
+      static_cast<Thunk::ExecutableSource>(source));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1533,22 +1483,18 @@ TEST(CommandBufferThunkTest, ConditionalThunkCaseCommand) {
       std::move(executor), Thunk::ThunkInfo(), /*devices_in_process=*/1,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({index, a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/static_cast<Thunk::ExecutableSource>(source),
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(
+      static_cast<Thunk::ExecutableSource>(source));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1652,23 +1598,19 @@ TEST(CommandBufferThunkTest, WhileThunk) {
       std::move(executor), Thunk::ThunkInfo(), /*devices_in_process=*/1,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({pred, loop_cnt, num_iters, a, b}, 0,
                                 &allocator);
 
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get());
-
   ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
-  CommandBufferRequests command_buffer_requests;
-  ASSERT_OK(
-      thunk.Initialize({/*executor=*/stream_executor,
-                        /*src=*/static_cast<Thunk::ExecutableSource>(source),
-                        /*buffer_allocations=*/&allocations,
-                        /*stream=*/stream.get(),
-                        /*command_buffer_trace_stream=*/nullptr,
-                        /*command_buffer_requests=*/&command_buffer_requests}));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithExecutableSource(
+      static_cast<Thunk::ExecutableSource>(source));
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
+
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Execute command buffer thunk and verify that it added the value 10 times.
   ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1741,12 +1683,12 @@ TEST(CommandBufferThunkTest, EvictsAndReRecordsCommandBuffer) {
                             /*devices_in_process=*/2);
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, /*device_ordinal=*/0, &allocator);
   std::vector<BufferAllocation::Index> persistent_alloc_indices = {0, 1};
-  Thunk::ExecuteParams params =
-      CreateExecuteParams(run_options, allocations, stream.get(),
-                          absl::MakeConstSpan(persistent_alloc_indices));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithPersistentAllocIndices(persistent_alloc_indices);
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK(thunk1.ExecuteOnStream(params));
   ASSERT_OK(stream->BlockHostUntilDone());
@@ -1849,22 +1791,20 @@ class CommandBufferThunkTelemetryTest : public ::testing::Test {
   // Records the command buffer in `Initialize`.
   absl::Status Initialize(CommandBufferThunk& thunk) {
     *allocations_ = BufferAllocations({a_, b_}, 0, &*allocator_);
-    CommandBufferRequests command_buffer_requests;
-    Thunk::InitializeParams params(&command_buffer_requests);
-    params.executor = executor_;
-    params.src = static_cast<Thunk::ExecutableSource>(source_);
-    params.buffer_allocations = &*allocations_;
-    params.stream = stream_.get();
-    params.persistent_alloc_indices =
-        absl::Span<const BufferAllocation::Index>();
-    return thunk.Initialize(params);
+    TestThunkParams thunk_params(executor_, &*allocations_, stream_.get());
+    thunk_params
+        .WithExecutableSource(static_cast<Thunk::ExecutableSource>(source_))
+        .WithPersistentAllocIndices({});
+    return thunk.Initialize(thunk_params.InitializeParams());
   }
 
   // Executes the command buffer, recording it first if it wasn't recorded yet,
   // then forces an update by moving allocation #1 to another buffer.
   absl::Status ExecuteAndUpdate(CommandBufferThunk& thunk) {
-    Thunk::ExecuteParams params =
-        CreateExecuteParams(run_options_, *allocations_, stream_.get());
+    TestThunkParams thunk_params(executor_, &*allocations_, stream_.get());
+    thunk_params.WithCommandBufferTraceStream(stream_.get())
+        .WithPersistentAllocIndices({});
+    Thunk::ExecuteParams params = thunk_params.ExecuteParams();
     *allocations_ = BufferAllocations({a_, b_}, 0, &*allocator_);
     ABSL_RETURN_IF_ERROR(thunk.ExecuteOnStream(params));
     *allocations_ = BufferAllocations({a_, c_}, 0, &*allocator_);
@@ -1917,7 +1857,6 @@ class CommandBufferThunkTelemetryTest : public ::testing::Test {
   se::DeviceAddress<int32_t> b_;
   se::DeviceAddress<int32_t> c_;
   std::optional<se::StreamExecutorAddressAllocator> allocator_;
-  ServiceExecutableRunOptions run_options_;
   std::optional<BufferAllocations> allocations_;
 };
 
@@ -2035,41 +1974,20 @@ TEST(CommandBufferThunkTest, DynamicWarmupRequestInPrepare) {
                                Thunk::ThunkInfo(), std::move(fallback_thunks)));
 
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, /*device_ordinal=*/0, &allocator);
   std::vector<BufferAllocation::Index> persistent_alloc_indices = {0, 1};
 
   // Step 1: Prepare requests warmup -> Initialize skips recording ->
   // ExecuteOnStream runs fallback thunk sequence.
   {
-    Thunk::ExecutionScopedState scoped_state;
-    CommandBufferRequests command_buffer_requests;
-    Thunk::PrepareParams prepare_params{
-        /*collective_params=*/nullptr,
-        /*collective_clique_requests=*/nullptr,
-        /*collective_memory_requests=*/nullptr,
-        /*executor=*/stream_executor,
-        /*buffer_allocations=*/&allocations,
-        /*execution_scoped_state=*/&scoped_state,
-        /*custom_options=*/nullptr,
-        /*command_buffer_requests=*/&command_buffer_requests};
-    ASSERT_OK(thunk.Prepare(prepare_params));
-
-    Thunk::InitializeParams init_params(&command_buffer_requests);
-    init_params.executor = stream_executor;
-    init_params.buffer_allocations = &allocations;
-    init_params.stream = stream.get();
-    init_params.command_buffer_trace_stream = stream.get();
-    init_params.execution_scoped_state = &scoped_state;
-    init_params.persistent_alloc_indices =
-        absl::MakeConstSpan(persistent_alloc_indices);
-    ASSERT_OK(thunk.Initialize(init_params));
+    TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+    thunk_params.WithCommandBufferTraceStream(stream.get())
+        .WithPersistentAllocIndices(persistent_alloc_indices);
+    ASSERT_OK(thunk.Prepare(thunk_params.PrepareParams()));
+    ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
     EXPECT_EQ(record_count, 0);
 
-    Thunk::ExecuteParams exec_params =
-        CreateExecuteParams(run_options, allocations, stream.get(),
-                            absl::MakeConstSpan(persistent_alloc_indices));
-    ASSERT_OK(thunk.ExecuteOnStream(exec_params));
+    ASSERT_OK(thunk.ExecuteOnStream(thunk_params.ExecuteParams()));
     ASSERT_OK(stream->BlockHostUntilDone());
     EXPECT_EQ(exec_count, 1);
     EXPECT_EQ(record_count, 0);
@@ -2078,33 +1996,14 @@ TEST(CommandBufferThunkTest, DynamicWarmupRequestInPrepare) {
   // Step 2: Now warmup_done is true -> Initialize records command buffer ->
   // ExecuteOnStream submits command buffer without calling fallback thunks.
   {
-    Thunk::ExecutionScopedState scoped_state;
-    CommandBufferRequests command_buffer_requests;
-    Thunk::PrepareParams prepare_params{
-        /*collective_params=*/nullptr,
-        /*collective_clique_requests=*/nullptr,
-        /*collective_memory_requests=*/nullptr,
-        /*executor=*/stream_executor,
-        /*buffer_allocations=*/&allocations,
-        /*execution_scoped_state=*/&scoped_state,
-        /*custom_options=*/nullptr,
-        /*command_buffer_requests=*/&command_buffer_requests};
-    ASSERT_OK(thunk.Prepare(prepare_params));
-
-    Thunk::InitializeParams init_params(&command_buffer_requests);
-    init_params.executor = stream_executor;
-    init_params.buffer_allocations = &allocations;
-    init_params.stream = stream.get();
-    init_params.command_buffer_trace_stream = stream.get();
-    init_params.execution_scoped_state = &scoped_state;
-    init_params.persistent_alloc_indices =
-        absl::MakeConstSpan(persistent_alloc_indices);
-    ASSERT_OK(thunk.Initialize(init_params));
+    TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+    thunk_params.WithCommandBufferTraceStream(stream.get())
+        .WithPersistentAllocIndices(persistent_alloc_indices);
+    ASSERT_OK(thunk.Prepare(thunk_params.PrepareParams()));
+    ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
     EXPECT_EQ(record_count, 1);
 
-    Thunk::ExecuteParams exec_params =
-        CreateExecuteParams(run_options, allocations, stream.get(),
-                            absl::MakeConstSpan(persistent_alloc_indices));
+    Thunk::ExecuteParams exec_params = thunk_params.ExecuteParams();
     ASSERT_OK(thunk.ExecuteOnStream(exec_params));
     ASSERT_OK(stream->BlockHostUntilDone());
     EXPECT_EQ(exec_count, 1);

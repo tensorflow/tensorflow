@@ -36,17 +36,16 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -260,21 +259,13 @@ TEST(RaftSelectKExecTest, CommandBuffer) {
   CommandBufferThunk cmd_buffer_thunk(std::move(executor), Thunk::ThunkInfo(),
                                       /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations(
       {d_data_in, d_data_out, d_indices_out, d_scratch}, 0, &allocator);
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::Span<const BufferAllocation::Index>());
-
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = stream_executor;
-  init_params.buffer_allocations = &allocations;
-  init_params.stream = stream.get();
-  ASSERT_OK(cmd_buffer_thunk.Initialize(init_params));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  ASSERT_OK(cmd_buffer_thunk.Initialize(thunk_params.InitializeParams()));
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   auto verify_results = [&]() {
     std::vector<float> h_data_out(batch * k);
@@ -505,22 +496,15 @@ TEST_F(RaftSelectKScratchReuseTest, CommandBufferReusesScratchAcrossPhases) {
   CommandBufferThunk cmd_buffer_thunk(std::move(executor), Thunk::ThunkInfo(),
                                       /*devices_in_process=*/1);
 
-  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations(
       {d_data_in_, d_data_out_, d_indices_out_, d_scratch_.cref()}, 0,
       allocator_.get());
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream_.get(), stream_.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      absl::Span<const BufferAllocation::Index>());
-
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = stream_executor_;
-  init_params.buffer_allocations = &allocations;
-  init_params.stream = stream_.get();
-  ASSERT_THAT(cmd_buffer_thunk.Initialize(init_params), IsOk());
+  TestThunkParams thunk_params(stream_executor_, &allocations, stream_.get());
+  thunk_params.WithCommandBufferTraceStream(stream_.get());
+  ASSERT_THAT(cmd_buffer_thunk.Initialize(thunk_params.InitializeParams()),
+              IsOk());
+  thunk_params.WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Record + execute, then replay on zeroed output buffers.
   ASSERT_THAT(cmd_buffer_thunk.ExecuteOnStream(params), IsOk());

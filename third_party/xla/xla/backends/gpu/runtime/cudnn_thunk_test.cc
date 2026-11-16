@@ -38,13 +38,13 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -280,10 +280,13 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
         std::vector<se::DeviceAddressBase>{input_buf_, output_buf_}, 0,
         allocator_.get());
 
-    params_.emplace(Thunk::ExecuteParams::Create(
-        run_options_, *allocations_, stream_.get(), trace_stream_.get(),
-        &*collective_params_, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr));
+    thunk_params_.WithExecutor(executor_)
+        .WithBufferAllocations(allocations_.get())
+        .WithStream(stream_.get())
+        .WithRunOptions(&run_options_)
+        .WithCommandBufferTraceStream(trace_stream_.get())
+        .WithCollectiveParams(&*collective_params_);
+    params_.emplace(thunk_params_.ExecuteParams());
   }
 
   // Builds a real cuDNN matmul graph and wraps it in a CuDnnThunk. Skips the
@@ -359,14 +362,8 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   }
 
   void InitializeThunk(const Thunk::ExecutableSource& source = {}) {
-    CommandBufferRequests command_buffer_requests;
     ASSERT_OK(thunk_->Initialize(
-        {/*executor=*/executor_,
-         /*src=*/source,
-         /*buffer_allocations=*/allocations_.get(),
-         /*stream=*/stream_.get(),
-         /*command_buffer_trace_stream=*/trace_stream_.get(),
-         /*command_buffer_requests=*/&command_buffer_requests}));
+        thunk_params_.WithExecutableSource(source).InitializeParams()));
   }
 
   std::vector<int32_t> ReadOutput(const se::DeviceAddress<int32_t>& buf) {
@@ -398,8 +395,9 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   std::unique_ptr<BufferAllocations> allocations_;
   ServiceExecutableRunOptions run_options_;
   std::optional<CollectiveParams> collective_params_;
-  // params_ holds references to allocations_, stream_, trace_stream_, and
-  // collective_params_, all of which must outlive it.
+  TestThunkParams thunk_params_;
+  // params_ holds references to thunk_params_, allocations_, stream_,
+  // trace_stream_, and collective_params_, all of which must outlive it.
   std::optional<Thunk::ExecuteParams> params_;
 };
 
@@ -423,10 +421,13 @@ class CuDnnThunkZeroedTest : public CuDnnThunkCmdBufTest,
     allocations_ = std::make_unique<BufferAllocations>(
         std::vector<se::DeviceAddressBase>{input_buf_, output_buf_, probe_}, 0,
         allocator_.get());
-    params_.emplace(Thunk::ExecuteParams::Create(
-        run_options_, *allocations_, stream_.get(), trace_stream_.get(),
-        &*collective_params_, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr));
+    thunk_params_.WithExecutor(executor_)
+        .WithBufferAllocations(allocations_.get())
+        .WithStream(stream_.get())
+        .WithRunOptions(&run_options_)
+        .WithCommandBufferTraceStream(trace_stream_.get())
+        .WithCollectiveParams(&*collective_params_);
+    params_.emplace(thunk_params_.ExecuteParams());
     if (GetParam()) {
       BuildRealGraphThunk(/*should_memzero=*/true);
     } else {
@@ -544,10 +545,7 @@ TEST_P(CuDnnThunkZeroedTest, TwoRecordingsCreateAndUpdate) {
       std::vector<se::DeviceAddressBase>{input_buf_, output_1, probe_1_new}, 0,
       allocator_.get());
   auto params_for = [&](const BufferAllocations& allocations) {
-    return Thunk::ExecuteParams::Create(
-        run_options_, allocations, stream_.get(), trace_stream_.get(),
-        &*collective_params_, /*collective_cliques=*/nullptr,
-        /*collective_memory=*/nullptr);
+    return Thunk::ExecuteParams::CloneWithNewAllocations(*params_, allocations);
   };
 
   CommandStateManager state;
@@ -655,10 +653,9 @@ TEST_F(CuDnnThunkCmdBufTest, RecordUpdateExplicit) {
   BufferAllocations updated_allocations(
       std::vector<se::DeviceAddressBase>{input_buf_, output1}, 0,
       allocator_.get());
-  Thunk::ExecuteParams updated_params = Thunk::ExecuteParams::Create(
-      run_options_, updated_allocations, stream_.get(), trace_stream_.get(),
-      &*collective_params_, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams updated_params =
+      Thunk::ExecuteParams::CloneWithNewAllocations(*params_,
+                                                    updated_allocations);
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(
@@ -736,10 +733,9 @@ TEST_F(CuDnnThunkCmdBufTest, RecordUpdateImplicit) {
   BufferAllocations updated_allocations(
       std::vector<se::DeviceAddressBase>{input_buf_, output1}, 0,
       allocator_.get());
-  Thunk::ExecuteParams updated_params = Thunk::ExecuteParams::Create(
-      run_options_, updated_allocations, stream_.get(), trace_stream_.get(),
-      &*collective_params_, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  Thunk::ExecuteParams updated_params =
+      Thunk::ExecuteParams::CloneWithNewAllocations(*params_,
+                                                    updated_allocations);
 
   ASSERT_OK(command_buffer->Update());
   ASSERT_OK_AND_ASSIGN(
@@ -870,28 +866,17 @@ TEST(CuDnnThunkTest, CommandBuffer) {
     operands.push_back(workspace);
   }
 
-  ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr,
-      nullptr, /*additional_compute_streams=*/{},
-      /*execution_scoped_state=*/nullptr,
-      /*persistent_alloc_indices=*/absl::Span<const BufferAllocation::Index>());
-
   ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
                        ExecutableSourceWithGraph(graph));
-  CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams initialize_params(&command_buffer_requests);
-  initialize_params.executor = stream_executor;
-  initialize_params.src = source;
-  initialize_params.buffer_allocations = &allocations;
-  initialize_params.stream = stream.get();
-  initialize_params.command_buffer_trace_stream = stream.get();
-  initialize_params.persistent_alloc_indices =
-      absl::Span<const BufferAllocation::Index>();
-  ASSERT_OK(thunk.Initialize(initialize_params));
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get())
+      .WithExecutableSource(source)
+      .WithPersistentAllocIndices({});
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
+  ASSERT_OK(thunk.Initialize(thunk_params.InitializeParams()));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   ASSERT_OK(thunk.ExecuteOnStream(params));

@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk_multigpu_test_utils.h"
-#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -137,6 +137,8 @@ static RaggedAllToAllThunk MakeThunk(
 }
 
 struct DeviceTestSlot : CollectiveThunkMultiGpuTestState {
+  ~DeviceTestSlot() { thunk_params.reset(); }
+
   std::unique_ptr<BufferAllocations> create_allocs;
   std::unique_ptr<BufferAllocations> update_allocs;
   CollectiveMemoryCache memory_cache{kNumDevices};
@@ -278,74 +280,55 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
       CollectiveParams params,
       CollectiveParams::Create(slot.run_options, /*async_streams=*/{},
                                LocalDeviceId(device_ordinal)));
+  slot.collective_params = std::move(params);
 
   slot.create_allocs = std::make_unique<BufferAllocations>(
       MakeBufferAllocations(slot, slot.create_buffers));
   slot.update_allocs = std::make_unique<BufferAllocations>(
       MakeBufferAllocations(slot, slot.update_buffers));
 
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMemoryRequests create_memory_requests(*slot.create_allocs);
-  CommandBufferRequests command_buffer_requests;
-  Thunk::PrepareParams create_prepare_params{
-      /*collective_params=*/&params,
-      /*collective_clique_requests=*/&clique_requests,
-      /*collective_memory_requests=*/&create_memory_requests,
-      /*executor=*/slot.executor,
-      /*buffer_allocations=*/slot.create_allocs.get(),
-      /*execution_scoped_state=*/nullptr,
-      /*custom_options=*/nullptr,
-      /*command_buffer_requests=*/&command_buffer_requests};
-  ABSL_RETURN_IF_ERROR(thunk.Prepare(create_prepare_params));
+  slot.thunk_params = std::make_unique<TestThunkParams>(
+      slot.executor, slot.create_allocs.get(), slot.stream.get());
+  slot.thunk_params->WithRunOptions(&slot.run_options)
+      .WithCommandBufferTraceStream(slot.stream.get())
+      .WithCollectiveParams(&*slot.collective_params);
+  ABSL_RETURN_IF_ERROR(thunk.Prepare(slot.thunk_params->PrepareParams()));
 
-  CollectiveCliqueRequests unused_clique_requests;
   CollectiveMemoryRequests update_memory_requests(*slot.update_allocs);
-  Thunk::PrepareParams update_prepare_params{
-      /*collective_params=*/&params,
-      /*collective_clique_requests=*/&unused_clique_requests,
-      /*collective_memory_requests=*/&update_memory_requests,
-      /*executor=*/slot.executor,
-      /*buffer_allocations=*/slot.update_allocs.get(),
-      /*execution_scoped_state=*/nullptr,
-      /*custom_options=*/nullptr,
-      /*command_buffer_requests=*/&command_buffer_requests};
-  ABSL_RETURN_IF_ERROR(thunk.Prepare(update_prepare_params));
+  TestThunkParams update_thunk_params(slot.executor, slot.update_allocs.get());
+  update_thunk_params.WithCollectiveParams(&*slot.collective_params)
+      .WithCollectiveMemoryRequests(&update_memory_requests)
+      .WithCommandBufferRequests(&slot.thunk_params->command_buffer_requests());
+  ABSL_RETURN_IF_ERROR(thunk.Prepare(update_thunk_params.PrepareParams()));
 
   ABSL_ASSIGN_OR_RETURN(slot.collective_cliques,
-                   AcquireCollectiveCliques(params, clique_requests));
+                   AcquireCollectiveCliques(
+                       *slot.collective_params,
+                       slot.thunk_params->collective_clique_requests()));
 
-  Thunk::InitializeParams init_params(&command_buffer_requests);
-  init_params.executor = slot.executor;
-  init_params.buffer_allocations = slot.create_allocs.get();
-  init_params.stream = slot.stream.get();
-  init_params.command_buffer_trace_stream = slot.stream.get();
-  init_params.collective_params = &params;
-  init_params.collective_cliques = &slot.collective_cliques;
-  init_params.local_device_count = kNumDevices;
-  ABSL_RETURN_IF_ERROR(thunk.Initialize(init_params));
+  slot.thunk_params->WithCollectiveCliques(&slot.collective_cliques);
+  ABSL_RETURN_IF_ERROR(thunk.Initialize(slot.thunk_params->InitializeParams()));
 
   ABSL_ASSIGN_OR_RETURN(
       CollectiveMemory create_collective_memory,
-      AcquireCollectiveMemory(params, slot.collective_cliques,
-                              create_memory_requests, slot.memory_cache));
+      AcquireCollectiveMemory(*slot.collective_params, slot.collective_cliques,
+                              slot.thunk_params->collective_memory_requests(),
+                              slot.memory_cache));
   slot.create_collective_memory.emplace(std::move(create_collective_memory));
   ABSL_ASSIGN_OR_RETURN(
       CollectiveMemory update_collective_memory,
-      AcquireCollectiveMemory(params, slot.collective_cliques,
+      AcquireCollectiveMemory(*slot.collective_params, slot.collective_cliques,
                               update_memory_requests, slot.memory_cache));
   slot.update_collective_memory.emplace(std::move(update_collective_memory));
-
-  slot.collective_params = std::move(params);
   return absl::OkStatus();
 }
 
 static Thunk::ExecuteParams MakeRaggedExecuteParams(
     DeviceTestSlot& slot, const BufferAllocations& allocations,
     CollectiveMemory* collective_memory) {
-  return Thunk::ExecuteParams::Create(
-      slot.run_options, allocations, slot.stream.get(),
-      /*command_buffer_trace_stream=*/slot.stream.get(),
-      &*slot.collective_params, &slot.collective_cliques, collective_memory);
+  slot.thunk_params->WithCollectiveMemory(collective_memory);
+  return Thunk::ExecuteParams::CloneWithNewAllocations(
+      slot.thunk_params->ExecuteParams(), allocations);
 }
 
 static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
@@ -637,29 +620,20 @@ ENTRY entry {
         std::vector<se::DeviceAddressBase> allocated_buffers(
             allocations.size());
         BufferAllocations buffer_allocs(allocated_buffers, d, &allocator);
-        CollectiveCliqueRequests clique_requests;
-        CollectiveMemoryRequests memory_requests(buffer_allocs);
-        CommandBufferRequests command_buffer_requests;
-        Thunk::PrepareParams prepare_params{
-            /*collective_params=*/&collective_params,
-            /*collective_clique_requests=*/&clique_requests,
-            /*collective_memory_requests=*/&memory_requests,
-            /*executor=*/executor,
-            /*buffer_allocations=*/&buffer_allocs,
-            /*execution_scoped_state=*/nullptr,
-            /*custom_options=*/nullptr,
-            /*command_buffer_requests=*/&command_buffer_requests};
+        TestThunkParams thunk_params(executor, &buffer_allocs);
+        thunk_params.WithCollectiveParams(&collective_params);
 
-        ABSL_RETURN_IF_ERROR(thunk.Prepare(prepare_params));
+        ABSL_RETURN_IF_ERROR(thunk.Prepare(thunk_params.PrepareParams()));
 
         std::vector<CollectiveCliqueRequests::CliqueRequest> requested_cliques =
-            clique_requests.OrderedRequestedCliques();
+            thunk_params.collective_clique_requests().OrderedRequestedCliques();
         EXPECT_EQ(requested_cliques.size(), 1);
         if (!requested_cliques.empty()) {
           EXPECT_EQ(requested_cliques[0].key.num_devices(), 1);
           EXPECT_FALSE(requested_cliques[0].use_cross_device_barrier_requested);
         }
-        EXPECT_EQ(memory_requests.symmetric_size(), 0);
+        EXPECT_EQ(thunk_params.collective_memory_requests().symmetric_size(),
+                  0);
         return absl::OkStatus();
       }));
 }

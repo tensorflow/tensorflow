@@ -32,12 +32,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
@@ -93,7 +93,6 @@ TEST(ThunkExecutorDefinitionTrackerTest, InvokesCallbackAfterLastUse) {
       plan.at(while_ptr),
       testing::UnorderedElementsAre(allocation0.index(), allocation1.index()));
 
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   se::DeviceAddress<int32_t> storage0 =
       stream_executor->AllocateArray<int32_t>(1, 0);
@@ -101,9 +100,9 @@ TEST(ThunkExecutorDefinitionTrackerTest, InvokesCallbackAfterLastUse) {
       stream_executor->AllocateArray<int32_t>(1, 0);
   BufferAllocations allocations({storage0, storage1}, /*device_ordinal=*/0,
                                 &allocator);
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   int callback_count = 0;
   auto callback =
@@ -174,16 +173,15 @@ TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   }
 
   // Prepare execute params for running thunk.
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
 
   se::DeviceAddress<int32_t> storage =
       stream_executor->AllocateArray<int32_t>(kLength, 0);
   BufferAllocations allocations({storage}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   // Create a trivial thunk sequence that runs memzero on each slice.
   Shape shape = ShapeUtil::MakeShape(S32, {kLength});
@@ -270,16 +268,15 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
   BufferAllocation alloc(/*index=*/0, kByteLength, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, 0, sizeof(int32_t));
 
-  ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
 
   se::DeviceAddress<int32_t> storage =
       stream_executor->AllocateArray<int32_t>(kLength, 0);
   BufferAllocations allocations({storage}, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  TestThunkParams thunk_params(stream_executor, &allocations, stream.get());
+  thunk_params.WithCommandBufferTraceStream(stream.get());
+  Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   Shape shape = ShapeUtil::MakeShape(S32, {1});
 

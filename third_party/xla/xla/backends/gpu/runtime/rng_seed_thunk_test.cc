@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -60,13 +60,8 @@ TEST(RngSeedThunkTest, ExecuteExplicitSeed) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({dest}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream.get(),
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &buffer_allocations, stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   const int kExplicitSeed = 42;
   execute_params.rng_seed = kExplicitSeed;
@@ -94,13 +89,8 @@ TEST(RngSeedThunkTest, ExecuteRandomSeed) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({dest}, 0, &allocator);
 
-  ServiceExecutableRunOptions run_options;
-  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      run_options, buffer_allocations, stream.get(),
-      /*command_buffer_trace_stream=*/nullptr,
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr);
+  TestThunkParams thunk_params(executor, &buffer_allocations, stream.get());
+  Thunk::ExecuteParams execute_params = thunk_params.ExecuteParams();
 
   execute_params.rng_seed = 0;  // Triggers internal generator.
 
