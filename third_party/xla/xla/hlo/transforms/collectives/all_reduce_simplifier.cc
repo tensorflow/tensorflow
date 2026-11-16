@@ -204,6 +204,21 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
                 all_reduce->mutable_operand(0), multiplier));
         break;
       }
+      case HloOpcode::kMultiply: {
+        // With two identical inputs, a product reduction is a local square.
+        // Leave larger groups unchanged to avoid reassociating multiplications.
+        if (replica_group_size != 2) {
+          continue;
+        }
+        HloInstruction* operand = all_reduce->mutable_operand(0);
+        replacement =
+            all_reduce->parent()->AddInstruction(HloInstruction::CreateBinary(
+                all_reduce->shape(), HloOpcode::kMultiply, operand, operand));
+        all_reduce->SetupDerivedInstruction(replacement);
+        ABSL_RETURN_IF_ERROR(replacement->CopyAllControlDepsFrom(all_reduce));
+        ABSL_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
+        break;
+      }
       case HloOpcode::kMinimum:
       case HloOpcode::kMaximum:
       case HloOpcode::kOr:

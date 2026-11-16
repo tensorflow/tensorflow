@@ -21,9 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/collectives/all_reduce_simplifier.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -224,6 +230,51 @@ TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
       "add",
       /*input_value=*/LiteralUtil::CreateR1<float>({1}),
       /*expected_value=*/LiteralUtil::CreateR1<float>({2}));
+}
+
+TEST_F(CollectiveOpsTest, AllReduceReplicatedProduct) {
+  constexpr char kModuleStr[] = R"hlo(
+HloModule m, replica_count=2
+
+product {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT result = f32[] multiply(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[6] parameter(0), parameter_replication={true}
+  ROOT ar = f32[6] all-reduce(p0), replica_groups={{0,1}}, to_apply=product
+}
+)hlo";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  // Keep the collective in the reference module on backends that run this pass.
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "all-reduce-simplifier");
+  ASSERT_OK_AND_ASSIGN(auto original,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto simplified,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  EXPECT_THAT(AllReduceSimplifier().Run(simplified.get()),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_EQ(simplified->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kMultiply);
+
+  Literal input = LiteralUtil::CreateR1<float>({-3, -1.5, -0.0, 0, 0.5, 2});
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> original_results,
+      ExecuteReplicated(std::move(original), {&input}, /*num_devices=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> simplified_results,
+      ExecuteReplicated(std::move(simplified), {&input}, /*num_devices=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  for (int replica = 0; replica < 2; ++replica) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(original_results[replica],
+                                       simplified_results[replica]));
+    LiteralTestUtil::ExpectR1Equal<float>({9, 2.25, 0, 0, 0.25, 4},
+                                          simplified_results[replica]);
+  }
 }
 
 TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_float8_e4m3b11fnuz) {
