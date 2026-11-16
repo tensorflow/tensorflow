@@ -1802,7 +1802,6 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
                               /*pad_value=*/LiteralUtil::CreateR0(
                                   indices.base_shape().element_type(), -1));
   }
-  const HloSharding original_indices_sharding = indices.sharding();
 
   HloSharding passthrough_sharding =
       hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
@@ -1860,9 +1859,11 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
           pshape,
           HloSharding::Single(scatter->shape(), output_grouped.sharding),
           slice_sizes, visitor, allow_recursive));
+  // Reduce along passthrough_sharding so replica groups match the operand and
+  // update shards aligned to update_grouped.
   auto all_reduce = operands[0].state().partitioner->AllReduceAlongShardingDims(
-      b, pscatter, original_indices_sharding, indices.state().next_channel_id,
-      index_passthrough_dims.indices_dims,
+      b, pscatter, passthrough_sharding, indices.state().next_channel_id,
+      index_passthrough_dims.output_dims,
       operands[0].state().collective_ops_creator,
       operands[0].state().module->AddEmbeddedComputation(
           scatter->to_apply()->Clone()));

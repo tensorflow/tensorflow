@@ -12096,6 +12096,127 @@ ENTRY entry {
             op::Shape("f32[4,16]")));
 }
 
+TEST_P(SpmdPartitioningTest,
+       IndexPassthroughScatterAllReduceUsesPostMergeSharding) {
+  struct TestCase {
+    absl::string_view name, expected_shape, hlo;
+    int64_t num_devices;
+  };
+  static constexpr TestCase kCases[] = {
+      {"iota_6_dev_3x2_vs_2x3_add_f32", "f32[4,3]", R"hlo(
+HloModule m
+add {
+  ROOT sum = f32[] add(f32[] parameter(0), f32[] parameter(1))
+}
+ENTRY e {
+  %input = f32[4,6] parameter(0), sharding={devices=[1,2,3]<=[3,2]T(1,0) last_tile_dim_replicate}
+  %indices = s32[24,1] parameter(1), sharding={devices=[3,1,2]<=[2,3]T(1,0) last_tile_dim_replicate}
+  %updates = f32[24,6] parameter(2), sharding={devices=[1,2,3]<=[3,2]T(1,0) last_tile_dim_replicate}
+  ROOT %s = f32[4,6] scatter(%input, %indices, %updates), to_apply=add,
+    update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+    index_vector_dim=1, sharding={devices=[1,2,3]<=[3,2]T(1,0) last_tile_dim_replicate}
+})hlo",
+       6},
+      {"snake_8_dev_2x2x2_add_bf16", "bf16[4,2]", R"hlo(
+HloModule m
+add {
+  ROOT sum = bf16[] add(bf16[] parameter(0), bf16[] parameter(1))
+}
+ENTRY e {
+  %input = bf16[4,8] parameter(0), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  %indices = s32[32,1] parameter(1), sharding={devices=[2,1,4]0,1,2,3,7,6,5,4 last_tile_dim_replicate}
+  %updates = bf16[32,8] parameter(2), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  ROOT %s = bf16[4,8] scatter(%input, %indices, %updates), to_apply=add,
+    update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+    index_vector_dim=1, sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+})hlo",
+       8},
+  };
+  auto make_float = [](const Shape& s, int64_t mod,
+                       int64_t bias) -> absl::StatusOr<Literal> {
+    ABSL_ASSIGN_OR_RETURN(Literal lit,
+                     Literal::Make(ShapeUtil::ChangeElementType(s, F32)));
+    for (int64_t i = 0, n = lit.element_count(); i < n; ++i) {
+      lit.data<float>()[i] = static_cast<float>((i % mod) + bias);
+    }
+    return s.element_type() == F32 ? std::move(lit)
+                                   : lit.Convert(s.element_type());
+  };
+  for (const TestCase& tc : kCases) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref,
+                         ParseAndReturnVerifiedModule(tc.hlo));
+    const HloComputation* ref_e = ref->entry_computation();
+    const HloInstruction* p0 = ref_e->parameter_instruction(0);
+    const HloInstruction* p1 = ref_e->parameter_instruction(1);
+    const HloInstruction* p2 = ref_e->parameter_instruction(2);
+    ASSERT_OK_AND_ASSIGN(Literal p0_f, make_float(p0->shape(), 13, 5));
+    ASSERT_OK_AND_ASSIGN(Literal p1_t, make_float(p1->shape(), 4, 0));
+    ASSERT_OK_AND_ASSIGN(Literal p1_f, p1_t.Convert(S32));
+    ASSERT_OK_AND_ASSIGN(Literal p2_f, make_float(p2->shape(), 7, 1));
+    ASSERT_OK_AND_ASSIGN(Literal exp_f,
+                         HloEvaluator().Evaluate(*ref, {&p0_f, &p1_f, &p2_f}));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(tc.hlo, tc.num_devices));
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    ASSERT_THAT(root,
+                AllOf(op::Shape(tc.expected_shape),
+                      op::AllReduce(op::Scatter(op::Select(_, _, _), _, _))));
+    auto slice_s = [&](const Literal& full, const HloSharding& s,
+                       std::vector<Literal>& out) -> absl::Status {
+      out.resize(tc.num_devices);
+      return s.EachTile(full.shape().dimensions(),
+                        [&](int64_t d, absl::Span<const int64_t> off,
+                            absl::Span<const int64_t> lim) {
+                          out[d] = full.Slice(off, lim);
+                        });
+    };
+    std::vector<Literal> p0_s, p1_s, p2_s, exp_s, pre_ar(tc.num_devices);
+    ASSERT_OK(slice_s(p0_f, p0->sharding(), p0_s));
+    ASSERT_OK(slice_s(p1_f, p1->sharding(), p1_s));
+    ASSERT_OK(slice_s(p2_f, p2->sharding(), p2_s));
+    ASSERT_OK(slice_s(exp_f, ref_e->root_instruction()->sharding(), exp_s));
+    for (int64_t dev = 0; dev < tc.num_devices; ++dev) {
+      std::unique_ptr<HloModule> dev_mod = module->Clone();
+      HloComputation* dev_entry = dev_mod->entry_computation();
+      HloInstruction* old_root = dev_entry->root_instruction();
+      dev_entry->set_root_instruction(old_root->mutable_operand(0));
+      ASSERT_OK(dev_entry->RemoveInstruction(old_root));
+      ASSERT_OK_AND_ASSIGN(Literal dev_lit,
+                           Literal::Make(ShapeUtil::MakeScalarShape(U32)));
+      dev_lit.data<uint32_t>()[0] = static_cast<uint32_t>(dev);
+      for (HloInstruction* inst : dev_entry->MakeInstructionPostOrder()) {
+        if (inst->opcode() == HloOpcode::kPartitionId) {
+          ASSERT_OK(dev_entry->ReplaceWithNewInstruction(
+              inst, HloInstruction::CreateConstant(dev_lit.Clone())));
+        }
+      }
+      ASSERT_OK_AND_ASSIGN(pre_ar[dev],
+                           HloEvaluator().Evaluate(
+                               *dev_mod, {&p0_s[dev], &p1_s[dev], &p2_s[dev]}));
+    }
+    int64_t covered = 0;
+    for (const auto& group : root->device_list()->flattened_replica_groups()) {
+      ASSERT_FALSE(group.empty());
+      ASSERT_OK_AND_ASSIGN(Literal sum, pre_ar[group[0]].Convert(F32));
+      for (int64_t k = 1, m = group.size(); k < m; ++k) {
+        ASSERT_OK_AND_ASSIGN(Literal next, pre_ar[group[k]].Convert(F32));
+        for (int64_t j = 0, n = sum.element_count(); j < n; ++j) {
+          sum.data<float>()[j] += next.data<float>()[j];
+        }
+      }
+      ASSERT_OK_AND_ASSIGN(Literal reduced,
+                           sum.Convert(root->shape().element_type()));
+      for (int64_t dev : group) {
+        SCOPED_TRACE(dev);
+        EXPECT_EQ(reduced, exp_s[dev]);
+        ++covered;
+      }
+    }
+    EXPECT_EQ(covered, tc.num_devices);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
   absl::string_view hlo_string = R"(
 HloModule module
