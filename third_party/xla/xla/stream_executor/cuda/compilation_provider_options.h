@@ -45,19 +45,6 @@ class CompilationProviderOptions {
         cuda_data_dir_(cuda_data_dir),
         stream_exec_(stream_exec) {}
 
-  // FIXME(b/465360188) Jax can't be updated in one CL. Remove the constuctor in
-  // followup CL.
-  CompilationProviderOptions(
-      NvJitLinkMode nvjitlink_mode, bool enable_libnvptxcompiler,
-      bool enable_llvm_module_compilation_parallelism,
-      bool enable_driver_compilation, std::string cuda_data_dir,
-      stream_executor::StreamExecutor* stream_exec = nullptr)
-      : nvjitlink_mode_(nvjitlink_mode),
-        enable_libnvptxcompiler_(enable_libnvptxcompiler),
-        enable_driver_compilation_(enable_driver_compilation),
-        cuda_data_dir_(cuda_data_dir),
-        stream_exec_(stream_exec) {}
-
   static CompilationProviderOptions FromDebugOptions(
       const xla::DebugOptions& debug_options,
       stream_executor::StreamExecutor* absl_nullable stream_exec = nullptr);
