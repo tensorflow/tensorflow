@@ -419,6 +419,54 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
     )
 
   @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DEmptyInputExplicitPadding(self, data_format):
+    input_sizes = test_utils.PermuteDimsBetweenDataFormats(
+        [1, 0, 4, 1], "NHWC", data_format
+    )
+    out_backprop_sizes = test_utils.PermuteDimsBetweenDataFormats(
+        [1, 2, 2, 1], "NHWC", data_format
+    )
+    paddings = (
+        [0, 0, 2, 2, 0, 0, 0, 0]
+        if data_format == "NHWC"
+        else [0, 0, 0, 0, 2, 2, 0, 0]
+    )
+    with self.session() as sess:
+      t1 = array_ops.placeholder(dtypes.float32, shape=[3, 3, 1, 1])
+      t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
+      with self.test_scope():
+        out = gen_nn_ops.conv2d_backprop_input(
+            input_sizes=input_sizes,
+            filter=t1,
+            out_backprop=t2,
+            strides=[1, 1, 1, 1],
+            padding="EXPLICIT",
+            explicit_paddings=paddings,
+            data_format=data_format,
+        )
+      value = sess.run(
+          out,
+          {
+              t1: np.ones([3, 3, 1, 1], dtype=np.float32),
+              t2: np.ones(out_backprop_sizes, dtype=np.float32),
+          },
+      )
+      self.assertAllEqual(input_sizes, value.shape)
+
+  @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DEmptyFilter(self, data_format):
+    self._VerifyValues(
+        input_sizes=[1, 4, 4, 1],
+        filter_sizes=[0, 3, 1, 1],
+        out_backprop_sizes=[1, 4, 4, 1],
+        strides=[1, 1],
+        padding="SAME",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=np.zeros([1, 4, 4, 1]),
+    )
+
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testConv2D1x2FilterStride3Width5(self, data_format):
     expected_output = [1, 2, 0, 2, 4]
     self._VerifyValues(
@@ -740,6 +788,19 @@ class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
         data_format_src="NHWC",
         data_format_dst=data_format,
         expected=np.zeros([3, 3, 1, 1]),
+    )
+
+  @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DEmptyFilter(self, data_format):
+    self._VerifyValues(
+        input_sizes=[1, 4, 4, 1],
+        filter_sizes=[0, 3, 1, 1],
+        out_backprop_sizes=[1, 4, 4, 1],
+        strides=[1, 1],
+        padding="SAME",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=np.zeros([0, 3, 1, 1]),
     )
 
   @parameterized.named_parameters(*DATA_FORMATS)

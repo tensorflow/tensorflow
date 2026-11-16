@@ -386,8 +386,11 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
       attrs.data_format, &dims, attrs.explicit_paddings));
 
   // With an empty `out_backprop` and a stride above 1, the convolution below
-  // doesn't produce `input_shape`. The input gradient is zero then.
-  if (xla::ShapeUtil::IsZeroElementArray(out_backprop_shape)) {
+  // doesn't produce `input_shape`. The input gradient is zero then, as it is
+  // for an empty input or filter.
+  if (xla::ShapeUtil::IsZeroElementArray(out_backprop_shape) ||
+      xla::ShapeUtil::IsZeroElementArray(input_shape) ||
+      xla::ShapeUtil::IsZeroElementArray(filter_shape)) {
     return xla::Broadcast(xla::Zero(builder, input_shape.element_type()),
                           input_shape.dimensions());
   }
@@ -499,9 +502,10 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
 
   // An empty `out_backprop` would be a convolution window with a zero-sized
   // dimension below, which XLA rejects. The filter gradient is zero then, as
-  // it is for empty activations.
+  // it is for empty activations or an empty filter.
   if (input_tensor_shape.num_elements() == 0 ||
-      output_tensor_shape.num_elements() == 0) {
+      output_tensor_shape.num_elements() == 0 ||
+      filter_tensor_shape.num_elements() == 0) {
     return xla::Broadcast(xla::Zero(builder, activations_shape.element_type()),
                           filter_shape.dimensions());
   }
