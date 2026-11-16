@@ -136,9 +136,11 @@ class IfrtServingExecutable {
   // Execute() will return error if inputs contain uncompiled shapes.
   void Freeze();
 
+  // Returns the number of input shape sets compiled (or failed to compile) so
+  // far.
   int num_executables() const {
     absl::MutexLock lock(mutex_);
-    return executable_bundles_.size();
+    return compiled_executables_.size();
   }
 
  private:
@@ -369,6 +371,13 @@ class IfrtServingExecutable {
                       KeyEq>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
+  // Executables compiled from `module_`, keyed by input shapes. Unlike
+  // `executable_bundles_`, they have no variables loaded.
+  absl::flat_hash_map<Key,
+                      tsl::Future<std::shared_ptr<const CompiledExecutable>>,
+                      KeyHash, KeyEq>
+      compiled_executables_ ABSL_GUARDED_BY(mutex_);
+
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
 
   // The tf_to_hlo_compiler_ is not owned by this executable. It is expected to
@@ -398,15 +407,24 @@ class IfrtServingExecutable {
                                   const xla::ifrt::DeviceListRef& devices);
 
   // Returns the cached executable bundle future if it exists, otherwise creates
-  // a new one by calling xla compiler. When compilation happens, it also calls
-  // `LoadAndRegisterVariableOnExecutable` to load variables on the new
-  // executable.
+  // a new one from the executable compiled for `dtypes_and_shapes` (see
+  // `GetOrCompile`) and calls `LoadAndRegisterVariableOnExecutable` to load
+  // variables on it.
   absl::StatusOr<
       tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
   LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs,
                            absl::Span<const DtypeAndShape> dtypes_and_shapes,
                            absl::Span<const int> variable_arg_indices,
                            const xla::ifrt::DeviceListRef& device_list);
+
+  // Returns the executable compiled for `dtypes_and_shapes`, compiling it if
+  // there is none. This is the only place that decides whether compilation is
+  // allowed: returns an error if there is none and the executable is frozen or
+  // XLA compilation is disabled. The error is not cached, so a later call can
+  // compile once allowed.
+  absl::StatusOr<tsl::Future<std::shared_ptr<const CompiledExecutable>>>
+  GetOrCompile(absl::Span<const DtypeAndShape> dtypes_and_shapes,
+               absl::Span<const int> variable_arg_indices);
 
   // Core implementation for Execute and ExecuteAsync.
   absl::StatusOr<ExecutionInfo> ExecuteCore(
