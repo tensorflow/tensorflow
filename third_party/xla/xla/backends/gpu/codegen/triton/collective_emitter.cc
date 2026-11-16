@@ -1361,10 +1361,6 @@ GetCollectiveOutputTiles(const HloInstruction* instr, int64_t collective_dim,
 absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllReduce(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* instr,
     const DeviceAssignment* device_assignment) {
-  // Heuristic maximum blocks per grid after benchmarking. Power of 2 so blocks
-  // are consumed cleanly in powers of 2 from major to minor dimensions.
-  static constexpr int64_t kAllReduceMaxBlocksPerGrid = 32;
-
   ABSL_ASSIGN_OR_RETURN(const AllReduceInfo all_reduce_info,
                    BuildAllReduceInfo(/*is_multimem_enabled=*/false,
                                       gpu_topology, instr, device_assignment));
@@ -1456,8 +1452,6 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForReduceScatter(
 absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllToAll(
     const GpuTopology& gpu_topology, const HloAllToAllInstruction* instr,
     const DeviceAssignment* device_assignment) {
-  static constexpr int64_t kAllToAllMaxBlocksPerGrid = 64;
-
   ABSL_ASSIGN_OR_RETURN(const AllToAllInfo all_to_all_info,
                    BuildAllToAllInfo(gpu_topology, instr, device_assignment));
 

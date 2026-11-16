@@ -44,6 +44,9 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/mock_gpu_collectives.h"
 #include "xla/backends/gpu/collectives/mock_gpu_communicator.h"
+#include "xla/backends/gpu/runtime/all_gather.h"
+#include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/all_to_all.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_test_utils.h"
 #include "xla/core/collectives/clique_id.h"
@@ -1313,6 +1317,19 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<KernelSpecTestCase>& info) {
       return info.param.test_name;
     });
+
+// The collective kernels synchronize across thread blocks, so all blocks of a
+// grid must be resident on the device at the same time. We conservatively
+// assume that only one block fits on each streaming multiprocessor.
+TEST(CollectiveKernelThunkTest, MaxBlocksPerGridFitOnDevice) {
+  const int64_t max_parallel_blocks =
+      GetGpuExecutor(/*device_ordinal=*/0)->GetDeviceDescription().core_count();
+
+  EXPECT_LE(kAllGatherMaxBlocksPerGrid, max_parallel_blocks);
+  EXPECT_LE(kAllReduceMaxBlocksPerGrid, max_parallel_blocks);
+  EXPECT_LE(kAllToAllMaxBlocksPerGrid, max_parallel_blocks);
+  EXPECT_LE(kReduceScatterMaxBlocksPerGrid, max_parallel_blocks);
+}
 
 }  // namespace
 }  // namespace xla::gpu

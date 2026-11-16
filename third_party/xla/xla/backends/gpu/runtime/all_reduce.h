@@ -40,6 +40,11 @@ class GpuTopology;
 
 namespace xla::gpu {
 
+// Maximum number of blocks per grid for the Triton all-reduce kernel.
+// Heuristic maximum blocks per grid after benchmarking. Power of 2 so blocks
+// are consumed cleanly in powers of 2 from major to minor dimensions.
+inline constexpr int64_t kAllReduceMaxBlocksPerGrid = 32;
+
 // Encapsulates the information needed to perform an all-reduce.
 struct AllReduceInfo {
   ReductionKind reduction_kind;

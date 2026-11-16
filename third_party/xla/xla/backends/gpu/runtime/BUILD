@@ -2078,6 +2078,9 @@ xla_test(
     },
     backends = ["h100"],
     deps = [
+        ":all_gather",
+        ":all_reduce",
+        ":all_to_all",
         ":collective_clique_requests",
         ":collective_cliques",
         ":collective_execution",
@@ -2087,6 +2090,7 @@ xla_test(
         ":collective_params",
         ":collective_thunk",
         ":command_state",
+        ":reduce_scatter",
         ":thunk",
         ":thunk_test_utils",
         "//xla:future",

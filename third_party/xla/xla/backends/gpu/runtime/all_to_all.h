@@ -29,6 +29,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Maximum number of blocks per grid for the Triton all-to-all kernel.
+inline constexpr int64_t kAllToAllMaxBlocksPerGrid = 64;
+
 // Strategy for performing an all-to-all via the Triton collective kernel
 // backend.
 enum class AllToAllStrategy {
