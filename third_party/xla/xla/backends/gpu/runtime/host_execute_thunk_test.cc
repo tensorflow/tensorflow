@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -31,12 +32,14 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -55,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -70,11 +74,23 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
+
 se::StreamExecutor* GpuExecutor() {
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto* platform = se::PlatformManager::PlatformWithName(name).value();
-  return platform->ExecutorForDevice(0).value();
+  absl::StatusOr<std::string> name = PlatformUtil::CanonicalPlatformName("gpu");
+  CHECK_OK(name);
+  absl::StatusOr<se::Platform*> platform =
+      se::PlatformManager::PlatformWithName(absl::AsciiStrToUpper(*name));
+  CHECK_OK(platform);
+  absl::StatusOr<se::StreamExecutor*> executor =
+      (*platform)->ExecutorForDevice(0);
+  CHECK_OK(executor);
+  return *executor;
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
@@ -659,7 +675,8 @@ TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 
-  auto async_events = std::make_shared<HostExecuteAsyncEvents>();
+  auto async_events = std::make_shared<HostExecuteAsyncEvents>(
+      HostExecuteAsyncEvents::UniqueId(1));
 
   HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events, {});
   ExecutableRunOptions executable_run_options;
@@ -696,7 +713,8 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 
-  auto async_events = std::make_shared<HostExecuteAsyncEvents>();
+  auto async_events = std::make_shared<HostExecuteAsyncEvents>(
+      HostExecuteAsyncEvents::UniqueId(1));
 
   HostExecuteDoneThunk thunk(Thunk::ThunkInfo(), async_events, {});
   ExecutableRunOptions executable_run_options;
@@ -741,7 +759,8 @@ TEST(HostExecuteAsyncEventsTest, CreateAndExtractEvents) {
     return std::unique_ptr<se::Event>(nullptr);
   });
 
-  HostExecuteAsyncEvents events(/*devices_per_host=*/2);
+  HostExecuteAsyncEvents events(HostExecuteAsyncEvents::UniqueId(1),
+                                /*devices_per_host=*/2);
 
   ASSERT_OK_AND_ASSIGN(auto event0_run1,
                        events.CreateEvent(&executor0, RunId(1)));
@@ -750,15 +769,18 @@ TEST(HostExecuteAsyncEventsTest, CreateAndExtractEvents) {
   ASSERT_OK_AND_ASSIGN(auto event0_run2,
                        events.CreateEvent(&executor0, RunId(2)));
   EXPECT_THAT(events.CreateEvent(&executor0, RunId(1)),
-              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Event already exists")));
   EXPECT_THAT(events.ExtractEvent(&executor1, RunId(2)),
-              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Event does not exist")));
 
   ASSERT_OK_AND_ASSIGN(auto extracted0_run1,
                        events.ExtractEvent(&executor0, RunId(1)));
   EXPECT_EQ(extracted0_run1.GetAsyncValue(), event0_run1.GetAsyncValue());
   EXPECT_THAT(events.ExtractEvent(&executor0, RunId(1)),
-              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Event does not exist")));
 
   ASSERT_OK_AND_ASSIGN(auto extracted1_run1,
                        events.ExtractEvent(&executor1, RunId(1)));
@@ -770,13 +792,13 @@ TEST(HostExecuteAsyncEventsTest, CreateAndExtractEvents) {
 }
 
 TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {
-  static constexpr char const* kHloModule = R"(
+  constexpr absl::string_view kHloModule = R"hlo(
     HloModule module
     ENTRY add_inplace {
       p0 = s32[] parameter(0)
       ROOT add = s32[] add(p0, p0)
     }
-  )";
+  )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto hlo_module,
                        ParseAndReturnUnverifiedModule(kHloModule, {}));
@@ -787,13 +809,16 @@ TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
+  Thunk::ThunkInfo start_thunk_info;
+  start_thunk_info.thunk_id = ThunkId(7);
   ASSERT_OK_AND_ASSIGN(auto thunk,
                        CreateHostExecuteStartThunk(
-                           Thunk::ThunkInfo(), *hlo_module,
+                           start_thunk_info, *hlo_module,
                            {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                            {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
+  EXPECT_EQ(proto.host_execute_start_thunk().async_events_unique_id(), 7);
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),
@@ -808,28 +833,20 @@ TEST(HostExecuteStartThunkTest, ProtoRoundTrip) {
                            thunk_info, proto.host_execute_start_thunk(),
                            buffer_allocations, async_events_map));
 
-  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto,
-                       round_trip_thunk->ToProto());
-  EXPECT_EQ(async_events_map.size(), 1);
-  EXPECT_EQ(async_events_map.begin()->first,
-            thunk->GetAsyncEventsUniqueId().value());
-
-  // ids are expected to be different, so drop them for the comparison.
-  round_trip_proto.mutable_host_execute_start_thunk()
-      ->clear_async_events_unique_id();
-  proto.mutable_host_execute_start_thunk()->clear_async_events_unique_id();
-
-  EXPECT_THAT(round_trip_proto, tsl::proto_testing::EqualsProto(proto));
+  EXPECT_THAT(async_events_map,
+              UnorderedElementsAre(Pair(thunk->async_events()->unique_id(),
+                                        round_trip_thunk->async_events())));
+  EXPECT_THAT(round_trip_thunk->ToProto(), IsOkAndHolds(EqualsProto(proto)));
 }
 
 TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
-  static constexpr char const* kHloModule = R"(
+  constexpr absl::string_view kHloModule = R"hlo(
     HloModule module
     ENTRY add_inplace {
       p0 = s32[] parameter(0)
       ROOT add = s32[] add(p0, p0)
     }
-  )";
+  )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto hlo_module,
                        ParseAndReturnUnverifiedModule(kHloModule, {}));
@@ -840,22 +857,27 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
   BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
   BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
 
+  Thunk::ThunkInfo start_thunk_info_orig;
+  start_thunk_info_orig.thunk_id = ThunkId(42);
   ASSERT_OK_AND_ASSIGN(auto start_thunk_orig,
                        CreateHostExecuteStartThunk(
-                           Thunk::ThunkInfo(), *hlo_module,
+                           start_thunk_info_orig, *hlo_module,
                            {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                            {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
+  Thunk::ThunkInfo done_thunk_info_orig;
+  done_thunk_info_orig.thunk_id = ThunkId(43);
   HostExecuteDoneThunk done_thunk_orig(
-      Thunk::ThunkInfo(), start_thunk_orig->async_events(),
+      done_thunk_info_orig, start_thunk_orig->async_events(),
       {{slice_result, ShapeUtil::MakeShape(S32, {})}});
 
   ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk_orig->ToProto());
   ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk_orig.ToProto());
 
-  // Check that the ids are matching.
+  // Both thunks serialize the ThunkId of the start thunk.
   EXPECT_EQ(start_proto.host_execute_start_thunk().async_events_unique_id(),
-            done_proto.host_execute_done_thunk().async_events_unique_id());
+            42);
+  EXPECT_EQ(done_proto.host_execute_done_thunk().async_events_unique_id(), 42);
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),
@@ -866,23 +888,49 @@ TEST(HostExecuteThunkTest, ProtoRoundTripPairing) {
   ASSERT_OK_AND_ASSIGN(Thunk::ThunkInfo done_thunk_info,
                        Thunk::ThunkInfo::FromProto(done_proto.thunk_info()));
 
-  HostExecuteAsyncEventsMap async_events_map;
+  // Done deserialized before start.
+  {
+    HostExecuteAsyncEventsMap async_events_map;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HostExecuteDoneThunk> done_thunk,
+        HostExecuteDoneThunk::FromProto(done_thunk_info,
+                                        done_proto.host_execute_done_thunk(),
+                                        buffer_allocations, async_events_map));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HostExecuteStartThunk> start_thunk,
+        HostExecuteStartThunk::FromProto(start_thunk_info,
+                                         start_proto.host_execute_start_thunk(),
+                                         buffer_allocations, async_events_map));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HostExecuteDoneThunk> done_thunk,
-      HostExecuteDoneThunk::FromProto(done_thunk_info,
-                                      done_proto.host_execute_done_thunk(),
-                                      buffer_allocations, async_events_map));
+    EXPECT_THAT(async_events_map,
+                UnorderedElementsAre(Pair(HostExecuteAsyncEvents::UniqueId(42),
+                                          start_thunk->async_events())));
+    EXPECT_EQ(done_thunk->async_events(), start_thunk->async_events());
+    EXPECT_THAT(start_thunk->ToProto(), IsOkAndHolds(EqualsProto(start_proto)));
+    EXPECT_THAT(done_thunk->ToProto(), IsOkAndHolds(EqualsProto(done_proto)));
+  }
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HostExecuteStartThunk> start_thunk,
-      HostExecuteStartThunk::FromProto(start_thunk_info,
-                                       start_proto.host_execute_start_thunk(),
-                                       buffer_allocations, async_events_map));
+  // Start deserialized before done.
+  {
+    HostExecuteAsyncEventsMap async_events_map;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HostExecuteStartThunk> start_thunk,
+        HostExecuteStartThunk::FromProto(start_thunk_info,
+                                         start_proto.host_execute_start_thunk(),
+                                         buffer_allocations, async_events_map));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HostExecuteDoneThunk> done_thunk,
+        HostExecuteDoneThunk::FromProto(done_thunk_info,
+                                        done_proto.host_execute_done_thunk(),
+                                        buffer_allocations, async_events_map));
 
-  EXPECT_EQ(async_events_map.size(), 1);
-  EXPECT_EQ(start_thunk->GetAsyncEventsUniqueId(),
-            done_thunk->GetAsyncEventsUniqueId());
+    EXPECT_THAT(async_events_map,
+                UnorderedElementsAre(Pair(HostExecuteAsyncEvents::UniqueId(42),
+                                          start_thunk->async_events())));
+    EXPECT_EQ(done_thunk->async_events(), start_thunk->async_events());
+    EXPECT_THAT(start_thunk->ToProto(), IsOkAndHolds(EqualsProto(start_proto)));
+    EXPECT_THAT(done_thunk->ToProto(), IsOkAndHolds(EqualsProto(done_proto)));
+  }
 }
 
 TEST(HostExecuteStartThunkTest, IsHostOffloadSet) {
