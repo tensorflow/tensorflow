@@ -73,9 +73,11 @@ using absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::Eq;
 using ::testing::Field;
+using ::testing::Gt;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::Optional;
 
 // Returns the default platform.
 se::Platform* GetDefaultPlatform() {
@@ -987,9 +989,11 @@ TEST_F(CublasFissionBackendTest,
   EXPECT_LT(epilogue_time, prologue_and_epilogue_time);
 }
 
-TEST_F(
-    CublasFissionBackendTest,
-    GetSupportedConfigsWithEstimatesUntileableFusionReturnsNulloptEstimates) {
+TEST_F(CublasFissionBackendTest,
+       GetSupportedConfigsWithEstimatesSupportsUntileableEpilogueFusion) {
+  if (IsRocm(stream_executor_)) {
+    GTEST_SKIP() << "HipblasLtBackend does not support config estimates.";
+  }
   constexpr absl::string_view kUntileableFusionHlo = R"(
     HloModule module
     computation {
@@ -1020,7 +1024,78 @@ TEST_F(
   ASSERT_THAT(estimated_configs, Not(IsEmpty()));
   EXPECT_THAT(estimated_configs,
               Each(Field(&CodegenBackend::EstimatedConfig::estimated_runtime,
-                         Eq(std::nullopt))));
+                         Optional(Gt(absl::ZeroDuration())))));
+}
+
+TEST_F(
+    CublasFissionBackendTest,
+    GetSupportedConfigsWithEstimatesUsesTiledEstimateForSlowTransposePrologue) {
+  if (IsRocm(stream_executor_)) {
+    GTEST_SKIP() << "HipblasLtBackend does not support config estimates.";
+  }
+  constexpr absl::string_view kPureDotHlo = R"(
+    HloModule module
+    computation {
+      lhs = f32[3072,512]{1,0} parameter(0)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT dot = f32[3072,512]{1,0} dot(lhs, rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+    ENTRY main {
+      lhs = f32[3072,512]{1,0} parameter(0)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT fusion = f32[3072,512]{1,0} fusion(lhs, rhs),
+        kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    })";
+  constexpr absl::string_view kPureTransposePrologueHlo = R"(
+    HloModule module
+    computation {
+      p0 = f32[512,1024,3]{2,1,0} parameter(0)
+      t = f32[3,1024,512]{2,1,0} transpose(p0), dimensions={2,1,0}
+      lhs = f32[3072,512]{1,0} bitcast(t)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT dot = f32[3072,512]{1,0} dot(lhs, rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+    ENTRY main {
+      p0 = f32[512,1024,3]{2,1,0} parameter(0)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT fusion = f32[3072,512]{1,0} fusion(p0, rhs),
+        kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    })";
+  constexpr absl::string_view kFusedNegateTransposePrologueHlo = R"(
+    HloModule module
+    computation {
+      p0 = f32[512,1024,3]{2,1,0} parameter(0)
+      neg = f32[512,1024,3]{2,1,0} negate(p0)
+      t = f32[3,1024,512]{2,1,0} transpose(neg), dimensions={2,1,0}
+      lhs = f32[3072,512]{1,0} bitcast(t)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT dot = f32[3072,512]{1,0} dot(lhs, rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+    ENTRY main {
+      p0 = f32[512,1024,3]{2,1,0} parameter(0)
+      rhs = f32[512,512]{1,0} parameter(1)
+      ROOT fusion = f32[3072,512]{1,0} fusion(p0, rhs),
+        kind=kCustom, calls=computation,
+        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(absl::Duration pure_dot_time,
+                       GetFirstEstimate(kPureDotHlo));
+  ASSERT_OK_AND_ASSIGN(absl::Duration tiled_transpose_time,
+                       GetFirstEstimate(kPureTransposePrologueHlo));
+  ASSERT_OK_AND_ASSIGN(absl::Duration loop_transpose_time,
+                       GetFirstEstimate(kFusedNegateTransposePrologueHlo));
+  // GetDefaultBackend assigns the pure slow transpose prologue to the
+  // block-level emitter, whose tiled estimate avoids the uncoalesced
+  // minor-dim-3 kLoop read and is several times smaller than the kLoop
+  // transpose estimate.
+  EXPECT_LT(2 * (tiled_transpose_time - pure_dot_time),
+            loop_transpose_time - pure_dot_time);
 }
 
 }  // namespace
