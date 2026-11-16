@@ -139,6 +139,13 @@ bool AllUsersAreRearranges(const HloInstruction* instr) {
          !instr->users().empty() && absl::c_all_of(instr->users(), IsRearrange);
 }
 
+bool AllUsersAreCustomCalls(const HloInstruction* instr) {
+  return instr != instr->parent()->root_instruction() &&
+         !instr->users().empty() &&
+         absl::c_all_of(instr->users(),
+                        HloPredicateIsOp<HloOpcode::kCustomCall>);
+}
+
 }  // namespace
 
 // Returns true if `instr` can easily change its shape according to the inverse
@@ -267,19 +274,22 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
   }
   // Do not sink data reordering reshapes or transposes across widening
   // converts unless the source comes from a contraction (so sinking exposes the
-  // convert for contraction epilogue fusion or cast folding) or every user of
-  // the convert is itself a rearrange (so adjacent rearranges collapse).
-  // Otherwise sinking runs the rearrange in the wider element type, inflating
-  // intermediate buffer size and blocking convert fusion into downstream
-  // consumers, while fighting ConvertMover. Rearranges that only insert,
-  // delete, or permute degenerate dimensions of size 1 stay allowed.
+  // convert for contraction epilogue fusion or cast folding), every user of
+  // the convert is itself a rearrange (so adjacent rearranges collapse), or
+  // every user of the convert is a custom call (which cannot absorb the
+  // convert, so sinking lets conversion folding merge the convert into the
+  // rearrange). Otherwise sinking runs the rearrange in the wider element type,
+  // inflating intermediate buffer size and blocking convert fusion into
+  // downstream consumers, while fighting ConvertMover. Rearranges that only
+  // insert, delete, or permute degenerate dimensions of size 1 stay allowed.
   if (options_.keep_rearrange_before_widening_convert &&
       instruction->opcode() == HloOpcode::kConvert &&
       primitive_util::BitWidth(rearrange->shape().element_type()) <
           primitive_util::BitWidth(instruction->shape().element_type()) &&
       !OnlyInsertsDeletesOrPermutes1SizedDims(rearrange) &&
       !ProducedByContraction(rearrange->operand(0)) &&
-      !AllUsersAreRearranges(instruction)) {
+      !AllUsersAreRearranges(instruction) &&
+      !AllUsersAreCustomCalls(instruction)) {
     return false;
   }
   return absl::c_all_of(

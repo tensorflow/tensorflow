@@ -896,5 +896,25 @@ TEST_F(ReshapeMoverTest, DoNotSinkReshapeAcrossPredAndComplexWideningConverts) {
               IsOkAndHolds(false));
 }
 
+TEST_F(ReshapeMoverTest, SinkReshapeAcrossWideningConvertIntoCustomCallUser) {
+  const std::string hlo_string = R"hlo(
+    HloModule test
+    ENTRY test {
+      p0 = bf16[512,2,8,256] parameter(0)
+      r0 = bf16[512,2,16,128] reshape(p0)
+      c0 = f32[512,2,16,128] convert(r0)
+      ROOT cc = f32[512,2,16,128] custom-call(c0), custom_call_target="foo"
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ReshapeMover(KeepRearrangeBeforeWideningConvertOptions())
+                  .Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::CustomCall(m::Reshape(m::Convert(m::Parameter(0))))));
+}
+
 }  // namespace
 }  // namespace xla
