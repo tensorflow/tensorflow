@@ -29,7 +29,7 @@ class GraphDef;
 // Main interface for the summary writer resource.
 class SummaryWriterInterface : public ResourceBase {
  public:
-  ~SummaryWriterInterface() override {}
+  ~SummaryWriterInterface() override = default;
 
   // Flushes all unwritten messages in the queue.
   virtual absl::Status Flush() = 0;

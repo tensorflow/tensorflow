@@ -905,7 +905,7 @@ class BaseBatchMatMulOp : public OpKernel {
     }
   }
 
-  ~BaseBatchMatMulOp() override {}
+  ~BaseBatchMatMulOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
@@ -1045,7 +1045,7 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
   explicit BatchMatMulOp(OpKernelConstruction* context)
       : BaseBatchMatMulOp<Device, Ta, Tb, Tout>(context, is_legacy_matmul) {}
 
-  ~BatchMatMulOp() override {}
+  ~BatchMatMulOp() override = default;
 
  private:
   absl::Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
@@ -1089,7 +1089,7 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
                                                 /* is_legacy_matmul= */ false) {
   }
 
-  ~BatchMatMulV2Op() override {}
+  ~BatchMatMulV2Op() override = default;
 
  private:
   absl::Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
