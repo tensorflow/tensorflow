@@ -249,6 +249,11 @@ static Registry CreateRegistry() {
 #if defined(__APPLE__) || defined(__s390x__)
   registry["__truncsfhf2"] = SymbolDef(__truncsfhf2);
   registry["__extendhfsf2"] = SymbolDef(__extendhfsf2);
+#elif defined(__powerpc__)
+  // LLVM lowers F16 conversions on PowerPC to these libcalls, which use the
+  // same uint16_t ABI as __gnu_f2h_ieee and __gnu_h2f_ieee.
+  registry["__truncsfhf2"] = SymbolDef(__gnu_f2h_ieee);
+  registry["__extendhfsf2"] = SymbolDef(__gnu_h2f_ieee);
 #endif
 
 #ifdef __APPLE__
