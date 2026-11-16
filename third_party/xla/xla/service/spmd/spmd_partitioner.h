@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
@@ -149,6 +150,9 @@ struct SpmdPartitionerOptions {
   // instructions have compatible sharding across all operands and results.
   bool need_resolve_conflicts = true;
 };
+
+SpmdPartitionerOptions SpmdPartitionerOptionsFromHloPassOptions(
+    const HloPassOptions& options);
 
 // Class to wrap the computation builder to capture information during SPMD
 // transformation.

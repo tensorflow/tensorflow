@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -22309,6 +22311,87 @@ ENTRY entry {
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::RngGetAndUpdateState(), op::Shape("u64[2]")));
+}
+
+TEST(SpmdPartitionerOptionsFromHloPassOptionsTest, Defaults) {
+  HloPassOptions options;
+  SpmdPartitionerOptions spmd_options =
+      SpmdPartitionerOptionsFromHloPassOptions(options);
+  EXPECT_OK(options.CheckAllConsumed());
+  EXPECT_TRUE(spmd_options.conv_halo_exchange_always_on_lhs);
+  EXPECT_EQ(spmd_options.report_instruction_count, 5);
+  EXPECT_EQ(spmd_options.threshold_for_windowed_einsum_mib, 256);
+  EXPECT_FALSE(spmd_options.unroll_windowed_einsum);
+  EXPECT_FALSE(spmd_options.bidirectional_windowed_einsum);
+  EXPECT_TRUE(spmd_options.allow_module_signature_change);
+  EXPECT_FALSE(spmd_options.allow_module_layout_signature_change);
+  EXPECT_TRUE(spmd_options.cache_all_gather);
+  EXPECT_FALSE(spmd_options.choose_faster_windowed_einsum_over_mem);
+  EXPECT_FALSE(spmd_options.skip_checking_windowed_einsum_users);
+  EXPECT_TRUE(spmd_options.enable_windowed_einsum_for_all_gather);
+  EXPECT_TRUE(spmd_options.enable_windowed_einsum_for_reduce_scatter);
+  EXPECT_FALSE(spmd_options.enable_dynamic_slice_collective_broadcast);
+  EXPECT_EQ(spmd_options.max_dynamic_slice_collective_broadcast_partitions, 32);
+  EXPECT_FALSE(spmd_options.disable_ag_rewrite_for_multiple_consumers);
+  EXPECT_FALSE(spmd_options.partial_windowed_einsum);
+  EXPECT_EQ(spmd_options.total_bytes_windowed_einsum_threshold, std::nullopt);
+  EXPECT_EQ(spmd_options.max_windowed_einsum_iteration, 32);
+  EXPECT_TRUE(spmd_options.need_resolve_conflicts);
+}
+
+TEST(SpmdPartitionerOptionsFromHloPassOptionsTest, Overrides) {
+  HloPassOptions options = {
+      {"conv_halo_exchange_always_on_lhs", false},
+      {"report_instruction_count", 10},
+      {"threshold_for_windowed_einsum_mib", 512},
+      {"unroll_windowed_einsum", true},
+      {"bidirectional_windowed_einsum", true},
+      {"allow_module_signature_change", false},
+      {"allow_module_layout_signature_change", true},
+      {"cache_all_gather", false},
+      {"choose_faster_windowed_einsum_over_mem", true},
+      {"skip_checking_windowed_einsum_users", true},
+      {"enable_windowed_einsum_for_all_gather", false},
+      {"enable_windowed_einsum_for_reduce_scatter", false},
+      {"enable_dynamic_slice_collective_broadcast", true},
+      {"max_dynamic_slice_collective_broadcast_partitions", 16},
+      {"disable_ag_rewrite_for_multiple_consumers", true},
+      {"partial_windowed_einsum", true},
+      {"total_bytes_windowed_einsum_threshold", 4096},
+      {"max_windowed_einsum_iteration", 64},
+      {"need_resolve_conflicts", false},
+  };
+  SpmdPartitionerOptions spmd_options =
+      SpmdPartitionerOptionsFromHloPassOptions(options);
+  EXPECT_OK(options.CheckAllConsumed());
+  EXPECT_FALSE(spmd_options.conv_halo_exchange_always_on_lhs);
+  EXPECT_EQ(spmd_options.report_instruction_count, 10);
+  EXPECT_EQ(spmd_options.threshold_for_windowed_einsum_mib, 512);
+  EXPECT_TRUE(spmd_options.unroll_windowed_einsum);
+  EXPECT_TRUE(spmd_options.bidirectional_windowed_einsum);
+  EXPECT_FALSE(spmd_options.allow_module_signature_change);
+  EXPECT_TRUE(spmd_options.allow_module_layout_signature_change);
+  EXPECT_FALSE(spmd_options.cache_all_gather);
+  EXPECT_TRUE(spmd_options.choose_faster_windowed_einsum_over_mem);
+  EXPECT_TRUE(spmd_options.skip_checking_windowed_einsum_users);
+  EXPECT_FALSE(spmd_options.enable_windowed_einsum_for_all_gather);
+  EXPECT_FALSE(spmd_options.enable_windowed_einsum_for_reduce_scatter);
+  EXPECT_TRUE(spmd_options.enable_dynamic_slice_collective_broadcast);
+  EXPECT_EQ(spmd_options.max_dynamic_slice_collective_broadcast_partitions, 16);
+  EXPECT_TRUE(spmd_options.disable_ag_rewrite_for_multiple_consumers);
+  EXPECT_TRUE(spmd_options.partial_windowed_einsum);
+  EXPECT_EQ(spmd_options.total_bytes_windowed_einsum_threshold, 4096);
+  EXPECT_EQ(spmd_options.max_windowed_einsum_iteration, 64);
+  EXPECT_FALSE(spmd_options.need_resolve_conflicts);
+}
+
+TEST(SpmdPartitionerOptionsFromHloPassOptionsTest,
+     NegativeTotalBytesThresholdIsUnset) {
+  HloPassOptions options = {{"total_bytes_windowed_einsum_threshold", -1}};
+  SpmdPartitionerOptions spmd_options =
+      SpmdPartitionerOptionsFromHloPassOptions(options);
+  EXPECT_OK(options.CheckAllConsumed());
+  EXPECT_EQ(spmd_options.total_bytes_windowed_einsum_threshold, std::nullopt);
 }
 
 }  // namespace
