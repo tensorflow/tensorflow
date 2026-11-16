@@ -1101,6 +1101,180 @@ TEST_F(ArenaPlannerTest, DebugTensorsInputReuse) {
   EXPECT_NE(GetOffset(4), GetOffset(5));
 }
 
+TEST_F(ArenaPlannerTest, TransitiveInPlaceSharingDoesNotClobberLiveTensor) {
+  // Regression test for GitHub issue #8928:
+  //   Op 0 (non-inplace): {3, 4} -> {5}
+  //   Op 1 (MUL, inplace): {5, 2} -> {6}        (6 shares 5; 6 has 3 consumers)
+  //   Op 2 (RESHAPE, unmodified): {6, 1} -> {7} (7 shares 5 via 6)
+  //   Op 3 (MUL, inplace0|1): {6, 7} -> {8}     (must NOT overwrite 5 while 6
+  //                                              is still live for Op 4)
+  //   Op 4 (MUL, inplace0|1): {6, 9} -> {10}
+  //   Op 5 (non-inplace): {10, 0} -> {11}
+  const int kMulInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  const int kReshapeInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
+  TestGraph graph(
+      {3, 4, 9},
+      {
+          {{4, 3}, {5}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{5, 2}, {6}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{6, 1}, {7}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{6, 7}, {8}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{6, 9}, {10}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{10, 0},
+           {11},
+           {},
+           kTfLiteBuiltinFullyConnected,
+           kTfLiteInplaceOpNone},
+      },
+      {11});
+
+  (*graph.tensors())[0].allocation_type = kTfLiteMmapRo;
+  (*graph.tensors())[1].allocation_type = kTfLiteMmapRo;
+  (*graph.tensors())[2].allocation_type = kTfLiteMmapRo;
+  for (int t : {5, 6, 7, 8, 10, 11}) {
+    (*graph.tensors())[t].bytes = 256;
+  }
+  (*graph.tensors())[3].bytes = 1024;
+  (*graph.tensors())[4].bytes = 512;
+  (*graph.tensors())[9].bytes = 32;
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Tensors 5, 6, and 7 legitimately share the same buffer (RESHAPE is
+  // data-unmodified), whereas Op 3's output (tensor 8) mutates data while
+  // tensor 6 is still needed by Op 4, so tensor 8 must get a distinct buffer.
+  EXPECT_EQ(GetOffset(5), GetOffset(6));
+  EXPECT_EQ(GetOffset(6), GetOffset(7));
+  EXPECT_NE(GetOffset(8), GetOffset(6));
+}
+
+TEST_F(ArenaPlannerTest,
+       TransitiveInPlaceSharingAllowsReuseAfterSiblingConsumed) {
+  // Once all earlier consumers of a shared root buffer have executed, a later
+  // mutating in-place op consuming the last live alias should still reuse it:
+  //   Op 0 (non-inplace): {0, 1} -> {2}
+  //   Op 1 (MUL, inplace): {2, 1} -> {3}        (3 shares 2; 3 has 2 consumers)
+  //   Op 2 (RESHAPE, unmodified): {3} -> {4}    (4 shares 2 via 3)
+  //   Op 3 (non-inplace): {3, 0} -> {5}         (consumes 3; only 4 remains)
+  //   Op 4 (MUL, inplace): {4, 1} -> {6}        (4 is last ref -> reuses 2!)
+  //   Op 5 (non-inplace): {5, 6} -> {7}
+  const int kMulInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  const int kReshapeInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
+  TestGraph graph(
+      {0, 1},
+      {
+          {{0, 1}, {2}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{2, 1}, {3}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{3}, {4}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{3, 0}, {5}, {}, kTfLiteBuiltinFullyConnected, kTfLiteInplaceOpNone},
+          {{4, 1}, {6}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{5, 6}, {7}, {}, kTfLiteBuiltinFullyConnected, kTfLiteInplaceOpNone},
+      },
+      {7});
+  for (int t = 0; t <= 7; ++t) {
+    (*graph.tensors())[t].bytes = 128;
+  }
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_EQ(GetOffset(2), GetOffset(3));
+  EXPECT_EQ(GetOffset(3), GetOffset(4));
+  EXPECT_NE(GetOffset(5), GetOffset(2));
+  EXPECT_EQ(GetOffset(6), GetOffset(2));
+}
+
+TEST_F(ArenaPlannerTest, ChainedUnmodifiedAliasesDoNotClobberLiveTensor) {
+  // Even without an initial mutating in-place op, a chain of data-unmodified
+  // ops (RESHAPE -> RESHAPE) starting from a single-consumer root tensor must
+  // not allow a mutating op to clobber an intermediate alias that still has
+  // live consumers:
+  //   Op 0 (non-inplace): {0} -> {1}            (refcounts_[1] == 1)
+  //   Op 1 (RESHAPE, unmodified): {1} -> {2}    (2 has 2 consumers: Op 2, Op 4)
+  //   Op 2 (RESHAPE, unmodified): {2} -> {3}    (refcounts_[3] == 1)
+  //   Op 3 (MUL, inplace): {3, 0} -> {4}        (must NOT overwrite 1/2!)
+  //   Op 4 (non-inplace): {2, 4} -> {5}
+  const int kMulInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  const int kReshapeInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
+  TestGraph graph(
+      {0},
+      {
+          {{0}, {1}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{1}, {2}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{2}, {3}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{3, 0}, {4}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{2, 4}, {5}, {}, kTfLiteBuiltinFullyConnected, kTfLiteInplaceOpNone},
+      },
+      {5});
+  for (int t = 0; t <= 5; ++t) {
+    (*graph.tensors())[t].bytes = 128;
+  }
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_EQ(GetOffset(1), GetOffset(2));
+  EXPECT_EQ(GetOffset(2), GetOffset(3));
+  EXPECT_NE(GetOffset(4), GetOffset(1));
+}
+
+TEST_F(ArenaPlannerTest,
+       InPlaceSharingFallsBackToSecondInputWhenFirstInputRootIsLive) {
+  // When input 0's shared root buffer still has other live consumers, an op
+  // supporting kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared
+  // should skip input 0 and safely share a single-use input 1 instead.
+  const int kMulInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  const int kReshapeInplace =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
+  TestGraph graph(
+      {0},
+      {
+          {{0}, {1}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{1}, {2}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{2}, {3}, {}, kTfLiteBuiltinReshape, kReshapeInplace},
+          {{0}, {4}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{3, 4}, {5}, {}, kTfLiteBuiltinMul, kMulInplace},
+          {{2, 5}, {6}, {}, kTfLiteBuiltinFullyConnected, kTfLiteInplaceOpNone},
+      },
+      {6});
+  for (int t = 0; t <= 6; ++t) {
+    (*graph.tensors())[t].bytes = 128;
+  }
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_EQ(GetOffset(1), GetOffset(2));
+  EXPECT_EQ(GetOffset(5), GetOffset(4));
+  EXPECT_NE(GetOffset(5), GetOffset(1));
+}
+
+TEST_F(ArenaPlannerTest, InPlaceOpWithOptionalOutputDoesNotCrash) {
+  TestGraph graph(
+      {0},
+      {
+          {{0}, {1}, {}, kTfLiteBuiltinBatchMatmul, kTfLiteInplaceOpNone},
+          {{1}, {-1, 2}, {}, kTfLiteBuiltinAdd, kTfLiteInplaceOpInput0Shared},
+          {{2}, {3}, {}, kTfLiteBuiltinFullyConnected, kTfLiteInplaceOpNone},
+      },
+      {3});
+  for (int t = 0; t <= 3; ++t) {
+    (*graph.tensors())[t].bytes = 64;
+  }
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+  EXPECT_GE(GetOffset(2), 0);
+}
+
 TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   gNumAlloc = 0;
   gNumDealloc = 0;

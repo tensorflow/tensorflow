@@ -47,6 +47,11 @@ class SubgraphBuilder {
   // a subgraph output.
   void BuildInplaceOpSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph exercising transitive in-place sharing across mutating
+  // (ADD/MUL) and data-unmodified (RESHAPE) ops where an intermediate tensor
+  // remains live across an intervening mutating op.
+  void BuildTransitiveInplaceOpSubgraph(Subgraph* subgraph);
+
   // Build a subgraph with broadcasting elementwise ops, some of which support
   // sharing and some not.
   void BuildBroadcastingSubgraph(Subgraph* subgraph);

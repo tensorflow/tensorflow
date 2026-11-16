@@ -166,6 +166,16 @@ void AddAddNode(Subgraph* subgraph, int input0, int input1, int output) {
                                   add_params, add_reg, &node_index);
 }
 
+void AddMulNode(Subgraph* subgraph, int input0, int input1, int output) {
+  int node_index;
+  TfLiteMulParams* mul_params =
+      reinterpret_cast<TfLiteMulParams*>(calloc(1, sizeof(TfLiteMulParams)));
+  auto* mul_reg = ops::builtin::Register_MUL();
+  mul_reg->builtin_code = kTfLiteBuiltinMul;
+  subgraph->AddNodeWithParameters({input0, input1}, {output}, {}, nullptr, 0,
+                                  mul_params, mul_reg, &node_index);
+}
+
 // Add a DYNAMIC_UPDATE_SLICE node to the subgraph.
 void AddDynamicUpdateSliceNode(Subgraph* subgraph, int input0, int input1,
                                int input2, int output) {
@@ -916,6 +926,44 @@ void SubgraphBuilder::BuildInplaceOpSubgraph(Subgraph* subgraph) {
                  kIntermediateTensor1);
   // Consume output of Reshape as subgraph outputs cannot be shared.
   AddAddNode(subgraph, kIntermediateTensor1, kInput1, kOutput);
+}
+
+void SubgraphBuilder::BuildTransitiveInplaceOpSubgraph(Subgraph* subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kInput2,
+    kIntermediate0,
+    kIntermediate1,
+    kIntermediate2,
+    kIntermediate3,
+    kIntermediate4,
+    kOutput0,
+    kOutput1,
+    kConstScale,
+    kConstShape,
+    kTensorCount,
+  };
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput0, kOutput1}), kTfLiteOk);
+
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(subgraph, i, kTfLiteInt32);
+  }
+  CreateConstantTensor<int>(subgraph, kConstScale, {2}, {3, 3});
+  CreateConstantTensor<int>(subgraph, kConstShape, {1}, {2});
+
+  AddAddNode(subgraph, kInput0, kInput1, kIntermediate0);
+  AddMulNode(subgraph, kIntermediate0, kConstScale, kIntermediate1);
+  AddReshapeNode(subgraph, kIntermediate1, kConstShape, kIntermediate2);
+  AddMulNode(subgraph, kIntermediate1, kIntermediate2, kIntermediate3);
+  AddAddNode(subgraph, kIntermediate1, kInput2, kIntermediate4);
+  AddAddNode(subgraph, kIntermediate4, kInput0, kOutput0);
+  AddAddNode(subgraph, kIntermediate3, kInput0, kOutput1);
 }
 
 void SubgraphBuilder::BuildFloatLessCondSubgraph(Subgraph* subgraph,
