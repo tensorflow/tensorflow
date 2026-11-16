@@ -76,7 +76,7 @@ TEST(ExpTest, EmitExpF64) {
                    -706,
                    std::numeric_limits<double>::infinity(),
                    std::numeric_limits<double>::quiet_NaN()};
-  auto* fn = jit.GetScalarFn<double(double)>(Exp::Name(type));
+  auto fn = jit.GetScalarFn<double(double)>(Exp::Name(type));
   for (double val : vals) {
     double actual = fn(val);
     double expected = std::exp(val);
