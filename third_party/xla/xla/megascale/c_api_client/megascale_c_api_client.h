@@ -110,12 +110,12 @@ GetOrCreateRuntimeError(
 
 // Discovers slices using the Megascale client context and returns a
 // multi-slice configuration wrapped in PjRtCApiMultiSliceConfig.
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>> DiscoverSlices(
+absl::StatusOr<xla::MultiSliceConfigRef> DiscoverSlices(
     std::shared_ptr<CApiPjRtClientContext> megascale_client_ctx);
 
 // Convenience wrapper discovering slices directly from a PjRtClient.
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
-DiscoverSlicesFromClient(xla::PjRtClient* client);
+absl::StatusOr<xla::MultiSliceConfigRef> DiscoverSlicesFromClient(
+    xla::PjRtClient* client);
 
 // Returns the incarnation ID for the given MultiSliceConfig.
 absl::StatusOr<int64_t> GetIncarnationId(

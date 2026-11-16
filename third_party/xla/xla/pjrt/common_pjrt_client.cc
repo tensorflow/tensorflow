@@ -877,7 +877,7 @@ CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
       [this, &options](int num_replicas, int num_partitions) {
         return GetDefaultDeviceAssignment(
             num_replicas, /*num_replicas_per_slice=*/std::nullopt,
-            num_partitions, options.multi_slice_config);
+            num_partitions, options.multi_slice_config.get());
       },
       &num_replicas, &num_partitions, &device_assignment));
 
@@ -885,7 +885,7 @@ CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
   ABSL_RETURN_IF_ERROR(ResolveAddressableDevices(
-      /*executable=*/nullptr, &options, addressable_device_logical_ids,
+      /*executable=*/nullptr, options, addressable_device_logical_ids,
       addressable_devices, device_assignment, load_options));
   ABSL_ASSIGN_OR_RETURN(tsl::RCReference<PjRtExecutableLoadState> load_state,
                    raw_client()->MakeLoadState(load_options));
@@ -1015,19 +1015,20 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CommonPjRtClient::Load(
 }
 
 absl::Status CommonPjRtClient::ResolveAddressableDevices(
-    PjRtExecutable* executable, CompileOptions* compile_options,
+    PjRtExecutable* executable, const CompileOptions& compile_options,
     std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
         addressable_device_logical_ids,
     std::vector<PjRtDevice*>& addressable_devices,
     std::shared_ptr<DeviceAssignment>& device_assignment,
     const LoadOptions& load_options) {
-  if (load_options.multi_slice_config != nullptr) {
-    compile_options->multi_slice_config = load_options.multi_slice_config;
-  }
+  const MultiSliceConfig* multi_slice_config =
+      load_options.multi_slice_config != nullptr
+          ? load_options.multi_slice_config
+          : compile_options.multi_slice_config.get();
   // Find devices that are addressable by this client/task.
   if (device_assignment != nullptr) {
     if (load_options.computation_origin.has_value() &&
-        compile_options->multi_slice_config != nullptr) {
+        multi_slice_config != nullptr) {
       return Unimplemented(
           "Execution on subslices not supported with megascale!");
     }
@@ -1039,11 +1040,10 @@ absl::Status CommonPjRtClient::ResolveAddressableDevices(
       for (int partition = 0; partition < num_partitions; ++partition) {
         int64_t raw_device_id = (*device_assignment)(replica, partition);
         GlobalDeviceId device_id;
-        if (compile_options->multi_slice_config != nullptr) {
+        if (multi_slice_config != nullptr) {
           ABSL_ASSIGN_OR_RETURN(
               std::optional<GlobalDeviceId> slice_local_device_id,
-              compile_options->multi_slice_config->GetSliceLocalDeviceId(
-                  raw_device_id));
+              multi_slice_config->GetSliceLocalDeviceId(raw_device_id));
           if (!slice_local_device_id.has_value()) {
             VLOG(3) << "Device on non-local slice: " << raw_device_id;
             continue;
@@ -1136,13 +1136,13 @@ CommonPjRtClient::LoadInternal(
           return topology->GetDefaultDeviceAssignment(
               process_index(), num_replicas,
               /*num_replicas_per_slice=*/std::nullopt, num_partitions,
-              compile_options.multi_slice_config);
+              compile_options.multi_slice_config.get());
         },
         &num_replicas, &num_partitions, &device_assignment));
   }
 
   ABSL_RETURN_IF_ERROR(ResolveAddressableDevices(
-      executable.get(), &compile_options, addressable_device_logical_ids,
+      executable.get(), compile_options, addressable_device_logical_ids,
       addressable_devices, device_assignment, load_options));
   ABSL_ASSIGN_OR_RETURN(tsl::RCReference<PjRtExecutableLoadState> load_state,
                    raw_client()->MakeLoadState(load_options));

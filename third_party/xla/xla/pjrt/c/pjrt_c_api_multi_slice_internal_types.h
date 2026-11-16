@@ -16,22 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_MULTI_SLICE_INTERNAL_TYPES_H_
 #define XLA_PJRT_C_PJRT_C_API_MULTI_SLICE_INTERNAL_TYPES_H_
 
-#include <memory>
-#include <utility>
-
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 typedef struct PJRT_MultiSlice_Config {
-  explicit PJRT_MultiSlice_Config(xla::MultiSliceConfigRef config)
-      : config(std::move(config)) {}
-
-  // Transitional overload while C API plugin implementations migrate from
-  // `std::unique_ptr` to `xla::MultiSliceConfigRef`.
-  explicit PJRT_MultiSlice_Config(
-      std::unique_ptr<const xla::MultiSliceConfig> config)
-      : config(tsl::TakeRef(config.release())) {}
-
   xla::MultiSliceConfigRef config;
 } PJRT_MultiSlice_Config;
 

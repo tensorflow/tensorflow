@@ -15,25 +15,35 @@ limitations under the License.
 
 #include "xla/megascale/c_api_client/megascale_c_api_client.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/megascale/addresses.pb.h"
 #include "xla/megascale/dcn_topology.pb.h"
 #include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_multi_slice_internal_types.h"
 #include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/plugin/xla_tpu/xla_tpu_pjrt_client.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::xla::GetXlaPjrtTpuClient;
@@ -203,14 +213,77 @@ class NonCApiMultiSliceConfig : public xla::MultiSliceConfig {
   std::string Serialize() const override { return ""; }
 };
 
+class TrackedMultiSliceConfig : public xla::MultiSliceConfig {
+ public:
+  explicit TrackedMultiSliceConfig(bool* destroyed) : destroyed_(destroyed) {}
+  ~TrackedMultiSliceConfig() override { *destroyed_ = true; }
+
+  int32_t NumSlices() const override { return 4; }
+  int32_t SliceId() const override { return 2; }
+  absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const override {
+    return {{0, 8}, {1, 8}, {2, 8}, {3, 8}};
+  }
+  std::string Serialize() const override { return "stub_discovered_slices"; }
+
+ private:
+  bool* destroyed_;
+};
+
+TEST(MegaScaleCApiClientTest, DiscoverSlicesReturnsRefCountedConfig) {
+  ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  const PJRT_Megascale_Extension* ext =
+      pjrt::FindExtension<PJRT_Megascale_Extension>(
+          c_api, PJRT_Extension_Type_Megascale);
+  ASSERT_NE(ext, nullptr);
+
+  bool config_destroyed = false;
+  PJRT_Megascale_Extension stub_extension = *ext;
+  stub_extension.delete_client_context =
+      +[](PJRT_Megascale_DeleteClientContext_Args* /*args*/) -> PJRT_Error* {
+    return nullptr;
+  };
+  stub_extension.discover_slices =
+      +[](PJRT_Megascale_DiscoverSlices_Args* args) -> PJRT_Error* {
+    bool* destroyed = reinterpret_cast<bool*>(args->client_context);
+    args->multi_slice_config = new PJRT_MultiSlice_Config{
+        tsl::MakeRef<TrackedMultiSliceConfig>(destroyed)};
+    return nullptr;
+  };
+
+  auto client_context = std::make_shared<CApiPjRtClientContext>(
+      reinterpret_cast<PJRT_Megascale_ClientContext*>(&config_destroyed), c_api,
+      &stub_extension);
+
+  xla::MultiSliceConfigRef retained_copy;
+  {
+    ASSERT_OK_AND_ASSIGN(xla::MultiSliceConfigRef config,
+                         DiscoverSlices(client_context));
+    ASSERT_NE(config.get(), nullptr);
+    EXPECT_EQ(config->NumSlices(), 4);
+    EXPECT_EQ(config->SliceId(), 2);
+    EXPECT_THAT(
+        config->NumDevicesPerSlice(),
+        UnorderedElementsAre(Pair(0, 8), Pair(1, 8), Pair(2, 8), Pair(3, 8)));
+    EXPECT_EQ(config->Serialize(), "stub_discovered_slices");
+    retained_copy = config;
+  }
+  EXPECT_FALSE(config_destroyed);
+
+  retained_copy.reset();
+  EXPECT_TRUE(config_destroyed);
+}
+
 TEST(MegaScaleCApiClientTest, MultiSliceConfigAccessorsInvalidConfigType) {
-  NonCApiMultiSliceConfig invalid_config;
-  EXPECT_TRUE(
-      absl::IsInvalidArgument(GetIncarnationId(invalid_config).status()));
-  EXPECT_TRUE(absl::IsInvalidArgument(GetLocalHostId(invalid_config).status()));
-  EXPECT_TRUE(absl::IsInvalidArgument(GetNumHosts(invalid_config).status()));
-  EXPECT_TRUE(absl::IsInvalidArgument(
-      GlobalBarrier(invalid_config, "test_barrier", absl::Seconds(1))));
+  tsl::RCReference<NonCApiMultiSliceConfig> invalid_config =
+      tsl::MakeRef<NonCApiMultiSliceConfig>();
+  EXPECT_THAT(GetIncarnationId(*invalid_config),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(GetLocalHostId(*invalid_config),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(GetNumHosts(*invalid_config),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(GlobalBarrier(*invalid_config, "test_barrier", absl::Seconds(1)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

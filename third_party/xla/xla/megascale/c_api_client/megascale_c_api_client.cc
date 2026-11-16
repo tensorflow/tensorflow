@@ -861,7 +861,7 @@ GetOrCreateRuntimeError(
   return std::make_tuple(std::move(error), args.is_new_error);
 }
 
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>> DiscoverSlices(
+absl::StatusOr<xla::MultiSliceConfigRef> DiscoverSlices(
     std::shared_ptr<CApiPjRtClientContext> megascale_client_ctx) {
   if (megascale_client_ctx == nullptr) {
     return absl::InvalidArgumentError("Megascale client context is null.");
@@ -889,12 +889,12 @@ absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>> DiscoverSlices(
     return absl::InternalError(
         "discover_slices returned null multi_slice_config.");
   }
-  return std::make_unique<pjrt::PjRtCApiMultiSliceConfig>(
+  return tsl::MakeRef<pjrt::PjRtCApiMultiSliceConfig>(
       args.multi_slice_config, c_api, multi_slice_extension);
 }
 
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
-DiscoverSlicesFromClient(xla::PjRtClient* client) {
+absl::StatusOr<xla::MultiSliceConfigRef> DiscoverSlicesFromClient(
+    xla::PjRtClient* client) {
   ABSL_ASSIGN_OR_RETURN(std::shared_ptr<CApiPjRtClientContext> client_ctx,
                    MegaScaleClientContextFromClient(client));
   return DiscoverSlices(client_ctx);

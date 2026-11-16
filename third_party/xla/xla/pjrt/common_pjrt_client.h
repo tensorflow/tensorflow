@@ -730,7 +730,7 @@ class CommonPjRtClient : public PjRtClient {
       const LoadOptions& load_options) override;
 
   absl::Status ResolveAddressableDevices(
-      PjRtExecutable* executable, CompileOptions* compile_options,
+      PjRtExecutable* executable, const CompileOptions& compile_options,
       std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
           addressable_device_logical_ids,
       std::vector<PjRtDevice*>& addressable_devices,
