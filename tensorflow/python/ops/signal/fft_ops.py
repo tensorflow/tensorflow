@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import array_ops_stack as _array_ops_stack
+from tensorflow.python.ops import check_ops as _check_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
@@ -88,7 +89,8 @@ def _infer_fft_length_for_irfft(input_tensor, fft_rank):
   return _ops.convert_to_tensor(fft_length, _dtypes.int32)
 
 
-def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
+def _validate_static_irfft_fft_length(fft_length_static, fft_rank,
+                                      allow_zero=False):
   if fft_length_static is None:
     return
   fft_length_static = np.asarray(fft_length_static)
@@ -101,21 +103,33 @@ def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
   if fft_length_static.size == 0:
     return
   fft_length_last = fft_length_static[-1]
-  if fft_length_last <= 0:
+  if fft_length_last < 0 or (fft_length_last == 0 and not allow_zero):
     raise ValueError("fft_length[-1] must be > 0, got %d" % fft_length_last)
 
+def _validate_irfft_runtime_length(input_tensor, fft_length, fft_length_static):
+  """Validates lengths against the padded input before calling the FFT kernel."""
+  if fft_length_static is not None:
+    if np.all(fft_length_static > 0):
+      return input_tensor
+    if (np.all(fft_length_static >= 0) and
+        input_tensor.shape.num_elements() == 0):
+      return input_tensor
+
+  is_empty = _math_ops.equal(_array_ops.size(input_tensor), 0)
+  valid_lengths = _math_ops.logical_and(
+      _math_ops.greater_equal(fft_length, 0),
+      _math_ops.logical_or(is_empty, _math_ops.greater(fft_length, 0)))
+  length_check = _check_ops.assert_equal(
+      _math_ops.reduce_all(valid_lengths), True,
+      message=("IRFFT fft_length values must be nonnegative, and positive "
+               "for nonempty inputs"))
+  with _ops.control_dependencies([length_check]):
+    return _array_ops.identity(input_tensor)
 
 def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   """Pads `input_tensor` to `fft_length` on its inner-most `fft_rank` dims."""
   fft_shape = _tensor_util.constant_value_as_shape(fft_length)
 
-  # Edge case: skip padding empty tensors.
-  if (input_tensor.shape.ndims is not None and
-      any(dim.value == 0 for dim in input_tensor.shape.dims)):
-    return input_tensor
-
-  # An N-D transform over a rank 0 input has no dimensions to pad, and the
-  # reverse branch below would index off the end of an empty fft_shape.
   if fft_rank == 0:
     return input_tensor
 
@@ -129,8 +143,9 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
     if input_fft_shape.is_fully_defined():
       # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.
       if is_reverse:
-        fft_shape = fft_shape[:-1].concatenate(
-            fft_shape.dims[-1].value // 2 + 1)
+        freq_len = (fft_shape.dims[-1].value // 2 + 1
+                    if fft_shape.dims[-1].value > 0 else 0)
+        fft_shape = fft_shape[:-1].concatenate(freq_len)
 
       paddings = [[0, max(fft_dim.value - input_dim.value, 0)]
                   for fft_dim, input_dim in zip(
@@ -149,8 +164,10 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   outer_paddings = _array_ops.zeros([outer_dims], fft_length.dtype)
   # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.
   if is_reverse:
-    fft_length = _array_ops.concat([fft_length[:-1],
-                                    fft_length[-1:] // 2 + 1], 0)
+    freq_len = fft_length[-1:] // 2 + 1
+    freq_len = _array_ops.where(_math_ops.greater(fft_length[-1:], 0),
+                                freq_len, _array_ops.zeros_like(freq_len))
+    fft_length = _array_ops.concat([fft_length[:-1], freq_len], 0)
   fft_paddings = _math_ops.maximum(0, fft_length - input_fft_shape)
   paddings = _array_ops.concat([outer_paddings, fft_paddings], 0)
   paddings = _array_ops_stack.stack(
@@ -221,11 +238,15 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _tensor_util.constant_value(fft_length)
-      is_empty = input_tensor.shape.num_elements() == 0
-      if not is_empty:
-        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
+      input_size = input_tensor.shape.num_elements()
+      if input_size != 0:
+        # When emptiness is unknown, check it at runtime after padding
+        _validate_static_irfft_fft_length(
+            fft_length_static, fft_rank, allow_zero=input_size is None)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
+      input_tensor = _validate_irfft_runtime_length(
+          input_tensor, fft_length, fft_length_static)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
@@ -410,11 +431,17 @@ def _irfftn_wrapper(irfft_n, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       fft_length_static = _tensor_util.constant_value(fft_length)
-      if input_tensor.shape.num_elements() != 0:
-        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
+      input_size = input_tensor.shape.num_elements()
+      if input_size != 0:
+        # When emptiness is unknown, check it at runtime after padding
+        _validate_static_irfft_fft_length(
+            fft_length_static, fft_rank, allow_zero=input_size is None
+        )
       input_tensor = _maybe_pad_for_rfft(
           input_tensor, fft_rank, fft_length, is_reverse=True
       )
+      input_tensor = _validate_irfft_runtime_length(
+          input_tensor, fft_length, fft_length_static)
       if fft_length_static is not None:
         fft_length = fft_length_static
 
@@ -541,12 +568,6 @@ def _rfft_grad_helper(rank, irfft_fn):
     original_input_shape = _array_ops.shape(op.inputs[0])
     is_even = _math_ops.cast(1 - (fft_length[-1] % 2), complex_dtype)
 
-    # Internal FFT input shape
-    input_shape = _array_ops.concat([
-        original_input_shape[:-rank],
-        _math_ops.minimum(original_input_shape[-rank:], fft_length)
-    ], 0)
-
     def _tile_for_broadcasting(matrix, t):
       expanded = _array_ops.reshape(
           matrix,
@@ -580,10 +601,10 @@ def _rfft_grad_helper(rank, irfft_fn):
     y0 = grad[..., 0:1]
     if rank == 1:
       ym = grad[..., -1:]
-      extra_terms = y0 + is_even * ym * _ymask(input_shape[-1])
+      extra_terms = y0 + is_even * ym * _ymask(fft_length[-1])
     elif rank == 2:
       # Create a mask matrix for y0 and ym.
-      base_mask = _mask_matrix(input_shape[-2])
+      base_mask = _mask_matrix(fft_length[-2])
 
       # Tile base_mask to match y0 in shape so that we can batch-matmul the
       # inner 2 dimensions.
@@ -595,7 +616,7 @@ def _rfft_grad_helper(rank, irfft_fn):
       ym = grad[..., -1:]
       ym_term = _math_ops.matmul(tiled_mask, _math_ops.conj(ym))
 
-      inner_dim = input_shape[-1]
+      inner_dim = fft_length[-1]
       ym_term = _array_ops.tile(
           ym_term,
           _array_ops.concat([
@@ -609,7 +630,7 @@ def _rfft_grad_helper(rank, irfft_fn):
     # factor, plus some additional terms to make up for the components dropped
     # due to Hermitian symmetry.
     input_size = _math_ops.cast(
-          _math_ops.reduce_prod(input_shape[-rank:]), real_dtype)
+          _math_ops.reduce_prod(fft_length), real_dtype)
     the_irfft = irfft_fn(grad, fft_length)
     return (
         _maybe_pad_for_rfft(
@@ -640,7 +661,8 @@ def _irfft_grad_helper(rank, rfft_fn):
     real_dtype = grad.dtype
     if real_dtype == _dtypes.float32:
       complex_dtype = _dtypes.complex64
-    elif real_dtype == _dtypes.float64:
+    else:
+      assert real_dtype == _dtypes.float64
       complex_dtype = _dtypes.complex128
     is_odd = _math_ops.mod(fft_length[-1], 2)
     original_input_shape = _array_ops.shape(op.inputs[0])

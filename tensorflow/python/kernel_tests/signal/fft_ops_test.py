@@ -662,6 +662,87 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "Dimension must be 2 but is 1"):
       fft_ops.irfftnd(x, fft_length=[-5])
 
+  def testIRFFTUnknownShapeAllowsZeroLength(self):
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None], dtypes.complex64)])
+    def transform(x):
+      return fft_ops.irfft(x, fft_length=[0])
+
+    result = self.evaluate(transform(array_ops.zeros([0], dtypes.complex64)))
+    self.assertEqual(result.shape, (0,))
+
+  def testIRFFTNDUnknownShapeAllowsZeroLength(self):
+    # Check tracing without requiring an IRFFTND device kernel.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.complex64, shape=[None, None])
+      result = fft_ops.irfftnd(x, fft_length=[0, 0])
+      self.assertIsNotNone(result)
+
+  def testIRFFTUnknownShapeRejectsNegativeLength(self):
+    with ops.Graph().as_default():
+      for transform, input_shape, fft_length in (
+          (fft_ops.irfft, [None], [-5]),
+          (fft_ops.irfftnd, [None, None], [5, -3])):
+        x = array_ops.placeholder(dtypes.complex64, shape=input_shape)
+        with self.assertRaisesRegex(
+            ValueError, r"fft_length\[-1\] must be > 0"
+        ):
+          transform(x, fft_length=fft_length)
+
+  def testIRFFTUnknownShapeRejectsZeroLengthForNonemptyInput(self):
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None], dtypes.complex64)])
+    def transform(x):
+      return fft_ops.irfft(x, fft_length=[0])
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "positive for nonempty inputs"):
+      self.evaluate(transform(array_ops.ones([5], dtypes.complex64)))
+
+  @parameterized.parameters(1, 2)
+  def testIRFFTDynamicLengthsRejectInvalidValues(self, rank):
+    transform = self._tf_ifft_for_rank(rank)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None] * rank, dtypes.complex64),
+        tensor_spec.TensorSpec([rank], dtypes.int32)])
+    def dynamic_transform(x, fft_length):
+      return transform(x, fft_length=fft_length)
+
+    x = array_ops.ones([5] * rank, dtypes.complex64)
+    for axis in range(rank):
+      for invalid_length in (0, -1):
+        fft_length = [5] * rank
+        fft_length[axis] = invalid_length
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "positive for nonempty inputs"):
+          self.evaluate(dynamic_transform(
+              x, constant_op.constant(fft_length, dtypes.int32)))
+
+  def testIRFFTChecksEmptinessAfterPadding(self):
+    # Padding the first transform axis makes the input nonempty. A zero
+    # final transform length must be rejected before reaching the kernel.
+    x = array_ops.zeros([0, 3], dtypes.complex64)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "positive for nonempty inputs"):
+      self.evaluate(fft_ops.irfft2d(x, fft_length=[2, 0]))
+
+  def testIRFFTZeroLengthDoesNotPadEmptyFrequencyAxis(self):
+    x = array_ops.zeros([0], dtypes.complex64)
+    result = self.evaluate(fft_ops.irfft(x, fft_length=[0]))
+    self.assertEqual(result.shape, (0,))
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None], dtypes.complex64),
+        tensor_spec.TensorSpec([1], dtypes.int32)])
+    def transform(x, fft_length):
+      return fft_ops.irfft(x, fft_length=fft_length)
+
+    result = self.evaluate(transform(
+        x, constant_op.constant([0], dtypes.int32)
+    ))
+    self.assertEqual(result.shape, (0,))
+
   def testNDOpsAcceptNonTensorInput(self):
     # The axes used to be inferred from the input before it was converted to
     # a tensor, so a plain Python list raised AttributeError rather than
@@ -1283,10 +1364,14 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           self.evaluate(irfft_fn(x, fft_length))
 
   @parameterized.parameters(itertools.product(
-      VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+      VALID_FFT_RANKS, range(2), (0, 5, 6), (-2, 0, 2),
+      (np.float32, np.float64)
+  ))
   def test_grad_simple(self, rank, extra_dims, size, dsize, np_rtype):
     # rfft3d/irfft3d do not have gradients yet.
     if rank == 3:
+      return
+    if size + dsize <= 0:
       return
     dims = rank + extra_dims
     tol = 1e-3 if np_rtype == np.float32 else 1e-10
@@ -1303,10 +1388,14 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         result_is_complex=False, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
-      VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+      VALID_FFT_RANKS, range(2), (0, 5, 6), (-2, 0, 2),
+      (np.float32, np.float64)
+  ))
   def test_grad_random(self, rank, extra_dims, size, dsize, np_rtype):
     # rfft3d/irfft3d do not have gradients yet.
     if rank == 3:
+      return
+    if size + dsize <= 0:
       return
     dims = rank + extra_dims
     tol = 2e-2 if np_rtype == np.float32 else 1e-10
@@ -1323,9 +1412,11 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         result_is_complex=False, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
-    VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+    VALID_FFT_RANKS, range(2), (0, 5, 6), (-2, 0, 2), (np.float32, np.float64)))
   def test_grad_batched_truncate(self, rank, extra_dims, size, dsize, np_rtype):
     if rank == 3:
+      return
+    if size + dsize <= 0:
       return
 
     dims = rank + extra_dims
