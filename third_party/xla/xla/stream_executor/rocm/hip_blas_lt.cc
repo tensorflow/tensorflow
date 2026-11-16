@@ -16,9 +16,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -74,6 +76,173 @@ namespace rocm {
 
 using ::xla::complex128;
 using ::xla::complex64;
+
+// hipBLASLt is built against libstdc++, but XLA may be built against libc++.
+// Two hipblaslt_ext functions take std::vector arguments, so their mangled
+// names contain the standard library's namespace and do not link across the
+// two libraries: libc++ names std::__1::vector, libstdc++ std::vector. Call
+// them through their libstdc++ names instead, passing a Vector (below) where
+// they take a std::vector. With libstdc++ the declarations below name the same
+// functions as the header.
+//
+// Everything else XLA uses from hipblaslt-ext.hpp is safe across the two
+// libraries: the other functions have no std:: types in their names, and
+// GroupedGemm's constructor is out of line. Its destructor is virtual but
+// defined inline in hipblaslt-ext.hpp (~GemmInstance), so GroupedGemm must stay
+// heap-allocated and be destroyed polymorphically, through the vtable its
+// constructor installs. Never stack-allocate it or let the call be
+// devirtualized: that would run libc++'s destructors on its libstdc++
+// std::vector and std::shared_ptr members.
+//
+// TODO: Switch to a C API for grouped GEMM once hipBLASLt provides one.
+namespace hipblaslt_libstdcxx {
+
+// An owning array laid out as libstdc++'s std::vector<T>: pointers to the
+// first element, past the last element and past the end of the storage.
+// hipBLASLt reads it, and fills the getAllAlgos result, as a std::vector, so
+// the storage it allocates or frees comes from libstdc++'s operator new and
+// delete. Both libraries' versions are backed by malloc and free, so this frees
+// with the unsized ::operator delete whichever side allocated.
+template <typename T>
+class Vector {
+ public:
+  Vector() = default;
+  explicit Vector(size_t count) {
+    for (T* p = Allocate(count); p != end_of_storage_; ++p) {
+      new (p) T();
+    }
+    finish_ = end_of_storage_;
+  }
+  Vector(size_t count, const T& value) {
+    for (T* p = Allocate(count); p != end_of_storage_; ++p) {
+      new (p) T(value);
+    }
+    finish_ = end_of_storage_;
+  }
+  Vector(const Vector&) = delete;
+  Vector& operator=(const Vector&) = delete;
+  ~Vector() {
+    for (T* p = start_; p != finish_; ++p) {
+      p->~T();
+    }
+    ::operator delete(start_);
+  }
+
+  size_t size() const { return finish_ - start_; }
+  T* begin() { return start_; }
+  T* end() { return finish_; }
+  T& operator[](size_t i) { return start_[i]; }
+
+ private:
+  static_assert(alignof(T) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
+
+  // Allocates storage for count elements, none of them constructed yet.
+  T* Allocate(size_t count) {
+    start_ = finish_ = static_cast<T*>(::operator new(count * sizeof(T)));
+    end_of_storage_ = start_ + count;
+    return start_;
+  }
+
+  T* start_ = nullptr;
+  T* finish_ = nullptr;
+  T* end_of_storage_ = nullptr;
+};
+
+// The type of a call to function Fn with each std::vector<T>& parameter
+// replaced by Vector<T>&. A member function becomes a free function that takes
+// the object pointer as its first argument, which is how it is called at the
+// ABI level.
+template <typename T>
+struct AtBoundary {
+  using type = T;
+};
+template <typename T>
+struct AtBoundary<std::vector<T>&> {
+  using type = Vector<T>&;
+};
+template <typename Fn>
+struct WithVectors;
+template <typename R, typename... Args>
+struct WithVectors<R(Args...)> {
+  using type = R(typename AtBoundary<Args>::type...);
+};
+template <typename R, typename C, typename... Args>
+struct WithVectors<R (C::*)(Args...)> {
+  using type = R(C*, typename AtBoundary<Args>::type...);
+};
+
+// hipblaslt_ext::GroupedGemm::setProblem(m, n, k, batch_count, lda, ldb, ldc,
+// ldd, strideA, strideB, strideC, strideD, epilogue, inputs, problemtype).
+using GroupedGemmSetProblemMemberFn =
+    hipblasStatus_t (hipblaslt_ext::GroupedGemm::*)(
+        std::vector<int64_t>& m, std::vector<int64_t>& n,
+        std::vector<int64_t>& k, std::vector<int64_t>& batch_count,
+        std::vector<int64_t>& lda, std::vector<int64_t>& ldb,
+        std::vector<int64_t>& ldc, std::vector<int64_t>& ldd,
+        std::vector<int64_t>& stride_a, std::vector<int64_t>& stride_b,
+        std::vector<int64_t>& stride_c, std::vector<int64_t>& stride_d,
+        std::vector<hipblaslt_ext::GemmEpilogue>& epilogue,
+        std::vector<hipblaslt_ext::GemmInputs>& inputs,
+        hipblaslt_ext::GemmProblemType& problem_type);
+// The function types are spelled as aliases so the __asm__ labels stay on a
+// short declaration that clang-format can wrap.
+using GroupedGemmSetProblemFn =
+    WithVectors<GroupedGemmSetProblemMemberFn>::type;
+GroupedGemmSetProblemFn GroupedGemmSetProblem __asm__(
+    "_ZN13hipblaslt_ext11GroupedGemm10setProblemERSt6vectorIlSaIlEES4_S4_"
+    "S4_S4_S4_S4_S4_S4_S4_S4_S4_RS1_INS_12GemmEpilogueESaIS5_EERS1_INS_"
+    "10GemmInputsESaIS9_EERNS_15GemmProblemTypeE");
+// If hipBLASLt changes the signature, the label names a symbol that no longer
+// exists, but that only fails at link time where undefined symbols are errors
+// (it does not in --dynamic_mode=fully builds, which allow undefined symbols
+// in shared objects). Fail at compile time instead: require the header to
+// declare exactly this setProblem overload. The cast selects the overload
+// (setProblem has several) and stays unevaluated, so it does not reference the
+// libc++-mangled symbol.
+static_assert(
+    std::is_same_v<decltype(static_cast<GroupedGemmSetProblemMemberFn>(
+                       &hipblaslt_ext::GroupedGemm::setProblem)),
+                   GroupedGemmSetProblemMemberFn>);
+
+// hipblaslt_ext::getAllAlgos.
+using GetAllAlgosHeaderFn = hipblasStatus_t(
+    hipblasLtHandle_t handle, hipblaslt_ext::GemmType gemm_type,
+    hipblasOperation_t op_a, hipblasOperation_t op_b, hipDataType type_a,
+    hipDataType type_b, hipDataType type_c, hipDataType type_d,
+    hipblasComputeType_t compute_type,
+    std::vector<hipblasLtMatmulHeuristicResult_t>& heuristic_results);
+using GetAllAlgosFn = WithVectors<GetAllAlgosHeaderFn>::type;
+GetAllAlgosFn GetAllAlgos __asm__(
+    "_ZN13hipblaslt_ext11getAllAlgosEPvNS_8GemmTypeE18hipblasOperation_"
+    "tS2_11hipDataTypeS3_S3_S3_20hipblasComputeType_tRSt6vectorI33_"
+    "hipblasLtMatmulHeuristicResult_tSaIS6_EE");
+// As for setProblem, require hipblaslt-ext.hpp to declare exactly this.
+static_assert(std::is_same_v<decltype(static_cast<GetAllAlgosHeaderFn*>(
+                                 &hipblaslt_ext::getAllAlgos)),
+                             GetAllAlgosHeaderFn*>);
+
+// The labels encode int64_t as 'l' (long).
+static_assert(std::is_same_v<int64_t, long>);
+
+// libstdc++'s std::vector is three pointers.
+static_assert(std::is_standard_layout_v<Vector<int64_t>>);
+static_assert(sizeof(Vector<int64_t>) == 3 * sizeof(void*));
+// setProblem reads each GemmEpilogue, GemmInputs and GemmProblemType as a
+// single pimpl pointer.
+static_assert(sizeof(hipblaslt_ext::GemmEpilogue) == sizeof(void*));
+static_assert(sizeof(hipblaslt_ext::GemmInputs) == sizeof(void*));
+static_assert(sizeof(hipblaslt_ext::GemmProblemType) == sizeof(void*));
+// XLA allocates GroupedGemm, so its size must match hipBLASLt's. It has no
+// members of its own, and GemmInstance's only standard library members are a
+// std::vector and a std::shared_ptr; check those rather than the total, which
+// differs between hipBLASLt versions.
+static_assert(sizeof(std::vector<hipblaslt_ext::GemmProblemType>) ==
+              3 * sizeof(void*));
+static_assert(sizeof(std::shared_ptr<void>) == 2 * sizeof(void*));
+// XLA destroys GroupedGemm, which must dispatch to hipBLASLt's destructor.
+static_assert(std::has_virtual_destructor_v<hipblaslt_ext::GroupedGemm>);
+
+}  // namespace hipblaslt_libstdcxx
 
 void GroupGemmUpdateArgs(
     hipStream_t stream, DeviceAddressBase args, DeviceAddressBase a,
@@ -804,21 +973,20 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
 auto BlasLt::GroupedMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                               size_t max_workspace_size) const
     -> absl::StatusOr<std::vector<MatmulAlgorithm>> {
-  std::vector<hipblasLtMatmulHeuristicResult_t> heuristicResult;
-
   absl::MutexLock lock(blas_lt_.mu_);
 
   std::unique_ptr<ActivateContext> activation = blas_lt_.executor_->Activate();
 
-  auto problem = grouped_gemm_->getProblemTypes()[0];
-
+  TF_RET_CHECK(grouped_gemm_ != nullptr) << "Grouped GEMM is not initialized";
   grouped_gemm_->setMaxWorkspaceBytes(max_workspace_size);
 
-  SE_HIPBLAS_RETURN_IF_ERROR(hipblaslt_ext::getAllAlgos(
+  const ProblemType& problem = problem_type_;
+  hipblaslt_libstdcxx::Vector<hipblasLtMatmulHeuristicResult_t> heuristicResult;
+  hipblasStatus_t status = hipblaslt_libstdcxx::GetAllAlgos(
       blas_lt_.handle_.get(), hipblaslt_ext::GemmType::HIPBLASLT_GROUPED_GEMM,
-      problem.getOpA(), problem.getOpB(), problem.getTypeA(),
-      problem.getTypeB(), problem.getTypeC(), problem.getTypeD(),
-      problem.getTypeCompute(), heuristicResult));
+      problem.op_a, problem.op_b, problem.type_a, problem.type_b,
+      problem.type_c, problem.type_d, problem.compute_type, heuristicResult);
+  SE_HIPBLAS_RETURN_IF_ERROR(status);
   VLOG(2) << "Total heuristics found: " << heuristicResult.size();
   std::vector<MatmulAlgorithm> algorithms;
   algorithms.reserve(max_algorithm_count);
@@ -853,7 +1021,7 @@ absl::Status BlasLt::GroupedMatmulPlan::DoInitialize(
     }
   }
 
-  std::vector<int64_t> v_m(cfg_.group_count, cfg_.m),
+  hipblaslt_libstdcxx::Vector<int64_t> v_m(cfg_.group_count, cfg_.m),
       v_n(cfg_.group_count, cfg_.n), v_k(cfg_.group_count, cfg_.k),
       v_batch_count(cfg_.group_count, cfg_.batch_count),
       v_lda(cfg_.group_count, cfg_.lhs_leading_dim_stride),
@@ -885,8 +1053,10 @@ absl::Status BlasLt::GroupedMatmulPlan::DoInitialize(
     }
   }
 
-  std::vector<hipblaslt_ext::GemmEpilogue> epilogues(cfg_.group_count);
-  std::vector<hipblaslt_ext::GemmInputs> inputs(cfg_.group_count);
+  hipblaslt_libstdcxx::Vector<hipblaslt_ext::GemmEpilogue> epilogues(
+      cfg_.group_count);
+  hipblaslt_libstdcxx::Vector<hipblaslt_ext::GemmInputs> inputs(
+      cfg_.group_count);
 
   // Convert the epilogue from the stored member variable
   ABSL_ASSIGN_OR_RETURN(auto hip_epilogue, AsHipblasLtEpilogue(epilogue));
@@ -920,6 +1090,10 @@ absl::Status BlasLt::GroupedMatmulPlan::DoInitialize(
       AsHipblasComputeType(compute_type));
 
   absl::MutexLock lock(blas_lt_.mu_);
+  problem_type_ = ProblemType{problem.getOpA(),        problem.getOpB(),
+                              problem.getTypeA(),      problem.getTypeB(),
+                              problem.getTypeC(),      problem.getTypeD(),
+                              problem.getTypeCompute()};
   grouped_gemm_ = std::make_unique<hipblaslt_ext::GroupedGemm>(
       blas_lt_.handle_.get(), problem.getOpA(), problem.getOpB(),
       problem.getTypeA(), problem.getTypeB(), problem.getTypeC(),
@@ -928,9 +1102,10 @@ absl::Status BlasLt::GroupedMatmulPlan::DoInitialize(
   // Note that Matrices given to HipBlasLt Group-Gemm
   // are expected to be in COLUMN-MAJOR order.
 
-  SE_HIPBLAS_RETURN_IF_ERROR(grouped_gemm_->setProblem(
-      v_m, v_n, v_k, v_batch_count, v_lda, v_ldb, v_ldc, v_ldd, v_strideA,
-      v_strideB, v_strideC, v_strideD, epilogues, inputs, problem));
+  SE_HIPBLAS_RETURN_IF_ERROR(hipblaslt_libstdcxx::GroupedGemmSetProblem(
+      grouped_gemm_.get(), v_m, v_n, v_k, v_batch_count, v_lda, v_ldb, v_ldc,
+      v_ldd, v_strideA, v_strideB, v_strideC, v_strideD, epilogues, inputs,
+      problem));
 
   // UserArgument is expecting specific code for activation and bias types.
   // These are defined by the hipBLASLt library during the problem

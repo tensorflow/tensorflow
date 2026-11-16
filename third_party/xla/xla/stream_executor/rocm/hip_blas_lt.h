@@ -180,12 +180,26 @@ class BlasLt : public gpu::BlasLt {
     }
 
    private:
+    // Transposes, data types and compute type shared by all GEMMs in the
+    // group, kept here rather than read back from hipblaslt_ext::GroupedGemm,
+    // whose getter returns a std::vector.
+    struct ProblemType {
+      hipblasOperation_t op_a;
+      hipblasOperation_t op_b;
+      hipDataType type_a;
+      hipDataType type_b;
+      hipDataType type_c;
+      hipDataType type_d;
+      hipblasComputeType_t compute_type;
+    };
+
     absl::Status DoInitialize(blas::ComputationType compute_type,
                               Epilogue epilogue);
 
     const BlasLt& blas_lt_;
     gpu::GroupedGemmConfig cfg_;
     Epilogue epilogue_ = Epilogue::kDefault;
+    ProblemType problem_type_{};
     std::unique_ptr<hipblaslt_ext::GroupedGemm> grouped_gemm_;
     mutable std::optional<hipblasLtMatmulAlgo_t> algorithm_;
     mutable bool algorithm_dirty_ = false;

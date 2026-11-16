@@ -29,6 +29,8 @@ build:rocm_rbe --extra_execution_platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --tls_client_certificate="/data/temp-rbe-cert.crt"
 build:rocm_rbe --tls_client_key="/data/temp-rbe-cert.key"
+# Link locally: large links exceed EngFlow's action input/output limits.
+build:rocm_rbe --strategy=CppLink=local
 
 # Buildbarn (bb-rbe.amd.com) RBE backend.
 build:rocm_rbe_dev --config=rocm_rbe_base

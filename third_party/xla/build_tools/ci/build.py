@@ -616,7 +616,14 @@ Build(
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=rocm_tag_filter,
     test_tag_filters=rocm_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "//xla/tsl:ci_build": True,
+        # Compile ROCm with statically linked libc++, as JAX builds its ROCm
+        # plugin, while rocm_base keeps libstdc++ for builds that run tests.
+        "@rules_ml_toolchain//common:stdlib": "libc++",
+        "@rules_ml_toolchain//common:static_libcxx": "true",
+    },
     subcommand="build",
     # Do not enable bazel-diff here: this is a compile-only RBE build with high
     # remote cache hit rates, so running two `bazel cquery` passes for
