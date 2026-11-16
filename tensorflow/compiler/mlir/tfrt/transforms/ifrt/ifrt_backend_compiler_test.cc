@@ -105,8 +105,9 @@ class IfrtBackendCompilerTest : public ::testing::Test {
     absl::MutexLock l(ServingExecutableRegistry::mu_);
     for (const auto& [_, executable] :
          *ServingExecutableRegistry::executables_) {
-      absl::MutexLock l(executable->mutex_);
-      executable->module_->walk([](mlir::func::FuncOp func) {
+      IfrtProgram& program = *executable->program_;
+      absl::MutexLock l(program.compile_mutex_);
+      program.module_->walk([](mlir::func::FuncOp func) {
         ASSERT_FALSE(func->hasAttr("tfrt_ifrt_serving.program_id"));
       });
     }
