@@ -313,6 +313,11 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnoreDynamicShapeMetadataPrefixBytes() {
+      ignore_dynamic_shape_metadata_prefix_bytes_ = true;
+      return *this;
+    }
+
     Equal& MinorToMajorOnly() {
       return IgnoreTiles()
           .IgnoreTailPaddingAlignmentInElements()
@@ -321,7 +326,8 @@ class Layout {
           .IgnorePointerPrimitiveType()
           .IgnoreMemorySpace()
           .IgnoreSplitConfigs()
-          .IgnorePhysicalShape();
+          .IgnorePhysicalShape()
+          .IgnoreDynamicShapeMetadataPrefixBytes();
     }
 
    private:
@@ -333,6 +339,7 @@ class Layout {
     bool ignore_memory_space_ = false;
     bool ignore_split_configs_ = false;
     bool ignore_physical_shape_ = false;
+    bool ignore_dynamic_shape_metadata_prefix_bytes_ = false;
   };
 
   bool operator==(const Layout& other) const;
@@ -465,7 +472,8 @@ class Layout {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
                       l.element_size_in_bits_, l.index_primitive_type_,
                       l.pointer_primitive_type_, l.memory_space_,
-                      l.split_configs_, l.tail_padding_alignment_in_elements_);
+                      l.split_configs_, l.tail_padding_alignment_in_elements_,
+                      l.dynamic_shape_metadata_prefix_bytes_);
   }
 
  private:

@@ -430,6 +430,11 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
       }
     }
   }
+  if (!ignore_dynamic_shape_metadata_prefix_bytes_ &&
+      lhs.dynamic_shape_metadata_prefix_bytes() !=
+          rhs.dynamic_shape_metadata_prefix_bytes()) {
+    return false;
+  }
   return true;
 }
 

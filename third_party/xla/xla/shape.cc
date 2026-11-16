@@ -494,6 +494,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         if (ignore_split_config_in_layout_) {
           equal.IgnoreSplitConfigs();
         }
+        if (ignore_dynamic_shape_metadata_prefix_bytes_in_layout_) {
+          equal.IgnoreDynamicShapeMetadataPrefixBytes();
+        }
         if (!equal(lhs.layout(), rhs.layout())) {
           VLOG(3) << "CompareShapes: lhs layout != rhs layout";
           return false;

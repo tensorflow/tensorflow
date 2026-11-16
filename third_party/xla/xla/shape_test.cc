@@ -345,10 +345,25 @@ TEST_F(ShapeTest, IgnoreSplitsComparison) {
   EXPECT_TRUE(Shape::Equal().IgnoreSplitConfigInLayout()(shape, other_shape));
 }
 
+TEST_F(ShapeTest, DynamicShapeMetadataPrefixBytesComparison) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 256}, {1, 0});
+  Shape other_shape = shape;
+  other_shape.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(128);
+
+  EXPECT_NE(shape, other_shape);
+  EXPECT_TRUE(Shape::Equal().IgnoreDynamicShapeMetadataPrefixBytesInLayout()(
+      shape, other_shape));
+  EXPECT_TRUE(Shape::Equal().MinorToMajorOnlyInLayout()(shape, other_shape));
+}
+
 TEST_F(ShapeTest, SupportsAbslHash) {
+  Shape matrix_with_metadata_prefix = matrix_;
+  matrix_with_metadata_prefix.mutable_layout()
+      ->set_dynamic_shape_metadata_prefix_bytes(128);
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
-      {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_,
-       matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
+      {opaque_, token_, scalar_, scalar_with_tile_, matrix_,
+       matrix_with_metadata_prefix, matrix2_, matrix_buffer_, tuple_,
+       nested_tuple_, dynamic_matrix_}));
 }
 
 TEST(Shape, ClearBuffer) {

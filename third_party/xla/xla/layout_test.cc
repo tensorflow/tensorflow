@@ -177,6 +177,16 @@ TEST(Layout, Equality) {
   EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
       Layout({0, 1, 2})));
+  EXPECT_EQ(Layout({0, 1, 2}).set_dynamic_shape_metadata_prefix_bytes(123),
+            Layout({0, 1, 2}).set_dynamic_shape_metadata_prefix_bytes(123));
+  EXPECT_NE(Layout({0, 1, 2}).set_dynamic_shape_metadata_prefix_bytes(123),
+            Layout({0, 1, 2}));
+  EXPECT_TRUE(Layout::Equal().IgnoreDynamicShapeMetadataPrefixBytes()(
+      Layout({0, 1, 2}).set_dynamic_shape_metadata_prefix_bytes(123),
+      Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      Layout({0, 1, 2}).set_dynamic_shape_metadata_prefix_bytes(123),
+      Layout({0, 1, 2})));
 }
 
 TEST(Layout, LayoutToFromProto) {

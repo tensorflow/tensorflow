@@ -479,6 +479,7 @@ class Shape {
       ignore_memory_space_in_layout_ = true;
       ignore_tail_padding_alignment_in_elements_in_layout_ = true;
       ignore_split_config_in_layout_ = true;
+      ignore_dynamic_shape_metadata_prefix_bytes_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {
@@ -505,6 +506,10 @@ class Shape {
       ignore_split_config_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreDynamicShapeMetadataPrefixBytesInLayout() {
+      ignore_dynamic_shape_metadata_prefix_bytes_in_layout_ = true;
+      return *this;
+    }
     Equal& IgnoreBuffer(bool ignore_buffer = true) {
       ignore_buffer_ = ignore_buffer;
       return *this;
@@ -521,6 +526,7 @@ class Shape {
     bool ignore_dimensions_ = false;
     bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
     bool ignore_split_config_in_layout_ = false;
+    bool ignore_dynamic_shape_metadata_prefix_bytes_in_layout_ = false;
     bool ignore_buffer_ = false;
   };
 
