@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -2601,6 +2602,45 @@ TEST_F(FunctionalHloRunnerTest,
   EXPECT_NE(router_literals[0], router_literals[1]);
   EXPECT_NE(router_literals[0], router_literals[2]);
   EXPECT_NE(router_literals[1], router_literals[2]);
+}
+
+TEST_F(FunctionalHloRunnerTest, ShardyUseTupleArgsWithFlattenedArguments) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule sdy_tuple_args, frontend_attributes={xla.sdy.use_tuple_args="t"}
+
+ENTRY %main (p0: f32[2], p1: f32[2]) -> f32[2] {
+  %p0 = f32[2]{0} parameter(0)
+  %p1 = f32[2]{0} parameter(1)
+  ROOT %sum = f32[2]{0} add(%p0, %p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  const std::string hlo_path = tsl::io::JoinPath(temp_dir.path(), "m.hlo");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), hlo_path, kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client, GetPjRtClient());
+
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.use_layouts_from_hlo_module = true;
+  FunctionalHloRunner::RawCompileOptions raw_options;
+  raw_options.spmd_mode = FunctionalHloRunner::SpmdMode::kUseShardyPartitioning;
+  ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_options));
+
+  const int dev0_id =
+      client->addressable_devices()[0]->global_device_id().value();
+  FunctionalHloRunner::PerDeviceLiteralVecType arguments;
+  arguments[dev0_id].push_back(LiteralUtil::CreateR1<float>({1.0f, 2.0f}));
+  arguments[dev0_id].push_back(LiteralUtil::CreateR1<float>({3.0f, 4.0f}));
+
+  ASSERT_OK_AND_ASSIGN(
+      FunctionalHloRunner::PerDeviceLiteralVecType results,
+      FunctionalHloRunner::LoadAndRun(*client, preproc_options, compile_options,
+                                      FunctionalHloRunner::RunningOptions{},
+                                      hlo_path, InputFormat::kText, arguments));
+  EXPECT_THAT(results.at(dev0_id)[0].data<float>(), ElementsAre(4.0f, 6.0f));
 }
 
 }  // namespace

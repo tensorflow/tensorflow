@@ -301,6 +301,7 @@ xla_test(
         "//xla:debug_options_flags",
         "//xla:future",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",

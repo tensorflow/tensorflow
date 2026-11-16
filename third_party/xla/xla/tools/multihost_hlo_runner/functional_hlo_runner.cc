@@ -2034,8 +2034,21 @@ absl::StatusOr<CompileOptions> CompleteCompileOptions(
     const HloModule& hlo_module, CompileOptions compile_options,
     const PreprocessingOptions& preproc_options) {
   ParameterType parameter_type = GetParameterType(hlo_module);
+  const ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  // JAX defers the tupling of large argument lists to the ShardyXLA pass via
+  // the `xla.sdy.use_tuple_args` frontend attribute (see mlir_to_hlo.cc), so a
+  // module with flat parameters compiles to an executable with a single tuple
+  // parameter whenever that pass runs, i.e. Shardy is enabled and HLO passes
+  // are not skipped.
+  const bool inputs_will_be_rewritten_as_tuple =
+      build_options.use_shardy_partitioner() &&
+      !build_options.run_backend_only() &&
+      !build_options.debug_options().xla_disable_all_hlo_passes() &&
+      hlo_module.frontend_attributes().map().contains("xla.sdy.use_tuple_args");
   compile_options.parameter_is_tupled_arguments =
-      (parameter_type == ParameterType::kOneTupleOfArrays);
+      parameter_type == ParameterType::kOneTupleOfArrays ||
+      inputs_will_be_rewritten_as_tuple;
   if (preproc_options.force_auto_layout) {
     XlaComputation computation(hlo_module.ToProto());
     ABSL_ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
@@ -2169,11 +2182,10 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> Run(
                                    running_options,
                                    /*flattened_arguments=*/true);
     }
-    // If the per-device argument is not a single tuple, we ignore the
-    // flatten_tupled_arguments parameter and assume the provided arguments have
-    // already been flattened.
+    // If the per-device argument is not a single tuple, we assume the provided
+    // arguments have already been flattened.
     return CopyArgumentsToDevice(client, executable, arguments, running_options,
-                                 /*flattened_arguments=*/false);
+                                 /*flattened_arguments=*/true);
   };
   return RunInternal(client, executable, create_argument_buffers_on_device,
                      running_options);
