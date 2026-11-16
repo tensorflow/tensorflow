@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -408,7 +410,10 @@ TEST_P(CollectiveEmitterParameterizedTest,
   ASSERT_NE(triton_fusion, nullptr);
 
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     return std::vector<uint8_t>{1};
   };
@@ -1145,7 +1150,10 @@ TEST_F(CollectiveEmitterTest,
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     return std::vector<uint8_t>{1};
   };

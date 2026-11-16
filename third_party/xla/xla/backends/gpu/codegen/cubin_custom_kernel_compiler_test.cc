@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -74,7 +76,10 @@ GpuTopology SingleDeviceGpuTopology() {
 TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
   int compiler_invoked = 0;
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     compiler_invoked++;
     return std::vector<uint8_t>{1};
@@ -131,7 +136,7 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
                          GpuKernelSpec(kernel_name, dimensions,
                                        kernel_arguments, std::nullopt, use_pdl),
                          MlirKernelSource(nullptr, std::move(mlir_module))},
-                     std::move(borrowed_context), hlo_module,
+                     "fingerprint", std::move(borrowed_context), hlo_module,
                      /*unroll_factor=*/0)
             .Await());
     const auto* custom_kernel_thunk =
@@ -151,7 +156,10 @@ TEST(CubinCustomKernelCompilerTest, CompileToTargetBinaryMlirWithThreadPool) {
   MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
   auto llvm_compiler =
       [main_thread_id, &mlir_context_pool](
-          llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     EXPECT_NE(tsl::Env::Default()->GetCurrentThreadId(), main_thread_id);
     EXPECT_EQ(mlir_context_pool.num_available(),
@@ -196,7 +204,8 @@ TEST(CubinCustomKernelCompilerTest, CompileToTargetBinaryMlirWithThreadPool) {
                   GpuKernelSpec("async_kernel", dimensions, kernel_arguments,
                                 std::nullopt, /*use_pdl=*/false),
                   MlirKernelSource(nullptr, std::move(mlir_module))},
-              std::move(borrowed_context), hlo_module, /*unroll_factor=*/2)
+              "fingerprint", std::move(borrowed_context), hlo_module,
+              /*unroll_factor=*/2)
           .Await());
   EXPECT_THAT(cubin, ElementsAre(1, 2, 3));
   EXPECT_EQ(mlir_context_pool.num_available(), mlir_context_pool.num_created());
@@ -224,7 +233,10 @@ module {
   TritonKernelSource triton_source(std::move(module));
 
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     return std::vector<uint8_t>{1};
   };

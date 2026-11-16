@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"

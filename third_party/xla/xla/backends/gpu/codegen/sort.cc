@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -229,6 +231,10 @@ struct BitonicSortKernelSpec {
   friend H AbslHashValue(H h, const BitonicSortKernelSpec& s) {
     return H::combine(std::move(h), s.kind, s.xor_mask_or_num_stages,
                       s.block_size);
+  }
+
+  std::string ToString() const {
+    return absl::StrCat(kind, ",", xor_mask_or_num_stages, ",", block_size);
   }
 };
 
@@ -1049,9 +1055,11 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
                        kernel_arguments, std::nullopt, use_pdl);
     MlirKernelDefinition kernel_def(
         spec, MlirKernelSource(nullptr, std::move(mlir_module)));
+    std::string fingerprint = absl::StrCat(
+        sort->ToString(HloPrintOptions::Fingerprint()), kernel_spec.ToString());
     Future<CompiledSortKernel> compiled_future =
         ir_emitter_context->kernel_compiler()
-            ->CompileToTargetBinary(std::move(kernel_def),
+            ->CompileToTargetBinary(std::move(kernel_def), fingerprint,
                                     std::move(borrowed_context),
                                     *sort->GetModule(), /*unroll_factor=*/0)
             .Map([spec = std::move(spec)](

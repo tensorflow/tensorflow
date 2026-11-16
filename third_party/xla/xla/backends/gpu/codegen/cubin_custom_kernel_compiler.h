@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
@@ -50,8 +50,9 @@ namespace xla::gpu {
 // Takes the LLVM module, device description, and debug options as input.
 // Returns the compiled binary as a vector of bytes or an error status.
 using LlvmIrCompiler = absl::AnyInvocable<absl::StatusOr<std::vector<uint8_t>>(
-    llvm::Module& module, const stream_executor::DeviceDescription& descr,
-    const DebugOptions& opts)>;
+    llvm::Module& module, absl::optional_ref<const GpuKernelSpec> spec,
+    absl::string_view kernel_fingerprint,
+    const stream_executor::DeviceDescription& descr, const DebugOptions& opts)>;
 
 // Implementation of KernelCompiler that compiles MLIR, Triton, and LLVM IR
 // kernel sources to target binaries and Thunks.
@@ -78,15 +79,16 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
 
   xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
+      absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+      const HloModule& hlo_module, int unroll_factor) override;
+
+  xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
+      MlirKernelDefinition kernel_def, absl::string_view fingerprint,
       BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
       int unroll_factor) override;
 
   xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
-      const HloModule& hlo_module, int unroll_factor) override;
-
-  xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      LlvmKernelSource kernel_source,
+      LlvmKernelSource kernel_source, absl::string_view fingerprint,
       std::optional<GpuKernelSpec> kernel_spec) override;
 
   xla::Future<TritonWrapperResult> CompileTritonToLlvm(
@@ -99,17 +101,18 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
 
  private:
   absl::StatusOr<std::vector<uint8_t>> CompileToCubinImpl(
-      LlvmKernelSource kernel_source);
+      absl::optional_ref<const GpuKernelSpec> spec,
+      absl::string_view fingerprint, LlvmKernelSource kernel_source);
 
   absl::StatusOr<std::vector<uint8_t>> CompileMlirToCubinImpl(
       const GpuKernelSpec& spec, MlirKernelSource mlir_source,
-      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-      int unroll_factor);
+      absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+      const HloModule& hlo_module, int unroll_factor);
 
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(
       Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
-      BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-      int unroll_factor);
+      absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+      const HloModule& hlo_module, int unroll_factor);
 
   LlvmIrCompiler compiler_;
   const se::DeviceDescription device_info_;

@@ -28,12 +28,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/buffer_value.h"
@@ -87,7 +89,10 @@ TEST_F(CompileModuleToLlvmIrTest,
   absl::Notification constants_compile_started;
   std::atomic<bool> fusion_compile_finished = false;
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     if (llvm_module.empty()) {
       constants_compile_started.Notify();
@@ -139,7 +144,10 @@ TEST_F(CompileModuleToLlvmIrTest,
   absl::Notification fusion_compile_started;
   std::atomic<bool> constants_compile_finished = false;
   auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+      [&](llvm::Module& llvm_module,
+          absl::optional_ref<const GpuKernelSpec> spec,
+          absl::string_view kernel_fingerprint,
+          const se::DeviceDescription& descr,
           const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
     if (llvm_module.empty()) {
       fusion_compile_started.WaitForNotification();

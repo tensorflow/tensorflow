@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/slice_to_dynamic.h"
 #include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/ffi/ffi_attributes_from_backend_config.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
@@ -1651,8 +1652,18 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
   TritonCall call = TritonCall::Parse(instr->raw_backend_config_string(),
                                       borrowed_context->get());
   auto call_zeroed_outputs = call.zeroed_outputs;
+
+  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       ir_emitter_context_->buffer_assignment(),
+                       GetDefaultBufferAlignment(), instr));
+  std::string fingerprint = absl::StrCat(
+      "(", emitters::GetArgumentFingerprint(kernel_arguments.args()), ")",
+      instr->raw_backend_config_string());
+
   auto generate =
-      [this, &instr, borrowed_context = std::move(borrowed_context),
+      [this, &instr, &fingerprint, &kernel_arguments,
+       borrowed_context = std::move(borrowed_context),
        call =
            std::move(call)]() mutable -> xla::Future<KernelReuseCache::Entry> {
     std::string kernel_name =
@@ -1681,19 +1692,15 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
         .Map([kernel_name,
               kernel_impl_name = ir_emitter_context_->GetSanitizedUniqueName(
                   kernel_name + "_impl"),
-              instr, call = std::move(call),
+              instr, call = std::move(call), kernel_arguments,
               kernel_compiler = ir_emitter_context_->kernel_compiler(),
               buffer_assignment = &ir_emitter_context_->buffer_assignment(),
-              &gpu_device_info = ir_emitter_context_->gpu_device_info()](
-                 TritonWrapperResult result) mutable
+              &gpu_device_info = ir_emitter_context_->gpu_device_info(),
+              fingerprint](TritonWrapperResult result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module =
               std::move(result.kernel_source).thread_safe_module();
 
-          ABSL_ASSIGN_OR_RETURN(
-              auto kernel_arguments,
-              emitters::KernelArguments::Create(
-                  *buffer_assignment, GetDefaultBufferAlignment(), instr));
           auto launch_dimensions = LaunchDimensions(
               se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
               se::ThreadDim(call.num_warps *
@@ -1716,7 +1723,7 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
               result.use_pdl,         result.tma_metadata};
           return kernel_compiler
               ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)},
-                                      spec)
+                                      fingerprint, spec)
               .Map([spec = std::move(spec)](
                        const std::vector<uint8_t>& cubin) mutable {
                 return KernelReuseCache::Entry{
@@ -1731,17 +1738,9 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
         });
   };
 
-  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-
   auto [status_or_entry, was_cached] =
       ir_emitter_context_->kernel_cache().GetWithStatus(
-          absl::StrCat(
-              "(", emitters::GetArgumentFingerprint(kernel_arguments.args()),
-              ")", instr->raw_backend_config_string()),
-          kernel_arguments, generate);
+          fingerprint, kernel_arguments, generate);
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
@@ -250,6 +251,9 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::Emit(
       fusion.fused_instructions_computation();
   VLOG(3) << "hlo_computation: " << hlo_computation->ToString();
 
+  std::string fingerprint = emitters::GetComputationFingerprint(
+      hlo_computation, kernel_arguments.args(),
+      /*discriminator=*/"TritonFusion");
   auto generate = [&]() -> xla::Future<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
@@ -270,7 +274,7 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::Emit(
               sanitized_kernel_impl_name =
                   ir_emitter_context.GetSanitizedUniqueName(
                       sanitized_kernel_name + "_impl"),
-              kernel_arguments](
+              fingerprint, kernel_arguments](
                  TritonWrapperResult triton_wrapper_result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module = std::move(triton_wrapper_result.kernel_source)
@@ -338,7 +342,7 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::Emit(
 
           return kernel_compiler
               ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)},
-                                      spec)
+                                      fingerprint, spec)
               .Map([spec = std::move(spec)](
                        const std::vector<uint8_t>& cubin) mutable {
                 return KernelReuseCache::Entry{
@@ -354,8 +358,7 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::Emit(
   };
 
   return ir_emitter_context.kernel_cache()
-      .GetWithStatus(hlo_computation, kernel_arguments,
-                     /*discriminator=*/"TritonFusion", generate)
+      .GetWithStatus(fingerprint, kernel_arguments, generate)
       .first;
 }
 

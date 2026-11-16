@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -826,9 +827,10 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
                                         GetDefaultBufferAlignment(), &fusion));
 
   std::string discriminator = GetSpecCacheDiscriminator(root_spec_);
+  std::string fingerprint = emitters::GetComputationFingerprint(
+      fusion.fused_instructions_computation(), args.args(), discriminator);
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      fusion.fused_instructions_computation(), args, discriminator,
-      [&]() -> xla::Future<KernelReuseCache::Entry> {
+      fingerprint, args, [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
             std::string(fusion.name()));
         BorrowedMlirContext borrowed_context =
@@ -856,7 +858,7 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
                            std::nullopt, use_pdl};
         return ir_emitter_context.kernel_compiler()
             ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
-                                    spec)
+                                    fingerprint, spec)
             .Map([spec = std::move(spec), cluster_dim = cluster_dim(),
                   max_shmem_bytes = llvm_source_wrapper.max_shmem_bytes](
                      const std::vector<uint8_t>& cubin) mutable {

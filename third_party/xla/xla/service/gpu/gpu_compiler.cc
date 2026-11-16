@@ -37,10 +37,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DataLayout.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
@@ -2659,7 +2662,9 @@ absl::StatusOr<GpuCompiler::BackendCompileResult>
 GpuCompiler::CompileSingleModule(
     const HloModuleConfig& module_config,
     const stream_executor::DeviceDescription& device_description,
-    const HloModule* debug_module, llvm::Module* llvm_module, bool relocatable,
+    const HloModule* debug_module, llvm::Module* llvm_module,
+    absl::optional_ref<const GpuKernelSpec> spec,
+    absl::string_view kernel_fingerprint, bool relocatable,
     std::optional<int> shard_number) {
   tsl::profiler::TraceMe traceme("CompileSingleModule");
   const DebugOptions& debug_options = module_config.debug_options();
@@ -2724,12 +2729,29 @@ GpuCompiler::CompileSingleModule(
     ABSL_ASSIGN_OR_RETURN(absl::string_view asm_extension, AsmFileExtension());
     if (dumping_enabled &&
         DumpingEnabledForEmitter(asm_extension, debug_options)) {
+      absl::string_view asm_text = result.asm_text;
+      std::string asm_storage;
+      if (spec.has_value()) {
+        std::string result_str;
+        tsl::protobuf::TextFormat::Printer printer;
+        printer.SetSingleLineMode(true);
+
+        ABSL_ASSIGN_OR_RETURN(GpuKernelSpecProto proto, spec->ToProto());
+        if (!printer.PrintToString(proto, &result_str)) {
+          return absl::InternalError("Failed to serialize GPU kernel spec.");
+        }
+
+        asm_storage = absl::StrCat(
+            "// Fingerprint: ", absl::CEscape(kernel_fingerprint), "\n",
+            "// GpuKernelSpec: ", result_str, "\n", result.asm_text);
+        asm_text = asm_storage;
+      }
       DumpToFileInDirOrStdout(
           *debug_module, "",
           shard_number.has_value()
               ? absl::StrCat(*shard_number, ".", asm_extension)
               : asm_extension,
-          result.asm_text);
+          asm_text);
     }
 
     absl::MutexLock lock(user_asm_hook_m_);
@@ -2811,15 +2833,21 @@ GpuCompiler::CompileToBackendResult(
         BufferSizeBytesFunction();
 
     auto llvm_compiler =
-        [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+        [&](llvm::Module& llvm_module,
+            absl::optional_ref<const GpuKernelSpec> spec,
+            absl::string_view kernel_fingerprint,
+            const se::DeviceDescription& descr,
             const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
-      llvm_ir::DumpIrIfEnabled(*module, llvm_module,
-                               /*optimized=*/false,
-                               std::to_string(shard_number.fetch_add(1)));
+      llvm_ir::DumpIrIfEnabled(
+          *module, llvm_module,
+          /*optimized=*/false,
+          std::to_string(shard_number.fetch_add(1, std::memory_order_relaxed)));
       ABSL_ASSIGN_OR_RETURN(
           BackendCompileResult result,
-          CompileSingleModule(module->config(), descr, module, &llvm_module,
-                              false, shard_number.fetch_add(1)));
+          CompileSingleModule(
+              module->config(), descr, module, &llvm_module, spec,
+              kernel_fingerprint, false,
+              shard_number.fetch_add(1, std::memory_order_relaxed)));
 
       absl::MutexLock lock(module_stats_m_);
       MergeModuleStatsInPlace(result.module_stats, module_stats);

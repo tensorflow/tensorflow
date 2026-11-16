@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional_ref.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
@@ -45,10 +46,8 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -75,61 +74,71 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLlvmImpl(
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
     Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
-    BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-    int unroll_factor) {
+    absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+    const HloModule& hlo_module, int unroll_factor) {
   if (!thread_pool_) {
     return CompileImpl(std::move(thunk_info), std::move(kernel_def),
-                       std::move(borrowed_context), hlo_module, unroll_factor);
+                       fingerprint, std::move(borrowed_context), hlo_module,
+                       unroll_factor);
   }
-  return xla::MakeFutureOn(*thread_pool_->AsExecutor(),
-                           [this, thunk_info = std::move(thunk_info),
-                            borrowed_context = std::move(borrowed_context),
-                            kernel_def = std::move(kernel_def), &hlo_module,
-                            unroll_factor]() mutable {
-                             return CompileImpl(std::move(thunk_info),
-                                                std::move(kernel_def),
-                                                std::move(borrowed_context),
-                                                hlo_module, unroll_factor);
-                           });
+  return xla::MakeFutureOn(
+      *thread_pool_->AsExecutor(),
+      [this, thunk_info = std::move(thunk_info),
+       borrowed_context = std::move(borrowed_context),
+       kernel_def = std::move(kernel_def), &hlo_module,
+       fingerprint = std::string{fingerprint}, unroll_factor]() mutable {
+        return CompileImpl(std::move(thunk_info), std::move(kernel_def),
+                           fingerprint, std::move(borrowed_context), hlo_module,
+                           unroll_factor);
+      });
 }
 
 xla::Future<std::vector<uint8_t>>
 CubinCustomKernelCompiler::CompileToTargetBinary(
-    MlirKernelDefinition kernel_def, BorrowedMlirContext borrowed_context,
-    const HloModule& hlo_module, int unroll_factor) {
+    MlirKernelDefinition kernel_def, absl::string_view fingerprint,
+    BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
+    int unroll_factor) {
   if (!thread_pool_) {
     const GpuKernelSpec spec = kernel_def.spec();
     return CompileMlirToCubinImpl(spec, std::move(kernel_def).TakeSource(),
-                                  std::move(borrowed_context), hlo_module,
-                                  unroll_factor);
+                                  fingerprint, std::move(borrowed_context),
+                                  hlo_module, unroll_factor);
   }
   return xla::MakeFutureOn(
       *thread_pool_->AsExecutor(),
       [this, borrowed_context = std::move(borrowed_context),
+       fingerprint = std::string{fingerprint},
        kernel_def = std::move(kernel_def), &hlo_module,
        unroll_factor]() mutable {
         const GpuKernelSpec spec = kernel_def.spec();
         return CompileMlirToCubinImpl(spec, std::move(kernel_def).TakeSource(),
-                                      std::move(borrowed_context), hlo_module,
-                                      unroll_factor);
+                                      fingerprint, std::move(borrowed_context),
+                                      hlo_module, unroll_factor);
       });
 }
 
 xla::Future<std::vector<uint8_t>>
 CubinCustomKernelCompiler::CompileToTargetBinary(
-    LlvmKernelSource kernel_source, std::optional<GpuKernelSpec> kernel_spec) {
+    LlvmKernelSource kernel_source, absl::string_view fingerprint,
+    std::optional<GpuKernelSpec> kernel_spec) {
   if (!thread_pool_) {
-    return CompileToCubinImpl(std::move(kernel_source));
+    return CompileToCubinImpl(kernel_spec, fingerprint,
+                              std::move(kernel_source));
   }
-  return xla::MakeFutureOn(
-      *thread_pool_->AsExecutor(),
-      [this, kernel_source = std::move(kernel_source)]() mutable {
-        return CompileToCubinImpl(std::move(kernel_source));
-      });
+  return xla::MakeFutureOn(*thread_pool_->AsExecutor(),
+                           [this, kernel_source = std::move(kernel_source),
+                            fingerprint = std::string{fingerprint},
+                            kernel_spec = std::move(kernel_spec)]() mutable {
+                             return CompileToCubinImpl(
+                                 kernel_spec, fingerprint,
+                                 std::move(kernel_source));
+                           });
 }
 
 absl::StatusOr<std::vector<uint8_t>>
-CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
+CubinCustomKernelCompiler::CompileToCubinImpl(
+    absl::optional_ref<const GpuKernelSpec> spec, absl::string_view fingerprint,
+    LlvmKernelSource kernel_source) {
   llvm::orc::ThreadSafeModule thread_safe_module =
       std::move(kernel_source).thread_safe_module();
   llvm::Module* llvm_module = thread_safe_module.getModuleUnlocked();
@@ -138,16 +147,17 @@ CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
     pre_optimization_hook()(*llvm_module);
   }
 
-  ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
-                   compiler_(*llvm_module, device_info_, debug_options_));
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> cubin,
+      compiler_(*llvm_module, spec, fingerprint, device_info_, debug_options_));
   return cubin;
 }
 
 absl::StatusOr<std::vector<uint8_t>>
 CubinCustomKernelCompiler::CompileMlirToCubinImpl(
     const GpuKernelSpec& spec, MlirKernelSource mlir_source,
-    BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-    int unroll_factor) {
+    absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+    const HloModule& hlo_module, int unroll_factor) {
   mlir::MLIRContext* mlir_context =
       borrowed_context ? borrowed_context->get() : mlir_source.mlir_context();
   TF_RET_CHECK(mlir_context != nullptr);
@@ -165,17 +175,17 @@ CubinCustomKernelCompiler::CompileMlirToCubinImpl(
   ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
       device_info_, spec.launch_dimensions(), spec.name(), data_layout_,
       target_triple_, llvm_source.module()));
-  return CompileToCubinImpl(std::move(llvm_source));
+  return CompileToCubinImpl(spec, fingerprint, std::move(llvm_source));
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     Thunk::ThunkInfo thunk_info, MlirKernelDefinition kernel_def,
-    BorrowedMlirContext borrowed_context, const HloModule& hlo_module,
-    int unroll_factor) {
+    absl::string_view fingerprint, BorrowedMlirContext borrowed_context,
+    const HloModule& hlo_module, int unroll_factor) {
   const GpuKernelSpec& spec = kernel_def.spec();
   ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
                    CompileMlirToCubinImpl(
-                       spec, std::move(kernel_def).TakeSource(),
+                       spec, std::move(kernel_def).TakeSource(), fingerprint,
                        std::move(borrowed_context), hlo_module, unroll_factor));
 
   ABSL_ASSIGN_OR_RETURN(

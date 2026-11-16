@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
@@ -135,7 +136,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -383,10 +383,11 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       emitters::KernelArguments args,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
+  std::string fingerprint = emitters::GetComputationFingerprint(
+      fusion.fused_instructions_computation(), args.args(),
+      /*discriminator=*/"MlirKernelFusion");
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      fusion.fused_instructions_computation(), args,
-      /*discriminator=*/"MlirKernelFusion",
-      [&]() -> xla::Future<KernelReuseCache::Entry> {
+      fingerprint, args, [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
             std::string(fusion.name()));
         BorrowedMlirContext borrowed_context =
@@ -404,7 +405,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
         MlirKernelDefinition kernel_def(spec, std::move(source));
         return ir_emitter_context.kernel_compiler()
             ->CompileToTargetBinary(
-                std::move(kernel_def), std::move(borrowed_context),
+                std::move(kernel_def), fingerprint, std::move(borrowed_context),
                 *fusion.GetModule(), emitter_->unroll_factor())
             .Map([spec = std::move(spec)](std::vector<uint8_t> cubin) mutable {
               KernelReuseCache::Entry entry{

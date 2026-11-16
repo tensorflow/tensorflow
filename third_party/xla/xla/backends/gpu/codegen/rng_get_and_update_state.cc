@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -186,8 +187,9 @@ AsyncThunkSequence EmitRngGetAndUpdateState(
                      std::move(kernel_arguments), std::nullopt, use_pdl);
   MlirKernelDefinition kernel_def(
       std::move(spec), MlirKernelSource(nullptr, std::move(mlir_module)));
+  std::string fingerprint = instr->ToString(HloPrintOptions::Fingerprint());
   return ir_emitter_context->kernel_compiler()
-      ->Compile(std::move(thunk_info), std::move(kernel_def),
+      ->Compile(std::move(thunk_info), std::move(kernel_def), fingerprint,
                 std::move(borrowed_context), *instr->GetModule(),
                 /*unroll_factor=*/0)
       .Map([](std::unique_ptr<Thunk> thunk) {
