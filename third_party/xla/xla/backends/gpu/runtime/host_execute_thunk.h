@@ -169,6 +169,7 @@ class HostExecuteStartThunk : public Command {
 
  private:
   absl::once_flag executable_init_flag_;
+  absl::Status executable_init_status_;
   std::unique_ptr<HostOffloadingExecutable> executable_;
   absl::InlinedVector<ShapedSlice, 4> args_;
   absl::InlinedVector<ShapedSlice, 4> results_;

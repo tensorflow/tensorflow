@@ -588,17 +588,18 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
   }
   // NOTE(basioli): We load the executable here so that we don't get a deadlock
   // when locking llvm command line options.
-  absl::Status initialization_status = absl::OkStatus();
-  absl::call_once(executable_init_flag_, [this, &initialization_status]() {
+  absl::call_once(executable_init_flag_, [this]() {
     if (executable_ == nullptr) {
-      auto executable_or_status =
-          HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
-      initialization_status = executable_or_status.status();
-      if (initialization_status.ok()) {
-        executable_ = std::move(executable_or_status.value());
+      absl::StatusOr<std::unique_ptr<HostOffloadingNanoRtExecutable>>
+          executable =
+              HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
+      executable_init_status_ = executable.status();
+      if (executable_init_status_.ok()) {
+        executable_ = *std::move(executable);
       }
     }
   });
+  ABSL_RETURN_IF_ERROR(executable_init_status_);
 
   ABSL_ASSIGN_OR_RETURN(std::shared_ptr<HostExecuteCallFrame> call_frame,
                    HostExecuteCallFrame::Create(
@@ -609,7 +610,7 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
   (*params.execution_scoped_state)[thunk_info().thunk_id] =
       std::move(call_frame);
 
-  return initialization_status;
+  return absl::OkStatus();
 }
 
 absl::Status HostExecuteStartThunk::ExecuteOnStream(

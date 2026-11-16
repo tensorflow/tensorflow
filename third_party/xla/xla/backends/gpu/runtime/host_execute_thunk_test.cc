@@ -671,6 +671,38 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
   EXPECT_TRUE(execute_event.IsError());
 }
 
+TEST(HostExecuteStartThunkTest, InitializeReturnsLoadError) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  // NanoRt cannot load an executable of another type.
+  HostOffloadingExecutableProto executable_proto;
+  executable_proto.set_executable_type(
+      HostOffloadingExecutableProto::EXECUTABLE_TYPE_PJRT);
+  executable_proto.mutable_aot_compilation_result();
+  HostExecuteStartThunk thunk(Thunk::ThunkInfo(), executable_proto,
+                              /*args=*/{}, /*results=*/{});
+
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  Thunk::ExecutionScopedState scoped_state;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
+  init_params.executor = stream_executor;
+  init_params.buffer_allocations = &allocations;
+  init_params.stream = stream.get();
+  init_params.execution_scoped_state = &scoped_state;
+
+  EXPECT_THAT(thunk.Initialize(init_params),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("EXECUTABLE_TYPE_NANORT")));
+  // The load runs only once; a later call must return the same load error.
+  EXPECT_THAT(thunk.Initialize(init_params),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("EXECUTABLE_TYPE_NANORT")));
+  EXPECT_TRUE(scoped_state.empty());
+}
+
 TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
