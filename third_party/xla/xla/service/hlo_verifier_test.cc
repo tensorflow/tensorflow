@@ -8209,5 +8209,64 @@ TEST_F(HloVerifierTest, FmaValidAndInvalid) {
                                  "floating for fma operation; got S32.")));
 }
 
+TEST_F(HloVerifierTest, VariadicScatterDifferentFloatPrecisionsAllowed) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule variadic_scatter_mixed_floats
+
+  comb {
+    a0 = f32[] parameter(0)
+    a1 = bf16[] parameter(1)
+    b0 = f32[] parameter(2)
+    b1 = bf16[] parameter(3)
+    sum0 = f32[] add(a0, b0)
+    sum1 = bf16[] add(a1, b1)
+    ROOT t = (f32[], bf16[]) tuple(sum0, sum1)
+  }
+
+  ENTRY main {
+    x0 = f32[8,16] parameter(0)
+    x1 = bf16[8,16] parameter(1)
+    idx = s32[4,1] parameter(2)
+    up0 = f32[4,16] parameter(3)
+    up1 = bf16[4,16] parameter(4)
+    ROOT s = (f32[8,16], bf16[8,16]) scatter(x0, x1, idx, up0, up1),
+        update_window_dims={1},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=comb
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, ScatterSlotPrecisionMismatchRejected) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule scatter_slot_precision_mismatch
+
+  comb {
+    a0 = f32[] parameter(0)
+    b0 = f32[] parameter(1)
+    ROOT s0 = f32[] add(a0, b0)
+  }
+
+  ENTRY main {
+    x0 = f32[8,16] parameter(0)
+    idx = s32[4,1] parameter(1)
+    up0 = bf16[4,16] parameter(2)
+    ROOT s = f32[8,16] scatter(x0, idx, up0),
+        update_window_dims={1},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=comb
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Shape mismatch between to_apply computation "
+                                 "parameter and operand 2")));
+}
+
 }  // namespace
 }  // namespace xla

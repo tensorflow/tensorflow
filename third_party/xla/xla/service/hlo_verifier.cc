@@ -1433,11 +1433,20 @@ absl::Status ShapeVerifier::HandleGetTupleElement(
 }
 
 namespace {
+// Checks that each operand of `instruction` has the same element type as its
+// corresponding `to_apply` parameter (used by reduce, map, reduce_window, and
+// scatter). `skip_operand_index` skips an operand with no `to_apply` parameter,
+// such as `scatter_indices` in scatter.
 absl::Status SameElementTypesForOperandsAndToApplyParameters(
-    const HloInstruction& instruction, int64_t num_operands_to_check) {
+    const HloInstruction& instruction, int64_t num_operands_to_check,
+    std::optional<int64_t> skip_operand_index = std::nullopt) {
   const ProgramShape& to_apply = instruction.to_apply()->ComputeProgramShape();
-  for (int i = 0; i < num_operands_to_check; ++i) {
-    const Shape& parameter_shape = to_apply.parameters(i);
+  int64_t parameter_idx = 0;
+  for (int64_t i = 0; i < num_operands_to_check; ++i) {
+    if (i == skip_operand_index) {
+      continue;
+    }
+    const Shape& parameter_shape = to_apply.parameters(parameter_idx++);
     const Shape& operand_shape = instruction.operands()[i]->shape();
     if (!ShapeUtil::SameElementType(parameter_shape, operand_shape)) {
       return InvalidArgument(
@@ -2693,6 +2702,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
@@ -2741,10 +2751,17 @@ absl::Status ShapeVerifier::HandleScatter(HloInstruction* scatter) {
   for (const HloInstruction* operand : scatter->operands()) {
     arg_shapes.push_back(&operand->shape());
   }
-  return CheckShape(scatter,
-                    ShapeInference::InferScatterShape(
-                        arg_shapes, scatter->to_apply()->ComputeProgramShape(),
-                        scatter->scatter_dimension_numbers()));
+  ABSL_RETURN_IF_ERROR(CheckShape(
+      scatter, ShapeInference::InferScatterShape(
+                   arg_shapes, scatter->to_apply()->ComputeProgramShape(),
+                   scatter->scatter_dimension_numbers())));
+  if (opts_.allow_mixed_precision) {
+    return absl::OkStatus();
+  }
+  const int64_t indices_operand_index =
+      Cast<HloScatterInstruction>(scatter)->scatter_operand_count();
+  return SameElementTypesForOperandsAndToApplyParameters(
+      *scatter, scatter->operand_count(), indices_operand_index);
 }
 
 absl::Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
