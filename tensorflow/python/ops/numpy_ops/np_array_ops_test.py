@@ -971,6 +971,11 @@ class ArrayMethodsTest(test.TestCase):
             with self.assertRaisesRegex(
                 ValueError, 'zero-size array to reduction operation'):
               fn(arr, axis=axis_arg)
+          if isinstance(axis, tuple):
+            tensor_axis = tuple(ops.convert_to_tensor(a) for a in axis)
+            with self.assertRaisesRegex(
+                ValueError, 'zero-size array to reduction operation'):
+              fn(arr, axis=tensor_axis)
 
   def testAMaxAMinEmptyReductionInvalidAxis(self):
     # Invalid axes are reported as such rather than masked by the empty check.

@@ -656,6 +656,17 @@ def _raise_if_empty_reduction(a, axis, op_name):
     axis = tensor_util.constant_value(axis)
     if axis is None:
       return
+  elif isinstance(axis, (list, tuple)):
+    axis_vals = []
+    for ax in axis:
+      if isinstance(ax, tensor_lib.Tensor):
+        val = tensor_util.constant_value(ax)
+        if val is None:
+          return
+        axis_vals.append(val)
+      else:
+        axis_vals.append(ax)
+    axis = tuple(axis_vals)
   if isinstance(axis, np.ndarray):
     axis = axis.item() if axis.ndim == 0 else tuple(axis.tolist())
   axes = axis if isinstance(axis, (list, tuple, range)) else (axis,)
