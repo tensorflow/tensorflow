@@ -1480,10 +1480,14 @@ class ArrayMethodsTest(test.TestCase):
         ValueError, r'axis 0 is out of bounds for array of dimension 0'
     ):
       np_array_ops.squeeze(np.array(5), axis=0)
-    # 0-D array as axis
+    # 0-D and 1-D numpy array as axis
     self.match(
         np_array_ops.squeeze(a, axis=np.array(1)),
         np.squeeze(a, axis=np.array(1)),
+    )
+    self.match(
+        np_array_ops.squeeze(np.ones((1, 2, 1)), axis=np.array([0, 2])),
+        np.squeeze(np.ones((1, 2, 1)), axis=np.array([0, 2])),
     )
     with self.assertRaisesRegex(
         ValueError,

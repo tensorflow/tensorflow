@@ -1148,6 +1148,10 @@ def squeeze(a, axis=None):
                 'cannot select an axis to squeeze out which has size'
                 ' not equal to one'
             )
+  if isinstance(axis, np.ndarray):
+    axis = axis.tolist()
+  elif isinstance(axis, np.integer):
+    axis = int(axis)
   return array_ops.squeeze(a, axis)
 
 
