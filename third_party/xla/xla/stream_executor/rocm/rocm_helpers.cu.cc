@@ -194,6 +194,11 @@ __device__ __forceinline__ void copy_shared_to_global(void* shared_src,
   }
 }
 
+// The SetUserArgsKernel* kernels below build hipblaslt_ext::UserArguments in
+// uninitialized LDS and copy whole structs to global memory, so every field
+// must be written. Note that `reserved` is not padding: hipBLASLt kernels load
+// it as BiasStride and, when nonzero, use it as the bias buffer length, so
+// loads past it return 0. Setting it to 0 makes them use M or N instead.
 template <typename T>
 __launch_bounds__(BLOCK_SIZE) __global__
     void SetUserArgsKernelRaggedInNonContractingDim(
@@ -317,6 +322,7 @@ __launch_bounds__(BLOCK_SIZE) __global__
       arg.scaleAlphaVec = nullptr;
       arg.bias = const_cast<void*>(bias);
       arg.biasType = bias_type;
+      arg.reserved = 0;  // BiasStride, see the note above.
       arg.e = nullptr;
       // Use activation parameters (always 0.0 from hipBLASLt defaults)
       arg.act0 = 0.0f;
@@ -449,6 +455,7 @@ __launch_bounds__(BLOCK_SIZE) __global__
       arg.scaleAlphaVec = nullptr;
       arg.bias = const_cast<void*>(bias);
       arg.biasType = bias_type;
+      arg.reserved = 0;  // BiasStride, see the note above.
       arg.e = nullptr;
       // Use activation parameters (always 0.0 from hipBLASLt defaults)
       arg.act0 = 0.0f;
@@ -579,6 +586,7 @@ __launch_bounds__(BLOCK_SIZE) __global__ void SetUserArgsKernelRaggedInBatchDim(
       arg.scaleAlphaVec = nullptr;
       arg.bias = const_cast<void*>(bias);
       arg.biasType = bias_type;
+      arg.reserved = 0;  // BiasStride, see the note above.
       arg.e = nullptr;
       // Use activation parameters (always 0.0 from hipBLASLt defaults)
       arg.act0 = 0.0f;
