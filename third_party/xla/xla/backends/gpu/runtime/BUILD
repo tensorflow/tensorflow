@@ -3863,6 +3863,54 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "thunk_test_utils",
+    testonly = True,
+    srcs = ["thunk_test_utils.cc"],
+    hdrs = ["thunk_test_utils.h"],
+    deps = [
+        ":collective_clique_requests",
+        ":collective_cliques",
+        ":collective_memory",
+        ":collective_memory_requests",
+        ":collective_params",
+        ":command_buffer_requests",
+        ":execution_stream_id",
+        ":thunk",
+        "//xla:custom_options",
+        "//xla/ffi:execution_context",
+        "//xla/service:buffer_assignment",
+        "//xla/service:service_executable_run_options",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_test_utils_test",
+    srcs = ["thunk_test_utils_test.cc"],
+    deps = [
+        ":collective_clique_requests",
+        ":collective_cliques",
+        ":collective_memory_requests",
+        ":command_buffer_requests",
+        ":thunk",
+        ":thunk_test_utils",
+        "//xla:custom_options",
+        "//xla:executable_run_options",
+        "//xla/ffi:execution_context",
+        "//xla/service:service_executable_run_options",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:mock_stream",
+        "//xla/stream_executor:mock_stream_executor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "thunk_executor",
     srcs = ["thunk_executor.cc"],
     hdrs = ["thunk_executor.h"],
