@@ -170,13 +170,6 @@ common --legacy_external_runfiles=true
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
 
-# external_include_paths feature forces passing external repositories headers
-# via -isystem alters how Clang resolves their file paths. This feature with
-# old versions of rules_cc triggering errors.
-# Following lines can be removed after rules_cc will be updated to >= 0.2.22
-common --features=-external_include_paths
-common --host_features=-external_include_paths
-
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 common:clang_local --noincompatible_enable_cc_toolchain_resolution
 common:clang_local --noincompatible_enable_android_toolchain_resolution
@@ -550,10 +543,6 @@ common:windows --host_linkopt=/OPT:ICF
 
 # Verbose failure logs when something goes wrong
 common:windows --verbose_failures
-
-# Work around potential issues with large command lines on windows.
-# See: https://github.com/bazelbuild/bazel/issues/5163
-common:windows --features=compiler_param_file
 
 # Use old toolchains for Windows builds.
 common:windows --config=clang_local

@@ -625,7 +625,9 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
-        "@rules_cc//cc/common",
+        "@rules_cc//cc/common",  # copybara:comment
+        # copybara:uncomment "@rules_cc//cc/common:cc_common",
+        # copybara:uncomment "@rules_cc//cc/common:cc_info",
     ],
 )
 

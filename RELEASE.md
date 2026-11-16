@@ -6,7 +6,23 @@
 
 ### Breaking Changes
 
-*   <BREAKING CHANGES GO HERE>
+*   **Build System**:
+    *   TensorFlow now requires Bazel **8.8.2** and builds with **Bzlmod**
+        (`MODULE.bazel`) enabled by default (`--enable_bzlmod
+        --noenable_workspace`). Legacy `--config=workspace` builds remain
+        temporarily available on Linux and macOS during the transition while
+        downstream projects migrate; Windows builds require Bzlmod.
+*   **C++ and CUDA Dependency Upgrades**:
+    *   `protobuf` upgraded to **33.6** (`protobuf` Python requirement bumped to
+        `6.33.6`): `Descriptor::name()`, `Descriptor::full_name()`, and related
+        accessors now return `absl::string_view`, and `MessageLite` requires
+        complete types in additional contexts.
+    *   `abseil-cpp` upgraded to **20260526.0**, `grpc` upgraded to **1.81.0**,
+        and `pybind11_bazel` upgraded to **3.0.0** (with `pybind11_abseil`
+        static status caster registration).
+    *   CUDA `CCCL` upgraded to **3.4.0** (`Thrust 3.2+`, which replaces
+        `thrust::detail::iterator_facade_category` with
+        `thrust::detail::iterator_facade_category_t`).
 
 ### Known Caveats
 

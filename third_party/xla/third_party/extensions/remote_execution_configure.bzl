@@ -17,6 +17,10 @@
 
 load("//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 
+def _remote_execution_configure_ext_impl(mctx):
+    remote_execution_configure(name = "local_config_remote_execution")
+    return mctx.extension_metadata(reproducible = True)
+
 remote_execution_configure_ext = module_extension(
-    implementation = lambda mctx: remote_execution_configure(name = "local_config_remote_execution"),
+    implementation = _remote_execution_configure_ext_impl,
 )

@@ -317,8 +317,8 @@ genrule(
     srcs = ["setup.py.tpl"],
     outs = ["setup.py"],
     cmd = """
-      $(location :modify_setup_py_binary) \\
-          --template_file $(location setup.py.tpl) \\
+      $(execpath :modify_setup_py_binary) \\
+          --template_file $(execpath setup.py.tpl) \\
           --output_file $(OUTS) \\
           --nvidia_wheel_versions_data '{nvidia_wheel_versions}' \\
           --tf_version "{wheel_version}{wheel_version_suffix}" \\

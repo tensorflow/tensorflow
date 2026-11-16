@@ -39,10 +39,11 @@ rc_number_repo = repository_rule(
 )
 
 # bzlmod implementation
-def _rc_number_ext_impl(mctx):  # @unused
+def _rc_number_ext_impl(mctx):
     rc_number_repo(
         name = "rc_number",
     )
+    return mctx.extension_metadata(reproducible = True)
 
 rc_number_repo_bzlmod = module_extension(
     implementation = _rc_number_ext_impl,

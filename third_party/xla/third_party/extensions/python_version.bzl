@@ -51,6 +51,10 @@ python_version_repo = repository_rule(
     ],
 )
 
+def _python_version_ext_impl(mctx):
+    python_version_repo(name = "python_version_repo")
+    return mctx.extension_metadata(reproducible = True)
+
 python_version_ext = module_extension(
-    implementation = lambda mctx: python_version_repo(name = "python_version_repo"),
+    implementation = _python_version_ext_impl,
 )
