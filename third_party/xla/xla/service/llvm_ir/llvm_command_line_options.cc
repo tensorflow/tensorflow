@@ -114,15 +114,15 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
       ++idx;
     }
 
-    // Parse the per-context library options into a context that is copied
-    // into each LLVMContext by ApplyLibraryOptions, then parse the options
-    // globally.
-    delete GetActiveLibraryOptions();
-    GetActiveLibraryOptions() = new llvm::cl::LibraryOptionsContext();
+    // Parse the options, setting the library options (most CodeGen, MC,
+    // target and pass options) in a context that ApplyLibraryOptions copies
+    // into each LLVMContext and that TargetMachines read through
+    // GetLibraryOptions(). cl::ParseCommandLineOptions does not recognize
+    // library options. Reset the context in place, so that it outlives the
+    // TargetMachines that point to it.
+    GetActiveLibraryOptions()->assign(llvm::cl::LibraryOptionsContext());
     llvm::cl::ResetAllOptionOccurrences();
     llvm::cl::parseCommandLineOptions(*GetActiveLibraryOptions(), fake_argv);
-    llvm::cl::ResetAllOptionOccurrences();
-    llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
     GetXlaOptionsInitializedSentinel().setValue(true);
     SyncRegisterAllocatorDefault();
 

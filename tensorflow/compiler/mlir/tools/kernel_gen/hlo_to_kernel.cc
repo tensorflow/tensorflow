@@ -85,6 +85,10 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 
   llvm::TargetOptions target_options = llvm::codegen::getTargetOptions(
       llvm::cl::LibraryOptionsContext(), llvm::Triple());
+  // getTargetOptions() stores the address of its (temporary) context in
+  // MCOptions.LibraryOptions. Reset it so that LLVM reads the global options
+  // instead of a dangling pointer.
+  target_options.MCOptions.LibraryOptions = nullptr;
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
       triple, "generic", "", target_options, llvm::Reloc::Model::PIC_));
 }
