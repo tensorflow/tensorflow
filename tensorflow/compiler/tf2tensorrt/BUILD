@@ -63,20 +63,12 @@ config_setting(
     define_values = {"use_efficient_nms_plugin": "1"},
 )
 
-# Config setting to conditionally link GPU targets.
-alias(
-    name = "efficient_nms_plugin_wrapper",
-    actual = if_google(
-        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
-        "@tensorrt_oss_archive//:nvinfer_plugin_nms",
-    ),
-)
-
 cc_library(
     name = "efficient_nms_plugin",
-    deps = if_tensorrt([
-        ":efficient_nms_plugin_wrapper",
-    ]),
+    deps = if_tensorrt(if_google(
+        ["//third_party/tensorrt/plugin:nvinfer_plugin_nms"],
+        ["@tensorrt_oss_archive//:nvinfer_plugin_nms"],
+    )),
 )
 
 cc_library(
@@ -96,10 +88,13 @@ cc_library(
 
 alias(
     name = "tensorrt_lib",
-    actual = select({
-        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
-        "//conditions:default": ":tensorrt_stub",
-    }),
+    actual = if_tensorrt(
+        select({
+            "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
+            "//conditions:default": ":tensorrt_stub",
+        }),
+        ":tensorrt_stub",
+    ),
     visibility = ["//visibility:private"],
 )
 
@@ -1050,10 +1045,10 @@ tf_cuda_library(
     name = "py_utils",
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
-    local_defines = select({
+    local_defines = if_tensorrt(select({
         "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
         "//conditions:default": [],
-    }),
+    })),
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",
