@@ -985,6 +985,7 @@ cc_library(
     srcs = ["dynamic_dimension_simplifier.cc"],
     hdrs = ["dynamic_dimension_simplifier.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1011,10 +1012,14 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_creation_utils",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
 )

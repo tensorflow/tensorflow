@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -64,6 +66,7 @@ namespace {
 
 namespace m = ::xla::match;
 namespace op = xla::testing::opcode_matchers;
+using ::absl_testing::IsOkAndHolds;
 
 OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
   if (hlo->opcode() != HloOpcode::kCustomCall) {
@@ -2755,6 +2758,44 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
   ASSERT_OK_AND_ASSIGN(bool changed, RunPadder(/*slice_dynamic_output=*/true));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(DynamicPadderTest, ReplaceSetBoundIgnoresLayout) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule main
+
+    ENTRY main {
+      p0 = s32[2,4]{0,1} parameter(0)
+      r = s32[2,4]{1,0} reshape(p0)
+      ROOT sb = s32[2,4]{1,0} custom-call(r), custom_call_target="SetBound", literal=s32[] 2
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  DynamicDimensionSimplifier simplifier;
+  EXPECT_THAT(simplifier.Run(module_.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunPadder(), IsOkAndHolds(true));
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              op::Parameter(0));
+}
+
+TEST_F(DynamicPadderTest, ReplaceSetSizeIgnoresLayout) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule main
+
+    ENTRY main {
+      p0 = s32[2,4]{0,1} parameter(0)
+      r = s32[2,4]{1,0} reshape(p0)
+      sb = s32[2,4]{1,0} custom-call(r), custom_call_target="SetBound", literal=s32[] 2
+      size = s32[] constant(2)
+      ROOT sds = s32[<=2,4]{1,0} set-dimension-size(sb, size), dimensions={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHlo));
+  DynamicDimensionSimplifier simplifier;
+  EXPECT_THAT(simplifier.Run(module_.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunPadder(), IsOkAndHolds(true));
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              op::Parameter(0));
 }
 
 }  // namespace

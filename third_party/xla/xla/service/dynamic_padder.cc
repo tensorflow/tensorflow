@@ -222,7 +222,7 @@ absl::StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
     return false;
   }
 
-  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(
       instr->shape(), instr->operand(0)->shape()))
       << "instr->shape() " << instr->shape().ToString() << " , "
       << "instruction operand shape " << instr->operand(0)->shape();
@@ -238,7 +238,7 @@ absl::StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
     return false;
   }
 
-  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(
       instr->shape(), instr->operand(0)->shape()))
       << "instr->shape() " << instr->shape().ToString() << " , "
       << "instruction operand shape " << instr->operand(0)->shape();
