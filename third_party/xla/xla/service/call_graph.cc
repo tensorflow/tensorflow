@@ -468,6 +468,9 @@ std::vector<HloInstruction*> CallGraph::GetComputationCallers(
 std::pair<HloInstruction*, HloInstruction*>
 CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
                                              HloInstruction* b) const {
+  if (a != nullptr && b != nullptr && a->parent() == b->parent()) {
+    return {a, b};
+  }
   // Lambda which returns the next instruction in the callee->caller chain in
   // the call graph. This is the unique instruction which calls the computation
   // containing 'instruction'. If more than one instruction calls the

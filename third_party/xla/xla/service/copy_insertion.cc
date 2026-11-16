@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/compile_time_cap.h"
 #include "xla/service/copy_removal.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_buffer.h"
@@ -1925,7 +1924,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   int64_t num_iterations = -1;
   VLOG(6) << "Copy removal analyzing module (" << module->name()
           << ") with instruction count = " << module->instruction_count();
-  BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
+  const bool use_region_analysis = use_region_based_live_range_analysis_ != 0;
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -1938,17 +1937,8 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
         if (instruction->opcode() != HloOpcode::kCopy) {
           continue;
         }
-
-        // The region_analysis_cost_now is always set to
-        // use_region_based_live_range_analysis_ if it is < 0, in which case the
-        // analysis is always performed.
-        int64_t region_analysis_cost_now =
-            (use_region_based_live_range_analysis_ == 0)
-                ? 0
-                : std::min(allowance.analysis_allowance(),
-                           use_region_based_live_range_analysis_);
         if (copy_remover.TryElideCopy(
-                instruction, &region_analysis_cost_now,
+                instruction, use_region_analysis,
                 insert_post_scheduling_control_dependencies,
                 should_skip_removal_)) {
           changed = true;
@@ -1958,13 +1948,6 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
           VLOG(3) << "Copy removed successfully: " << instruction->ToString();
           XLA_VLOG_LINES(
               6, absl::StrCat("   Resulting Module: ", module->ToString()));
-        }
-        if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
-          VLOG(6) << "Copy Insertion analyzing module cost: "
-                  << region_analysis_cost_now;
-          VLOG(6) << "instruction:" << instruction->ToString();
-          allowance.DeductCost(region_analysis_cost_now);
-          VLOG(6) << "allowance:" << allowance.analysis_allowance();
         }
       }
     }

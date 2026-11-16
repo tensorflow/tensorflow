@@ -6419,7 +6419,7 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
-  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   HloComputation* branch_0 = module->GetComputationWithName("branch_0");
   HloComputation* branch_1 = module->GetComputationWithName("branch_1");
@@ -6476,7 +6476,7 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
-  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   EXPECT_EQ(CountCopies(*module), 0);
 
@@ -6533,6 +6533,82 @@ ENTRY main {
   ASSERT_NE(outer_fusion_comp, nullptr);
   EXPECT_EQ(CountCopies(*outer_fusion_comp), 0);
   EXPECT_GT(CountCopies(*module->entry_computation()), 0);
+}
+
+TEST_F(CopyInsertionTest, RegionAnalysisElidesCopyWithManyUnorderedReaders) {
+  absl::string_view hlo_string = R"hlo(
+HloModule RegionAnalysisManyUnorderedReaders
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  upd = f32[1] parameter(1)
+  idx = s32[] parameter(2)
+  src = f32[16] add(p0, p0)
+  r0 = f32[16] negate(src)
+  r1 = f32[16] negate(src)
+  r2 = f32[16] negate(src)
+  r3 = f32[16] negate(src)
+  r4 = f32[16] negate(src)
+  r5 = f32[16] negate(src)
+  r6 = f32[16] negate(src)
+  r7 = f32[16] negate(src)
+  anchor = f32[1] slice(r0), slice={[0:1]}
+  upd_anchored = f32[1] add(upd, anchor)
+  dus = f32[16] dynamic-update-slice(src, upd_anchored, idx)
+  ROOT out = (f32[16], f32[16], f32[16], f32[16], f32[16],
+              f32[16], f32[16], f32[16], f32[16])
+      tuple(dus, r0, r1, r2, r3, r4, r5, r6, r7)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  EXPECT_EQ(CountCopies(*module), 0);
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* dus = entry->GetInstructionWithName("dus");
+  ASSERT_NE(dus, nullptr);
+  std::unique_ptr<HloReachabilityMap> reachability =
+      HloReachabilityMap::Build(entry);
+  for (int i = 0; i < 8; ++i) {
+    const HloInstruction* reader =
+        entry->GetInstructionWithName(absl::StrCat("r", i));
+    ASSERT_NE(reader, nullptr);
+    EXPECT_TRUE(reachability->IsReachable(reader, dus)) << reader->name();
+  }
+}
+
+TEST_F(CopyInsertionTest,
+       RegionAnalysisPreservesCopyWhenPostUpdateReadInterferes) {
+  absl::string_view hlo_string = R"hlo(
+HloModule RegionAnalysisPostUpdateReadInterferes
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  upd = f32[1] parameter(1)
+  idx = s32[] parameter(2)
+  src = f32[16] add(p0, p0)
+  r0 = f32[16] negate(src)
+  r1 = f32[16] negate(src)
+  r2 = f32[16] negate(src)
+  r3 = f32[16] negate(src)
+  anchor = f32[1] slice(r0), slice={[0:1]}
+  upd_anchored = f32[1] add(upd, anchor)
+  dus = f32[16] dynamic-update-slice(src, upd_anchored, idx)
+  post_read = f32[16] add(src, dus)
+  ROOT out = (f32[16], f32[16], f32[16], f32[16], f32[16], f32[16])
+      tuple(dus, post_read, r0, r1, r2, r3)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
