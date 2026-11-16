@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -60,6 +61,10 @@ absl::Status LowerLauncherModuleToLlvmDialect(
   pm.enableVerifier(should_verify);
   pm.addPass(emitters::createLowerTensorsPass(device_info));
   pm.addPass(emitters::createMergePointersToSameSlicePass());
+  // Remove the launcher's block and thread guards that are statically known to
+  // hold, then lower the remaining `xla.apply_indexing` ops to `arith`.
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createSimplifyArithPass());
+  pm.addPass(emitters::createSimplifyAffinePass());
   pm.addPass(createConvertIndexTypePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
   pm.addPass(emitters::createLowerToLLVMGPUPass(device_info));

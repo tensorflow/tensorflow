@@ -147,8 +147,8 @@ ENTRY main {
     // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias},
     // CHECK-SAME:    %[[ARG3:[^:]+]]: !llvm.ptr {llvm.noalias})
     // CHECK-SAME:    attributes {xla.backend_kind = #xla.backend_kind<gpu>, xla.entry}
+    // CHECK-DAG:     %[[CN8:.*]] = llvm.mlir.constant(-8 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
-    // CHECK-DAG:     %[[C24:.*]] = llvm.mlir.constant(24 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
@@ -156,14 +156,9 @@ ENTRY main {
     // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:         llvm.br ^[[EXIT:bb[0-9]+]]
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C24]] : i32
-    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
-    // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
-    // CHECK:         llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
-    // CHECK:         llvm.br ^[[ELSE1]]
-    // CHECK:       ^[[ELSE1]]:
-    // CHECK:         llvm.br ^[[EXIT]]
+    // CHECK-NEXT:    %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN8]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-NEXT:    llvm.br ^[[EXIT]]
     // CHECK:       ^[[EXIT]]:
     // CHECK:         llvm.return
     // CHECK:       llvm.func internal @fusion_nested_0(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {xla.backend_kind = #xla.backend_kind<gpu>, passthrough = ["alwaysinline"]}
@@ -249,9 +244,10 @@ ENTRY main {
     // CHECK-SAME:    %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
     // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias},
     // CHECK-SAME:    %[[ARG3:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-DAG:     %[[CN1:.*]] = llvm.mlir.constant(-1 : i32) : i32
+    // CHECK-DAG:     %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
     // CHECK-DAG:     %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
     // CHECK-DAG:     %[[C64:.*]] = llvm.mlir.constant(64 : i32) : i32
-    // CHECK-DAG:     %[[C17:.*]] = llvm.mlir.constant(17 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK-DAG:     %[[TID:.*]] = nvvm.read.ptx.sreg.tid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C1]] : i32
@@ -260,16 +256,14 @@ ENTRY main {
     // CHECK:         %[[TID_OK:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
     // CHECK:         llvm.cond_br %[[TID_OK]], ^[[CALL0:bb[0-9]+]], ^[[JOIN0:bb[0-9]+]]
     // CHECK:       ^[[CALL0]]:
-    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG0]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG0]], %[[ARG2]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:         llvm.br ^[[JOIN0]]
     // CHECK:       ^[[JOIN0]]:
     // CHECK:         llvm.br ^[[EXIT:bb[0-9]+]]
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C17]] : i32
-    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
-    // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C1]] : i32
-    // CHECK:         llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-NEXT:    %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN1]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-NEXT:    llvm.br ^[[EXIT]]
     // CHECK:       llvm.func internal @fusion_nested_0(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {xla.backend_kind = #xla.backend_kind<gpu>, passthrough = ["alwaysinline"]}
   )"));
   EXPECT_TRUE(mlir_check);
@@ -573,9 +567,9 @@ ENTRY main {
     // CHECK-SAME:    %[[OUT2:[^:]+]]: !llvm.ptr,
     // CHECK-SAME:    %[[OUT3:[^:]+]]: !llvm.ptr {llvm.noalias})
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[CN8:.*]] = llvm.mlir.constant(-8 : i32) : i32
     // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
-    // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
@@ -587,10 +581,7 @@ ENTRY main {
     // CHECK:         llvm.icmp "ult" %[[BID]], %[[C4]] : i32
     // CHECK:         llvm.call @fusion_nested_1(%[[OUT0]], %[[OUT1]], %[[BID]])
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
-    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
-    // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
+    // CHECK-NEXT:    %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN8]] : i32
     // CHECK-NEXT:    llvm.call @fusion_nested_2(%[[ARG1]], %[[OUT2]], %[[REL_BID]])
     // CHECK-NEXT:    nvvm.cluster.arrive aligned
     // CHECK-NEXT:    nvvm.cluster.wait aligned
@@ -681,6 +672,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
     // CHECK-LABEL: llvm.func @fusion(
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[CN8:.*]] = llvm.mlir.constant(-8 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
     // CHECK-DAG:     %[[C11:.*]] = llvm.mlir.constant(11 : i32) : i32
     // CHECK-DAG:     %[[C128:.*]] = llvm.mlir.constant(128 : i32) : i32
@@ -699,7 +691,7 @@ ENTRY main {
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C11]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
+    // CHECK:         %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN8]] : i32
     // CHECK-NOT:     llvm.icmp "ult" %[[REL_BID]]
     // CHECK:         llvm.call @fusion_nested_2({{.*}}, %[[REL_BID]])
   )"));
@@ -819,6 +811,9 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
     // CHECK-LABEL: llvm.func @fusion(
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[CN19:.*]] = llvm.mlir.constant(-19 : i32) : i32
+    // CHECK-DAG:     %[[CN16:.*]] = llvm.mlir.constant(-16 : i32) : i32
+    // CHECK-DAG:     %[[CN8:.*]] = llvm.mlir.constant(-8 : i32) : i32
     // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
     // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
@@ -836,7 +831,7 @@ ENTRY main {
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID1:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
+    // CHECK:         %[[REL_BID1:.*]] = llvm.add %[[BID]], %[[CN8]] : i32
     // CHECK-NEXT:    llvm.icmp "ult" %[[REL_BID1]], %[[C4]] : i32
     // CHECK:         llvm.call @fusion_nested_2({{.*}}, %[[REL_BID1]])
     // CHECK:         nvvm.cluster.arrive aligned
@@ -847,13 +842,13 @@ ENTRY main {
     // CHECK:         %[[IN_2:.*]] = llvm.icmp "ult" %[[BID]], %[[C19]] : i32
     // CHECK:         llvm.cond_br %[[IN_2]], ^[[THEN2:bb[0-9]+]], ^[[ELSE2:bb[0-9]+]]
     // CHECK:       ^[[THEN2]]:
-    // CHECK:         %[[REL_BID2:.*]] = llvm.sub %[[BID]], %[[C16]] : i32
+    // CHECK:         %[[REL_BID2:.*]] = llvm.add %[[BID]], %[[CN16]] : i32
     // CHECK-NEXT:    llvm.call @fusion_nested_4({{.*}}, %[[REL_BID2]])
     // CHECK:       ^[[ELSE2]]:
     // CHECK:         %[[IN_3:.*]] = llvm.icmp "ult" %[[BID]], %[[C23]] : i32
     // CHECK:         llvm.cond_br %[[IN_3]], ^[[THEN3:bb[0-9]+]], ^[[ELSE3:bb[0-9]+]]
     // CHECK:       ^[[THEN3]]:
-    // CHECK:         %[[REL_BID3:.*]] = llvm.sub %[[BID]], %[[C19]] : i32
+    // CHECK:         %[[REL_BID3:.*]] = llvm.add %[[BID]], %[[CN19]] : i32
     // CHECK-NEXT:    llvm.call @fusion_nested_5({{.*}}, %[[REL_BID3]])
   )"));
   EXPECT_TRUE(mlir_check);
@@ -1017,6 +1012,8 @@ ENTRY main {
     // CHECK-SAME:    %[[OUT1:[^:]+]]: !llvm.ptr,
     // CHECK-SAME:    %[[OUT2:[^:]+]]: !llvm.ptr {llvm.noalias})
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 4, 1, 1>
+    // CHECK-DAG:     %[[CN1:.*]] = llvm.mlir.constant(-1 : i32) : i32
+    // CHECK-DAG:     %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
     // CHECK-DAG:     %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
     // CHECK-DAG:     %[[C3:.*]] = llvm.mlir.constant(3 : i32) : i32
     // CHECK-DAG:     %[[C64:.*]] = llvm.mlir.constant(64 : i32) : i32
@@ -1026,12 +1023,12 @@ ENTRY main {
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
     // CHECK:         %[[TID_OK:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
-    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[BID]])
+    // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[C0]])
     // CHECK:       ^[[ELSE0]]:
     // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C3]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C1]] : i32
+    // CHECK:         %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN1]] : i32
     // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[OUT1]], %[[REL_BID]])
     // CHECK:         nvvm.cluster.arrive aligned
     // CHECK:         nvvm.cluster.wait aligned
@@ -1474,9 +1471,10 @@ ENTRY main {
     // CHECK-NOT:     nvvm.cluster_dim
     // CHECK-SAME:  {
     // CHECK-NOT:     nvvm.cluster
+    // CHECK-DAG:     %[[CN1:.*]] = llvm.mlir.constant(-1 : i32) : i32
     // CHECK-DAG:     %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
     // CHECK-DAG:     %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
-    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
+    // CHECK-DAG:     %[[BAR_ID:.*]] = llvm.mlir.constant(1 : i32) : i32
     // CHECK-DAG:     %[[C128:.*]] = llvm.mlir.constant(128 : i32) : i32
     // CHECK-DAG:     %[[C64:.*]] = llvm.mlir.constant(64 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
@@ -1490,16 +1488,13 @@ ENTRY main {
     // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:         llvm.br ^[[BAR]]
     // CHECK:       ^[[BAR]]:
-    // CHECK:         nvvm.barrier id = %[[C1]]{{$}}
+    // CHECK:         nvvm.barrier id = %[[BAR_ID]]{{$}}
     // CHECK:         %[[TID1:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
     // CHECK:         llvm.cond_br %[[TID1]], ^[[P1_CALL:bb[0-9]+]], ^[[P1_MERGE:bb[0-9]+]]
     // CHECK:       ^[[P1_CALL]]:
     // CHECK:         llvm.call @fusion_nested_1(%[[OUT0]], %[[OUT1]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C4]] : i32
-    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
-    // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C1]] : i32
+    // CHECK-NEXT:    %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN1]] : i32
     // CHECK-NEXT:    llvm.call @fusion_nested_2(%[[ARG1]], %[[OUT2]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK-NOT:     nvvm.cluster
     // CHECK:       llvm.func internal @fusion_nested_0(
@@ -1507,6 +1502,128 @@ ENTRY main {
   EXPECT_TRUE(mlir_check) << mlir_str;
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       SingleBlockChildrenAtNonZeroBlockOffsetsFoldBlockIdAndGuards) {
+  // Places a 1-block leaf (`loop_1_block` at `block_offset = 4`) and a 1-block
+  // `__phased_block_cluster` (`cluster_0` at `block_offset = 5`) after a
+  // 4-block leaf (`loop_4_blocks` at `[0, 4)`). Both 1-block children have
+  // `xla.apply_indexing` range `[0, 0]`, so `SimplifyArithPass` folds their
+  // relative block IDs directly to constant `0` (without `llvm.add` offset
+  // arithmetic) and removes their inner `rel_bid < 1` guards as well as the
+  // last child's `bid < 6` guard.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+loop_4_blocks {
+  p0 = f32[512]{0} parameter(0)
+  ROOT neg = f32[512]{0} negate(p0)
+}
+
+loop_1_block {
+  p0 = f32[64]{0} parameter(0)
+  ROOT exp = f32[64]{0} exponential(p0)
+}
+
+c0_phase0 {
+  p0 = f32[128]{0} parameter(0)
+  ROOT abs = f32[128]{0} abs(p0)
+}
+
+c0_phase1 {
+  p0 = f32[128]{0} parameter(0)
+  rev = f32[128]{0} reverse(p0), dimensions={0}
+  ROOT neg = f32[128]{0} negate(rev)
+}
+
+cluster_0 {
+  p0 = f32[128]{0} parameter(0)
+  f0 = f32[128]{0} fusion(p0), kind=kLoop, calls=c0_phase0
+  f1 = f32[128]{0} fusion(f0), kind=kLoop, calls=c0_phase1
+  ROOT t = (f32[128]{0}, f32[128]{0}) tuple(f0, f1)
+}
+
+horizontal_comp {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[64]{0} parameter(1)
+  p2 = f32[128]{0} parameter(2)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=loop_4_blocks
+  f1 = f32[64]{0} fusion(p1), kind=kLoop, calls=loop_1_block
+  c0 = (f32[128]{0}, f32[128]{0}) fusion(p2), kind=kCustom, calls=cluster_0,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c0_0 = f32[128]{0} get-tuple-element(c0), index=0
+  c0_1 = f32[128]{0} get-tuple-element(c0), index=1
+  ROOT t = (f32[512]{0}, f32[64]{0}, f32[128]{0}, f32[128]{0})
+    tuple(f0, f1, c0_0, c0_1)
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[64]{0} parameter(1)
+  p2 = f32[128]{0} parameter(2)
+  ROOT fusion = (f32[512]{0}, f32[64]{0}, f32[128]{0}, f32[128]{0})
+    fusion(p0, p1, p2), kind=kCustom, calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ThreadBlockSpecializedFusion fusion_emitter(
+      HloFusionAnalysis::Create(*fusion, device_info_));
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 6);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_EQ(fusion_emitter.cluster_dim(), std::nullopt);
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                              /*buffer_assignment=*/nullptr));
+  std::string mlir_str;
+  llvm::raw_string_ostream(mlir_str) << *mlir_module;
+
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    %[[ARG0:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[OUT0:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[OUT1:[^:]+]]: !llvm.ptr {llvm.noalias},
+    // CHECK-SAME:    %[[OUT2:[^:]+]]: !llvm.ptr,
+    // CHECK-SAME:    %[[OUT3:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-NOT:     nvvm.cluster_dim
+    // CHECK-SAME:  {
+    // CHECK-DAG:     %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
+    // CHECK-DAG:     %[[C4:.*]] = llvm.mlir.constant(4 : i32) : i32
+    // CHECK-DAG:     %[[C5:.*]] = llvm.mlir.constant(5 : i32) : i32
+    // CHECK-DAG:     %[[C64:.*]] = llvm.mlir.constant(64 : i32) : i32
+    // CHECK-DAG:     %[[BAR_ID:.*]] = llvm.mlir.constant(1 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK-DAG:     %[[TID:.*]] = nvvm.read.ptx.sreg.tid.x : i32
+    // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C4]] : i32
+    // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
+    // CHECK:       ^[[THEN0]]:
+    // CHECK-NEXT:    llvm.call @fusion_nested_0(%[[ARG0]], %[[OUT0]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:       ^[[ELSE0]]:
+    // CHECK-NEXT:    %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C5]] : i32
+    // CHECK-NEXT:    llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
+    // CHECK:       ^[[THEN1]]:
+    // CHECK-NEXT:    %[[TID1:.*]] = llvm.icmp "ult" %[[TID]], %[[C64]] : i32
+    // CHECK-NEXT:    llvm.cond_br %[[TID1]], ^[[CALL1:bb[0-9]+]], ^[[JOIN1:bb[0-9]+]]
+    // CHECK:       ^[[CALL1]]:
+    // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[OUT1]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:       ^[[ELSE1]]:
+    // CHECK-NEXT:    llvm.call @fusion_nested_2(%[[ARG2]], %[[OUT2]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-NEXT:    nvvm.barrier id = %[[BAR_ID]]{{$}}
+    // CHECK-NEXT:    llvm.call @fusion_nested_3(%[[OUT2]], %[[OUT3]], %[[C0]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK:       llvm.func internal @fusion_nested_0(
+  )"));
+  EXPECT_TRUE(mlir_check) << mlir_str;
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(ThreadBlockSpecializedFusionTest,
@@ -1709,19 +1826,16 @@ ENTRY main {
     // CHECK-SAME:    %[[ARG1:[^:]+]]: !llvm.ptr {llvm.noalias},
     // CHECK-SAME:    %[[ARG2:[^:]+]]: !llvm.ptr {llvm.noalias},
     // CHECK-SAME:    %[[ARG3:[^:]+]]: !llvm.ptr {llvm.noalias})
+    // CHECK-DAG:     %[[CN8:.*]] = llvm.mlir.constant(-8 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
-    // CHECK-DAG:     %[[C24:.*]] = llvm.mlir.constant(24 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
     // CHECK:         llvm.call @fusion_nested_0(%[[ARG0]], %[[ARG2]], %[[BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C24]] : i32
-    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
-    // CHECK:       ^[[THEN1]]:
-    // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
-    // CHECK:         llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-NEXT:    %[[REL_BID:.*]] = llvm.add %[[BID]], %[[CN8]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_1(%[[ARG1]], %[[ARG3]], %[[REL_BID]]) : (!llvm.ptr, !llvm.ptr, i32) -> ()
     // CHECK:       llvm.func internal @fusion_nested_0(%{{.*}}: !llvm.ptr{{.*}}, %{{.*}}: !llvm.ptr{{.*}}, %{{.*}}: i32) attributes {{{.*}}passthrough = ["alwaysinline"]}
     // CHECK:       llvm.func internal @fusion_nested_1(%{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32) attributes {{{.*}}passthrough = ["alwaysinline"]}
   )"));

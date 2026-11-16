@@ -84,6 +84,9 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -130,35 +133,28 @@ std::vector<const NestedKernelSpec*> CollectLeafSpecs(
 }
 
 void EmitNode(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
-              mlir::Value rel_bid, mlir::Value tid, int64_t active_blocks,
-              int64_t active_threads, absl::Span<const mlir::Value> arg_ptrs,
+              mlir::Value rel_bid, mlir::Value tid,
+              absl::Span<const mlir::Value> arg_ptrs,
               const LeafDecls& leaf_decls);
 
-void EmitLeaf(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
-              mlir::Value rel_bid, mlir::Value tid, int64_t active_blocks,
-              int64_t active_threads, absl::Span<const mlir::Value> arg_ptrs,
-              const LeafDecls& leaf_decls) {
-  int64_t leaf_blocks = spec.launch_dims.num_blocks();
-  if (leaf_blocks < active_blocks) {
-    mlir::Value block_bound =
-        mlir::arith::ConstantIntOp::create(b, leaf_blocks, 32);
-    mlir::Value block_active = mlir::arith::CmpIOp::create(
-        b, mlir::arith::CmpIPredicate::ult, rel_bid, block_bound);
-    auto block_if =
-        mlir::scf::IfOp::create(b, block_active, /*withElseRegion=*/false);
-    b.setInsertionPointToStart(&block_if.getThenRegion().front());
-  }
+// Emits `if (value < bound)` and moves the insertion point of `b` into its
+// `then` region. `value` is an `index` with a known range, so
+// `SimplifyArithPass` removes the guard if it always holds.
+void EmitUpperBoundGuard(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
+                         int64_t bound) {
+  mlir::Value bound_val = mlir::arith::ConstantIndexOp::create(b, bound);
+  mlir::Value in_bounds = mlir::arith::CmpIOp::create(
+      b, mlir::arith::CmpIPredicate::ult, value, bound_val);
+  auto if_op = mlir::scf::IfOp::create(b, in_bounds, /*withElseRegion=*/false);
+  b.setInsertionPointToStart(&if_op.getThenRegion().front());
+}
 
-  int64_t leaf_threads = spec.launch_dims.num_threads_per_block();
-  if (leaf_threads < active_threads) {
-    mlir::Value tid_bound =
-        mlir::arith::ConstantIntOp::create(b, leaf_threads, 32);
-    mlir::Value tid_active = mlir::arith::CmpIOp::create(
-        b, mlir::arith::CmpIPredicate::ult, tid, tid_bound);
-    auto tid_if =
-        mlir::scf::IfOp::create(b, tid_active, /*withElseRegion=*/false);
-    b.setInsertionPointToStart(&tid_if.getThenRegion().front());
-  }
+void EmitLeaf(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
+              mlir::Value rel_bid, mlir::Value tid,
+              absl::Span<const mlir::Value> arg_ptrs,
+              const LeafDecls& leaf_decls) {
+  EmitUpperBoundGuard(b, rel_bid, spec.launch_dims.num_blocks());
+  EmitUpperBoundGuard(b, tid, spec.launch_dims.num_threads_per_block());
 
   llvm::SmallVector<mlir::Value> call_args;
   call_args.reserve(spec.input_arg_indices.size() +
@@ -169,13 +165,13 @@ void EmitLeaf(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
   for (int64_t arg_idx : spec.output_arg_indices) {
     call_args.push_back(arg_ptrs[arg_idx]);
   }
-  call_args.push_back(rel_bid);
+  call_args.push_back(
+      mlir::arith::IndexCastUIOp::create(b, b.getI32Type(), rel_bid));
   mlir::LLVM::CallOp::create(b, leaf_decls.at(spec.fusion), call_args);
 }
 
 void EmitHorizontal(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
                     mlir::Value rel_bid, mlir::Value tid,
-                    int64_t active_threads,
                     absl::Span<const mlir::Value> arg_ptrs,
                     const LeafDecls& leaf_decls) {
   int64_t cluster_x = spec.cluster_dim.has_value()
@@ -190,7 +186,7 @@ void EmitHorizontal(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
                                    : child_blocks;
     int64_t upper_bound = block_offset + allocated_blocks;
     mlir::Value bound_val =
-        mlir::arith::ConstantIntOp::create(b, upper_bound, 32);
+        mlir::arith::ConstantIndexOp::create(b, upper_bound);
     mlir::Value in_range = mlir::arith::CmpIOp::create(
         b, mlir::arith::CmpIPredicate::ult, rel_bid, bound_val);
 
@@ -199,16 +195,24 @@ void EmitHorizontal(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
         mlir::scf::IfOp::create(b, in_range, /*withElseRegion=*/has_else);
     b.setInsertionPointToStart(&if_op.getThenRegion().front());
 
-    mlir::Value child_rel_bid = rel_bid;
-    if (block_offset != 0) {
-      mlir::Value offset_val =
-          mlir::arith::ConstantIntOp::create(b, block_offset, 32);
-      child_rel_bid = mlir::arith::SubIOp::create(b, rel_bid, offset_val);
-    }
+    // On this path `rel_bid` is in `[block_offset, upper_bound)`.
+    // `SimplifyArithPass` does not derive ranges from the enclosing `scf.if`,
+    // so state the range of the child's block id explicitly. `xla.range` also
+    // keeps the op from being folded to `rel_bid` if `block_offset` is 0.
+    mlir::MLIRContext* ctx = b.getContext();
+    IndexingMap child_bid_map(
+        SymbolicMap::Get(ctx, /*num_dimensions=*/1, /*num_symbols=*/0,
+                         {CreateDimExpr(0, ctx) - block_offset}),
+        {IndexingMap::Variable{block_offset, upper_bound - 1}},
+        /*range_vars=*/{}, /*rt_vars=*/{});
+    mlir::Value child_rel_bid =
+        ApplyIndexingOp::create(b, /*dims=*/{rel_bid}, /*symbols=*/{},
+                                child_bid_map,
+                                Interval{0, allocated_blocks - 1})
+            .getResult(0);
     block_offset = upper_bound;
 
-    EmitNode(b, child, child_rel_bid, tid, allocated_blocks, active_threads,
-             arg_ptrs, leaf_decls);
+    EmitNode(b, child, child_rel_bid, tid, arg_ptrs, leaf_decls);
 
     if (has_else) {
       b.setInsertionPointToStart(&if_op.getElseRegion().front());
@@ -217,8 +221,8 @@ void EmitHorizontal(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
 }
 
 void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
-                mlir::Value rel_bid, mlir::Value tid, int64_t active_blocks,
-                int64_t active_threads, absl::Span<const mlir::Value> arg_ptrs,
+                mlir::Value rel_bid, mlir::Value tid,
+                absl::Span<const mlir::Value> arg_ptrs,
                 const LeafDecls& leaf_decls) {
   mlir::OpBuilder::InsertPoint caller_ip = b.saveInsertionPoint();
   auto is_single_block = [](const NestedKernelSpec& child) {
@@ -228,36 +232,30 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
   // Contiguous single-block phases execute exclusively on relative block 0
   // (`rel_bid < 1`) and share a single block-range guard so block barriers
   // synchronize them without flushing L1 via a cluster barrier.
-  mlir::Value c0 = mlir::arith::ConstantIntOp::create(b, 0, 32);
-  mlir::Value c1 = mlir::arith::ConstantIntOp::create(b, 1, 32);
+  mlir::Value c0 = mlir::arith::ConstantIndexOp::create(b, 0);
   std::optional<mlir::scf::IfOp> single_block_if;
   for (size_t idx = 0; idx < spec.children.size(); ++idx) {
     const NestedKernelSpec& child = spec.children[idx];
     const bool child_single_block = is_single_block(child);
     if (child_single_block) {
-      if (active_blocks > 1) {
-        // While block 0 executes single-block phases, all other blocks in the
-        // cluster skip ahead avoiding any synchronization between phases.
-        if (!single_block_if.has_value()) {
-          b.restoreInsertionPoint(caller_ip);
-          mlir::Value in_block0 = mlir::arith::CmpIOp::create(
-              b, mlir::arith::CmpIPredicate::ult, rel_bid, c1);
-          single_block_if =
-              mlir::scf::IfOp::create(b, in_block0, /*withElseRegion=*/false);
-        }
-        b.setInsertionPoint(single_block_if->thenYield());
-      } else {
+      // While block 0 executes single-block phases, all other blocks in the
+      // cluster skip ahead avoiding any synchronization between phases.
+      // `SimplifyArithPass` removes this guard when `rel_bid` is statically 0.
+      if (!single_block_if.has_value()) {
         b.restoreInsertionPoint(caller_ip);
+        mlir::Value c1 = mlir::arith::ConstantIndexOp::create(b, 1);
+        mlir::Value in_block0 = mlir::arith::CmpIOp::create(
+            b, mlir::arith::CmpIPredicate::ult, rel_bid, c1);
+        single_block_if =
+            mlir::scf::IfOp::create(b, in_block0, /*withElseRegion=*/false);
       }
-      EmitNode(b, child, c0, tid, /*active_blocks=*/1, active_threads, arg_ptrs,
-               leaf_decls);
+      b.setInsertionPoint(single_block_if->thenYield());
+      EmitNode(b, child, c0, tid, arg_ptrs, leaf_decls);
     } else {
       single_block_if.reset();
       b.restoreInsertionPoint(caller_ip);
-      EmitNode(b, child, rel_bid, tid, active_blocks, active_threads, arg_ptrs,
-               leaf_decls);
+      EmitNode(b, child, rel_bid, tid, arg_ptrs, leaf_decls);
     }
-
     if (idx + 1 < spec.children.size()) {
       if (child_single_block && is_single_block(spec.children[idx + 1])) {
         // Both phases run exclusively on relative block 0. Emit a block barrier
@@ -271,7 +269,8 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
         // This is safe as long as sub-kernels use default barrier ID 0 only.
         // TODO(tjoerg): Revisit when adding support for Triton-generated
         // sub-kernels.
-        mlir::NVVM::BarrierOp::create(b, /*barrierId=*/c1,
+        mlir::Value barrier_id = mlir::arith::ConstantIntOp::create(b, 1, 32);
+        mlir::NVVM::BarrierOp::create(b, /*barrierId=*/barrier_id,
                                       /*numberOfThreads=*/mlir::Value{});
       } else {
         // Emit a cluster barrier at `caller_ip` level outside all child block
@@ -288,23 +287,20 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
 }
 
 void EmitNode(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
-              mlir::Value rel_bid, mlir::Value tid, int64_t active_blocks,
-              int64_t active_threads, absl::Span<const mlir::Value> arg_ptrs,
+              mlir::Value rel_bid, mlir::Value tid,
+              absl::Span<const mlir::Value> arg_ptrs,
               const LeafDecls& leaf_decls) {
   mlir::OpBuilder::InsertionGuard guard(b);
 
   switch (spec.kind) {
     case NestedKernelSpec::Kind::kLeaf:
-      EmitLeaf(b, spec, rel_bid, tid, active_blocks, active_threads, arg_ptrs,
-               leaf_decls);
+      EmitLeaf(b, spec, rel_bid, tid, arg_ptrs, leaf_decls);
       break;
     case NestedKernelSpec::Kind::kHorizontal:
-      EmitHorizontal(b, spec, rel_bid, tid, active_threads, arg_ptrs,
-                     leaf_decls);
+      EmitHorizontal(b, spec, rel_bid, tid, arg_ptrs, leaf_decls);
       break;
     case NestedKernelSpec::Kind::kPhased:
-      EmitPhased(b, spec, rel_bid, tid, active_blocks, active_threads, arg_ptrs,
-                 leaf_decls);
+      EmitPhased(b, spec, rel_bid, tid, arg_ptrs, leaf_decls);
       break;
   }
 }
@@ -573,7 +569,6 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
     absl::Span<const mlir::OwningOpRef<mlir::ModuleOp>> nested_modules) const {
   mlir::MLIRContext* ctx = launcher_module.getContext();
   mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), ctx);
-  mlir::Type i32_ty = b.getI32Type();
   auto ptr_ty = mlir::LLVM::LLVMPointerType::get(ctx);
 
   // Declare external llvm.func symbols for each lowered leaf kernel.
@@ -606,16 +601,16 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
         mlir::UnrealizedConversionCastOp::create(b, ptr_ty, arg).getResult(0));
   }
 
-  // Emit block and thread IDs.
-  mlir::Value bid_idx =
-      mlir::gpu::BlockIdOp::create(b, mlir::gpu::Dimension::x);
-  mlir::Value tid_idx =
-      mlir::gpu::ThreadIdOp::create(b, mlir::gpu::Dimension::x);
-  mlir::Value bid = mlir::arith::IndexCastUIOp::create(b, i32_ty, bid_idx);
-  mlir::Value tid = mlir::arith::IndexCastUIOp::create(b, i32_ty, tid_idx);
+  // Emit block and thread IDs. The `xla.range` annotations let
+  // `SimplifyArithPass` remove the bound guards that always hold.
+  int64_t num_blocks = launch_dimensions().num_blocks();
+  int64_t num_threads = launch_dimensions().num_threads_per_block();
+  auto bid = mlir::gpu::BlockIdOp::create(b, mlir::gpu::Dimension::x);
+  bid->setAttr("xla.range", b.getIndexArrayAttr({0, num_blocks - 1}));
+  auto tid = mlir::gpu::ThreadIdOp::create(b, mlir::gpu::Dimension::x);
+  tid->setAttr("xla.range", b.getIndexArrayAttr({0, num_threads - 1}));
 
-  EmitNode(b, root_spec_, bid, tid, launch_dimensions().num_blocks(),
-           launch_dimensions().num_threads_per_block(), arg_ptrs, leaf_decls);
+  EmitNode(b, root_spec_, bid, tid, arg_ptrs, leaf_decls);
 
   b.setInsertionPointToEnd(entry_block);
   mlir::func::ReturnOp::create(
