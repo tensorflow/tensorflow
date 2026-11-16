@@ -6490,6 +6490,51 @@ ENTRY main {
             &alias_analysis->GetUniqueBufferAt(cond, {0}));
 }
 
+TEST_F(CopyInsertionTest, DoesNotInsertCopiesInsideNestedFusionComputation) {
+  constexpr absl::string_view kHlo = R"(
+HloModule NestedFusionNoInternalCopy
+
+dus_stage {
+  p0 = s32[4,4] parameter(0)
+  slice = s32[1,1] slice(p0), slice={[0:1], [0:1]}
+  one = s32[1,1] constant({{1}})
+  add = s32[1,1] add(slice, one)
+  c1 = s32[] constant(1)
+  c0 = s32[] constant(0)
+  ROOT dus = s32[4,4] dynamic-update-slice(p0, add, c1, c0)
+}
+
+transpose_stage {
+  p0 = s32[4,4] parameter(0)
+  ROOT tr = s32[4,4] transpose(p0), dimensions={1,0}
+}
+
+outer_fusion_comp {
+  outer_p0 = s32[4,4] parameter(0)
+  stage_0 = s32[4,4] fusion(outer_p0), kind=kLoop, calls=dus_stage
+  stage_1 = s32[4,4] fusion(stage_0), kind=kLoop, calls=transpose_stage
+  ROOT out = (s32[4,4], s32[4,4]) tuple(stage_0, stage_1)
+}
+
+ENTRY main {
+  p0 = s32[4,4] parameter(0)
+  fused = (s32[4,4], s32[4,4]) fusion(p0), kind=kCustom, calls=outer_fusion_comp
+  gte_0 = s32[4,4] get-tuple-element(fused), index=0
+  gte_1 = s32[4,4] get-tuple-element(fused), index=1
+  ROOT root = (s32[4,4], s32[4,4]) tuple(gte_1, gte_0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  InsertCopies(module.get());
+
+  HloComputation* outer_fusion_comp =
+      module->GetComputationWithName("outer_fusion_comp");
+  ASSERT_NE(outer_fusion_comp, nullptr);
+  EXPECT_EQ(CountCopies(*outer_fusion_comp), 0);
+  EXPECT_GT(CountCopies(*module->entry_computation()), 0);
+}
+
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Values(int64_t{0},

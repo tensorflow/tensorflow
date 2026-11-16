@@ -1710,6 +1710,12 @@ CopyInsertion::ComputeSpecialCaseCopies(
     if (instruction->parent()->IsAsyncComputation()) {
       return;
     }
+    // Fusion computations are lowered as single kernels without per-instruction
+    // buffer allocations; any needed copies belong on the outer fusion's
+    // operands or outputs in the calling non-fusion computation.
+    if (instruction->parent()->IsFusionComputation()) {
+      return;
+    }
     VLOG(2) << "Adding index to copy: " << instruction->ToString() << "@"
             << index.ToString();
     auto it = instructions_to_copy.find(instruction);
