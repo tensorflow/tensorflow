@@ -270,7 +270,12 @@ class MultiProcessCluster(object):
         self._start_events[task_type][i].wait()
 
   def stop(self):
-    """Stops all the servers."""
+    """Stops all the servers.
+
+    It is a no-op if the cluster has not been started or is already stopped.
+    """
+    if self._mpr is None:
+      return
     for task_type, task_addresses in self._cluster_spec.items():
       for i in range(len(task_addresses)):
         self._finish_events[task_type][i].set()
@@ -279,9 +284,10 @@ class MultiProcessCluster(object):
     except multi_process_runner.UnexpectedSubprocessExitError:
       # TODO(yuefengz): investigate why processes exit with 255.
       pass
-    self._mpr = None
-    self._start_events = {}
-    self._finish_events = {}
+    finally:
+      self._mpr = None
+      self._start_events = {}
+      self._finish_events = {}
 
   def kill_task(self, task_type, task_id):
     """Kill a server given task_type and task_id.
