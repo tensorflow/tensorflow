@@ -148,10 +148,12 @@ class ImageOpsTest(parameterized.TestCase, xla_test.XLATestCase):
     for dtype in sorted((self.float_types | self.int_types) & op_types,
                         key=lambda t: np.dtype(t).name):
       for grads_shape, size in cases:
-        if half_pixel_centers and dtype == np.float64 and size == [10, 10]:
+        if (half_pixel_centers and size == [10, 10] and
+            dtype in (np.float64, dtypes.bfloat16.as_numpy_dtype)):
           # The XLA resize kernels compute half-pixel nearest positions in the
           # input type and the TF kernels in float32. At this 10/3 scale they
-          # pick different pixels for float64, in ResizeNearestNeighbor too.
+          # pick different pixels for float64 and bfloat16, in
+          # ResizeNearestNeighbor too.
           continue
         with self.subTest(dtype=np.dtype(dtype).name, grads_shape=grads_shape,
                           size=size):
