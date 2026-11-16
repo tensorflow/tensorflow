@@ -19,19 +19,13 @@ load("//xla:xla.default.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//xla/backends/gpu/codegen:__subpackages__",
-    ],
     licenses = ["notice"],
 )
 
 xla_cc_binary(
     name = "fusion_to_xtile",
     srcs = ["fusion_to_xtile.cc"],
-    visibility = [
-        "//xla/backends/cpu/codegen/tiled:__subpackages__",
-        "//xla/backends/gpu/codegen:__subpackages__",
-    ],
+    visibility = ["//xla/backends/cpu/codegen/tiled:__subpackages__"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:util",
