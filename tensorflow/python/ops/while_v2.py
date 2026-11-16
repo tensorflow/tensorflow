@@ -86,9 +86,15 @@ def while_loop(cond,
   # shape information comes from `shape_invariants` instead of `orig_loop_vars`.
   # It is used to pack flattened vars into structured vars.
   if shape_invariants is not None:
+    # `loop_vars` holds TensorArray flows; `orig_loop_vars` holds the arrays.
+    def shape_invariant_to_type_spec(orig_var, var, shape):
+      return control_flow_ops._shape_invariant_to_type_spec(
+          var, shape,
+          is_tensor_array=isinstance(orig_var, tensor_array_ops.TensorArray))
+
     loop_vars_signature = nest.map_structure(
-        control_flow_ops._shape_invariant_to_type_spec,
-        loop_vars, shape_invariants)
+        shape_invariant_to_type_spec, orig_loop_vars, loop_vars,
+        shape_invariants)
   else:
     loop_vars_signature = nest.map_structure(
         control_flow_ops._shape_invariant_to_type_spec, loop_vars)

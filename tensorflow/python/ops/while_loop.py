@@ -112,7 +112,7 @@ def while_loop_v2(cond,
   `tf.Tensor.set_shape`
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
-  SparseTensor and IndexedSlices are treated specially as follows:
+  SparseTensor, IndexedSlices and TensorArray are treated specially as follows:
 
   a) If a loop variable is a SparseTensor, the shape invariant must be
   `TensorShape([r])` where `r` is the rank of the dense tensor represented
@@ -125,6 +125,11 @@ def while_loop_v2(cond,
   a shape invariant of the values tensor of the IndexedSlices. It means
   the shapes of the three tensors of the IndexedSlices are `(shape, [shape[0]],
   [shape.ndims])`.
+
+  c) If a loop variable is a TensorArray, the shape invariant must be
+  `TensorShape([])`, `TensorShape(None)` or `None`. The loop carries the scalar
+  flow of the TensorArray, not its elements. To constrain the shape of the
+  elements, use the `element_shape` argument of `tf.TensorArray`.
 
   `while_loop` implements non-strict semantics, enabling multiple iterations
   to run in parallel. The maximum number of parallel iterations can be
@@ -297,7 +302,7 @@ def while_loop(cond,
   `tf.Tensor.set_shape`
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
-  SparseTensor and IndexedSlices are treated specially as follows:
+  SparseTensor, IndexedSlices and TensorArray are treated specially as follows:
 
   a) If a loop variable is a SparseTensor, the shape invariant must be
   TensorShape([r]) where r is the rank of the dense tensor represented
@@ -310,6 +315,11 @@ def while_loop(cond,
   a shape invariant of the values tensor of the IndexedSlices. It means
   the shapes of the three tensors of the IndexedSlices are (shape, [shape[0]],
   [shape.ndims]).
+
+  c) If a loop variable is a TensorArray, the shape invariant must be
+  TensorShape([]), TensorShape(None) or None. The loop carries the scalar flow
+  of the TensorArray, not its elements. To constrain the shape of the elements,
+  use the `element_shape` argument of `tf.TensorArray`.
 
   `while_loop` implements non-strict semantics, enabling multiple iterations
   to run in parallel. The maximum number of parallel iterations can be

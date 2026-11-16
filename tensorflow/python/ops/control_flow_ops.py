@@ -352,7 +352,16 @@ def _ShapeLessThanOrEqual(shape1, shape2):
   return True
 
 
-def _shape_invariant_to_type_spec(var, shape=None):
+def _tensor_array_shape_invariant_error(shape):
+  return ValueError(
+      f"Invalid shape invariant {shape!r} for a TensorArray loop variable. A "
+      "TensorArray loop variable is carried as a scalar flow tensor, so its "
+      "shape invariant must be tf.TensorShape([]), tf.TensorShape(None), or "
+      "omitted. To constrain the shape of its elements, pass `element_shape` "
+      "to tf.TensorArray(...) when you create it.")
+
+
+def _shape_invariant_to_type_spec(var, shape=None, is_tensor_array=False):
   """Converts a shape invariant to a TypeSpec.
 
   If `var` is a TensorArray, it will first be converted to its flow.
@@ -362,21 +371,29 @@ def _shape_invariant_to_type_spec(var, shape=None):
       by the shape invariant.
     shape: A `TypeSpec` or `TensorShape`.  If `shape` is already a `TypeSpec`,
       then it is simply returned as-is.
+    is_tensor_array: Whether `var` is, or was converted from, a TensorArray.
+      Callers that already converted it to its flow must pass True.
 
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
 
   Raises:
+    ValueError: If `var` is a TensorArray and `shape` is not compatible with
+      its scalar flow.
     TypeError: If `shape` is a TypeSpec and not compatible with `var`.
     TypeError: If `shape` is not None, a TypeSpec, or a TensorShape.
     TypeError: If `shape` is a TensorShape, `var` is a CompositeTensor, and
       `var` doesn't implement the `_shape_invariant_to_type_spec` method.
   """
+  is_tensor_array = is_tensor_array or isinstance(
+      var, tensor_array_ops.TensorArray)
   var = _convert_tensorarray_to_flow(var)
   if shape is None:
     return type_spec.type_spec_from_value(var)
   elif isinstance(shape, type_spec.TypeSpec):
     if not shape.is_compatible_with(var):
+      if is_tensor_array:
+        raise _tensor_array_shape_invariant_error(shape)
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
@@ -384,6 +401,8 @@ def _shape_invariant_to_type_spec(var, shape=None):
         "'shape' must be one of TypeSpec, TensorShape or None. "
         f"Received: {type(shape)}")
 
+  if is_tensor_array and shape.rank not in (None, 0):
+    raise _tensor_array_shape_invariant_error(shape)
   if isinstance(var, tensor_lib.Tensor):
     return tensor_lib.TensorSpec(shape, var.dtype)
   else:
