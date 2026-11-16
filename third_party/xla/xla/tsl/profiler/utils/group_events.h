@@ -81,7 +81,9 @@ class EventNode {
 
   void SetGroupId(int64_t group_id);
 
-  // Sets group_id for this node and its descendants.
+  // Sets group_id for this node and its ungrouped descendants, stopping at
+  // nodes already assigned to a different group_id (recording parent/child
+  // group relationships in group_metadata_map).
   void PropagateGroupId(int64_t group_id, GroupMetadataMap* group_metadata_map);
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
@@ -226,7 +228,8 @@ class EventForest {
   // FunctionRuns from tf.data.
   void ProcessTfDataSteps();
 
-  // Processes the TF loops and registers the first TF executor event of each
+  // Processes the TF loops, pre-assigns a group_id to each iteration's TF
+  // executor events, and registers the first TF executor event of each
   // iteration to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
 

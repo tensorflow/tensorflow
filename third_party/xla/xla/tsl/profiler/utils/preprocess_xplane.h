@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_PREPROCESS_XPLANE_H_
 #define XLA_TSL_PROFILER_UTILS_PREPROCESS_XPLANE_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -499,42 +500,77 @@ class ThreadpoolLineMutatorFactory : public XplaneEventMutatorFactory {
         // did not start or were not present.
         return;
       }
-      int64_t start_region_timestamp_ps = 0;
-      int64_t region_id;
-      struct EventMetadata {
+      auto& line_events = *line.GetLine()->mutable_events();
+      const int64_t start_region_id = start_region_metadata_->id();
+      if (!std::any_of(line_events.begin(), line_events.end(),
+                       [start_region_id](const XEvent& event) {
+                         return event.metadata_id() == start_region_id;
+                       })) {
+        return;
+      }
+      if (!std::is_sorted(line_events.pointer_begin(),
+                          line_events.pointer_end(), XEventsComparator())) {
+        SortXLine(line.GetLine());
+      }
+
+      struct ActiveRegion {
+        XEvent* start_event;
         int64_t start_region_timestamp_ps;
-        int64_t region_id;
+        uint64_t region_id;
+      };
+      struct RegionSpan {
+        XEvent* start_event;
+        int64_t start_region_timestamp_ps;
+        uint64_t region_id;
         int64_t end_region_timestamp_ps;
       };
 
-      std::vector<EventMetadata> event_metadata;
-      line.ForEachEvent([&](const XEventBuilder& event) {
-        if (event.MetadataId() == start_region_metadata_->id()) {
-          auto consumer_id = event.GetStat(*consumer_);
-          if (!consumer_id) {
-            return;
+      std::vector<ActiveRegion> active_regions;
+      std::vector<RegionSpan> regions;
+      for (XEvent& raw_event : line_events) {
+        XEventBuilder event(line.GetLine(), line.Plane(), &raw_event);
+        if (event.MetadataId() == start_region_id) {
+          const XStat* consumer_id = event.GetStat(*consumer_);
+          if (consumer_id == nullptr) {
+            continue;
           }
-          start_region_timestamp_ps = event.TimestampPs();
-          region_id = event.IntOrUintValue(*consumer_id);
+          active_regions.push_back({&raw_event, event.TimestampPs(),
+                                    event.IntOrUintValue(*consumer_id)});
         } else if (event.MetadataId() == stop_region_metadata_->id() &&
-                   start_region_timestamp_ps != 0) {
-          EventMetadata metadata;
-          metadata.start_region_timestamp_ps = start_region_timestamp_ps;
-          metadata.region_id = region_id;
-          metadata.end_region_timestamp_ps = event.TimestampPs();
-          event_metadata.push_back(metadata);
+                   !active_regions.empty()) {
+          const ActiveRegion active_region = active_regions.back();
+          active_regions.pop_back();
+          if (event.TimestampPs() >= active_region.start_region_timestamp_ps) {
+            regions.push_back({active_region.start_event,
+                               active_region.start_region_timestamp_ps,
+                               active_region.region_id, event.TimestampPs()});
+          }
         }
-      });
-      for (const auto& event_metadata : event_metadata) {
+      }
+      if (regions.empty()) {
+        return;
+      }
+      for (const RegionSpan& region_span : regions) {
+        // Strip consumer stats from the paired StartRegion marker so
+        // AddFlowsToXplane emits a single kFlowIn endpoint on Region rather
+        // than duplicate flow endpoints on both Region and StartRegion.
+        auto* stats = region_span.start_event->mutable_stats();
+        for (int i = stats->size() - 1; i >= 0; --i) {
+          const int64_t metadata_id = stats->Get(i).metadata_id();
+          if (metadata_id == consumer_->id() ||
+              metadata_id == consumer_type_->id()) {
+            stats->DeleteSubrange(i, 1);
+          }
+        }
         XEventBuilder region = line.AddEvent(*thread_pool_metadata_);
-        region.SetTimestampPs(event_metadata.start_region_timestamp_ps);
-        region.SetEndTimestampPs(event_metadata.end_region_timestamp_ps);
-        // TODO: b/510930307 - Set consumer stat value for the region event and
-        // properly address the grouping issue described above.
+        region.SetTimestampPs(region_span.start_region_timestamp_ps);
+        region.SetEndTimestampPs(region_span.end_region_timestamp_ps);
+        region.SetOrAddStatValue(*consumer_, region_span.region_id);
+        region.SetOrAddStatValue(
+            *consumer_type_,
+            static_cast<int64_t>(ContextType::kThreadpoolEvent));
       }
-      if (!event_metadata.empty()) {
-        SortXLine(line.GetLine());
-      }
+      SortXLine(line.GetLine());
     }
 
    private:

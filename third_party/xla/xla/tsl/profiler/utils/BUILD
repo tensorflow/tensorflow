@@ -502,6 +502,7 @@ tsl_cc_test(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_test_utils",
+        ":xplane_utils",
         ":xplane_visitor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
