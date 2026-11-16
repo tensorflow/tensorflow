@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -79,6 +80,39 @@ TEST_F(BucketizeOpTest, EmptyInput) {
   AddInputFromArray<float>(TensorShape({0, 3}), {});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_EQ(GetOutput(0)->shape(), TensorShape({0, 3}));
+}
+
+TEST_F(BucketizeOpTest, Int64AndParallelThreshold) {
+  // Exactly at the parallelization threshold (4096) plus a few over.
+  std::vector<float> boundaries = {0.0f, 10.0f, 100.0f};
+  for (const int n : {4096, 4097, 8192}) {
+    inputs_.clear();
+    MakeOp(DT_INT64, boundaries);
+    std::vector<int64_t> values(n);
+    for (int i = 0; i < n; ++i) values[i] = static_cast<int64_t>((i * 17) % 150);
+    AddInputFromArray<int64_t>(TensorShape({n}), values);
+    TF_ASSERT_OK(RunOpKernel());
+    Tensor expected(DT_INT32, TensorShape({n}));
+    auto e = expected.flat<int32_t>();
+    for (int i = 0; i < n; ++i) {
+      e(i) = std::upper_bound(boundaries.begin(), boundaries.end(),
+                              static_cast<float>(values[i])) -
+             boundaries.begin();
+    }
+    test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
+  }
+}
+
+TEST_F(BucketizeOpTest, NanInputKeepsHistoricalPlacement) {
+  // IEEE upper_bound: `nan < boundary` is always false, so no boundary is
+  // "greater" than NaN and the insertion point is past the last boundary.
+  MakeOp(DT_FLOAT, {0.0f, 1.0f, 2.0f});
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  AddInputFromArray<float>(TensorShape({3}), {nan, 0.5f, 3.0f});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(DT_INT32, TensorShape({3}));
+  test::FillValues<int32_t>(&expected, {3, 1, 3});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 // Large enough to be split into many shards on a multi-threaded device.

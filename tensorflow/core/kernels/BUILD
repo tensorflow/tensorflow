@@ -8708,6 +8708,8 @@ test_suite(
         ":split_op_test",
         ":split_v_op_test_cpu",
         ":strided_slice_op_test",
+        ":bucketize_op_test",
+        ":in_topk_op_test",
         ":unique_op_test",
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",

@@ -60,16 +60,20 @@ struct BucketizeFunctor<CPUDevice, T> {
     };
 
     // Each element is an independent binary search, so shard the input across
-    // the CPU worker threads. The cost estimate (in cycles) grows with the
-    // number of comparisons per search. Small inputs stay on the caller thread,
-    // where dispatch overhead would outweigh the work.
+    // the CPU worker threads. The cost estimate grows with the number of
+    // comparisons per search (same shape as searchsorted_op's
+    // Log2Ceiling(num_inputs), with a small multiplier so ParallelFor does not
+    // overshard tiny-boundary cases). Small inputs stay on the caller thread,
+    // where dispatch overhead would outweigh the work. NaN inputs keep the
+    // historical IEEE upper_bound placement (past the last boundary); this is
+    // intentional and matches prior Bucketize behavior.
     constexpr int64_t kMinParallelElements = 4096;
     if (N < kMinParallelElements) {
       work(0, N);
       return absl::OkStatus();
     }
-    const int64_t cost_per_unit =
-        8 * (Log2Ceiling64(boundaries_vector.size() + 1) + 1);
+    const int64_t cost_per_unit = std::max<int64_t>(
+        1, 4 * Log2Ceiling64(boundaries_vector.size() + 1));
     context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
         N, cost_per_unit, work);
 

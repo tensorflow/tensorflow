@@ -112,6 +112,31 @@ TEST_F(UniqueOpTest, DoubleSpecialValues) {
   CheckFloatSpecialValues<double>(this);
 }
 
+TEST_F(UniqueOpTest, EmptyInput) {
+  MakeOp(DT_FLOAT);
+  AddInputFromArray<float>(TensorShape({0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({0}));
+  EXPECT_EQ(GetOutput(1)->shape(), TensorShape({0}));
+}
+
+TEST_F(UniqueOpTest, AllNaN) {
+  MakeOp(DT_FLOAT, /*with_counts=*/true);
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  AddInputFromArray<float>(TensorShape({4}), {nan, nan, nan, nan});
+  TF_ASSERT_OK(RunOpKernel());
+  ASSERT_EQ(GetOutput(0)->NumElements(), 4);
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(std::isnan(GetOutput(0)->flat<float>()(i)));
+  }
+  Tensor idx(DT_INT32, TensorShape({4}));
+  test::FillValues<int32_t>(&idx, {0, 1, 2, 3});
+  test::ExpectTensorEqual<int32_t>(idx, *GetOutput(1));
+  Tensor count(DT_INT32, TensorShape({4}));
+  test::FillValues<int32_t>(&count, {1, 1, 1, 1});
+  test::ExpectTensorEqual<int32_t>(count, *GetOutput(2));
+}
+
 TEST_F(UniqueOpTest, LargeFloatMatchesReference) {
   MakeOp(DT_FLOAT);
   const int n = 200000;

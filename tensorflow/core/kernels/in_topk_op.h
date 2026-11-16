@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
@@ -107,34 +108,41 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
       }
       output_data[batch_idx] =
           cannot_say ? false : (more_probable_classes < k_val);
-      return static_cast<int64_t>(class_idx) + 1;
+      // On a full scan class_idx == num_classes; on an early exit it indexes
+      // the last element read, so the read count is class_idx + 1.
+      return class_idx == num_classes ? class_idx : class_idx + 1;
     };
 
     // Rows are independent, so they can be sharded across the CPU worker
     // threads. How much of each row is scanned depends on the data, so first
-    // run a small sample of rows on this thread and use the observed average
-    // to decide whether the remaining rows are worth dispatching.
+    // sample a few rows spread across the batch and use the observed average
+    // to decide whether the rest are worth dispatching.
     constexpr Eigen::Index kSampleRows = 32;
-    constexpr int64_t kMinParallelPredictions = 32 * 1024;
+    constexpr int64_t kMinParallelPredictions = 16 * 1024;
     const Eigen::Index sample = std::min(num_targets, kSampleRows);
+    std::vector<char> sampled_row(num_targets, 0);
     int64_t sampled = 0;
-    for (Eigen::Index batch_idx = 0; batch_idx < sample; ++batch_idx) {
+    for (Eigen::Index s = 0; s < sample; ++s) {
+      // Stride across the batch so a cheap prefix cannot hide expensive rows.
+      const Eigen::Index batch_idx = (s * num_targets) / sample;
+      sampled_row[batch_idx] = 1;
       sampled += process_row(batch_idx);
     }
-    const Eigen::Index remaining = num_targets - sample;
-    if (remaining == 0) return;
-    const int64_t avg_scanned = sampled / sample + 1;
+    if (sample == num_targets) return;
+    const int64_t avg_scanned = std::max<int64_t>(1, sampled / sample);
     auto work = [&](int64_t start, int64_t limit) {
       for (int64_t batch_idx = start; batch_idx < limit; ++batch_idx) {
-        process_row(sample + batch_idx);
+        if (!sampled_row[batch_idx]) process_row(batch_idx);
       }
     };
-    if (remaining * avg_scanned < kMinParallelPredictions) {
-      work(0, remaining);
+    // Estimate total work from the sample; small / early-exit batches stay
+    // on this thread where ParallelFor dispatch would dominate.
+    if (num_targets * avg_scanned < kMinParallelPredictions) {
+      work(0, num_targets);
       return;
     }
     context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
-        remaining, 2 * avg_scanned + 10, work);
+        num_targets, 2 * avg_scanned + 10, work);
   }
 };
 

@@ -65,6 +65,41 @@ TEST_F(InTopKOpTest, Small) {
   test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
 }
 
+TEST_F(InTopKOpTest, EmptyBatch) {
+  MakeOp(DT_INT32);
+  AddInputFromArray<float>(TensorShape({0, 4}), {});
+  AddInputFromArray<int32_t>(TensorShape({0}), {});
+  AddInputFromArray<int32_t>(TensorShape({}), {2});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({0}));
+}
+
+TEST_F(InTopKOpTest, KZeroAndKAtLeastClasses) {
+  MakeOp(DT_INT32);
+  AddInputFromArray<float>(TensorShape({2, 3}),
+                           {0.1f, 0.2f, 0.3f, 0.9f, 0.1f, 0.0f});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected_k0(DT_BOOL, TensorShape({2}));
+  // k=0: more_probable_classes < 0 is never true once any larger is found;
+  // with early exit at > k, class 0 of row0 has two larger -> false; row1
+  // target is the max so more_probable stays 0, and 0 < 0 is false.
+  test::FillValues<bool>(&expected_k0, {false, false});
+  test::ExpectTensorEqual<bool>(expected_k0, *GetOutput(0));
+
+  inputs_.clear();
+  MakeOp(DT_INT32);
+  AddInputFromArray<float>(TensorShape({2, 3}),
+                           {0.1f, 0.2f, 0.3f, 0.9f, 0.1f, 0.0f});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected_k3(DT_BOOL, TensorShape({2}));
+  test::FillValues<bool>(&expected_k3, {true, true});
+  test::ExpectTensorEqual<bool>(expected_k3, *GetOutput(0));
+}
+
 TEST_F(InTopKOpTest, NonFiniteAndOutOfRange) {
   MakeOp(DT_INT64);
   const float inf = std::numeric_limits<float>::infinity();
@@ -116,40 +151,43 @@ TEST_F(InTopKOpTest, LargeMatchesReference) {
   test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
 }
 
-// The kernel times a sample of leading rows to decide whether to shard the
-// rest. Make the leading rows cheap (early exit) and the remaining rows full
-// scans, and also cover inputs with fewer rows than the sample.
+// The kernel samples rows spread across the batch to decide whether to shard.
+// Cover cheap-prefix / expensive-suffix, cheap-suffix / expensive-prefix, and
+// inputs with fewer rows than the sample size.
 TEST_F(InTopKOpTest, MixedRowCostsMatchesReference) {
-  for (const int rows : {5, 32, 33, 40, 600}) {
-    inputs_.clear();
-    MakeOp(DT_INT32);
-    const int cols = 2000, k = 3;
-    std::vector<float> pred(rows * cols);
-    std::vector<int32_t> targets(rows);
-    for (int r = 0; r < rows; ++r) {
-      for (int c = 0; c < cols; ++c) {
-        pred[r * cols + c] = static_cast<float>((r * 31 + c * 17) % 101);
+  for (const int rows : {5, 32, 33, 40, 64, 600}) {
+    for (const bool expensive_suffix : {true, false}) {
+      inputs_.clear();
+      MakeOp(DT_INT32);
+      const int cols = 2000, k = 3;
+      std::vector<float> pred(rows * cols);
+      std::vector<int32_t> targets(rows);
+      for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+          pred[r * cols + c] = static_cast<float>((r * 31 + c * 17) % 101);
+        }
+        targets[r] = (r * 7) % cols;
+        const bool make_expensive =
+            expensive_suffix ? (r >= rows / 2) : (r < rows / 2);
+        if (make_expensive) pred[r * cols + targets[r]] = 1000.0f + (r % 3);
+        if (r % 9 == 4) pred[r * cols + targets[r]] = 100.0f;  // ties
       }
-      targets[r] = (r * 7) % cols;
-      // Rows past the sample hold the row maximum at the target.
-      if (r >= 32) pred[r * cols + targets[r]] = 1000.0f + (r % 3);
-      if (r % 9 == 4) pred[r * cols + targets[r]] = 100.0f;  // ties
-    }
-    AddInputFromArray<float>(TensorShape({rows, cols}), pred);
-    AddInputFromArray<int32_t>(TensorShape({rows}), targets);
-    AddInputFromArray<int32_t>(TensorShape({}), {k});
-    TF_ASSERT_OK(RunOpKernel());
+      AddInputFromArray<float>(TensorShape({rows, cols}), pred);
+      AddInputFromArray<int32_t>(TensorShape({rows}), targets);
+      AddInputFromArray<int32_t>(TensorShape({}), {k});
+      TF_ASSERT_OK(RunOpKernel());
 
-    Tensor expected(DT_BOOL, TensorShape({rows}));
-    auto e = expected.flat<bool>();
-    for (int r = 0; r < rows; ++r) {
-      int larger = 0;
-      for (int c = 0; c < cols; ++c) {
-        if (pred[r * cols + c] > pred[r * cols + targets[r]]) ++larger;
+      Tensor expected(DT_BOOL, TensorShape({rows}));
+      auto e = expected.flat<bool>();
+      for (int r = 0; r < rows; ++r) {
+        int larger = 0;
+        for (int c = 0; c < cols; ++c) {
+          if (pred[r * cols + c] > pred[r * cols + targets[r]]) ++larger;
+        }
+        e(r) = larger < k;
       }
-      e(r) = larger < k;
+      test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
     }
-    test::ExpectTensorEqual<bool>(expected, *GetOutput(0));
   }
 }
 
