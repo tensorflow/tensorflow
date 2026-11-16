@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -140,9 +141,8 @@ class IfrtCopyConstantsPass
     // Visit single-block IFRT functions and process consumer `ifrt.Call` ops in
     // reverse program order so consumers inspect producer callees before any
     // producer is mutated or cloned as a consumer itself.
-    for (mlir::func::FuncOp func_op : module_op.getOps<mlir::func::FuncOp>()) {
-      if (!func_op->hasAttr(kIfrtFunctionAttrName) ||
-          !llvm::hasSingleElement(func_op.getBody())) {
+    for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
+      if (!llvm::hasSingleElement(func_op.getBody())) {
         continue;
       }
       mlir::Block& block = func_op.getBody().front();

@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -194,28 +193,19 @@ struct IoAlias {
 mlir::LogicalResult VerifyPerShardShapesAreEqual(mlir::Operation* op,
                                                  IfrtArrayType t1,
                                                  IfrtArrayType t2) {
-  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape1 =
-      t1.getShardingAttr().LocalShapeFromGlobalShape(t1.getShape().getShape());
+  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape1 = t1.LocalShape();
   if (!shard_shape1.ok()) {
     return op->emitOpError() << "unable to get per-shard shape of array " << t1
                              << ": " << shard_shape1.status().message();
   }
-  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape2 =
-      t2.getShardingAttr().LocalShapeFromGlobalShape(t2.getShape().getShape());
+  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape2 = t2.LocalShape();
   if (!shard_shape2.ok()) {
     return op->emitOpError() << "unable to get per-shard shape of array " << t2
                              << ": " << shard_shape2.status().message();
   }
-  if (shard_shape1->size() != shard_shape2->size()) {
+  if (*shard_shape1 != *shard_shape2) {
     return op->emitOpError()
            << "Arrays have different per-shard shapes: " << t1 << " vs. " << t2;
-  }
-  for (const auto& [dim1, dim2] : llvm::zip(*shard_shape1, *shard_shape2)) {
-    if (dim1 != dim2) {
-      return op->emitOpError()
-             << "Arrays have different per-shard shapes: " << t1 << " vs. "
-             << t2;
-    }
   }
   return mlir::success();
 }
@@ -302,18 +292,6 @@ bool IsAutoLayout(mlir::Type type) {
     return array.getLayoutAttr().str() == "auto";
   }
   return false;
-}
-
-bool SameLayout(IfrtArrayType t1, IfrtArrayType t2) {
-  xla::LayoutMode layout_mode1 = t1.LayoutMode();
-  xla::LayoutMode layout_mode2 = t2.LayoutMode();
-  if (layout_mode1.mode != layout_mode2.mode) {
-    return false;
-  }
-  if (layout_mode1.mode == xla::LayoutMode::Mode::kUserSpecified) {
-    return layout_mode1.user_layout == layout_mode2.user_layout;
-  }
-  return true;
 }
 
 mlir::LogicalResult CheckIntervalRange(int64_t num_shards,
@@ -563,7 +541,7 @@ mlir::LogicalResult RemapArraysOp::verify() {
              << "does not allow input or output arrays with `auto` layout.";
     }
 
-    if (!SameLayout(in_array_type, out_array_type)) {
+    if (!in_array_type.HasSameLayout(out_array_type)) {
       return emitOpError() << "requires input array #" << in_index
                            << " and output array #" << out_index
                            << " to have the same layout: "

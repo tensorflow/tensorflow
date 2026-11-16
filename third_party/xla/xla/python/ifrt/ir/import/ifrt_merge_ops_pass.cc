@@ -52,7 +52,6 @@ namespace ifrt {
 
 namespace {
 
-using mlir::StringAttr;
 using mlir::func::FuncOp;
 
 class IfrtMergeOpsPass : public impl::IfrtMergeOpsPassBase<IfrtMergeOpsPass> {
@@ -86,17 +85,14 @@ bool HasUniformLayoutModes(CopyArraysOp op) {
   if (op.getInputs().empty() || op.getOutputs().empty()) {
     return false;
   }
-  std::string src_layout =
-      GetArrayType(op.getInputs().front()).LayoutMode().ToString();
-  std::string dst_layout =
-      GetArrayType(op.getOutputs().front()).LayoutMode().ToString();
+  IfrtArrayType first_input = GetArrayType(op.getInputs().front());
+  IfrtArrayType first_output = GetArrayType(op.getOutputs().front());
   return llvm::all_of(op.getInputs().drop_front(),
                       [&](mlir::Value input) {
-                        return GetArrayType(input).LayoutMode().ToString() ==
-                               src_layout;
+                        return GetArrayType(input).HasSameLayout(first_input);
                       }) &&
          llvm::all_of(op.getOutputs().drop_front(), [&](mlir::Value output) {
-           return GetArrayType(output).LayoutMode().ToString() == dst_layout;
+           return GetArrayType(output).HasSameLayout(first_output);
          });
 }
 
@@ -126,13 +122,8 @@ llvm::hash_code GetBaseMergeKey(IfrtPairwiseArrayOpInterface op) {
   hash = llvm::hash_combine(hash, input_type.getDevicesAttr());
   IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
   hash = llvm::hash_combine(hash, output_type.getDevicesAttr());
-  // We can't hash by the bool itself, and `donated` is an optional attr, so
-  // false can be represented by nullptr or BoolAttr(false). So we explicitly
-  // convert to BoolAttr.
-  hash = llvm::hash_combine(
-      hash, mlir::BoolAttr::get(op.getContext(), op.getDonated()),
-      op->getDiscardableAttrDictionary());
-  return hash;
+  return llvm::hash_combine(hash, op.getDonated(),
+                            op->getDiscardableAttrDictionary());
 }
 
 // Groups `CopyArraysOp`s by:
@@ -154,21 +145,11 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   llvm::hash_code hash = GetBaseMergeKey(op);
   IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
-  hash = llvm::hash_combine(
-      hash, mlir::BoolAttr::get(op.getContext(), op.getReuse()));
-  hash = llvm::hash_combine(
-      hash,
-      StringAttr::get(op.getContext(), absl::StrCat(input_type.MemoryKind())));
-  hash = llvm::hash_combine(
-      hash, StringAttr::get(op.getContext(),
-                            absl::StrCat(input_type.LayoutMode().ToString())));
-  hash = llvm::hash_combine(
-      hash,
-      StringAttr::get(op.getContext(), absl::StrCat(output_type.MemoryKind())));
-  hash = llvm::hash_combine(
-      hash, StringAttr::get(op.getContext(),
-                            absl::StrCat(output_type.LayoutMode().ToString())));
-  return hash;
+  return llvm::hash_combine(hash, op.getReuse(),
+                            absl::StrCat(input_type.MemoryKind()),
+                            input_type.LayoutMode().ToString(),
+                            absl::StrCat(output_type.MemoryKind()),
+                            output_type.LayoutMode().ToString());
 }
 
 // Groups `ReshardOp`s by:

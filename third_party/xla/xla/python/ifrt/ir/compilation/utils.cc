@@ -30,14 +30,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -98,6 +104,22 @@ absl::Status SetStrictMemoryReservation(absl::string_view program_name,
   return absl::OkStatus();
 }
 #endif
+
+bool IsXlaPlatform(absl::string_view platform_name) {
+  return platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
+         platform_name == xla::RocmName() || platform_name == xla::CpuName();
+}
+
+mlir::FailureOr<llvm::StringRef> GetPlatformNameForDeviceId(
+    mlir::Operation* op, int device_id,
+    absl::Span<const std::string> platform_names) {
+  if (device_id < 0 || device_id >= platform_names.size()) {
+    return op->emitOpError()
+           << "cannot find mapping for logical device id " << device_id
+           << ". Mapping size: " << platform_names.size();
+  }
+  return llvm::StringRef(platform_names[device_id]);
+}
 
 absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
     const mlir::Pass::ListOption<std::string>& platform_names) {

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -488,14 +489,7 @@ class IfrtDcePass : public impl::IfrtDcePassBase<IfrtDcePass> {
     // Snapshot IFRT entry functions upfront because `EliminateCallDce` inserts
     // and erases private callee `func.func` ops in `module_op`, which would
     // invalidate a live `module_op.getOps<mlir::func::FuncOp>()` iterator.
-    llvm::SmallVector<mlir::func::FuncOp> ifrt_funcs;
-    for (mlir::func::FuncOp func_op : module_op.getOps<mlir::func::FuncOp>()) {
-      if (IsIfrtFunction(func_op)) {
-        ifrt_funcs.push_back(func_op);
-      }
-    }
-
-    for (mlir::func::FuncOp func_op : ifrt_funcs) {
+    for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
       func_op.walk<mlir::WalkOrder::PreOrder, mlir::ReverseIterator>(
           [&](mlir::Operation* op) {
             return llvm::TypeSwitch<mlir::Operation*, mlir::WalkResult>(op)

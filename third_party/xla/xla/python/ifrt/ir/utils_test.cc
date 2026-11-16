@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
@@ -41,7 +42,9 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 TEST(UtilsTest, GetPrettyLocationUnknownLoc) {
@@ -188,6 +191,79 @@ TEST(UtilsTest, IfrtArrayTypeRejectsNullParameters) {
   }
 }
 
+TEST(UtilsTest, GetIfrtFunctionsSnapshotsOnlyIfrtFunctions) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+module {
+  func.func private @atom_helper(%x: tensor<2xi32>) -> tensor<2xi32> {
+    return %x : tensor<2xi32>
+  }
+  func.func @main(%x: tensor<2xi32>) -> tensor<2xi32>
+      attributes {ifrt.function} {
+    return %x : tensor<2xi32>
+  }
+  func.func private @reshard_fn(%x: tensor<2xi32>) -> tensor<2xi32>
+      attributes {ifrt.reshard_function} {
+    return %x : tensor<2xi32>
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  llvm::SmallVector<mlir::func::FuncOp> ifrt_funcs = GetIfrtFunctions(*module);
+  ASSERT_EQ(ifrt_funcs.size(), 2u);
+  EXPECT_EQ(ifrt_funcs[0].getSymName(), "main");
+  EXPECT_EQ(ifrt_funcs[1].getSymName(), "reshard_fn");
+}
+
+TEST(UtilsTest, ArrayTypeLocalShapeAndHasSameLayout) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+!arr_default = !ifrt.array<tensor<4x6xf32>,
+                           #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+!arr_explicit_default = !ifrt.array<tensor<4x6xf32>,
+                                    #ifrt.sharding_param<2x1 to [0] on 2>,
+                                    [0, 1], layout = "default">
+!arr_user_layout = !ifrt.array<tensor<4x6xf32>,
+                               #ifrt.sharding_param<2x1 to [0] on 2>,
+                               [0, 1], layout = "{0,1}">
+!arr_same_user_layout = !ifrt.array<tensor<4x6xf32>,
+                                    #ifrt.sharding_param<2x1 to [0] on 2>,
+                                    [0, 1], layout = "{0, 1}">
+!arr_other_user_layout = !ifrt.array<tensor<4x6xf32>,
+                                     #ifrt.sharding_param<2x1 to [0] on 2>,
+                                     [0, 1], layout = "{1,0}">
+!arr_unspec = !ifrt.array<tensor<4x6xf32>, #ifrt.sharding_unspecified, [0, 1]>
+module {
+  func.func @main(%a: !arr_default, %b: !arr_explicit_default,
+                  %c: !arr_user_layout, %d: !arr_same_user_layout,
+                  %e: !arr_other_user_layout, %f: !arr_unspec)
+      attributes {ifrt.function} {
+    return
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  mlir::func::FuncOp main_func = GetMainFunction(*module);
+  IfrtArrayType arr_default = GetArrayType(main_func.getArgument(0));
+  IfrtArrayType arr_explicit_default = GetArrayType(main_func.getArgument(1));
+  IfrtArrayType arr_user_layout = GetArrayType(main_func.getArgument(2));
+  IfrtArrayType arr_same_user_layout = GetArrayType(main_func.getArgument(3));
+  IfrtArrayType arr_other_user_layout = GetArrayType(main_func.getArgument(4));
+  IfrtArrayType arr_unspec = GetArrayType(main_func.getArgument(5));
+
+  EXPECT_THAT(arr_default.LocalShape(), IsOkAndHolds(ElementsAre(2, 6)));
+  EXPECT_THAT(arr_unspec.LocalShape(), IsOkAndHolds(ElementsAre(4, 6)));
+
+  EXPECT_TRUE(arr_default.HasSameLayout(arr_explicit_default));
+  EXPECT_FALSE(arr_default.HasSameLayout(arr_user_layout));
+  EXPECT_TRUE(arr_user_layout.HasSameLayout(arr_user_layout));
+  EXPECT_TRUE(arr_user_layout.HasSameLayout(arr_same_user_layout));
+  EXPECT_FALSE(arr_user_layout.HasSameLayout(arr_other_user_layout));
+}
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

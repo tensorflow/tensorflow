@@ -276,6 +276,25 @@ xla::LayoutMode IfrtArrayType::LayoutMode() const {
   return xla::LayoutMode(xla::LayoutMode::Mode::kDefault);
 }
 
+absl::StatusOr<llvm::SmallVector<int64_t>> IfrtArrayType::LocalShape() const {
+  return getShardingAttr().LocalShapeFromGlobalShape(getShape().getShape());
+}
+
+bool IfrtArrayType::HasSameLayout(IfrtArrayType other) const {
+  if (getLayoutAttr() == other.getLayoutAttr()) {
+    return true;
+  }
+  xla::LayoutMode lhs_mode = LayoutMode();
+  xla::LayoutMode rhs_mode = other.LayoutMode();
+  if (lhs_mode.mode != rhs_mode.mode) {
+    return false;
+  }
+  if (lhs_mode.mode == xla::LayoutMode::Mode::kUserSpecified) {
+    return lhs_mode.user_layout == rhs_mode.user_layout;
+  }
+  return true;
+}
+
 void IfrtArrayType::print(mlir::AsmPrinter& odsPrinter) const {
   mlir::Builder odsBuilder(getContext());
   odsPrinter << "<";

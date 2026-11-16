@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -67,25 +66,18 @@ class IfrtPrecompileAtomProgramPreprocessingPass
 // Determines the module type based on platform name.
 mlir::FailureOr<llvm::StringRef> GetModuleType(
     CallOp call_op, const std::vector<std::string>& platform_names) {
-  llvm::ArrayRef<int> device_ids = call_op.getDevices();
   // All devices should have the same type. Use the first platform name to
   // determine module type.
-  auto first_logical_device_id = device_ids.front();
-  if (first_logical_device_id >= platform_names.size()) {
-    return call_op->emitOpError()
-           << "cannot find mapping for logical device id "
-           << first_logical_device_id
-           << ". Mapping size: " << platform_names.size();
+  mlir::FailureOr<llvm::StringRef> platform_name = GetPlatformNameForDeviceId(
+      call_op, call_op.getDevices().front(), platform_names);
+  if (mlir::failed(platform_name)) {
+    return mlir::failure();
   }
-  auto platform_name = platform_names[first_logical_device_id];
-
-  // Get module type based on platform name.
-  if (platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
-      platform_name == xla::RocmName() || platform_name == xla::CpuName()) {
-    return kIfrtModuleTypeXla;
+  if (IsXlaPlatform(*platform_name)) {
+    return llvm::StringRef(kIfrtModuleTypeXla);
   }
   return call_op->emitOpError()
-         << "Unsupported platform for call op: " << platform_name;
+         << "Unsupported platform for call op: " << *platform_name;
 }
 
 mlir::LogicalResult IfrtPrecompileAtomProgramPreprocessingPass::initialize(

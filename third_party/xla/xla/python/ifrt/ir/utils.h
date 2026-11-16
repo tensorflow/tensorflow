@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
@@ -50,6 +51,11 @@ struct IfrtCallOpInfo : llvm::DenseMapInfo<CallOp> {
 // Retrieves the function named "main" from the given module, if it exists, and
 // fails otherwise.
 mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
+
+// Returns a snapshot of all top-level IFRT functions (`IsIfrtFunction`) in
+// `module`. Snapshotting into a vector allows callers to safely insert or erase
+// top-level callee symbols in `module` during iteration.
+llvm::SmallVector<mlir::func::FuncOp> GetIfrtFunctions(mlir::ModuleOp module);
 
 // Returns true if transferring between from and to array requires a reshard.
 bool IsReshard(IfrtArrayType from, IfrtArrayType to);

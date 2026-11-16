@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -224,6 +225,16 @@ mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module) {
       mlir::dyn_cast_or_null<mlir::func::FuncOp>(module.lookupSymbol("main"));
   CHECK(func);
   return func;
+}
+
+llvm::SmallVector<mlir::func::FuncOp> GetIfrtFunctions(mlir::ModuleOp module) {
+  llvm::SmallVector<mlir::func::FuncOp> ifrt_funcs;
+  for (mlir::func::FuncOp func_op : module.getOps<mlir::func::FuncOp>()) {
+    if (IsIfrtFunction(func_op)) {
+      ifrt_funcs.push_back(func_op);
+    }
+  }
+  return ifrt_funcs;
 }
 
 bool IsReshard(IfrtArrayType from, IfrtArrayType to) {

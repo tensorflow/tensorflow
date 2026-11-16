@@ -37,9 +37,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -440,10 +440,7 @@ class IfrtCallDedupPass
     // before mutating `module_op` so cloning shared callees cannot invalidate
     // the top-level `FuncOp` iterator and each callee is resolved only once.
     llvm::SmallVector<std::pair<CallOp, mlir::func::FuncOp>> calls;
-    for (mlir::func::FuncOp func_op : module_op.getOps<mlir::func::FuncOp>()) {
-      if (!IsIfrtFunction(func_op)) {
-        continue;
-      }
+    for (mlir::func::FuncOp func_op : GetIfrtFunctions(module_op)) {
       func_op.walk([&](CallOp call_op) {
         if (mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
             callee != nullptr && callee.getBody().hasOneBlock()) {
