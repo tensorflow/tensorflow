@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/mlir/utils/error_util.h"
 
 namespace mlir::TFL {
 
@@ -67,10 +66,13 @@ class PassDebugInstrumentation : public mlir::PassInstrumentation {
   int step_counter_ = 0;
 };
 
-class SerializationDiagHandler : public mlir::BaseScopedDiagnosticHandler {
+// Appends the message of every error diagnostic reported while it is in scope
+// to `out`, one per line. Diagnostics are also passed on to the previously
+// registered handler.
+class SerializationDiagHandler : public mlir::ScopedDiagnosticHandler {
  public:
   explicit SerializationDiagHandler(mlir::MLIRContext* ctx, std::string* out)
-      : BaseScopedDiagnosticHandler(ctx), out_(out) {
+      : ScopedDiagnosticHandler(ctx), out_(out) {
     setHandler([this](mlir::Diagnostic& diag) {
       if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
         if (!out_->empty()) *out_ += '\n';

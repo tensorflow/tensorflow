@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -51,8 +50,8 @@ limitations under the License.
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/converter_v2_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
-#include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
+#include "tensorflow/compiler/mlir/lite/debug/pass_manager_debug.h"
 #include "tensorflow/compiler/mlir/lite/export/export.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
@@ -68,10 +67,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"
-#include "xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/mlir/lite/utils/diagnostic_status_handler.h"
+#include "tensorflow/compiler/mlir/lite/utils/file_utils.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace mlir::TFL {
 namespace {
@@ -404,8 +402,8 @@ static absl::Status VerifyInputModule(mlir::ModuleOp module,
                                       bool enable_debug,
                                       int64_t elide_elements_larger_than = 8) {
   mlir::MLIRContext* context = module->getContext();
-  mlir::BaseScopedDiagnosticHandler initial_status_handler(context,
-                                                           /*propagate=*/false);
+  mlir::TFL::DiagnosticStatusHandler initial_status_handler(
+      context, /*propagate=*/false);
   bool verification_failed = mlir::failed(module.verify());
   absl::Status initial_status = initial_status_handler.ConsumeStatus();
   if (verification_failed) {
@@ -514,13 +512,13 @@ absl::Status ConvertStableHloToTFLite(mlir::ModuleOp module,
           options.debug_options().print_ir_before(),
           options.debug_options().print_ir_after()));
     } else {
-      tensorflow::InitPassManager(pm, options.debug_options());
+      mlir::TFL::InitPassManager(pm, options.debug_options());
     }
 
     add_passes(pm);
 
-    mlir::BaseScopedDiagnosticHandler status_handler(context,
-                                                     /*propagate=*/false);
+    mlir::TFL::DiagnosticStatusHandler status_handler(context,
+                                                      /*propagate=*/false);
     if (mlir::succeeded(pm.run(target))) return absl::OkStatus();
     return failure_coordinator.ReportFailure(target,
                                              status_handler.ConsumeStatus());
@@ -530,15 +528,16 @@ absl::Status ConvertStableHloToTFLite(mlir::ModuleOp module,
   // returned status.
   auto run_step =
       [&](absl::FunctionRef<mlir::LogicalResult()> step) -> absl::Status {
-    mlir::BaseScopedDiagnosticHandler status_handler(context,
-                                                     /*propagate=*/false);
+    mlir::TFL::DiagnosticStatusHandler status_handler(context,
+                                                      /*propagate=*/false);
     if (mlir::succeeded(step())) return absl::OkStatus();
     return failure_coordinator.ReportFailure(module,
                                              status_handler.ConsumeStatus());
   };
 
   auto run_pipeline = [&]() -> absl::Status {
-    TF_RETURN_IF_ERROR(run_passes(module, AddLoweringPasses));
+    absl::Status status = run_passes(module, AddLoweringPasses);
+    if (!status.ok()) return status;
 
     if (!HasPreserveRegions(module)) {
       return run_passes(module, [&](mlir::OpPassManager& pm) {
@@ -550,24 +549,27 @@ absl::Status ConvertStableHloToTFLite(mlir::ModuleOp module,
     // Preserve regions: optimize the main module and the region bodies with
     // different pipelines, in separate modules, then stitch them back.
     mlir::OwningOpRef<mlir::ModuleOp> regions;
-    TF_RETURN_IF_ERROR(run_step([&]() -> mlir::LogicalResult {
+    status = run_step([&]() -> mlir::LogicalResult {
       auto split = SplitPreserveRegions(module);
       if (mlir::failed(split)) return mlir::failure();
       regions = std::move(*split);
       return mlir::success();
-    }));
-    TF_RETURN_IF_ERROR(run_passes(*regions, [&](mlir::OpPassManager& pm) {
+    });
+    if (!status.ok()) return status;
+    status = run_passes(*regions, [&](mlir::OpPassManager& pm) {
       AddPreserveRegionPasses(pm, options);
-    }));
+    });
+    if (!status.ok()) return status;
     // The region bodies are final now. The blobs they reference must survive
     // the main module's pruning until the bodies are stitched back.
     auto region_resource_keys = std::make_shared<llvm::StringSet<>>();
     CollectResourceKeys(*regions, *region_resource_keys);
-    TF_RETURN_IF_ERROR(run_passes(module, [&](mlir::OpPassManager& pm) {
+    status = run_passes(module, [&](mlir::OpPassManager& pm) {
       AddOptimizationPasses(pm, options, region_resource_keys);
-    }));
-    TF_RETURN_IF_ERROR(
-        run_step([&] { return StitchPreserveRegions(module, *regions); }));
+    });
+    if (!status.ok()) return status;
+    status = run_step([&] { return StitchPreserveRegions(module, *regions); });
+    if (!status.ok()) return status;
     return run_passes(module, AddFinalizePasses);
   };
   absl::Status pipeline_status = run_pipeline();
@@ -576,11 +578,10 @@ absl::Status ConvertStableHloToTFLite(mlir::ModuleOp module,
     timing_session.timing_stream->flush();
     if (!timing_session.debug_dir.empty() && timing_session.timing_buffer &&
         !timing_session.timing_buffer->empty()) {
-      (void)tsl::Env::Default()->RecursivelyCreateDir(timing_session.debug_dir);
+      (void)CreateDirectories(timing_session.debug_dir);
       std::string timing_file =
           absl::StrCat(timing_session.debug_dir, "/mlir_pass_timing.log");
-      (void)tsl::WriteStringToFile(tsl::Env::Default(), timing_file,
-                                   *timing_session.timing_buffer);
+      (void)WriteStringToFile(timing_file, *timing_session.timing_buffer);
     }
   }
 

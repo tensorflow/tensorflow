@@ -1870,7 +1870,6 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
         "@stablehlo//:vhlo_types",
-        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -2054,6 +2053,65 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+# File helpers for the local file system. Depends only on LLVM and Abseil.
+cc_library(
+    name = "file_utils",
+    srcs = ["utils/file_utils.cc"],
+    hdrs = ["utils/file_utils.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "file_utils_test",
+    size = "small",
+    srcs = ["utils/file_utils_test.cc"],
+    deps = [
+        ":file_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# MLIR diagnostic handler that produces an absl::Status. Depends only on MLIR
+# and Abseil.
+cc_library(
+    name = "diagnostic_status_handler",
+    srcs = ["utils/diagnostic_status_handler.cc"],
+    hdrs = ["utils/diagnostic_status_handler.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "diagnostic_status_handler_test",
+    size = "small",
+    srcs = ["utils/diagnostic_status_handler_test.cc"],
+    deps = [
+        ":diagnostic_status_handler",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

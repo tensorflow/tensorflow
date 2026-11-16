@@ -81,6 +81,7 @@ cc_library(
         "pass_debug_instrumentation.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:file_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -90,8 +91,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@xla//xla/mlir/utils:error_util",
-        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -143,7 +142,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:cast_bf16_ops_to_f32",
         "//tensorflow/compiler/mlir/lite:cleanup_optimization_barrier",  # build_cleaner: keep (pass declared in tfl_passes.h)
         "//tensorflow/compiler/mlir/lite:converter_v2_options_proto_cc",
+        "//tensorflow/compiler/mlir/lite:diagnostic_status_handler",
         "//tensorflow/compiler/mlir/lite:downcast_x64",
+        "//tensorflow/compiler/mlir/lite:file_utils",
         "//tensorflow/compiler/mlir/lite:large_constant_fold",
         "//tensorflow/compiler/mlir/lite:legalize_jax_random",  # build_cleaner: keep (pass declared in tfl_passes.h)
         "//tensorflow/compiler/mlir/lite:optimize_broadcast_like_pass",
@@ -156,8 +157,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_push_transpose_through_ewise_pass",  # build_cleaner: keep (pass declared in tfl_passes.h)
         "//tensorflow/compiler/mlir/lite:tfl_passes",
         "//tensorflow/compiler/mlir/lite/core:macros",
-        "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
+        "//tensorflow/compiler/mlir/lite/debug:pass_manager_debug",
         "//tensorflow/compiler/mlir/lite/export",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -192,10 +193,7 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:vhlo_ops",
-        "@xla//xla/mlir/utils:error_util",
         "@xla//xla/mlir_hlo:stablehlo_extension_passes",
-        "@xla//xla/tsl/platform:env",
-        "@xla//xla/tsl/platform:errors",
     ],
 )
 
