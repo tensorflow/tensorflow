@@ -55,7 +55,7 @@ PjRtCpuRawClient* GetRawClient(PjRtClient* client) {
   if (!common_client) {
     return nullptr;
   }
-  return dynamic_cast<PjRtCpuRawClient*>(common_client->raw_client());
+  return common_client->raw_client()->down_cast<PjRtCpuRawClient>();
 }
 
 }  // namespace

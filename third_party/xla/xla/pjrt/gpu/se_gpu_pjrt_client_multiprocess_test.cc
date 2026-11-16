@@ -365,7 +365,7 @@ TEST_P(InterProcessCollectiveInitTest, EagerInit) {
   auto* se_client = absl::down_cast<CommonPjRtClient*>(custom_client.get());
   ASSERT_NE(se_client, nullptr);
   auto* raw_client =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(se_client->raw_client());
+      se_client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   ASSERT_OK_AND_ASSIGN(
       LocalDeviceState * local_device_state,
       raw_client->GetLocalDeviceState(

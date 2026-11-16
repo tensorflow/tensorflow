@@ -167,6 +167,9 @@ class PjRtExecutableLoadState
 class PjRtRawClientInterface;
 
 struct PjRtRawClientDeleter {
+  PjRtRawClientDeleter() = default;
+  template <typename T>
+  PjRtRawClientDeleter(std::default_delete<T>) {}
   void operator()(PjRtRawClientInterface* client) const;
 };
 using PjRtRawClientRef =

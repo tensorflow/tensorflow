@@ -1032,9 +1032,10 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+  auto* gpu_client =
       absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
-          ->raw_client());
+          ->raw_client()
+          ->down_cast<xla::PjRtStreamExecutorRawClient>();
   std::vector<float> data(4, 0.0f);
   EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
@@ -1073,9 +1074,10 @@ TEST(PjrtCApiGpuExtensionTest,
   PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
   EXPECT_EQ(error, nullptr) << GetErrorMessage(error, api);
 
-  auto* gpu_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+  auto* gpu_client =
       absl::down_cast<xla::CommonPjRtClient*>(create_arg.client->client.get())
-          ->raw_client());
+          ->raw_client()
+          ->down_cast<xla::PjRtStreamExecutorRawClient>();
   std::vector<float> data(4, 0.0f);
   EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));

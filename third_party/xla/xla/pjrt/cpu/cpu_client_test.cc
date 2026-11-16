@@ -2344,8 +2344,9 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetXlaPjrtCpuClient(options));
 
-  auto* raw_client = absl::down_cast<PjRtCpuRawClient*>(
-      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  auto* raw_client = absl::down_cast<CommonPjRtClient*>(client.get())
+                         ->raw_client()
+                         ->down_cast<PjRtCpuRawClient>();
   EXPECT_EQ(raw_client->eigen_intraop_device(), &custom_device);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,

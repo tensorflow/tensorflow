@@ -115,8 +115,8 @@ absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
   const auto* gpu_client = dynamic_cast<const CommonPjRtClient*>(client);
   if (gpu_client != nullptr) {
     if (const auto* raw_gpu_client =
-            dynamic_cast<const PjRtStreamExecutorRawClient*>(
-                gpu_client->raw_client())) {
+            gpu_client->raw_client()
+                ->down_cast<const PjRtStreamExecutorRawClient>()) {
       return raw_gpu_client->client()->backend().default_stream_executor();
     }
   }
@@ -194,8 +194,7 @@ static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
                    client->GetTopologyDescription());
   PjRtStreamExecutorRawClient* raw_client = nullptr;
   if (client) {
-    raw_client =
-        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+    raw_client = client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   }
   return raw_client->CrossCompile(
       std::move(module), std::move(options), client->process_index(),
@@ -209,8 +208,7 @@ static absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
                    client->GetTopologyDescription());
   PjRtStreamExecutorRawClient* raw_client = nullptr;
   if (client) {
-    raw_client =
-        dynamic_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
+    raw_client = client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   }
   return raw_client->CrossCompile(
       computation, std::move(options), client->process_index(),

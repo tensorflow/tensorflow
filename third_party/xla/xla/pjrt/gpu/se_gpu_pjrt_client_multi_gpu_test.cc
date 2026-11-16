@@ -342,8 +342,9 @@ TEST(StreamExecutorGpuClientTest, ExecuteWithIncarnations) {
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
   ASSERT_GE(client->addressable_devices().size(), 2);
   const gpu::GpuExecutableRunOptions* run_options =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(
-          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+      absl::down_cast<CommonPjRtClient*>(client.get())
+          ->raw_client()
+          ->down_cast<PjRtStreamExecutorRawClient>()
           ->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
 
@@ -460,8 +461,9 @@ TEST(StreamExecutorGpuClientTest,
         }
         std::unique_ptr<PjRtClient>& client = *client_status;
         const gpu::GpuExecutableRunOptions* run_options =
-            absl::down_cast<PjRtStreamExecutorRawClient*>(
-                absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+            absl::down_cast<CommonPjRtClient*>(client.get())
+                ->raw_client()
+                ->down_cast<PjRtStreamExecutorRawClient>()
                 ->gpu_run_options();
         if (run_options == nullptr ||
             run_options->execution_timeout_handlers().size() != 2) {
@@ -492,8 +494,9 @@ TEST(StreamExecutorGpuClientTest, AbortCollectivesTimeout) {
   ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   const gpu::GpuExecutableRunOptions* run_options =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(
-          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+      absl::down_cast<CommonPjRtClient*>(client.get())
+          ->raw_client()
+          ->down_cast<PjRtStreamExecutorRawClient>()
           ->gpu_run_options();
   ASSERT_NE(run_options, nullptr);
 
@@ -1375,7 +1378,7 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
 
   auto* se_client_0 = absl::down_cast<CommonPjRtClient*>(client_0.get());
   auto* raw_client_0 =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
+      se_client_0->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,
                        raw_client_0->GetLocalDeviceState(LocalDeviceId(0)));
   ASSERT_TRUE(device_state_0->device_error_callback());
@@ -1404,8 +1407,8 @@ class CrossDeviceCopyTest : public ::testing::Test {
     ASSERT_OK_AND_ASSIGN(
         client_, GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
     common_client_ = absl::down_cast<CommonPjRtClient*>(client_.get());
-    raw_client_ = absl::down_cast<PjRtStreamExecutorRawClient*>(
-        common_client_->raw_client());
+    raw_client_ =
+        common_client_->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
     PjRtDevice* dev1 = client_->addressable_devices()[1];
     ASSERT_OK_AND_ASSIGN(
         d1_, raw_client_->GetLocalDeviceState(dev1->local_device_id()));

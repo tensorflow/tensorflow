@@ -564,8 +564,8 @@ TEST(StreamExecutorGpuClientTest,
   PjRtDevice* const dst_device = pjrt_client->addressable_devices()[1];
 
   auto* common_client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
-  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
-      common_client->raw_client());
+  auto* raw_client =
+      common_client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
   ASSERT_OK_AND_ASSIGN(
       LocalDeviceState* const dst_local_device_state,
       raw_client->GetLocalDeviceState(dst_device->local_device_id()));

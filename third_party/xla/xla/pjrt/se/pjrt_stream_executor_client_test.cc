@@ -90,8 +90,8 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override {
     PjRtStreamExecutorRawClient* raw_client = nullptr;
     if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
-      raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
-          common_client->raw_client());
+      raw_client =
+          common_client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
     }
     if (raw_client == nullptr) {
       return absl::InvalidArgumentError(
@@ -109,8 +109,8 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override {
     PjRtStreamExecutorRawClient* raw_client = nullptr;
     if (auto* common_client = dynamic_cast<CommonPjRtClient*>(client)) {
-      raw_client = dynamic_cast<PjRtStreamExecutorRawClient*>(
-          common_client->raw_client());
+      raw_client =
+          common_client->raw_client()->down_cast<PjRtStreamExecutorRawClient>();
     }
     if (raw_client == nullptr) {
       return absl::InvalidArgumentError(
