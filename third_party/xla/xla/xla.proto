@@ -1083,17 +1083,6 @@ message DebugOptions {
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
-  // Enabling this flag will attempt to redirect every already-constructed
-  // fusion possible to the Triton emitter.
-  //
-  // For example, a fusion with kind kLoop will be transformed to a fusion with
-  // kind kCustom (and underlying kTritonFusionKind) if it can be tiled
-  // correctly, and if all the instructions it contains are supported by XLA's
-  // Triton emitter. Tile sizes are assigned automatically.
-  //
-  // Pre-existing block-level fusions are left unmodified.
-  optional bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
-
   // If true, enable heuristic based collective combining.
   optional bool xla_gpu_experimental_enable_heuristic_collective_combining =
       366;
@@ -2184,6 +2173,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_autotune_backends";
   reserved "xla_gpu_gemm_autotuner_override_file";
   reserved "xla_gpu_override_gemm_autotuner";
+  reserved "xla_gpu_experimental_enable_fusion_block_level_rewriter";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 165, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179,
@@ -2191,9 +2181,9 @@ message DebugOptions {
       204, 206, 207, 211, 214, 217, 218, 220, 221, 226, 227, 229, 230, 231, 233,
       234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
       278, 279, 281, 282, 286, 292, 295, 298, 299, 300, 302, 303, 309, 313, 314,
-      316, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371,
-      376, 385, 388, 389, 394, 396, 398, 402, 413, 420, 423, 430, 434, 435, 442,
-      443, 445, 446, 450, 456, 458, 464, 477, 480;
+      316, 319, 320, 325, 326, 332, 334, 346, 352, 354, 355, 358, 361, 367, 369,
+      371, 376, 385, 388, 389, 394, 396, 398, 402, 413, 420, 423, 430, 434, 435,
+      442, 443, 445, 446, 450, 456, 458, 464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
