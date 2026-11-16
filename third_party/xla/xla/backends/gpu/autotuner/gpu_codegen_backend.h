@@ -180,7 +180,9 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_executable_embed_debug_info(false);
     // Avoid dumping compilation steps.
     debug_options.set_xla_gpu_dump_autotune_results_to("");
+    debug_options.set_xla_dump_autotune_cache_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
+    debug_options.set_xla_load_autotune_cache_from("");
     debug_options.set_xla_dump_autotune_logs_to("");
     debug_options.clear_xla_run_hlo_passes_starting_from();
   }

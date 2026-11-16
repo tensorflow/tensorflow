@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -78,7 +79,9 @@ namespace {
 
 namespace se = stream_executor;
 
+using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
+using ::testing::Not;
 using ::tsl::proto_testing::EqualsProto;
 
 se::StreamExecutor* GpuExecutor() {
@@ -498,6 +501,104 @@ TEST_F(ConfigAssignerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
   EXPECT_TRUE(hlo_backend_config.has_selected_algorithm());
 }
 
+// Tests that the new autotune cache flags and their deprecated xla_gpu_*
+// counterparts control where and how the autotune cache is written.
+class AutotuneCacheFlagsTest : public ConfigAssignerPassTest {
+ protected:
+  // Runs the config assigner pass with a cuBLASLt backend on `module`.
+  absl::StatusOr<bool> RunCublasLtConfigAssigner(HloModule* module) {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                        /*num_threads=*/4);
+    GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    backends.push_back(std::make_unique<CublasLtBackend>(
+        stream_executor_, &module->config().debug_options(), &compiler_,
+        &target_config));
+    auto get_backends_fn =
+        [backends =
+             std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+                 std::move(backends))]() mutable {
+          return std::move(*backends);
+        };
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<ConfigAssignerPass> pass,
+        ConfigAssignerPass::Create(
+            std::move(get_backends_fn), module->config().debug_options(),
+            stream_executor_, &thread_pool, &target_config,
+            /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+            /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+            allocator_.get()));
+    return pass->Run(module, /*execution_threads=*/{});
+  }
+
+  // Returns a new empty directory unique to `name`.
+  absl::StatusOr<std::string> MakeEmptyCacheDir(absl::string_view name) {
+    std::string dir = tsl::io::JoinPath(::testing::TempDir(), name);
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(dir));
+    return dir;
+  }
+
+  absl::StatusOr<std::vector<std::string>> CacheDirContents(
+      const std::string& dir) {
+    std::vector<std::string> children;
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(dir, &children));
+    return children;
+  }
+};
+
+TEST_F(AutotuneCacheFlagsTest, AutotuneCacheDirIsWrittenTo) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::string cache_dir,
+                       MakeEmptyCacheDir("autotune_cache_dir"));
+  module->mutable_config().mutable_debug_options().set_xla_autotune_cache_dir(
+      cache_dir);
+
+  EXPECT_THAT(RunCublasLtConfigAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(CacheDirContents(cache_dir),
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
+}
+
+TEST_F(AutotuneCacheFlagsTest, DeprecatedReadOnlyCacheModeIsHonored) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::string cache_dir,
+                       MakeEmptyCacheDir("deprecated_read_only_cache_mode"));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
+  debug_options.set_xla_gpu_experimental_autotune_cache_mode(
+      DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
+  EXPECT_THAT(RunCublasLtConfigAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(CacheDirContents(cache_dir),
+              absl_testing::IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(AutotuneCacheFlagsTest, AutotuneCacheModeTakesPrecedence) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::string cache_dir,
+                       MakeEmptyCacheDir("autotune_cache_mode_precedence"));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_autotune_cache_dir(cache_dir);
+  debug_options.set_xla_gpu_experimental_autotune_cache_mode(
+      DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
+  debug_options.set_xla_autotune_cache_mode(
+      DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
+  EXPECT_THAT(RunCublasLtConfigAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(CacheDirContents(cache_dir),
+              absl_testing::IsOkAndHolds(IsEmpty()));
+}
+
 TEST_F(ConfigAssignerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
@@ -862,6 +963,31 @@ ENTRY main {
   EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
       debug_options,
       GetEnabledBackendTypes(debug_options, gpu_version))(fusion));
+}
+
+TEST_F(AutotunerFlagsTest, FailOnAutotuneCacheMissExpectsAllInCache) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  EXPECT_FALSE(
+      GetConfigAssignerOptions(debug_options).expect_all_instructions_in_cache);
+  debug_options.set_xla_fail_on_autotune_cache_miss(true);
+  EXPECT_TRUE(
+      GetConfigAssignerOptions(debug_options).expect_all_instructions_in_cache);
+}
+
+TEST_F(AutotunerFlagsTest,
+       DeprecatedRequireCompleteAotAutotuneResultsIsHonored) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  EXPECT_TRUE(
+      GetConfigAssignerOptions(debug_options).expect_all_instructions_in_cache);
+}
+
+TEST_F(AutotunerFlagsTest, FailOnAutotuneCacheMissTakesPrecedence) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  debug_options.set_xla_fail_on_autotune_cache_miss(false);
+  EXPECT_FALSE(
+      GetConfigAssignerOptions(debug_options).expect_all_instructions_in_cache);
 }
 
 TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {

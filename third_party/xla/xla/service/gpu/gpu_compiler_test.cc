@@ -711,6 +711,23 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   }
 }
 
+TEST_P(PersistedAutotuningTest, DumpAutotuneCacheToTakesPrecedence) {
+  std::string dump_autotune_cache_to = GetUniqueTempFilePath(".txt");
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_dump_autotune_cache_to(
+      dump_autotune_cache_to);
+
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
+
+  ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                       ReadNonEmptyFile(dump_autotune_cache_to));
+  ExpectValidAutotuneResults(autotune_results_str, use_new_format());
+  // The deprecated xla_gpu_dump_autotune_results_to path is not written to.
+  EXPECT_THAT(
+      tsl::Env::Default()->FileExists(xla_gpu_dump_autotune_results_to_),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
 TEST_P(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
   EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {

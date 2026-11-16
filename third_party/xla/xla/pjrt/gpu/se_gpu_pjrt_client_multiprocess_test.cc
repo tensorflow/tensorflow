@@ -488,9 +488,9 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     debug_options.set_xla_gpu_cublas_fallback(false);
 
     if (rank() < param.num_nodes_using_cache) {
-      debug_options.set_xla_gpu_experimental_autotune_cache_mode(
+      debug_options.set_xla_autotune_cache_mode(
           DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
-      debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
+      debug_options.set_xla_autotune_cache_dir(cache_dir);
     }
 
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,

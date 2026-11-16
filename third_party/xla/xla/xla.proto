@@ -786,10 +786,11 @@ message DebugOptions {
   // inputs+output is within the threshold.
   optional int32 xla_gpu_dot_merger_threshold_mb = 331;
 
+  // DEPRECATED: Use `xla_dump_autotune_cache_to` instead.
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
   // compilation, possibly multiple times per process. This only works on CUDA.
-  optional string xla_gpu_dump_autotune_results_to = 222;
+  optional string xla_gpu_dump_autotune_results_to = 222 [deprecated = true];
 
   // This flag will be deleted soon. Please use
   // xla_dump_isolated_hlos_pre_and_post_config_assignment instead.
@@ -992,8 +993,10 @@ message DebugOptions {
   // If true, autotune all fusions with block level emitter.
   optional bool xla_gpu_experimental_all_fusions_with_triton = 444;
 
+  // DEPRECATED: Use `xla_autotune_cache_mode` instead.
   // Specifies the behavior of per kernel autotuning cache.
-  optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
+  optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324
+      [deprecated = true];
 
   // If true, all autotuning is consolidated after fusion passes.
   // Deprecated, autotune post fusion is always enabled.
@@ -1281,12 +1284,13 @@ message DebugOptions {
 
   optional int32 xla_gpu_llvm_verification_level = 256;
 
+  // DEPRECATED: Use `xla_load_autotune_cache_from` instead.
   // File to load autotune results from. It will be considered a binary file
   // unless the name ends with .txt or .textproto. At most one loading will
   // happen during the lifetime of one process, even if the first one is
   // unsuccessful or different file paths are passed here. This only works on
   // CUDA.
-  optional string xla_gpu_load_autotune_results_from = 223;
+  optional string xla_gpu_load_autotune_results_from = 223 [deprecated = true];
 
   optional int32 xla_gpu_memory_limit_slop_factor = 260;
 
@@ -1335,7 +1339,9 @@ message DebugOptions {
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   optional int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
 
-  optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
+  // DEPRECATED: Use `xla_autotune_cache_dir` instead.
+  optional string xla_gpu_per_fusion_autotune_cache_dir = 310
+      [deprecated = true];
 
   optional PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
@@ -1377,10 +1383,12 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   optional int64 xla_gpu_redzone_padding_bytes = 228;
 
+  // DEPRECATED: Use `xla_fail_on_autotune_cache_miss` instead.
   // If true, will require complete AOT autotuning results; in the case of
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
-  optional bool xla_gpu_require_complete_aot_autotune_results = 284;
+  optional bool xla_gpu_require_complete_aot_autotune_results = 284
+      [deprecated = true];
 
   // If true, require that BlasLt matmuls execute the exact algorithm described
   // by `BlasLtMatmulAlgorithmProto` rather than falling back to the heuristic
@@ -2034,7 +2042,25 @@ message DebugOptions {
   // Use xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
   optional string xla_gpu_override_triton_configs_file = 578;
 
-  // Next id: 579
+  // File to write autotune cache results to. It will be a binary file unless
+  // the name ends with .txt or .textproto.
+  optional string xla_dump_autotune_cache_to = 579;
+
+  // File to load autotune cache results from. It will be considered a binary
+  // file unless the name ends with .txt or .textproto.
+  optional string xla_load_autotune_cache_from = 580;
+
+  // Directory to store per-instruction autotune cache.
+  optional string xla_autotune_cache_dir = 581;
+
+  // Specifies the behavior of the autotuning cache.
+  optional AutotuneCacheMode xla_autotune_cache_mode = 582;
+
+  // If true, requires complete AOT autotune results and fails compilation on a
+  // cache miss.
+  optional bool xla_fail_on_autotune_cache_miss = 583;
+
+  // Next id: 584
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
