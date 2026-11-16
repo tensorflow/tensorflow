@@ -675,6 +675,8 @@ def _raise_if_empty_reduction(a, axis, op_name):
   # reported by the regular axis checks rather than masked by this one.
   normalized_axes = []
   for ax in axes:
+    if isinstance(ax, np.ndarray) and ax.ndim == 0:
+      ax = ax.item()
     if isinstance(ax, bool) or not isinstance(ax, (int, np.integer)):
       return
     ax = int(ax)

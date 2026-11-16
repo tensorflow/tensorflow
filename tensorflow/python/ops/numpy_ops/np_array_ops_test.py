@@ -1000,6 +1000,17 @@ class ArrayMethodsTest(test.TestCase):
         ValueError, 'zero-size array to reduction operation'):
       static_shape()
 
+    @def_function.function
+    def static_shape_tensor_axes():
+      return np_array_ops.amax(
+          array_ops.zeros((3, 0)),
+          axis=(constant_op.constant(0), constant_op.constant(1)),
+      )
+
+    with self.assertRaisesRegex(
+        ValueError, 'zero-size array to reduction operation'):
+      static_shape_tensor_axes()
+
     # Unknown dimensions can't be checked statically and are left to TF.
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec([None, 3], dtypes.float32)])
