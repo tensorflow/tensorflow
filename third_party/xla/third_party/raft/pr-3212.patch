@@ -1,0 +1,53 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/cpp/include/raft/matrix/detail/select_k-inl.cuh b/cpp/include/raft/matrix/detail/select_k-inl.cuh
+--- a/cpp/include/raft/matrix/detail/select_k-inl.cuh
++++ b/cpp/include/raft/matrix/detail/select_k-inl.cuh
+@@ -104,7 +104,7 @@ void segmented_sort_by_key(raft::resources const& handle,
+                                              offsets,
+                                              offsets + 1,
+                                              0,
+-                                             sizeof(ValT) * 8,
++                                             sizeof(KeyT) * 8,
+                                              stream);
+   } else {
+     cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
+@@ -118,7 +118,7 @@ void segmented_sort_by_key(raft::resources const& handle,
+                                                        offsets,
+                                                        offsets + 1,
+                                                        0,
+-                                                       sizeof(ValT) * 8,
++                                                       sizeof(KeyT) * 8,
+                                                        stream);
+   }
+ 
+@@ -138,7 +138,7 @@ void segmented_sort_by_key(raft::resources const& handle,
+                                              offsets,
+                                              offsets + 1,
+                                              0,
+-                                             sizeof(ValT) * 8,
++                                             sizeof(KeyT) * 8,
+                                              stream);
+ 
+   } else {
+@@ -154,7 +154,7 @@ void segmented_sort_by_key(raft::resources const& handle,
+                                                        offsets,
+                                                        offsets + 1,
+                                                        0,
+-                                                       sizeof(ValT) * 8,
++                                                       sizeof(KeyT) * 8,
+                                                        stream);
+   }
+ 

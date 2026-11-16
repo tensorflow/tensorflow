@@ -34,6 +34,7 @@ def tensorflow_repo():
             "//third_party/raft:vectorized.cuh.patch",
             "//third_party/raft:clang_cuda_intrinsics.h.patch",
             "//third_party/raft:pr-2807.patch",
+            "//third_party/raft:pr-3212.patch",
             "//third_party/raft:logger_macros.hpp.patch",
             "//third_party/raft:select_k_runner.hpp.patch",
             "//third_party/raft:select_k_runner.cu.cc.patch",
@@ -55,6 +56,7 @@ def xla_repo():
         build_file = "//third_party/raft:raft.xla.BUILD",
         patch_file = [
             "//third_party/raft:clang_cuda_intrinsics.h.patch",
+            "//third_party/raft:pr-3212.patch",
             "//third_party/raft:logger_macros.hpp.patch",
             "//third_party/raft:select_k_runner.hpp.patch",
             "//third_party/raft:select_k_runner.cu.cc.patch",

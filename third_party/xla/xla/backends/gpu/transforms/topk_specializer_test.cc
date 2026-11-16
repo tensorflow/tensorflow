@@ -833,17 +833,18 @@ TEST_F(TopkTest, StableTopKViaUint64UsesEstimatedScratchSize) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
 
-  // Verify HLO scratch sizing across WarpImmediate (f32[8,1024], k=32),
-  // WarpFiltered (f32[64,16384], k=256), and Radix11bits (f32[64,32768],
-  // k=256), and verify end-to-end GPU execution on the WarpSort shapes.
+  // Verify HLO scratch sizing and end-to-end GPU execution across
+  // WarpImmediate (f32[8,1024], k=32), WarpFiltered (f32[64,16384], k=256),
+  // and Radix11bits (f32[64,32768], k=256).
   struct TestCase {
     int batch;
     int n;
     int k;
   };
-  // TODO(b/409009349): Add TestCase{64, 32768, 256} (Radix11bits) once
-  // https://github.com/rapidsai/raft/pull/3212 is backported.
-  for (const TestCase& tc : {TestCase{8, 1024, 32}, TestCase{64, 16384, 256}}) {
+  for (const TestCase& tc : {TestCase{8, 1024, 32}, TestCase{64, 16384, 256},
+                             TestCase{64, 32768, 256}}) {
+    SCOPED_TRACE(
+        absl::Substitute("batch=$0, n=$1, k=$2", tc.batch, tc.n, tc.k));
     const std::string hlo = absl::Substitute(
         R"hlo(
       HloModule m
