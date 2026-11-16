@@ -104,7 +104,10 @@ cc_library(
 tf_kernel_library(
     name = "flash_attention_op",
     srcs = ["flash_attention_op.cc"],
-    gpu_deps = [":fa2"],
+    gpu_deps = [
+        ":fa2",
+        "//tensorflow/core:lib",
+    ],
     gpu_srcs = [
         "flash_attention_op_gpu.cu.h",
         "flash_attention_op_fwd_gpu.cu.cc",
