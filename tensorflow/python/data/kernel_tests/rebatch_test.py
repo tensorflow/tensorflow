@@ -21,7 +21,10 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
@@ -340,6 +343,22 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: (x, None))
     dataset = dataset.batch(4, drop_remainder=True)
     _ = dataset.rebatch(batch_size=[2, 2])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_types=3, num_shapes=3) +
+          combinations.combine(num_types=1, num_shapes=2)))
+  def testOutputSignatureMismatchesInput(self, num_types, num_shapes):
+    dataset = dataset_ops.Dataset.range(4).batch(4)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "input dataset"):
+      variant = gen_experimental_dataset_ops.rebatch_dataset_v2(
+          dataset._variant_tensor,
+          batch_sizes=[2],
+          drop_remainder=False,
+          output_types=[dtypes.int64] * num_types,
+          output_shapes=[[None]] * num_shapes)
+      self.evaluate(variant)
 
 
 class RebatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,

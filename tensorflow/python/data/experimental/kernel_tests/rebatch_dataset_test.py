@@ -25,8 +25,10 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -326,6 +328,23 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
     dataset = dataset.map(lambda x: (x, None))
     dataset = dataset.batch(4, drop_remainder=True)
     _ = distribute._LegacyRebatchDataset(dataset, num_replicas=2)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_types=1, num_shapes=1) +
+          combinations.combine(num_types=2, num_shapes=1)))
+  def testOutputSignatureMismatchesInput(self, num_types, num_shapes):
+    dataset = dataset_ops.Dataset.from_tensors(
+        (constant_op.constant([[1, 2], [3, 4]]),
+         constant_op.constant([[5, 6], [7, 8]])))
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "input dataset"):
+      variant = gen_experimental_dataset_ops.rebatch_dataset(
+          dataset._variant_tensor,
+          num_replicas=1,
+          output_types=[dtypes.int32] * num_types,
+          output_shapes=[[None, 2]] * num_shapes)
+      self.evaluate(variant)
 
 
 class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
