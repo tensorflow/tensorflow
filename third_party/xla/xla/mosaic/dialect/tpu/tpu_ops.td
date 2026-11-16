@@ -70,7 +70,6 @@ def TPU_TiledLayoutAttr
     ArrayRefParameter<"int64_t", "">:$tile_strides
   );
   let extraClassDeclaration = [{
-    static ::llvm::SmallVector<int64_t> getContiguousTileStrides(::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
     static TiledLayoutAttr getContiguous(::mlir::MLIRContext* context, ::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
 
     // Returns the number of trailing dimensions where tiles can be statically
@@ -1376,11 +1375,6 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure, ViewLikeOpInterface]> 
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getInput(); }
-
-    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefLayoutAttrInterface input_layout,
-        ::mlir::ArrayRef<int64_t> squeezed,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
@@ -1394,10 +1388,6 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure, ViewLikeOpInterface]> 
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getInput(); }
-
-    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
-        ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
@@ -1442,10 +1432,6 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure, ViewLikeOpInterface]> 
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getInput(); }
-
-    static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
-        ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
@@ -1594,9 +1580,6 @@ let assemblyFormat = [{
     $semaphore `,` $amount (`device_id` $device_id^)? (`core_id` $core_id^)? (`subcore_id` $subcore_id^)? attr-dict `:` type($semaphore)
   }];
   let hasVerifier = 1;
-  let extraClassDeclaration = [{
-    mlir::tpu::CoreType getTargetCoreType();
-  }];
   let builders = [
     // A backward-compatible builder that sets `subcore_id` to nullptr.
     OpBuilder<(ins "Value":$semaphore, "Value":$amount, "Value":$device_id, "Value":$core_id)>,
@@ -1667,16 +1650,6 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
   ];
 }
 
-// A base class for all ops that need to differentiate between gather and
-// scatter.
-class IndirectDMAOp {
-  code extraBaseClassDeclaration = [{
-    // Return true if this op performs a gather. Returns false if it performs a
-    // scatter.
-    FailureOr<bool> isGather();
-  }];
-}
-
 // tpu.enqueue_indirect_dma copies data between HBM and VMEM, or between
 // VMEM_SHARED and VMEM using indirect HBM offsets.
 //
@@ -1702,7 +1675,7 @@ class IndirectDMAOp {
 // add             : If true, add source values to target values. Otherwise, overwrite.
 // offset_filter   : If set, don't write values at offsets whose value is equal to
 //                   the filter value.
-def TPU_EnqueueIndirectDMAOp : TPU_Op<"enqueue_indirect_dma">, IndirectDMAOp {
+def TPU_EnqueueIndirectDMAOp : TPU_Op<"enqueue_indirect_dma"> {
   let arguments = (ins
     AnyMemRef:$source,
     AnyMemRef:$target,
@@ -1720,7 +1693,6 @@ def TPU_EnqueueIndirectDMAOp : TPU_Op<"enqueue_indirect_dma">, IndirectDMAOp {
     prop-dict attr-dict
   }];
   let hasVerifier = 1;
-  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 // tpu.wait_dma2 waits for a DMA to complete.
@@ -1784,7 +1756,7 @@ def TPU_WaitDMAOp : TPU_Op<"wait_dma", [AttrSizedOperandSegments]> {
 // destination memref in a gather, and the size of the source memref in a
 // scatter. The op differentiates between gather and scatter based on the memory
 // spaces of the source and destination memrefs.
-def TPU_WaitIndirectDMAOp : TPU_Op<"wait_indirect_dma">, IndirectDMAOp {
+def TPU_WaitIndirectDMAOp : TPU_Op<"wait_indirect_dma"> {
   let arguments = (ins
     MemRefOf<[TPU_DMASemaphoreType]>:$semaphore,
     AnyMemRef:$src,
@@ -1797,7 +1769,6 @@ def TPU_WaitIndirectDMAOp : TPU_Op<"wait_indirect_dma">, IndirectDMAOp {
     attr-dict
   }];
   let hasVerifier = 1;
-  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 def TPU_RegionOp : TPU_Op<"region", [RecursiveMemoryEffects, SingleBlockImplicitTerminator<"tpu::YieldOp">]> {

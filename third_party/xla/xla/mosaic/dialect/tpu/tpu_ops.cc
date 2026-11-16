@@ -275,6 +275,14 @@ LogicalResult SharedMemRefSliceOp::verify() {
   return success();
 }
 
+namespace {
+
+FailureOr<MemRefLayoutAttrInterface> inferMemRefSqueezeResultLayout(
+    MemRefLayoutAttrInterface input_layout, ArrayRef<int64_t> squeezed,
+    function_ref<InFlightDiagnostic()> emit_error);
+
+}  // namespace
+
 LogicalResult MemRefSqueezeOp::verify() {
   MemRefType input_type = getInput().getType();
   MemRefType result_type = getType();
@@ -291,7 +299,7 @@ LogicalResult MemRefSqueezeOp::verify() {
   const ArrayRef<int64_t> result_shape = result_type.getShape();
   // NOTE: In cases where there is flexibility on which dimension to squeeze,
   //   such as 1x1x2 -> 1x2 (can squeeze dimension 1 or 2), this may choose
-  //   dimensions that have padding and fail in inferResultLayout.
+  //   dimensions that have padding and fail in inferMemRefSqueezeResultLayout.
   // TODO(tlongeri): Unify logic in inferMemRefReshape such that we don't
   //  need computeSqueezedDimsChecked at all.
   FAILUREOR_ASSIGN_OR_RETURN(
@@ -313,8 +321,8 @@ LogicalResult MemRefSqueezeOp::verify() {
 
   FAILUREOR_ASSIGN_OR_RETURN(
       const MemRefLayoutAttrInterface expected_result_layout,
-      inferResultLayout(input_type.getLayout(), squeezed,
-                        [&]() { return emitOpError(); }));
+      inferMemRefSqueezeResultLayout(input_type.getLayout(), squeezed,
+                                     [&]() { return emitOpError(); }));
   if (result_type.getLayout() != expected_result_layout) {
     return emitOpError("Expected result layout to be ")
            << expected_result_layout;
@@ -322,11 +330,13 @@ LogicalResult MemRefSqueezeOp::verify() {
   return success();
 }
 
-FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
+namespace {
+
+FailureOr<MemRefLayoutAttrInterface> inferMemRefSqueezeResultLayout(
     const MemRefLayoutAttrInterface input_layout,
     const ArrayRef<int64_t> squeezed,
     const function_ref<InFlightDiagnostic()> emit_error) {
-  // TODO(tlongeri): Make MemRefReshapeOp::inferResultLayout more general and
+  // TODO(tlongeri): Make inferMemRefReshapeResultLayout more general and
   // use that instead.
   MLIRContext* const ctx = input_layout.getContext();
   if (auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
@@ -355,8 +365,8 @@ FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
 
     SmallVector<xla::Tile> result_tiles;
     result_tiles.reserve(tiles.size());
-    // Perform expansion as in TiledLayoutAttr::getExpandedShape, maintaining a
-    // mapping from expanded shape dimension to corresponding input dimension.
+    // Perform expansion as in getExpandedShape, maintaining a mapping from
+    // expanded shape dimension to corresponding input dimension.
     SmallVector<int64_t> expanded_dims = llvm::to_vector(
         llvm::iota_range<int64_t>(0, input_rank, /*Inclusive=*/false));
     for (const xla::Tile& input_tile : tiles) {
@@ -392,6 +402,12 @@ FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
   }
   return emit_error() << "Only tiled or identity layouts supported.";
 }
+
+FailureOr<MemRefLayoutAttrInterface> inferMemRefReshapeResultLayout(
+    MemRefType input_type, ArrayRef<int64_t> result_shape,
+    function_ref<InFlightDiagnostic()> emit_error);
+
+}  // namespace
 
 LogicalResult MemRefReshapeOp::verify() {
   const MemRefType input_ty = getInput().getType();
@@ -435,16 +451,16 @@ LogicalResult MemRefReshapeOp::verify() {
   // The above checks are fundamental, the following is simply unimplemented:
   if (!is_static && (input_dynamic_dims > 1 ||
                      input_static_elements != result_static_elements)) {
-    // inferResultLayout relies on this check. Make sure to update it when
-    // removing this.
+    // inferMemRefReshapeResultLayout relies on this check. Make sure to update
+    // it when removing this.
     return emitOpError(
         "Not implemented: Input with multiple dynamic dimensions or a changing "
         "single dynamic dimension.");
   }
   FAILUREOR_ASSIGN_OR_RETURN(
       const MemRefLayoutAttrInterface expected_result_layout,
-      inferResultLayout(input_ty, result_ty.getShape(),
-                        [&]() { return emitOpError(); }));
+      inferMemRefReshapeResultLayout(input_ty, result_ty.getShape(),
+                                     [&]() { return emitOpError(); }));
   if (expected_result_layout != result_ty.getLayout()) {
     return emitOpError("Expected result layout to be ")
            << expected_result_layout;
@@ -508,7 +524,9 @@ LogicalResult MemRefPadOp::verify() {
   return success();
 }
 
-FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
+namespace {
+
+FailureOr<MemRefLayoutAttrInterface> inferMemRefReshapeResultLayout(
     const MemRefType input_type, const ArrayRef<int64_t> result_shape,
     function_ref<InFlightDiagnostic()> emit_error) {
   MLIRContext* const ctx = input_type.getContext();
@@ -732,6 +750,8 @@ FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
   return emit_error() << "Only tiled or identity layouts supported.";
 }
 
+}  // namespace
+
 LogicalResult TransposeOp::verify() {
   auto source_type = getSourceVectorType();
   auto permutation = getPermutation();
@@ -767,19 +787,30 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
+namespace {
+
+mlir::FailureOr<MemRefType> inferMemRefBitcastResultType(
+    MemRefType input_type, Type result_elem_type,
+    function_ref<InFlightDiagnostic()> emit_error);
+
+}  // namespace
+
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
   FAILUREOR_ASSIGN_OR_RETURN(
-      auto result_type, inferResultType(src_ty, tgt_ty.getElementType(),
-                                        [this]() { return emitOpError(); }));
+      auto result_type,
+      inferMemRefBitcastResultType(src_ty, tgt_ty.getElementType(),
+                                   [this]() { return emitOpError(); }));
   if (result_type != tgt_ty) {
     return emitOpError("Expected result type to be ") << result_type;
   }
   return success();
 }
 
-mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
+namespace {
+
+mlir::FailureOr<MemRefType> inferMemRefBitcastResultType(
     const MemRefType input_type, const Type result_elem_type,
     function_ref<InFlightDiagnostic()> emit_error) {
   const unsigned input_bitwidth = getElementTypeBitwidth(input_type);
@@ -877,6 +908,8 @@ mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
   return MemRefType::get(result_shape, result_elem_type, result_layout,
                          input_type.getMemorySpace());
 }
+
+}  // namespace
 
 template <typename Op>
 LogicalResult verifyStridedOp(Op op, MemRefType memref_ty, VectorType vector_ty,
@@ -1784,11 +1817,11 @@ void SemaphoreSignalOp::build(OpBuilder& builder, OperationState& state,
         /*subcore_id=*/nullptr);
 }
 
-mlir::tpu::CoreType SemaphoreSignalOp::getTargetCoreType() {
-  return getRefCoreType(getSemaphore()).value_or(GetCoreTypeOfParentOp(**this));
-}
-
 namespace {
+
+CoreType getSemaphoreSignalTargetCoreType(SemaphoreSignalOp op) {
+  return getRefCoreType(op.getSemaphore()).value_or(GetCoreTypeOfParentOp(*op));
+}
 
 bool isRemote(Value device_id, Value core_id) {
   return device_id != nullptr || core_id != nullptr;
@@ -1808,7 +1841,7 @@ LogicalResult SemaphoreSignalOp::verify() {
   }
 
   CoreType issuing_core_type = GetCoreTypeOfParentOp(**this);
-  CoreType target_core_type = getTargetCoreType();
+  CoreType target_core_type = getSemaphoreSignalTargetCoreType(*this);
 
   if (!isRemote(*this)) {
     if (target_core_type != issuing_core_type) {
@@ -2029,18 +2062,27 @@ LogicalResult EnqueueDMAOp::verify() {
   return success();
 }
 
-FailureOr<bool> EnqueueIndirectDMAOp::isGather() {
-  const auto source_ms = dyn_cast_if_present<MemorySpaceAttr>(
-      getMemRefType(getSource()).getMemorySpace());
-  const auto target_ms = dyn_cast_if_present<MemorySpaceAttr>(
-      getMemRefType(getTarget()).getMemorySpace());
+namespace {
+
+FailureOr<bool> isIndirectDMAGather(Operation& op, const Value src,
+                                    const Value dst) {
+  const auto source_ms =
+      dyn_cast_if_present<MemorySpaceAttr>(getMemRefType(src).getMemorySpace());
+  const auto target_ms =
+      dyn_cast_if_present<MemorySpaceAttr>(getMemRefType(dst).getMemorySpace());
   if (source_ms == nullptr || target_ms == nullptr) {
-    return emitOpError("Source and target memory spaces must be provided");
+    return op.emitOpError("Source and target memory spaces must be provided");
   }
-  return mlir::tpu::isGather(*getOperation(), source_ms.getValue(),
-                             source_ms.getCoreType(), target_ms.getValue(),
-                             target_ms.getCoreType());
+  return mlir::tpu::isGather(op, source_ms.getValue(), source_ms.getCoreType(),
+                             target_ms.getValue(), target_ms.getCoreType());
 }
+
+FailureOr<bool> isGather(EnqueueIndirectDMAOp op) {
+  return isIndirectDMAGather(*op.getOperation(), op.getSource(),
+                             op.getTarget());
+}
+
+}  // namespace
 
 LogicalResult EnqueueIndirectDMAOp::verify() {
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
@@ -2056,7 +2098,7 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
     return emitOpError("Source and target element type mismatch");
   }
 
-  FAILUREOR_ASSIGN_OR_RETURN(bool is_gather, isGather());
+  FAILUREOR_ASSIGN_OR_RETURN(bool is_gather, isGather(*this));
 
   const Value offsets = getOffsets();
   ArrayRef<int64_t> offsets_shape;
@@ -2171,18 +2213,13 @@ LogicalResult WaitDMAOp::verify() {
   return success();
 }
 
-FailureOr<bool> WaitIndirectDMAOp::isGather() {
-  const auto source_ms = dyn_cast_if_present<MemorySpaceAttr>(
-      getMemRefType(getSrc()).getMemorySpace());
-  const auto target_ms = dyn_cast_if_present<MemorySpaceAttr>(
-      getMemRefType(getDst()).getMemorySpace());
-  if (source_ms == nullptr || target_ms == nullptr) {
-    return emitOpError("Source and target memory spaces must be provided");
-  }
-  return mlir::tpu::isGather(*getOperation(), source_ms.getValue(),
-                             source_ms.getCoreType(), target_ms.getValue(),
-                             target_ms.getCoreType());
+namespace {
+
+FailureOr<bool> isGather(WaitIndirectDMAOp op) {
+  return isIndirectDMAGather(*op.getOperation(), op.getSrc(), op.getDst());
 }
+
+}  // namespace
 
 LogicalResult WaitIndirectDMAOp::verify() {
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
@@ -2194,7 +2231,7 @@ LogicalResult WaitIndirectDMAOp::verify() {
   if (sem_type.getRank() != 0) {
     return emitOpError("Indirect DMA wait semaphore must be rank 0");
   }
-  return isGather();
+  return isGather(*this);
 }
 
 LogicalResult RegionOp::verify() {

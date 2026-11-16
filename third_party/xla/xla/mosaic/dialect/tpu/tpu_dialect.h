@@ -80,15 +80,6 @@ absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type);
 // vector ops. This functions inverts the layout erasure applied to the value.
 MemRefType getMemRefType(Value value);
 
-// Expands a shape according to the tiles list, with optional alignment checks.
-FailureOr<SmallVector<int64_t>> getExpandedShape(
-    ArrayRef<int64_t> untiled_shape, ArrayRef<xla::Tile> tiles,
-    bool require_alignment = false);
-
-// Evaluates the expanded strides for the given tiles and tile strides.
-FailureOr<SmallVector<int64_t>> getExpandedStrides(
-    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides);
-
 DotDimensionNumbersAttr defaultDimensionNumbers(Builder& builder,
                                                 bool transpose_lhs,
                                                 bool transpose_rhs);
