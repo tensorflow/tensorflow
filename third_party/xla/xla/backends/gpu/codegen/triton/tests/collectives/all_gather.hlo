@@ -52,9 +52,8 @@ ENTRY entry {
 
 // Push this program's local tile into the peer's scratch buffer at slice `rank`.
 // CHECK:       %[[LOCAL_TILE:.*]] = xtile.extract %[[INPUT]]{{.*}} [16, 16] [1, 1]
-// CHECK:       %[[REMOTE_PTR:.*]] = triton_xla.memref_to_ptr %[[REMOTE_BUFFERS]]
-// CHECK:       tt.addptr %[[REMOTE_PTR]], %[[PEER]]
-// CHECK:       %[[PEER_SCRATCH:.*]] = triton_xla.ptr_to_memref
+// CHECK:       %[[PEER_IDX:.*]] = arith.index_cast %[[PEER]] : i32 to index
+// CHECK:       %[[PEER_SCRATCH:.*]] = xtile.select_buffer %[[REMOTE_BUFFERS]][%[[PEER_IDX]]] offset %{{.*}} : memref<2xi64> -> memref<128x128xf32>
 // CHECK:       xtile.insert %[[LOCAL_TILE]] into %[[PEER_SCRATCH]]
 
 // Wait until the peer has pushed its tile into this rank's scratch buffer.
@@ -63,8 +62,7 @@ ENTRY entry {
 // CHECK-SAME:    <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
 
 // Copy the tile from this rank's scratch buffer at slice `peer` to the output.
-// CHECK:       tt.addptr %[[REMOTE_PTR]], %[[RANK]]
-// CHECK:       %[[OWN_SCRATCH:.*]] = triton_xla.ptr_to_memref
+// CHECK:       %[[OWN_SCRATCH:.*]] = xtile.select_buffer %[[REMOTE_BUFFERS]][%[[RANK_IDX]]] offset %{{.*}} : memref<2xi64> -> memref<128x128xf32>
 // CHECK:       %[[TILE:.*]] = xtile.extract %[[OWN_SCRATCH]]{{.*}} [16, 16] [1, 1]
 // CHECK:       xtile.insert %[[TILE]] into %[[OUTPUT]]
 // CHECK:       xtile.return

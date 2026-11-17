@@ -44,7 +44,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -507,46 +506,14 @@ mlir::Value EmitDoubleBufferOffset(mlir::ImplicitLocOpBuilder& b,
                                          element_type);
 }
 
-// Emits instructions to get the pointer to the remote buffer of the given
-// rank.
-// We have a !tt.ptr<i64> pointing to the base of the remote
-// buffers. We add the rank index to the base pointer and load to get to the
-// base pointer of the remote buffer of the given rank. Then we add the buffer
-// offset to get the pointer to the correct buffer inside (double buffering).
-// Note that the returned pointer is of the storage type not the logical type.
-mlir::Value EmitRemoteBufferPtr(mlir::ImplicitLocOpBuilder& b,
-                                mlir::Value remote_buffers, mlir::Value rank,
-                                mlir::Value buffer_offset,
-                                mlir::Type elem_storage_type) {
-  const auto ptr_to_i64_type =
-      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
-  if (auto remote_memref =
-          mlir::dyn_cast<mlir::TypedValue<mlir::MemRefType>>(remote_buffers)) {
-    remote_buffers =
-        mtx::MemrefToPtrOp::create(b, ptr_to_i64_type, remote_memref);
-  }
-  const auto ptr_to_elem_type =
-      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
-  mlir::Value remote_buf_ptr_addr =
-      ttir::AddPtrOp::create(b, ptr_to_i64_type, remote_buffers, rank);
-  mlir::Value remote_buf_i64 = ttir::LoadOp::create(b,                      //
-                                                    remote_buf_ptr_addr,    //
-                                                    /*isVolatile=*/false);  //
-  mlir::Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
-      b, ptr_to_elem_type, remote_buf_i64,
-      llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
-  return ttir::AddPtrOp::create(b, ptr_to_elem_type, remote_buf_ptr_base,
-                                buffer_offset);
-}
-
 // Returns the active slot of `rank`'s remote buffer as a memref with type
 // `memref_type`.
 mlir::TypedValue<mlir::MemRefType> EmitRemoteBufferMemref(
     mlir::ImplicitLocOpBuilder& b, mlir::MemRefType memref_type,
     mlir::Value remote_buffers, mlir::Value rank, mlir::Value buffer_offset) {
-  mlir::Value ptr = EmitRemoteBufferPtr(b, remote_buffers, rank, buffer_offset,
-                                        memref_type.getElementType());
-  return mtx::PtrToMemrefOp::create(b, memref_type, ptr);
+  return xtile::SelectBufferOp::create(
+      b, memref_type, remote_buffers, xtile::Cast(b, rank, b.getIndexType()),
+      xtile::Cast(b, buffer_offset, b.getIndexType()));
 }
 
 // Emits a barrier between this block and the matching blocks of the other
@@ -638,13 +605,11 @@ absl::StatusOr<CollectiveOperandExtractInfo> ExtractCollectiveOperand(
 class ReductionEmitter {
  protected:
   struct OperandState {
-    mlir::Value remote_input_buffers_i64;
     mlir::Value buffer_offset;
     // Layout of the input tensor in minor-to-major order.
     llvm::SmallVector<int64_t> layout;
     mlir::Type elem_type;
     mlir::Type elem_storage_type;
-    ttir::PointerType ptr_to_elem_type;
   };
 
   ReductionEmitter(ReductionEmitterContext& ctx,
@@ -669,8 +634,6 @@ class ReductionEmitter {
         builder_, builder_.getI32Type(), base_ctx_.xtile_entry_fn.getRank());
     signal_buffers_ = base_ctx_.xtile_entry_fn.getSignalBuffer();
 
-    ptr_to_i64_type_ =
-        ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     block_id_ = ttir::GetProgramIdOp::create(builder_, 0);
     signal_value_ =
         EmitDeviceInvocationCount(builder_, signal_buffers_, device_rank_,
@@ -691,15 +654,9 @@ class ReductionEmitter {
       OperandState state;
       state.elem_type = mlir::getElementTypeOrSelf(op_ctx.input_tile.getType());
       state.elem_storage_type = xtile::StorageType(state.elem_type);
-      state.ptr_to_elem_type =
-          ttir::PointerType::get(state.elem_storage_type, kGlobalAddressSpace);
       ABSL_ASSIGN_OR_RETURN(state.layout,
                        xtile::GetPermutationMinorToMajor(
                            op_ctx.input_extract.getSource().getType()));
-      state.remote_input_buffers_i64 = mtx::MemrefToPtrOp::create(
-          builder_, ptr_to_i64_type_,
-          mlir::cast<mlir::TypedValue<mlir::MemRefType>>(
-              op_ctx.remote_input_buffers));
       state.buffer_offset = EmitDoubleBufferOffsetFromIndex(
           builder_, buffer_index, op_ctx.num_elements, op_ctx.element_type);
       operand_states_.push_back(std::move(state));
@@ -717,7 +674,7 @@ class ReductionEmitter {
     const OperandState& state = operand_states_[operand_idx];
     return EmitRemoteBufferMemref(
         builder_, op_ctx.input_extract.getSource().getType(),
-        state.remote_input_buffers_i64, rank_idx, state.buffer_offset);
+        op_ctx.remote_input_buffers, rank_idx, state.buffer_offset);
   }
 
   // Loads a tile of `operand_idx` from the remote buffer of the given rank.
@@ -753,13 +710,12 @@ class ReductionEmitter {
                                      mlir::ValueRange offsets,
                                      llvm::ArrayRef<int64_t> strides,
                                      llvm::ArrayRef<int64_t> shape) {
-    mlir::Value rank_idx = arith::ConstantOp::create(
-        builder_, builder_.getI64Type(), builder_.getI64IntegerAttr(rank));
+    mlir::Value rank_idx = arith::ConstantIndexOp::create(builder_, rank);
     return LoadTileForRank(operand_idx, rank_idx, offsets, strides, shape);
   }
 
   // Stores an entire tile of `operand_idx` to the symmetric buffer of
-  // device_rank_.
+  // this device's rank.
   void EmitCopyToSymmetric(int64_t operand_idx,
                            xtile::TensorValue tile_to_store,
                            mlir::ValueRange offsets,
@@ -768,7 +724,7 @@ class ReductionEmitter {
     CHECK(initialized_);
     const OperandState& state = operand_states_[operand_idx];
     mlir::TypedValue<mlir::MemRefType> remote_memref =
-        GetRemoteBufferMemref(operand_idx, device_rank_);
+        GetRemoteBufferMemref(operand_idx, base_ctx_.xtile_entry_fn.getRank());
     // Workaround(i1_to_i8_workaround) as in fusion_emitter.
     // The parameter extraction casts the storage type to the logical type.
     // But for copying to the remote buffer we need to cast it back to the
@@ -803,7 +759,6 @@ class ReductionEmitter {
   mlir::Value device_rank_;
   mlir::Value signal_value_;
   mlir::TypedValue<mlir::MemRefType> signal_buffers_;
-  ttir::PointerType ptr_to_i64_type_;
   llvm::SmallVector<OperandState, 2> operand_states_;
 
   bool initialized_ = false;
@@ -948,35 +903,23 @@ class AllReduceEmitter : public ReductionEmitter {
       llvm::ArrayRef<int64_t> subtile_shape, int64_t world_size) {
     const OperandState& state = operand_states_[operand_idx];
     const llvm::ArrayRef<int64_t> tile_shape = tile_type.getShape();
-    const mlir::RankedTensorType tensor_of_world_size_ptr_of_ptrs =
-        mlir::RankedTensorType::get({world_size}, ptr_to_i64_type_);
-    mlir::Value remote_buffers =
-        ttir::SplatOp::create(builder_, tensor_of_world_size_ptr_of_ptrs,
-                              state.remote_input_buffers_i64);
-    const mlir::Value rank_ids = ttir::MakeRangeOp::create(
-        builder_,
-        mlir::RankedTensorType::get({world_size}, builder_.getI32Type()), 0,
-        world_size);
-    const mlir::Value rank_ids_i64 = arith::ExtUIOp::create(
-        builder_,
-        mlir::RankedTensorType::get({world_size}, builder_.getI64Type()),
-        rank_ids);
-    // tensor<world_size x !ptr<i64>> where each pointer is the base address of
-    // the remote buffer of rank i.
-    remote_buffers =
-        ttir::AddPtrOp::create(builder_, tensor_of_world_size_ptr_of_ptrs,
-                               remote_buffers, rank_ids_i64);
-    // Load the 64-bit addresses from the table
+    const auto ptr_to_elem_type =
+        ttir::PointerType::get(state.elem_storage_type, kGlobalAddressSpace);
+    mlir::Value zero = arith::ConstantIndexOp::create(builder_, 0);
+    // Load the 64-bit addresses from the 1D remote buffer table:
     // tensor<world_size x i64>
-    remote_buffers = ttir::LoadOp::create(builder_,                 //
-                                          remote_buffers,           //
-                                          /*mask=*/mlir::Value(),   //
-                                          /*other=*/mlir::Value(),  //
-                                          /*isVolatile=*/false)
-                         .getResult();
-    // tensor<world_size x !ptr<elem_type>>
+    mlir::Value remote_buffers =
+        xtile::ExtractTileOp::create(
+            builder_,
+            mlir::RankedTensorType::get({world_size}, builder_.getI64Type()),
+            ctx_.operands[operand_idx].remote_input_buffers,
+            /*offsets=*/mlir::ValueRange{zero},
+            /*full_tile_shape=*/llvm::ArrayRef<int64_t>{world_size},
+            /*strides=*/llvm::ArrayRef<int64_t>{1})
+            .getResult();
+    // tensor<world_size x !ptr<elem_storage_type>>
     const mlir::RankedTensorType tensor_of_world_size_ptrs =
-        mlir::RankedTensorType::get({world_size}, state.ptr_to_elem_type);
+        mlir::RankedTensorType::get({world_size}, ptr_to_elem_type);
     remote_buffers = ttir::IntToPtrOp::create(
         builder_, tensor_of_world_size_ptrs, remote_buffers,
         {xtile::GetDivisibilityAttr(builder_)});
@@ -988,12 +931,12 @@ class AllReduceEmitter : public ReductionEmitter {
     remote_buffers = ttir::AddPtrOp::create(builder_, tensor_of_world_size_ptrs,
                                             remote_buffers, buffer_offsets);
     // Add a new dimension of size 1 to the tensor of pointers.
-    // tensor<world_size x 1 x !ptr<elem_type>>
+    // tensor<world_size x 1 x !ptr<elem_storage_type>>
     remote_buffers =
         ttir::ExpandDimsOp::create(builder_, remote_buffers, /*axis=*/1);
     // Broadcast to RxNumElementsPerRank
     mlir::Type broadcasted_type = mlir::RankedTensorType::get(
-        {world_size, Product(subtile_shape)}, state.ptr_to_elem_type);
+        {world_size, Product(subtile_shape)}, ptr_to_elem_type);
     remote_buffers =
         ttir::BroadcastOp::create(builder_, broadcasted_type, remote_buffers);
     llvm::SmallVector<int64_t> physical_shape(tile_shape.size(), 0);
@@ -1007,8 +950,7 @@ class AllReduceEmitter : public ReductionEmitter {
     }
     // Reshape to tile shape.
     remote_buffers = ttir::ReshapeOp::create(
-        builder_,
-        mlir::RankedTensorType::get(physical_shape, state.ptr_to_elem_type),
+        builder_, mlir::RankedTensorType::get(physical_shape, ptr_to_elem_type),
         remote_buffers);
     if (requires_transpose) {
       llvm::SmallVector<int32_t> permutation(state.layout.size());
@@ -1016,8 +958,7 @@ class AllReduceEmitter : public ReductionEmitter {
         permutation[state.layout[i]] = state.layout.size() - 1 - i;
       }
       remote_buffers = ttir::TransOp::create(
-          builder_,
-          mlir::RankedTensorType::get(tile_shape, state.ptr_to_elem_type),
+          builder_, mlir::RankedTensorType::get(tile_shape, ptr_to_elem_type),
           remote_buffers, permutation);
     }
     return mlir::cast<xtile::TensorValue>(remote_buffers);
@@ -1036,7 +977,7 @@ class AllReduceEmitter : public ReductionEmitter {
     const OperandState& state = operand_states_[operand_idx];
     mlir::RankedTensorType tile_type = operand.input_tile.getType();
     const mlir::ArrayRef<int64_t> tile_shape = tile_type.getShape();
-    // tensor<tile_shape x !ptr<elem_type>>
+    // tensor<tile_shape x !ptr<elem_storage_type>>
     // Each pointer within subtile i points to data in the remote buffer of
     // rank i.
     xtile::TensorValue remote_buffer_tensor = CreateTensorOfRemoteBufferPtrs(
@@ -2395,7 +2336,7 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
   peer_tiles.reserve(ctx.operands.size());
   for (const AllGatherOperandContext& operand : ctx.operands) {
     peer_tiles.push_back(EmitPullTileFromPeer(
-        builder, rewriter, operand, /*own_rank=*/rank,
+        builder, rewriter, operand, /*own_rank=*/ctx.entry_func.getRank(),
         /*src_rank=*/peer_replica_id, buffer_index, ctx.world_size));
   }
   rewriter.replaceOp(op, peer_tiles);
@@ -2471,8 +2412,8 @@ mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
   // Read the tile pushed by `peer_replica_id` from this rank's own local
   // scratch buffer: offset along `split_dim` is `intra_shard_offset +
   // peer_replica_id * shard_size`, matching `output_insert`.
-  mlir::Value own_scratch_slot =
-      EmitRemoteBufferMemref(builder, ctx, rank, buffer_offset);
+  mlir::Value own_scratch_slot = EmitRemoteBufferMemref(
+      builder, ctx, ctx.entry_func.getRank(), buffer_offset);
   rewriter.modifyOpInPlace(ctx.input_extract, [&]() {
     ctx.input_extract.getSourceMutable().assign(own_scratch_slot);
     ctx.input_extract.getOffsetsMutable()[ctx.split_dim].assign(

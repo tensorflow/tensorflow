@@ -40,8 +40,7 @@ fusion{
 // CHECK:        %[[COUNTER:.*]] = tt.load %[[COUNTER_PTR]] {isVolatile = true}
 // CHECK:        %[[SIGNAL_VALUE:.*]] = arith.addi %[[COUNTER]], %[[C1]]
 
-// CHECK:        %[[REMOTE_MEMREF:.*]] = triton_xla.ptr_to_memref
-// CHECK-SAME:     from <f32> to memref<65536xf32>
+// CHECK:        %[[REMOTE_MEMREF:.*]] = xtile.select_buffer %[[REMOTE]][%[[RANK_IDX]]] offset %{{.*}} : memref<2xi64> -> memref<65536xf32>
 // CHECK:        xtile.insert %[[EXTRACT_0]] into %[[REMOTE_MEMREF]]
 // CHECK-SAME:     : tensor<4096xf32> -> memref<65536xf32>
 
