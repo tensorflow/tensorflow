@@ -1170,7 +1170,7 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
     saved_address_workspace_ = args.workspace;
   }
 
-  auto Log2ByteWidth = [](blas::DataType ty) -> uint8_t {
+  auto ByteWidth = [](blas::DataType ty) -> uint32_t {
     switch (ty) {
       case blas::DataType::kInt8:
       case blas::DataType::kF8E5M2:
@@ -1180,19 +1180,19 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
       case blas::DataType::kF8E4M3:
       case blas::DataType::kF8E3M4:
       case blas::DataType::kF8E8M0FNU:
-        return 0;
+        return 1;
       case blas::DataType::kBF16:
       case blas::DataType::kHalf:
-        return 1;
+        return 2;
       case blas::DataType::kFloat:
       case blas::DataType::kInt32:
-        return 2;
+        return 4;
       case blas::DataType::kComplexFloat:
       case blas::DataType::kDouble:
       case blas::DataType::kInt64:
-        return 3;
+        return 8;
       case blas::DataType::kComplexDouble:
-        return 4;
+        return 16;
       default:
         LOG(FATAL) << "Unknown DataType " << static_cast<int32_t>(ty);
     }
@@ -1203,11 +1203,6 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
     std::swap(a, b);
   }
   const DeviceAddressBase& d_userArgs = args.workspace;
-
-  uint8_t log2_byte_width_elem_a = Log2ByteWidth(cfg_.type_a);
-  uint8_t log2_byte_width_elem_b = Log2ByteWidth(cfg_.type_b);
-  uint8_t log2_byte_width_elem_c = Log2ByteWidth(cfg_.type_c);
-  uint8_t log2_byte_width_elem_d = Log2ByteWidth(cfg_.type_d);
 
   auto group_size_bytewidth =
       (cfg_.ragged_mode != gpu::RaggedDotMode::kRaggedBatch)
@@ -1243,15 +1238,55 @@ absl::Status BlasLt::GroupedMatmulPlan::ExecuteOnStream(
 
   bool has_matrix_bias = (cfg_.beta != 0.0);
 
-  GroupGemmUpdateArgs(
-      hip_stream, d_userArgs, a, b, args.c, args.d, args.bias, args.group_sizes,
-      group_size_bytewidth, log2_byte_width_elem_a, log2_byte_width_elem_b,
-      log2_byte_width_elem_c, log2_byte_width_elem_d, cfg_.stride_ragged_dim,
-      cfg_.stride_group_dim, cfg_.c_stride_ragged_dim,
-      cfg_.output_stride_ragged_dim, cfg_.must_swap_operands, cfg_.m, cfg_.n,
-      cfg_.k, cfg_.batch_count, strideA1, strideA2, strideB1, strideB2,
-      strideC1, strideC2, strideD1, strideD2, cfg_.ragged_mode,
-      cfg_.group_count, activation_type_, bias_type_, has_matrix_bias);
+  // Convert element strides to byte strides. The operand swap is applied first
+  // so each stride is premultiplied by its own operand's element width, which
+  // lets the kernel skip the per-element width shift.
+  uint64_t stride_a_bytes = static_cast<uint64_t>(cfg_.stride_ragged_dim);
+  uint64_t stride_b_bytes = static_cast<uint64_t>(cfg_.stride_group_dim);
+  if (cfg_.must_swap_operands) {
+    std::swap(stride_a_bytes, stride_b_bytes);
+  }
+  stride_a_bytes *= ByteWidth(cfg_.type_a);
+  stride_b_bytes *= ByteWidth(cfg_.type_b);
+  uint64_t c_stride_ragged_dim_bytes =
+      static_cast<uint64_t>(cfg_.c_stride_ragged_dim) * ByteWidth(cfg_.type_c);
+  uint64_t output_stride_ragged_dim_bytes =
+      static_cast<uint64_t>(cfg_.output_stride_ragged_dim) *
+      ByteWidth(cfg_.type_d);
+
+  GroupGemmUpdateArgsParams update_args_params{
+      /*args=*/d_userArgs,
+      /*a=*/a,
+      /*b=*/b,
+      /*c=*/args.c,
+      /*d=*/args.d,
+      /*bias=*/args.bias,
+      /*group_sizes=*/args.group_sizes,
+      /*group_size_bytewidth=*/static_cast<uint8_t>(group_size_bytewidth),
+      stride_a_bytes,
+      stride_b_bytes,
+      c_stride_ragged_dim_bytes,
+      output_stride_ragged_dim_bytes,
+      cfg_.must_swap_operands,
+      /*m=*/static_cast<uint32_t>(cfg_.m),
+      /*n=*/static_cast<uint32_t>(cfg_.n),
+      /*k=*/static_cast<uint32_t>(cfg_.k),
+      /*batch=*/static_cast<uint32_t>(cfg_.batch_count),
+      strideA1,
+      strideA2,
+      strideB1,
+      strideB2,
+      strideC1,
+      strideC2,
+      strideD1,
+      strideD2,
+      cfg_.ragged_mode,
+      /*num_gemms=*/static_cast<uint32_t>(cfg_.group_count),
+      activation_type_,
+      bias_type_,
+      has_matrix_bias,
+  };
+  GroupGemmUpdateArgs(hip_stream, update_args_params);
 
   SE_HIPBLAS_RETURN_IF_ERROR(
       grouped_gemm_->run(d_userArgs.opaque(), hip_stream));

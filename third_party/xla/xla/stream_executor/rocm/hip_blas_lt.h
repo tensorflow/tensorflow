@@ -37,7 +37,6 @@ limitations under the License.
 
 namespace hipblaslt_ext {
 class GroupedGemm;
-struct UserArguments;
 }  // namespace hipblaslt_ext
 
 namespace stream_executor {

@@ -24,21 +24,30 @@ limitations under the License.
 
 namespace stream_executor::rocm {
 
-// Fills device-side hipBLASLt grouped-GEMM user arguments for a ragged dot.
-void GroupGemmUpdateArgs(
-    hipStream_t stream, DeviceAddressBase args, DeviceAddressBase a,
-    DeviceAddressBase b, DeviceAddressBase c, DeviceAddressBase d,
-    DeviceAddressBase bias, DeviceAddressBase group_sizes,
-    uint8_t group_size_bytewidth, uint8_t log2_byte_width_elem_a,
-    uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_c,
-    uint8_t log2_byte_width_elem_d, uint32_t stride_ragged_dim,
-    uint32_t stride_group_dim, uint32_t c_stride_ragged_dim,
-    uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
-    uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
-    uint32_t strideA2, uint32_t strideB1, uint32_t strideB2, uint32_t strideC1,
-    uint32_t strideC2, uint32_t strideD1, uint32_t strideD2,
-    gpu::RaggedDotMode ragged_mode, uint32_t num_gemms, int32_t activation_type,
-    int8_t bias_type, bool has_matrix_bias);
+// Bundles all host-side parameters for a grouped/ragged-dot UserArguments
+// update launch. This replaces a ~35-argument free-function signature.
+struct GroupGemmUpdateArgsParams {
+  DeviceAddressBase args, a, b, c, d, bias, group_sizes;
+  uint8_t group_size_bytewidth;
+  // Byte strides: the element stride premultiplied by the operand's element
+  // width, with stride_a/stride_b already swapped when must_swap_operands.
+  uint64_t stride_a_bytes, stride_b_bytes, c_stride_ragged_dim_bytes,
+      output_stride_ragged_dim_bytes;
+  bool must_swap_operands;
+  uint32_t m, n, k, batch;
+  uint32_t strideA1, strideA2, strideB1, strideB2, strideC1, strideC2, strideD1,
+      strideD2;
+  gpu::RaggedDotMode ragged_mode;
+  uint32_t num_gemms;
+  int32_t activation_type;
+  int8_t bias_type;
+  bool has_matrix_bias;
+};
+
+// Launches the kernel that populates the device-side hipBLASLt UserArguments
+// array for a grouped/ragged-dot GEMM. Defined in hip_blas_lt_helper.cu.cc.
+void GroupGemmUpdateArgs(hipStream_t stream,
+                         const GroupGemmUpdateArgsParams& params);
 
 }  // namespace stream_executor::rocm
 
