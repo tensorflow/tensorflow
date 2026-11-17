@@ -146,17 +146,17 @@ absl::Status Kernel::Launch(const NumWorkGroups& num_workgroups,
 
 absl::Status Kernel::Launch(const NumWorkGroups& num_workgroups,
                             absl::Span<const XLA_CPU_KernelArg> args) const {
+  XLA_CPU_NumWorkGroups dim = {num_workgroups.x, num_workgroups.y,
+                               num_workgroups.z};
+  XLA_CPU_WorkGroupId id = {0, 0, 0};
+  XLA_CPU_KernelCallFrame call_frame = {&dim, &id, args.size(), args.data()};
+
   for (uint64_t z = 0; z < num_workgroups.z; ++z) {
+    id.z = z;
     for (uint64_t y = 0; y < num_workgroups.y; ++y) {
+      id.y = y;
       for (uint64_t x = 0; x < num_workgroups.x; ++x) {
-        XLA_CPU_NumWorkGroups dim = {num_workgroups.x, num_workgroups.y,
-                                     num_workgroups.z};
-
-        XLA_CPU_WorkGroupId id = {x, y, z};
-
-        XLA_CPU_KernelCallFrame call_frame = {&dim, &id, args.size(),
-                                              args.data()};
-
+        id.x = x;
         XLA_CPU_KernelError* error = (*kernel_)(&call_frame);
 
         if (ABSL_PREDICT_FALSE(error != nullptr)) {
