@@ -416,29 +416,63 @@ void BFloat16Propagation::DetermineAsyncComputationsPrecision(
 void BFloat16Propagation::DetermineCalledComputationsPrecision(
     HloInstruction* call) {
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
+  HloComputation* callee = call->to_apply();
+  if (ContainsKey(computations_visited_in_backward_pass_, callee)) {
+    return;
+  }
 
-  auto root = call->to_apply()->root_instruction();
+  auto root = callee->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.element_type() != F32) {
           return;
         }
-        if (OutputTypeAfterChange(call, index) == BF16) {
+        const bool all_callers_bf16 =
+            AllUsersConsumeBF16(*call, index) &&
+            absl::c_all_of(
+                callee->caller_instructions(), [&](HloInstruction* caller) {
+                  return !included_computations_.contains(caller->parent()) ||
+                         (caller->opcode() == HloOpcode::kCall &&
+                          OutputTypeAfterChange(caller, index) == BF16);
+                });
+        if (all_callers_bf16) {
           AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
           VLOG(2) << "Called computation root " << root->ToString()
                   << " at shape index " << index
                   << " changed to BF16 precision for call " << call->ToString();
+        } else {
+          // When callers of a shared callee disagree on precision, we keep the
+          // callee shared (cloning would invalidate dataflow_) and the wider
+          // precision (F32) always wins over BF16: if any caller needs F32,
+          // keep the callee root and all callers in F32 (likewise, in the
+          // forward F32 constraint pass, any caller passing an F32 operand
+          // pushes the shared callee parameter and all callers' operands to
+          // F32).
+          AddToOrRemoveFromBF16ChangeSet(root, index, F32);
+          for (HloInstruction* caller : callee->caller_instructions()) {
+            if (caller->opcode() == HloOpcode::kCall &&
+                included_computations_.contains(caller->parent())) {
+              AddToOrRemoveFromBF16ChangeSet(caller, index, F32);
+            }
+          }
         }
       });
-  auto insts = call->to_apply()->MakeInstructionPostOrder();
+  auto insts = callee->MakeInstructionPostOrder();
   for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
     DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
   }
-  computations_visited_in_backward_pass_.insert(call->to_apply());
+  computations_visited_in_backward_pass_.insert(callee);
 }
 
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
+  return AllUsersConsumeBF16Impl(hlo, index,
+                                 /*bf16_fusion_param_positions=*/nullptr);
+}
+
+bool BFloat16Propagation::AllUsersConsumeBF16Impl(
+    const HloInstruction& hlo, const ShapeIndex& index,
+    const absl::flat_hash_set<HloPosition>* bf16_fusion_param_positions) const {
   // If the subshape isn't floating point then none of the users will be BF16.
   const Shape& subshape = ShapeUtil::GetSubshape(hlo.shape(), index);
   if (subshape.element_type() != BF16 && subshape.element_type() != F32) {
@@ -459,6 +493,15 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     // aliasing users require F32.
     if (value->shape().element_type() == BF16) {
       continue;
+    }
+    if (bf16_fusion_param_positions != nullptr) {
+      const HloInstruction* fusion_root = hlo.parent()->root_instruction();
+      for (const HloPosition& pos : value->positions()) {
+        if (pos.instruction == fusion_root &&
+            OutputTypeAfterChange(pos.instruction, pos.index) != BF16) {
+          return false;
+        }
+      }
     }
     for (const HloUse& use : value->GetUses()) {
       if (!ContainsKey(instructions_visited_in_backward_pass_,
@@ -496,6 +539,22 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           use.instruction, use.operand_number,
           [&](HloInstruction* param) {
             handled_by_call = true;
+            if (bf16_fusion_param_positions != nullptr &&
+                use.instruction->opcode() == HloOpcode::kFusion) {
+              if (!FusionParameterConsumesBF16(param, use.operand_index,
+                                               *bf16_fusion_param_positions)) {
+                call_params_consume_bf16 = false;
+              }
+              return;
+            }
+            if (!ContainsKey(instructions_visited_in_backward_pass_, param)) {
+              // A kCall callee may be deferred until its last caller; for any
+              // other op, an unvisited parameter was skipped and stays F32.
+              if (use.instruction->opcode() != HloOpcode::kCall) {
+                call_params_consume_bf16 = false;
+              }
+              return;
+            }
             if (OutputTypeAfterChange(param, use.operand_index) != BF16) {
               call_params_consume_bf16 = false;
             }
@@ -609,9 +668,8 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     // Associative scan bodies are constructed alongside the scan op and not
     // shared with any other caller, so we never need to postpone processing
     // them (unlike kWhile/kCall whose called computations may have multiple
-    // callers). Assert the single-caller invariant rather than relying on the
-    // pre-existing caller_counts_ map (which is currently never populated).
-    CHECK_EQ(hlo->to_apply()->caller_instructions().size(), 1u)
+    // callers).
+    CHECK_EQ(caller_counts_[hlo->to_apply()], 1)
         << "Associative scan body has multiple callers: "
         << hlo->to_apply()->name();
   }
@@ -633,10 +691,14 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  if (hlo->opcode() == HloOpcode::kCall &&
-      caller_counts_[hlo->to_apply()] > 1) {
-    postpone_processing_called_computations = true;
-    return;
+  if (hlo->opcode() == HloOpcode::kCall) {
+    // Wait until all callers have been visited (so we know whether they all
+    // want BF16) before propagating into the callee.
+    HloComputation* callee = hlo->to_apply();
+    const int64_t visited_callers = ++visited_call_counts_[callee];
+    if (visited_callers < caller_counts_[callee]) {
+      postpone_processing_called_computations = true;
+    }
   }
 
   // Prevent root instructions from having their output modified by recording
@@ -671,7 +733,10 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  if (!bfloat16_support_->SupportsLowPrecisionOutput(*hlo)) {
+  // Base FloatSupport rejects kParameter, but subcomputation parameters can
+  // still become BF16 (skip_parameters above already guards entry ones).
+  if (!bfloat16_support_->SupportsLowPrecisionOutput(*hlo) &&
+      hlo->opcode() != HloOpcode::kParameter) {
     return;
   }
 
@@ -778,8 +843,6 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
 void BFloat16Propagation::BuildF32ConstraintGraph(HloModule* module) {
   const std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads_);
-  included_computations_ = absl::flat_hash_set<const HloComputation*>(
-      computations.begin(), computations.end());
 
   // The seeds depend on the push index, so build it first.
   BuildCallBoundaryPushIndex(computations);
@@ -1224,7 +1287,23 @@ void BFloat16Propagation::PropagateF32Constraints() {
   }
 }
 
-void BFloat16Propagation::MaterializeResolvedPrecisions(HloModule* module) {
+absl::flat_hash_set<const HloComputation*>
+BFloat16Propagation::MaterializeResolvedPrecisions(HloModule* module) {
+  absl::flat_hash_set<const HloComputation*> fusions_with_reverted_ops;
+  auto record_reverted_fusion_op = [&](const HloInstruction* hlo) {
+    if (hlo->opcode() == HloOpcode::kParameter && !hlo->IsRoot()) {
+      return;
+    }
+    for (const HloComputation* comp = hlo->parent();
+         comp != nullptr && comp->IsFusionComputation();) {
+      if (!fusions_with_reverted_ops.insert(comp).second) {
+        break;
+      }
+      const HloInstruction* fusion_inst = comp->FusionInstruction();
+      comp = fusion_inst != nullptr ? fusion_inst->parent() : nullptr;
+    }
+  };
+
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads_)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
@@ -1235,16 +1314,147 @@ void BFloat16Propagation::MaterializeResolvedPrecisions(HloModule* module) {
           return;  // Only originally-F32 positions can change to BF16.
         }
         const bool must_be_f32 = f32_positions_.contains({hlo, index});
+        const bool was_bf16 = OutputTypeAfterChange(hlo, index) == BF16;
         if (!adjusted && !bf16_pushable_positions_.contains({hlo, index})) {
           // Nothing may mark this position BF16, but an F32 push still
           // removes a BF16 mark introduced by the backward pass.
           if (must_be_f32) {
+            if (was_bf16) {
+              record_reverted_fusion_op(hlo);
+            }
             AddToOrRemoveFromBF16ChangeSet(hlo, index, F32);
           }
           return;
         }
+        if (must_be_f32 && was_bf16) {
+          record_reverted_fusion_op(hlo);
+        }
         AddToOrRemoveFromBF16ChangeSet(hlo, index, must_be_f32 ? F32 : BF16);
       });
+    }
+  }
+  return fusions_with_reverted_ops;
+}
+
+bool BFloat16Propagation::FusionParameterConsumesBF16(
+    HloInstruction* fp, const ShapeIndex& index,
+    const absl::flat_hash_set<HloPosition>& bf16_fusion_param_positions) const {
+  if (!bf16_fusion_param_positions.contains(HloPosition{fp, index})) {
+    return false;
+  }
+  const HloInstruction* enclosing_fusion = fp->parent()->FusionInstruction();
+  if (enclosing_fusion != nullptr &&
+      f32_non_mixed_precision_ops_.contains(enclosing_fusion)) {
+    return false;
+  }
+  return AllUsersConsumeBF16Impl(*fp, index, &bf16_fusion_param_positions);
+}
+
+void BFloat16Propagation::RevertPostResolveFusionInternalBF16Changes(
+    HloInstruction* fusion,
+    const absl::flat_hash_set<const HloComputation*>& fusions_with_reverted_ops,
+    absl::flat_hash_set<HloPosition>& bf16_fusion_param_positions) {
+  auto has_changes = [this](HloInstruction* inst) {
+    auto it = changes_to_bf16_.find(inst);
+    return it != changes_to_bf16_.end() && !it->second.empty();
+  };
+
+  auto operand_provides_bf16 = [&](HloInstruction* operand) {
+    if (has_changes(operand)) {
+      return true;
+    }
+    if (operand->opcode() != HloOpcode::kParameter) {
+      return false;
+    }
+    bool provides_bf16 = false;
+    ShapeUtil::ForEachSubshape(
+        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!provides_bf16 && subshape.IsArray() &&
+              FusionParameterConsumesBF16(operand, index,
+                                          bf16_fusion_param_positions)) {
+            provides_bf16 = true;
+          }
+        });
+    return provides_bf16;
+  };
+
+  HloInstruction* root =
+      fusion->fused_instructions_computation()->root_instruction();
+  absl::flat_hash_set<const HloValue*> changed_root_buffers;
+
+  auto root_changes_it = changes_to_bf16_.find(root);
+  if (root_changes_it != changes_to_bf16_.end()) {
+    // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+    for (const auto& entry : root_changes_it->second) {
+      for (const HloValue* value :
+           dataflow_->GetValueSet(root, entry.second).values()) {
+        changed_root_buffers.insert(value);
+      }
+    }
+  }
+
+  auto aliases_changed_root_buffer = [this, &changed_root_buffers](
+                                         const HloInstruction* inst) {
+    bool aliasing = false;
+    ShapeUtil::ForEachSubshape(inst->shape(), [&](const Shape& subshape,
+                                                  const ShapeIndex& index) {
+      if (aliasing || subshape.element_type() != F32) {
+        return;
+      }
+      aliasing = absl::c_any_of(dataflow_->GetValueSet(inst, index).values(),
+                                IsValueIn(changed_root_buffers));
+    });
+    return aliasing;
+  };
+
+  for (HloInstruction* inst :
+       fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    const bool aliases_bf16_root = aliases_changed_root_buffer(inst);
+    if (inst->opcode() == HloOpcode::kFusion) {
+      bool parameter_reverted = false;
+      for (int64_t i = 0; i < inst->operand_count(); ++i) {
+        if (operand_provides_bf16(inst->mutable_operand(i))) {
+          continue;
+        }
+        HloInstruction* fused_parameter = inst->fused_parameter(i);
+        if (has_changes(fused_parameter)) {
+          changes_to_bf16_.erase(fused_parameter);
+          parameter_reverted = true;
+        }
+        ShapeUtil::ForEachSubshape(
+            fused_parameter->shape(),
+            [&](const Shape& subshape, const ShapeIndex& index) {
+              if (subshape.IsArray() &&
+                  bf16_fusion_param_positions.erase(
+                      HloPosition{fused_parameter, index}) > 0) {
+                parameter_reverted = true;
+              }
+            });
+      }
+      const bool revert_nested_fusion =
+          !aliases_bf16_root && has_changes(inst) &&
+          absl::c_none_of(inst->operands(), operand_provides_bf16);
+      if (revert_nested_fusion) {
+        changes_to_bf16_.erase(inst);
+        changes_to_bf16_.erase(inst->fused_expression_root());
+        RevertPostResolveFusionInternalBF16Changes(
+            inst, fusions_with_reverted_ops, bf16_fusion_param_positions);
+        continue;
+      }
+      if (parameter_reverted || fusions_with_reverted_ops.contains(
+                                    inst->fused_instructions_computation())) {
+        RevertPostResolveFusionInternalBF16Changes(
+            inst, fusions_with_reverted_ops, bf16_fusion_param_positions);
+      }
+    }
+    if (aliases_bf16_root || !has_changes(inst)) {
+      continue;
+    }
+    if (absl::c_none_of(inst->operands(), operand_provides_bf16)) {
+      changes_to_bf16_.erase(inst);
     }
   }
 }
@@ -1253,7 +1463,49 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
   BuildF32ConstraintGraph(module);
   PropagateF32Constraints();
-  MaterializeResolvedPrecisions(module);
+
+  // Snapshot which fusion parameter positions were marked BF16 in the backward
+  // pass before MaterializeResolvedPrecisions applies caller-side F32 pushes.
+  // A fusion parameter pushed to F32 only because its caller operand is F32
+  // still crosses the fusion boundary via an entry convert when its internal
+  // uses still consume BF16.
+  absl::flat_hash_set<HloPosition> bf16_fusion_param_positions;
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [inst, subshape_map] : changes_to_bf16_) {
+    if (inst->opcode() == HloOpcode::kParameter &&
+        inst->parent()->IsFusionComputation()) {
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& [subshape, index] : subshape_map) {
+        bf16_fusion_param_positions.insert(HloPosition{inst, index});
+      }
+    }
+  }
+
+  const absl::flat_hash_set<const HloComputation*> fusions_with_reverted_ops =
+      MaterializeResolvedPrecisions(module);
+  if (fusions_with_reverted_ops.empty()) {
+    return;
+  }
+
+  // If F32 resolution reverted a non-parameter op or root inside a fusion back
+  // to F32, undo any internal BF16 changes that no longer cross the fusion
+  // boundary.
+  const std::vector<HloComputation*> computations =
+      module->MakeComputationPostOrder(execution_threads_);
+  for (auto comp_it = computations.rbegin(); comp_it != computations.rend();
+       ++comp_it) {
+    if ((*comp_it)->IsFusionComputation()) {
+      continue;
+    }
+    for (HloInstruction* inst : (*comp_it)->MakeInstructionPostOrder()) {
+      if (inst->opcode() == HloOpcode::kFusion &&
+          fusions_with_reverted_ops.contains(
+              inst->fused_instructions_computation())) {
+        RevertPostResolveFusionInternalBF16Changes(
+            inst, fusions_with_reverted_ops, bf16_fusion_param_positions);
+      }
+    }
+  }
 }
 
 absl::Status BFloat16Propagation::ResolveInconsistentFusions(
@@ -1385,6 +1637,7 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
   computations_visited_in_backward_pass_.clear();
   values_that_must_be_kept_as_f32_.clear();
   caller_counts_.clear();
+  visited_call_counts_.clear();
   changes_to_bf16_.clear();
   value_queue_.clear();
   position_queue_.clear();
@@ -1410,6 +1663,18 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
 
   auto computations_topological_order =
       module->MakeComputationPostOrder(execution_threads_);
+  // Record which computations are in scope for this run and count how many
+  // call sites each one has, so the backward pass can recognize shared callees.
+  included_computations_ = absl::flat_hash_set<const HloComputation*>(
+      computations_topological_order.begin(),
+      computations_topological_order.end());
+  for (auto computation : computations_topological_order) {
+    for (auto inst : computation->instructions()) {
+      for (auto called_comp : inst->called_computations()) {
+        ++caller_counts_[called_comp];
+      }
+    }
+  }
 
   // Before running the propagation pass, we insert copies (kConvert to the same
   // type) of F32 inputs to while loops. This prevents other uses of the same
