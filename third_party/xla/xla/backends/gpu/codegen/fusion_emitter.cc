@@ -77,8 +77,10 @@ void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
       continue;
     }
 
-    if (!dst_arg.hasByValAttr()) {
-      dst.addDereferenceableParamAttr(arg_idx, kernel_argument.slice().size());
+    if (!dst_arg.hasByValAttr() &&
+        kernel_argument.dereferenceable_bytes() > 0) {
+      dst.addDereferenceableParamAttr(arg_idx,
+                                      kernel_argument.dereferenceable_bytes());
     }
     // If the alignment has been specified in the original function, use it.
     // Otherwise, use the alignment from the kernel argument.

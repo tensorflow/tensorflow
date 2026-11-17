@@ -45,15 +45,34 @@ class KernelArgument {
   // arguments because it manages scratch buffers for the collectives itself.
   enum class Kind { kManaged, kUnmanaged };
 
+  struct UnmanagedOptions {
+    int64_t alignment;
+    bool written;
+    bool aliased;
+  };
+
   KernelArgument(Shape shape, BufferAllocation::Slice slice)
       : kind_(Kind::kManaged), shape_(shape), slice_(slice) {}
   // Constructor for arguments that don't have an associated slice.
   explicit KernelArgument(Shape shape)
       : kind_(Kind::kUnmanaged), shape_(shape) {}
+  // Unmanaged argument with explicit attributes.
+  KernelArgument(Shape shape, UnmanagedOptions options)
+      : kind_(Kind::kUnmanaged),
+        shape_(std::move(shape)),
+        aliased_(options.aliased),
+        alignment_(options.alignment),
+        written_(options.written) {}
 
   Kind kind() const { return kind_; }
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
+  int64_t dereferenceable_bytes() const {
+    if (kind_ == Kind::kManaged) {
+      return slice_.size();
+    }
+    return shape_.IsArray() ? ShapeUtil::ByteSizeOf(shape_) : 0;
+  }
 
   bool written() const { return written_; }
   void set_written(bool written) { written_ = written; }
@@ -129,20 +148,24 @@ class KernelArguments {
   // buffer slices through `slice_provider`. Argument order is the same as for
   // the `BufferAssignment` overloads below: operands in operand order, then
   // the array leaves of the result shape in shape-index order, then
-  // `unmanaged_arguments`.
+  // `unmanaged_argument_shapes` (or preconfigured `unmanaged_arguments`).
   static absl::StatusOr<KernelArguments> Create(
       SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction,
-      absl::Span<const Shape> unmanaged_arguments = {});
+      absl::Span<const Shape> unmanaged_argument_shapes = {});
+  static absl::StatusOr<KernelArguments> Create(
+      SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction,
+      absl::Span<const KernelArgument> unmanaged_arguments);
 
   // Creates a KernelArguments object for the given HLO instruction.
-  // The unmanaged_arguments are added to the end of the list of input/output
-  // arguments.
+  // The unmanaged_argument_shapes are added to the end of the list of
+  // input/output arguments.
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction,
-      absl::Span<const Shape> unmanaged_arguments);
+      absl::Span<const Shape> unmanaged_argument_shapes);
 
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
@@ -266,7 +289,7 @@ class KernelArguments {
   static absl::StatusOr<KernelArguments> CreateInternal(
       SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction,
-      absl::Span<const Shape> unmanaged_arguments,
+      absl::Span<const KernelArgument> unmanaged_arguments,
       absl::Span<const int32_t> interleaved_output_indices);
 
   std::vector<KernelArgument> args_;

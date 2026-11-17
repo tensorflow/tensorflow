@@ -825,7 +825,8 @@ TEST_F(KernelArgumentsTest, ProtoRoundTrip) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
-TEST_F(KernelArgumentsTest, UnmanagedArgumentsHaveEmptySliceIndex) {
+TEST_F(KernelArgumentsTest,
+       CreateWithPreconfiguredUnmanagedArgumentsPreservesPositionsAndAttrs) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
     ENTRY main {
@@ -841,18 +842,53 @@ TEST_F(KernelArgumentsTest, UnmanagedArgumentsHaveEmptySliceIndex) {
     int64_t offset = (&instruction == root) ? 16 : 0;
     return BufferAllocation::Slice(&alloc, offset, 16);
   };
-  std::vector<Shape> unmanaged = {ShapeUtil::MakeShape(U64, {2}),
-                                  ShapeUtil::MakeShape(S32, {})};
+  std::vector<KernelArgument> unmanaged = {
+      KernelArgument(
+          ShapeUtil::MakeShape(U64, {2}),
+          KernelArgument::UnmanagedOptions{/*alignment=*/16, /*written=*/false,
+                                           /*aliased=*/false}),
+      KernelArgument(
+          ShapeUtil::MakeShape(S32, {}),
+          KernelArgument::UnmanagedOptions{/*alignment=*/0, /*written=*/false,
+                                           /*aliased=*/false}),
+  };
   ASSERT_OK_AND_ASSIGN(
       KernelArguments args,
       KernelArguments::Create(slice_provider, gpu::GetDefaultBufferAlignment(),
-                              root, unmanaged));
+                              root, absl::MakeConstSpan(unmanaged)));
+  EXPECT_THAT(args.PositionOfOperand(0), IsOkAndHolds(0));
+  EXPECT_THAT(args.PositionOfResult({}), IsOkAndHolds(1));
   ASSERT_THAT(args.args(), SizeIs(4));
+  EXPECT_EQ(args.args()[0].dereferenceable_bytes(), 16);
   EXPECT_EQ(args.args()[0].slice_index(), 0);
-  EXPECT_EQ(args.args()[1].slice_index(), 1);
-  EXPECT_EQ(args.args()[2].slice_index(), std::nullopt);
-  EXPECT_EQ(args.args()[3].slice_index(), std::nullopt);
-  EXPECT_THAT(GetArgumentFingerprint(args.args()), HasSubstr("ux1aw,ux0aw"));
+  auto check_unmanaged = [](const KernelArgument& arg, int64_t deref_bytes,
+                            int64_t alignment) {
+    EXPECT_EQ(arg.kind(), KernelArgument::Kind::kUnmanaged);
+    EXPECT_EQ(arg.dereferenceable_bytes(), deref_bytes);
+    EXPECT_EQ(arg.alignment(), alignment);
+    EXPECT_FALSE(arg.written());
+    EXPECT_FALSE(arg.aliased());
+    EXPECT_EQ(arg.slice_index(), std::nullopt);
+  };
+  check_unmanaged(args.args()[2], /*deref_bytes=*/16, /*alignment=*/16);
+  check_unmanaged(args.args()[3], /*deref_bytes=*/4, /*alignment=*/0);
+  EXPECT_THAT(GetArgumentFingerprint(args.args()), HasSubstr("ux16,ux0"));
+
+  ASSERT_OK_AND_ASSIGN(KernelArgumentsProto proto, args.ToProto());
+  ASSERT_OK_AND_ASSIGN(
+      KernelArguments round_trip,
+      KernelArguments::FromProto(proto, absl::MakeConstSpan(&alloc, 1)));
+  ASSERT_THAT(round_trip.args(), SizeIs(4));
+  EXPECT_EQ(round_trip.args()[0].dereferenceable_bytes(), 16);
+  check_unmanaged(round_trip.args()[2], /*deref_bytes=*/16, /*alignment=*/16);
+  check_unmanaged(round_trip.args()[3], /*deref_bytes=*/4, /*alignment=*/0);
+
+  KernelArgument managed(ShapeUtil::MakeShape(F32, {4}),
+                         BufferAllocation::Slice(&alloc, 0, 16));
+  EXPECT_THAT(
+      KernelArguments::Create(slice_provider, gpu::GetDefaultBufferAlignment(),
+                              root, absl::MakeConstSpan(&managed, 1)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

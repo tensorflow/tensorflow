@@ -27,12 +27,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -77,10 +79,21 @@ absl::Status TrySetGpuBackendConfigForCollective(
 absl::StatusOr<xla::xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
     const HloFusionInstruction& fusion);
 
-// Returns the unmanaged kernel argument shapes (`[scratch..., signal, rank]`)
-// for a collective `fusion`.
-absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
-    const HloFusionInstruction* fusion);
+// Returns the unmanaged kernel arguments (`[scratch..., signal, rank]`) for a
+// collective `fusion`.
+absl::StatusOr<std::vector<emitters::KernelArgument>>
+GetCollectiveUnmanagedKernelArguments(const HloFusionInstruction* fusion);
+
+// Creates KernelArguments for a collective fusion, including unmanaged metadata
+// arguments and peer-pointer-table attributes.
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    emitters::KernelArguments::SliceProvider slice_provider,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion);
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    const BufferAssignment& buffer_assignment,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion);
 
 // Rewrites stablehlo all-reduce op to a triton implementation.
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,

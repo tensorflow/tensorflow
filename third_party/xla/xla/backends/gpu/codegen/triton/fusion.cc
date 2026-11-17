@@ -226,16 +226,15 @@ xla::Future<KernelReuseCache::Kernel> TritonFusion::EmitKernel(
     const HloFusionInstruction& fusion) const {
   std::string suggested_kernel_name = std::string(fusion.name());
   VLOG(3) << fusion.ToString();
-  std::vector<Shape> unmanaged_arguments;
-  if (analysis_.fusion_backend_config().kind() == kTritonCollectiveFusionKind) {
-    ABSL_ASSIGN_OR_RETURN(unmanaged_arguments,
-                     GetCollectiveUnmanagedKernelArguments(&fusion));
-  }
   ABSL_ASSIGN_OR_RETURN(
       emitters::KernelArguments kernel_arguments,
-      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
-                                        GetDefaultBufferAlignment(), &fusion,
-                                        unmanaged_arguments));
+      analysis_.fusion_backend_config().kind() == kTritonCollectiveFusionKind
+          ? CreateCollectiveKernelArguments(
+                ir_emitter_context.buffer_assignment(),
+                GetDefaultBufferAlignment(), fusion)
+          : emitters::KernelArguments::Create(
+                ir_emitter_context.buffer_assignment(),
+                GetDefaultBufferAlignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();

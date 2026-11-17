@@ -198,7 +198,7 @@ absl::StatusOr<std::vector<int64_t>> ResultPositions(
 absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
     SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
-    absl::Span<const Shape> unmanaged_arguments,
+    absl::Span<const KernelArgument> unmanaged_arguments,
     absl::Span<const int32_t> interleaved_output_indices) {
   absl::flat_hash_set<int> no_invariant_operands =
       frontend::NonInvariantOperands(*hlo_instruction);
@@ -252,8 +252,12 @@ absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
     ++next_operand;
   }
 
-  for (const Shape& unmanaged_argument : unmanaged_arguments) {
-    kernel_arguments.emplace_back(unmanaged_argument);
+  for (const KernelArgument& unmanaged_argument : unmanaged_arguments) {
+    if (unmanaged_argument.kind() != KernelArgument::Kind::kUnmanaged) {
+      return absl::InvalidArgumentError(
+          "Expected Kind::kUnmanaged in unmanaged_arguments");
+    }
+    kernel_arguments.push_back(unmanaged_argument);
   }
   FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
                                output_result.buffers_written);
@@ -263,7 +267,21 @@ absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
-    absl::Span<const Shape> unmanaged_arguments) {
+    absl::Span<const Shape> unmanaged_argument_shapes) {
+  std::vector<KernelArgument> unmanaged_arguments;
+  unmanaged_arguments.reserve(unmanaged_argument_shapes.size());
+  for (const Shape& shape : unmanaged_argument_shapes) {
+    unmanaged_arguments.emplace_back(shape);
+  }
+  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction,
+                        unmanaged_arguments,
+                        /*interleaved_output_indices=*/{});
+}
+
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction,
+    absl::Span<const KernelArgument> unmanaged_arguments) {
   return CreateInternal(slice_provider, buffer_alignment, hlo_instruction,
                         unmanaged_arguments,
                         /*interleaved_output_indices=*/{});
@@ -285,14 +303,13 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
-    absl::Span<const Shape> unmanaged_arguments) {
+    absl::Span<const Shape> unmanaged_argument_shapes) {
   auto slice_provider = [&buffer_assignment](const HloInstruction& instruction,
                                              const ShapeIndex& index) {
     return buffer_assignment.GetUniqueSlice(&instruction, index);
   };
-  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction,
-                        unmanaged_arguments,
-                        /*interleaved_output_indices=*/{});
+  return Create(slice_provider, buffer_alignment, hlo_instruction,
+                unmanaged_argument_shapes);
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(

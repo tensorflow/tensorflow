@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -81,6 +82,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -91,6 +93,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -338,20 +341,17 @@ absl::StatusOr<ReduceScatterEmitterContext> CreateReduceScatterEmitterContext(
   return ctx;
 }
 
-// Unmanaged kernel arguments of Triton collectives: one remote scratch pointer
-// table (`u64[R]`) per parameter, followed by the signal buffer pointer table
-// (`u64[R]`) and the scalar device rank (`s32[]`).
-absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
-    const HloComputation* computation,
-    const HloCollectiveInstruction* collective) {
-  const int32_t num_devices =
-      collective->device_list()->num_devices_per_group();
-  const int32_t num_scratch_buffers = computation->num_parameters();
+emitters::KernelArgument CreatePeerPointerTableArgument(int64_t num_devices) {
   const Shape peer_table_shape = ShapeUtil::MakeShape(U64, {num_devices});
-  std::vector<Shape> unmanaged_arguments(num_scratch_buffers + 1,
-                                         peer_table_shape);
-  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-  return unmanaged_arguments;
+  // Peer pointer tables immediately follow CollectiveKernelMetadata, and table
+  // p starts at p * R * 8 bytes after it.
+  return emitters::KernelArgument(
+      peer_table_shape, emitters::KernelArgument::UnmanagedOptions{
+                            /*alignment=*/std::gcd<int64_t>(
+                                alignof(CollectiveKernelMetadata),
+                                ShapeUtil::ByteSizeOf(peer_table_shape)),
+                            /*written=*/false,
+                            /*aliased=*/false});
 }
 
 mlir::LogicalResult PopulateReductionComputation(
@@ -2212,15 +2212,42 @@ absl::Status TrySetGpuBackendConfigForCollective(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
-    const HloFusionInstruction* fusion) {
-  const HloComputation* computation = fusion->fused_instructions_computation();
-  const HloInstruction* collective = GetCollectiveHero(computation);
-  if (collective == nullptr) {
-    return std::vector<Shape>();
+absl::StatusOr<std::vector<emitters::KernelArgument>>
+GetCollectiveUnmanagedKernelArguments(const HloFusionInstruction* fusion) {
+  if (GetCollectiveHero(fusion->fused_instructions_computation()) == nullptr) {
+    return std::vector<emitters::KernelArgument>();
   }
-  return GetRemoteBufferUnmanagedKernelArguments(
-      computation, Cast<HloCollectiveInstruction>(collective));
+  ABSL_ASSIGN_OR_RETURN(xtile::CollectiveEntrySpec spec,
+                   BuildCollectiveEntrySpec(*fusion));
+  // [scratch tables..., signal table, rank]
+  std::vector<emitters::KernelArgument> unmanaged_arguments(
+      spec.num_scratch_buffers + 1,
+      CreatePeerPointerTableArgument(spec.world_size));
+  unmanaged_arguments.emplace_back(ShapeUtil::MakeShape(S32, {}));
+  return unmanaged_arguments;
+}
+
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    emitters::KernelArguments::SliceProvider slice_provider,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion) {
+  ABSL_ASSIGN_OR_RETURN(std::vector<emitters::KernelArgument> unmanaged_arguments,
+                   GetCollectiveUnmanagedKernelArguments(&fusion));
+  TF_RET_CHECK(!unmanaged_arguments.empty());
+  return emitters::KernelArguments::Create(slice_provider, buffer_alignment,
+                                           &fusion, unmanaged_arguments);
+}
+
+absl::StatusOr<emitters::KernelArguments> CreateCollectiveKernelArguments(
+    const BufferAssignment& buffer_assignment,
+    const emitters::KernelArguments::BufferAlignment& buffer_alignment,
+    const HloFusionInstruction& fusion) {
+  return CreateCollectiveKernelArguments(
+      [&buffer_assignment](const HloInstruction& instruction,
+                           const ShapeIndex& index) {
+        return buffer_assignment.GetUniqueSlice(&instruction, index);
+      },
+      buffer_alignment, fusion);
 }
 
 absl::StatusOr<xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
