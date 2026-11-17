@@ -1923,8 +1923,13 @@ def searchsorted(a, v, side='left', sorter=None):  # pylint: disable=missing-fun
     v = math_ops.cast(v, dtypes.int8)
 
   # `tf.searchsorted` requires at least 1-D values, while NumPy accepts any
-  # shape for `v` and returns a result of that shape.
-  v_shape = array_ops.shape(v)
+  # shape for `v` and returns a result of that shape. Prefer the static shape
+  # so reshape can infer the result shape without a dynamic Shape op.
+  v_shape = v.shape
+  if v_shape.is_fully_defined():
+    v_shape = v_shape.as_list()
+  else:
+    v_shape = array_ops.shape(v)
   flat = array_ops.searchsorted(
       a,
       array_ops.reshape(v, [-1]),
