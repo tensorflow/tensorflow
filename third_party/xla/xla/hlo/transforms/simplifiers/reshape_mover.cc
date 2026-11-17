@@ -274,7 +274,9 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
   }
   // Do not sink data reordering reshapes or transposes across widening
   // converts unless the source comes from a contraction (so sinking exposes the
-  // convert for contraction epilogue fusion or cast folding), every user of
+  // convert for contraction epilogue fusion or cast folding), the source is a
+  // slice (so sinking keeps the slice adjacent to the convert for fusion
+  // instead of materializing a standalone slice and rearrange), every user of
   // the convert is itself a rearrange (so adjacent rearranges collapse), or
   // every user of the convert is a custom call (which cannot absorb the
   // convert, so sinking lets conversion folding merge the convert into the
@@ -288,6 +290,7 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
           primitive_util::BitWidth(instruction->shape().element_type()) &&
       !OnlyInsertsDeletesOrPermutes1SizedDims(rearrange) &&
       !ProducedByContraction(rearrange->operand(0)) &&
+      !HloPredicateIsOp<HloOpcode::kSlice>(rearrange->operand(0)) &&
       !AllUsersAreRearranges(instruction) &&
       !AllUsersAreCustomCalls(instruction)) {
     return false;
