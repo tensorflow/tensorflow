@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
@@ -461,19 +462,39 @@ bool CanBeHandledByCuDNNFusion(
   const HloRaggedDotInstruction* ragged_dot =
       DynCast<HloRaggedDotInstruction>(instruction);
   const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
-  if (ragged_dims.lhs_ragged_dimensions().size() != 1 ||
+  const DotDimensionNumbers& dnums = ragged_dims.dot_dimension_numbers();
+  // RaggedDotFusionRewriter / RaggedDotDimensionAdapter only support
+  // unbatched dots with exactly one contracting dimension per operand, a 2D
+  // lhs and 1D group sizes. The rhs rank depends on the ragged mode (checked
+  // below).
+  if (!dnums.lhs_batch_dimensions().empty() ||
+      !dnums.rhs_batch_dimensions().empty() ||
+      dnums.lhs_contracting_dimensions().size() != 1 ||
+      dnums.rhs_contracting_dimensions().size() != 1 ||
+      ragged_dot->operand_count() != 3 ||
+      ragged_dot->operand(0)->shape().dimensions().size() != 2 ||
+      ragged_dot->operand(2)->shape().dimensions().size() != 1 ||
+      ragged_dot->operand(0)->shape().element_type() !=
+          ragged_dot->shape().element_type() ||
+      ragged_dot->operand(1)->shape().element_type() !=
+          ragged_dot->shape().element_type() ||
+      ragged_dims.lhs_ragged_dimensions().size() != 1 ||
       (ragged_dot->shape().element_type() != F16 &&
        ragged_dot->shape().element_type() != BF16)) {
     return false;
   }
+  const int64_t rhs_rank = ragged_dot->operand(1)->shape().dimensions().size();
   int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
   RaggedDotMode mode =
       GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
   if (mode == RaggedDotMode::kRaggedContracting) {
-    return SupportsCudnnRaggedDotWgrad(gpu_compute_capability, cudnn_version,
+    // Wgrad: 2D rhs.
+    return rhs_rank == 2 &&
+           SupportsCudnnRaggedDotWgrad(gpu_compute_capability, cudnn_version,
                                        toolkit_version);
   }
-  return mode == RaggedDotMode::kRaggedNonContracting;
+  // Ragged non-contracting: 3D rhs (group dim + 2 matrix dims).
+  return mode == RaggedDotMode::kRaggedNonContracting && rhs_rank == 3;
 }
 
 bool CanBeHandledByGpublasltGroupGemm(
@@ -516,6 +537,9 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
       module->config()
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_fusion() &&
+      !module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries() &&
       cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
       cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 
@@ -529,8 +553,14 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
         if (ragged_dot_fusion_enabled &&
             CanBeHandledByCuDNNFusion(instruction, gpu_compute_capability_,
-                                      cudnn_version_, toolkit_version_)) {
-          continue;
+                                      cudnn_version_, toolkit_version_) &&
+            is_supported_by_cudnn_fusion_ != nullptr) {
+          Decision decision = is_supported_by_cudnn_fusion_(instruction);
+          if (decision.IsAllowed()) {
+            continue;
+          }
+          VLOG(3) << "Expanding " << instruction->name()
+                  << " instead of using cuDNN fusion: " << decision.Explain();
         }
         if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
                                     gpu_compute_capability_, instruction)) {

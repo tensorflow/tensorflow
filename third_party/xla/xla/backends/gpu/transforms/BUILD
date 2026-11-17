@@ -2921,6 +2921,60 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ragged_dot_cudnn_support",
+    srcs = ["ragged_dot_cudnn_support.cc"],
+    hdrs = ["ragged_dot_cudnn_support.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cudnn_fusion_compiler",
+        ":ragged_dot_fusion_rewriter",
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:decision",
+        "//xla/service/gpu:cudnn_support_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tools:hlo_decomposer_lib",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "ragged_dot_cudnn_support_test",
+    srcs = ["ragged_dot_cudnn_support_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":ragged_dot_cudnn_support",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:decision",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "ragged_dot_fusion_rewriter_test",
     srcs = ["ragged_dot_fusion_rewriter_test.cc"],

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_norm_rewriter.h"
 #include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
+#include "xla/backends/gpu/transforms/ragged_dot_cudnn_support.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -74,6 +76,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
+#include "xla/service/decision.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
@@ -270,6 +273,13 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           .status());
 
   return absl::OkStatus();
+}
+
+Decision NVPTXCompiler::IsRaggedDotSupportedByCuDnn(
+    const HloInstruction* instr, const GpuTargetConfig& gpu_target_config,
+    se::StreamExecutor* absl_nullable stream_exec) const {
+  return gpu::IsRaggedDotSupportedByCuDnn(
+      *instr, gpu_target_config.device_description, stream_exec);
 }
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(

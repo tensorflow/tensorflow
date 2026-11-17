@@ -1375,6 +1375,8 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
             "moe_grouped_matmul_bwd requires cuDNN frontend 1.22.1+.");
 #endif  // CUDNN_FRONTEND_VERSION >= 12201
       } else {
+        // On cuDNN < 9.15 the frontend returns GRAPH_NOT_SUPPORTED from
+        // build_operation_graph(), which CudnnGraph::Prepare propagates.
         auto moe_grouped_matmul_attr =
             graph::Moe_grouped_matmul_attributes()
                 .set_mode(fe::MoeGroupedMatmulMode_t::NONE)

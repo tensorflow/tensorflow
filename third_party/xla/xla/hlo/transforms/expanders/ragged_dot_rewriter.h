@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_EXPANDERS_RAGGED_DOT_REWRITER_H_
 #define XLA_HLO_TRANSFORMS_EXPANDERS_RAGGED_DOT_REWRITER_H_
 
+#include <functional>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/decision.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -46,14 +51,24 @@ bool SupportsCudnnRaggedDotWgrad(
 // RaggedDotRewriter converts ragged dots to general dots through expansion.
 class RaggedDotRewriter : public HloModulePass {
  public:
+  // `is_supported_by_cudnn_fusion` is consulted for every ragged dot that
+  // passes the version/dtype/mode gates; a ragged dot is left for the cuDNN
+  // fusion only if it is set and returns an allowed Decision. If unset, nothing
+  // vouches for cuDNN support, so the ragged dot is expanded. The callback
+  // lets the caller probe cuDNN (which does call into cuDNN) without this pass
+  // depending on cuDNN targets.
   explicit RaggedDotRewriter(
       se::GpuComputeCapability gpu_compute_capability,
       stream_executor::dnn::VersionInfo cudnn_version =
           stream_executor::dnn::VersionInfo(),
-      stream_executor::SemanticVersion toolkit_version = {0, 0, 0})
+      stream_executor::SemanticVersion toolkit_version = {0, 0, 0},
+      std::function<Decision(const HloInstruction*)>
+          is_supported_by_cudnn_fusion = nullptr)
       : gpu_compute_capability_(gpu_compute_capability),
         cudnn_version_(cudnn_version),
-        toolkit_version_(toolkit_version) {}
+        toolkit_version_(toolkit_version),
+        is_supported_by_cudnn_fusion_(std::move(is_supported_by_cudnn_fusion)) {
+  }
 
   absl::string_view name() const override { return "ragged_dot_rewriter"; }
 
@@ -66,6 +81,7 @@ class RaggedDotRewriter : public HloModulePass {
   stream_executor::GpuComputeCapability gpu_compute_capability_;
   stream_executor::dnn::VersionInfo cudnn_version_;
   stream_executor::SemanticVersion toolkit_version_;
+  std::function<Decision(const HloInstruction*)> is_supported_by_cudnn_fusion_;
 };
 
 }  // namespace xla
