@@ -26,7 +26,9 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -184,6 +186,26 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
   EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(
       mlir::cast<TensorType>(filter_qcast_op->getResult(0).getType())
           .getElementType()));
+}
+
+TEST(DownCastScaleTest,
+     DownCastScalePreservesUniformZeroPointForSymmetricRange) {
+  MLIRContext context;
+  context.loadDialect<quant::QuantDialect>();
+  Builder builder(&context);
+
+  // An artificial non-zero zero-point (zp = 5) on a [-127, 127] symmetric
+  // storage range is used here to verify that DownCastScale preserves the
+  // existing zero-point from the source type rather than resetting it to 0.
+  auto uq_type = quant::UniformQuantizedType::get(
+      quant::QuantizationFlags::Signed, builder.getIntegerType(8),
+      builder.getF32Type(), /*scale=*/0.1, /*zeroPoint=*/5,
+      /*storageTypeMin=*/-127, /*storageTypeMax=*/127);
+  auto downcast =
+      mlir::dyn_cast<quant::UniformQuantizedType>(mlir::quant::DownCastScale(
+          uq_type, /*min=*/-1.0, /*max=*/1.0, builder.getUnknownLoc()));
+  ASSERT_NE(downcast, nullptr);
+  EXPECT_EQ(downcast.getZeroPoint(), 5);
 }
 
 }  // namespace
