@@ -1894,6 +1894,46 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
     return sort_ops.sort(a, axis)
 
 
+@tf_export.tf_export('experimental.numpy.searchsorted', v1=[])
+@np_utils.np_doc('searchsorted')
+def searchsorted(a, v, side='left', sorter=None):  # pylint: disable=missing-function-docstring
+  if side not in ('left', 'right'):
+    raise ValueError(
+        "search side must be 'left' or 'right' "
+        f'(got {side!r})'
+    )
+  if sorter is not None:
+    raise ValueError('The `sorter` argument is not supported. Pass sorter=None.')
+
+  a = np_array_ops.array(a)
+  v = np_array_ops.array(v)
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None:
+    # Match NumPy, which only accepts a 1-D sorted sequence.
+    if maybe_rank < 1:
+      raise ValueError('object of too small depth for desired array')
+    if maybe_rank > 1:
+      raise ValueError('object too deep for desired array')
+  if a.dtype != v.dtype:
+    a, v = np_array_ops._promote_dtype(a, v)  # pylint: disable=protected-access
+  if a.dtype == dtypes.bool:
+    # The searchsorted kernel has no bool kernel, and bool has the same
+    # ordering as its 0/1 integer representation.
+    a = math_ops.cast(a, dtypes.int8)
+    v = math_ops.cast(v, dtypes.int8)
+
+  # `tf.searchsorted` requires at least 1-D values, while NumPy accepts any
+  # shape for `v` and returns a result of that shape.
+  v_shape = array_ops.shape(v)
+  flat = array_ops.searchsorted(
+      a,
+      array_ops.reshape(v, [-1]),
+      side=side,
+      out_type=dtypes.int64,
+  )
+  return array_ops.reshape(flat, v_shape)
+
+
 def _argminmax(fn, a, axis=None):
   a = np_array_ops.array(a)
   if axis is None:
