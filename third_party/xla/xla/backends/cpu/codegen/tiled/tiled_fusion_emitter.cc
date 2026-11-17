@@ -491,7 +491,8 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernelImpl(
                              /*collective_spec=*/{},
                              /*gpu_cc=*/std::nullopt,
                              /*num_tiles_per_pid=*/
-                             CeilOfRatio(num_parallel_tiles, num_work_groups)));
+                             CeilOfRatio(num_parallel_tiles, num_work_groups),
+                             /*is_cpu=*/true));
   return CreateTiledKernelDefinition(context, fusion, buffer_assignment, name,
                                      num_work_groups, std::move(module));
 }

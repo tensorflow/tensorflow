@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
+#include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -190,7 +191,20 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 }  // namespace
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
-                                                const HloInstruction& dot) {
+                                                const HloInstruction& dot,
+                                                bool is_cpu) {
+  if (is_cpu) {
+    PrimitiveType output_type = dot.shape().element_type();
+    if (primitive_util::IsIntegralType(output_type) &&
+        primitive_util::IsIntegralType(
+            dot.operand(0)->shape().element_type()) &&
+        primitive_util::IsIntegralType(
+            dot.operand(1)->shape().element_type())) {
+      ABSL_ASSIGN_OR_RETURN(Type mlir_output_type,
+                       PrimitiveTypeToMlirType(b, output_type));
+      return GetSignlessType(mlir_output_type);
+    }
+  }
   ABSL_ASSIGN_OR_RETURN(
       PrimitiveType accumulator_type,
       algorithm_util::GetDefaultGemmAlgorithmAccumulatorType(&dot));
@@ -276,12 +290,13 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 }  // namespace
 
 absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
-                                           const HloInstruction& dot) {
+                                           const HloInstruction& dot,
+                                           bool is_cpu) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
 
   if (algorithm == PrecisionConfig::ALG_UNSET) {
-    return GetAlgUnsetAccumulatorType(b, dot);
+    return GetAlgUnsetAccumulatorType(b, dot, is_cpu);
   }
 
   ABSL_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
@@ -292,7 +307,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                         const HloInstruction& instr,
                                         const DotDimensionNumbers& dim_nums,
-                                        DotOperands dot_operands) {
+                                        DotOperands dot_operands, bool is_cpu) {
   PrecisionConfig::Algorithm algorithm = instr.precision_config().algorithm();
   PrecisionSpec precision_spec{
       algorithm,
@@ -304,7 +319,7 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
   ABSL_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
                    GetForceOperandsType(b, instr, dot_operands));
   ABSL_ASSIGN_OR_RETURN(Type force_accumulator_type,
-                   GetDotAccumulatorType(b, instr));
+                   GetDotAccumulatorType(b, instr, is_cpu));
 
   if (force_operands_type.has_value()) {
     if (ElementType(dot_operands.lhs) != *force_operands_type) {
@@ -342,8 +357,9 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
 // the instruction itself.
 absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                         const HloDotInstruction& dot,
-                                        DotOperands dot_operands) {
-  return EmitSingleTileDot(b, dot, dot.dot_dimension_numbers(), dot_operands);
+                                        DotOperands dot_operands, bool is_cpu) {
+  return EmitSingleTileDot(b, dot, dot.dot_dimension_numbers(), dot_operands,
+                           is_cpu);
 }
 
 absl::StatusOr<Value> EmitSingleTileScaledDot(

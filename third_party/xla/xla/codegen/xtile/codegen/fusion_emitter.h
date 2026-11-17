@@ -39,12 +39,13 @@ namespace xla::xtile {
 // collective_spec: Collective scratch/signal/rank entry arguments, if any.
 // gpu_cc: When set, used check for supported data types (e.g. FNUZ on ROCm),
 // Omit otherwise.
+// is_cpu: Whether the target backend is CPU.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context, const CollectiveEntrySpec& collective_spec,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc,
-    int num_tiles_per_pid);
+    int num_tiles_per_pid, bool is_cpu = false);
 
 }  // namespace xla::xtile
 

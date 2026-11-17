@@ -700,7 +700,8 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
   // The specific accumulator type to use may not correspond to the output type
   // of the dot. In particular, that is the case when an algorithm is specified
   // and the dot's output type does not match its expectations.
-  ABSL_ASSIGN_OR_RETURN(Type accumulator_type, xtile::GetDotAccumulatorType(b, dot));
+  ABSL_ASSIGN_OR_RETURN(Type accumulator_type,
+                   xtile::GetDotAccumulatorType(b, dot, emitter_ctx.is_cpu()));
   TensorValue accumulator =
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes);
 
@@ -768,7 +769,8 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     ABSL_ASSIGN_OR_RETURN(
         Value acc_next,
         xtile::EmitSingleTileDot(
-            b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc}));
+            b, dot, xtile::DotOperands{lhs_tensor, rhs_tensor, acc},
+            emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -998,8 +1000,9 @@ absl::StatusOr<RaggedDotParams> BuildRaggedDotContext(
   // Accumulator type: derived from the ragged dot's precision config so that
   // user-specified algorithms (e.g. ALG_DOT_BF16_BF16_F32) are respected,
   // mirroring the regular EmitDot path.
-  ABSL_ASSIGN_OR_RETURN(const Type acc_type,
-                   xtile::GetDotAccumulatorType(b, *ragged_dot_instr));
+  ABSL_ASSIGN_OR_RETURN(
+      const Type acc_type,
+      xtile::GetDotAccumulatorType(b, *ragged_dot_instr, emitter_ctx.is_cpu()));
   TensorValue accumulator = CreateConst(b, acc_type, 0.0f, padded_tile_sizes);
 
   return RaggedDotParams{
@@ -1116,7 +1119,8 @@ absl::StatusOr<TensorValue> MaskTileAtKBoundary(
 absl::StatusOr<Value> RunSqueezedTileDot(
     ImplicitLocOpBuilder& b, const HloRaggedDotInstruction& ragged_dot,
     const DotDimensionNumbers& dot_dims, int64_t rhs_k_dim_after_squeeze,
-    int64_t num_batch_dims, TensorValue lhs, TensorValue rhs, TensorValue acc) {
+    int64_t num_batch_dims, TensorValue lhs, TensorValue rhs, TensorValue acc,
+    bool is_cpu) {
   auto acc_shape_ref = acc.getType().getShape();
   llvm::SmallVector<int64_t> lhs_2d_shape(
       lhs.getType().getShape().begin() + num_batch_dims,
@@ -1146,10 +1150,10 @@ absl::StatusOr<Value> RunSqueezedTileDot(
                                                 num_batch_dims);
 
   // Partial dot: LHS [M, K] × RHS [K, N] → acc [M, N].
-  ABSL_ASSIGN_OR_RETURN(
-      Value acc_next_2d,
-      xtile::EmitSingleTileDot(b, ragged_dot, inner_dot_dims,
-                               xtile::DotOperands{dot_lhs, dot_rhs, dot_acc}));
+  ABSL_ASSIGN_OR_RETURN(Value acc_next_2d,
+                   xtile::EmitSingleTileDot(
+                       b, ragged_dot, inner_dot_dims,
+                       xtile::DotOperands{dot_lhs, dot_rhs, dot_acc}, is_cpu));
 
   // Unsqueeze batch dims back if they were squeezed.
   if (num_batch_dims == 0) {
@@ -1223,7 +1227,8 @@ absl::StatusOr<Value> EmitNonContractingKLoopBody(
   // Batch-squeeze → partial dot → batch-unsqueeze.
   return RunSqueezedTileDot(b, *rctx.ragged_dot_instr, rctx.dot_dims,
                             rhs_k_dim_after_squeeze, params.num_batch_dims,
-                            lhs_tensor, rhs_tensor, acc_k_in);
+                            lhs_tensor, rhs_tensor, acc_k_in,
+                            emitter_ctx.is_cpu());
 }
 
 // Emits the kRaggedNonContracting variant.
@@ -1716,7 +1721,8 @@ absl::StatusOr<TensorValue> EmitRaggedDotContracting(
     ABSL_ASSIGN_OR_RETURN(Value acc_next,
                      xtile::EmitSingleTileDot(
                          b, *ragged_dot_instr, inner_dot_dims,
-                         xtile::DotOperands{lhs_tensor, rhs_tensor, acc_in}));
+                         xtile::DotOperands{lhs_tensor, rhs_tensor, acc_in},
+                         emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
   b.setInsertionPointAfter(m_for);
@@ -1808,11 +1814,11 @@ absl::StatusOr<TensorValue> EmitRaggedDotBatch(
     // squeeze a group dimension, so the RHS contracting dim is unchanged.
     TensorValue acc_k_in =
         mlir::cast<TensorValue>(k_for.getRegionIterArgs()[0]);
-    ABSL_ASSIGN_OR_RETURN(
-        Value acc_next,
-        RunSqueezedTileDot(b, *ragged_dot_instr, dot_dims,
-                           dot_dims.rhs_contracting_dimensions(0), num_batch,
-                           lhs_tensor, rhs_tensor, acc_k_in));
+    ABSL_ASSIGN_OR_RETURN(Value acc_next,
+                     RunSqueezedTileDot(b, *ragged_dot_instr, dot_dims,
+                                        dot_dims.rhs_contracting_dimensions(0),
+                                        num_batch, lhs_tensor, rhs_tensor,
+                                        acc_k_in, emitter_ctx.is_cpu()));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -3023,7 +3029,7 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                          const HloFusionInstruction& fusion,
                          const gpu::TiledHloComputation& tiled_computation,
                          const gpu::Schedule& schedule, xtile::EntryFuncOp fn,
-                         MLIRContext* mlir_context) {
+                         MLIRContext* mlir_context, bool is_cpu) {
   if (VLOG_IS_ON(6)) {
     VLOG(6) << "Emitting XTile IR for fusion\n"
             << ExtractInstructionIntoNewModule(fusion)->ToString();
@@ -3070,8 +3076,8 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   // constructed, so that all EvaluateTilingParameters calls automatically yield
   // the reordered tile coordinates.
   tile_id = ApplyGroupSizeTileIdRemapping(b, fusion, tile_id);
-  EmitterContext emitter_ctx{b,        &fusion, program_id,       tile_id,
-                             schedule, fn,      tiled_computation};
+  EmitterContext emitter_ctx{b,        &fusion, program_id,        tile_id,
+                             schedule, fn,      tiled_computation, is_cpu};
 
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   ABSL_ASSIGN_OR_RETURN(
@@ -3136,7 +3142,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::TiledHloComputation& tiled_computation,
     MLIRContext& mlir_context, const CollectiveEntrySpec& collective_spec,
-    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid) {
+    const std::optional<GpuComputeCapability>& gpu_cc, int num_tiles_per_pid,
+    bool is_cpu) {
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
   VLOG(8) << "EmitXTileModule for  fusion " << fusion.ToString();
@@ -3174,8 +3181,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   ABSL_ASSIGN_OR_RETURN(auto schedule,
                    GetSchedule(tiled_computation, num_tiles_per_pid));
-  ABSL_RETURN_IF_ERROR(
-      EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
+  ABSL_RETURN_IF_ERROR(EmitGeneric(b, fusion, tiled_computation, schedule, fn,
+                              &mlir_context, is_cpu));
   if (VLOG_IS_ON(8)) {
     std::string s;
     llvm::raw_string_ostream os(s);

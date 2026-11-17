@@ -99,14 +99,16 @@ class EmitterContext {
                  const HloFusionInstruction* fusion, mlir::Value pid,
                  mlir::Value tid, gpu::Schedule schedule,
                  xtile::EntryFuncOp entry_func,
-                 const gpu::TiledHloComputation& tiled_computation)
+                 const gpu::TiledHloComputation& tiled_computation,
+                 bool is_cpu = false)
       : b_(b),
         pid_(pid),
         tid_(tid),
         schedule_(std::move(schedule)),
         fusion_(fusion),
         entry_func_(entry_func),
-        tiled_computation_(tiled_computation) {}
+        tiled_computation_(tiled_computation),
+        is_cpu_(is_cpu) {}
 
   mlir::ImplicitLocOpBuilder& b() { return b_; }
   mlir::Value pid() const { return pid_; }
@@ -116,6 +118,7 @@ class EmitterContext {
   const gpu::TiledHloComputation& tiled_computation() const {
     return tiled_computation_;
   }
+  bool is_cpu() const { return is_cpu_; }
 
   // Returns the single result of `tiled_hlo`. Multi-result instructions (e.g.
   // variadic collectives) must be addressed with an explicit result index.
@@ -212,6 +215,7 @@ class EmitterContext {
   const HloFusionInstruction* fusion_ = nullptr;
   xtile::EntryFuncOp entry_func_;
   const gpu::TiledHloComputation& tiled_computation_;
+  bool is_cpu_ = false;
   SequentialDimValueMap sequential_dim_id_to_value_;
   std::optional<ScopedSequentialDimBinding> open_scan_binding_;
   mlir::scf::ForOp open_scan_loop_;

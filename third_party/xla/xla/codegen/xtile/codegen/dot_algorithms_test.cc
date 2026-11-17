@@ -160,5 +160,53 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotHighestPrecision) {
                   .isF32());
 }
 
+TEST_F(DotAlgorithmsTest, SignedIntegerAccumulatorTypeDependsOnIsCpu) {
+  auto kHloText = R"hlo(
+    HloModule test
+    ENTRY test {
+      p0 = s32[32,32] parameter(0)
+      p1 = s32[32,32] parameter(1)
+      ROOT dot = s32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  auto* dot_instr = xla::Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(mlir::Type gpu_acc_type,
+                       GetDotAccumulatorType(b_, *dot_instr));
+  EXPECT_TRUE(gpu_acc_type.isF32());
+
+  ASSERT_OK_AND_ASSIGN(mlir::Type cpu_acc_type,
+                       GetDotAccumulatorType(b_, *dot_instr, /*is_cpu=*/true));
+  EXPECT_TRUE(cpu_acc_type.isSignlessInteger(32));
+}
+
+TEST_F(DotAlgorithmsTest, UnsignedIntegerAccumulatorTypeDependsOnIsCpu) {
+  auto kHloText = R"hlo(
+    HloModule test_u32
+    ENTRY test {
+      p0 = u32[32,32] parameter(0)
+      p1 = u32[32,32] parameter(1)
+      ROOT dot = u32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  auto* dot_instr = xla::Cast<HloDotInstruction>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(mlir::Type gpu_acc_type,
+                       GetDotAccumulatorType(b_, *dot_instr));
+  EXPECT_TRUE(gpu_acc_type.isF32());
+
+  ASSERT_OK_AND_ASSIGN(mlir::Type cpu_acc_type,
+                       GetDotAccumulatorType(b_, *dot_instr, /*is_cpu=*/true));
+  EXPECT_TRUE(cpu_acc_type.isSignlessInteger(32));
+}
+
 }  // namespace
 }  // namespace xla::xtile
