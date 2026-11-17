@@ -3386,9 +3386,9 @@ REGISTER_OP("IsotonicRegression")
     .Output("segments: int32")
     .Attr("T: realnumbertype")
     .Attr("output_dtype: {half, bfloat16, float, double} = DT_FLOAT")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
-      c->set_output(1, c->input(0));
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
+      context->set_output(0, context->input(0));
+      context->set_output(1, context->input(0));
       return absl::OkStatus();
     });
 
