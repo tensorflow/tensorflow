@@ -1853,6 +1853,7 @@ xla_cc_test(
     deps = [
         ":dynamic_slice_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

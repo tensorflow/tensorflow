@@ -1518,17 +1518,20 @@ message WhileLoopBackendConfig {
     // `init` and `step` describe the affine value of this variable as
     // `init + iteration * step`. They are optional: a writer that knows a
     // tuple position is a dynamic variable but does not (yet) know the affine
-    // parameters can leave them unset, in which case consumers should fall
-    // back to `known_init_step` (e.g. for FusionDynamicMemcpyRewriter offset
-    // computation).
+    // parameters can leave them unset. Writers set both or neither. Consumers
+    // must not substitute `known_init_step` for a variable other than the
+    // induction variable when either is unset, since its value generally
+    // differs from the induction variable; they should treat its value as
+    // unknown instead. For the induction variable, `known_init_step` is
+    // authoritative and any `init`/`step` set here must agree with it.
     optional int64 init = 2;
     optional int64 step = 3;
   }
 
   // Tuple positions that should be treated as induction variables for dynamic
   // slice offset analysis, even though they are not the primary induction
-  // variable. When `init`/`step` are set, they take precedence over
-  // `known_init_step` for offset computation.
+  // variable. Offsets of a non-induction variable are only computable when
+  // both its `init` and `step` are set.
   repeated DynamicVariable dynamic_variables = 5;
 }
 

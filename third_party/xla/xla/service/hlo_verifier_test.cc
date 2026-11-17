@@ -4758,6 +4758,86 @@ TEST_F(HloVerifierTest, InconsistentWhileSharding) {
               HasSubstr("Inconsistent while sharding among instructions"));
 }
 
+// A while loop whose induction variable is tuple index 0 with init=2, step=3,
+// and the given `dynamic_variables` entries.
+std::string WhileWithDynamicVariablesHlo(absl::string_view dynamic_variables) {
+  return absl::StrCat(R"(
+    HloModule While
+
+    body {
+      p0 = (s32[], f32[4]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      data = f32[4] get-tuple-element(p0), index=1
+      c3 = s32[] constant(3)
+      next_ivar = s32[] add(ivar, c3)
+      ROOT result = (s32[], f32[4]) tuple(next_ivar, data)
+    }
+
+    condition {
+      p0 = (s32[], f32[4]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c8 = s32[] constant(8)
+      ROOT cmp = pred[] compare(ivar, c8), direction=LT
+    }
+
+    ENTRY main {
+      data = f32[4] parameter(0)
+      c2 = s32[] constant(2)
+      tuple = (s32[], f32[4]) tuple(c2, data)
+      ROOT while = (s32[], f32[4]) while(tuple), condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"2"},
+                          "known_init_step":{"init":"2","step":"3"},
+                          "known_induction_variable":{"tuple_index":"0"},
+                          "dynamic_variables":[)",
+                      dynamic_variables, "]}\n    }");
+}
+
+TEST_F(HloVerifierTest, WhileInductionVariableEntryAgreeingWithInitStep) {
+  for (absl::string_view entries :
+       {"", R"({"init":"2","step":"3","tuple_index":"0"})",
+        R"({"tuple_index":"0"})",
+        R"({"init":"0","step":"1","tuple_index":"1"})"}) {
+    SCOPED_TRACE(entries);
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnUnverifiedModule(WhileWithDynamicVariablesHlo(entries)));
+    EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
+  }
+}
+
+TEST_F(HloVerifierTest, WhileInductionVariableEntryContradictingInitStep) {
+  for (absl::string_view entries :
+       {R"({"init":"0","step":"3","tuple_index":"0"})",
+        R"({"init":"2","step":"1","tuple_index":"0"})"}) {
+    SCOPED_TRACE(entries);
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnUnverifiedModule(WhileWithDynamicVariablesHlo(entries)));
+    EXPECT_THAT(
+        verifier().Run(module.get()),
+        absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                               HasSubstr("disagrees with known_init_step")));
+  }
+}
+
+TEST_F(HloVerifierTest, WhileDynamicVariableEntryWithOnlyInitOrStep) {
+  // Half-populated entries violate the "set both or neither" contract, for the
+  // induction variable (index 0) and any other variable (index 1) alike.
+  for (absl::string_view entries : {R"({"step":"3","tuple_index":"0"})",
+                                    R"({"init":"2","tuple_index":"0"})",
+                                    R"({"step":"1","tuple_index":"1"})",
+                                    R"({"init":"0","tuple_index":"1"})"}) {
+    SCOPED_TRACE(entries);
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnUnverifiedModule(WhileWithDynamicVariablesHlo(entries)));
+    EXPECT_THAT(verifier().Run(module.get()),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kFailedPrecondition,
+                    HasSubstr("must set both init and step or neither")));
+  }
+}
+
 TEST_F(HloVerifierTest, InconsistentConditionSharding) {
   const char* const hlo = R"(
   HloModule Module

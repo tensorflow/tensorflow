@@ -4747,6 +4747,60 @@ absl::Status InstructionVerifier::HandleBitcastConvert(HloInstruction* c) {
   return absl::OkStatus();
 }
 
+// Every `dynamic_variables` entry must set both init and step or neither
+// ("writers set both or neither"). Additionally, `known_init_step` is
+// authoritative for the induction variable, so a `dynamic_variables` entry for
+// it may repeat its init/step but must not contradict them. Loops whose backend
+// config is not a WhileLoopBackendConfig (e.g. one attached by another
+// backend) are not checked.
+static absl::Status VerifyWhileLoopBackendConfig(
+    const HloInstruction* xla_while) {
+  if (!xla_while->has_backend_config()) {
+    return absl::OkStatus();
+  }
+  absl::StatusOr<WhileLoopBackendConfig> config =
+      xla_while->backend_config<WhileLoopBackendConfig>();
+  if (!config.ok()) {
+    return absl::OkStatus();
+  }
+  for (const WhileLoopBackendConfig::DynamicVariable& entry :
+       config->dynamic_variables()) {
+    if (entry.has_init() != entry.has_step()) {
+      return FailedPrecondition(
+          "Dynamic variable entry at tuple index %d must set both init and "
+          "step or neither (init=%s, step=%s): %s",
+          entry.tuple_index(),
+          entry.has_init() ? absl::StrCat(entry.init()) : "unset",
+          entry.has_step() ? absl::StrCat(entry.step()) : "unset",
+          xla_while->ToString());
+    }
+  }
+  if (!config->has_known_induction_variable() ||
+      !config->has_known_init_step()) {
+    return absl::OkStatus();
+  }
+  const WhileLoopBackendConfig::KnownInitStep& init_step =
+      config->known_init_step();
+  int64_t tuple_index = config->known_induction_variable().tuple_index();
+  for (const WhileLoopBackendConfig::DynamicVariable& entry :
+       config->dynamic_variables()) {
+    if (entry.tuple_index() != tuple_index) {
+      continue;
+    }
+    if ((entry.has_init() && entry.init() != init_step.init()) ||
+        (entry.has_step() && entry.step() != init_step.step())) {
+      return FailedPrecondition(
+          "Dynamic variable entry for the induction variable at tuple index "
+          "%d (init=%s, step=%s) disagrees with known_init_step (init=%d, "
+          "step=%d): %s",
+          tuple_index, entry.has_init() ? absl::StrCat(entry.init()) : "unset",
+          entry.has_step() ? absl::StrCat(entry.step()) : "unset",
+          init_step.init(), init_step.step(), xla_while->ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
   auto* while_cond = xla_while->while_condition();
   auto* while_body = xla_while->while_body();
@@ -4775,7 +4829,7 @@ absl::Status InstructionVerifier::HandleWhile(HloInstruction* xla_while) {
                   xla_while->while_body()->parameter_instruction(0),
                   xla_while->while_condition()->parameter_instruction(0)}));
 
-  return absl::OkStatus();
+  return VerifyWhileLoopBackendConfig(xla_while);
 }
 
 absl::Status InstructionVerifier::HandleCall(HloInstruction* call) {

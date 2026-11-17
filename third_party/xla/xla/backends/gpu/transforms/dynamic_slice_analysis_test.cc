@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::gpu {
@@ -172,6 +174,140 @@ TEST_F(DynamicSliceAnalysisTest, NonTrivialInitAndStep) {
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
   EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(2 * 256, 3 * 256)));
+}
+
+// A prefetch counter (tuple index 2) runs one ahead of the induction variable,
+// as CollectivePipeliner creates when it peels the first iteration. Its init is
+// not a constant, so the trip count annotator leaves its init/step unset.
+std::string PrefetchCounterHlo(absl::string_view dynamic_variables) {
+  return std::string(R"(
+    body {
+      p0 = (s32[], s32[8,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[8,8,8] get-tuple-element(p0), index=1
+      next = s32[] get-tuple-element(p0), index=2
+      c0 = s32[] constant(0)
+      slice = s32[1,8,8] dynamic-slice(input, next, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      next_next = s32[] add(next_ivar, c1)
+      ROOT result = (s32[], s32[8,8,8], s32[]) tuple(next_ivar, input,
+          next_next)
+    }
+
+    condition {
+      p0 = (s32[], s32[8,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c7 = s32[] constant(7)
+      ROOT cmp = pred[] compare(ivar, c7), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[8,8,8] parameter(0)
+      start = s32[] parameter(1)
+      c1 = s32[] constant(1)
+      next = s32[] add(start, c1)
+      tuple = (s32[], s32[8,8,8], s32[]) tuple(start, input, next)
+      ROOT while = (s32[], s32[8,8,8], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"1","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"},
+                          "dynamic_variables":[)") +
+         std::string(dynamic_variables) + "]}\n    }";
+}
+
+// The analysis must not assume an unresolved dynamic variable equals the
+// induction variable: that reads the slice of the wrong iteration.
+TEST_F(DynamicSliceAnalysisTest, UnresolvedDynamicVariableIsNotAnalyzed) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(PrefetchCounterHlo(
+                           R"({"tuple_index":"0"},{"tuple_index":"2"})")));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+  EXPECT_FALSE(desc.has_value());
+}
+
+// With its init/step resolved, the prefetch counter starts one ahead:
+// offset = 2*256 = 512, stride = 256.
+TEST_F(DynamicSliceAnalysisTest, ResolvedDynamicVariableUsesItsInitAndStep) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(PrefetchCounterHlo(
+          R"({"tuple_index":"0"},{"init":"2","step":"1","tuple_index":"2"})")));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(2 * 256, 256)));
+}
+
+// A non-induction variable needs both init and step. A partial entry is not
+// completed from the induction variable's known_init_step. The HloVerifier
+// rejects such entries, so the module is left unverified to exercise the
+// analysis' defensive handling.
+TEST_F(DynamicSliceAnalysisTest, PartialDynamicVariableIsNotAnalyzed) {
+  for (absl::string_view entry : {R"({"init":"2","tuple_index":"2"})",
+                                  R"({"step":"1","tuple_index":"2"})"}) {
+    SCOPED_TRACE(entry);
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnUnverifiedModule(PrefetchCounterHlo(
+            std::string(R"({"tuple_index":"0"},)") + std::string(entry))));
+    ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+    EXPECT_FALSE(desc.has_value());
+  }
+}
+
+// DS indexed by the induction variable, init=2, step=3 on s32[8,8,8], with a
+// `dynamic_variables` entry for the induction variable itself.
+std::string InductionVariableSliceHlo(absl::string_view dynamic_variables) {
+  return std::string(R"(
+    body {
+      p0 = (s32[], s32[8,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[8,8,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      slice = s32[1,8,8] dynamic-slice(input, ivar, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+      c3 = s32[] constant(3)
+      next_ivar = s32[] add(ivar, c3)
+      ROOT result = (s32[], s32[8,8,8]) tuple(next_ivar, input)
+    }
+
+    condition {
+      p0 = (s32[], s32[8,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c8 = s32[] constant(8)
+      ROOT cmp = pred[] compare(ivar, c8), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[8,8,8] parameter(0)
+      c2 = s32[] constant(2)
+      tuple = (s32[], s32[8,8,8]) tuple(c2, input)
+      ROOT while = (s32[], s32[8,8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"2"},
+                          "known_init_step":{"init":"2","step":"3"},
+                          "known_induction_variable":{"tuple_index":"0"},
+                          "dynamic_variables":[)") +
+         std::string(dynamic_variables) + "]}\n    }";
+}
+
+// An induction variable entry that agrees with known_init_step, or sets
+// neither init nor step, does not change the result: offset = 2*256,
+// stride = 3*256.
+TEST_F(DynamicSliceAnalysisTest, InductionVariableEntryAgreeingIsAnalyzed) {
+  for (absl::string_view entry :
+       {R"({"init":"2","step":"3","tuple_index":"0"})",
+        R"({"tuple_index":"0"})"}) {
+    SCOPED_TRACE(entry);
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                          InductionVariableSliceHlo(entry)));
+    ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+    ASSERT_TRUE(desc.has_value());
+    EXPECT_THAT(desc->offsets,
+                VariantWith<Linear>(FieldsAre(2 * 256, 3 * 256)));
+  }
 }
 
 // Backward: init=3, step=-1 on s32[4,8,8]. dim0 stride=256.
@@ -342,6 +478,100 @@ TEST_F(DynamicSliceAnalysisTest, StaggeredInductionVariable) {
   ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
   ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 16)));
+}
+
+// Same as StaggeredInductionVariable, but the staggered slot starts at 1, the
+// induction variable's init, instead of init - step = 0. Its values are then
+// 1, 1, 2, which init=1, step=1 does not describe, so it is not analyzed.
+TEST_F(DynamicSliceAnalysisTest, StaggeredInductionVariableWrongInit) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], f32[4,8], f32[4,4], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = f32[4,8] get-tuple-element(p0), index=1
+      output = f32[4,4] get-tuple-element(p0), index=2
+      prev_ivar = s32[] get-tuple-element(p0), index=3
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      val = f32[1,4] constant({{1,2,3,4}})
+      dus = f32[4,4] dynamic-update-slice(output, val, prev_ivar, c0)
+      ROOT result = (s32[], f32[4,8], f32[4,4], s32[])
+          tuple(next_ivar, input, dus, ivar)
+    }
+
+    condition {
+      p0 = (s32[], f32[4,8], f32[4,4], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = f32[4,8] parameter(0)
+      c0 = f32[] constant(0)
+      output = f32[4,4] broadcast(c0), dimensions={}
+      c1 = s32[] constant(1)
+      tuple = (s32[], f32[4,8], f32[4,4], s32[])
+          tuple(c1, input, output, c1)
+      ROOT while = (s32[], f32[4,8], f32[4,4], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"1","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  EXPECT_FALSE(desc.has_value());
+}
+
+// Same as StaggeredInductionVariable, but the DUS offset reaches the
+// staggered slot through a copy, as copy-insertion can leave it.
+TEST_F(DynamicSliceAnalysisTest, StaggeredInductionVariableThroughCopy) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], f32[4,8], f32[4,4], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = f32[4,8] get-tuple-element(p0), index=1
+      output = f32[4,4] get-tuple-element(p0), index=2
+      prev_ivar = s32[] get-tuple-element(p0), index=3
+      prev_copy = s32[] copy(prev_ivar)
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      val = f32[1,4] constant({{1,2,3,4}})
+      dus = f32[4,4] dynamic-update-slice(output, val, prev_copy, c0)
+      ROOT result = (s32[], f32[4,8], f32[4,4], s32[])
+          tuple(next_ivar, input, dus, ivar)
+    }
+
+    condition {
+      p0 = (s32[], f32[4,8], f32[4,4], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = f32[4,8] parameter(0)
+      c0 = f32[] constant(0)
+      output = f32[4,4] broadcast(c0), dimensions={}
+      c0_s32 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      tuple = (s32[], f32[4,8], f32[4,4], s32[])
+          tuple(c1, input, output, c0_s32)
+      ROOT while = (s32[], f32[4,8], f32[4,4], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"1","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  ASSERT_TRUE(desc.has_value());
   EXPECT_THAT(desc->offsets, VariantWith<Linear>(FieldsAre(0, 16)));
 }
 
