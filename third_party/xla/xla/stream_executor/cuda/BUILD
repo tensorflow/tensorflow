@@ -1800,7 +1800,10 @@ xla_test(
     },
     backends = ["gpu"],
     env = {"XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT": "1"},
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "no_oss",
+    ],
     deps = [
         ":cuda_executor",
         ":cuda_platform",
