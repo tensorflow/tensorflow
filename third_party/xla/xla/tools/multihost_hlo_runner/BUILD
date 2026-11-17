@@ -310,6 +310,7 @@ xla_test(
         "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:mock_pjrt_client",

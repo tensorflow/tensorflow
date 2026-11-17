@@ -1132,7 +1132,7 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
     VLOG(3) << "Allocating fake arguments for device " << i;
     PjRtDevice* device = addressable_devices[i];
-    ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+    ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
                      device->default_memory_space());
 
     const int device_id = device->global_device_id().value();
@@ -1146,6 +1146,12 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
       if (running_options.log_input_output()) {
         LOG(INFO) << "device_id=" << device_id
                   << ", input = " << shape.ToString();
+      }
+      PjRtMemorySpace* memory_space = default_memory_space;
+      if (shape.has_layout() &&
+          shape.layout().memory_space() == Layout::kHostMemorySpace) {
+        ABSL_ASSIGN_OR_RETURN(memory_space, device->memory_space_by_kind(
+                                           PinnedHostMemorySpace::kKind));
       }
 
       ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> argument_buffer,

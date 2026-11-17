@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/mock_pjrt_client.h"
@@ -1546,6 +1547,9 @@ class HostLiteralMockPjRtClient : public MockPjRtClient {
               (const LiteralSlice& literal, PjRtMemorySpace* memory_space,
                const Layout* device_layout),
               (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtBuffer>>,
+              CreateUninitializedBuffer,
+              (const Shape& shape, PjRtMemorySpace* memory_space), (override));
 };
 
 // Compiles and loads a StableHLO MLIR module string on `client` for the given
@@ -2641,6 +2645,79 @@ ENTRY %main (p0: f32[2], p1: f32[2]) -> f32[2] {
                                       FunctionalHloRunner::RunningOptions{},
                                       hlo_path, InputFormat::kText, arguments));
   EXPECT_THAT(results.at(dev0_id)[0].data<float>(), ElementsAre(4.0f, 6.0f));
+}
+
+TEST_F(FunctionalHloRunnerTest, UninitializedInputsUsePinnedHostMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  constexpr absl::string_view kTwoArgStablehlo = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+          -> tensor<4xf32> {
+        %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>
+        func.return %0 : tensor<4xf32>
+      }
+    }
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> real_exec,
+                       CompileStablehloModule(*real_client, kTwoArgStablehlo));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<HloModule>> modules,
+                       real_exec->GetHloModules());
+  ASSERT_EQ(modules.size(), 1);
+  // Mark parameter 1 as residing in pinned host memory (S(5)), mirroring host
+  // offloaded parameters in TPU/GPU executables.
+  auto& entry_layout =
+      *modules[0]->mutable_config().mutable_entry_computation_layout();
+  Shape host_shape = entry_layout.parameter_shape(1);
+  host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  *entry_layout.mutable_parameter_layout(1) = ShapeLayout(host_shape);
+
+  PjRtDevice* real_device = real_client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * default_space,
+                       real_device->default_memory_space());
+  PinnedHostMemorySpace pinned_host_space(/*id=*/99, real_device);
+
+  class PinnedHostDevice : public MismatchedGlobalIdPjRtDevice {
+   public:
+    PinnedHostDevice(PjRtDevice* inner, PjRtMemorySpace* pinned_host)
+        : MismatchedGlobalIdPjRtDevice(inner, inner->global_device_id()),
+          pinned_host_(pinned_host) {}
+    absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+        absl::string_view memory_space_kind) const override {
+      if (memory_space_kind == PinnedHostMemorySpace::kKind) {
+        return pinned_host_;
+      }
+      return MismatchedGlobalIdPjRtDevice::memory_space_by_kind(
+          memory_space_kind);
+    }
+
+   private:
+    PjRtMemorySpace* pinned_host_;
+  };
+  PinnedHostDevice wrapped_device(real_device, &pinned_host_space);
+  NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get(),
+                                             {&wrapped_device});
+
+  HostLiteralMockPjRtClient mock_client;
+  std::vector<PjRtMemorySpace*> allocated_spaces;
+  EXPECT_CALL(mock_client, CreateUninitializedBuffer)
+      .Times(2)
+      .WillRepeatedly(
+          [&](const Shape& /*shape*/, PjRtMemorySpace* memory_space) {
+            allocated_spaces.push_back(memory_space);
+            return std::make_unique<FakeReadyFuturePjRtBuffer>(
+                Future<>(absl::OkStatus()));
+          });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+
+  ASSERT_OK(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                     /*arguments=*/{}, running_options));
+  EXPECT_THAT(allocated_spaces, ElementsAre(default_space, &pinned_host_space));
 }
 
 }  // namespace
