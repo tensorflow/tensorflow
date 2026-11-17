@@ -144,7 +144,8 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   }
 
   if (!storage_type) {
-    const mlir::Type raw_elem_type = ConvertElementType(tensor.type, builder);
+    const mlir::Type raw_elem_type =
+        ConvertElementTypeToTfType(tensor.type, builder);
     if (!mlir::isa<mlir::IntegerType>(raw_elem_type)) {
       return absl::InvalidArgumentError(
           "Quantized tensors must be stored as integers");
@@ -195,7 +196,7 @@ StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
   if (tensor.quantization == nullptr) {
     return absl::InvalidArgumentError("The tensor is not quantized.");
   }
-  mlir::Type raw_elem_type = ConvertElementType(tensor.type, builder);
+  mlir::Type raw_elem_type = ConvertElementTypeToTfType(tensor.type, builder);
   float min = tensor.quantization->min[0];
   float max = tensor.quantization->max[0];
   return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
@@ -204,7 +205,7 @@ StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant, bool is_intermediate,
                                          bool get_storage) {
-  mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  mlir::Type elem_type = ConvertElementTypeToTfType(tensor.type, builder);
   if (tensor.type == tflite::TensorType_VARIANT) {
     llvm::SmallVector<mlir::TensorType> tensor_types;
     if (tensor.variant_tensors.size() > 1) {
@@ -213,7 +214,7 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
     }
     for (const auto& nested_tensor : tensor.variant_tensors) {
       mlir::Type nested_elem_type =
-          ConvertElementType(nested_tensor->type, builder);
+          ConvertElementTypeToTfType(nested_tensor->type, builder);
       if (nested_tensor->has_rank) {
         llvm::SmallVector<int64_t> shape(nested_tensor->shape.begin(),
                                          nested_tensor->shape.end());

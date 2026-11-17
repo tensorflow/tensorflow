@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/export/vhlo_operators.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator_writers.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_types.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
@@ -447,12 +448,50 @@ bool ModelBuilder::AddTensor(Value value, StringRef name, Subgraph& subgraph) {
       type.getElementType(), value.getLoc(), name, index, side_tensors);
   if (!quantization.has_value()) return false;
 
+  // The subtype of a TFLite variant (at most one, like the TF exporter). The
+  // subtypes of a `tf_type` variant aren't accessible here and are not
+  // exported.
+  Offset<flatbuffers::Vector<Offset<tflite::VariantSubType>>> variant_tensors;
+  if (auto variant = dyn_cast<VariantType>(type.getElementType())) {
+    ArrayRef<TensorType> subtypes = variant.getSubtypes();
+    if (subtypes.size() > 1) {
+      emitError(value.getLoc(), "variant with more than one subtype: ")
+          << variant;
+      return false;
+    }
+    if (!subtypes.empty()) {
+      const TensorType subtype = subtypes.front();
+      const absl::StatusOr<tflite::TensorType> subtype_element_type =
+          GetTensorType(subtype.getElementType());
+      if (!subtype_element_type.ok()) {
+        emitError(value.getLoc(), subtype_element_type.status().message());
+        return false;
+      }
+      std::vector<int32_t> subtype_shape;
+      if (subtype.hasRank()) {
+        for (int64_t dim : subtype.getShape()) {
+          if (dim > std::numeric_limits<int32_t>::max()) {
+            emitError(value.getLoc(),
+                      "variant subtype dimension out of the int32 range: ")
+                << dim;
+            return false;
+          }
+          subtype_shape.push_back(
+              ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
+        }
+      }
+      variant_tensors = fbb_.CreateVector({tflite::CreateVariantSubType(
+          fbb_, fbb_.CreateVector(subtype_shape), *subtype_element_type,
+          subtype.hasRank())});
+    }
+  }
+
   subgraph.tensor_indices[value] = index;
   subgraph.tensors.push_back(tflite::CreateTensor(
       fbb_, fbb_.CreateVector(shape), *tflite_type, buffer,
       fbb_.CreateString(name.str()), *quantization, /*is_variable=*/false,
       /*sparsity=*/0, has_dynamic_dim ? fbb_.CreateVector(shape_signature) : 0,
-      /*has_rank=*/type.hasRank()));
+      /*has_rank=*/type.hasRank(), variant_tensors));
   subgraph.tensors.insert(subgraph.tensors.end(), side_tensors.begin(),
                           side_tensors.end());
   return true;

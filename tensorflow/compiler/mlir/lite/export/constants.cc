@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
@@ -372,6 +374,18 @@ AsmResourceBlob* GetResourceBlob(const Constant& constant) {
 
 absl::Status CheckConstant(const Constant& constant) {
   const ElementsAttr value = constant.value;
+  // Only numeric constants are supported. In particular, string constants
+  // would need the TFLite string buffer format.
+  const Type element_type = value.getElementType();
+  if (!element_type.isIntOrIndexOrFloat() &&
+      !isa<ComplexType, quant::QuantizedType, BlockwiseQuantType>(
+          element_type)) {
+    std::string type_str;
+    llvm::raw_string_ostream os(type_str);
+    os << element_type;
+    return absl::UnimplementedError(absl::StrCat(
+        "constants of element type ", type_str, " are not supported"));
+  }
   const int64_t num_elements = value.getNumElements();
   if (num_elements == 0) return absl::OkStatus();
   const std::optional<ArrayRef<char>> raw = GetRawData(value);

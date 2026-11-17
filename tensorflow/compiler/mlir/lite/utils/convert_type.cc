@@ -24,8 +24,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_types.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace tflite {
 
@@ -42,8 +42,14 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
     return tflite::TensorType_FLOAT8_E4M3FN;
   } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
     return tflite::TensorType_FLOAT8_E5M2;
-  } else if (mlir::isa<mlir::TF::StringType>(type)) {
+  } else if (mlir::TFL::IsStringType(type)) {
     return tflite::TensorType_STRING;
+  } else if (mlir::TFL::IsQuint8Type(type)) {
+    return tflite::TensorType_UINT8;
+  } else if (mlir::TFL::IsResourceType(type)) {
+    return tflite::TensorType_RESOURCE;
+  } else if (mlir::TFL::IsVariantType(type)) {
+    return tflite::TensorType_VARIANT;
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
     if (complex_type.getElementType().isF32()) {
       return tflite::TensorType_COMPLEX64;
@@ -106,7 +112,7 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
     case tflite::TensorType_INT64:
       return builder.getIntegerType(64);
     case tflite::TensorType_STRING:
-      return mlir::TF::StringType::get(builder.getContext());
+      return mlir::TFL::StringType::get(builder.getContext());
     case tflite::TensorType_BOOL:
       return builder.getI1Type();
     case tflite::TensorType_INT16:
@@ -126,9 +132,9 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
     case tflite::TensorType_UINT64:
       return builder.getIntegerType(64, /*isSigned=*/false);
     case tflite::TensorType_RESOURCE:
-      return mlir::TF::ResourceType::get(builder.getContext());
+      return mlir::TFL::ResourceType::get(builder.getContext());
     case tflite::TensorType_VARIANT:
-      return mlir::TF::VariantType::get(builder.getContext());
+      return mlir::TFL::VariantType::get(builder.getContext());
   }
 }
 

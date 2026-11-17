@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_types.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 namespace mlir::TFL::fb_export {
@@ -91,6 +92,12 @@ absl::StatusOr<tflite::TensorType> GetTensorType(Type element_type) {
   if (auto blockwise = dyn_cast<BlockwiseQuantType>(element_type)) {
     return GetTensorType(blockwise.getStorageType());
   }
+  // The TFLite element types, or the matching `tf_type` types (matched by
+  // name).
+  if (IsStringType(element_type)) return tflite::TensorType_STRING;
+  if (IsQuint8Type(element_type)) return tflite::TensorType_UINT8;
+  if (IsResourceType(element_type)) return tflite::TensorType_RESOURCE;
+  if (IsVariantType(element_type)) return tflite::TensorType_VARIANT;
   return UnsupportedType(element_type);
 }
 

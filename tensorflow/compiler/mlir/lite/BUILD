@@ -1916,6 +1916,7 @@ cc_library(
         ":flatbuffer_tflite_operator_writers",
         ":shape_and_size_utils",
         ":tensorflow_lite_ops",
+        ":tf_convert_type",
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/status",
@@ -1971,6 +1972,7 @@ cc_library(
         ":stateful_ops_utils",
         ":string_utils",
         ":tensorflow_lite",
+        ":tensorflow_lite_ops",
         ":tf_convert_type",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/core:macros",
@@ -2089,10 +2091,24 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_type_test",
+    srcs = ["utils/convert_type_test.cc"],
+    deps = [
+        ":convert_type",
+        ":tensorflow_lite_ops",
+        ":tf_convert_type",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        # Only to check the tf_type conversions.
+        "//tensorflow/core/ir/types:Dialect",
     ],
 )
 
@@ -2105,11 +2121,14 @@ cc_library(
         "utils/tf_convert_type.h",
     ],
     deps = [
+        ":convert_type",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
 

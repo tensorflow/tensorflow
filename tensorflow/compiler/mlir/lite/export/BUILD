@@ -67,6 +67,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -156,6 +157,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -170,5 +172,20 @@ tf_cc_test(
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "types_test",
+    srcs = ["types_test.cc"],
+    deps = [
+        ":types",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:status_matchers",
+        "@llvm-project//mlir:IR",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
+        # Only to check that the matching tf_type types are exported by name.
+        "//tensorflow/core/ir/types:Dialect",
     ],
 )
