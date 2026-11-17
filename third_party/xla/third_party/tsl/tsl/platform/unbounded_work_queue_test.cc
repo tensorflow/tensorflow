@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/unbounded_work_queue.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -131,8 +132,10 @@ TEST_F(UnboundedWorkQueueTest, NestedClosureDuringDestructor) {
 // indefinitely. (b/566567502).
 TEST(UnboundedWorkQueueOptionsTest, BlockingClosuresExceedingNumCpus) {
   // Start more closures than the default pool to confirm it grows to
-  // accommodate additional work.
-  const int num_closures = port::NumSchedulableCPUs() + 5;
+  // accommodate additional work. Cap the CPU count at 128: the internal
+  // pool stops adding worker groups past 128 CPUs, so on larger hosts an
+  // uncapped count may not all start within the 20s wait below.
+  const int num_closures = std::min(port::NumSchedulableCPUs(), 128) + 5;
 
   BlockingCounter all_started(num_closures);
   absl::Notification may_exit;
