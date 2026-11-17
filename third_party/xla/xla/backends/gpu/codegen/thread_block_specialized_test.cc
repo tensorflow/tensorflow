@@ -2043,5 +2043,83 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
 }
 
+TEST_F(ThreadBlockSpecializedFusionTest,
+       NestedTupleMultiOutputVariadicReductionPlusLoop) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  sum0 = f32[16,64]{1,0} add(p0, p1)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(sum0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  diff1 = f32[16,64]{1,0} subtract(p0, p1)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(diff1, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+nested_loop {
+  p2 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p2)
+}
+
+horizontal_comp {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  p2 = f32[512]{0} parameter(2)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0, p1), kind=kInput, calls=nested_mof
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0
+  r0_0 = f32[16]{0} get-tuple-element(r0), index=0
+  r0_1 = s32[16]{0} get-tuple-element(r0), index=1
+  r1 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=1
+  r1_0 = f32[16]{0} get-tuple-element(r1), index=0
+  r1_1 = s32[16]{0} get-tuple-element(r1), index=1
+  f1 = f32[512]{0} fusion(p2), kind=kLoop, calls=nested_loop
+  ROOT t = (f32[16]{0}, s32[16]{0}, f32[16]{0}, s32[16]{0}, f32[512]{0})
+      tuple(r0_0, r0_1, r1_0, r1_1, f1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  p2 = f32[512]{0} parameter(2)
+  ROOT fusion = (f32[16]{0}, s32[16]{0}, f32[16]{0}, s32[16]{0}, f32[512]{0})
+      fusion(p0, p1, p2), kind=kCustom, calls=horizontal_comp,
+      backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  std::string mlir_str;
+  llvm::raw_string_ostream(mlir_str) << *mlir_module;
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-DAG: llvm.call @fusion_nested_0(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, i32) -> ()
+    // CHECK-DAG: llvm.call @fusion_nested_1(%{{.*}}, %{{.*}}, %{{.*}}) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+  )"));
+  EXPECT_TRUE(mlir_check) << mlir_str;
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla::gpu

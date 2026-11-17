@@ -561,5 +561,59 @@ ENTRY main {
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-5, 1e-5}));
 }
+
+TEST_F(HorizontalFusionTest, MultiOutputVariadicReduceEndToEndPipeline) {
+  constexpr absl::string_view kHloText = R"(
+HloModule multi_output_variadic_reduce
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  p2 = f32[512]{0} parameter(2)
+  p3 = f32[512]{0} parameter(3)
+
+  before = f32[512]{0} tanh(p2)
+
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+
+  sum0 = f32[16,64]{1,0} add(p0, p1)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(sum0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  idx0 = s32[16]{0} get-tuple-element(red0), index=1
+
+  diff1 = f32[16,64]{1,0} subtract(p0, p1)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(diff1, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  idx1 = s32[16]{0} get-tuple-element(red1), index=1
+
+  after = f32[512]{0} exponential(p3)
+
+  ROOT result = (f32[512]{0}, s32[16]{0}, s32[16]{0}, f32[512]{0})
+      tuple(before, idx0, idx1, after)
+}
+)";
+
+  MatchOptimizedHlo(kHloText, R"(
+// CHECK: %horizontal_fusion_computation
+// CHECK: ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0})) fusion({{.*}}), kind=kInput
+// CHECK: ENTRY %main
+// CHECK: fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-5, 1e-5}));
+}
 }  // namespace
 }  // namespace xla::gpu

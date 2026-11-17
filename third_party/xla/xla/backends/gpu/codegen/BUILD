@@ -266,6 +266,7 @@ cc_library(
         ":kernel_compiler",
         ":nested_kernel_utils",
         "//xla:future",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",

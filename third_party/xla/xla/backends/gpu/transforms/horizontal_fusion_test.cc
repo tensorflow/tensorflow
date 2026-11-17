@@ -629,5 +629,402 @@ ENTRY main {
   EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(HorizontalFusionTest,
+       FusesNestedTupleMultiOutputFusionAndRewritesGteChains) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  sum0 = f32[16,64]{1,0} add(p0, p1)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(sum0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  diff1 = f32[16,64]{1,0} subtract(p0, p1)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(diff1, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p2 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p2)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[16,64]{1,0} parameter(1)
+  p2 = f32[512]{0} parameter(2)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0, p1), kind=kInput, calls=nested_mof
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0
+  idx0 = s32[16]{0} get-tuple-element(r0), index=1
+  r1 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=1
+  idx1 = s32[16]{0} get-tuple-element(r1), index=1
+  f1 = f32[512]{0} fusion(p2), kind=kLoop, calls=fused_loop
+  ROOT out = (s32[16]{0}, s32[16]{0}, f32[512]{0}) tuple(idx0, idx1, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: horizontal_fusion_computation
+// CHECK-DAG: %[[MOF:.*]] = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0})) fusion({{.*}}), kind=kInput, calls=%nested_mof
+// CHECK-DAG: %[[LOOP:.*]] = f32[512]{0} fusion({{.*}}), kind=kLoop, calls=%fused_loop
+// CHECK: ROOT %{{.*}} = (f32[16]{0}, s32[16]{0}, f32[16]{0}, s32[16]{0}, f32[512]{0}) tuple(%[[MOF]]#0#0, %[[MOF]]#0#1, %[[MOF]]#1#0, %[[MOF]]#1#1, %[[LOOP]])
+// CHECK: ENTRY %main
+// CHECK: %[[HF:.*]] = (f32[16]{0}, s32[16]{0}, f32[16]{0}, s32[16]{0}, f32[512]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation, backend_config={{.*}}"kind":"__thread_block_specialized"
+// CHECK: ROOT %{{.*}} = (s32[16]{0}, s32[16]{0}, f32[512]{0}) tuple(%[[HF]]#1, %[[HF]]#3, %[[HF]]#4)
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
+
+TEST_F(HorizontalFusionTest, ReconstructsNestedTupleWhenUsedDirectly) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(p0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  neg = f32[16,64]{1,0} negate(p0)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(neg, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p1 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  f1 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0), kind=kInput, calls=nested_mof
+  r1 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f1), index=1
+  ROOT out = (f32[512]{0}, ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0})),
+              (f32[16]{0}, s32[16]{0})) tuple(f0, f1, r1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY %main
+// CHECK: %[[HF:.*]] = (f32[512]{0}, f32[16]{0}, s32[16]{0}, f32[16]{0}, s32[16]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
+// CHECK-DAG: %[[R1_TUPLE:.*]] = (f32[16]{0}, s32[16]{0}) tuple(%{{.*}}, %{{.*}})
+// CHECK-DAG: %[[F1_TUPLE:.*]] = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0})) tuple(%{{.*}}, %{{.*}})
+// CHECK: ROOT %{{.*}} = (f32[512]{0}, ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0})), (f32[16]{0}, s32[16]{0})) tuple(%{{.*}}, %[[F1_TUPLE]], %[[R1_TUPLE]])
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
+
+TEST_F(HorizontalFusionTest, PreservesControlDependenciesOnNestedTupleGte) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule repro, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(p0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  neg = f32[16,64]{1,0} negate(p0)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(neg, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p1 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0), kind=kInput, calls=nested_mof
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0
+  idx0 = s32[16]{0} get-tuple-element(r0), index=1
+  cc = f32[512]{0} custom-call(p1), custom_call_target="bar",
+      control-predecessors={r0}
+  ROOT out = (s32[16]{0}, f32[512]{0}, f32[512]{0}) tuple(idx0, f1, cc)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* idx0 = root->operand(0);
+  ASSERT_EQ(idx0->opcode(), HloOpcode::kGetTupleElement);
+  const HloInstruction* outer_fusion = idx0->operand(0);
+  ASSERT_EQ(outer_fusion->opcode(), HloOpcode::kFusion);
+  const HloInstruction* cc = root->operand(2);
+  EXPECT_THAT(cc->control_predecessors(), ::testing::ElementsAre(outer_fusion));
+}
+
+TEST_F(HorizontalFusionTest, PreservesControlPredecessorOnNestedTupleGte) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(p0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  neg = f32[16,64]{1,0} negate(p0)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(neg, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p1 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0), kind=kInput, calls=nested_mof
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  cc = f32[512]{0} custom-call(f1), custom_call_target="bar"
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0,
+      control-predecessors={cc}
+  idx0 = s32[16]{0} get-tuple-element(r0), index=1
+  ROOT out = (s32[16]{0}, f32[512]{0}) tuple(idx0, cc)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* idx0 = root->operand(0);
+  const HloInstruction* cc = root->operand(1);
+  ASSERT_EQ(idx0->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(idx0->control_predecessors(), ::testing::ElementsAre(cc));
+}
+
+TEST_F(HorizontalFusionTest,
+       PreservesTwoSidedControlDependenciesOnRemovedNestedTupleGte) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(p0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  neg = f32[16,64]{1,0} negate(p0)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(neg, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p1 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0), kind=kInput, calls=nested_mof
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  cc1 = f32[512]{0} custom-call(f1), custom_call_target="bar1"
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0,
+      control-predecessors={cc1}
+  idx0 = s32[16]{0} get-tuple-element(r0), index=1
+  cc2 = f32[512]{0} custom-call(p1), custom_call_target="bar2",
+      control-predecessors={r0}
+  ROOT out = (s32[16]{0}, f32[512]{0}, f32[512]{0}) tuple(idx0, cc1, cc2)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* idx0 = root->operand(0);
+  const HloInstruction* cc1 = root->operand(1);
+  const HloInstruction* cc2 = root->operand(2);
+  ASSERT_EQ(idx0->opcode(), HloOpcode::kGetTupleElement);
+  const HloInstruction* outer_fusion = idx0->operand(0);
+  ASSERT_EQ(outer_fusion->opcode(), HloOpcode::kFusion);
+  EXPECT_THAT(idx0->control_predecessors(), ::testing::ElementsAre(cc1));
+  EXPECT_THAT(cc2->control_predecessors(),
+              ::testing::UnorderedElementsAre(outer_fusion, cc1));
+}
+
+TEST_F(HorizontalFusionTest,
+       PreservesControlDependenciesOnReconstructedNestedTupleGte) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m, is_scheduled=true
+
+argmax {
+  lhs_val = f32[] parameter(0)
+  lhs_idx = s32[] parameter(1)
+  rhs_val = f32[] parameter(2)
+  rhs_idx = s32[] parameter(3)
+  cmp = pred[] compare(lhs_val, rhs_val), direction=GE
+  max_val = f32[] select(cmp, lhs_val, rhs_val)
+  max_idx = s32[] select(cmp, lhs_idx, rhs_idx)
+  ROOT out = (f32[], s32[]) tuple(max_val, max_idx)
+}
+
+nested_mof {
+  p0 = f32[16,64]{1,0} parameter(0)
+  iota = s32[16,64]{1,0} iota(), iota_dimension=1
+  neg_inf = f32[] constant(-inf)
+  zero = s32[] constant(0)
+  red0 = (f32[16]{0}, s32[16]{0}) reduce(p0, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  neg = f32[16,64]{1,0} negate(p0)
+  red1 = (f32[16]{0}, s32[16]{0}) reduce(neg, iota, neg_inf, zero),
+      dimensions={1}, to_apply=argmax
+  ROOT t = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      tuple(red0, red1)
+}
+
+fused_loop {
+  p1 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p1)
+}
+
+ENTRY main {
+  p0 = f32[16,64]{1,0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = ((f32[16]{0}, s32[16]{0}), (f32[16]{0}, s32[16]{0}))
+      fusion(p0), kind=kInput, calls=nested_mof
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_loop
+  cc1 = f32[512]{0} custom-call(f1), custom_call_target="bar1"
+  r0 = (f32[16]{0}, s32[16]{0}) get-tuple-element(f0), index=0,
+      control-predecessors={cc1}
+  idx0 = s32[16]{0} get-tuple-element(r0), index=1
+  cc2 = f32[512]{0} custom-call(p1), custom_call_target="bar2",
+      control-predecessors={r0}
+  ROOT out = ((f32[16]{0}, s32[16]{0}), s32[16]{0}, f32[512]{0}, f32[512]{0})
+      tuple(r0, idx0, cc1, cc2)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* new_tuple = root->operand(0);
+  const HloInstruction* idx0 = root->operand(1);
+  const HloInstruction* cc1 = root->operand(2);
+  const HloInstruction* cc2 = root->operand(3);
+  ASSERT_EQ(new_tuple->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(idx0->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(new_tuple->control_predecessors(), ::testing::ElementsAre(cc1));
+  EXPECT_THAT(idx0->control_predecessors(), ::testing::ElementsAre(cc1));
+  EXPECT_THAT(cc2->control_predecessors(), ::testing::ElementsAre(new_tuple));
+}
+
 }  // namespace
 }  // namespace xla::gpu

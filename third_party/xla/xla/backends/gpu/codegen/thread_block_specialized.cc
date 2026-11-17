@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -345,32 +346,27 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
   }
 
   std::vector<const HloFusionInstruction*> child_fusions;
-  absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
+  absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>
       fusion_to_child_output_arg_indices;
 
   for (int64_t root_idx = 0; root_idx < analysis.fusion_root_count();
        ++root_idx) {
-    const HloInstruction* inst = &analysis.fusion_root(root_idx).instruction();
-    CHECK(!inst->shape().IsTuple())
+    const HloInstruction* root_inst =
+        &analysis.fusion_root(root_idx).instruction();
+    CHECK(!root_inst->shape().IsTuple())
         << "Nested fusion tuple output must be unpacked via get-tuple-element: "
-        << inst->ToString();
-    int64_t tuple_idx = 0;
-    if (inst->opcode() == HloOpcode::kGetTupleElement) {
-      tuple_idx = inst->tuple_index();
-      inst = inst->operand(0);
-    }
+        << root_inst->ToString();
+    auto [inst, shape_index] = root_inst->LatestNonGteAncestorAndIndex();
     const auto* child_fusion = Cast<HloFusionInstruction>(inst);
-    auto [it, inserted] =
-        fusion_to_child_output_arg_indices.try_emplace(child_fusion);
+    auto [it, inserted] = fusion_to_child_output_arg_indices.try_emplace(
+        child_fusion, &child_fusion->shape(), -1);
     if (inserted) {
       child_fusions.push_back(child_fusion);
-      it->second.assign(ShapeUtil::GetLeafCount(child_fusion->shape()), -1);
     }
-    CHECK_LT(tuple_idx, it->second.size());
-    CHECK_EQ(it->second[tuple_idx], -1)
-        << "Duplicate root referencing output " << tuple_idx << " of "
-        << child_fusion->ToString();
-    it->second[tuple_idx] = spec.output_arg_indices[root_idx];
+    int64_t& arg_idx = *it->second.mutable_element(shape_index);
+    CHECK_EQ(arg_idx, -1) << "Duplicate root referencing output " << shape_index
+                          << " of " << child_fusion->ToString();
+    arg_idx = spec.output_arg_indices[root_idx];
   }
 
   if (spec.kind == NestedKernelSpec::Kind::kPhased) {
@@ -398,27 +394,29 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
       }
 
       CHECK(spec.kind == NestedKernelSpec::Kind::kPhased);
-      const HloInstruction* prod_inst = operand;
-      int64_t prod_tuple_idx = 0;
-      if (prod_inst->opcode() == HloOpcode::kGetTupleElement) {
-        prod_tuple_idx = prod_inst->tuple_index();
-        prod_inst = prod_inst->operand(0);
-      }
-      auto prod_it = absl::c_find_if(
-          spec.children,
-          [&](const NestedKernelSpec& c) { return c.fusion == prod_inst; });
-      CHECK(prod_it != spec.children.end());
-      CHECK_LT(prod_tuple_idx, prod_it->output_arg_indices.size());
-      child_input_arg_indices.push_back(
-          prod_it->output_arg_indices[prod_tuple_idx]);
+      auto [prod_inst, prod_shape_index] =
+          operand->LatestNonGteAncestorAndIndex();
+      CHECK(absl::c_any_of(spec.children, [&](const NestedKernelSpec& c) {
+        return c.fusion == prod_inst;
+      }));
+      int64_t prod_arg_idx =
+          fusion_to_child_output_arg_indices.at(prod_inst).element(
+              prod_shape_index);
+      CHECK_GE(prod_arg_idx, 0)
+          << "Expected leaf output of " << prod_inst->ToString() << " at "
+          << prod_shape_index;
+      child_input_arg_indices.push_back(prod_arg_idx);
     }
 
-    std::vector<int64_t>& child_output_arg_indices =
-        fusion_to_child_output_arg_indices[child_fusion];
-    for (int64_t out_arg_idx : child_output_arg_indices) {
+    const ShapeTree<int64_t>& output_tree =
+        fusion_to_child_output_arg_indices.at(child_fusion);
+    std::vector<int64_t> child_output_arg_indices;
+    child_output_arg_indices.reserve(output_tree.leaf_count());
+    for (const auto& [shape_index, out_arg_idx] : output_tree.leaves()) {
       CHECK_GE(out_arg_idx, 0)
-          << "Multi-output nested fusion has unreferenced output in "
-          << child_fusion->ToString();
+          << "Multi-output nested fusion has unreferenced output "
+          << shape_index << " in " << child_fusion->ToString();
+      child_output_arg_indices.push_back(out_arg_idx);
     }
     HloFusionAnalysis child_analysis =
         HloFusionAnalysis::Create(*child_fusion, analysis.device_info());

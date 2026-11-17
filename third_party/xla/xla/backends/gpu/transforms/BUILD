@@ -4688,6 +4688,7 @@ cc_library(
     srcs = ["horizontal_fusion.cc"],
     hdrs = ["horizontal_fusion.h"],
     deps = [
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen:thread_block_specialized",
@@ -4697,6 +4698,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:tuple_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
@@ -4711,6 +4713,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
