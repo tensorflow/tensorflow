@@ -102,7 +102,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/backends/gpu/transforms/collectives/legalize_collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/reduce_scatter_combiner.h"
-#include "xla/backends/gpu/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/deviceless_estimate_cub_sort_scratch_size.h"
@@ -293,7 +292,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/gpu_pipeline.h"
-#include "xla/service/gpu/gpu_spmd_pipeline.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -323,15 +321,12 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/service/nullary_function_wrap_inliner.h"
 #include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
-#include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
-#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
@@ -707,42 +702,6 @@ absl::Status RunHloPassPipeline(HloModule* hlo_module,
       BuildHloPassPipeline(proto, "root", context, compilation_stats));
   return pipeline->Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
-}
-
-absl::Status RunSPMDPasses(
-    HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
-    const AliasInfo* alias_info,
-    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    int64_t max_windowed_einsum_iteration,
-    CompilationStats* compilation_stats) {
-  const int64_t num_partitions = hlo_module->config().num_partitions();
-  if (num_partitions > 1 && hlo_module->config().use_spmd_partitioning()) {
-    HloPassPipeline spmd_pipeline("spmd-partitioner", compilation_stats);
-    AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
-                  gpu_target_config.device_description.gpu_compute_capability(),
-                  spmd_pipeline, std::nullopt, max_windowed_einsum_iteration);
-    // Custom partitioning callbacks can emit xla.scaled_dot composites during
-    // partitioning, after the pre-SPMD CompositeRewriter has already run. From
-    // here on they take the same path as the composites rewritten before SPMD.
-    spmd_pipeline.AddPass<CompositeRewriter>();
-    return spmd_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
-        .status();
-  } else {
-    HloPassPipeline sharding_removal_pipeline("sharding-removal",
-                                              compilation_stats);
-    // Remove redundant sharding ops when partition_count == 1.
-    sharding_removal_pipeline.AddPass<ShardingRemover>();
-    // Run ShardyXLA without propagation, which enforces use-tuple-args.
-    if (hlo_module->config().use_shardy_partitioner()) {
-      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
-          /*runSdyShardingPropagation=*/false);
-    }
-    sharding_removal_pipeline.AddPass<NullaryFunctionWrapInliner>();
-    sharding_removal_pipeline.AddPass<HloDCE>();
-    return sharding_removal_pipeline
-        .Run(hlo_module, {HloInstruction::kMainExecutionThread})
-        .status();
-  }
 }
 
 absl::Status SetHostDeviceType(HloInstruction* instr) {
@@ -1884,21 +1843,13 @@ absl::Status GpuCompiler::OptimizeHloModule(
   };
   HloPassContext pass_context;
   ABSL_RETURN_IF_ERROR(pass_context.Set(device_description));
+  ABSL_RETURN_IF_ERROR(pass_context.Set(gpu_topology));
   ABSL_RETURN_IF_ERROR(pass_context.Set(host_device_type_options));
   ABSL_ASSIGN_OR_RETURN(
       HloPipelineProto pipeline_proto,
       GetDefaultCompilationPipeline(hlo_module->config(), pass_context));
   ABSL_RETURN_IF_ERROR(RunHloPassPipeline(hlo_module, pipeline_proto, pass_context,
                                      compilation_stats));
-
-  // Set max_windowed_einsum_iteration to slice_size, as there will be
-  // significant overhead when scaled beyond the maximum size of the
-  // fast-interconnect domain.
-  ABSL_RETURN_IF_ERROR(
-      RunSPMDPasses(hlo_module, gpu_topology.gpu_target_config(), alias_info,
-                    layout_insensitive_algsimp_opts,
-                    /*max_windowed_einsum_iteration=*/gpu_topology.slice_size(),
-                    compilation_stats));
 
   {
     HloPassPipeline pipeline("host-compute", compilation_stats);

@@ -41,8 +41,7 @@ AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
     AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
     bool is_cuda_platform);
 
-// Returns the default HLO pass pipeline of the GPU compiler. So far it covers
-// only the pre-SPMD-partitioner passes.
+// Returns the default HLO pass pipeline of the GPU compiler.
 absl::StatusOr<HloPipelineProto> GetDefaultCompilationPipeline(
     const HloModuleConfig& config, const HloPassContext& context);
 
