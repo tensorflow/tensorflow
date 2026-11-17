@@ -1732,9 +1732,10 @@ absl::Status BaseGPUDeviceFactory::CreateDevices(
       VLOG(3) << "should_create_new_pjrt_client="
               << should_create_new_pjrt_client << " for device ordinal " << di
               << ". Re-using local_device_state";
-      auto* pjrt_se_client = absl::down_cast<xla::PjRtStreamExecutorRawClient*>(
+      auto* pjrt_se_client =
           absl::down_cast<xla::CommonPjRtClient*>(*obtained_pjrt_client)
-              ->raw_client());
+              ->raw_client()
+              ->down_cast<xla::PjRtStreamExecutorRawClient>();
       local_device_state = pjrt_se_client->device_state(xla::LocalDeviceId(di));
       if (!local_device_state) {
         return absl::InternalError(absl::StrCat(
