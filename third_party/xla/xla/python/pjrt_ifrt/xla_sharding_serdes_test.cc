@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -100,6 +101,44 @@ TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Serialization) {
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
               "XLA HloShardingV3 format is not supported for serialization")));
+}
+
+TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Deserialization) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  xla::HloSharding xla_hlo_sharding = xla::HloSharding::IotaTile({2, 1});
+  std::unique_ptr<HloSharding> sharding = HloSharding::Create(
+      device_list, MemoryKind("abc"), /*xla_hlo_sharding=*/xla_hlo_sharding);
+  ASSERT_OK_AND_ASSIGN(
+      auto serialized,
+      Serialize(*sharding, std::make_unique<SerializeOptions>(version())));
+
+  HloShardingProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized.data()));
+  xla::OpSharding v3_op_sharding =
+      xla::HloSharding::ToV3Sharding(xla_hlo_sharding).ToProto();
+  *proto.mutable_xla_op_sharding() = v3_op_sharding;
+  serialized.set_data(proto.SerializeAsCord());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("XLA HloShardingV3 format is not supported for "
+                         "deserialization")));
+
+  // Also reject V3 shardings nested inside a tuple OpSharding.
+  xla::OpSharding* tuple_op_sharding = proto.mutable_xla_op_sharding();
+  tuple_op_sharding->Clear();
+  tuple_op_sharding->set_type(xla::OpSharding::TUPLE);
+  *tuple_op_sharding->add_tuple_shardings() = v3_op_sharding;
+  serialized.set_data(proto.SerializeAsCord());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("XLA HloShardingV3 format is not supported for "
+                         "deserialization")));
 }
 
 TEST_P(XlaShardingSerDesTest, RejectEmptyDeviceListOnDeserialize) {
