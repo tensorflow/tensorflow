@@ -717,57 +717,31 @@ TfLiteStatus ImplementMutualBroadcasting(TfLiteContext* context,
                                          int rank_b, int exclude_a,
                                          int exclude_b, uint32_t& current_a_id,
                                          uint32_t& current_b_id) {
-  int max_rank = std::max(rank_a, rank_b);
+  const uint32_t input_a_id = current_a_id;
+  const uint32_t input_b_id = current_b_id;
 
-  uint32_t input_a_id = current_a_id;
-  uint32_t input_b_id = current_b_id;
-
-  // 1. Expand A if needed.
-  uint32_t expanded_a_id = input_a_id;
-  if (max_rank > rank_a) {
-    int diff = max_rank - rank_a;
+  const int start_a = std::max(0, rank_a - rank_b);
+  const int end_a = rank_a - exclude_a;
+  if (end_a > start_a) {
     int32_t axes[YNN_MAX_TENSOR_RANK];
-    std::iota(axes, axes + diff, 0);
-    expanded_a_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, diff, axes, input_a_id, &expanded_a_id, 0));
-  }
-
-  // 2. Expand B if needed.
-  uint32_t expanded_b_id = input_b_id;
-  if (max_rank > rank_b) {
-    int diff = max_rank - rank_b;
-    int32_t axes[YNN_MAX_TENSOR_RANK];
-    std::iota(axes, axes + diff, 0);
-    expanded_b_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
-        subgraph, diff, axes, input_b_id, &expanded_b_id, 0));
-  }
-
-  uint32_t broadcasted_a_id = expanded_a_id;
-  if (max_rank > exclude_a) {
-    broadcasted_a_id = YNN_INVALID_VALUE_ID;
-    int num_axes = max_rank - exclude_a;
-    int32_t axes[YNN_MAX_TENSOR_RANK];
-    std::iota(axes, axes + num_axes, 0);
+    std::iota(axes, axes + (end_a - start_a), start_a);
+    current_a_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_broadcast_like(subgraph, num_axes, axes, expanded_a_id,
-                                  expanded_b_id, &broadcasted_a_id, 0));
+        ynn_define_broadcast_like(subgraph, end_a - start_a, axes, input_a_id,
+                                  input_b_id, &current_a_id, 0));
   }
 
-  uint32_t broadcasted_b_id = expanded_b_id;
-  if (max_rank > exclude_b) {
-    broadcasted_b_id = YNN_INVALID_VALUE_ID;
-    int num_axes = max_rank - exclude_b;
+  const int start_b = std::max(0, rank_b - rank_a);
+  const int end_b = rank_b - exclude_b;
+  if (end_b > start_b) {
     int32_t axes[YNN_MAX_TENSOR_RANK];
-    std::iota(axes, axes + num_axes, 0);
+    std::iota(axes, axes + (end_b - start_b), start_b);
+    current_b_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
-        ynn_define_broadcast_like(subgraph, num_axes, axes, expanded_b_id,
-                                  expanded_a_id, &broadcasted_b_id, 0));
+        ynn_define_broadcast_like(subgraph, end_b - start_b, axes, input_b_id,
+                                  input_a_id, &current_b_id, 0));
   }
 
-  current_a_id = broadcasted_a_id;
-  current_b_id = broadcasted_b_id;
   return kTfLiteOk;
 }
 
