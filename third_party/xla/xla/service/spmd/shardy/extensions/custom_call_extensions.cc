@@ -209,6 +209,34 @@ struct CustomCallShardingRuleOpInterface
                      mlir::sdy::FactorType::kNeedReplication)
           .build();
     }
+    if (callTargetName == "TopKBatchMajorSmallK") {
+      if (customCall.getNumOperands() != 1 || customCall.getNumResults() != 1) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      mlir::ShapedType inType = mlir::sdy::dynCastStaticShapedType(
+          customCall.getOperand(0).getType());
+      mlir::ShapedType outType =
+          mlir::sdy::dynCastStaticShapedType(customCall.getResult(0).getType());
+      if (!inType || !outType || inType.getRank() != 2 ||
+          outType.getRank() != 2 ||
+          inType.getDimSize(0) != outType.getDimSize(0)) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      // Require replication and block propagation on both the batch and
+      // selection dimensions (`[batch, n] -> [batch, k]`).
+      constexpr int64_t kNull = mlir::sdy::kNullDim;
+      return mlir::sdy::OpShardingRuleBuilder(customCall)
+          .addFactor(0, inType.getDimSize(0),
+                     mlir::sdy::FactorType::kNeedReplication,
+                     /*isBlocked=*/true)
+          .addFactor({1}, {kNull}, inType.getDimSize(1),
+                     mlir::sdy::FactorType::kNeedReplication,
+                     /*isBlocked=*/true)
+          .addFactor({kNull}, {1}, outType.getDimSize(1),
+                     mlir::sdy::FactorType::kNeedReplication,
+                     /*isBlocked=*/true)
+          .build();
+    }
     if (callTargetName == "QrDecompositionBlock") {
       int64_t numOperands = customCall.getNumOperands();
       if ((numOperands != 1 && numOperands != 2) ||

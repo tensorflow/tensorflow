@@ -1919,6 +1919,38 @@ TEST_P(ShardyXLATest, InspectShardingManualComputationPartialManual) {
       ShapeUtil::Compatible(root->shape(), ShapeUtil::MakeShape(F32, {4, 4})));
 }
 
+TEST_P(ShardyXLATest, TopKBatchMajorSmallKConvertGlobalToLocal) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule main, num_partitions=4, allow_spmd_sharding_propagation_to_output={true}
+
+    ENTRY %main {
+      %p0 = s32[16,512]{1,0} parameter(0), sharding={devices=[1,4]<=[4]}
+      ROOT %topk = s32[16,4]{1,0} custom-call(%p0),
+        custom_call_target="TopKBatchMajorSmallK",
+        operand_layout_constraints={s32[16,512]{1,0}}
+    })"));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  const HloInstruction* allGather =
+      FindInstruction(module.get(), xla::HloOpcode::kAllGather);
+  ASSERT_NE(allGather, nullptr);
+  EXPECT_TRUE(ShapeUtil::Compatible(allGather->shape(),
+                                    ShapeUtil::MakeShape(S32, {16, 512})));
+  const HloInstruction* topk =
+      FindInstruction(module.get(), xla::HloOpcode::kCustomCall);
+  ASSERT_NE(topk, nullptr);
+  EXPECT_EQ(topk->custom_call_target(), "TopKBatchMajorSmallK");
+  EXPECT_EQ(topk->operand(0), allGather);
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(topk->shape(), ShapeUtil::MakeShape(S32, {16, 4})));
+}
+
 // Verifies that an error reported via InspectShardingSetError aborts ShardyXLA
 // partitioning and propagates the callback error status.
 TEST_P(ShardyXLATest, InspectShardingCallbackErrorPropagated) {

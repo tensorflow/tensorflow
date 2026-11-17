@@ -109,6 +109,38 @@ func.func @custom_call_compute_on_done(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32
   return %0 : tensor<4x8xf32>
 }
 
+// CHECK-LABEL: func @custom_call_topk_batch_major_small_k
+func.func @custom_call_topk_batch_major_small_k(%arg0: tensor<16x512xi32>) -> tensor<16x4xi32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, k]) {i=16, j=512, k=4} need_replication={i, j, k} blocked_propagation={i, j, k}>
+  %0 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg0) : (tensor<16x512xi32>) -> tensor<16x4xi32>
+  return %0 : tensor<16x4xi32>
+}
+
+// CHECK-LABEL: func @custom_call_topk_batch_major_small_k_equal_dims
+func.func @custom_call_topk_batch_major_small_k_equal_dims(%arg0: tensor<16x8xi32>) -> tensor<16x8xi32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, k]) {i=16, j=8, k=8} need_replication={i, j, k} blocked_propagation={i, j, k}>
+  %0 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg0) : (tensor<16x8xi32>) -> tensor<16x8xi32>
+  return %0 : tensor<16x8xi32>
+}
+
+// CHECK-LABEL: func @custom_call_topk_batch_major_small_k_invalid_shapes_no_rule
+func.func @custom_call_topk_batch_major_small_k_invalid_shapes_no_rule(%arg0: tensor<16xi32>, %arg1: tensor<16x32xi32>, %arg2: tensor<?x32xi32>) -> (tensor<4xi32>, tensor<8x4xi32>, tensor<?x4xi32>, tensor<16x4xi32>) {
+  // CHECK: stablehlo.custom_call @TopKBatchMajorSmallK
+  // CHECK-NOT: sdy.sharding_rule
+  // CHECK: stablehlo.custom_call @TopKBatchMajorSmallK
+  // CHECK-NOT: sdy.sharding_rule
+  // CHECK: stablehlo.custom_call @TopKBatchMajorSmallK
+  // CHECK-NOT: sdy.sharding_rule
+  // CHECK: stablehlo.custom_call @TopKBatchMajorSmallK
+  // CHECK-NOT: sdy.sharding_rule
+  // CHECK-NEXT: return
+  %0 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg0) : (tensor<16xi32>) -> tensor<4xi32>
+  %1 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg1) : (tensor<16x32xi32>) -> tensor<8x4xi32>
+  %2 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg2) : (tensor<?x32xi32>) -> tensor<?x4xi32>
+  %3:2 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg1) : (tensor<16x32xi32>) -> (tensor<16x4xi32>, tensor<16x4xi32>)
+  return %0, %1, %2, %3#0 : tensor<4xi32>, tensor<8x4xi32>, tensor<?x4xi32>, tensor<16x4xi32>
+}
+
 // CHECK-LABEL: func @custom_call_qr_decomposition_block
 func.func @custom_call_qr_decomposition_block(%arg0: tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>) {
   // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=3} need_replication={j, k, l}>
@@ -252,6 +284,16 @@ func.func @custom_call_x64_split_low_insert_explicit_reshards(%arg0: tensor<8x2x
   // CHECK-NEXT: return %[[RESHARD]] : tensor<8x2xui32>
   %0 = stablehlo.custom_call @X64SplitLow(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x":(1)2}]>]>} : (tensor<8x2xui64>) -> tensor<8x2xui32>
   return %0 : tensor<8x2xui32>
+}
+
+// CHECK-LABEL: func @custom_call_topk_batch_major_small_k_insert_explicit_reshards
+func.func @custom_call_topk_batch_major_small_k_insert_explicit_reshards(%arg0: tensor<16x512xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<16x4xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}]> : tensor<16x512xi32>
+  // CHECK-NEXT: %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @TopKBatchMajorSmallK(%[[RESHARD1]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, k]) {i=16, j=512, k=4} need_replication={i, j, k} blocked_propagation={i, j, k}>} : (tensor<16x512xi32>) -> tensor<16x4xi32>
+  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CUSTOM_CALL]] <@mesh, [{"y"}, {}]> : tensor<16x4xi32>
+  // CHECK-NEXT: return %[[RESHARD2]] : tensor<16x4xi32>
+  %0 = stablehlo.custom_call @TopKBatchMajorSmallK(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}]>]>} : (tensor<16x512xi32>) -> tensor<16x4xi32>
+  return %0 : tensor<16x4xi32>
 }
 
 // CHECK-LABEL: func @custom_call_qr_decomposition_block_insert_explicit_reshards
