@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/cpu_info.h"  // NOLINT
 
 namespace xla {
 
@@ -209,14 +208,6 @@ static std::function<bool(const std::string&)> SetterForRepeatedEnum(
 
 }  // namespace
 
-inline std::string DefaultMaxIsa() {
-  // There are many missing SVE lowerings in LLVM. Limit features to NEON for
-  // now. There shouldn't be significant performance impact as most AAarch64
-  // CPUs still use 128-bit registers.
-  // TODO(penporn): Remove this once SVE is fully supported.
-  return tsl::port::IsAarch64CPU() ? "NEON" : "";
-}
-
 DebugOptions DefaultDebugOptionsIgnoringFlags() {
   DebugOptions opts;
   // Our test bases set this to true.
@@ -278,7 +269,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_scheduler_type(DebugOptions::CPU_SCHEDULER_TYPE_DEFAULT);
   opts.set_xla_cpu_prefer_vector_width(256);
-  opts.set_xla_cpu_max_isa(DefaultMaxIsa());
+  opts.set_xla_cpu_max_isa("");
   opts.set_xla_cpu_generate_unique_c_style_kernel_entry_points(false);
   opts.set_xla_cpu_emitter_verification_level(0);
 

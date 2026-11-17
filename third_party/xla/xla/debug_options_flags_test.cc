@@ -586,5 +586,9 @@ TEST(DebugOptions, ResetFlagValuesPreservesCudaDataDirFromEnv) {
   ResetFlagValues();
   ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
 }
+
+TEST(DebugOptions, XlaCpuMaxIsaDefaultIsEmpty) {
+  EXPECT_EQ(DefaultDebugOptionsIgnoringFlags().xla_cpu_max_isa(), "");
+}
 }  // namespace
 }  // namespace xla

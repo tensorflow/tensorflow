@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace cpu {
@@ -121,7 +122,12 @@ TargetMachineOptions::TargetMachineOptions() {
 
 TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
   triple_ = NormalizeTriple(llvm::sys::getDefaultTargetTriple());
-  auto xla_cpu_max_isa = CpuFeatureFromString(debug_options.xla_cpu_max_isa());
+  absl::string_view max_isa = debug_options.xla_cpu_max_isa();
+  if (max_isa.empty() && tsl::port::IsAarch64CPU()) {
+    // TODO(penporn): Remove once LLVM SVE lowerings are complete.
+    max_isa = "NEON";
+  }
+  auto xla_cpu_max_isa = CpuFeatureFromString(max_isa);
   auto detected_machine_attributes = DetectMachineAttributes(xla_cpu_max_isa);
 
   std::tie(enabled_features_, disabled_features_) =
