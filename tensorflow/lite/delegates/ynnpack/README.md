@@ -54,3 +54,12 @@ configure the YNNPACK delegate:
 *   **`--ynnpack_dispatch_moe_on_host=true|false`** (default: `false`):
     Bucket the tokens of multi-token MoE ops by expert on the host, so that
     each expert processes its tokens in one batch (prefill only).
+
+*   **`--ynnpack_sdpa_dot_type=auto|int8|fp32|fp16|bf16`** (default: `auto`):
+    The type of the operands of the dot products in scaled dot product
+    attention ops. With `auto`, the operands are multiplied in the more precise
+    of their two types, and the less precise operand is dequantized or
+    converted to that type. With `int8`, quantized operands are multiplied as
+    `int8`, and a floating point operand multiplied with a quantized operand is
+    dynamically quantized. With a floating point type, the operands are
+    dequantized or converted to that type before they are multiplied.

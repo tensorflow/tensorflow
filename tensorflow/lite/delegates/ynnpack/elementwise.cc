@@ -447,7 +447,6 @@ TfLiteStatus IsDequantizeSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, IsTensorSupported(input));
   TF_LITE_ENSURE(context, IsTensorSupported(output));
   TF_LITE_ENSURE(context, !IsQuantized(output));
-  TF_LITE_ENSURE(context, YnnTypeElementCount(GetYnnType(input.type)) == 1);
 
   return kTfLiteOk;
 }

@@ -41,6 +41,18 @@ typedef struct {
   bool enable_blockwise_quantization;
   // If true, bucket the tokens of multi-token MoE ops by expert on the host.
   bool dispatch_moe_on_host;
+  // The type of the operands of the dot products in scaled dot product
+  // attention ops. Must be one of:
+  // - kTfLiteNoType: The operands are multiplied in the more precise of their
+  //   two types. The less precise operand is dequantized or converted to that
+  //   type.
+  // - kTfLiteInt8: Quantized operands are multiplied as int8, and a floating
+  //   point operand multiplied with a quantized operand is dynamically
+  //   quantized to int8. If neither operand is quantized, the operands are
+  //   multiplied in their own type.
+  // - kTfLiteFloat32, kTfLiteFloat16, kTfLiteBFloat16: The operands are
+  //   dequantized or converted to this type before they are multiplied.
+  TfLiteType sdpa_dot_type;
 } TfLiteYNNPackDelegateOptions;
 
 // Returns a structure with the default delegate options.

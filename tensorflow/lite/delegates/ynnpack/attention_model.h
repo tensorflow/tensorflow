@@ -46,7 +46,24 @@ class AttentionModel : public MultiOpModel {
                  bool transpose_io, bool use_delegate,
                  const TfLiteYNNPackDelegateOptions& delegate_options,
                  AttentionImpl impl, int n_kv = -1, bool quantize_kv = false,
-                 bool bool_mask = false, int32_t kv_zero_point = 0);
+                 bool bool_mask = false, int32_t kv_zero_point = 0,
+                 bool quantize_q = false, int32_t q_zero_point = 0,
+                 bool quantize_output = false, int32_t output_zero_point = 0,
+                 bool quantize_mask = false, int32_t mask_zero_point = 0,
+                 bool int4_kv = false, bool int4_q = false,
+                 bool int4_mask = false);
+
+  void PopulateInt4Tensor(int id, const std::vector<int8_t>& data) {
+    uint8_t* dst = interpreter_->tensor(id)->data.uint8;
+    for (size_t i = 0; i < data.size(); i += 2) {
+      uint8_t lo = static_cast<uint8_t>(data[i]) & 0x0f;
+      uint8_t hi = 0;
+      if (i + 1 < data.size()) {
+        hi = static_cast<uint8_t>(data[i + 1]) & 0x0f;
+      }
+      dst[i / 2] = static_cast<uint8_t>((hi << 4) | lo);
+    }
+  }
 
   int query() const { return query_id_; }
   int key() const { return key_id_; }

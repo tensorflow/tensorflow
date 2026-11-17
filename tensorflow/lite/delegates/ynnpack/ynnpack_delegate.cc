@@ -309,7 +309,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         TF_LITE_ENSURE_STATUS(
             DefineSdpaNode(context, subgraph_, tensor_to_value_id_,
-                           next_external_id, dummy_inputs_, node));
+                           next_external_id, dummy_inputs_, node, options_));
       } else if (node.builtin_code == kTfLiteBuiltinBatchMatmul) {
         TF_LITE_ENSURE_STATUS(DefineBatchMatMulNode(context, subgraph_,
                                                     tensor_to_value_id_, node));
@@ -681,7 +681,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
       return IsRuntimeBatchedMatMulSupported(registration, node, context,
                                              options_) == kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
-      return IsSdpaSupported(registration, node, context) == kTfLiteOk;
+      return IsSdpaSupported(registration, node, context, options_) ==
+             kTfLiteOk;
     } else if (IsMoe(registration, node)) {
       return IsMoeSupported(registration, node, context) == kTfLiteOk;
     }
@@ -780,6 +781,7 @@ TfLiteYNNPackDelegateOptions TfLiteYNNPackDelegateOptionsDefault() {
   options.no_excess_precision = false;
   options.enable_blockwise_quantization = false;
   options.dispatch_moe_on_host = false;
+  options.sdpa_dot_type = kTfLiteNoType;
   return options;
 }
 

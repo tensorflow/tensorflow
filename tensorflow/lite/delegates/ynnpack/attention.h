@@ -22,6 +22,7 @@ limitations under the License.
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/ynnpack/utils.h"
+#include "tensorflow/lite/delegates/ynnpack/ynnpack_delegate.h"
 
 namespace tflite {
 namespace ynnpack {
@@ -29,13 +30,15 @@ namespace ynnpack {
 bool IsSdpa(const TfLiteRegistration* registration, const TfLiteNode* node);
 
 TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
-                             const TfLiteNode* node, TfLiteContext* context);
+                             const TfLiteNode* node, TfLiteContext* context,
+                             const TfLiteYNNPackDelegateOptions& options);
 
 TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                             TensorToValueIdMap& tensor_to_value_id,
                             uint32_t& next_external_id,
                             std::vector<DummyInputInfo>& dummy_inputs,
-                            const NodeInfo& node);
+                            const NodeInfo& node,
+                            const TfLiteYNNPackDelegateOptions& options);
 
 }  // namespace ynnpack
 }  // namespace tflite
