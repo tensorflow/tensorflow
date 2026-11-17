@@ -247,25 +247,41 @@ class FfiKernelCache : public se::CommandBuffer::Resource {
 };
 
 XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
-                               const XLA_FFI_KernelSpec* kernel_spec,
+                               const XLA_FFI_RecordKernel* kernel,
                                const XLA_FFI_KernelLaunchParams* launch_params,
                                const XLA_FFI_Command* const* dependencies,
                                uint32_t num_dependencies,
                                const XLA_FFI_Command** out_command) {
-  if (kernel_spec == nullptr ||
-      kernel_spec->struct_size < XLA_FFI_KernelSpec_STRUCT_SIZE) {
+  if (ctx == nullptr || out_command == nullptr) {
     return xla::ffi::CreateError(
-        absl::InvalidArgumentError("Invalid XLA_FFI_KernelSpec"));
+        absl::InvalidArgumentError("ctx and out_command must not be null"));
+  }
+  if (kernel == nullptr ||
+      kernel->struct_size < XLA_FFI_RecordKernel_STRUCT_SIZE) {
+    return xla::ffi::CreateError(
+        absl::InvalidArgumentError("Invalid XLA_FFI_RecordKernel"));
   }
   if (launch_params == nullptr ||
       launch_params->struct_size < XLA_FFI_KernelLaunchParams_STRUCT_SIZE) {
     return xla::ffi::CreateError(
         absl::InvalidArgumentError("Invalid XLA_FFI_KernelLaunchParams"));
   }
-  const absl::string_view kernel_name(kernel_spec->name.ptr,
-                                      kernel_spec->name.len);
-  const void* kernel_data = kernel_spec->data;
-  const XLA_FFI_SourceFormat format = kernel_spec->format;
+  if ((kernel->kernel != nullptr) == (kernel->function != nullptr)) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        "Exactly one of XLA_FFI_RecordKernel::kernel and ::function must be "
+        "set"));
+  }
+  if (kernel->kernel != nullptr) {
+    return xla::ffi::CreateError(absl::UnimplementedError(
+        "Registered kernels are not supported in create_launch yet"));
+  }
+  if (kernel->function_name.ptr == nullptr && kernel->function_name.len > 0) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        "XLA_FFI_RecordKernel::function_name.ptr is null with non-zero len"));
+  }
+  const absl::string_view kernel_name(kernel->function_name.ptr,
+                                      kernel->function_name.len);
+  void* function = kernel->function;
   const XLA_FFI_LaunchDims& launch_dims = launch_params->launch_dims;
   const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
   const int32_t use_pdl = launch_params->uses_pdl;
@@ -278,22 +294,9 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   const bool pdl = ctx->pdl_enabled && (use_pdl != 0);
 
-  if (format != XLA_FFI_SourceFormat_FUNCTION_PTR) {
-    return xla::ffi::CreateError(absl::InvalidArgumentError(
-        absl::StrFormat("Unsupported XLA_FFI_SourceFormat: %d", format)));
-  }
-  if (kernel_data == nullptr) {
-    return xla::ffi::CreateError(absl::InvalidArgumentError(
-        "kernel_data cannot be null for XLA_FFI_SourceFormat_FUNCTION_PTR"));
-  }
-
   auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
-  std::variant<se::Kernel*, se::NativeKernel> kernel_target = se::NativeKernel{
-      // FFI C API passes kernel_data as const void*, whereas driver function
-      // handles (e.g. CUfunction / hipFunction_t) are non-const opaque
-      // pointers.
-      // NOLINTNEXTLINE(*-readability-const-cast)
-      const_cast<void*>(kernel_data), std::string(kernel_name), pdl};
+  std::variant<se::Kernel*, se::NativeKernel> kernel_target =
+      se::NativeKernel{function, std::string(kernel_name), pdl};
 
   FfiKernelArgsPacked packed_args(args->num_args);
   packed_args.add_shared_bytes(shared_mem_bytes);

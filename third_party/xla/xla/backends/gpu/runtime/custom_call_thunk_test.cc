@@ -897,8 +897,7 @@ absl::Status AddI32FfiHandler(ffi::RecordContext record_ctx,
   if (action == ffi::RecordAction::kCreate) {
     ABSL_ASSIGN_OR_RETURN(void* func_ptr, GetAddI32FunctionPtr());
     auto cmd_or = record_ctx.CreateLaunch(
-        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
-        /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+        "AddI32", func_ptr, /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_or.ok()) {
       return cmd_or.status();
@@ -1093,8 +1092,7 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
 
     // Launch A
     auto cmd_a_or = record_ctx.CreateLaunch(
-        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
-        /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+        "AddI32", func_ptr, /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_a_or.ok()) {
       return cmd_a_or.status();
@@ -1102,8 +1100,7 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
 
     // Launch B
     auto cmd_b_or = record_ctx.CreateLaunch(
-        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
-        /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+        "AddI32", func_ptr, /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_b_or.ok()) {
       return cmd_b_or.status();

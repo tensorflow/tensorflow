@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/api/record_ffi.h"
 
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,18 +33,27 @@ limitations under the License.
 namespace xla::ffi {
 namespace {
 
+using ::testing::ElementsAre;
+
 static const XLA_FFI_Api* Api() { return GetXlaFfiApi(); }
 
-TEST(FfiTest, RecordStage) {
+class RecordStageTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(RecordStageTest, CreateLaunch) {
+  const bool use_kernel = GetParam();
   struct CaptureState {
-    const void* kernel_data = nullptr;
-    int64_t kernel_size = -1;
-    XLA_FFI_SourceFormat format = static_cast<XLA_FFI_SourceFormat>(-1);
+    XLA_FFI_RecordKernel kernel{};
+    XLA_FFI_KernelLaunchParams params{};
+    std::vector<const XLA_FFI_Command*> deps;
+    const XLA_FFI_Command* dep_cmd =
+        reinterpret_cast<const XLA_FFI_Command*>(0x2);
     const XLA_FFI_Command* dummy_cmd =
         reinterpret_cast<const XLA_FFI_Command*>(0x1);
   } state;
 
-  const void* expected_func_ptr = reinterpret_cast<const void*>(0xDEADBEEF);
+  void* expected_func_ptr = reinterpret_cast<void*>(0xDEADBEEF);
+  const auto* expected_kernel =
+      reinterpret_cast<const XLA_FFI_Kernel*>(0x87654321);
   bool called = false;
 
   auto handler = Ffi::BindRecord().Ctx<Extension<RecordExtension>>().To(
@@ -53,18 +63,38 @@ TEST(FfiTest, RecordStage) {
         EXPECT_EQ(ctx.commands().capacity(), 10);
         EXPECT_EQ(ctx.commands().size(), 0);
 
-        auto null_cmd = ctx.CreateLaunch(
-            /*kernel_name=*/"null_func", /*kernel_data=*/nullptr,
-            /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
-            /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}}, /*shared_mem_bytes=*/0,
-            /*uses_pdl=*/false, /*args=*/std::vector<KernelArg>{});
-        EXPECT_FALSE(null_cmd.has_value());
+        XLA_FFI_LaunchDims dims{{1, 1, 1}, {1, 1, 1}};
+        std::vector<KernelArg> args;
+        if (use_kernel) {
+          EXPECT_FALSE(ctx.CreateLaunch(/*kernel=*/nullptr, dims,
+                                        /*shared_mem_bytes=*/0, args)
+                           .has_value());
+        } else {
+          EXPECT_FALSE(ctx.CreateLaunch("null_func", /*function=*/nullptr, dims,
+                                        /*shared_mem_bytes=*/0,
+                                        /*uses_pdl=*/false, args)
+                           .has_value());
+          EXPECT_FALSE(ctx.CreateLaunch("bad_fmt", expected_func_ptr,
+                                        /*kernel_size=*/0, SourceFormat::kCubin,
+                                        dims, /*shared_mem_bytes=*/0,
+                                        /*uses_pdl=*/false, args)
+                           .has_value());
+          EXPECT_FALSE(ctx.CreateLaunch("bad_sz", expected_func_ptr,
+                                        /*kernel_size=*/8,
+                                        SourceFormat::kFunctionPtr, dims,
+                                        /*shared_mem_bytes=*/0,
+                                        /*uses_pdl=*/false, args)
+                           .has_value());
+        }
 
-        auto cmd = ctx.CreateLaunch(
-            /*kernel_name=*/"test", /*kernel_data=*/expected_func_ptr,
-            /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
-            /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}}, /*shared_mem_bytes=*/0,
-            /*uses_pdl=*/false, /*args=*/std::vector<KernelArg>{});
+        auto cmd = use_kernel
+                       ? ctx.CreateLaunch(expected_kernel, dims,
+                                          /*shared_mem_bytes=*/128, args,
+                                          /*dependencies=*/{state.dep_cmd})
+                       : ctx.CreateLaunch("test", expected_func_ptr, dims,
+                                          /*shared_mem_bytes=*/128,
+                                          /*uses_pdl=*/false, args,
+                                          /*dependencies=*/{state.dep_cmd});
         EXPECT_TRUE(cmd.has_value());
         EXPECT_EQ(*cmd, state.dummy_cmd);
         return Error::Success();
@@ -78,15 +108,16 @@ TEST(FfiTest, RecordStage) {
   };
   XLA_FFI_RecordApi mock_api{
       /*.create_launch=*/+[](XLA_FFI_RecordContext* ctx,
-                             const XLA_FFI_KernelSpec* kernel_spec,
-                             const XLA_FFI_KernelLaunchParams*,
-                             const XLA_FFI_Command* const*, uint32_t,
+                             const XLA_FFI_RecordKernel* kernel,
+                             const XLA_FFI_KernelLaunchParams* launch_params,
+                             const XLA_FFI_Command* const* dependencies,
+                             uint32_t num_dependencies,
                              const XLA_FFI_Command** out_command)
                               -> XLA_FFI_Error* {
         auto* s = reinterpret_cast<CaptureState*>(ctx);
-        s->kernel_data = kernel_spec->data;
-        s->kernel_size = kernel_spec->size;
-        s->format = kernel_spec->format;
+        s->kernel = *kernel;
+        s->params = *launch_params;
+        s->deps.assign(dependencies, dependencies + num_dependencies);
         *out_command = s->dummy_cmd;
         return nullptr;
       },
@@ -119,11 +150,19 @@ TEST(FfiTest, RecordStage) {
 
   ASSERT_OK(status);
   EXPECT_TRUE(called);
-  EXPECT_EQ(state.kernel_data, expected_func_ptr);
-  EXPECT_EQ(state.kernel_size, 0);
-  EXPECT_EQ(state.format, XLA_FFI_SourceFormat_FUNCTION_PTR);
+  EXPECT_EQ(state.kernel.struct_size, XLA_FFI_RecordKernel_STRUCT_SIZE);
+  EXPECT_EQ(state.kernel.kernel, use_kernel ? expected_kernel : nullptr);
+  EXPECT_EQ(state.kernel.function, use_kernel ? nullptr : expected_func_ptr);
+  EXPECT_EQ(std::string_view(state.kernel.function_name.ptr,
+                             state.kernel.function_name.len),
+            use_kernel ? "" : "test");
+  EXPECT_EQ(state.params.shared_mem_bytes, 128u);
+  EXPECT_EQ(state.params.uses_pdl, 0);
+  EXPECT_THAT(state.deps, ElementsAre(state.dep_cmd));
   EXPECT_EQ(num_commands, 1);
 }
+
+INSTANTIATE_TEST_SUITE_P(All, RecordStageTest, ::testing::Bool());
 
 TEST(FfiTest, RecordExtensionVersionMismatch) {
   auto handler = Ffi::BindRecord().Ctx<Extension<RecordExtension>>().To(

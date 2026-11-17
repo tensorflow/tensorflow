@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/kernel_api.h"
 #include "xla/ffi/api/kernel_c_api.h"
@@ -35,11 +37,16 @@ namespace xla::ffi {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::Eq;
 
 static const XLA_FFI_Api* Api() { return GetXlaFfiApi(); }
 
-TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
+class RecordStageTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(RecordStageTest, CreateAndUpdateCommands) {
+  const bool use_kernel = GetParam();
   struct DummyCommand {};
 
   struct RecordState {
@@ -54,9 +61,9 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
     const XLA_FFI_Command* empty_cmd =
         reinterpret_cast<const XLA_FFI_Command*>(&empty);
 
-    const void* kernel_data = nullptr;
-    int64_t kernel_size = -1;
-    XLA_FFI_SourceFormat format = static_cast<XLA_FFI_SourceFormat>(-1);
+    XLA_FFI_RecordKernel kernel{};
+    XLA_FFI_KernelLaunchParams params{};
+    std::vector<const XLA_FFI_Command*> deps;
 
     bool launch_created = false;
     bool launch_updated = false;
@@ -66,19 +73,22 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
   };
 
   RecordState state;
-  const void* expected_func_ptr = reinterpret_cast<const void*>(0x12345678);
+  void* expected_func_ptr = reinterpret_cast<void*>(0x12345678);
+  const auto* expected_kernel =
+      reinterpret_cast<const XLA_FFI_Kernel*>(0x87654321);
 
   XLA_FFI_RecordApi dummy_record_api = {
       /*create_launch=*/+[](XLA_FFI_RecordContext* ctx,
-                            const XLA_FFI_KernelSpec* kernel_spec,
-                            const XLA_FFI_KernelLaunchParams*,
-                            const XLA_FFI_Command* const*, uint32_t,
+                            const XLA_FFI_RecordKernel* kernel,
+                            const XLA_FFI_KernelLaunchParams* launch_params,
+                            const XLA_FFI_Command* const* dependencies,
+                            uint32_t num_dependencies,
                             const XLA_FFI_Command** out_command)
                              -> XLA_FFI_Error* {
         auto* s = reinterpret_cast<RecordState*>(ctx);
-        s->kernel_data = kernel_spec->data;
-        s->kernel_size = kernel_spec->size;
-        s->format = kernel_spec->format;
+        s->kernel = *kernel;
+        s->params = *launch_params;
+        s->deps.assign(dependencies, dependencies + num_dependencies);
         *out_command = s->launch_cmd;
         return nullptr;
       },
@@ -119,21 +129,46 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
       [&](RecordContext ctx) -> absl::Status {
         RecordAction action = ctx.action();
         if (action == RecordAction::kCreate) {
-          XLA_FFI_LaunchDims dims{{1, 1, 1}, {1, 1, 1}};
-          auto null_cmd = ctx.CreateLaunch(
-              /*kernel_name=*/"null_func", /*kernel_data=*/nullptr,
-              /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
-              /*launch_dims=*/dims, /*shared_mem_bytes=*/0,
-              /*uses_pdl=*/false, /*args=*/std::initializer_list<KernelArg>{});
-          EXPECT_THAT(null_cmd, absl_testing::StatusIs(
-                                    absl::StatusCode::kInvalidArgument));
+          auto empty_cmd = ctx.CreateEmptyCommand();
+          if (!empty_cmd.ok()) {
+            return empty_cmd.status();
+          }
+          const XLA_FFI_Command* dep = *empty_cmd;
+          EXPECT_EQ(dep, state.empty_cmd);
+          state.empty_created = true;
 
-          auto launch_cmd = ctx.CreateLaunch(
-              /*kernel_name=*/"dummy_kernel",
-              /*kernel_data=*/expected_func_ptr,
-              /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
-              /*launch_dims=*/dims, /*shared_mem_bytes=*/0,
-              /*uses_pdl=*/false, /*args=*/std::initializer_list<KernelArg>{});
+          XLA_FFI_LaunchDims dims{{1, 1, 1}, {1, 1, 1}};
+          std::initializer_list<KernelArg> args{};
+          if (use_kernel) {
+            EXPECT_THAT(ctx.CreateLaunch(/*kernel=*/nullptr, dims,
+                                         /*shared_mem_bytes=*/0, args),
+                        StatusIs(absl::StatusCode::kInvalidArgument));
+          } else {
+            EXPECT_THAT(ctx.CreateLaunch(
+                            "null_func", /*function=*/nullptr, dims,
+                            /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args),
+                        StatusIs(absl::StatusCode::kInvalidArgument));
+            EXPECT_THAT(ctx.CreateLaunch(
+                            "bad_fmt", expected_func_ptr,
+                            /*kernel_size=*/0, SourceFormat::kCubin, dims,
+                            /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args),
+                        StatusIs(absl::StatusCode::kInvalidArgument));
+            EXPECT_THAT(ctx.CreateLaunch(
+                            "bad_sz", expected_func_ptr, /*kernel_size=*/8,
+                            SourceFormat::kFunctionPtr, dims,
+                            /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args),
+                        StatusIs(absl::StatusCode::kInvalidArgument));
+          }
+
+          auto launch_cmd =
+              use_kernel
+                  ? ctx.CreateLaunch(expected_kernel, dims,
+                                     /*shared_mem_bytes=*/256, args,
+                                     /*dependencies=*/{dep})
+                  : ctx.CreateLaunch("dummy_kernel", expected_func_ptr, dims,
+                                     /*shared_mem_bytes=*/256,
+                                     /*uses_pdl=*/false, args,
+                                     /*dependencies=*/{dep});
           EXPECT_THAT(launch_cmd, IsOkAndHolds(Eq(state.launch_cmd)));
           state.launch_created = true;
 
@@ -142,10 +177,6 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
               /*dst=*/&dst, /*src=*/&src, /*size=*/sizeof(int));
           EXPECT_THAT(memcpy_cmd, IsOkAndHolds(Eq(state.memcpy_cmd)));
           state.memcpy_created = true;
-
-          auto empty_cmd = ctx.CreateEmptyCommand();
-          EXPECT_THAT(empty_cmd, IsOkAndHolds(Eq(state.empty_cmd)));
-          state.empty_created = true;
 
           EXPECT_EQ(ctx.commands().size(), 3);
         } else if (action == RecordAction::kUpdate) {
@@ -190,9 +221,15 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
         Invoke(Api(), *handler, call_frame, context, ExecutionStage::kRecord);
     ASSERT_OK(status);
     EXPECT_TRUE(state.launch_created);
-    EXPECT_EQ(state.kernel_data, expected_func_ptr);
-    EXPECT_EQ(state.kernel_size, 0);
-    EXPECT_EQ(state.format, XLA_FFI_SourceFormat_FUNCTION_PTR);
+    EXPECT_EQ(state.kernel.struct_size, XLA_FFI_RecordKernel_STRUCT_SIZE);
+    EXPECT_EQ(state.kernel.kernel, use_kernel ? expected_kernel : nullptr);
+    EXPECT_EQ(state.kernel.function, use_kernel ? nullptr : expected_func_ptr);
+    EXPECT_EQ(absl::string_view(state.kernel.function_name.ptr,
+                                state.kernel.function_name.len),
+              use_kernel ? "" : "dummy_kernel");
+    EXPECT_EQ(state.params.shared_mem_bytes, 256u);
+    EXPECT_EQ(state.params.uses_pdl, 0);
+    EXPECT_THAT(state.deps, ElementsAre(state.empty_cmd));
     EXPECT_TRUE(state.memcpy_created);
     EXPECT_TRUE(state.empty_created);
     EXPECT_EQ(num_commands, 3);
@@ -222,6 +259,66 @@ TEST(FfiTest, RecordStageCreateAndUpdateCommands) {
     EXPECT_TRUE(state.memcpy_updated);
     EXPECT_EQ(num_commands, 3);
   }
+}
+
+INSTANTIATE_TEST_SUITE_P(All, RecordStageTest, ::testing::Bool());
+
+TEST(FfiTest, RecordCreateLaunchChecksCapacity) {
+  struct State {
+    int calls = 0;
+    int dummy = 0;
+  } state;
+  const auto* kernel = reinterpret_cast<const XLA_FFI_Kernel*>(0x87654321);
+
+  absl::Status launch_status;
+  auto handler = Ffi::BindRecord().Ctx<Extension<RecordExtension>>().To(
+      [&](RecordContext ctx) -> absl::Status {
+        launch_status = ctx.CreateLaunch(kernel, XLA_FFI_LaunchDims{},
+                                         /*shared_mem_bytes=*/0,
+                                         std::initializer_list<KernelArg>{})
+                            .status();
+        return absl::OkStatus();
+      });
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto run = [&](const XLA_FFI_RecordApi* api, int64_t max_commands) {
+    const XLA_FFI_Command* commands_storage[1] = {nullptr};
+    int64_t num_commands = 0;
+    XLA_FFI_RecordFrame record_frame = {
+        /*record_ctx=*/reinterpret_cast<XLA_FFI_RecordContext*>(&state),
+        /*api=*/api,
+        /*action=*/XLA_FFI_RecordAction_Create,
+        /*commands=*/commands_storage,
+        /*num_commands=*/&num_commands,
+        /*max_commands=*/max_commands};
+    RecordExtension::CExtension record_frame_ext =
+        BuildRecordCExtension(&record_frame);
+    InvokeContext context;
+    context.extension_start = &record_frame_ext.extension_base;
+    ASSERT_OK(
+        Invoke(Api(), *handler, call_frame, context, ExecutionStage::kRecord));
+  };
+
+  // With no room left, the backend is never called.
+  XLA_FFI_RecordApi api{};
+  api.create_launch =
+      +[](XLA_FFI_RecordContext* ctx, const XLA_FFI_RecordKernel*,
+          const XLA_FFI_KernelLaunchParams*, const XLA_FFI_Command* const*,
+          uint32_t, const XLA_FFI_Command** out_command) -> XLA_FFI_Error* {
+    auto* s = reinterpret_cast<State*>(ctx);
+    ++s->calls;
+    *out_command = reinterpret_cast<const XLA_FFI_Command*>(&s->dummy);
+    return nullptr;
+  };
+  run(&api, /*max_commands=*/0);
+  EXPECT_THAT(launch_status, StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_EQ(state.calls, 0);
+
+  run(&api, /*max_commands=*/1);
+  EXPECT_OK(launch_status);
+  EXPECT_EQ(state.calls, 1);
 }
 
 TEST(FfiTest, RecordExtensionVersionMismatch) {

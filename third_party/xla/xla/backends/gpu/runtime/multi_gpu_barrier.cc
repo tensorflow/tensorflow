@@ -194,8 +194,7 @@ absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
         {static_cast<int32_t>(MultiGpuBarrierWithNcclKernel::kMaxPeers), 1, 1},
         /*cluster=*/{0, 0, 0}};
     return record_ctx.CreateLaunch(
-        kernel->name(), kernel->platform_specific_handle().kernel,
-        /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr, launch_dims,
+        kernel->name(), kernel->platform_specific_handle().kernel, launch_dims,
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, kernel_args);
   }
 

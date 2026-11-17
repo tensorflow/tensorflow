@@ -42,7 +42,7 @@ extern "C" {
 //==============================================================================
 #define XLA_FFI_Extension_Record 128
 #define XLA_FFI_Extension_Record_MajorVersion 0
-#define XLA_FFI_Extension_Record_MinorVersion 4
+#define XLA_FFI_Extension_Record_MinorVersion 5
 
 //===----------------------------------------------------------------------===//
 // Command Buffer Recording API (FFI Record)
@@ -61,6 +61,26 @@ typedef enum XLA_FFI_RecordAction {
   XLA_FFI_RecordAction_Create = 0,
   XLA_FFI_RecordAction_Update = 1,
 } XLA_FFI_RecordAction;
+
+// The kernel to launch from a record command. Exactly one of `kernel` and
+// `function` must be set.
+typedef struct XLA_FFI_RecordKernel {
+  size_t struct_size;
+  XLA_FFI_InternalExtension* extension_start;
+
+  // A kernel registered through the KernelRegistry extension. Must belong to
+  // the currently executing XLA executable, which owns it until destruction.
+  // PDL is fixed at registration time; `launch_params->uses_pdl` is ignored.
+  const XLA_FFI_Kernel* kernel;
+
+  // Deprecated, will be removed: a device function handle loaded by the caller
+  // (e.g. CUfunction or hipFunction_t). The caller keeps it alive while the
+  // command buffer is in use. `function_name` is only used for logging.
+  void* function;
+  XLA_FFI_ByteSpan function_name;
+} XLA_FFI_RecordKernel;
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_RecordKernel, function_name);
 
 // API for recording kernel invocations for FFI clients.
 // Usage:
@@ -103,11 +123,9 @@ typedef enum XLA_FFI_RecordAction {
 //     return absl::OkStatus();
 //   }
 // ```
+
 typedef struct XLA_FFI_RecordApi {
-  // Creates a launch command for a kernel described by `kernel_spec` and
-  // `launch_params`. `kernel_spec->data` is the pre-loaded device function
-  // pointer (for FUNCTION_PTR, where `kernel_spec->size` must be 0), and
-  // `kernel_spec->format` is the format of the kernel data.
+  // Creates a launch command for `kernel` with `launch_params`.
   // Since recording implies creation of a graph, dependencies argument is used
   // to specify dependencies on other commands.
   // For eg:
@@ -123,7 +141,7 @@ typedef struct XLA_FFI_RecordApi {
   // this internally before returning.
   XLA_FFI_Error* (*create_launch)(
       XLA_FFI_RecordContext* ctx,
-      const XLA_FFI_KernelSpec* kernel_spec,            //
+      const XLA_FFI_RecordKernel* kernel,               //
       const XLA_FFI_KernelLaunchParams* launch_params,  //
       const XLA_FFI_Command* const* dependencies,       //
       uint32_t num_dependencies,                        //

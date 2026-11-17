@@ -21,11 +21,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_interop.h"
 #include "xla/ffi/invoke.h"
 #include "xla/ffi/record_ffi.h"
 #include "xla/status_macros.h"
@@ -58,6 +61,8 @@ absl::StatusOr<void*> LoadNativeFunctionPtr(se::StreamExecutor* executor,
                                             absl::string_view name);
 
 namespace {
+
+using ::absl_testing::StatusIs;
 
 struct KernelBinary {
   absl::Span<const uint8_t> bytes;
@@ -226,8 +231,7 @@ TEST(RecordFfiTest, KernelLaunchWithCuFunc) {
               ABSL_RETURN_IF_ERROR(
                   record_ctx
                       .CreateLaunch(
-                          "AddI32", func_ptr, /*kernel_size=*/0,
-                          ffi::SourceFormat::kFunctionPtr,
+                          "AddI32", func_ptr,
                           /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
                           /*shared_mem_bytes=*/1024,
                           /*uses_pdl=*/false,
@@ -343,6 +347,75 @@ TEST(RecordFfiTest, RecordMultiGpuBarrierWithNccl) {
   ASSERT_OK(stream->Memcpy(&host_counter, counter_2, sizeof(uint32_t)));
   ASSERT_OK(stream->BlockHostUntilDone());
   EXPECT_EQ(host_counter, 1);
+}
+
+TEST(RecordFfiTest, KernelLaunchRejectsInvalidOrUnimplementedRecordKernel) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                       executor->CreateCommandBuffer(
+                           stream_executor::CommandBuffer::Mode::kPrimary));
+
+  const XLA_FFI_RecordApi* ffi_api = GetXlaFfiRecordApi();
+  XLA_FFI_RecordContext record_ctx = {cmd_buffer.get(), executor, {}, false};
+  XLA_FFI_KernelArgs empty_args = {nullptr, 0};
+  XLA_FFI_KernelLaunchParams launch_params = {
+      XLA_FFI_KernelLaunchParams_STRUCT_SIZE,
+      /*extension_start=*/nullptr,
+      /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+      /*shared_mem_bytes=*/0,
+      /*uses_pdl=*/0,
+      &empty_args,
+  };
+  const auto* dummy_kernel =
+      reinterpret_cast<const XLA_FFI_Kernel*>(0x87654321);
+  void* dummy_fn = reinterpret_cast<void*>(0x12345678);
+  const XLA_FFI_Command* out_cmd = nullptr;
+
+  auto call = [&](XLA_FFI_RecordContext* ctx,
+                  const XLA_FFI_RecordKernel& kernel,
+                  const XLA_FFI_Command** out) -> absl::Status {
+    return ffi::TakeError(
+        ffi_api->create_launch(ctx, &kernel, &launch_params, nullptr, 0, out));
+  };
+
+  XLA_FFI_RecordKernel both_set = {XLA_FFI_RecordKernel_STRUCT_SIZE,
+                                   nullptr,
+                                   dummy_kernel,
+                                   dummy_fn,
+                                   {nullptr, 0}};
+  EXPECT_THAT(call(nullptr, both_set, &out_cmd),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(call(&record_ctx, both_set, nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(call(&record_ctx, both_set, &out_cmd),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  XLA_FFI_RecordKernel neither_set = {XLA_FFI_RecordKernel_STRUCT_SIZE,
+                                      nullptr,
+                                      nullptr,
+                                      nullptr,
+                                      {nullptr, 0}};
+  EXPECT_THAT(call(&record_ctx, neither_set, &out_cmd),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  XLA_FFI_RecordKernel null_name_ptr = {XLA_FFI_RecordKernel_STRUCT_SIZE,
+                                        nullptr,
+                                        nullptr,
+                                        dummy_fn,
+                                        {nullptr, 4}};
+  EXPECT_THAT(call(&record_ctx, null_name_ptr, &out_cmd),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  XLA_FFI_RecordKernel registered_kernel = {XLA_FFI_RecordKernel_STRUCT_SIZE,
+                                            nullptr,
+                                            dummy_kernel,
+                                            nullptr,
+                                            {nullptr, 0}};
+  EXPECT_THAT(call(&record_ctx, registered_kernel, &out_cmd),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace
