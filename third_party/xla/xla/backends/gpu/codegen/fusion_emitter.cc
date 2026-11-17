@@ -119,10 +119,12 @@ absl::Status AnnotateKernelLaunchDimensions(
   const se::BlockDim &limit = device_info.block_dim_limit(),
                      &block_count = launch_dims.block_counts();
   TF_RET_CHECK((limit.x == 0 || block_count.x <= limit.x) &&
-               (limit.y == 0 || block_count.y <= limit.y))
+               (limit.y == 0 || block_count.y <= limit.y) &&
+               (limit.z == 0 || block_count.z <= limit.z))
       << "Kernel '" << kernel->getName().str() << "' launch needs more blocks ("
-      << block_count.x << ", " << block_count.y
-      << ") than allowed by hardware (" << limit.x << ", " << limit.y << ").";
+      << block_count.x << ", " << block_count.y << ", " << block_count.z
+      << ") than allowed by hardware (" << limit.x << ", " << limit.y << ", "
+      << limit.z << ").";
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
 

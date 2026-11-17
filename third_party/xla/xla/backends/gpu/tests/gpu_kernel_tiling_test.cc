@@ -526,27 +526,12 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   if (platform_name == "sycl") {
     EXPECT_OK(status);
   } else {
-    auto* platform =
-        se::PlatformManager::PlatformWithName(platform_name).value();
-    auto* se = platform->ExecutorForDevice(0).value();
-    const auto& device_description = se->GetDeviceDescription();
-    const auto* rocm_cc =
-        device_description.gpu_compute_capability().rocm_compute_capability();
-    const bool isRocm713AndBelow =
-        rocm_cc != nullptr && device_description.runtime_version() <
-                                  stream_executor::SemanticVersion(7, 13, 0);
-    if (isRocm713AndBelow) {
-      EXPECT_THAT(
-          status.message(),
-          ::testing::ContainsRegex(
-              "Kernel '.*' launch needs more blocks [(]4294967296, 65536[)] "
-              "than allowed by hardware [(]2147483647, 65536[)]"));
-    } else {
-      EXPECT_THAT(status.message(),
-                  ::testing::ContainsRegex(
-                      "Kernel '.*' launch needs more blocks [(].*, 65535[)] "
-                      "than allowed by hardware [(]2147483647, 65535[)]"));
-    }
+    EXPECT_THAT(
+        status.message(),
+        ::testing::ContainsRegex(
+            "Kernel '.*' launch needs more blocks "
+            "[(].*, 65535, [0-9]+[)] "
+            "than allowed by hardware [(]2147483647, 65535, [0-9]+[)]"));
   }
 }
 
