@@ -584,6 +584,7 @@ xla_test(
         "//xla/pjrt/se:event_pool",
         "//xla/pjrt/se:local_device_state",
         "//xla/pjrt/se:pjrt_stream_executor_client",
+        "//xla/runtime:chip_id",
         "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",

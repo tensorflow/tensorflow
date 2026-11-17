@@ -24,6 +24,7 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
+#include <optional>
 #include <set>
 
 #include "absl/types/optional.h"
@@ -59,11 +60,13 @@ class XlaDevice : public LocalDevice {
   // retrieved e.g., when lazily creating the XlaCompilationCache device.
   class Metadata {
    public:
-    Metadata(int device_ordinal, se::Platform* platform,
-             const DeviceType& device_type,
-             std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
-                 shape_determination_fns,
-             PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
+    Metadata(
+        int device_ordinal, se::Platform* platform,
+        const DeviceType& device_type,
+        std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
+            shape_determination_fns,
+        PaddedShapeFn padded_shape_fn, bool use_multiple_streams,
+        const std::optional<std::set<int>>& allowed_devices = std::nullopt);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -87,6 +90,7 @@ class XlaDevice : public LocalDevice {
         shape_determination_fns_;
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
+    const std::optional<std::set<int>> allowed_devices_;
 
     Metadata(const Metadata&) = delete;
     void operator=(const Metadata&) = delete;
