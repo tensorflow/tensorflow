@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import execute
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -117,6 +118,45 @@ class StackOpTest(test.TestCase):
         errors.InvalidArgumentError, r"0th dimension .* must be greater than"
     ):
       f()
+
+  def _parallel_concat_update(self, value, update, loc):
+    (output,) = execute.execute(
+        b"_ParallelConcatUpdate",
+        1,
+        inputs=[value, update],
+        attrs=("T", dtypes.float32.as_datatype_enum, "loc", loc),
+        ctx=context.context(),
+    )
+    return output
+
+  def testParallelConcatUpdateEmptyValueNegativeLoc(self):
+    # Regression test for b/512810464: an empty 0th dimension combined with a
+    # negative `loc` used to cause a modulo-by-zero crash (SIGFPE).
+    with context.eager_mode(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"0th dimension .* must be greater than 0"
+    ):
+      self._parallel_concat_update(
+          array_ops.zeros((0, 2)), array_ops.zeros((1, 2)), loc=-1
+      )
+
+  def testParallelConcatUpdateNegativeLocWraps(self):
+    with context.eager_mode():
+      for rows in (1, 2):
+        with self.subTest(rows=rows):
+          output = self._parallel_concat_update(
+              array_ops.zeros((rows, 2)), array_ops.ones((1, 2)), loc=-1
+          )
+          expected = np.zeros((rows, 2), np.float32)
+          expected[-1] = 1
+          self.assertAllEqual(output, expected)
+
+  def testParallelConcatUpdateLargeZeroElementValue(self):
+    # The row-index wrapping must not overflow int64 for huge 0th dimensions.
+    with context.eager_mode():
+      output = self._parallel_concat_update(
+          array_ops.zeros((2**63 - 1, 0)), array_ops.zeros((1, 0)), loc=1
+      )
+      self.assertEqual(output.shape, (2**63 - 1, 0))
 
   def testParallelConcatShapeOverflow(self):
     # Regression test for GitHub issue 108663: a shape whose element count
