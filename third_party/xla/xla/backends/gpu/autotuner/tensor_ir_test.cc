@@ -114,34 +114,26 @@ ENTRY %entry_computation (p0: f32[4]) -> f32[6] {
   ROOT %fusion = f32[6]{0} fusion(%p0), kind=kLoop, calls=%fused_pad
 })";
 
-// TensorIR's layout propagation fails on the slices of this multi-output
-// fusion.
+// The reshaped and transposed matmul output has view layout `(4,9,4):(4,16,1)`,
+// whose mode `(9,16)` straddles the K/N group boundary (`24`) without being
+// divisible by it, causing TensorIR layout normalization to emit an error
+// diagnostic and fail.
 constexpr char kLayoutPropagationFailureFusionHlo[] = R"(
 HloModule m
 
-%add (lhs: f32[], rhs: f32[]) -> f32[] {
-  %lhs = f32[] parameter(0)
-  %rhs = f32[] parameter(1)
-  ROOT %sum = f32[] add(%lhs, %rhs)
+%fused_matmul_reshape_transpose (p0: f32[6,4], p1: f32[4,6]) -> f32[4,9] {
+  %p0 = f32[6,4]{1,0} parameter(0)
+  %p1 = f32[4,6]{1,0} parameter(1)
+  %dot = f32[6,6]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %reshape = f32[9,4]{1,0} reshape(%dot)
+  ROOT %transpose = f32[4,9]{1,0} transpose(%reshape), dimensions={1,0}
 }
 
-%fused_norm_slice (p0: f32[96,96,3]) -> (f32[96,96,1], f32[96,96,1]) {
-  %p0 = f32[96,96,3]{2,1,0} parameter(0)
-  %mul = f32[96,96,3]{2,1,0} multiply(%p0, %p0)
-  %c0 = f32[] constant(0)
-  %reduce = f32[96,96]{1,0} reduce(%mul, %c0), dimensions={2}, to_apply=%add
-  %sqrt = f32[96,96]{1,0} sqrt(%reduce)
-  %broadcast = f32[96,96,3]{2,1,0} broadcast(%sqrt), dimensions={0,1}
-  %div = f32[96,96,3]{2,1,0} divide(%p0, %broadcast)
-  %slice0 = f32[96,96,1]{2,1,0} slice(%div), slice={[0:96], [0:96], [1:2]}
-  %slice1 = f32[96,96,1]{2,1,0} slice(%div), slice={[0:96], [0:96], [2:3]}
-  ROOT %tuple = (f32[96,96,1]{2,1,0}, f32[96,96,1]{2,1,0}) tuple(%slice0, %slice1)
-}
-
-ENTRY %entry_computation (p0: f32[96,96,3]) -> (f32[96,96,1], f32[96,96,1]) {
-  %p0 = f32[96,96,3]{2,1,0} parameter(0)
-  ROOT %fusion = (f32[96,96,1]{2,1,0}, f32[96,96,1]{2,1,0}) fusion(%p0),
-    kind=kInput, calls=%fused_norm_slice
+ENTRY %entry_computation (p0: f32[6,4], p1: f32[4,6]) -> f32[4,9] {
+  %p0 = f32[6,4]{1,0} parameter(0)
+  %p1 = f32[4,6]{1,0} parameter(1)
+  ROOT %fusion = f32[4,9]{1,0} fusion(%p0, %p1),
+    kind=kCustom, calls=%fused_matmul_reshape_transpose
 })";
 
 class TensorIrBackendTest : public HloHardwareIndependentTestBase {

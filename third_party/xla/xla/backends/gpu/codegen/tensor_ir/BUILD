@@ -76,7 +76,7 @@ cc_library(
     name = "compilation_pipeline",
     srcs = ["compilation_pipeline.cc"],
     hdrs = ["compilation_pipeline.h"],
-    # tileiras, ptxas and libnvvm staged from the CUDA 13.3+ toolkit;
+    # tileiras, ptxas and libnvvm staged from the CUDA 13.4+ toolkit;
     # FindCudaExecutable("tileiras") picks them up from runfiles.
     data = if_google(if_cuda(["@local_config_cuda//cuda:runtime_tileiras"])),
     deps = [

@@ -1,7 +1,7 @@
 diff --git a/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp b/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
 --- a/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
 +++ b/lib/Conversion/TensorToCudaTile/OutlinedKernelImpl.cpp
-@@ -809,7 +809,6 @@
+@@ -807,7 +807,6 @@
                         cuda_tile::OptimizationHintsAttr optimizationHints,
                         bool enableExperimentalCudaTileOps,
                         cuda_tile::BytecodeVersion targetBytecodeVersion) {

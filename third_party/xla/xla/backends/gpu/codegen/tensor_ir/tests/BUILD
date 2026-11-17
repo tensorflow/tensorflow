@@ -70,19 +70,17 @@ xla_test(
 # End-to-end numerics tests for the TensorIR fusion emitter.
 #
 # This target is `manual` because it needs a newer toolchain than CI has, not
-# because it fails. It passes on an H100 with a CUDA 13.3 toolkit.
+# because it fails. It passes on an H100 with a CUDA 13.4 toolkit.
 #
-# Why CUDA 13.3. The emitter asks the compiler for a cubin, which it assembles
+# Why CUDA 13.4. The emitter asks the compiler for a cubin, which it assembles
 # by running `tileiras` (found next to the toolkit's `nvcc`, in
-# `--xla_gpu_cuda_data_dir`, or on `PATH`). CUDA 13.0 ships no `tileiras`, and
-# the 13.1 and 13.2 releases lack the `--list-versions` probe TensorIR uses to
-# check bytecode compatibility, so 13.3 is the first release the compiler can
-# assemble with; `SetUpTileIrAssembler` ignores older ones. Without an
-# assembler the compiler hands back Tile IR bytecode for the driver to JIT.
-# TensorIR emits the CUDA 13.3 bytecode format by default
-# (`max(compatibility, 13.3)`, see the tensor_ir README), which needs the
-# matching r610 or newer driver; the r590 (CUDA 13.1) JIT only takes the
-# `compatibility` format, which the emitter does not request.
+# `--xla_gpu_cuda_data_dir`, or on `PATH`). TensorIR emits the CUDA 13.4
+# bytecode format by default (`max(compatibility, 13.4)`, see
+# `getDefaultBytecodeVersion`), so `SetUpTileIrAssembler` requires CUDA 13.4 or
+# newer. Without a compatible assembler the compiler hands back Tile IR bytecode
+# for the driver to JIT, which needs the matching r615 or newer driver; the r590
+# (CUDA 13.1) JIT only takes the `compatibility` format, which the emitter does
+# not request.
 #
 # Why Hopper. The compiler refuses to assemble a cubin below sm_90
 # (`CudaTileCompileOptions::validateDerived`).
@@ -91,7 +89,7 @@ xla_test(
 # makes the driver dlopen() libnvidia-gpucomp.so; a driver install without it
 # fails with CUDA_ERROR_JIT_COMPILER_NOT_FOUND.
 #
-# TODO: drop the `manual` tag once CI builds against CUDA 13.3 or newer.
+# TODO: drop the `manual` tag once CI builds against CUDA 13.4 or newer.
 xla_test(
     name = "fusion_emitter_device_test",
     srcs = ["fusion_emitter_device_test.cc"],

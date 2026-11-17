@@ -17,7 +17,7 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
  #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
  #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
  #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-@@ -36,7 +31,7 @@
+@@ -39,7 +34,7 @@
  #include "mlir/Dialect/Linalg/IR/Linalg.h"
  #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
  #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -26,7 +26,7 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
  #include "mlir/Dialect/Math/IR/Math.h"
  #include "mlir/Dialect/MemRef/IR/MemRef.h"
  #include "mlir/Dialect/MemRef/IR/ValueBoundsOpInterfaceImpl.h"
-@@ -47,7 +42,7 @@
+@@ -50,7 +45,7 @@
  #include "mlir/Dialect/Tensor/IR/Tensor.h"
  #include "mlir/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.h"
  #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
@@ -35,7 +35,7 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
  #include "mlir/Dialect/UB/IR/UBOps.h"
  #include "mlir/Dialect/Vector/IR/ValueBoundsOpInterfaceImpl.h"
  #include "mlir/Dialect/Vector/IR/VectorOps.h"
-@@ -59,9 +54,12 @@
+@@ -62,9 +57,12 @@
  #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMIRToLLVMTranslation.h"
  #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
  #include "mlir/Transforms/Passes.h"

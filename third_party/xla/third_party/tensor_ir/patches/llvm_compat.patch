@@ -39,9 +39,17 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
  #include "mlir/Conversion/PtrToLLVM/PtrToLLVM.h"
 +#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
  #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
- #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Affine/IR/AffineOps.h"
+ #include "mlir/Dialect/Affine/IR/ValueBoundsOpInterfaceImpl.h"
+@@ -24,6 +26,7 @@
  #include "mlir/Dialect/Arith/IR/ValueBoundsOpInterfaceImpl.h"
-@@ -46,6 +48,7 @@
+ #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
+ #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
++#include "mlir/Dialect/Bufferization/IR/ValueBoundsOpInterfaceImpl.h"
+ #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+ #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+ #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
+@@ -48,6 +51,7 @@
  #include "mlir/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.h"
  #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
  #include "mlir/Dialect/Tensor/Transforms/SubsetInsertionOpInterfaceImpl.h"
@@ -49,7 +57,7 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
  #include "mlir/Dialect/Vector/IR/ValueBoundsOpInterfaceImpl.h"
  #include "mlir/Dialect/Vector/IR/VectorOps.h"
  #include "mlir/Dialect/Vector/Transforms/IndexedAccessOpInterfaceImpl.h"
-@@ -85,6 +88,7 @@
+@@ -88,6 +92,7 @@
      ptr::PtrDialect,
      scf::SCFDialect,
      tensor::TensorDialect,
@@ -57,7 +65,7 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
      vector::VectorDialect,
      cuda_tile::CudaTileDialect,
      nv_tensor_ir::TensorIRDialect
-@@ -103,12 +107,14 @@
+@@ -106,12 +111,14 @@
    // Register ConvertToLLVM interfaces for every upstream dialect above that
    // provides one.
    arith::registerConvertArithToLLVMInterface(registry);
@@ -72,6 +80,14 @@ diff --git a/lib/Registration/Registration.cpp b/lib/Registration/Registration.c
    vector::registerConvertVectorToLLVMInterface(registry);
  
    // Register bufferization models used by the Linalg pipeline.
+@@ -128,6 +135,7 @@
+   // Register external operation interface models for the upstream dialects.
+   affine::registerValueBoundsOpInterfaceExternalModels(registry);
+   arith::registerValueBoundsOpInterfaceExternalModels(registry);
++  bufferization::registerValueBoundsOpInterfaceExternalModels(registry);
+   gpu::registerIndexedAccessOpInterfaceExternalModels(registry);
+   gpu::registerValueBoundsOpInterfaceExternalModels(registry);
+   linalg::registerSubsetOpInterfaceExternalModels(registry);
 diff --git a/lib/Transform/HostToLLVM.cpp b/lib/Transform/HostToLLVM.cpp
 --- a/lib/Transform/HostToLLVM.cpp
 +++ b/lib/Transform/HostToLLVM.cpp
@@ -83,15 +99,3 @@ diff --git a/lib/Transform/HostToLLVM.cpp b/lib/Transform/HostToLLVM.cpp
  #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
  #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
  #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-diff --git a/test/Transform/native-host.mlir b/test/Transform/native-host.mlir
---- a/test/Transform/native-host.mlir
-+++ b/test/Transform/native-host.mlir
-@@ -85,7 +85,7 @@
-   //       CHECK: %[[OK2:.+]] = llvm.icmp "eq" %[[STATUS2]], %[[COPY_ID]] : i32
-   //       CHECK: llvm.cond_br %[[OK2]], ^[[LATCH:.+]], ^[[ERROR_COPY_AGAIN:.+]]
-   //       CHECK: ^[[LATCH]]:
--  //       CHECK: %[[NEXT_IV:.+]] = llvm.add %[[IV]], %[[STEP]] : i64
-+  //       CHECK: %[[NEXT_IV:.+]] = llvm.add %[[IV]], %[[STEP]]{{( overflow<nsw>)?}} : i64
-   //       CHECK: llvm.br ^[[LOOP]](%[[NEXT_IV]] : i64)
-   //       CHECK: ^[[DONE]]:
-   //       CHECK: llvm.return %[[COPY_ID]] : i32

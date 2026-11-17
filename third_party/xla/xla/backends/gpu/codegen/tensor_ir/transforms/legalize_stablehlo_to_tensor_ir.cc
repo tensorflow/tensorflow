@@ -1587,9 +1587,9 @@ void populateLegalizeStablehloToTensorIrPatterns(
                ElementwiseBinaryOpConversion<mlir::stablehlo::Atan2Op,
                                              mlir::nv_tensor_ir::Atan2Op>,
                ElementwiseBinaryOpConversion<mlir::stablehlo::AndOp,
-                                             mlir::nv_tensor_ir::LogicalAndOp>,
+                                             mlir::nv_tensor_ir::AndOp>,
                ElementwiseBinaryOpConversion<mlir::stablehlo::OrOp,
-                                             mlir::nv_tensor_ir::LogicalOrOp>>(
+                                             mlir::nv_tensor_ir::OrOp>>(
       type_converter, context);
 
   // Select, Compare, Convert, and Results.

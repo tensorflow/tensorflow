@@ -1,7 +1,7 @@
 diff --git a/lib/Analysis/TileCandidateGenerator.cpp b/lib/Analysis/TileCandidateGenerator.cpp
 --- a/lib/Analysis/TileCandidateGenerator.cpp
 +++ b/lib/Analysis/TileCandidateGenerator.cpp
-@@ -541,15 +541,16 @@
+@@ -541,16 +541,17 @@
    {
      llvm::SmallVector<size_t> activeByWeight(activeDims.begin(),
                                               activeDims.end());
@@ -24,7 +24,8 @@ diff --git a/lib/Analysis/TileCandidateGenerator.cpp b/lib/Analysis/TileCandidat
 +                      [&](size_t a, size_t b) { return shape[a] < shape[b]; });
  
      absorbOrder[0].append(activeByWeight.begin(), activeByWeight.end());
-@@ -859,5 +860,5 @@
+     absorbOrder[0].append(passiveDesc.begin(), passiveDesc.end());
+@@ -859,7 +860,7 @@
      c.score = scoreTile(c.tileShape, shape, fastestFreeDim, allStrides,
                          allElementSizeBytes);
    }
@@ -32,3 +33,4 @@ diff --git a/lib/Analysis/TileCandidateGenerator.cpp b/lib/Analysis/TileCandidat
 +  llvm::stable_sort(trackA, [](const Candidate &a, const Candidate &b) {
      return a.score > b.score;
    });
+ 
