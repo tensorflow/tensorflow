@@ -706,6 +706,46 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testAverageKeepdims(self):
+    a = np.arange(6.0).reshape(2, 3)
+    weights = np.array([1.0, 2.0, 3.0])
+
+    self.match(
+        np_math_ops.average(a, axis=1, keepdims=True),
+        np.average(a, axis=1, keepdims=True))
+    self.match(
+        np_math_ops.average(a, axis=-1, keepdims=True),
+        np.average(a, axis=-1, keepdims=True))
+    self.match(
+        np_math_ops.average(a, keepdims=True),
+        np.average(a, keepdims=True))
+
+    # 1-D weights along the reduced axis.
+    self.match(
+        np_math_ops.average(a, axis=1, weights=weights, keepdims=True),
+        np.average(a, axis=1, weights=weights, keepdims=True))
+
+    # Weights with the same shape as the input.
+    full_weights = np.arange(1.0, 7.0).reshape(2, 3)
+    self.match(
+        np_math_ops.average(a, axis=0, weights=full_weights, keepdims=True),
+        np.average(a, axis=0, weights=full_weights, keepdims=True))
+
+    # The returned sum of weights keeps the reduced axes too.
+    actual_avg, actual_sum = np_math_ops.average(
+        a, axis=1, weights=weights, returned=True, keepdims=True)
+    expected_avg, expected_sum = np.average(
+        a, axis=1, weights=weights, returned=True, keepdims=True)
+    self.match(actual_avg, expected_avg)
+    self.match(actual_sum, expected_sum)
+
+    actual_avg, actual_sum = np_math_ops.average(
+        a, axis=0, returned=True, keepdims=True)
+    expected_avg, expected_sum = np.average(
+        a, axis=0, returned=True, keepdims=True)
+    self.match(actual_avg, expected_avg)
+    self.match(actual_sum, expected_sum)
+
   def testSpacesDestinationAxisOutOfBounds(self):  # pylint: disable=invalid-name
     # NumPy raises AxisError for out-of-bounds destination axes instead of
     # letting the backend fail with a confusing error.
