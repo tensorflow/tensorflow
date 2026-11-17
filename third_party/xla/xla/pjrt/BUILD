@@ -891,6 +891,8 @@ cc_library(
         "//xla/runtime:chip_id",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
+        "//xla/service:device_assignment",
+        "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1946,8 +1948,29 @@ cc_library(
     hdrs = ["pjrt_compiler_variant.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_common",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_compiler_variant_test",
+    srcs = ["pjrt_compiler_variant_test.cc"],
+    deps = [
+        ":pjrt_common",
+        ":pjrt_compiler_variant",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:fingerprint",
     ],
 )

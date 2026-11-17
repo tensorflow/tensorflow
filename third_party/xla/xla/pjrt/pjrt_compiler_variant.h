@@ -17,9 +17,15 @@ limitations under the License.
 #define XLA_PJRT_PJRT_COMPILER_VARIANT_H_
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -37,12 +43,97 @@ inline PjRtCompilerVariant LinkedCompilerVariantId() {
   return kLinkedVariantId;
 }
 
+// Converts a compiler-registry `variant_name` (where both `""` and `"linked"`
+// denote the linked-in compiler) to its `PjRtCompilerVariant` ID.
+inline PjRtCompilerVariant CompilerVariantFromName(
+    absl::string_view variant_name) {
+  if (variant_name.empty() || variant_name == kLinkedVariant) {
+    return LinkedCompilerVariantId();
+  }
+  return tsl::Fingerprint64(variant_name);
+}
+
 // This function has a weak default implementation in the
 // pjrt_compiler_variant.cc file.
 // Users can override it by providing a strong definition elsewhere.
 // It is deliberately not marked as weak in this header so that any
 // overriding definitions are correctly treated as strong symbols by the linker.
 std::string CompilerVariantToString(xla::PjRtCompilerVariant variant);
+
+// Returns the active compiler variant name for a platform (where `""` and
+// `"linked"` both denote the linked compiler).
+using PjRtCompilerVariantPicker = std::function<absl::StatusOr<std::string>()>;
+
+// A thread-safe registry mapping each platform to a picker that chooses which
+// compiler variant to use at runtime. A picker returns the string variant name
+// used to key `PjRtCompilerRegistry` (such as `"linked"` for the linked
+// compiler, or `"remote"`), and `PickVariant()` maps that name to a
+// `PjRtCompilerVariant` ID.
+//
+// A platform's `PjRtPlatformId` is the `tsl::Fingerprint64` hash of its
+// `platform_name` (for example, `TpuId()` is the hash of `"tpu"`). This
+// registry stores entries by `PjRtPlatformId`, and the `platform_name`
+// overloads hash the name first, so callers can register or look up a picker by
+// either name or ID and hit the same entry.
+//
+// Strong registrations (`is_weak = false`) always win over weak defaults
+// (`is_weak = true`), regardless of static-initializer order.
+class PjRtCompilerVariantPickerRegistry {
+ public:
+  PjRtCompilerVariantPickerRegistry() = default;
+
+  // Not copyable or movable.
+  PjRtCompilerVariantPickerRegistry(const PjRtCompilerVariantPickerRegistry&) =
+      delete;
+  PjRtCompilerVariantPickerRegistry& operator=(
+      const PjRtCompilerVariantPickerRegistry&) = delete;
+
+  // Returns the process-wide registry.
+  static PjRtCompilerVariantPickerRegistry& Global();
+
+  void RegisterVariantPicker(PjRtPlatformId platform_id,
+                             PjRtCompilerVariantPicker picker,
+                             bool is_weak = false);
+  void RegisterVariantPicker(absl::string_view platform_name,
+                             PjRtCompilerVariantPicker picker,
+                             bool is_weak = false);
+
+  // Picks the active compiler variant name using its registered picker,
+  // returning `kLinkedVariant` if no picker is registered or the picker returns
+  // `""`.
+  absl::StatusOr<std::string> PickVariantName(PjRtPlatformId platform_id) const;
+  absl::StatusOr<std::string> PickVariantName(
+      absl::string_view platform_name) const;
+
+  // Picks the active `PjRtCompilerVariant` using `PickVariantName()`.
+  absl::StatusOr<PjRtCompilerVariant> PickVariant(
+      PjRtPlatformId platform_id) const;
+  absl::StatusOr<PjRtCompilerVariant> PickVariant(
+      absl::string_view platform_name) const;
+
+ private:
+  struct Entry {
+    PjRtCompilerVariantPicker picker;
+    bool is_weak = false;
+  };
+
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<PjRtPlatformId, Entry> variant_pickers_
+      ABSL_GUARDED_BY(mu_);
+};
+
+// Registers a compiler variant picker for `platform_id` / `platform_name` in
+// `registry`.
+void PjRtRegisterCompilerVariantPicker(
+    PjRtPlatformId platform_id, PjRtCompilerVariantPicker picker,
+    bool is_weak = false,
+    PjRtCompilerVariantPickerRegistry& registry =
+        PjRtCompilerVariantPickerRegistry::Global());
+void PjRtRegisterCompilerVariantPicker(
+    absl::string_view platform_name, PjRtCompilerVariantPicker picker,
+    bool is_weak = false,
+    PjRtCompilerVariantPickerRegistry& registry =
+        PjRtCompilerVariantPickerRegistry::Global());
 
 }  // namespace xla
 
