@@ -14,6 +14,8 @@
 # ==============================================================================
 """Operator Squeeze for RaggedTensors."""
 
+import numbers
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -57,11 +59,12 @@ def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disab
 
     if axis is None:
       raise ValueError('Ragged.squeeze must have an axis argument.')
-    if isinstance(axis, int):
+    if isinstance(axis, numbers.Integral):
       axis = [axis]
     elif ((not isinstance(axis, (list, tuple))) or
-          (not all(isinstance(d, int) for d in axis))):
+          (not all(isinstance(d, numbers.Integral) for d in axis))):
       raise TypeError('Axis must be a list or tuple of integers.')
+    axis = [int(d) for d in axis]
 
     dense_dims = []
     ragged_dims = []

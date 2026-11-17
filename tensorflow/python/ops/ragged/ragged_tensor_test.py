@@ -2088,6 +2088,14 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       rt._set_shape([5, None, None])
 
+  def testFromTensorNumpyIntegerRaggedRank(self):
+    dt = constant_op.constant([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    for ragged_rank in (np.int32(2), np.int64(2)):
+      rt = RaggedTensor.from_tensor(dt, ragged_rank=ragged_rank)
+      self.assertEqual(rt.ragged_rank, 2)
+      self.assertIsInstance(rt.ragged_rank, int)
+      self.assertAllEqual(rt, [[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
@@ -2380,6 +2388,12 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertFalse(spec2.is_compatible_with(spec4))
     self.assertFalse(spec3.is_compatible_with(spec4))
     self.assertTrue(spec4.is_compatible_with(constant_op.constant([1, 2, 3])))
+
+  def testNumpyIntegerRaggedRank(self):
+    for ragged_rank in (np.int32(1), np.int64(1)):
+      spec = RaggedTensorSpec([2, None], dtypes.int32, ragged_rank=ragged_rank)
+      self.assertEqual(spec, RaggedTensorSpec([2, None], dtypes.int32, 1))
+      self.assertIsInstance(spec.ragged_rank, int)
 
 
 if __name__ == '__main__':

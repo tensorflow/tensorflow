@@ -15,6 +15,7 @@
 """Tests for ragged_array_ops_stack.stack_dynamic_partitions."""
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -247,6 +248,13 @@ class RaggedSegmentStackOpTest(test_util.TensorFlowTestCase,
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
                                 'partitions must have known rank'):
       ragged_array_ops.stack_dynamic_partitions(['a', 'b', 'c'], partitions, 10)
+
+  def testNumpyIntegerNumPartitions(self):
+    data = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
+    result = data_flow_ops.dynamic_partition(data, [0, 1, 0], np.int64(2))
+    self.assertLen(result, 2)
+    self.assertAllEqual(result[0], [[1, 2], [4, 5, 6]])
+    self.assertAllEqual(result[1], [[3]])
 
 
 if __name__ == '__main__':
