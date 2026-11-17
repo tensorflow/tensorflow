@@ -33,7 +33,7 @@ fusion {
 // CHECK-VECTOR:    %[[MASK_SLICE:.*]] = scf.if %{{.*}} -> (vector<32xf32>)
 // CHECK-VECTOR:    %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[MASK_SLICE]] : vector<32xf32>
 // CHECK-VECTOR:    scf.yield %[[ACC_NEXT]] : vector<32xf32>
-// CHECK-VECTOR:  vector.reduction <add>, %[[LOOP_RES]], %[[CST_0]]
+// CHECK-VECTOR:  vector.multi_reduction <add>, %[[LOOP_RES]], %[[CST_0]] [0] : vector<32xf32> to f32
 
 ENTRY main {
   p0 = f32[100] parameter(0)

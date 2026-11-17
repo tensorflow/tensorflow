@@ -32,8 +32,7 @@ fusion {
 // CHECK-VECTOR:     %[[READ:.*]] = vector.transfer_read %arg0[%[[IV0]], %{{.*}}], %{{.*}} {in_bounds = [true, true]} : memref<128x256xf32>, vector<1x32xf32>
 // CHECK-VECTOR:     %[[ACC_NEXT:.*]] = arith.addf %[[ACC]], %[[READ]] : vector<1x32xf32>
 // CHECK-VECTOR:     scf.yield %[[ACC_NEXT]] : vector<1x32xf32>
-// CHECK-VECTOR:   %[[TRANSPOSE:.*]] = vector.transpose %[[LOOP_RES]], [1, 0] : vector<1x32xf32> to vector<32x1xf32>
-// CHECK-VECTOR:   vector.extract %[[TRANSPOSE]][0] : vector<1xf32> from vector<32x1xf32>
+// CHECK-VECTOR:   vector.multi_reduction <add>, %[[LOOP_RES]], %[[CST]] [1] : vector<1x32xf32> to vector<1xf32>
 
 ENTRY main {
   p0 = f32[128,256] parameter(0)

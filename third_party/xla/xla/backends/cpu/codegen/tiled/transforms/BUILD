@@ -66,6 +66,7 @@ cc_library(
         "hoist_alloca.cc",
         "legalize_narrow_float_storage.cc",
         "lower_memref_bitcast.cc",
+        "lower_vector_contract.cc",
         "lower_xtile_entry.cc",
         "unpack_sub_byte_vector_write_pass.cc",
         "unroll_vectors_pass.cc",

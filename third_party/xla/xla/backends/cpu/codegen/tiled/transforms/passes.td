@@ -143,3 +143,12 @@ def VectorizeXTilePass : Pass<"xtile-cpu-vectorize-xtile", "mlir::ModuleOp"> {
   ];
 }
 
+def LowerVectorContractPass
+    : Pass<"xtile-cpu-lower-vector-contract", "mlir::ModuleOp"> {
+  let summary = "Lowers vector.contract via outer products.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+

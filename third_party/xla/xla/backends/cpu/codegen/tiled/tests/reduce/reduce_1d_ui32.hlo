@@ -33,7 +33,7 @@ fusion {
 // CHECK-VECTOR:    %[[MASK_SLICE:.*]] = scf.if %{{.*}} -> (vector<32xi32>)
 // CHECK-VECTOR:    %[[ACC_NEXT:.*]] = arith.minui %[[ACC]], %[[MASK_SLICE]] : vector<32xi32>
 // CHECK-VECTOR:    scf.yield %[[ACC_NEXT]] : vector<32xi32>
-// CHECK-VECTOR:  vector.reduction <minui>, %[[LOOP_RES]], %[[CST_0]]
+// CHECK-VECTOR:  vector.multi_reduction <minui>, %[[LOOP_RES]], %[[CST_0]] [0] : vector<32xi32> to i32
 
 ENTRY main {
   p0 = u32[100] parameter(0)

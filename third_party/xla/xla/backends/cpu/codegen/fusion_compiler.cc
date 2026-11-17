@@ -334,13 +334,6 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width) {
       GetSimplifyArithPassOptions(/*fast_min_max=*/false)));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::vector::createLowerVectorMultiReductionPass(
-          mlir::vector::VectorMultiReductionLowering::InnerParallel));
-
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
 }
 
 // Lowering passes for the tiled emitter.
@@ -349,6 +342,14 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width) {
 void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
                            int32_t vector_width,
                            absl::string_view cpu_features) {
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::vector::createLowerVectorMultiReductionPass(
+          mlir::vector::VectorMultiReductionLowering::InnerParallel));
+  pm.addPass(cpu::createLowerVectorContractPass());
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+
   // Get rid of 0d vectors.
   pm.addPass(cpu::createVectorToScalarPass());
   // Get rid of multi-dimensional vectors.
@@ -367,6 +368,8 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
   pm.addPass(cpu::createLowerToLLVMPass(
       cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
   mlir::ConvertVectorToLLVMPassOptions options;
+  options.vectorContractLowering =
+      mlir::vector::VectorContractLowering::OuterProduct;
   options.vectorTransposeLowering =
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
