@@ -34,7 +34,6 @@ absl::Status RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
         absl::StrCat("Environment variable ", library_env_name,
                      " is not set. Can't load PJRT plugin ", plugin_name, "."));
   }
-  std::string library_path_str(library_path);
   auto status = pjrt::LoadPjrtPlugin(plugin_name, library_path);
   return status.status();
 }

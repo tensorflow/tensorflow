@@ -188,7 +188,6 @@ absl::Status ResolveLinking(const GpuInfo& gpu_info,
 // Example: 'args.dst_tensor::type' can be replaced with 'float4'
 absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
                                   const Arguments& args, std::string* code) {
-  std::string result;
   size_t position = 0;
   constexpr char kArgsPrefix[] = "args.";
   size_t next_position = code->find(kArgsPrefix);
@@ -227,7 +226,6 @@ absl::Status ResolveSelectorsPass(
     const GpuInfo& gpu_info,
     const std::map<std::string, LinkableContext>& linkables,
     const Arguments& args, std::string* code) {
-  std::string result;
   size_t position = 0;
   constexpr char kArgsPrefix[] = "args.";
   size_t next_position = code->find(kArgsPrefix);

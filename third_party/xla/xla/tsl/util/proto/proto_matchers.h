@@ -229,7 +229,6 @@ class ProtoMatcher {
     }
     // StreamFormat() doesn't work with some versions of protobuf, so we need
     // to convert expected_proto_ to a string manually.
-    std::string expected_proto_str;
     if constexpr (std::is_same_v<ExpectedProto, std::string>) {
       *os << expected_proto_;
     } else {

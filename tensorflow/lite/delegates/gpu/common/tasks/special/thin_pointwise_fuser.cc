@@ -781,7 +781,6 @@ void ThinPointwiseFuser::AddConv2dNode(const GpuInfo& gpu_info,
     code_ += "  bool x_in;\n";
   }
 
-  const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
   code_ += "  FLT4 src;\n";
   for (int s = 0; s < src_slices; ++s) {
     for (int ky = 0; ky < attr.weights.shape.h; ++ky) {
@@ -813,7 +812,6 @@ void ThinPointwiseFuser::AddConv2dNode(const GpuInfo& gpu_info,
         code_ += "  src = args.src_tensor.Read(" + x_coord + ", " + y_coord +
                  ", " + std::to_string(s) + ")" + multiplier + ";\n";
         for (int d = 0; d < dst_slices; ++d) {
-          std::string src = "src";
           const std::string c0 =
               "args.constants.Read(" + std::to_string(weights_counter_++) + ")";
           const std::string c1 =

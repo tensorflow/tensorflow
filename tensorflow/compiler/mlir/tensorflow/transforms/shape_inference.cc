@@ -1874,7 +1874,8 @@ std::optional<RankedTensorType> InferWindowOutputShape(
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
-  std::vector<bool> output_is_dynamic(window.dimensions_size());
+  [[maybe_unused]] std::vector<bool> output_is_dynamic(
+      window.dimensions_size());
   for (int64_t i = 0; i < window.dimensions_size(); ++i) {
     const auto& dim = window.dimensions(i);
     if (dim.size() <= 0) {

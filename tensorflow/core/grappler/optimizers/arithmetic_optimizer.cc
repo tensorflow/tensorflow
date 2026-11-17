@@ -1478,7 +1478,6 @@ class RemoveLogicalNotStage : public ArithmeticOptimizerStage {
 
   absl::Status TrySimplify(NodeDef* node,
                            std::string* simplified_node_name) override {
-    const std::string node_name = node->name();
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
     if (IsInPreserveSet(*input) ||

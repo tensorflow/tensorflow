@@ -288,7 +288,6 @@ bool Parser::ParseCommaSeparatedVarList(
   if (ConsumeToken(right_delimiter)) {
     return true;
   }
-  std::string element;
   while (parse_element_fn(*this)) {
     if (ConsumeToken(Token::Kind::kComma)) {
       continue;
