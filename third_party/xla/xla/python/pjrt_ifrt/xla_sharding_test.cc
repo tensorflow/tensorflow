@@ -64,11 +64,8 @@ class HloShardingTest
 };
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
-  // Nullptr or empty device lists are not allowed regardless of HloSharding.
+  // Empty device lists are not allowed regardless of HloSharding.
   auto replicated_xla_hlo_sharding = xla::HloSharding::Replicate();
-  EXPECT_DEATH(HloSharding::Create(DeviceListRef(), MemoryKind(),
-                                   replicated_xla_hlo_sharding),
-               "");
   EXPECT_DEATH(HloSharding::Create(BasicDeviceList::Create({}), MemoryKind(),
                                    replicated_xla_hlo_sharding),
                "");

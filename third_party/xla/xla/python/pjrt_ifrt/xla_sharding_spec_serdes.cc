@@ -80,8 +80,10 @@ class HloShardingSpecSerDes
     ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
 
-    return HloShardingSpec::Create(proto.num_shards(),
-                                   std::move(xla_hlo_sharding));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloShardingSpec> spec,
+                     HloShardingSpec::CreateIfValid(
+                         proto.num_shards(), std::move(xla_hlo_sharding)));
+    return spec;
   }
 
   static char ID;  // NOLINT

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
@@ -221,8 +222,6 @@ TEST_P(SingleDeviceShardingTest, Hash) {
 }
 
 TEST_P(OpaqueShardingTest, CreateWithBadDeviceList) {
-  EXPECT_DEATH(OpaqueSharding::Create(DeviceListRef(), MemoryKind()), "");
-
   EXPECT_DEATH(OpaqueSharding::Create(GetDevices({}), MemoryKind()), "");
 }
 
@@ -333,10 +332,6 @@ TEST_P(OpaqueShardingTest, Hash) {
 }
 
 TEST_P(ConcreteShardingTest, CreateWithBadDeviceList) {
-  EXPECT_DEATH(ConcreteSharding::Create(DeviceListRef(), MemoryKind(),
-                                        Shape({}), {Shape({})}),
-               "");
-
   EXPECT_DEATH(ConcreteSharding::Create(GetDevices({}), MemoryKind(), Shape({}),
                                         {Shape({})}),
                "");
@@ -520,6 +515,16 @@ TEST_P(ConcreteShardingTest, Disassemble) {
   shard_shapes.push_back(Shape({7}));
   ShardingRef sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                                   Shape({20}), shard_shapes);
+  EXPECT_EQ(sharding->sharding_spec()->num_shards(), device_list->size());
+  EXPECT_THAT(sharding->sharding_spec()->Disassemble(Shape({20})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("only has 4 addressable shard shapes out of "
+                                 "6 shards")));
+  EXPECT_THAT(sharding->sharding_spec()->ToSharding(
+                  GetDevices({0, 1, 4, 5, 4, 5}), MemoryKind()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires 4 addressable devices, but received "
+                                 "2 addressable devices")));
 
   {
     EXPECT_THAT(
@@ -572,6 +577,10 @@ TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
   };
   auto sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                            dynamic_shape, shard_dynamic_shapes);
+  EXPECT_THAT(sharding->sharding_spec()->Disassemble(dynamic_shape),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("only has 4 addressable shard dynamic shapes "
+                                 "out of 6 shards")));
   EXPECT_THAT(sharding->Disassemble(
                   Shape({20}), SingleDeviceShardSemantics::kAddressableShards),
               StatusIs(tsl::error::INVALID_ARGUMENT,
@@ -662,6 +671,18 @@ TEST_P(ConcreteShardingTest, IndexDomainsNonAddressable) {
   EXPECT_THAT(sharding->IndexDomains(
                   Shape({15}), SingleDeviceShardSemantics::kAddressableShards),
               IsOkAndHolds(ElementsAreArray(index_domains)));
+  EXPECT_THAT(sharding->sharding_spec()->IndexDomains(Shape({15})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("only has 4 addressable index domains out of "
+                                 "6 shards")));
+  EXPECT_THAT(sharding->sharding_spec()->UniqueIndexDomains(Shape({15})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("only has 4 addressable index domains out of "
+                                 "6 shards")));
+  EXPECT_THAT(sharding->sharding_spec()->ShardToUniqueIndexDomainIndex(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("only has 4 addressable index domains out of "
+                                 "6 shards")));
 }
 
 TEST_P(ConcreteShardingTest, IndexDomainsMissing) {
@@ -749,11 +770,6 @@ TEST_P(ConcreteShardingTest, Hash) {
 }
 
 TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
-  EXPECT_DEATH(ConcreteEvenSharding::Create(DeviceListRef(), MemoryKind(),
-                                            Shape({}), Shape({}),
-                                            /*is_fully_replicated=*/true),
-               "");
-
   EXPECT_DEATH(ConcreteEvenSharding::Create(GetDevices({}), MemoryKind(),
                                             Shape({}), Shape({}),
                                             /*is_fully_replicated=*/true),

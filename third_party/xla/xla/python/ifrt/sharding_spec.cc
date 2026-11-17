@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/python/ifrt/sharding_spec.h"
 
 #include <array>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -55,7 +57,9 @@ char ConcreteShardingSpec::ID = 0;
 char ConcreteEvenShardingSpec::ID = 0;
 
 ShardingSpec::ShardingSpec(int num_shards, bool is_fully_replicated)
-    : num_shards_(num_shards), is_fully_replicated_(is_fully_replicated) {}
+    : num_shards_(num_shards), is_fully_replicated_(is_fully_replicated) {
+  CHECK_GE(num_shards_, 1);
+}
 
 bool ShardingSpec::operator==(const ShardingSpec& other) const {
   if (this == &other) {
@@ -164,9 +168,22 @@ void SingleDeviceShardingSpec::Hash(absl::HashState state) const {
   absl::HashState::combine(std::move(state), num_shards_);
 }
 
-std::unique_ptr<OpaqueShardingSpec> OpaqueShardingSpec::Create(int num_shards) {
+absl::StatusOr<std::unique_ptr<OpaqueShardingSpec>>
+OpaqueShardingSpec::CreateIfValid(int num_shards) {
+  if (num_shards < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "OpaqueShardingSpec requires at least 1 shard, but got %d",
+        num_shards));
+  }
   return std::unique_ptr<OpaqueShardingSpec>(
       new OpaqueShardingSpec(num_shards));
+}
+
+std::unique_ptr<OpaqueShardingSpec> OpaqueShardingSpec::Create(int num_shards) {
+  absl::StatusOr<std::unique_ptr<OpaqueShardingSpec>> spec =
+      CreateIfValid(num_shards);
+  CHECK_OK(spec);
+  return *std::move(spec);
 }
 
 OpaqueShardingSpec::OpaqueShardingSpec(int num_shards)
@@ -243,21 +260,61 @@ void OpaqueShardingSpec::Hash(absl::HashState state) const {
   absl::HashState::combine(std::move(state), num_shards_);
 }
 
-std::unique_ptr<ConcreteShardingSpec> ConcreteShardingSpec::Create(
+absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>>
+ConcreteShardingSpec::CreateIfValid(
     Shape shape, std::vector<Shape> shard_shapes,
     std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
-  int num_shards = shard_shapes.size();
+  if (shard_shapes.empty()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec requires at least 1 shard shape");
+  }
+  if (shard_shapes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec shard_shapes size %d exceeds INT_MAX",
+        shard_shapes.size()));
+  }
+  int num_shards = static_cast<int>(shard_shapes.size());
   return std::unique_ptr<ConcreteShardingSpec>(new ConcreteShardingSpec(
       num_shards, std::move(shape), std::move(shard_shapes),
       std::move(index_domains)));
 }
 
 std::unique_ptr<ConcreteShardingSpec> ConcreteShardingSpec::Create(
+    Shape shape, std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
+  absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>> spec = CreateIfValid(
+      std::move(shape), std::move(shard_shapes), std::move(index_domains));
+  CHECK_OK(spec);
+  return *std::move(spec);
+}
+
+absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>>
+ConcreteShardingSpec::CreateIfValid(
     DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
-  int num_shards = shard_dynamic_shapes.size();
+  if (shard_dynamic_shapes.empty()) {
+    return absl::InvalidArgumentError(
+        "ConcreteShardingSpec requires at least 1 shard dynamic shape");
+  }
+  if (shard_dynamic_shapes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec shard_dynamic_shapes size %d exceeds INT_MAX",
+        shard_dynamic_shapes.size()));
+  }
+  int num_shards = static_cast<int>(shard_dynamic_shapes.size());
   return std::unique_ptr<ConcreteShardingSpec>(new ConcreteShardingSpec(
       num_shards, std::move(dynamic_shape), std::move(shard_dynamic_shapes)));
+}
+
+std::unique_ptr<ConcreteShardingSpec> ConcreteShardingSpec::Create(
+    DynamicShape dynamic_shape,
+    std::vector<DynamicShape> shard_dynamic_shapes) {
+  absl::StatusOr<std::unique_ptr<ConcreteShardingSpec>> spec =
+      CreateIfValid(std::move(dynamic_shape), std::move(shard_dynamic_shapes));
+  CHECK_OK(spec);
+  return *std::move(spec);
 }
 
 ConcreteShardingSpec::ConcreteShardingSpec(
@@ -268,20 +325,30 @@ ConcreteShardingSpec::ConcreteShardingSpec(
       shape_(std::move(shape)),
       shard_shapes_(std::move(shard_shapes)),
       index_domains_(std::move(index_domains)) {
-  // If all per-shard shapes are the same, cache this shape for
-  // `GetShardShape()`. Ideally, users should have used
-  // `ConcreteEvenShardingSpec` for such a case, but there are existing use
-  // cases that instantiate `ConcreteShardingSpec` from a list of per-shard
-  // shapes without checking for identical per-shard shapes.
+  // If all provided per-shard shapes (and index domains, when present) are
+  // identical, cache this shape for `GetShardShape()`. Under partial
+  // addressability, this uses the locally known addressable shards without
+  // guessing non-addressable shards on other processes. Ideally, users should
+  // have used `ConcreteEvenShardingSpec` for such a case, but there are
+  // existing use cases that instantiate `ConcreteShardingSpec` from a list of
+  // per-shard shapes without checking for identical per-shard shapes.
   const auto& static_shard_shapes = std::get<std::vector<Shape>>(shard_shapes_);
-  bool identical = true;
-  for (int i = 1; i < static_shard_shapes.size(); ++i) {
+  bool identical = !static_shard_shapes.empty();
+  for (size_t i = 1; i < static_shard_shapes.size(); ++i) {
     if (static_shard_shapes[i] != static_shard_shapes[0]) {
       identical = false;
       break;
     }
   }
-  if (identical && !static_shard_shapes.empty()) {
+  if (identical && index_domains_.has_value()) {
+    for (const IndexDomain& index_domain : *index_domains_) {
+      if (index_domain.shape() != static_shard_shapes[0]) {
+        identical = false;
+        break;
+      }
+    }
+  }
+  if (identical) {
     shard_shape_ = static_shard_shapes[0];
   }
 }
@@ -308,17 +375,22 @@ absl::StatusOr<ShardingRef> ConcreteShardingSpec::ToSharding(
         "ConcreteShardingSpec requires %d devices, but received %d devices",
         num_shards(), devices->size()));
   }
+  const size_t num_shard_shapes = has_static_shape()
+                                      ? shard_shapes().size()
+                                      : shard_dynamic_shapes().size();
+  if (num_shard_shapes != num_shards_ &&
+      devices->AddressableDeviceList()->size() != num_shard_shapes) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec requires %d addressable devices, but received %d "
+        "addressable devices",
+        num_shard_shapes, devices->AddressableDeviceList()->size()));
+  }
   std::shared_ptr<const ConcreteShardingSpec> spec =
       std::static_pointer_cast<const ConcreteShardingSpec>(
           weak_from_this().lock());
   if (spec == nullptr) {
-    if (has_static_shape()) {
-      spec = ConcreteShardingSpec::Create(shape(), shard_shapes(),
-                                          index_domains());
-    } else {
-      spec =
-          ConcreteShardingSpec::Create(dynamic_shape(), shard_dynamic_shapes());
-    }
+    spec = std::shared_ptr<const ConcreteShardingSpec>(
+        new ConcreteShardingSpec(*this));
   }
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(spec)));
@@ -343,7 +415,8 @@ bool ConcreteShardingSpec::HasSamePartitioning(
   if (!other_concrete_sharding_spec) {
     return false;
   }
-  return shape_ == other_concrete_sharding_spec->shape_ &&
+  return num_shards_ == other_concrete_sharding_spec->num_shards_ &&
+         shape_ == other_concrete_sharding_spec->shape_ &&
          shard_shapes_ == other_concrete_sharding_spec->shard_shapes_ &&
          index_domains_ == other_concrete_sharding_spec->index_domains_;
 }
@@ -364,6 +437,12 @@ ConcreteShardingSpec::Disassemble(const Shape& shape) const {
   }
   const std::vector<Shape>& shard_shapes =
       std::get<std::vector<Shape>>(shard_shapes_);
+  if (shard_shapes.size() != num_shards_) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec only has %d addressable shard shapes out of %d "
+        "shards",
+        shard_shapes.size(), num_shards_));
+  }
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(shard_shapes.size());
   for (const auto& shard_shape : shard_shapes) {
@@ -388,6 +467,12 @@ ConcreteShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   }
   const std::vector<DynamicShape>& shard_dynamic_shapes =
       std::get<std::vector<DynamicShape>>(shard_shapes_);
+  if (shard_dynamic_shapes.size() != num_shards_) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec only has %d addressable shard dynamic shapes out "
+        "of %d shards",
+        shard_dynamic_shapes.size(), num_shards_));
+  }
   std::vector<std::pair<DynamicShape, ShardingSpecRef>> result;
   result.reserve(shard_dynamic_shapes.size());
   for (const auto& shard_dynamic_shape : shard_dynamic_shapes) {
@@ -402,6 +487,12 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteShardingSpec::IndexDomains(
     return absl::InvalidArgumentError(
         "ConcreteShardingSpec does not have index domain information");
   }
+  if (index_domains_->size() != num_shards_) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec only has %d addressable index domains out of %d "
+        "shards",
+        index_domains_->size(), num_shards_));
+  }
   return *index_domains_;
 }
 
@@ -410,6 +501,12 @@ ConcreteShardingSpec::UniqueIndexDomains(const Shape& shape) const {
   if (!index_domains_.has_value()) {
     return absl::InvalidArgumentError(
         "ConcreteShardingSpec does not have index domain information");
+  }
+  if (index_domains_->size() != num_shards_) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec only has %d addressable index domains out of %d "
+        "shards",
+        index_domains_->size(), num_shards_));
   }
   if (has_static_shape() && this->shape() != shape) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -461,6 +558,12 @@ ConcreteShardingSpec::ShardToUniqueIndexDomainIndex() const {
     return absl::InvalidArgumentError(
         "ConcreteShardingSpec does not have index domain information");
   }
+  if (index_domains_->size() != num_shards_) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteShardingSpec only has %d addressable index domains out of %d "
+        "shards",
+        index_domains_->size(), num_shards_));
+  }
   absl::call_once(shard_to_unique_index_domain_index_once_, [this] {
     absl::flat_hash_map<IndexDomain, int> domain_to_unique_idx;
     cached_shard_to_unique_index_domain_index_.reserve(index_domains_->size());
@@ -494,11 +597,27 @@ void ConcreteShardingSpec::Hash(absl::HashState state) const {
                            index_domains_);
 }
 
-std::unique_ptr<ConcreteEvenShardingSpec> ConcreteEvenShardingSpec::Create(
-    int num_shards, Shape shape, Shape shard_shape, bool is_fully_replicated) {
+absl::StatusOr<std::unique_ptr<ConcreteEvenShardingSpec>>
+ConcreteEvenShardingSpec::CreateIfValid(int num_shards, Shape shape,
+                                        Shape shard_shape,
+                                        bool is_fully_replicated) {
+  if (num_shards < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteEvenShardingSpec requires at least 1 shard, but got %d",
+        num_shards));
+  }
   return std::unique_ptr<ConcreteEvenShardingSpec>(new ConcreteEvenShardingSpec(
       num_shards, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
+}
+
+std::unique_ptr<ConcreteEvenShardingSpec> ConcreteEvenShardingSpec::Create(
+    int num_shards, Shape shape, Shape shard_shape, bool is_fully_replicated) {
+  absl::StatusOr<std::unique_ptr<ConcreteEvenShardingSpec>> spec =
+      CreateIfValid(num_shards, std::move(shape), std::move(shard_shape),
+                    is_fully_replicated);
+  CHECK_OK(spec);
+  return *std::move(spec);
 }
 
 ConcreteEvenShardingSpec::ConcreteEvenShardingSpec(int num_shards, Shape shape,

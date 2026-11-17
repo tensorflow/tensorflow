@@ -87,18 +87,31 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 
 }  // namespace
 
-std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
+absl::StatusOr<std::unique_ptr<HloShardingSpec>> HloShardingSpec::CreateIfValid(
     int num_shards, xla::HloSharding xla_hlo_sharding) {
+  if (num_shards < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "HloShardingSpec requires at least 1 shard, but got %d", num_shards));
+  }
   if (!xla_hlo_sharding.IsReplicated() && !xla_hlo_sharding.IsUnreduced() &&
-      xla_hlo_sharding.IsTiled()) {
-    CHECK_EQ(num_shards, xla_hlo_sharding.num_devices())
-        << "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
-           "match: "
-        << num_shards << " vs. " << xla_hlo_sharding.num_devices()
-        << "; sharding=" << xla_hlo_sharding.ToString();
+      xla_hlo_sharding.IsTiled() &&
+      num_shards != xla_hlo_sharding.num_devices()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not match: "
+        "%d vs. %d; sharding=%s",
+        num_shards, xla_hlo_sharding.num_devices(),
+        xla_hlo_sharding.ToString()));
   }
   return std::unique_ptr<HloShardingSpec>(
       new HloShardingSpec(num_shards, std::move(xla_hlo_sharding)));
+}
+
+std::unique_ptr<HloShardingSpec> HloShardingSpec::Create(
+    int num_shards, xla::HloSharding xla_hlo_sharding) {
+  absl::StatusOr<std::unique_ptr<HloShardingSpec>> spec =
+      CreateIfValid(num_shards, std::move(xla_hlo_sharding));
+  CHECK_OK(spec);
+  return *std::move(spec);
 }
 
 HloShardingSpec::HloShardingSpec(int num_shards,

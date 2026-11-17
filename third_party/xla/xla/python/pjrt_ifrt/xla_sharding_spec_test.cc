@@ -40,6 +40,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::FieldsAre;
@@ -60,8 +61,18 @@ class HloShardingSpecTest : public testing::Test {
   test_util::DeviceTestFixture fixture_;
 };
 
-TEST_F(HloShardingSpecTest, CreateWithNumShardsMismatch) {
-  auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+TEST_F(HloShardingSpecTest, CreateWithInvalidNumShards) {
+  const xla::HloSharding replicated = xla::HloSharding::Replicate();
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/0, replicated),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/-1, replicated),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_DEATH((void)HloShardingSpec::Create(/*num_shards=*/0, replicated),
+               "requires at least 1 shard");
+
+  const xla::HloSharding xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
   EXPECT_DEATH(
       HloShardingSpec::Create(/*num_shards=*/5, xla_hlo_sharding),
       "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not match");

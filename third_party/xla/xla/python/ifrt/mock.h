@@ -548,11 +548,6 @@ class MockLoadedHostCallback final
 
 class MockSharding : public RTTIExtends<MockSharding, Sharding> {
  public:
-  MockSharding()
-      : RTTIExtends<MockSharding, Sharding>(BasicDeviceList::Create({}),
-                                            MemoryKind(),
-                                            /*is_fully_replicated=*/false) {}
-
   MockSharding(DeviceListRef devices, MemoryKind memory_kind,
                bool is_fully_replicated)
       : RTTIExtends<MockSharding, Sharding>(devices, memory_kind,

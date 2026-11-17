@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/ifrt/sharding.h"
 
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -59,7 +62,9 @@ Sharding::Sharding(DeviceListRef devices, MemoryKind memory_kind,
                    bool is_fully_replicated)
     : devices_(std::move(devices)),
       memory_kind_(memory_kind),
-      is_fully_replicated_(is_fully_replicated) {}
+      is_fully_replicated_(is_fully_replicated) {
+  CHECK_GE(devices_->size(), 1);
+}
 
 bool Sharding::operator==(const Sharding& other) const {
   if (this == &other) {
@@ -116,7 +121,9 @@ SingleDeviceSharding::SingleDeviceSharding(
     : RTTIExtends<SingleDeviceSharding, Sharding>(
           std::move(device_list), memory_kind,
           sharding_spec->IsFullyReplicated()),
-      sharding_spec_(std::move(sharding_spec)) {}
+      sharding_spec_(std::move(sharding_spec)) {
+  CHECK_EQ(devices_->size(), sharding_spec_->num_shards());
+}
 
 ShardingSpecRef SingleDeviceSharding::sharding_spec() const {
   return sharding_spec_;
@@ -207,13 +214,24 @@ void SingleDeviceSharding::Hash(absl::HashState state) const {
                            *sharding_spec_);
 }
 
+absl::StatusOr<std::unique_ptr<OpaqueSharding>> OpaqueSharding::CreateIfValid(
+    DeviceListRef devices, MemoryKind memory_kind) {
+  if (devices->devices().empty()) {
+    return absl::InvalidArgumentError(
+        "OpaqueSharding requires at least 1 device");
+  }
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueShardingSpec> spec,
+                   OpaqueShardingSpec::CreateIfValid(devices->size()));
+  return std::unique_ptr<OpaqueSharding>(
+      new OpaqueSharding(std::move(devices), memory_kind, std::move(spec)));
+}
+
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceListRef devices,
                                                        MemoryKind memory_kind) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  int num_shards = devices->size();
-  return std::unique_ptr<OpaqueSharding>(new OpaqueSharding(
-      std::move(devices), memory_kind, OpaqueShardingSpec::Create(num_shards)));
+  absl::StatusOr<std::unique_ptr<OpaqueSharding>> sharding =
+      CreateIfValid(std::move(devices), memory_kind);
+  CHECK_OK(sharding);
+  return *std::move(sharding);
 }
 
 OpaqueSharding::OpaqueSharding(
@@ -221,7 +239,9 @@ OpaqueSharding::OpaqueSharding(
     std::shared_ptr<const OpaqueShardingSpec> sharding_spec)
     : RTTIExtends<OpaqueSharding, Sharding>(std::move(devices), memory_kind,
                                             sharding_spec->IsFullyReplicated()),
-      sharding_spec_(std::move(sharding_spec)) {}
+      sharding_spec_(std::move(sharding_spec)) {
+  CHECK_EQ(devices_->size(), sharding_spec_->num_shards());
+}
 
 ShardingSpecRef OpaqueSharding::sharding_spec() const { return sharding_spec_; }
 
@@ -288,27 +308,69 @@ void OpaqueSharding::Hash(absl::HashState state) const {
                            *sharding_spec_);
 }
 
+absl::StatusOr<std::unique_ptr<ConcreteSharding>>
+ConcreteSharding::CreateIfValid(
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
+  if (devices->devices().empty()) {
+    return absl::InvalidArgumentError(
+        "ConcreteSharding requires at least 1 device");
+  }
+  if (shard_shapes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("ConcreteSharding shard_shapes size %d exceeds INT_MAX",
+                        shard_shapes.size()));
+  }
+  int num_shards = devices->size();
+  std::shared_ptr<const ConcreteShardingSpec> spec(new ConcreteShardingSpec(
+      num_shards, std::move(shape), std::move(shard_shapes),
+      std::move(index_domains)));
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(spec)));
+}
+
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes,
     std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
-      std::move(devices), memory_kind,
-      ConcreteShardingSpec::Create(std::move(shape), std::move(shard_shapes),
-                                   std::move(index_domains))));
+  absl::StatusOr<std::unique_ptr<ConcreteSharding>> sharding =
+      CreateIfValid(std::move(devices), memory_kind, std::move(shape),
+                    std::move(shard_shapes), std::move(index_domains));
+  CHECK_OK(sharding);
+  return *std::move(sharding);
+}
+
+absl::StatusOr<std::unique_ptr<ConcreteSharding>>
+ConcreteSharding::CreateIfValid(
+    DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+    std::vector<DynamicShape> shard_dynamic_shapes) {
+  if (devices->devices().empty()) {
+    return absl::InvalidArgumentError(
+        "ConcreteSharding requires at least 1 device");
+  }
+  if (shard_dynamic_shapes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteSharding shard_dynamic_shapes size %d exceeds INT_MAX",
+        shard_dynamic_shapes.size()));
+  }
+  int num_shards = devices->size();
+  std::shared_ptr<const ConcreteShardingSpec> spec(new ConcreteShardingSpec(
+      num_shards, std::move(dynamic_shape), std::move(shard_dynamic_shapes)));
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(spec)));
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
-      std::move(devices), memory_kind,
-      ConcreteShardingSpec::Create(std::move(dynamic_shape),
-                                   std::move(shard_dynamic_shapes))));
+  absl::StatusOr<std::unique_ptr<ConcreteSharding>> sharding =
+      CreateIfValid(std::move(devices), memory_kind, std::move(dynamic_shape),
+                    std::move(shard_dynamic_shapes));
+  CHECK_OK(sharding);
+  return *std::move(sharding);
 }
 
 ConcreteSharding::ConcreteSharding(
@@ -316,7 +378,9 @@ ConcreteSharding::ConcreteSharding(
     std::shared_ptr<const ConcreteShardingSpec> sharding_spec)
     : RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, sharding_spec->IsFullyReplicated()),
-      sharding_spec_(std::move(sharding_spec)) {}
+      sharding_spec_(std::move(sharding_spec)) {
+  CHECK_EQ(devices_->size(), sharding_spec_->num_shards());
+}
 
 ShardingSpecRef ConcreteSharding::sharding_spec() const {
   return sharding_spec_;
@@ -499,17 +563,31 @@ void ConcreteSharding::Hash(absl::HashState state) const {
                            *sharding_spec_);
 }
 
+absl::StatusOr<std::unique_ptr<ConcreteEvenSharding>>
+ConcreteEvenSharding::CreateIfValid(DeviceListRef devices,
+                                    MemoryKind memory_kind, Shape shape,
+                                    Shape shard_shape,
+                                    bool is_fully_replicated) {
+  if (devices->devices().empty()) {
+    return absl::InvalidArgumentError(
+        "ConcreteEvenSharding requires at least 1 device");
+  }
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConcreteEvenShardingSpec> spec,
+                   ConcreteEvenShardingSpec::CreateIfValid(
+                       devices->size(), std::move(shape),
+                       std::move(shard_shape), is_fully_replicated));
+  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
+      std::move(devices), memory_kind, std::move(spec)));
+}
+
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
     Shape shard_shape, bool is_fully_replicated) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  int num_shards = devices->size();
-  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
-      std::move(devices), memory_kind,
-      ConcreteEvenShardingSpec::Create(num_shards, std::move(shape),
-                                       std::move(shard_shape),
-                                       is_fully_replicated)));
+  absl::StatusOr<std::unique_ptr<ConcreteEvenSharding>> sharding =
+      CreateIfValid(std::move(devices), memory_kind, std::move(shape),
+                    std::move(shard_shape), is_fully_replicated);
+  CHECK_OK(sharding);
+  return *std::move(sharding);
 }
 
 ConcreteEvenSharding::ConcreteEvenSharding(
@@ -517,7 +595,9 @@ ConcreteEvenSharding::ConcreteEvenSharding(
     std::shared_ptr<const ConcreteEvenShardingSpec> sharding_spec)
     : RTTIExtends<ConcreteEvenSharding, Sharding>(
           std::move(devices), memory_kind, sharding_spec->IsFullyReplicated()),
-      sharding_spec_(std::move(sharding_spec)) {}
+      sharding_spec_(std::move(sharding_spec)) {
+  CHECK_EQ(devices_->size(), sharding_spec_->num_shards());
+}
 
 ShardingSpecRef ConcreteEvenSharding::sharding_spec() const {
   return sharding_spec_;

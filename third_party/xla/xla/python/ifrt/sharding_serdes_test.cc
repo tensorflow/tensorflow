@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
@@ -34,13 +36,16 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_serdes.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 using ShardingSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;
@@ -176,6 +181,52 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
   EXPECT_THAT(out_sharding->IsFullyReplicated(), sharding->IsFullyReplicated());
+}
+
+TEST_P(ShardingSerDesTest, RejectEmptyDeviceListOnDeserialize) {
+  DeviceListRef empty_devices = GetDevices({});
+  {
+    OpaqueShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::OpaqueSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<OpaqueSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
+  {
+    ConcreteShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Shape({0}).ToProto(*proto.mutable_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
+  {
+    ConcreteEvenShardingProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    empty_devices->ToProto(*proto.mutable_devices(), version());
+    Shape({0}).ToProto(*proto.mutable_shape(), version());
+    Shape({0}).ToProto(*proto.mutable_shard_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteEvenSharding");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteEvenSharding>(
+            wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 device")));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(

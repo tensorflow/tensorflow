@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -28,21 +29,21 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 using XlaShardingSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;
@@ -99,6 +100,22 @@ TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Serialization) {
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
               "XLA HloShardingV3 format is not supported for serialization")));
+}
+
+TEST_P(XlaShardingSerDesTest, RejectEmptyDeviceListOnDeserialize) {
+  HloShardingProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  GetDevices({})->ToProto(*proto.mutable_devices(), version());
+  *proto.mutable_xla_op_sharding() = xla::HloSharding::Replicate().ToProto();
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloSharding");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("requires at least 1 device")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

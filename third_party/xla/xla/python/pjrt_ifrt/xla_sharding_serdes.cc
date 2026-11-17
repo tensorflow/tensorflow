@@ -101,8 +101,10 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
     }
     ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
-    return HloSharding::Create(std::move(devices), memory_kind,
-                               std::move(xla_hlo_sharding));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloSharding> sharding,
+                     HloSharding::CreateIfValid(std::move(devices), memory_kind,
+                                                std::move(xla_hlo_sharding)));
+    return sharding;
   }
 
   static char ID;  // NOLINT

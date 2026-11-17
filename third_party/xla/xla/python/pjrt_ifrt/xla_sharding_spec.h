@@ -55,7 +55,13 @@ class XlaCompatibleShardingSpec
 class HloShardingSpec final
     : public RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
  public:
+  // Creates an `HloShardingSpec` wrapper. Returns `InvalidArgumentError` if
+  // `num_shards < 1` or `xla_hlo_sharding` is incompatible with `num_shards`.
+  static absl::StatusOr<std::unique_ptr<HloShardingSpec>> CreateIfValid(
+      int num_shards, xla::HloSharding xla_hlo_sharding);
+
   // Creates an `HloShardingSpec` wrapper.
+  // REQUIRES: `num_shards >= 1`.
   static std::unique_ptr<HloShardingSpec> Create(
       int num_shards, xla::HloSharding xla_hlo_sharding);
 

@@ -16,20 +16,28 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using ShardingSpecSerDesTestParam = std::tuple<SerDesVersion, int>;
 
@@ -58,6 +66,20 @@ TEST_P(ShardingSpecSerDesTest, HloShardingSpecRoundTrip) {
   ASSERT_NE(deserialized_spec, nullptr);
   EXPECT_EQ(deserialized_spec->num_shards(), num_shards());
   EXPECT_EQ(deserialized_spec->xla_hlo_sharding(), xla_hlo_sharding);
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectZeroOrNegativeNumShards) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(0);
+  *proto.mutable_xla_op_sharding() = xla::HloSharding::Replicate().ToProto();
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,7 +31,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/python/ifrt/sharding_spec_serdes.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -117,7 +118,9 @@ class OpaqueShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for OpaqueShardingSpec deserialization"));
     }
-    return OpaqueShardingSpec::Create(proto.num_shards());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueShardingSpec> spec,
+                     OpaqueShardingSpec::CreateIfValid(proto.num_shards()));
+    return spec;
   }
 
   static char ID;  // NOLINT
@@ -146,6 +149,15 @@ class ConcreteShardingSpecSerDes
       return absl::UnimplementedError(
           "Index domains are not yet supported in ConcreteShardingSpec "
           "serialization");
+    }
+    const size_t num_shard_shapes =
+        sharding_spec.has_static_shape()
+            ? sharding_spec.shard_shapes().size()
+            : sharding_spec.shard_dynamic_shapes().size();
+    if (num_shard_shapes != sharding_spec.num_shards()) {
+      return absl::InvalidArgumentError(
+          "ConcreteShardingSpec with partial addressable shard shapes cannot "
+          "be serialized");
     }
     ConcreteShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
@@ -187,8 +199,11 @@ class ConcreteShardingSpecSerDes
         ABSL_ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(shard_shape_proto));
         shard_shapes.push_back(std::move(shard_shape));
       }
-      return ConcreteShardingSpec::Create(std::move(shape),
-                                          std::move(shard_shapes));
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConcreteShardingSpec> spec,
+                       ConcreteShardingSpec::CreateIfValid(
+                           std::move(shape), std::move(shard_shapes),
+                           /*index_domains=*/std::nullopt));
+      return spec;
     }
     if (!proto.has_dynamic_shape()) {
       return absl::InvalidArgumentError(
@@ -203,8 +218,11 @@ class ConcreteShardingSpecSerDes
                        DynamicShape::FromProto(shard_dynamic_shape_proto));
       shard_dynamic_shapes.push_back(std::move(dynamic_shape));
     }
-    return ConcreteShardingSpec::Create(std::move(dynamic_shape),
-                                        std::move(shard_dynamic_shapes));
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<ConcreteShardingSpec> spec,
+        ConcreteShardingSpec::CreateIfValid(std::move(dynamic_shape),
+                                            std::move(shard_dynamic_shapes)));
+    return spec;
   }
 
   static char ID;  // NOLINT
@@ -254,9 +272,11 @@ class ConcreteEvenShardingSpecSerDes
     }
     ABSL_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     ABSL_ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(proto.shard_shape()));
-    return ConcreteEvenShardingSpec::Create(
-        proto.num_shards(), std::move(shape), std::move(shard_shape),
-        proto.is_fully_replicated());
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ConcreteEvenShardingSpec> spec,
+                     ConcreteEvenShardingSpec::CreateIfValid(
+                         proto.num_shards(), std::move(shape),
+                         std::move(shard_shape), proto.is_fully_replicated()));
+    return spec;
   }
 
   static char ID;  // NOLINT

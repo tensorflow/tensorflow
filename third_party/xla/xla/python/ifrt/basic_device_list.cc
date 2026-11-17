@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/python/ifrt/basic_device_list.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -25,6 +27,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -52,7 +55,10 @@ DeviceListRef BasicDeviceList::Create(
 }
 
 BasicDeviceList::BasicDeviceList(Devices devices)
-    : devices_(std::move(devices)), hash_(kUnsetHash) {}
+    : devices_(std::move(devices)), hash_(kUnsetHash) {
+  CHECK_LE(devices_.size(),
+           static_cast<size_t>(std::numeric_limits<int>::max()));
+}
 
 DeviceList* BasicDeviceList::AddressableDeviceList() const {
   absl::call_once(addressable_device_list_cache_.once_flag, [this] {

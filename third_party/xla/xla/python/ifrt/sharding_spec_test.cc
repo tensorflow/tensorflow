@@ -136,6 +136,17 @@ TEST_P(SingleDeviceShardingSpecTest, Disassemble) {
   }
 }
 
+TEST_P(OpaqueShardingSpecTest, CreateWithInvalidNumShards) {
+  EXPECT_THAT(OpaqueShardingSpec::CreateIfValid(0),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_THAT(OpaqueShardingSpec::CreateIfValid(-1),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_DEATH((void)OpaqueShardingSpec::Create(0),
+               "requires at least 1 shard");
+}
+
 TEST_P(OpaqueShardingSpecTest, IsFullyReplicated) {
   ShardingSpecRef sharding = OpaqueShardingSpec::Create(2);
   EXPECT_FALSE(sharding->IsFullyReplicated());
@@ -213,6 +224,17 @@ TEST_P(OpaqueShardingSpecTest, Hash) {
       *OpaqueShardingSpec::Create(2),
       *OpaqueShardingSpec::Create(3),
   }));
+}
+
+TEST_P(ConcreteShardingSpecTest, CreateWithEmptyShardShapes) {
+  EXPECT_THAT(
+      ConcreteShardingSpec::CreateIfValid(Shape({0}), /*shard_shapes=*/{},
+                                          /*index_domains=*/std::nullopt),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("requires at least 1 shard shape")));
+  EXPECT_DEATH((void)ConcreteShardingSpec::Create(Shape({0}),
+                                                  /*shard_shapes=*/{}),
+               "requires at least 1 shard shape");
 }
 
 TEST_P(ConcreteShardingSpecTest, IsFullyReplicated) {
@@ -455,6 +477,18 @@ TEST_P(ConcreteShardingSpecTest, Hash) {
       *ConcreteShardingSpec::Create(dynamic_shape,
                                     {dynamic_shape, dynamic_shape}),
   }));
+}
+
+TEST_P(ConcreteEvenShardingSpecTest, CreateWithInvalidNumShards) {
+  EXPECT_THAT(ConcreteEvenShardingSpec::CreateIfValid(
+                  /*num_shards=*/0, Shape({0}), Shape({0}),
+                  /*is_fully_replicated=*/false),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires at least 1 shard")));
+  EXPECT_DEATH((void)ConcreteEvenShardingSpec::Create(
+                   /*num_shards=*/-2, Shape({0}), Shape({0}),
+                   /*is_fully_replicated=*/false),
+               "requires at least 1 shard");
 }
 
 TEST_P(ConcreteEvenShardingSpecTest, IsFullyReplicated) {

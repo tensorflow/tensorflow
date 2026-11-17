@@ -20,19 +20,28 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_spec.h"
+#include "xla/python/ifrt/sharding_spec_serdes.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 using ShardingSpecSerDesTestParam = std::tuple<SerDesVersion, int>;
 
@@ -138,6 +147,78 @@ TEST_P(ShardingSpecSerDesTest, ConcreteEvenShardingSpecRoundTrip) {
   EXPECT_THAT(out_sharding_spec->shard_shape(), sharding_spec->shard_shape());
   EXPECT_THAT(out_sharding_spec->IsFullyReplicated(),
               sharding_spec->IsFullyReplicated());
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectZeroOrNegativeNumShards) {
+  {
+    OpaqueShardingSpecProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.set_num_shards(0);
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::OpaqueShardingSpec");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(Deserialize<OpaqueShardingSpec>(wrapper, /*options=*/nullptr),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("requires at least 1 shard")));
+  }
+  {
+    ConcreteShardingSpecProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    Shape({0}).ToProto(*proto.mutable_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteShardingSpec");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(Deserialize<ConcreteShardingSpec>(wrapper, /*options=*/nullptr),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("requires at least 1 shard shape")));
+  }
+  {
+    ConcreteEvenShardingSpecProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.set_num_shards(-1);
+    Shape({10}).ToProto(*proto.mutable_shape(), version());
+    Shape({10}).ToProto(*proto.mutable_shard_shape(), version());
+    Serialized wrapper;
+    wrapper.set_type_name("xla::ifrt::ConcreteEvenShardingSpec");
+    wrapper.set_data(proto.SerializeAsString());
+    EXPECT_THAT(
+        Deserialize<ConcreteEvenShardingSpec>(wrapper, /*options=*/nullptr),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("requires at least 1 shard")));
+  }
+}
+
+TEST_P(ShardingSpecSerDesTest,
+       RejectPartialAddressableConcreteShardingSpecSerialization) {
+  test_util::DeviceTestFixture fixture(test_util::DeviceTestParam{
+      /*num_devices=*/6, /*num_addressable_devices=*/4});
+  DeviceListRef devices = fixture.GetDevices({0, 1, 2, 3, 4, 5});
+  {
+    std::unique_ptr<ConcreteSharding> sharding = ConcreteSharding::Create(
+        devices, MemoryKind(), /*shape=*/Shape({20}),
+        /*shard_shapes=*/{Shape({3}), Shape({7}), Shape({3}), Shape({7})});
+    EXPECT_THAT(Serialize(*sharding->sharding_spec(),
+                          std::make_unique<SerializeOptions>(version())),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("partial addressable shard shapes cannot be "
+                                   "serialized")));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        DynamicShape dynamic_shape,
+        DynamicShape::Create(Shape({20}), BoundedDynamicShapeTag({true})));
+    ASSERT_OK_AND_ASSIGN(
+        DynamicShape shard_dynamic_shape,
+        DynamicShape::Create(Shape({5}), BoundedDynamicShapeTag({true})));
+    std::unique_ptr<ConcreteSharding> sharding = ConcreteSharding::Create(
+        devices, MemoryKind(), dynamic_shape,
+        std::vector<DynamicShape>(4, shard_dynamic_shape));
+    EXPECT_THAT(Serialize(*sharding->sharding_spec(),
+                          std::make_unique<SerializeOptions>(version())),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("partial addressable shard shapes cannot be "
+                                   "serialized")));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(

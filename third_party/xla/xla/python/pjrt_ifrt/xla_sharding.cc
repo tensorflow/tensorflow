@@ -46,22 +46,35 @@ namespace ifrt {
 char XlaCompatibleSharding::ID = 0;  // NOLINT
 char HloSharding::ID = 0;            // NOLINT
 
+absl::StatusOr<std::unique_ptr<HloSharding>> HloSharding::CreateIfValid(
+    DeviceListRef devices, MemoryKind memory_kind,
+    xla::HloSharding xla_hlo_sharding) {
+  if (devices->devices().empty()) {
+    return absl::InvalidArgumentError("HloSharding requires at least 1 device");
+  }
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloShardingSpec> spec,
+                   HloShardingSpec::CreateIfValid(devices->size(),
+                                                  std::move(xla_hlo_sharding)));
+  return std::unique_ptr<HloSharding>(
+      new HloSharding(std::move(devices), memory_kind, std::move(spec)));
+}
+
 std::unique_ptr<HloSharding> HloSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind,
     xla::HloSharding xla_hlo_sharding) {
-  CHECK(devices != nullptr);
-  CHECK(!devices->devices().empty());
-  int num_shards = devices->size();
-  return std::unique_ptr<HloSharding>(new HloSharding(
-      std::move(devices), memory_kind,
-      HloShardingSpec::Create(num_shards, std::move(xla_hlo_sharding))));
+  absl::StatusOr<std::unique_ptr<HloSharding>> sharding = CreateIfValid(
+      std::move(devices), memory_kind, std::move(xla_hlo_sharding));
+  CHECK_OK(sharding);
+  return *std::move(sharding);
 }
 
 HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          std::shared_ptr<const HloShardingSpec> sharding_spec)
     : RTTIExtends<HloSharding, XlaCompatibleSharding>(
           std::move(devices), memory_kind, sharding_spec->IsFullyReplicated()),
-      sharding_spec_(std::move(sharding_spec)) {}
+      sharding_spec_(std::move(sharding_spec)) {
+  CHECK_EQ(devices_->size(), sharding_spec_->num_shards());
+}
 
 ShardingSpecRef HloSharding::sharding_spec() const { return sharding_spec_; }
 
