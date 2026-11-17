@@ -90,12 +90,15 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::IsFalse;
+using ::testing::Not;
 
 static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
                               ffi::Result<ffi::AnyBuffer>) {
@@ -2473,6 +2476,90 @@ ENTRY main {
   EXPECT_EQ(override_pool.schedule_count(), override_count_before);
   EXPECT_EQ(client_pool.schedule_count(), client_count_before);
   EXPECT_FLOAT_EQ(single_literal->Get<float>({0}), 2.0f);
+}
+
+TEST(PjRtCpuClientTest, ZeroParameterExecutableHasNonEmptyFingerprint) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule ZeroParameterIota
+ENTRY main {
+  ROOT out = s32[8] iota(), iota_dimension=0
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint,
+                       executable->FingerprintExecutable());
+  EXPECT_THAT(fingerprint, Not(IsEmpty()));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> deserialized,
+      client->LoadSerializedExecutable(serialized, /*options=*/std::nullopt,
+                                       LoadOptions()));
+  EXPECT_THAT(deserialized->FingerprintExecutable(), IsOkAndHolds(fingerprint));
+}
+
+TEST(PjRtCpuClientTest,
+     ExecutableFingerprintIsMetadataIndependentAcrossSerialization) {
+  // `dot` stays in `ENTRY main` (`stack_frame_id=1`) while `add` and `multiply`
+  // (`stack_frame_id=2`) are fused into a callee subcomputation that serializes
+  // before `ENTRY main`, causing `HloModule::CanonicalizeStackFrameIds` to
+  // renumber stack frame IDs upon deserialization.
+  static constexpr char kProgram[] = R"hlo(
+HloModule StackFrameSerialization
+
+FileNames
+1 "test.py"
+
+FunctionNames
+1 "matmul"
+2 "scale"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=10 end_line=10 column=1 end_column=10}
+2 {file_name_id=1 function_name_id=2 line=20 end_line=20 column=1 end_column=10}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=1}
+
+ENTRY main {
+  p0 = f32[4,4] parameter(0)
+  p1 = f32[4,4] parameter(1)
+  dot = f32[4,4] dot(p0, p0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="matmul" stack_frame_id=1}
+  sum = f32[4,4] add(p1, p1), metadata={op_name="scale" stack_frame_id=2}
+  scaled = f32[4,4] multiply(sum, p1), metadata={op_name="scale" stack_frame_id=2}
+  ROOT out = (f32[4,4], f32[4,4]) tuple(dot, scaled)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(std::string compiled_fingerprint,
+                       executable->FingerprintExecutable());
+  EXPECT_THAT(compiled_fingerprint, Not(IsEmpty()));
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> deserialized,
+      client->LoadSerializedExecutable(serialized, /*options=*/std::nullopt,
+                                       LoadOptions()));
+  EXPECT_THAT(deserialized->FingerprintExecutable(),
+              IsOkAndHolds(compiled_fingerprint));
 }
 
 }  // namespace
