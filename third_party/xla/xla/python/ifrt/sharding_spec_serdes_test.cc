@@ -221,6 +221,24 @@ TEST_P(ShardingSpecSerDesTest,
   }
 }
 
+TEST_P(ShardingSpecSerDesTest,
+       RejectFullyReplicatedConcreteEvenShardingSpecWithMismatchedShardShape) {
+  ConcreteEvenShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  Shape({10 * num_shards(), 20}).ToProto(*proto.mutable_shape(), version());
+  Shape({10, 20}).ToProto(*proto.mutable_shard_shape(), version());
+  proto.set_is_fully_replicated(true);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::ConcreteEvenShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<ConcreteEvenShardingSpec>(wrapper, /*options=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("requires shape == shard_shape")));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumShards, ShardingSpecSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),

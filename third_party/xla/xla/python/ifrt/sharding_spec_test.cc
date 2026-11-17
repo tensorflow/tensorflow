@@ -491,11 +491,24 @@ TEST_P(ConcreteEvenShardingSpecTest, CreateWithInvalidNumShards) {
                "requires at least 1 shard");
 }
 
+TEST_P(ConcreteEvenShardingSpecTest,
+       CreateFailsWhenFullyReplicatedWithMismatchedShardShape) {
+  EXPECT_THAT(ConcreteEvenShardingSpec::CreateIfValid(
+                  /*num_shards=*/2, Shape({30}), Shape({15}),
+                  /*is_fully_replicated=*/true),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires shape == shard_shape")));
+  EXPECT_DEATH((void)ConcreteEvenShardingSpec::Create(
+                   /*num_shards=*/2, Shape({30}), Shape({15}),
+                   /*is_fully_replicated=*/true),
+               "requires shape == shard_shape");
+}
+
 TEST_P(ConcreteEvenShardingSpecTest, IsFullyReplicated) {
   {
     // Fully replicated.
     ShardingSpecRef sharding = ConcreteEvenShardingSpec::Create(
-        /*num_shards=*/2, Shape({30}), Shape({15}),
+        /*num_shards=*/2, Shape({30}), Shape({30}),
         /*is_fully_replicated=*/true);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
@@ -511,7 +524,7 @@ TEST_P(ConcreteEvenShardingSpecTest, IsFullyReplicated) {
 TEST_P(ConcreteEvenShardingSpecTest, GetShardShape) {
   ShardingSpecRef sharding = ConcreteEvenShardingSpec::Create(
       /*num_shards=*/2, Shape({30}), Shape({15}),
-      /*is_fully_replicated=*/true);
+      /*is_fully_replicated=*/false);
   EXPECT_THAT(sharding->GetShardShape(Shape({30})),
               absl_testing::IsOkAndHolds(Shape({15})));
   EXPECT_THAT(
@@ -526,42 +539,45 @@ TEST_P(ConcreteEvenShardingSpecTest, GetShardShape) {
 TEST_P(ConcreteEvenShardingSpecTest, HasSamePartitioning) {
   ShardingSpecRef sharding0 = ConcreteEvenShardingSpec::Create(
       /*num_shards=*/2, Shape({30}), Shape({15}),
-      /*is_fully_replicated=*/true);
+      /*is_fully_replicated=*/false);
 
   EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
   {
     ShardingSpecRef sharding1 = ConcreteEvenShardingSpec::Create(
         /*num_shards=*/2, Shape({30}), Shape({15}),
-        /*is_fully_replicated=*/true);
+        /*is_fully_replicated=*/false);
     EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
   }
   // Different number of shards.
   {
     ShardingSpecRef sharding1 = ConcreteEvenShardingSpec::Create(
         /*num_shards=*/3, Shape({30}), Shape({15}),
-        /*is_fully_replicated=*/true);
+        /*is_fully_replicated=*/false);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
   // Difference shape.
   {
     ShardingSpecRef sharding1 = ConcreteEvenShardingSpec::Create(
         /*num_shards=*/2, Shape({45}), Shape({15}),
-        /*is_fully_replicated=*/true);
+        /*is_fully_replicated=*/false);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
   // Different shard shape.
   {
     ShardingSpecRef sharding1 = ConcreteEvenShardingSpec::Create(
         /*num_shards=*/2, Shape({30}), Shape({10}),
-        /*is_fully_replicated=*/true);
+        /*is_fully_replicated=*/false);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
   }
   // Different is_fully_replicated.
   {
-    ShardingSpecRef sharding1 = ConcreteEvenShardingSpec::Create(
-        /*num_shards=*/2, Shape({30}), Shape({15}),
+    ShardingSpecRef replicated = ConcreteEvenShardingSpec::Create(
+        /*num_shards=*/2, Shape({30}), Shape({30}),
+        /*is_fully_replicated=*/true);
+    ShardingSpecRef non_replicated = ConcreteEvenShardingSpec::Create(
+        /*num_shards=*/2, Shape({30}), Shape({30}),
         /*is_fully_replicated=*/false);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+    EXPECT_FALSE(replicated->HasSamePartitioning(*non_replicated));
   }
 }
 

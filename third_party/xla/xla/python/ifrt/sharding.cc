@@ -677,8 +677,7 @@ ConcreteEvenSharding::Disassemble(
 absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
-  if (IsFullyReplicated() && this->shape() == shard_shape() &&
-      this->shape() == shape) {
+  if (IsFullyReplicated() && this->shape() == shape) {
     std::vector<IndexDomain> result;
     if (single_device_shard_semantics ==
         SingleDeviceShardSemantics::kAllShards) {

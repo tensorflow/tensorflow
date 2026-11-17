@@ -165,7 +165,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   auto sharding = ConcreteEvenSharding::Create(
       GetDevices({0, 1}), MemoryKind("abc"),
       /*shape=*/Shape({10, 20}),
-      /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
+      /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/false);
 
   auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
@@ -227,6 +227,25 @@ TEST_P(ShardingSerDesTest, RejectEmptyDeviceListOnDeserialize) {
         StatusIs(absl::StatusCode::kInvalidArgument,
                  HasSubstr("requires at least 1 device")));
   }
+}
+
+TEST_P(ShardingSerDesTest,
+       RejectFullyReplicatedConcreteEvenShardingWithMismatchedShardShape) {
+  ConcreteEvenShardingProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+  Shape({10, 20}).ToProto(*proto.mutable_shape(), version());
+  Shape({5, 20}).ToProto(*proto.mutable_shard_shape(), version());
+  proto.set_is_fully_replicated(true);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::ConcreteEvenSharding");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<ConcreteEvenSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("requires shape == shard_shape")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

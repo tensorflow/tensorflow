@@ -451,7 +451,8 @@ class ConcreteEvenShardingSpec
     : public RTTIExtends<ConcreteEvenShardingSpec, ShardingSpec> {
  public:
   // Creates a concrete even sharding spec. Returns `InvalidArgumentError` if
-  // `num_shards < 1`.
+  // `num_shards < 1` or if `is_fully_replicated` is true and
+  // `shape != shard_shape`.
   static absl::StatusOr<std::unique_ptr<ConcreteEvenShardingSpec>>
   CreateIfValid(int num_shards, Shape shape, Shape shard_shape,
                 bool is_fully_replicated);
@@ -459,7 +460,8 @@ class ConcreteEvenShardingSpec
   // Creates a concrete even sharding spec.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
   // callers are updated to provide it explicitly.
-  // REQUIRES: `num_shards >= 1`.
+  // REQUIRES: `num_shards >= 1`, and `!is_fully_replicated || shape ==
+  // shard_shape`.
   static std::unique_ptr<ConcreteEvenShardingSpec> Create(
       int num_shards, Shape shape, Shape shard_shape,
       bool is_fully_replicated = false);

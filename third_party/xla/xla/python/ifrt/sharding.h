@@ -472,7 +472,8 @@ class ConcreteEvenSharding
     : public RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
   // Creates a concrete even sharding. Returns `InvalidArgumentError` if
-  // `devices` is empty.
+  // `devices` is empty or if `is_fully_replicated` is true and
+  // `shape != shard_shape`.
   static absl::StatusOr<std::unique_ptr<ConcreteEvenSharding>> CreateIfValid(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       Shape shard_shape, bool is_fully_replicated);
@@ -480,7 +481,8 @@ class ConcreteEvenSharding
   // Creates a concrete even sharding.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
   // callers are updated to provide it explicitly.
-  // REQUIRES: !devices->empty()
+  // REQUIRES: `!devices->empty()`, and `!is_fully_replicated || shape ==
+  // shard_shape`.
   static std::unique_ptr<ConcreteEvenSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
       Shape shard_shape, bool is_fully_replicated = false);

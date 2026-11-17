@@ -442,9 +442,10 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
   }
 
   ABSL_ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
-  ShardingRef sharding = ConcreteEvenSharding::Create(
-      std::move(device_list), MemoryKind(), Shape({2, 1}), Shape({1}),
-      is_fully_replicated);
+  const Shape shape = is_fully_replicated ? Shape({1}) : Shape({2, 1});
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(), shape,
+                                   Shape({1}), is_fully_replicated);
 
   std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
@@ -454,8 +455,8 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
   }
 
   return client->AssembleArrayFromSingleDeviceArrays(
-      DType(DType::kString), Shape({2, 1}), std::move(sharding),
-      absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+      DType(DType::kString), shape, std::move(sharding), absl::MakeSpan(arrays),
+      ArrayCopySemantics::kAlwaysCopy,
       xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
 }
 

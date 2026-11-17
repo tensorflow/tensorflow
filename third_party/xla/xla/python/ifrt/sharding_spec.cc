@@ -606,6 +606,12 @@ ConcreteEvenShardingSpec::CreateIfValid(int num_shards, Shape shape,
         "ConcreteEvenShardingSpec requires at least 1 shard, but got %d",
         num_shards));
   }
+  if (is_fully_replicated && shape != shard_shape) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "ConcreteEvenShardingSpec with is_fully_replicated=true requires "
+        "shape == shard_shape, but got shape=%v vs. shard_shape=%v",
+        shape, shard_shape));
+  }
   return std::unique_ptr<ConcreteEvenShardingSpec>(new ConcreteEvenShardingSpec(
       num_shards, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
@@ -712,8 +718,7 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenShardingSpec::IndexDomains(
 
 absl::StatusOr<absl::InlinedVector<ShardingSpec::IndexDomainAndShardIndices, 1>>
 ConcreteEvenShardingSpec::UniqueIndexDomains(const Shape& shape) const {
-  if (!IsFullyReplicated() || this->shape() != shard_shape() ||
-      this->shape() != shape) {
+  if (!IsFullyReplicated() || this->shape() != shape) {
     return absl::InvalidArgumentError(
         "ConcreteEvenShardingSpec does not have index domain information");
   }
@@ -733,7 +738,7 @@ ConcreteEvenShardingSpec::UniqueIndexDomains(const Shape& shape) const {
 
 absl::StatusOr<absl::Span<const int>>
 ConcreteEvenShardingSpec::ShardToUniqueIndexDomainIndex() const {
-  if (!IsFullyReplicated() || this->shape() != shard_shape()) {
+  if (!IsFullyReplicated()) {
     return absl::InvalidArgumentError(
         "ConcreteEvenShardingSpec does not have index domain information");
   }

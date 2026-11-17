@@ -776,13 +776,27 @@ TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
                "");
 }
 
+TEST_P(ConcreteEvenShardingTest,
+       CreateFailsWhenFullyReplicatedWithMismatchedShardShape) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  EXPECT_THAT(ConcreteEvenSharding::CreateIfValid(device_list, MemoryKind(),
+                                                  Shape({30}), Shape({15}),
+                                                  /*is_fully_replicated=*/true),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires shape == shard_shape")));
+  EXPECT_DEATH((void)ConcreteEvenSharding::Create(device_list, MemoryKind(),
+                                                  Shape({30}), Shape({15}),
+                                                  /*is_fully_replicated=*/true),
+               "requires shape == shard_shape");
+}
+
 TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1});
   {
     // Fully replicated.
     ShardingRef sharding =
         ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
-                                     Shape({15}), /*is_fully_replicated=*/true);
+                                     Shape({30}), /*is_fully_replicated=*/true);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
   {
@@ -796,9 +810,9 @@ TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
 
 TEST_P(ConcreteEvenShardingTest, GetShardShape) {
   auto device_list = GetDevices({0, 1});
-  ShardingRef sharding =
-      ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
-                                   Shape({15}), /*is_fully_replicated=*/true);
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), Shape({30}), Shape({15}),
+      /*is_fully_replicated=*/false);
   EXPECT_THAT(sharding->GetShardShape(Shape({30})), IsOkAndHolds(Shape({15})));
   EXPECT_THAT(
       sharding->GetShardShape(Shape({45})),
@@ -809,62 +823,64 @@ TEST_P(ConcreteEvenShardingTest, GetShardShape) {
 
 TEST_P(ConcreteEvenShardingTest, HasSamePartitioning) {
   auto device_list0 = GetDevices({0, 1});
-  ShardingRef sharding0 =
-      ConcreteEvenSharding::Create(device_list0, MemoryKind(), Shape({30}),
-                                   Shape({15}), /*is_fully_replicated=*/true);
+  ShardingRef sharding0 = ConcreteEvenSharding::Create(
+      device_list0, MemoryKind(), Shape({30}), Shape({15}),
+      /*is_fully_replicated=*/false);
 
   EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
-  {
-    auto device_list1 = GetDevices({2, 3});
-    ShardingRef sharding1 =
-        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
-                                     Shape({15}), /*is_fully_replicated=*/true);
-    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Different number of shards.
-  {
-    auto device_list1 = GetDevices({2, 3, 4});
-    ShardingRef sharding1 =
-        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
-                                     Shape({15}), /*is_fully_replicated=*/true);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Difference shape.
-  {
-    auto device_list1 = GetDevices({2, 3});
-    ShardingRef sharding1 =
-        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({45}),
-                                     Shape({15}), /*is_fully_replicated=*/true);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Different shard shape.
-  {
-    auto device_list1 = GetDevices({2, 3});
-    ShardingRef sharding1 =
-        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
-                                     Shape({10}), /*is_fully_replicated=*/true);
-    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
-  }
-  // Different is_fully_replicated.
   {
     auto device_list1 = GetDevices({2, 3});
     ShardingRef sharding1 = ConcreteEvenSharding::Create(
         device_list1, MemoryKind(), Shape({30}), Shape({15}),
         /*is_fully_replicated=*/false);
+    EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different number of shards.
+  {
+    auto device_list1 = GetDevices({2, 3, 4});
+    ShardingRef sharding1 = ConcreteEvenSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
     EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Difference shape.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    ShardingRef sharding1 = ConcreteEvenSharding::Create(
+        device_list1, MemoryKind(), Shape({45}), Shape({15}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different shard shape.
+  {
+    auto device_list1 = GetDevices({2, 3});
+    ShardingRef sharding1 = ConcreteEvenSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), Shape({10}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(sharding0->HasSamePartitioning(*sharding1));
+  }
+  // Different is_fully_replicated.
+  {
+    ShardingRef replicated = ConcreteEvenSharding::Create(
+        device_list0, MemoryKind(), Shape({30}), Shape({30}),
+        /*is_fully_replicated=*/true);
+    ShardingRef non_replicated = ConcreteEvenSharding::Create(
+        GetDevices({2, 3}), MemoryKind(), Shape({30}), Shape({30}),
+        /*is_fully_replicated=*/false);
+    EXPECT_FALSE(replicated->HasSamePartitioning(*non_replicated));
   }
 }
 
 TEST_P(ConcreteEvenShardingTest, WithDeviceAssignment) {
   auto device_list0 = GetDevices({0, 1});
-  ShardingRef sharding0 =
-      ConcreteEvenSharding::Create(device_list0, MemoryKind(), Shape({30}),
-                                   Shape({15}), /*is_fully_replicated=*/true);
+  ShardingRef sharding0 = ConcreteEvenSharding::Create(
+      device_list0, MemoryKind(), Shape({30}), Shape({15}),
+      /*is_fully_replicated=*/false);
   {
     auto device_list1 = GetDevices({2, 3});
-    ShardingRef sharding1 =
-        ConcreteEvenSharding::Create(device_list1, MemoryKind(), Shape({30}),
-                                     Shape({15}), /*is_fully_replicated=*/true);
+    ShardingRef sharding1 = ConcreteEvenSharding::Create(
+        device_list1, MemoryKind(), Shape({30}), Shape({15}),
+        /*is_fully_replicated=*/false);
     ASSERT_OK_AND_ASSIGN(auto new_sharding, sharding0->WithDeviceAssignment(
                                                 device_list1,
                                                 /*memory_kind=*/std::nullopt));
