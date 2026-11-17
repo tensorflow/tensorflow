@@ -145,12 +145,16 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
       auto& [addressable_shard_indices, host_buffer] = spec.buffers.front();
       ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
+      LayoutRef layout;
+      if (spec.array_spec.layout != nullptr) {
+        layout = PjRtLayout::Create(std::move(spec.array_spec.layout));
+      }
       ABSL_ASSIGN_OR_RETURN(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
               host_buffer.byte_strides, std::move(spec.array_spec.sharding),
-              /*layout=*/nullptr, semantics, std::move(host_buffer.on_done)));
+              std::move(layout), semantics, std::move(host_buffer.on_done)));
       arrays.push_back(std::move(array));
       continue;
     }
