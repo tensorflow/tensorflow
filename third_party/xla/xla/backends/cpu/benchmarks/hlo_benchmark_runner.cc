@@ -181,8 +181,9 @@ absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
     ABSL_ASSIGN_OR_RETURN(auto* topology, client->GetTopologyDescription());
-    auto* cpu_raw_client = absl::down_cast<PjRtCpuRawClient*>(
-        absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+    auto* cpu_raw_client = absl::down_cast<CommonPjRtClient*>(client.get())
+                               ->raw_client()
+                               ->down_cast<PjRtCpuRawClient>();
     ABSL_ASSIGN_OR_RETURN(
         auto pjrt_executable,
         cpu_raw_client->CompileAheadOfTime(
