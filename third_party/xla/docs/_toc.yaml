@@ -131,6 +131,16 @@ toc:
     path: /xla/tpu_on_device_debugging/hierarchical_progress_tracker
   - title: File a support case
     path: /xla/tpu_on_device_debugging/file_support_case
+  # TPU debugging data non-determinism sub-section
+  - heading: TPU debugging data non-determinism
+  - title: Debugging data non-determinism
+    path: /xla/tpu_data_non_determinism/overview
+  - title: XLA SDC Checker (XSC)
+    path: /xla/tpu_data_non_determinism/xsc
+  - title: Debugging non-determinism with XSC
+    path: /xla/tpu_data_non_determinism/xsc_debug_nondeterminism
+  - title: Debugging NaN/Inf with XSC
+    path: /xla/tpu_data_non_determinism/xsc_debug_nans
   # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
