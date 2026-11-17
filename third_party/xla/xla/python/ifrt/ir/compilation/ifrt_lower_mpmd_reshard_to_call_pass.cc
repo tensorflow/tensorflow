@@ -149,9 +149,8 @@ class IfrtLowerMpmdReshardToCallPass
 
       // Replace the ReshardOp with a CallOp.
       builder.setInsertionPoint(reshard_op);
-      mlir::SymbolRefAttr reshard_func_symbol = mlir::SymbolRefAttr::get(
-          reshard_module_op.getSymNameAttr(),
-          mlir::SymbolRefAttr::get(GetMainFunction(reshard_module_op)));
+      mlir::SymbolRefAttr reshard_func_symbol = MakeOutlinedCalleeSymbolRef(
+          reshard_module_op, GetMainFunction(reshard_module_op));
       llvm::SmallVector<int32_t> donated_input_indices;
       if (reshard_op.getDonated()) {
         donated_input_indices.resize(reshard_op.getInputs().size());

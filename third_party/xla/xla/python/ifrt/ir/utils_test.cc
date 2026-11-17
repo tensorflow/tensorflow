@@ -33,9 +33,12 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
 
 namespace xla {
@@ -264,6 +267,102 @@ module {
   EXPECT_TRUE(arr_user_layout.HasSameLayout(arr_same_user_layout));
   EXPECT_FALSE(arr_user_layout.HasSameLayout(arr_other_user_layout));
 }
+
+TEST(UtilsTest, OutlinedAtomProgramModuleHelpers) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+!arr = !ifrt.array<tensor<2x2xi32>,
+                   #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+module @root {
+  func.func private @flat_callee(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %a : tensor<2x2xi32>
+  }
+  module @outlined_mod <sym_visibility = "private"> {
+    func.func @main(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      return %a : tensor<2x2xi32>
+    }
+  }
+  module @outer_mod <sym_visibility = "private"> {
+    module @inner_mod {
+      func.func @main(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+        return %a : tensor<2x2xi32>
+      }
+    }
+  }
+  func.func @main(%x: !arr) attributes {ifrt.function} {
+    %0, %c0 = ifrt.Call @flat_callee(%x) on devices [0, 1] : (!arr) -> !arr
+    %1, %c1 = ifrt.Call @outlined_mod::@main(%x) on devices [0, 1]
+        : (!arr) -> !arr
+    %2, %c2 = ifrt.Call @outer_mod::@inner_mod::@main(%x) on devices [0, 1]
+        : (!arr) -> !arr
+    return
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  mlir::func::FuncOp main_func = GetMainFunction(*module);
+  llvm::SmallVector<CallOp> calls(main_func.getOps<CallOp>());
+  ASSERT_EQ(calls.size(), 3u);
+
+  mlir::func::FuncOp flat_callee =
+      module->lookupSymbol<mlir::func::FuncOp>("flat_callee");
+  mlir::ModuleOp outlined_mod =
+      module->lookupSymbol<mlir::ModuleOp>("outlined_mod");
+  mlir::ModuleOp outer_mod = module->lookupSymbol<mlir::ModuleOp>("outer_mod");
+  ASSERT_NE(flat_callee, nullptr);
+  ASSERT_NE(outlined_mod, nullptr);
+  ASSERT_NE(outer_mod, nullptr);
+  mlir::ModuleOp inner_mod =
+      outer_mod.lookupSymbol<mlir::ModuleOp>("inner_mod");
+  ASSERT_NE(inner_mod, nullptr);
+  mlir::func::FuncOp outlined_main = GetMainFunction(outlined_mod);
+  mlir::func::FuncOp inner_main = GetMainFunction(inner_mod);
+
+  EXPECT_EQ(MakeOutlinedCalleeSymbolRef(outlined_mod, outlined_main),
+            calls[1].getCalleeAttr());
+  EXPECT_EQ(GetCalleeRootSymbolOp(flat_callee, *module),
+            flat_callee.getOperation());
+  EXPECT_EQ(GetCalleeRootSymbolOp(outlined_main, *module),
+            outlined_mod.getOperation());
+  EXPECT_EQ(GetCalleeRootSymbolOp(inner_main, *module), nullptr);
+
+  mlir::SymbolTableCollection symbol_table;
+  {
+    mlir::BaseScopedDiagnosticHandler diag(&context);
+    EXPECT_TRUE(
+        mlir::failed(GetOutlinedAtomProgramModule(calls[0], symbol_table)));
+    EXPECT_THAT(diag.ConsumeStatus(),
+                StatusIs(absl::StatusCode::kUnknown,
+                         HasSubstr("requires callee outlined")));
+  }
+  {
+    mlir::BaseScopedDiagnosticHandler diag(&context);
+    EXPECT_TRUE(
+        mlir::failed(GetOutlinedAtomProgramModule(calls[2], symbol_table)));
+    EXPECT_THAT(diag.ConsumeStatus(),
+                StatusIs(absl::StatusCode::kUnknown,
+                         HasSubstr("requires callee outlined")));
+  }
+
+  mlir::FailureOr<mlir::ModuleOp> resolved_mod =
+      GetOutlinedAtomProgramModule(calls[1], symbol_table);
+  ASSERT_TRUE(mlir::succeeded(resolved_mod));
+  EXPECT_EQ(*resolved_mod, outlined_mod);
+
+  ClonedAtomProgramModule cloned =
+      CloneOutlinedAtomProgramModule(outlined_mod, symbol_table);
+  ASSERT_NE(cloned.module, nullptr);
+  ASSERT_NE(cloned.main_func, nullptr);
+  EXPECT_NE(cloned.module, outlined_mod);
+  EXPECT_EQ(cloned.module->getPrevNode(), outlined_mod.getOperation());
+  EXPECT_EQ(mlir::SymbolTable::getSymbolVisibility(cloned.module),
+            mlir::SymbolTable::Visibility::Private);
+  EXPECT_EQ(cloned.callee_ref,
+            MakeOutlinedCalleeSymbolRef(cloned.module, cloned.main_func));
+}
+
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

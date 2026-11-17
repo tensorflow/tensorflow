@@ -17,9 +17,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -126,21 +126,15 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     // one type.
     if (new_module_type) {
       if (callee_module_type_count[call_op.getCallee()].size() > 1) {
-        mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-        auto callee_module =
-            llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-        mlir::ModuleOp cloned_module = callee_module.clone();
-        mlir::func::FuncOp cloned_callee = GetMainFunction(cloned_module);
-        // Insert new cloned atom program module in the SymbolTable.
-        symbol_table
-            .getSymbolTable(
-                callee_module->getParentWithTrait<mlir::OpTrait::SymbolTable>())
-            .insert(cloned_module);
-        mlir::SymbolRefAttr callee_attr = mlir::SymbolRefAttr::get(
-            cloned_module.getSymNameAttr(),
-            mlir::SymbolRefAttr::get(cloned_callee.getSymNameAttr()));
+        mlir::FailureOr<mlir::ModuleOp> callee_module =
+            GetOutlinedAtomProgramModule(call_op, symbol_table);
+        if (mlir::failed(callee_module)) {
+          return mlir::WalkResult::interrupt();
+        }
+        ClonedAtomProgramModule cloned =
+            CloneOutlinedAtomProgramModule(*callee_module, symbol_table);
         module_and_type_refs_to_callee_symbol_ref[std::make_pair(
-            call_op.getCallee(), module_type_attr)] = callee_attr;
+            call_op.getCallee(), module_type_attr)] = cloned.callee_ref;
       } else {
         module_and_type_refs_to_callee_symbol_ref[std::make_pair(
             call_op.getCallee(), module_type_attr)] = call_op.getCalleeAttr();
@@ -163,10 +157,13 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
     if (!preprocessed_modules.insert(call_op.getCallee()).second) {
       return mlir::WalkResult::advance();
     }
-    mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+    mlir::FailureOr<mlir::ModuleOp> callee_module =
+        GetOutlinedAtomProgramModule(call_op, symbol_table);
+    if (mlir::failed(callee_module)) {
+      return mlir::WalkResult::interrupt();
+    }
     mlir::StringAttr module_type_attr =
         call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
-    auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     if (module_type_attr == kIfrtModuleTypeXla) {
       createIfrtCompileXlaPreprocessingPipeline(pm, compile_options);
@@ -174,7 +171,7 @@ void IfrtPrecompileAtomProgramPreprocessingPass::runOnOperation() {
       return call_op.emitOpError()
              << "module type " << module_type_attr << " is not supported";
     }
-    if (mlir::failed(runPipeline(pm, callee_module))) {
+    if (mlir::failed(runPipeline(pm, *callee_module))) {
       return mlir::WalkResult::interrupt();
     }
     return mlir::WalkResult::advance();

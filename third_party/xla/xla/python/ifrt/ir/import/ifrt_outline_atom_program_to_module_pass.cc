@@ -146,9 +146,8 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
     }
 
     // Replace all uses of old callee.
-    mlir::SymbolRefAttr new_symbol = mlir::SymbolRefAttr::get(
-        callee_module.getSymNameAttr(),
-        mlir::SymbolRefAttr::get(cloned_callee.getSymNameAttr()));
+    mlir::SymbolRefAttr new_symbol =
+        MakeOutlinedCalleeSymbolRef(callee_module, cloned_callee);
     // It is sufficient to get the symbols in the main func because
     // ifrt.Call nested within callees are not supported.
     std::optional<mlir::SymbolTable::UseRange> symbol_uses =

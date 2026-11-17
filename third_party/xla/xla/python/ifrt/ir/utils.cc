@@ -32,14 +32,20 @@ limitations under the License.
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -47,6 +53,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
@@ -235,6 +242,73 @@ llvm::SmallVector<mlir::func::FuncOp> GetIfrtFunctions(mlir::ModuleOp module) {
     }
   }
   return ifrt_funcs;
+}
+
+mlir::SymbolRefAttr MakeOutlinedCalleeSymbolRef(mlir::ModuleOp callee_module,
+                                                mlir::func::FuncOp callee) {
+  return mlir::SymbolRefAttr::get(
+      callee_module.getSymNameAttr(),
+      {mlir::FlatSymbolRefAttr::get(callee.getSymNameAttr())});
+}
+
+mlir::Operation* GetCalleeRootSymbolOp(mlir::func::FuncOp callee,
+                                       mlir::ModuleOp root_module) {
+  if (callee == nullptr) {
+    return nullptr;
+  }
+  mlir::Operation* parent = callee->getParentOp();
+  if (parent == root_module.getOperation()) {
+    return callee.getOperation();
+  }
+  if (mlir::ModuleOp callee_module =
+          llvm::dyn_cast_or_null<mlir::ModuleOp>(parent);
+      callee_module != nullptr &&
+      callee_module->getParentOp() == root_module.getOperation()) {
+    return callee_module.getOperation();
+  }
+  return nullptr;
+}
+
+mlir::FailureOr<mlir::ModuleOp> GetOutlinedAtomProgramModule(
+    CallOp call_op, mlir::SymbolTableCollection& symbol_table) {
+  mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+  if (callee == nullptr) {
+    call_op->emitOpError() << "can't find callee `" << call_op.getCalleeAttr()
+                           << "`";
+    return mlir::failure();
+  }
+  mlir::ModuleOp callee_module =
+      llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+  mlir::ModuleOp call_parent_module =
+      call_op->getParentOfType<mlir::ModuleOp>();
+  if (callee.getSymName() != kCalleeMainFuncName || callee_module == nullptr ||
+      call_parent_module == nullptr ||
+      callee_module->getParentOp() != call_parent_module.getOperation()) {
+    call_op.emitOpError() << "requires callee outlined as `"
+                          << kCalleeMainFuncName
+                          << "` function in a child ModuleOp. Actual callee "
+                             "name: "
+                          << callee.getSymName() << ". Actual callee parent: "
+                          << callee->getParentOp()->getName();
+    return mlir::failure();
+  }
+  return callee_module;
+}
+
+ClonedAtomProgramModule CloneOutlinedAtomProgramModule(
+    mlir::ModuleOp callee_module, mlir::SymbolTableCollection& symbol_table) {
+  mlir::ModuleOp cloned_module = callee_module.clone();
+  mlir::SymbolTable::setSymbolVisibility(
+      cloned_module, mlir::SymbolTable::Visibility::Private);
+  mlir::Operation* parent_op =
+      callee_module->getParentWithTrait<mlir::OpTrait::SymbolTable>();
+  CHECK(parent_op != nullptr);
+  symbol_table.getSymbolTable(parent_op).insert(
+      cloned_module, ++mlir::Block::iterator(callee_module));
+  mlir::func::FuncOp cloned_main = GetMainFunction(cloned_module);
+  return ClonedAtomProgramModule{
+      cloned_module, cloned_main,
+      MakeOutlinedCalleeSymbolRef(cloned_module, cloned_main)};
 }
 
 bool IsReshard(IfrtArrayType from, IfrtArrayType to) {
