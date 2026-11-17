@@ -15,16 +15,22 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -254,6 +260,145 @@ LogicalResult ApplyVhloToStablehloPatterns(ModuleOp module) {
   return success();
 }
 
+// TODO(b/578226613): Temporary workaround to pass `!tfl.blockwise_quant`
+// constants as `vhlo.composite_v1` (`STABLEHLO_COMPOSITE`) operands. Revert
+// this function (and its call in `LegalizeStablehloToVhloPass`) once blockwise
+// Q/DQ ops and a dedicated ODML composite op (lowered directly to
+// `vhlo.composite_v1`, bypassing `stablehlo.composite`'s element-type
+// constraint) are implemented.
+bool TryFuseSrqBlockwiseConsumer(OpOperand& use, Type qconst_type) {
+  if (use.getOperandNumber() != 1) return false;
+  Operation* op = use.getOwner();
+  if (auto fc = llvm::dyn_cast<TFL::FullyConnectedOp>(op)) {
+    auto ranked = mlir::dyn_cast<RankedTensorType>(qconst_type);
+    if (!ranked || ranked.getRank() != 2 ||
+        fc.getWeightsFormat() != "DEFAULT" ||
+        !mlir::isa<NoneType>(fc.getBias().getType())) {
+      return false;
+    }
+    llvm::StringRef act = fc.getFusedActivationFunction();
+    if (act != "NONE" && act != "RELU" && act != "RELU_N1_TO_1" &&
+        act != "RELU6") {
+      return false;
+    }
+  } else if (!llvm::isa<TFL::BatchMatMulOp>(op)) {
+    return false;
+  }
+
+  auto is_signed_i8 = [](Type type) {
+    auto qtype =
+        mlir::dyn_cast<quant::UniformQuantizedType>(getElementTypeOrSelf(type));
+    return qtype && qtype.isSigned() &&
+           qtype.getStorageTypeIntegralWidth() == 8;
+  };
+  auto lhs_dq = op->getOperand(0).getDefiningOp<TFL::DequantizeOp>();
+  if (!lhs_dq || !is_signed_i8(lhs_dq.getInput().getType())) return false;
+
+  Value result = op->getResult(0);
+  if (result.use_empty()) return false;
+  Type out_type;
+  SmallVector<Operation*> out_q_ops;
+  for (Operation* user : result.getUsers()) {
+    auto q = llvm::dyn_cast<TFL::QuantizeOp>(user);
+    if (!q || !is_signed_i8(q.getType()) ||
+        (out_type && q.getType() != out_type)) {
+      return false;
+    }
+    out_type = q.getType();
+    out_q_ops.push_back(q);
+  }
+
+  op->setOperand(0, lhs_dq.getInput());
+  result.setType(out_type);
+  for (Operation* q : out_q_ops) {
+    q->getResult(0).replaceAllUsesWith(result);
+    q->erase();
+  }
+  if (lhs_dq.use_empty()) lhs_dq.erase();
+  return true;
+}
+
+void SinkBlockwiseDequantizeIntoVhloComposite(ModuleOp module) {
+  SymbolTable symbol_table(module);
+  module->walk([&](vhlo::CompositeOpV1 composite) {
+    auto decomp_attr =
+        mlir::dyn_cast<vhlo::StringV1Attr>(composite.getDecomposition());
+    func::FuncOp decomp =
+        decomp_attr ? symbol_table.lookup<func::FuncOp>(decomp_attr.getValue())
+                    : nullptr;
+    if (!decomp || decomp.isExternal() ||
+        !llvm::hasSingleElement(decomp.getBody())) {
+      return;
+    }
+
+    for (unsigned i = 0; i < composite.getNumOperands(); ++i) {
+      Value operand = composite.getOperand(i);
+      Value base = operand;
+      while (auto uc = base.getDefiningOp<UnrealizedConversionCastOp>()) {
+        if (uc.getNumOperands() != 1) break;
+        base = uc.getOperand(0);
+      }
+      auto cast_op = base.getDefiningOp<TFL::CastOp>();
+      if (cast_op &&
+          !mlir::isa<FloatType>(getElementTypeOrSelf(cast_op.getType()))) {
+        cast_op = nullptr;
+      }
+      auto dq_op = cast_op
+                       ? cast_op.getInput().getDefiningOp<TFL::DequantizeOp>()
+                       : base.getDefiningOp<TFL::DequantizeOp>();
+      if (!dq_op) continue;
+
+      Value qconst = dq_op.getInput();
+      if (!llvm::isa_and_nonnull<TFL::QConstOp, TFL::SparseQConstOp>(
+              qconst.getDefiningOp()) ||
+          !mlir::isa<TFL::BlockwiseQuantType>(
+              getElementTypeOrSelf(qconst.getType())) ||
+          i >= decomp.getBody().front().getNumArguments()) {
+        continue;
+      }
+
+      Block& entry = decomp.getBody().front();
+      BlockArgument arg = entry.getArgument(i);
+      if (arg.getType() != qconst.getType()) {
+        arg.setType(qconst.getType());
+        SmallVector<OpOperand*> uses;
+        for (OpOperand& use : arg.getUses()) {
+          uses.push_back(&use);
+        }
+        SmallVector<OpOperand*> unfused_uses;
+        for (OpOperand* use : uses) {
+          if (!TryFuseSrqBlockwiseConsumer(*use, qconst.getType())) {
+            unfused_uses.push_back(use);
+          }
+        }
+        if (!unfused_uses.empty()) {
+          OpBuilder builder = OpBuilder::atBlockBegin(&entry);
+          Value rep = TFL::DequantizeOp::create(
+              builder, composite.getLoc(), dq_op.getOutput().getType(), arg);
+          if (cast_op) {
+            rep = TFL::CastOp::create(builder, composite.getLoc(),
+                                      cast_op.getType(), rep);
+          }
+          for (OpOperand* use : unfused_uses) {
+            use->set(rep);
+          }
+        }
+        decomp.setFunctionType(
+            FunctionType::get(decomp.getContext(), entry.getArgumentTypes(),
+                              decomp.getFunctionType().getResults()));
+      }
+
+      composite.setOperand(i, qconst);
+      for (Value cur = operand; cur && cur != qconst && cur.use_empty();) {
+        Operation* def = cur.getDefiningOp();
+        if (!def || def->getNumOperands() != 1) break;
+        cur = def->getOperand(0);
+        def->erase();
+      }
+    }
+  });
+}
+
 }  // namespace
 
 struct LegalizeStablehloToVhloPass
@@ -273,6 +418,7 @@ struct LegalizeStablehloToVhloPass
         failed(ApplyVhloToVersionPatterns(module, target_version)) ||
         failed(ApplyTypeConverter(module, to_builtin_converter)))
       return signalPassFailure();
+    SinkBlockwiseDequantizeIntoVhloComposite(module);
   }
 };
 
