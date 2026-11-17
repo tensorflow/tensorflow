@@ -41,7 +41,7 @@ class MasterService final {
  public:
   class StubInterface {
    public:
-    virtual ~StubInterface() {}
+    virtual ~StubInterface() = default;
     virtual ::grpc::Status CreateSession(::grpc::ClientContext* context,
                                          const CreateSessionRequest& request,
                                          CreateSessionResponse* response) = 0;
