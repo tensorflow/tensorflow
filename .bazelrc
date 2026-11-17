@@ -182,9 +182,6 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 # Default options should come above this line.
 
-# Enable bzlmod
-common:bzlmod --enable_bzlmod --noenable_workspace
-
 # Enable WORKSPACE on Linux/macOS (Windows requires Bzlmod; retain until downstream consumers migrate to Bzlmod)
 common:workspace --noenable_bzlmod --enable_workspace
 
