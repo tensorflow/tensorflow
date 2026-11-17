@@ -399,15 +399,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  absl::Status GetFusedMatmulRunners(
-      dnn::DataType input_type, dnn::DataType bias_type,
-      dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
-      uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
-      dnn::ActivationMode activation_mode, bool use_fallback,
-      const EngineOptions& engine_options,
-      std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
-          out_exec_plans) override;
-
   absl::Status GetFusedConvolveRunners(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,

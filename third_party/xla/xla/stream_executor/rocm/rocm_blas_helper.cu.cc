@@ -1,0 +1,56 @@
+/* Copyright 2022 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/stream_executor/rocm/rocm_blas_helper.h"
+
+#include "rocm/include/hip/hip_runtime.h"
+
+namespace stream_executor::gpu {
+
+__global__ void rocm_Broadcast_fp32Kernel(float* dst, int dst_stride,
+                                          int batches, float* src, int size) {
+  dst += blockIdx.y * 4 * dst_stride + blockIdx.z * dst_stride * batches;
+  src += blockIdx.z * size;
+  float* dst2 = dst + dst_stride;
+  float* dst3 = dst + dst_stride * 2;
+  float* dst4 = dst + dst_stride * 3;
+  bool b2 = (blockIdx.y * 4 + 1 < batches);
+  bool b3 = (blockIdx.y * 4 + 2 < batches);
+  bool b4 = (blockIdx.y * 4 + 3 < batches);
+  for (int i = threadIdx.x + blockIdx.x * 256; i < size;
+       i += blockDim.x * gridDim.x) {
+    dst[i] = src[i];
+    if (b2) {
+      dst2[i] = src[i];
+    }
+    if (b3) {
+      dst3[i] = src[i];
+    }
+    if (b4) {
+      dst4[i] = src[i];
+    }
+  }
+}
+
+void rocm_Broadcast_fp32(void* stream, float* dst, int dst_stride, int batches,
+                         int src_batches, float* src, int size) {
+  int x_blocks = (size + 255) / 256;
+  hipLaunchKernelGGL(rocm_Broadcast_fp32Kernel,
+                     dim3(x_blocks, (batches + 3) / 4, src_batches),
+                     min(256, (int)size), 0, (hipStream_t)stream, dst,
+                     dst_stride, batches, src, size);
+}
+
+}  // namespace stream_executor::gpu

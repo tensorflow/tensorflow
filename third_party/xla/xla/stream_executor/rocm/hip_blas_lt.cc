@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/rocm/hip_blas_lt_helper.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -244,20 +245,6 @@ static_assert(std::has_virtual_destructor_v<hipblaslt_ext::GroupedGemm>);
 
 }  // namespace hipblaslt_libstdcxx
 
-void GroupGemmUpdateArgs(
-    hipStream_t stream, DeviceAddressBase args, DeviceAddressBase a,
-    DeviceAddressBase b, DeviceAddressBase c, DeviceAddressBase d,
-    DeviceAddressBase bias, DeviceAddressBase group_sizes,
-    uint8_t group_size_bytewidth, uint8_t log2_byte_width_elem_a,
-    uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_c,
-    uint8_t log2_byte_width_elem_d, uint32_t stride_ragged_dim,
-    uint32_t stride_group_dim, uint32_t c_stride_ragged_dim,
-    uint32_t output_stride_ragged_dim, bool must_swap_operands, uint32_t m,
-    uint32_t n, uint32_t k, uint32_t batch, uint32_t strideA1,
-    uint32_t strideA2, uint32_t strideB1, uint32_t strideB2, uint32_t strideC1,
-    uint32_t strideC2, uint32_t strideD1, uint32_t strideD2,
-    gpu::RaggedDotMode ragged_mode, uint32_t num_gemms, int32_t activation_type,
-    int8_t bias_type, bool has_matrix_bias);
 namespace {
 
 // Upper bound for the heuristic query only, never allocated. Generous on

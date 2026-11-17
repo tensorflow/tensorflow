@@ -563,9 +563,9 @@ cc_library(
     deps = [
         ":hipblas_lt_header",
         ":rocblas_if_static",  # buildcleaner: keep
+        ":rocm_blas_helper",
         ":rocm_complex_converters",
         ":rocm_executor",
-        ":rocm_helpers",
         ":rocm_platform_id",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
@@ -667,10 +667,8 @@ cc_library(
     deps = [
         ":miopen_if_static",  # build_cleaner: keep
         ":rocm_executor",
-        ":rocm_helpers",
         ":rocm_platform_id",
         "//xla/stream_executor:activate_context",
-        "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:dnn",
@@ -795,6 +793,7 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":hip_blas_lt_helper",
         ":hip_blas_utils",
         ":hipblas_lt_header",
         ":hipblaslt_if_static",  # buildcleaner: keep
@@ -919,18 +918,33 @@ cc_library(
 )
 
 rocm_library(
-    name = "rocm_helpers",
-    srcs = ["rocm_helpers.cu.cc"],
+    name = "rocm_blas_helper",
+    srcs = ["rocm_blas_helper.cu.cc"],
+    hdrs = ["rocm_blas_helper.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
         "gpu",
         "rocm-only",
     ],
     deps = [
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+rocm_library(
+    name = "hip_blas_lt_helper",
+    srcs = ["hip_blas_lt_helper.cu.cc"],
+    hdrs = ["hip_blas_lt_helper.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@local_config_rocm//rocm:rocm_headers",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -970,7 +984,6 @@ cc_library(
         ":redzone_allocator_kernel_rocm",
         ":repeat_buffer_kernel_rocm",
         ":rocblas_plugin",
-        ":rocm_helpers",
         ":rocm_platform",
         ":topk_kernel_rocm",
     ],
