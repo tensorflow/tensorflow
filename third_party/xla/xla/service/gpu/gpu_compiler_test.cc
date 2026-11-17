@@ -150,51 +150,6 @@ using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
 using ::tsl::proto_testing::EqualsProto;
 
-class GpuCompilerAlgebraicSimplifierTest
-    : public HloHardwareIndependentTestBase {};
-
-TEST_F(GpuCompilerAlgebraicSimplifierTest,
-       ConvolutionCanonicalizationRespectsFastMinMax) {
-  constexpr absl::string_view kHloText = R"hlo(
-HloModule minmax
-
-ENTRY main {
-  p = f32[] parameter(0)
-  negative_infinity = f32[] constant(-inf)
-  positive_infinity = f32[] constant(inf)
-  maximum = f32[] maximum(p, negative_infinity)
-  minimum = f32[] minimum(p, positive_infinity)
-  ROOT result = (f32[], f32[]) tuple(maximum, minimum)
-}
-)hlo";
-  for (bool fast_min_max : {false, true}) {
-    SCOPED_TRACE(fast_min_max);
-    for (bool is_non_cuda_platform : {false, true}) {
-      SCOPED_TRACE(is_non_cuda_platform);
-      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                           ParseAndReturnVerifiedModule(kHloText));
-      DebugOptions debug_options = GetDebugOptionsForTest();
-      debug_options.set_xla_gpu_enable_fast_min_max(fast_min_max);
-      AlgebraicSimplifier simplifier(GpuCompiler::GetAlgebraicSimplifierOptions(
-          GpuCompiler::AlgebraicSimplifierMode::
-              kGpuConvoluationCanonicalization,
-          debug_options, is_non_cuda_platform));
-      EXPECT_THAT(simplifier.Run(module.get()),
-                  absl_testing::IsOkAndHolds(!fast_min_max));
-      const HloInstruction* root =
-          module->entry_computation()->root_instruction();
-      if (fast_min_max) {
-        EXPECT_THAT(root, GmockMatch(m::Tuple(
-                              m::Maximum(m::Parameter(0), m::Constant()),
-                              m::Minimum(m::Parameter(0), m::Constant()))));
-      } else {
-        EXPECT_THAT(root,
-                    GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(0))));
-      }
-    }
-  }
-}
-
 class GpuCompilerTest
     : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:

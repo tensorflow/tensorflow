@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
@@ -223,7 +224,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_non_cuda_platform=*/false);
+      /*is_cuda_platform=*/true);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 

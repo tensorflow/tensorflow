@@ -131,19 +131,6 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  enum class AlgebraicSimplifierMode {
-    kLayoutInsensitive,
-    kPostFusionSimplification,
-    kLayoutNormalization,
-    kPostLayoutAssignment,
-    kAfterSimplifyFPConversions,
-    kGpuConvoluationCanonicalization,
-  };
-
-  static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
-      bool is_non_cuda_platform);
-
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
   virtual std::vector<std::string> GetLLVMCommandLineOptions(

@@ -15,25 +15,38 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_pipeline.h"
 
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_context.h"
 #include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/pass/hlo_pipeline.pb.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+namespace m = ::xla::match;
+
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -51,17 +64,6 @@ void CollectPasses(const HloPipelineNodeSequenceProto& sequence,
 // Checks that every pass of the default pipeline is registered and consumes all
 // of its options.
 TEST(GpuPipelineTest, DefaultCompilationPipelinePassesAreCreatable) {
-  // Every set field becomes an option that the algebraic simplifier must
-  // consume.
-  AlgebraicSimplifierOptions algsimp_opts;
-  algsimp_opts.set_unconditionally_simplify_reduce_of_transpose_or_reshape(
-      true);
-  algsimp_opts.set_minmax_propagate_nan(false);
-  const HloPipelineProto proto = GetDefaultCompilationPipeline(algsimp_opts);
-  std::vector<const HloPipelineNodeProto*> passes;
-  CollectPasses(proto.root(), passes);
-  ASSERT_THAT(passes, Not(IsEmpty()));
-
   const se::DeviceDescription device_description =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   // Creatability doesn't depend on what the backend hooks do.
@@ -73,10 +75,65 @@ TEST(GpuPipelineTest, DefaultCompilationPipelinePassesAreCreatable) {
   HloPassContext context;
   ASSERT_OK(context.Set(device_description));
   ASSERT_OK(context.Set(host_device_type_options));
+
+  ASSERT_OK_AND_ASSIGN(
+      const HloPipelineProto proto,
+      GetDefaultCompilationPipeline(HloModuleConfig(), context));
+  std::vector<const HloPipelineNodeProto*> passes;
+  CollectPasses(proto.root(), passes);
+  ASSERT_THAT(passes, Not(IsEmpty()));
+
   for (const HloPipelineNodeProto* pass : passes) {
     HloPassOptions options(pass->options());
     EXPECT_OK(HloPassRegistry::Global().Create(pass->name(), context, options))
         << pass->name();
+  }
+}
+
+TEST(GpuPipelineTest, MissingDeviceDescriptionInContextFails) {
+  EXPECT_THAT(
+      GetDefaultCompilationPipeline(HloModuleConfig(), HloPassContext()),
+      StatusIs(absl::StatusCode::kNotFound, HasSubstr("DeviceDescription")));
+}
+
+using GpuPipelineAlgebraicSimplifierTest = HloHardwareIndependentTestBase;
+
+TEST_F(GpuPipelineAlgebraicSimplifierTest,
+       ConvolutionCanonicalizationRespectsFastMinMax) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule minmax
+
+    ENTRY main {
+      p = f32[] parameter(0)
+      negative_infinity = f32[] constant(-inf)
+      positive_infinity = f32[] constant(inf)
+      maximum = f32[] maximum(p, negative_infinity)
+      minimum = f32[] minimum(p, positive_infinity)
+      ROOT result = (f32[], f32[]) tuple(maximum, minimum)
+    })hlo";
+  for (bool fast_min_max : {false, true}) {
+    SCOPED_TRACE(fast_min_max);
+    for (bool is_cuda_platform : {false, true}) {
+      SCOPED_TRACE(is_cuda_platform);
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(kHloText));
+      DebugOptions debug_options = GetDebugOptionsForTest();
+      debug_options.set_xla_gpu_enable_fast_min_max(fast_min_max);
+      AlgebraicSimplifier simplifier(GetAlgebraicSimplifierOptions(
+          AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
+          debug_options, is_cuda_platform));
+      EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(!fast_min_max));
+      const HloInstruction* root =
+          module->entry_computation()->root_instruction();
+      if (fast_min_max) {
+        EXPECT_THAT(root, GmockMatch(m::Tuple(
+                              m::Maximum(m::Parameter(0), m::Constant()),
+                              m::Minimum(m::Parameter(0), m::Constant()))));
+      } else {
+        EXPECT_THAT(root,
+                    GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(0))));
+      }
+    }
   }
 }
 

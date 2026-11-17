@@ -1826,76 +1826,7 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module,
   return false;
 }
 
-bool IsNonCudaPlatform(const GpuTargetConfig& gpu_target_config) {
-  return gpu_target_config.platform_name == "ROCM" ||
-         gpu_target_config.platform_name == "SYCL";
-}
-
 }  // namespace
-
-AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
-    AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
-    bool is_non_cuda_platform) {
-  AlgebraicSimplifierOptions opts;
-
-  opts.set_enable_dot_strength_reduction(false);
-  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
-  // used.
-  opts.set_enable_conv_add_multiply_reorder(true);
-  // GPU only supports canonical convolutions.
-  opts.set_supports_non_canonical_dots(false);
-  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
-  opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
-  opts.set_enable_conditional_simplification(true);
-  opts.set_enable_fold_transpose_into_scatter(true);
-
-  if (!is_non_cuda_platform &&
-      debug_options.xla_gpu_experimental_enable_conv_fusion()) {
-    opts.set_enable_folding_pad_into_convolution(false);
-    opts.set_enable_conv_operand_swap(false);
-  }
-
-  switch (mode) {
-    case AlgebraicSimplifierMode::kPostFusionSimplification:
-    case AlgebraicSimplifierMode::kLayoutInsensitive:
-      // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
-      // the transpose/reshape has multiple users.  This helps int8 models,
-      // which tend to have lots of transpose+reshape's (converting between NCHW
-      // and NCHW_VECT_C).  Without this, those reshape+transposes can get
-      // materialized out, which is really bad for perf.
-      opts.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
-      // GPU pipeline handles transposes better than slice+concatenate, so keep
-      // the transpose.
-      opts.set_rewrite_reshape_transpose_as_slice_concatenate(false);
-      opts.set_enable_hoist_transpose_of_reshape(true);
-      if (is_non_cuda_platform) {
-        opts.set_enable_conv_operand_swap(false);
-      }
-      break;
-    default:
-      opts.set_enable_conv_operand_swap(false);
-  }
-
-  switch (mode) {
-    case AlgebraicSimplifierMode::kAfterSimplifyFPConversions:
-    case AlgebraicSimplifierMode::kPostFusionSimplification:
-    case AlgebraicSimplifierMode::kLayoutNormalization:
-    case AlgebraicSimplifierMode::kPostLayoutAssignment:
-      opts.set_is_layout_sensitive(true);
-      break;
-    default:
-      break;
-  }
-
-  // "slow" minmax means we propagate nan.
-  opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
-
-  if (mode == AlgebraicSimplifierMode::kAfterSimplifyFPConversions) {
-    opts.set_enable_remove_no_op_reduce_precision(true);
-  }
-
-  return opts;
-}
 
 absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -1933,11 +1864,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
+  const se::GpuComputeCapability gpu_version =
+      device_description.gpu_compute_capability();
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
-      GetAlgebraicSimplifierOptions(
-          AlgebraicSimplifierMode::kLayoutInsensitive,
-          hlo_module->config().debug_options(),
-          IsNonCudaPlatform(gpu_topology.gpu_target_config()));
+      GetAlgebraicSimplifierOptions(AlgebraicSimplifierMode::kLayoutInsensitive,
+                                    hlo_module->config().debug_options(),
+                                    gpu_version.IsCuda());
 
   const HloHostDeviceTypeCallWrapper::Options host_device_type_options{
       /*set_backend_config_fn=*/SetHostDeviceType,
@@ -1946,10 +1878,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
   HloPassContext pass_context;
   ABSL_RETURN_IF_ERROR(pass_context.Set(device_description));
   ABSL_RETURN_IF_ERROR(pass_context.Set(host_device_type_options));
-  ABSL_RETURN_IF_ERROR(RunHloPassPipeline(
-      hlo_module,
-      GetDefaultCompilationPipeline(layout_insensitive_algsimp_opts),
-      pass_context, compilation_stats));
+  ABSL_ASSIGN_OR_RETURN(
+      HloPipelineProto pipeline_proto,
+      GetDefaultCompilationPipeline(hlo_module->config(), pass_context));
+  ABSL_RETURN_IF_ERROR(RunHloPassPipeline(hlo_module, pipeline_proto, pass_context,
+                                     compilation_stats));
 
   // Set max_windowed_einsum_iteration to slice_size, as there will be
   // significant overhead when scaled beyond the maximum size of the
@@ -1977,8 +1910,6 @@ absl::Status GpuCompiler::OptimizeHloModule(
       layout_insensitive_algsimp_opts,
       /*is_deviceless=*/stream_exec == nullptr, options.early_exit_with_layouts,
       compilation_stats));
-  se::GpuComputeCapability gpu_version =
-      device_description.gpu_compute_capability();
   ABSL_RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
       hlo_module, gpu_topology, layout_insensitive_algsimp_opts, gpu_version,
       pointer_size_, compilation_stats));
@@ -2001,8 +1932,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module,
       GetAlgebraicSimplifierOptions(
           AlgebraicSimplifierMode::kLayoutNormalization,
-          hlo_module->config().debug_options(),
-          IsNonCudaPlatform(gpu_topology.gpu_target_config())),
+          hlo_module->config().debug_options(), gpu_version.IsCuda()),
       gpu_version, compilation_stats));
 
   // Run target-specific HLO optimization passes after layout assignment.
@@ -2026,8 +1956,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module,
       GetAlgebraicSimplifierOptions(
           AlgebraicSimplifierMode::kPostFusionSimplification,
-          hlo_module->config().debug_options(),
-          IsNonCudaPlatform(gpu_topology.gpu_target_config())),
+          hlo_module->config().debug_options(), gpu_version.IsCuda()),
       gpu_version, gpu_topology.gpu_target_config(), compilation_stats));
 
   ABSL_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
@@ -2144,8 +2073,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   const AlgebraicSimplifierOptions simplifier_options =
       GetAlgebraicSimplifierOptions(
           AlgebraicSimplifierMode::kPostLayoutAssignment,
-          hlo_module->config().debug_options(),
-          IsNonCudaPlatform(gpu_target_config));
+          hlo_module->config().debug_options(), gpu_version.IsCuda());
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
@@ -2378,7 +2306,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             "remove-no-op-reduce-precision-algebraic-simplifier");
     AlgebraicSimplifierOptions options = GetAlgebraicSimplifierOptions(
         AlgebraicSimplifierMode::kAfterSimplifyFPConversions, debug_options,
-        IsNonCudaPlatform(gpu_target_config));
+        gpu_version.IsCuda());
     remove_no_op_reduce_precision_pipeline
         .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(options, gpu_version);
   }

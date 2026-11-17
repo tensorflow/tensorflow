@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu_topology.h"
@@ -134,7 +135,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_non_cuda_platform=*/true);
+      /*is_cuda_platform=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 

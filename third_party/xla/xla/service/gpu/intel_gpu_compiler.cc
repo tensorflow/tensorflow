@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu_topology.h"
@@ -76,7 +77,7 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_non_cuda_platform=*/true);
+      /*is_cuda_platform=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
