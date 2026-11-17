@@ -158,6 +158,31 @@ TEST_F(MyCustomPassIsolationTest, ChecksMyFusionSanity) {
 }
 ```
 
+### Isolating SparseCore Offloads
+
+`RunIsolationPipeline` extracts each complete main-thread `"sparsecore"` async
+chain (`async-start` through `async-done`) as an atomic offload submodule rather
+than decomposing inner `"sparsecore"` computations.
+
+-   **Supported platforms:** `--test_platform` must support `"sparsecore"` async
+    execution, such as `interpreter` or `tpu` (the `cpu` backend does not lower
+    `"sparsecore"` async chains). Because SparseCore modules cannot be defused,
+    comparison requires a non empty `--reference_platform` (such as
+    `interpreter`). On `tpu` with `run_hlo_passes=false`, in-place offloads
+    (such as scatter or dynamic-update-slice) require populating
+    `input_output_alias_config` on the extracted submodule via
+    `ModuleIsolationOptions::run_module_fn`.
+-   **Opcode filtering across computations:** `--filter_by_opcode` and
+    `--skip_by_opcode` inspect every instruction across all computations in each
+    submodule. Passing `--filter_by_opcode=gather` matches a SparseCore gather
+    offload, whereas passing `--skip_by_opcode=custom-call` skips compiled
+    SparseCore offloads that contain internal helper custom calls.
+-   **Automatic skip reasons:** Offload units with no SparseCore work, RNG,
+    Mosaic custom calls, or custom calls unimplemented by the reference runner
+    are skipped automatically (`NO_WORK_IN_SPARSECORE_OFFLOAD`, `CONTAINS_RNG`,
+    `CONTAINS_MOSAIC_KERNEL`, and `REFERENCE_UNIMPLEMENTED`). C++ callers can
+    customize module execution via `ModuleIsolationOptions::run_module_fn`.
+
 ## Sharded Execution (K8s/Slurm)
 
 For large modules or heavy test matrices, you can partition execution across

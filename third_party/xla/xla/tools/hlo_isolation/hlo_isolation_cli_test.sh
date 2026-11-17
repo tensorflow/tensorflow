@@ -34,6 +34,28 @@ TEST_HLO_FILE="$3"
   --reference_platform="" \
   --skip_by_name="fusion" | "$FILECHECK" "$0" --check-prefix=RUN2
 
+# Third run: Isolate a SparseCore offload chain on interpreter.
+SPARSE_CORE_HLO_FILE="${TEST_TMPDIR}/sparse_core_cli_test.hlo"
+cat <<'EOF' > "$SPARSE_CORE_HLO_FILE"
+HloModule sparse_core_cli_module
+
+wrapped {
+  p0 = f32[4]{0} parameter(0)
+  ROOT doubled = f32[4]{0} add(p0, p0)
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  x = f32[4]{0} parameter(0)
+  offload_start = ((f32[4]{0}), f32[4]{0}) async-start(x), async_execution_thread="sparsecore", calls=wrapped
+  ROOT offload_done = f32[4]{0} async-done(offload_start)
+}
+EOF
+
+"$HLO_ISOLATION_CLI" \
+  --hlo_file="$SPARSE_CORE_HLO_FILE" \
+  --test_platform=interpreter \
+  --reference_platform=interpreter | "$FILECHECK" "$0" --check-prefix=RUN3
+
 echo "hlo_isolation_cli test passed."
 exit 0
 
@@ -47,3 +69,8 @@ exit 0
 # RUN2: Success: NO
 # RUN2: Reason: MATCH_SKIP_BY_NAME
 # RUN2: Total run: 1, Success: 0
+
+# RUN3: Submodule: offload_done
+# RUN3: Success: YES
+# RUN3: Reason: STAGE_2_INTERPRETER_SUCCESS
+# RUN3: Total run: 1, Success: 1

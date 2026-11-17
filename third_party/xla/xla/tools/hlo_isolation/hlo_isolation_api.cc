@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/defuser.h"
 #include "xla/hlo/transforms/despecializer.h"
@@ -940,7 +941,7 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal> input_data,
                                   const RunModuleOptions& options) {
   if (!options.run_hlo_passes && !module->has_schedule()) {
-    ABSL_RETURN_IF_ERROR(HloTrivialScheduler().Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(ScheduleIsolatedModule(module.get()));
   }
 
   absl::FlagSaver flag_saver;
@@ -1311,7 +1312,12 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
               if (a->name() != b->name()) {
                 return a->name() < b->name();
               }
-              return a->GetFingerprint128() < b->GetFingerprint128();
+              HloPrintOptions print_options =
+                  HloPrintOptions::ModuleFingerprint();
+              print_options.set_print_backend_config(
+                  IsSparseCoreOffloadUnit(*a) || IsSparseCoreOffloadUnit(*b));
+              return a->GetFingerprint128(print_options) <
+                     b->GetFingerprint128(print_options);
             });
 
   std::vector<HloIsolationTestResult> pipeline_results;
@@ -1372,6 +1378,22 @@ absl::StatusOr<std::vector<HloIsolationTestResult>> RunIsolationPipeline(
         continue;
       }
       filtered_module_index++;
+    }
+
+    if (IsSparseCoreModule(*module)) {
+      if (std::optional<std::string> reason =
+              SparseCoreOffloadSkipReason(*module);
+          reason.has_value()) {
+        LOG(INFO) << "SparseCore module " << module->name()
+                  << " skipped: " << *reason;
+        HloIsolationTestResult skipped_result;
+        skipped_result.set_module_name(module->name());
+        skipped_result.set_state(State::SKIPPED);
+        skipped_result.set_reason(*reason);
+        pipeline_results.push_back(std::move(skipped_result));
+        WriteResults(pipeline_results);
+        continue;
+      }
     }
 
     // Execute module
