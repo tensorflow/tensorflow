@@ -243,10 +243,9 @@ static std::vector<HloInstruction*> FindAllConflictingCollectives(
 
 static void AddCollectiveStreamAnnotationP2P(
     std::vector<HloInstruction*>& instructions) {
-  xla::FrontendAttributes attributes;
-  (*attributes.mutable_map())[kCollectiveStreamAttrName] = kCollectiveStreamP2P;
   for (HloInstruction* instr : instructions) {
-    instr->add_frontend_attributes(attributes);
+    instr->add_frontend_attribute(kCollectiveStreamAttrName,
+                                  kCollectiveStreamP2P);
   }
 }
 

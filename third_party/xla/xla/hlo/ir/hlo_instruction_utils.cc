@@ -76,10 +76,7 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
                                       "}");
                     }) +
       "}";
-  FrontendAttributes attributes;
-  attributes = instr->frontend_attributes();
-  (*attributes.mutable_map())[attr_name] = intervals_str;
-  instr->set_frontend_attributes(attributes);
+  instr->set_frontend_attribute(attr_name, intervals_str);
 }
 
 void UpdateFrontendAttributes(

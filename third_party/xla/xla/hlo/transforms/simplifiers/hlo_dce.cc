@@ -256,9 +256,8 @@ bool CanRemoveInstruction(
     if (inst == nullptr) {
       return false;
     }
-    auto it =
-        inst->frontend_attributes().map().find(kDceSideEffectFrontendAttribute);
-    return it != inst->frontend_attributes().map().end() && it->second == value;
+    return inst->get_frontend_attribute(kDceSideEffectFrontendAttribute) ==
+           value;
   };
   // Reverse postorder visits async-done before async-start. If "false" is
   // set on async-start, async-done must inspect async_chain_start().

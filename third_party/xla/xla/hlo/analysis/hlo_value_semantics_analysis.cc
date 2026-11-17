@@ -55,12 +55,12 @@ limitations under the License.
 namespace xla {
 namespace {
 std::optional<std::string> GetRendezvous(const HloInstruction& instruction) {
-  auto attr_iter = instruction.frontend_attributes().map().find(
-      kXlaHostTransferRendezvousNameAttr);
-  if (attr_iter == instruction.frontend_attributes().map().end()) {
+  std::optional<std::string> attr =
+      instruction.get_frontend_attribute(kXlaHostTransferRendezvousNameAttr);
+  if (!attr.has_value()) {
     return std::nullopt;
   }
-  std::string rendezvous = attr_iter->second;
+  std::string rendezvous = *std::move(attr);
   std::string to_remove =
       instruction.opcode() == HloOpcode::kSend ? "args_dtoh_" : "retvals_htod_";
   size_t pos = rendezvous.find(to_remove);

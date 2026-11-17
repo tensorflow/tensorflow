@@ -388,10 +388,10 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     hlo_evaluator_->set_eval_literal_handler([cb_map = std::move(cb_map)](
                                                  const HloInstruction* hlo,
                                                  const LiteralSlice& literal) {
-      const auto& attr_map = hlo->frontend_attributes().map();
-      if (auto it = attr_map.find("_xla_tag"); it != attr_map.end()) {
+      if (std::optional<std::string> tag =
+              hlo->get_frontend_attribute("_xla_tag")) {
         int64_t tag_id;
-        if (absl::SimpleAtoi(it->second, &tag_id)) {
+        if (absl::SimpleAtoi(*tag, &tag_id)) {
           if (auto cb_it = cb_map.find(tag_id); cb_it != cb_map.end()) {
             std::shared_ptr<const Literal> shared_literal =
                 std::make_shared<const Literal>(literal.Clone());

@@ -54,13 +54,8 @@ std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
 
   // Include the combiner_key frontend attribute in the key so that
   // collective-permutes with different keys are not combined.
-  std::string combiner_key;
-  if (instruction->has_frontend_attributes()) {
-    auto it = instruction->frontend_attributes().map().find(kCombinerKeyAttr);
-    if (it != instruction->frontend_attributes().map().end()) {
-      combiner_key = it->second;
-    }
-  }
+  std::string combiner_key =
+      instruction->get_frontend_attribute(kCombinerKeyAttr).value_or("");
 
   std::string collective_group_key;
   if (auto group_key = GetCollectiveGroupKey(*instruction)) {

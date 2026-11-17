@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/hlo_module_splitter.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -83,12 +84,10 @@ bool HloModuleSplitter::ShouldSplitCall(const HloInstruction* inst) {
     }
   }
 
-  const auto& map = inst->frontend_attributes().map();
-  auto inlineable_it = map.find("inlineable");
-  if (inlineable_it != map.end() && inlineable_it->second == "xla_late") {
+  if (inst->get_frontend_attribute("inlineable") == "xla_late") {
     return true;
   }
-  return map.contains("compilation_unit");
+  return inst->has_frontend_attribute("compilation_unit");
 }
 
 absl::StatusOr<bool> HloModuleSplitter::RunImpl(
@@ -113,11 +112,11 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
         auto [map_it, inserted] =
             extracted_modules.try_emplace(callee, nullptr);
         if (inserted) {
-          auto it = inst->frontend_attributes().map().find("compilation_unit");
+          std::optional<std::string> compilation_unit =
+              inst->get_frontend_attribute("compilation_unit");
           std::string base_name =
-              (it != inst->frontend_attributes().map().end() &&
-               !it->second.empty())
-                  ? it->second
+              (compilation_unit.has_value() && !compilation_unit->empty())
+                  ? *std::move(compilation_unit)
                   : std::string(callee->name());
           std::string name = name_uniquer.GetUniqueName(base_name);
 

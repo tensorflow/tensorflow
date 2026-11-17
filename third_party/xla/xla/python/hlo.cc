@@ -793,10 +793,7 @@ NB_MODULE(_hlo, m) {
       return inst_->get_frontend_attribute(key);
     }
     void set_frontend_attribute(std::string key, std::string value) {
-      xla::FrontendAttributes proto = inst_->frontend_attributes();
-      (*proto.mutable_map())[std::move(key)] = std::move(value);
-      const_cast<HloInstruction*>(inst_)->set_frontend_attributes(
-          std::move(proto));
+      const_cast<HloInstruction*>(inst_)->set_frontend_attribute(key, value);
     }
     void set_core_assignment(std::vector<int64_t> core_ids) {
       xla::ThrowIfError(

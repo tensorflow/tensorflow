@@ -204,10 +204,10 @@ static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   std::string module_name(module->name());
 
   // Use the submodule name if available:
-  auto it = instruction->frontend_attributes().map().find("compilation_unit");
-  if (it != instruction->frontend_attributes().map().end()) {
-    module_name = it->second;
-    absl::StrAppend(&op_name, " (", it->second, ")");
+  if (std::optional<std::string> compilation_unit =
+          instruction->get_frontend_attribute("compilation_unit")) {
+    module_name = *compilation_unit;
+    absl::StrAppend(&op_name, " (", *compilation_unit, ")");
   }
 
   return Thunk::Info{std::move(op_name), std::move(module_name),

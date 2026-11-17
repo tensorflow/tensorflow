@@ -640,9 +640,7 @@ TEST_F(UnflattenCallGraphTest, FilterCallsByPredicate) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   UnflattenCallGraph unflatten([](const HloInstruction* call) {
-    auto it = call->frontend_attributes().map().find("inlineable");
-    return it != call->frontend_attributes().map().end() &&
-           it->second == "xla_late";
+    return call->get_frontend_attribute("inlineable") == "xla_late";
   });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, unflatten.Run(module.get()));
   ASSERT_TRUE(changed);

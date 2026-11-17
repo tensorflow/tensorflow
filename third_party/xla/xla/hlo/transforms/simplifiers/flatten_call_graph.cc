@@ -46,11 +46,7 @@ bool IsNonInlineableCall(const HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCall) {
     return false;
   }
-  auto it = instruction->frontend_attributes().map().find("inlineable");
-  if (it == instruction->frontend_attributes().map().end()) {
-    return false;
-  }
-  return it->second == "xla_late";
+  return instruction->get_frontend_attribute("inlineable") == "xla_late";
 }
 
 // Pure read-only predicate returning true if `computation` is itself an async

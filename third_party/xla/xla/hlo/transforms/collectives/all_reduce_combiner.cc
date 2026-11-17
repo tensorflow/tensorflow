@@ -165,9 +165,7 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
     auto key_fn = [&combine_key](const HloInstruction* instruction)
         -> std::optional<AllReduceCombiner::GroupKey> {
       if (instruction->opcode() != HloOpcode::kAllReduce ||
-          (instruction->has_frontend_attributes() &&
-           instruction->frontend_attributes().map().contains(
-               kXlaSchedulingGroupIdAttr))) {
+          instruction->has_frontend_attribute(kXlaSchedulingGroupIdAttr)) {
         return std::nullopt;
       }
       return combine_key(instruction);

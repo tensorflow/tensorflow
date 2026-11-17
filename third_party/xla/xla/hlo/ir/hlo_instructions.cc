@@ -783,8 +783,7 @@ void HloAsyncStartInstruction::PrintExtraAttributesImpl(
   if (options.syntax_sugar_async_ops() &&
       async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
     HloPrintOptions nested_options = options;
-    nested_options.set_print_frontend_attributes(
-        frontend_attributes().map().empty());
+    nested_options.set_print_frontend_attributes(!has_frontend_attributes());
     async_wrapped_instruction()->PrintExtraAttributes(printer, nested_options);
   }
 
@@ -3327,14 +3326,9 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
   CHECK(decomposition_root != nullptr);
   SetAndSanitizeName(HloOpcodeString(opcode()));
 
-  FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
-  frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
-  frontend_attributes.mutable_map()->insert(
-      {"composite.version", std::to_string(version)});
-
-  add_frontend_attributes(frontend_attributes);
+  add_frontend_attribute("composite.name", name);
+  add_frontend_attribute("composite.attributes", attributes);
+  add_frontend_attribute("composite.version", std::to_string(version));
   set_is_composite(true);
   set_metadata(decomposition_root->metadata());
   CloneAndAppendInstructionIntoCalledComputation(decomposition_root);
@@ -3346,14 +3340,9 @@ HloCallInstruction::HloCallInstruction(
     const std::string& attributes, int64_t version)
     : HloCallableInstruction(HloOpcode::kCall, shape, operands, decomposition,
                              name, attributes, version) {
-  FrontendAttributes frontend_attributes;
-  frontend_attributes.mutable_map()->insert({"composite.name", name});
-  frontend_attributes.mutable_map()->insert(
-      {"composite.attributes", attributes});
-  frontend_attributes.mutable_map()->insert(
-      {"composite.version", std::to_string(version)});
-
-  add_frontend_attributes(frontend_attributes);
+  add_frontend_attribute("composite.name", name);
+  add_frontend_attribute("composite.attributes", attributes);
+  add_frontend_attribute("composite.version", std::to_string(version));
   set_is_composite(true);
 }
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/fusion_constant_sinking.h"
 
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -45,13 +47,13 @@ std::pair<bool, int64_t> GetUserDirectedFuseInfo(
   bool is_must_fuse = false;
   int64_t fusion_id = -1;
   if (frontend_attributes.IsInitialized()) {
-    if (frontend_attributes.map().contains(kMustFuseAttr)) {
-      is_must_fuse = true;
-    } else {
+    std::optional<std::string> fusion_id_str =
+        instruction->get_frontend_attribute(kMustFuseAttr);
+    if (!fusion_id_str.has_value()) {
       return {false, -1};
     }
-    auto fusion_id_str = frontend_attributes.map().at(kMustFuseAttr);
-    if (!absl::SimpleAtoi(fusion_id_str, &(fusion_id))) {
+    is_must_fuse = true;
+    if (!absl::SimpleAtoi(*fusion_id_str, &(fusion_id))) {
       return {false, -1};
     }
   }
@@ -88,7 +90,7 @@ bool CanSink(HloInstruction* fusion, const HloInstruction* operand) {
   // must-fuse operands (see above), and must-fuse takes precedence over
   // FUSE_LIMIT.
   if (!fusion->IsCustomFusion() &&
-      operand->frontend_attributes().map().contains(kFuseLimitAttr)) {
+      operand->has_frontend_attribute(kFuseLimitAttr)) {
     return false;
   }
 

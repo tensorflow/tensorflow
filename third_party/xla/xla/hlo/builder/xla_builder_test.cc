@@ -516,7 +516,7 @@ TEST(XlaBuilderTest, CompositeCallFrontendAttributesStayLocal) {
   Add(operands[0], operands[1]);
 
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
-  EXPECT_TRUE(GetRoot(*module)->frontend_attributes().map().empty());
+  EXPECT_FALSE(GetRoot(*module)->has_frontend_attributes());
 }
 
 TEST(XlaBuilderTest, CompositeCallMissingName) {
@@ -609,11 +609,8 @@ TEST(XlaBuilderTest, CompositeCallOptionalVersionAndAttribute) {
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   ASSERT_THAT(GetRoot(*module),
               GmockMatch(m::Call(m::Parameter(), m::Parameter())));
-  ASSERT_TRUE(GetRoot(*module)->frontend_attributes().map().contains(
-      "composite.attributes"));
-  EXPECT_EQ(
-      GetRoot(*module)->frontend_attributes().map().at("composite.attributes"),
-      "{}");
+  EXPECT_EQ(GetRoot(*module)->get_frontend_attribute("composite.attributes"),
+            "{}");
   EXPECT_EQ(
       GetRoot(*module)->frontend_attributes().map().at("composite.version"),
       "0");
@@ -643,8 +640,7 @@ TEST(XlaBuilderTest, CompositeCallWithExtraFrontendAttributes) {
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Call(m::Parameter(), m::Parameter())));
-  ASSERT_TRUE(GetRoot(*module)->frontend_attributes().map().contains("foo"));
-  EXPECT_EQ(GetRoot(*module)->frontend_attributes().map().at("foo"), "bar");
+  EXPECT_EQ(GetRoot(*module)->get_frontend_attribute("foo"), "bar");
 }
 
 TEST(XlaBuilderTest, BinopHasDegenerateBroadcast) {

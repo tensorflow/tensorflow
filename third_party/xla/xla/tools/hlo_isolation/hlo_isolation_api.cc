@@ -709,10 +709,7 @@ std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
   for (auto* computation : module->computations()) {
     for (auto* instruction : computation->instructions()) {
       int64_t hlo_id = next_id++;
-      xla::FrontendAttributes frontend_attributes =
-          instruction->frontend_attributes();
-      (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
-      instruction->set_frontend_attributes(frontend_attributes);
+      instruction->set_frontend_attribute("_xla_tag", std::to_string(hlo_id));
 
       HloOutputCallback hlo_cb;
       hlo_cb.callback_id = hlo_id;
@@ -778,13 +775,10 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
 
   const HloInstruction* entry_root =
       test_module_clone->entry_computation()->root_instruction();
-  xla::FrontendAttributes frontend_attributes;
   for (auto* computation : test_module_clone->computations()) {
     for (auto* instruction : computation->instructions()) {
       int64_t hlo_id = next_hlo_id++;
-      frontend_attributes.Clear();
-      (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
-      instruction->add_frontend_attributes(frontend_attributes);
+      instruction->add_frontend_attribute("_xla_tag", std::to_string(hlo_id));
 
       // Inputs and pass through ops carry no computation of their own, so a
       // match on them is not reported as verified.

@@ -2125,7 +2125,7 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   // no-op is forwarded to its operand): that operand is computed upstream and
   // may feed other users.
   if (preserve_frontend_attributes &&
-      new_instruction->frontend_attributes().map().empty() &&
+      !new_instruction->has_frontend_attributes() &&
       !absl::c_linear_search(old_instruction->operands(), new_instruction)) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());

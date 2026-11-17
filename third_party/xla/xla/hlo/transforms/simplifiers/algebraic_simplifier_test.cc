@@ -15406,7 +15406,7 @@ TEST_F(AlgebraicSimplifierTest,
               absl_testing::IsOkAndHolds(true));
   const HloInstruction* root = m->entry_computation()->root_instruction();
   ASSERT_THAT(root, GmockMatch(m::Negate(m::Convert(m::Parameter(0)))));
-  EXPECT_TRUE(root->operand(0)->frontend_attributes().map().empty());
+  EXPECT_FALSE(root->operand(0)->has_frontend_attributes());
 }
 
 // Move parameter from the LHS of a dot to the RHS.

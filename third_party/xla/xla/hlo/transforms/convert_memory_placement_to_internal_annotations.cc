@@ -15,6 +15,9 @@
 
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
 
+#include <optional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -55,25 +58,25 @@ absl::StatusOr<absl::string_view> GetCustomCallTarget(
 absl::StatusOr<bool>
 ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
     HloComputation* c, HloInstruction* instruction) {
-  const auto& frontend_attributes = instruction->frontend_attributes();
-  const auto it = frontend_attributes.map().find(kXlaBufferPlacementAttr);
-  if (it == frontend_attributes.map().end()) {
+  const std::optional<std::string> placement =
+      instruction->get_frontend_attribute(kXlaBufferPlacementAttr);
+  if (!placement.has_value()) {
     return false;
   }
   // XLA currently does not differentiate between pinned and unpinned host
   // memory.
   const bool is_to_host_case =
-      (it->second == memory_annotations::kMemoryTargetPinnedHost ||
-       it->second == memory_annotations::kMemoryTargetUnpinnedHost);
+      (*placement == memory_annotations::kMemoryTargetPinnedHost ||
+       *placement == memory_annotations::kMemoryTargetUnpinnedHost);
   const bool is_to_device_case =
-      (it->second == memory_annotations::kMemoryTargetDevice ||
-       it->second == memory_annotations::kMemoryTargetDeviceSram ||
-       it->second == memory_annotations::kMemoryTargetPinnedDevice);
+      (*placement == memory_annotations::kMemoryTargetDevice ||
+       *placement == memory_annotations::kMemoryTargetDeviceSram ||
+       *placement == memory_annotations::kMemoryTargetPinnedDevice);
   if (!is_to_host_case && !is_to_device_case) {
     return false;
   }
   const absl::StatusOr<absl::string_view> custom_call_target =
-      GetCustomCallTarget(it->second);
+      GetCustomCallTarget(*placement);
   ABSL_RETURN_IF_ERROR(custom_call_target.status());
   if (is_to_host_case) {
     VLOG(1) << "Process forward case: " << instruction->ToString();
