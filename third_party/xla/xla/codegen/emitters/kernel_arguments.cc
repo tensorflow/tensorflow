@@ -366,7 +366,9 @@ absl::StatusOr<KernelArgumentProto> KernelArgument::ToProto() const {
   *proto.mutable_shape() = shape_.ToProto();
   if (kind_ == Kind::kManaged) {
     ABSL_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice_.ToProto());
-    proto.set_slice_index(slice_index_);
+    if (slice_index_.has_value()) {
+      proto.set_slice_index(*slice_index_);
+    }
   }
   proto.set_aliased(aliased_);
   proto.set_alignment(alignment_);

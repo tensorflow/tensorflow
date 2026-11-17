@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -55,9 +56,8 @@ absl::flat_hash_set<int64_t> NonInvariantSliceIndices(
     const emitters::KernelArguments& arguments) {
   absl::flat_hash_set<int64_t> non_invariant;
   for (const emitters::KernelArgument& arg : arguments.args()) {
-    if (arg.kind() == emitters::KernelArgument::Kind::kManaged &&
-        !arg.invariant()) {
-      non_invariant.insert(arg.slice_index());
+    if (arg.slice_index().has_value() && !arg.invariant()) {
+      non_invariant.insert(*arg.slice_index());
     }
   }
   return non_invariant;
@@ -92,8 +92,8 @@ void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
     // NVPTX derives ld.global.nc from readonly plus noalias; omitting both on
     // slices marked not invariant prevents inferred readonly from restoring it.
     bool slice_invariant =
-        kernel_argument.kind() != emitters::KernelArgument::Kind::kManaged ||
-        !non_invariant_slices.contains(kernel_argument.slice_index());
+        !kernel_argument.slice_index().has_value() ||
+        !non_invariant_slices.contains(*kernel_argument.slice_index());
     if (!kernel_argument.aliased() && slice_invariant) {
       dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
                                                      llvm::Attribute::NoAlias));

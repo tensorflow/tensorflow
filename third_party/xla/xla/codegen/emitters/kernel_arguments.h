@@ -68,8 +68,10 @@ class KernelArgument {
   bool aliased() const { return aliased_; }
   void set_aliased(bool aliased) { aliased_ = aliased; }
 
-  int64_t slice_index() const { return slice_index_; }
-  void set_slice_index(int64_t slice_index) { slice_index_ = slice_index; }
+  std::optional<int64_t> slice_index() const { return slice_index_; }
+  void set_slice_index(std::optional<int64_t> slice_index) {
+    slice_index_ = slice_index;
+  }
 
   static absl::StatusOr<KernelArgument> FromProto(
       const KernelArgumentProto& proto,
@@ -90,8 +92,9 @@ class KernelArgument {
   // slice index.
   //
   // This index is used as a hint to XLA emitters to merge uses of arguments
-  // with the same slice index into a single argument.
-  int64_t slice_index_;
+  // with the same slice index into a single argument. Empty for unmanaged
+  // arguments.
+  std::optional<int64_t> slice_index_;
 
   friend class KernelArguments;
 };

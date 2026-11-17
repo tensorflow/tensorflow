@@ -161,8 +161,10 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
 
     const auto& arg = args->args()[index];
     llvm::SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        kXlaSliceIndexAttr, builder.getIndexAttr(arg.slice_index())));
+    if (arg.slice_index().has_value()) {
+      attrs.push_back(builder.getNamedAttr(
+          kXlaSliceIndexAttr, builder.getIndexAttr(*arg.slice_index())));
+    }
     attrs.push_back(
         builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
                              builder.getIndexAttr(arg.alignment())));

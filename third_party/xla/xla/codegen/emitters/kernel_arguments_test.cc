@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -822,6 +823,36 @@ TEST_F(KernelArgumentsTest, ProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(KernelArgumentsProto round_trip_proto,
                        kernel_arguments.ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST_F(KernelArgumentsTest, UnmanagedArgumentsHaveEmptySliceIndex) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT r = f32[4] negate(p0)
+    }
+  )"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  BufferAllocation alloc(/*index=*/0, /*size=*/32, /*color=*/0);
+  auto slice_provider =
+      [&](const HloInstruction& instruction,
+          const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
+    int64_t offset = (&instruction == root) ? 16 : 0;
+    return BufferAllocation::Slice(&alloc, offset, 16);
+  };
+  std::vector<Shape> unmanaged = {ShapeUtil::MakeShape(U64, {2}),
+                                  ShapeUtil::MakeShape(S32, {})};
+  ASSERT_OK_AND_ASSIGN(
+      KernelArguments args,
+      KernelArguments::Create(slice_provider, gpu::GetDefaultBufferAlignment(),
+                              root, unmanaged));
+  ASSERT_THAT(args.args(), SizeIs(4));
+  EXPECT_EQ(args.args()[0].slice_index(), 0);
+  EXPECT_EQ(args.args()[1].slice_index(), 1);
+  EXPECT_EQ(args.args()[2].slice_index(), std::nullopt);
+  EXPECT_EQ(args.args()[3].slice_index(), std::nullopt);
+  EXPECT_THAT(GetArgumentFingerprint(args.args()), HasSubstr("ux1aw,ux0aw"));
 }
 
 }  // namespace

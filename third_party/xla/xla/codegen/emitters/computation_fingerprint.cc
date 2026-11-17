@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/emitters/computation_fingerprint.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -44,7 +45,11 @@ std::string GetArgumentFingerprint(
     absl::Span<const emitters::KernelArgument> kernel_arguments) {
   return absl::StrJoin(kernel_arguments, ",",
                        [](std::string* s, const emitters::KernelArgument& arg) {
-                         absl::StrAppend(s, arg.slice_index());
+                         if (arg.slice_index().has_value()) {
+                           absl::StrAppend(s, *arg.slice_index());
+                         } else {
+                           absl::StrAppend(s, "u");
+                         }
                          absl::StrAppend(s, "x");
                          absl::StrAppend(s, arg.alignment());
                          if (arg.aliased()) {
