@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 
 // NOLINTNEXTLINE
@@ -64,7 +63,7 @@ class PrepareDynamicRangeQuantizePass
 
   // Constructor used by the PassRegistration. This is only used by test.
   explicit PrepareDynamicRangeQuantizePass() {
-    quant_specs_.inference_type = tensorflow::DT_QINT8;
+    quant_specs_.inference_type = InferenceDataType::kQInt8;
     quant_specs_.weight_quantization = true;
     quant_specs_.enable_mlir_dynamic_range_quantizer = true;
   }
@@ -126,11 +125,11 @@ class PrepareDynamicRangeQuantizableOp
 
     // 3. Apply post-processing required for each inference type.
     // TODO(b/212514817): refactor mode checking to improve code quality
-    if (quant_specs_.inference_type == tensorflow::DT_QINT8 &&
+    if (quant_specs_.inference_type == InferenceDataType::kQInt8 &&
         (setAsymmetricQuantizeInputAttr(rewriter, quantizable_ops))) {
       return failure();
     }
-    if (quant_specs_.inference_type == tensorflow::DT_HALF &&
+    if (quant_specs_.inference_type == InferenceDataType::kHalf &&
         (convertToFloat16Constant(rewriter, op))) {
       return failure();
     }
@@ -359,10 +358,10 @@ class PrepareDynamicRangeQuantizableOp
       int operand_num = use.getOperandNumber();
 
       // TODO(b/212514817): refactor mode checking to improve code quality
-      if (quant_specs_.inference_type == tensorflow::DT_QINT8 &&
+      if (quant_specs_.inference_type == InferenceDataType::kQInt8 &&
           hasInt8QuantizableOperandAt(user, operand_num)) {
         quantizable_ops.insert({user, operand_num});
-      } else if (quant_specs_.inference_type == tensorflow::DT_HALF) {
+      } else if (quant_specs_.inference_type == InferenceDataType::kHalf) {
         quantizable_ops.insert({user, operand_num});
       }
     }
@@ -376,9 +375,9 @@ class PrepareDynamicRangeQuantizableOp
 
     // TODO(b/212514817): refactor mode checking to improve code quality
     for (auto& quant_op : quantizable_ops) {
-      if (quant_specs_.inference_type == tensorflow::DT_QINT8) {
+      if (quant_specs_.inference_type == InferenceDataType::kQInt8) {
         quantized |= quantizeOpAsInt8(rewriter, op, quant_op);
-      } else if (quant_specs_.inference_type == tensorflow::DT_HALF) {
+      } else if (quant_specs_.inference_type == InferenceDataType::kHalf) {
         quantizeOpAsFloat16(rewriter, op, quant_op);
         quantized = true;
       }
@@ -476,7 +475,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
   MLIRContext* ctx = func.getContext();
 
   if (enable_float16_quantization_) {
-    quant_specs_.inference_type = tensorflow::DT_HALF;
+    quant_specs_.inference_type = InferenceDataType::kHalf;
   }
 
   quant_specs_.disable_per_channel =

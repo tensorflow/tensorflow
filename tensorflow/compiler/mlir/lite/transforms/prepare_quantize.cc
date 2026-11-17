@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 //===----------------------------------------------------------------------===//
@@ -334,7 +333,7 @@ void PrepareQuantizePass::runOnOperation() {
   if (use_quantization_flags_) {
     quant_specs_.inference_type = GetQuantizedInferenceType(
         this->quantize_signed_, this->activation_number_of_bits_);
-    if (quant_specs_.inference_type == tensorflow::DT_INVALID) {
+    if (quant_specs_.inference_type == InferenceDataType::kInvalid) {
       func.emitError() << "prepare-quantize pass failed: unsupported "
                           "inference type specification";
       signalPassFailure();

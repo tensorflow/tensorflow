@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -94,7 +95,8 @@ absl::Status QuantizeModel(
     tensorflow::InitPassManager(pm, debug_options.value());
   }
   TFL::QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
+  quant_specs.inference_type = TFL::ConvertDataTypeToInferenceDataType(
+      tflite::TflTypeToTfType(inference_type));
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
   quant_specs.disable_per_channel_for_dense_layers =
@@ -106,8 +108,8 @@ absl::Status QuantizeModel(
   quant_specs.nodes_blocklist = denylisted_nodes;
   quant_specs.enable_mlir_variable_quantization = enable_variable_quantization;
 
-  llvm::dbgs() << "fully_quantize: " << fully_quantize
-               << ", inference_type: " << quant_specs.inference_type
+  llvm::dbgs() << "fully_quantize: " << fully_quantize << ", inference_type: "
+               << TFL::InferenceDataTypeName(quant_specs.inference_type)
                << ", input_inference_type: "
                << tflite::EnumNameTensorType(input_type)
                << ", output_inference_type: "

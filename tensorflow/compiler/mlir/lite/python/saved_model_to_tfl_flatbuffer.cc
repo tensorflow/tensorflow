@@ -233,7 +233,8 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     pass_config.quant_specs.qdq_conversion_mode =
         mlir::TFL::QDQConversionMode::kQDQDynamic;
     // Need to set this or else the ops will still use floating point kernels
-    pass_config.quant_specs.inference_type = tensorflow::DT_QINT8;
+    pass_config.quant_specs.inference_type =
+        mlir::TFL::InferenceDataType::kQInt8;
   } else if (converter_flags.qdq_conversion_mode() == "NONE") {
     pass_config.quant_specs.qdq_conversion_mode =
         mlir::TFL::QDQConversionMode::kQDQNone;

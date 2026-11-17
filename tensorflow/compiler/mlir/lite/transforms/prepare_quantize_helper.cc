@@ -17,7 +17,6 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -26,16 +25,16 @@ double PowerOfTwoBound(double value) {
   return std::pow(2, std::ceil(std::log2(value)));
 }
 
-tensorflow::DataType GetQuantizedInferenceType(bool is_signed,
-                                               int number_of_bits) {
+InferenceDataType GetQuantizedInferenceType(bool is_signed,
+                                            int number_of_bits) {
   if (is_signed && number_of_bits == 8) {
-    return tensorflow::DT_QINT8;
+    return InferenceDataType::kQInt8;
   } else if (!is_signed && number_of_bits == 8) {
-    return tensorflow::DT_QUINT8;
+    return InferenceDataType::kQUInt8;
   } else if (is_signed && number_of_bits == 16) {
-    return tensorflow::DT_QINT16;
+    return InferenceDataType::kQInt16;
   } else {
-    return tensorflow::DT_INVALID;
+    return InferenceDataType::kInvalid;
   }
 }
 

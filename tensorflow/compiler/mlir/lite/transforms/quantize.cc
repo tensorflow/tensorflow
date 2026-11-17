@@ -281,8 +281,7 @@ class StrictQuantizationPattern : public RewritePattern {
     auto users = op->getResult(0).getUsers();
     quantizing_ops.append(users.begin(), users.end());
 
-    tensorflow::DataType inference_type =
-        quant_params_.quant_spec.inference_type;
+    InferenceDataType inference_type = quant_params_.quant_spec.inference_type;
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
@@ -429,7 +428,7 @@ class StrictQuantizationPattern : public RewritePattern {
 
         // For float16 quantization if none of the operand or result is
         // modified, replacing the op. See b/335025403.
-        if (inference_type == tensorflow::DT_HALF &&
+        if (inference_type == InferenceDataType::kHalf &&
             !is_operand_or_result_modified) {
           return failure();
         }
@@ -713,7 +712,9 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
   // Constructor used by the PassRegistration and only used by test.
-  explicit QuantizePass() { quant_specs.inference_type = tensorflow::DT_QINT8; }
+  explicit QuantizePass() {
+    quant_specs.inference_type = InferenceDataType::kQInt8;
+  }
 
   // Constructor used by manually creating the pass.
   explicit QuantizePass(const QuantizationSpecs& quant_specs)
@@ -769,7 +770,7 @@ void QuantizePass::runOnOperation() {
                        quant_specs.custom_map);
   }
   if (enable_float16_quantization_) {
-    quant_specs.inference_type = tensorflow::DT_HALF;
+    quant_specs.inference_type = InferenceDataType::kHalf;
   }
 
   const QuantPassSpec quant_params = {
