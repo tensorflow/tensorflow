@@ -4513,6 +4513,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
+        ":fused_linear_cross_entropy_op"
     ],
 )
 
