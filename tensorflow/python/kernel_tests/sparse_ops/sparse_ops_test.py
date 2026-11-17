@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -28,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -1087,6 +1089,109 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
               cdiv.values, (nnz,),
               x_init_value=dense_vals_np)
           self.assertLess(err, 2e-4)
+
+  def testScalarMulGradients(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      indices = constant_op.constant([[0, 0], [1, 2], [2, 1]],
+                                      dtype=dtypes.int64)
+      shape = [3, 4]
+      vals = constant_op.constant([1.5, 2.5, 3.5], dtype=dtype)
+      s = constant_op.constant(2.0, dtype=dtype)
+
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch([vals, s])
+        sp_t = sparse_tensor.SparseTensor(indices, vals, shape)
+        dense_t = sparse_ops.sparse_tensor_to_dense(sp_t)
+        sp_mul = sparse_ops.sparse_tensor_to_dense(sp_t * s)
+        dense_mul = dense_t * s
+
+      g_sp_vals, g_sp_s = tape.gradient(sp_mul, [vals, s])
+      g_dense_vals, g_dense_s = tape.gradient(dense_mul, [vals, s])
+      self.assertAllClose(g_sp_vals, g_dense_vals)
+      self.assertAllClose(g_sp_s, g_dense_s)
+
+      def mul_fn(v, scalar):
+        sp = sparse_tensor.SparseTensor(indices, v, shape)
+        return (sp * scalar).values
+
+      theo, num = gradient_checker_v2.compute_gradient(mul_fn, [vals, s])
+      self.assertAllClose(theo[0], num[0], rtol=1e-3, atol=1e-3)
+      self.assertAllClose(theo[1], num[1], rtol=1e-3, atol=1e-3)
+
+  def testScalarDivGradients(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      indices = constant_op.constant([[0, 0], [1, 2], [2, 1]],
+                                      dtype=dtypes.int64)
+      shape = [3, 4]
+      vals = constant_op.constant([1.5, 2.5, 3.5], dtype=dtype)
+      s = constant_op.constant(2.0, dtype=dtype)
+
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch([vals, s])
+        sp_t = sparse_tensor.SparseTensor(indices, vals, shape)
+        dense_t = sparse_ops.sparse_tensor_to_dense(sp_t)
+        sp_div = sparse_ops.sparse_tensor_to_dense(sp_t / s)
+        dense_div = dense_t / s
+
+      g_sp_vals, g_sp_s = tape.gradient(sp_div, [vals, s])
+      g_dense_vals, g_dense_s = tape.gradient(dense_div, [vals, s])
+      self.assertAllClose(g_sp_vals, g_dense_vals)
+      self.assertAllClose(g_sp_s, g_dense_s)
+
+      def div_fn(v, scalar):
+        sp = sparse_tensor.SparseTensor(indices, v, shape)
+        return (sp / scalar).values
+
+      theo, num = gradient_checker_v2.compute_gradient(div_fn, [vals, s])
+      self.assertAllClose(theo[0], num[0], rtol=1e-3, atol=1e-3)
+      self.assertAllClose(theo[1], num[1], rtol=1e-3, atol=1e-3)
+
+  def testScalarGradientsEmptySparse(self):
+    indices = constant_op.constant([[0, 0], [1, 2], [2, 1]],
+                                    dtype=dtypes.int64)
+    shape = [3, 4]
+    empty_indices = array_ops.zeros([0, 2], dtype=dtypes.int64)
+    empty_vals = constant_op.constant([], dtype=dtypes.float32)
+    s = constant_op.constant(3.0, dtype=dtypes.float32)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch([empty_vals, s])
+      sp_t = sparse_tensor.SparseTensor(empty_indices, empty_vals, shape)
+      out_mul = sparse_ops.sparse_tensor_to_dense(sp_t * s)
+      out_div = sparse_ops.sparse_tensor_to_dense(sp_t / s)
+    g_mul_vals, g_mul_s = tape.gradient(out_mul, [empty_vals, s])
+    g_div_vals, g_div_s = tape.gradient(out_div, [empty_vals, s])
+    self.assertAllClose(g_mul_s, 0.0)
+    self.assertAllClose(g_div_s, 0.0)
+    self.assertAllClose(g_mul_vals, [])
+    self.assertAllClose(g_div_vals, [])
+
+  def testScalarGradientsInFunction(self):
+    indices = constant_op.constant([[0, 0], [1, 2], [2, 1]],
+                                    dtype=dtypes.int64)
+    shape = [3, 4]
+
+    @def_function.function
+    def tf_fn_mul(v, scalar):
+      sp = sparse_tensor.SparseTensor(indices, v, shape)
+      return (sp * scalar).values
+
+    @def_function.function
+    def tf_fn_div(v, scalar):
+      sp = sparse_tensor.SparseTensor(indices, v, shape)
+      return (sp / scalar).values
+
+    vals_fn = constant_op.constant([1.5, 2.5, 3.5], dtype=dtypes.float32)
+    s_fn = constant_op.constant(2.0, dtype=dtypes.float32)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch([vals_fn, s_fn])
+      out_m = tf_fn_mul(vals_fn, s_fn)
+      out_d = tf_fn_div(vals_fn, s_fn)
+    gm_v, gm_s = tape.gradient(out_m, [vals_fn, s_fn])
+    gd_v, gd_s = tape.gradient(out_d, [vals_fn, s_fn])
+    self.assertAllClose(gm_v, [2.0, 2.0, 2.0])
+    self.assertAllClose(gm_s, 7.5)
+    self.assertAllClose(gd_v, [0.5, 0.5, 0.5])
+    self.assertAllClose(gd_s, -1.875)
 
 
 class SparseSoftmaxTest(test_util.TensorFlowTestCase):

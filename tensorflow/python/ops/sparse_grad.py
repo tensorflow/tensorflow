@@ -242,6 +242,16 @@ def _SparseDenseCwiseMulOrDivGrad(op: ops.Operation, grad, is_mul):
   x_shape = op.inputs[2]
   y = op.inputs[3]
 
+  if y.shape.rank == 0:
+    x_values = op.inputs[1]
+    if is_mul:
+      dx = grad * y
+      dy = math_ops.reduce_sum(grad * x_values)
+    else:
+      dx = grad / y
+      dy = math_ops.reduce_sum(grad * (-x_values / math_ops.square(y)))
+    return (None, dx, None, dy)
+
   y_shape = math_ops.cast(array_ops.shape(y), dtypes.int64)
   num_added_dims = array_ops.expand_dims(
       array_ops.size(x_shape) - array_ops.size(y_shape), 0)
