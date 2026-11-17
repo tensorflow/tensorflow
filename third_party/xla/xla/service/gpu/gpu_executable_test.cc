@@ -106,6 +106,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -1881,6 +1882,11 @@ TEST_F(GpuExecutableTest,
       EXPECT_CALL(streams[d], GetRocmComputeCapability())
           .WillRepeatedly(Return(*rocm_cc));
     }
+    if (const se::OneAPIComputeCapability* oneapi_cc =
+            compute_capability.oneapi_compute_capability()) {
+      EXPECT_CALL(streams[d], GetOneAPIComputeCapability())
+          .WillRepeatedly(Return(*oneapi_cc));
+    }
 
     pool.Schedule([&, d]() {
       auto run = [&](GpuExecutable& exec, int run_id) {
@@ -1968,6 +1974,11 @@ TEST_F(GpuExecutableTest, CollectiveParamsUsesRunOptionsDeviceOrdinal) {
           compute_capability.rocm_compute_capability()) {
     EXPECT_CALL(stream, GetRocmComputeCapability())
         .WillRepeatedly(Return(*rocm_cc));
+  }
+  if (const se::OneAPIComputeCapability* oneapi_cc =
+          compute_capability.oneapi_compute_capability()) {
+    EXPECT_CALL(stream, GetOneAPIComputeCapability())
+        .WillRepeatedly(Return(*oneapi_cc));
   }
 
   DeviceAssignment device_assn(/*replica_count=*/1, /*computation_count=*/1);
