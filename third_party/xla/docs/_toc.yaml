@@ -92,26 +92,30 @@ toc:
 - title: Debugging
   section:
   # This is the default tab for the Debugging section.
-  - heading: XLA tooling
+  - heading: XLA debugging tooling
   - title: Dump HLO computations
     path: /xla/hlo_dumps
   - title: Errors overview
     path: /xla/errors_overview
   - title: Error codes
     path: /xla/error_codes
-  - title: Debug OOM errors with XProf
-    path: /xla/oom_debugging
-  - title: Debug Megascale
-    path: /xla/megascale/debugging_workflow
   - title: Tune Megascale
     path: /xla/megascale/performance_tuning
+  # TPU debugging bundles sub-section
+  - heading: TPU debugging
+  - title: TPU debugging overview
+    path: /xla/tpu/debugging_overview
+  - title: Debug Megascale
+    path: /xla/megascale/debugging_workflow
+  - title: Debug OOM errors with XProf
+    path: /xla/oom_debugging
+  - title: Reporting JAX/XLA compile-time crashes on TPU
+    path: /xla/jax_compile_crash
   - title: SparseCore Mismatch Detector
     path: /xla/sparsecore_mismatch_detector
   - title: "XLA Flags: SparseCore"
     path: /xla/sparsecore_flags
-  - title: Reporting JAX/XLA compile-time crashes on TPU
-    path: /xla/jax_compile_crash
-    # TPU on-device debugging sub-section
+  # TPU on-device debugging sub-section
   - heading: TPU on-device debugging
   - title: TPU on-device debugging overview
     path: /xla/tpu_on_device_debugging/overview
@@ -121,13 +125,13 @@ toc:
     path: /xla/tpu_on_device_debugging/debug_callbacks
   - title: Hang diagnostics
     path: /xla/tpu_on_device_debugging/hang_diagnostics
-  - title: Debugging hangs: sync flag wait timeout
+  - title: "Debugging hangs: sync flag wait timeout"
     path: /xla/tpu_on_device_debugging/sync_flag_wait_timeout
-  - title: Debugging hangs: hierarchical program progress tracker
+  - title: "Debugging hangs: hierarchical program progress tracker"
     path: /xla/tpu_on_device_debugging/hierarchical_progress_tracker
   - title: File a support case
     path: /xla/tpu_on_device_debugging/file_support_case
-    # XLA Tools sub-section
+  # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
     path: /xla/tools

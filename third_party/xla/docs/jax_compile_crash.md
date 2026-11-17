@@ -10,9 +10,9 @@ The crash report should be submitted to the JAX GitHub repository
 ([https://github.com/google/jax/issues](https://github.com/google/jax/issues))
 or, for XLA-specific issues, to the OpenXLA GitHub repository
 ([https://github.com/openxla/xla/issues](https://github.com/openxla/xla/issues)). However, if you suspect the cause of the problem to be in your own code, you can
-try to [investigate the issue further](#analyzing-issue).
+try to [investigate the issue further](#analyzing_the_issue_optional).
 
-## Initial steps when a crash occurs {#initial-steps}
+## Initial steps when a crash occurs
 
 In order to report the issue effectively, make sure you capture the full error
 message and stack trace:
@@ -63,12 +63,12 @@ recommended.
 *   **What to include in reports:**
     1.   Clear description of the issue.
     2.   FULL error message and stack trace, as described in the [Initial steps
-         when a crash occurs section](#initial-steps).
+         when a crash occurs section](#initial_steps_when_a_crash_occurs).
     3.   The [HLO Dump](https://openxla.org/xla/hlo_dumps) directory (e.g.,
          zipped attachment or link to cloud storage).
     4.   The minimal reproducer code (if available).
 
-## Analyzing the issue (optional) {#analyzing-issue}
+## Analyzing the issue (optional)
 
 Advanced users who want to analyze the issue further before filing a bug, for
 example, to produce a minimal reproducer, or try to find a workaround, can try
