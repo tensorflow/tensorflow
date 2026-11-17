@@ -104,6 +104,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/env.h"
 #if GOOGLE_CUDA
 #include "xla/pjrt/gpu/vmm_allocator_gate.h"
@@ -1866,6 +1867,64 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
+}
+
+// A client created with a compute stream priority creates its compute, H2D,
+// and D2H streams at that priority and runs executions on that compute stream.
+TEST(StreamExecutorGpuClientTest, ComputeStreamPrioritySetsStreamPriority) {
+  GpuClientOptions options = GetTestGpuClientOptions();
+  options.compute_stream_priority = -1;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      raw_client->GetLocalDeviceState(
+          client->addressable_devices()[0]->local_device_id()));
+  EXPECT_THAT(local_device_state->compute_stream()->priority(),
+              VariantWith<int>(-1));
+  EXPECT_THAT(local_device_state->host_to_device_stream()->priority(),
+              VariantWith<int>(-1));
+  EXPECT_THAT(local_device_state->GetDeviceToHostStream()->priority(),
+              VariantWith<int>(-1));
+
+  // A program runs on the compute stream.
+  constexpr absl::string_view kProgram = R"(
+    HloModule Add
+
+    ENTRY main {
+      p = s32[4]{0} parameter(0)
+      ROOT add = s32[4]{0} add(p, p)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(kProgram, *client));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{input.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  ASSERT_OK_AND_ASSIGN(auto definition,
+                       GetDefinitionStreamInfo(results[0][0].get()));
+  EXPECT_EQ(definition.stream,
+            reinterpret_cast<intptr_t>(local_device_state->compute_stream()
+                                           ->platform_specific_handle()
+                                           .stream));
+  ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
+  EXPECT_THAT(literal->data<int32_t>(), ElementsAre(2, 4, 6, 8));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     ComputeStreamPriorityUnsetKeepsDefaultPriority) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  ASSERT_OK_AND_ASSIGN(
+      LocalDeviceState * local_device_state,
+      raw_client->GetLocalDeviceState(
+          client->addressable_devices()[0]->local_device_id()));
+  EXPECT_THAT(local_device_state->compute_stream()->priority(),
+              VariantWith<se::StreamPriority>(se::StreamPriority::Default));
 }
 
 TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
