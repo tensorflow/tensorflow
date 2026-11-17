@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -160,6 +161,31 @@ class ThunkExecutor::ProgressTracker {
   // the index that is used by `ThunkExecutor` progress v-logging.
   using ThunkIndexing = absl::flat_hash_map<const Thunk*, size_t>;
 
+  // Nested thunk inside a composite thunk (such as a `CommandBufferThunk`
+  // whose sub-thunks are captured into a single command buffer and do not have
+  // individual stream events).
+  struct NestedThunk {
+    size_t thunk_idx;
+    Thunk::Kind kind;
+    std::string name;
+
+    bool operator==(const NestedThunk& other) const {
+      return thunk_idx == other.thunk_idx && kind == other.kind &&
+             name == other.name;
+    }
+  };
+
+  // Owning snapshot of a thunk's static metadata captured at
+  // `InstallProgressTracker` time so `ProgressTracker` never dereferences
+  // `const Thunk*` pointers after `ExecuteOnStream` (even if `GpuExecutable`
+  // is destroyed while device work is still in flight).
+  struct ThunkMetadata {
+    size_t thunk_idx;
+    Thunk::Kind kind;
+    std::string name;
+    std::vector<NestedThunk> nested_thunks;
+  };
+
   // Thunk execution record: captures both the identity and the execution order
   // of a thunk launch, along with wall-clock time and loop nest context.
   struct ThunkExecution {
@@ -176,16 +202,20 @@ class ThunkExecutor::ProgressTracker {
 
     absl::Time executed;
     Thunk::Kind kind;
-    absl::string_view name;
+    std::string name;
     std::vector<WhileLoopState> loop_nest;
+    std::vector<NestedThunk> nested_thunks;
   };
 
-  ProgressTracker(ThunkIndexing indexing, EventPool* event_pool)
-      : indexing_(std::move(indexing)), event_pool_(event_pool) {}
+  ProgressTracker(ThunkIndexing indexing, std::vector<ThunkMetadata> metadata,
+                  EventPool* event_pool)
+      : indexing_(std::move(indexing)),
+        metadata_(std::move(metadata)),
+        event_pool_(event_pool) {}
 
   // Returns the number of unique thunks in the tracked thunk sequence. This
   // includes all thunks nested inside others.
-  size_t num_thunks() const { return indexing_.size(); }
+  size_t num_thunks() const { return metadata_.size(); }
 
   // Returns the total number of thunk executions (launches). This can exceed
   // num_thunks() when thunks are executed multiple times inside while loops.
@@ -220,10 +250,10 @@ class ThunkExecutor::ProgressTracker {
   // loop nest). We keep a separate record for each execution to be able to
   // distinguish executions that happens in different loop iterations.
   struct ThunkExecutionEvent {
-    ThunkExecutionEvent(const Thunk* thunk, EventPool::Event event,
+    ThunkExecutionEvent(size_t thunk_idx, EventPool::Event event,
                         absl::Span<const WhileLoopState> loop_nest);
 
-    const Thunk* thunk;
+    size_t thunk_idx;
     absl::Time executed;                    // wall time when thunk was launched
     EventPool::Event event;                 // device event for the launch
     std::vector<WhileLoopState> loop_nest;  // enclosing loop state snapshot
@@ -237,6 +267,7 @@ class ThunkExecutor::ProgressTracker {
                                             bool most_recent_first, size_t n);
 
   ThunkIndexing indexing_;
+  std::vector<ThunkMetadata> metadata_;
   EventPool* event_pool_;
 
   mutable absl::Mutex mu_;
@@ -246,6 +277,8 @@ class ThunkExecutor::ProgressTracker {
 class ThunkExecutor::ScopedProgressTracker {
  public:
   using ThunkIndexing = ProgressTracker::ThunkIndexing;
+  using NestedThunk = ProgressTracker::NestedThunk;
+  using ThunkMetadata = ProgressTracker::ThunkMetadata;
   using ThunkExecution = ProgressTracker::ThunkExecution;
 
   ~ScopedProgressTracker();
@@ -278,7 +311,8 @@ class ThunkExecutor::ScopedProgressTracker {
   // automatically removed when the scoped progress tracker goes out of scope.
   static thread_local ProgressTracker* installed;
 
-  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing);
+  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing,
+                                 std::vector<ThunkMetadata> metadata);
 
   std::shared_ptr<ProgressTracker> tracker_;
 };

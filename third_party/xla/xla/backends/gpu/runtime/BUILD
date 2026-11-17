@@ -3948,6 +3948,8 @@ xla_test(
     srcs = ["thunk_executor_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":command_buffer_thunk",
+        ":command_executor",
         ":memset_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -3959,6 +3961,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:platform_util",
+        "//xla/service:service_executable_run_options",
         "//xla/service:shaped_slice",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:device_address",
