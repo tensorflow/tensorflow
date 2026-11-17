@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -54,26 +52,6 @@ class TritonFusion : public FusionInterface {
 
   using EmitThunk = absl::AnyInvocable<absl::StatusOr<ThunkSequence>(
       KernelReuseCache::Kernel)>;
-  // Overload of [Emit] that allows passing overrides for instructions
-  // and unmanaged arguments.
-  // - Instruction overloads are required when we forcibly form fusions for
-  // instructions by extracting them into a separate HLO module. In this case
-  // buffer assignments are still associated with the original instruction.
-  // So the root of the fusion cannot be used to determine the emitted kernel
-  // arguments.
-  // - The unmanaged arguments are used for collectives which have extra
-  // arguments (such as pointers to remote buffers, and metadata arguments).
-  // Empty unmanaged arguments mean that all arguments have buffer slices
-  // associated with them.
-  //
-  // TODO(b/461717780): Remove the instruction override once we form collective
-  // based fusions earlier in the compiler pipeline.
-  // Returns a pair of the kernel thunk and an llvm module. The local module
-  // is only returned if the kernel was not cached.
-  xla::Future<KernelReuseCache::Kernel> Emit(
-      IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
-      const HloInstruction* instr_override,
-      absl::Span<const Shape> unmanaged_arguments) const;
 
   // Returns the launch config for Triton fusions that have a block level fusion
   // config.
@@ -99,6 +77,11 @@ class TritonFusion : public FusionInterface {
       BorrowedMlirContext borrowed_context, KernelCompiler* compiler) const;
 
  private:
+  // Compiles (or fetches from cache) the Triton kernel for `fusion`.
+  xla::Future<KernelReuseCache::Kernel> EmitKernel(
+      IrEmitterContext& ir_emitter_context,
+      const HloFusionInstruction& fusion) const;
+
   const HloFusionAnalysis& analysis_;
 };
 
