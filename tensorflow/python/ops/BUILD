@@ -2258,6 +2258,7 @@ py_library(
         ":random_ops",
         ":stateless_random_ops",
         ":variables",
+        ":fused_linear_cross_entropy_op",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
@@ -4893,7 +4894,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:gen_nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
