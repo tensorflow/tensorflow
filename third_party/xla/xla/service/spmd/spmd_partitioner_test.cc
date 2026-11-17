@@ -2381,6 +2381,122 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest,
+       ConvolutionTiledOutputRhsNonContractingBaseDilationValueParity) {
+  static constexpr absl::string_view kHlos[] = {
+      R"hlo(HloModule m
+ENTRY e { %l = f32[1,1,6,1] parameter(0), sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}  %r = f32[1,1,3,2] parameter(1), sharding={replicated}  ROOT %c = f32[1,1,14,2] convolution(%l, %r), dim_labels=bf01_oi01->bf01, window={size=3x2 pad=2_3x1_1 lhs_dilate=2x1 rhs_reversal=1x1}, sharding={devices=[1,1,2,2]<=[4]} })hlo",
+      R"hlo(HloModule m
+ENTRY e { %l = bf16[1,1,6,1] parameter(0), sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}  %r = bf16[1,1,3,2] parameter(1), sharding={replicated}  ROOT %c = bf16[1,1,14,2] convolution(%l, %r), dim_labels=bf01_oi01->bf01, window={size=3x2 pad=2_3x1_1 lhs_dilate=2x1 rhs_reversal=1x1}, sharding={devices=[1,1,2,2]<=[4]} })hlo",
+  };
+  const auto first_cp = [](HloModule* m) -> HloInstruction* {
+    auto post = m->entry_computation()->MakeInstructionPostOrder();
+    auto it =
+        absl::c_find_if(post, HloPredicateIsOp<HloOpcode::kCollectivePermute>);
+    return it == post.end() ? nullptr : *it;
+  };
+  for (const absl::string_view hlo : kHlos) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_mod,
+                         ParseAndReturnVerifiedModule(hlo));
+    const PrimitiveType ty = ref_mod->result_shape().element_type();
+    SCOPED_TRACE(PrimitiveType_Name(ty));
+    ASSERT_OK_AND_ASSIGN(
+        Literal lhs_lit,
+        LiteralUtil::CreateR4<float>({{{{1}, {2}, {3}, {4}, {5}, {6}}}})
+            .Convert(ty));
+    ASSERT_OK_AND_ASSIGN(
+        Literal rhs_lit,
+        LiteralUtil::CreateR4<float>({{{{1, 2}, {3, 4}, {5, 6}}}}).Convert(ty));
+    ASSERT_OK_AND_ASSIGN(Literal expected, HloEvaluator().Evaluate(
+                                               *ref_mod, {&lhs_lit, &rhs_lit}));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(hlo, /*num_devices=*/4));
+    const HloInstruction* conv =
+        FindInstruction(module.get(), HloOpcode::kConvolution);
+    ASSERT_NE(conv, nullptr);
+    EXPECT_EQ(conv->shape().dimensions(3), 1);
+    EXPECT_EQ(conv->window().dimensions(1).size(), 2);
+    EXPECT_EQ(conv->window().dimensions(1).padding_low(), 0);
+    EXPECT_EQ(conv->window().dimensions(1).padding_high(), 0);
+    std::vector<std::unique_ptr<HloModule>> dev_mods(4);
+    std::vector<Literal> lhs_shards(4);
+    for (int64_t d = 0; d < 4; ++d) {
+      lhs_shards[d] =
+          lhs_lit.Slice({0, 0, (d / 2) * 3, 0}, {1, 1, (d / 2 + 1) * 3, 1});
+      dev_mods[d] = module->Clone();
+      for (HloInstruction* inst :
+           dev_mods[d]->entry_computation()->MakeInstructionPostOrder()) {
+        if (inst->opcode() == HloOpcode::kPartitionId) {
+          ASSERT_OK(dev_mods[d]->entry_computation()->ReplaceWithNewInstruction(
+              inst, HloInstruction::CreateConstant(
+                        LiteralUtil::CreateR0<uint32_t>(d))));
+        }
+      }
+    }
+    while (first_cp(dev_mods[0].get()) != nullptr) {
+      std::vector<Literal> src_vals(4), dst_vals(4);
+      for (int64_t d = 0; d < 4; ++d) {
+        HloComputation* entry = dev_mods[d]->entry_computation();
+        HloInstruction* cp = first_cp(dev_mods[d].get());
+        dst_vals[d] = Literal::CreateFromShape(cp->shape());
+        ASSERT_OK_AND_ASSIGN(
+            src_vals[d], HloEvaluator().Evaluate(
+                             cp->operand(0), {}, true,
+                             {{entry->parameter_instruction(0), &lhs_shards[d]},
+                              {entry->parameter_instruction(1), &rhs_lit}}));
+      }
+      for (const auto& [src, dst] :
+           first_cp(dev_mods[0].get())->source_target_pairs()) {
+        dst_vals[dst] = src_vals[src].Clone();
+      }
+      for (int64_t d = 0; d < 4; ++d) {
+        ASSERT_OK(dev_mods[d]->entry_computation()->ReplaceWithNewInstruction(
+            first_cp(dev_mods[d].get()),
+            HloInstruction::CreateConstant(std::move(dst_vals[d]))));
+      }
+    }
+    for (int64_t d = 0; d < 4; ++d) {
+      SCOPED_TRACE(d);
+      ASSERT_OK_AND_ASSIGN(
+          Literal actual,
+          HloEvaluator().Evaluate(*dev_mods[d], {&lhs_shards[d], &rhs_lit}));
+      EXPECT_EQ(actual, expected.Slice({0, 0, (d / 2) * 7, d % 2},
+                                       {1, 1, (d / 2 + 1) * 7, d % 2 + 1}));
+    }
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       ConvolutionRhsNonContractingWindowedAndUnshardedLhsVariants) {
+  struct Case {
+    absl::string_view name, conv_shape, hlo;
+    int64_t num_devices, exp_size, exp_pad;
+  };
+  static constexpr Case kCases[] = {
+      {"no_dyn_slice_2x2", "f32[1,1,5,4]", R"hlo(HloModule m
+ENTRY e { %l = f32[1,1,8,1] parameter(0), sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}  %r = f32[1,1,3,8] parameter(1), sharding={replicated}  ROOT %c = f32[1,1,10,8] convolution(%l, %r), dim_labels=bf01_oi01->bf01, window={size=3x8 pad=2_2x7_7 rhs_reversal=1x1}, sharding={devices=[1,1,2,2]<=[4]} })hlo",
+       4, 8, 0},
+      {"dot_style_lhs_size1", "f32[1,1,6,4]", R"hlo(HloModule m
+ENTRY e { %l = f32[1,1,4,1] parameter(0), sharding={replicated}  %r = f32[1,1,2,8] parameter(1), sharding={devices=[1,1,1,2]<=[2]}  ROOT %c = f32[1,1,6,8] convolution(%l, %r), dim_labels=bf01_oi01->bf01, window={size=2x8 pad=0_0x7_7 lhs_dilate=2x1 rhs_reversal=0x1}, sharding={devices=[1,1,1,2]<=[2]} })hlo",
+       2, 4, 3},
+      {"nested_dot_group_then_tiled_output", "f32[1,1,8,1]", R"hlo(HloModule m
+ENTRY e { %l = f32[1,1,6,1] parameter(0), sharding={devices=[1,1,2,1,4]<=[8] last_tile_dim_replicate}  %r = f32[2,1,3,2] parameter(1), sharding={devices=[2,1,1,1,4]<=[8] last_tile_dim_replicate}  ROOT %c = f32[1,2,14,2] convolution(%l, %r), dim_labels=bf01_oi01->bf01, window={size=3x2 pad=2_3x1_1 lhs_dilate=2x1 rhs_reversal=1x1}, sharding={devices=[1,2,2,2]<=[8]} })hlo",
+       8, 2, 0},
+  };
+  for (const Case& tc : kCases) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(tc.hlo, tc.num_devices));
+    const HloInstruction* conv =
+        FindInstruction(module.get(), HloOpcode::kConvolution);
+    ASSERT_NE(conv, nullptr);
+    EXPECT_THAT(conv, op::Shape(tc.conv_shape));
+    EXPECT_EQ(conv->window().dimensions(1).size(), tc.exp_size);
+    EXPECT_EQ(conv->window().dimensions(1).padding_low(), tc.exp_pad);
+    EXPECT_EQ(conv->window().dimensions(1).padding_high(), tc.exp_pad);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SelectAndScatterNoOverlap) {
   absl::string_view hlo_string = R"(
 HloModule module

@@ -976,6 +976,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
       continue;
     }
     auto wd = window.mutable_dimensions(dim.spatial_dim);
+    // Keep dot padding only while the LHS spatial dimension has size 1;
+    // spatial LHS resharding already materialized padding into sharded_lhs_hlo
+    // and conv_window.
+    if (sharded_lhs_hlo->shape().dimensions(
+            conv_dnums.input_spatial_dimensions(dim.spatial_dim)) != 1) {
+      const WindowDimension& new_wd = conv_window.dimensions(dim.spatial_dim);
+      wd->set_size(new_wd.size());
+      wd->set_padding_high(new_wd.padding_high());
+      wd->set_padding_low(new_wd.padding_low());
+      continue;
+    }
     wd->set_size(sharded_rhs_hlo->shape().dimensions(
         conv_dnums.kernel_spatial_dimensions(dim.spatial_dim)));
     wd->set_padding_high(wd->size() - 1);
