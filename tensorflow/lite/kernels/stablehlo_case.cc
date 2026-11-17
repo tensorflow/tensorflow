@@ -73,6 +73,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto* subgraphs = this_subgraph->GetSubgraphs();
+  for (const int32_t subgraph_index : op_data->subgraph_indices) {
+    TF_LITE_ENSURE(context,
+                   subgraph_index >= 0 &&
+                       static_cast<size_t>(subgraph_index) < subgraphs->size());
+  }
   for (size_t i = 1; i < subgraphs->size(); ++i) {
     Subgraph* subgraph = (*subgraphs)[i].get();
     TF_LITE_ENSURE_EQ(context, num_inputs, subgraph->inputs().size());
@@ -140,7 +145,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check if any subgraph outputs have dynamic shapes
   if (!op_data->subgraph_has_dynamic_output_tensors) {
     // Iterate over all subgraphs to compare output shapes
-    for (size_t j = 1; j < subgraphs->size() - 1; ++j) {
+    for (size_t j = 1; j < op_data->subgraph_indices.size(); ++j) {
       Subgraph* branch_subgraph =
           (*subgraphs)[op_data->subgraph_indices[j]].get();
 

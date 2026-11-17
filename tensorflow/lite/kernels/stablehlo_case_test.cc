@@ -164,6 +164,22 @@ class StablehloCaseDynamicOpModel : public StablehloCaseOpModel {
   int output() { return output_; }
 };
 
+// Builds two valid branch subgraphs but does not allocate, so tests can pass
+// branch indices that do not name a subgraph and check AllocateTensors fails.
+class StablehloCaseUnallocatedOpModel : public StablehloCaseOpModel {
+ public:
+  StablehloCaseUnallocatedOpModel(const TensorData& input,
+                                  const TensorData& input1,
+                                  const TensorData& input2,
+                                  const TensorData& output,
+                                  const TfLiteStablehloCaseParams& params)
+      : StablehloCaseOpModel(input, input1, input2, output, params) {
+    TfLiteType type = interpreter_->tensor(subgraph_input1_)->type;
+    subgraph_builder_.BuildAddSubgraph(interpreter_->subgraph(1), type);
+    subgraph_builder_.BuildMulSubgraph(interpreter_->subgraph(2), type);
+  }
+};
+
 template <typename T>
 float GetTolerance(float min, float max) {
   float kQuantizedStep =
@@ -332,6 +348,30 @@ TEST(StablehloCaseTest, DynamicCaseTestPad) {
 
   EXPECT_TRUE(IsDynamicTensor(model.GetOutputTensor(0)));
   EXPECT_THAT(model.GetOutput<int>(), ElementsAreArray({0, 5, 7, 0, 0}));
+}
+
+TEST(StablehloCaseTest, BranchSubgraphIndexOutOfRangeFails) {
+  TfLiteStablehloCaseParams params = {
+      {1, 1000},
+      2,
+  };
+
+  StablehloCaseUnallocatedOpModel model(
+      {TensorType_INT32, {}}, {TensorType_FLOAT32, {1, 2}},
+      {TensorType_FLOAT32, {1, 2}}, {TensorType_FLOAT32, {1, 2}}, params);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
+}
+
+TEST(StablehloCaseTest, NegativeBranchSubgraphIndexFails) {
+  TfLiteStablehloCaseParams params = {
+      {-1000, 2},
+      2,
+  };
+
+  StablehloCaseUnallocatedOpModel model(
+      {TensorType_INT32, {}}, {TensorType_FLOAT32, {1, 2}},
+      {TensorType_FLOAT32, {1, 2}}, {TensorType_FLOAT32, {1, 2}}, params);
+  EXPECT_EQ(model.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace
