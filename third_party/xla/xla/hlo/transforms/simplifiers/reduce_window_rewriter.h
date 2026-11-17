@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_REDUCE_WINDOW_REWRITER_H_
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/shape.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -52,8 +54,9 @@ class ReduceWindowRewriter : public HloModulePass {
   // `base_length` is the maximum size of a single reduce-window before
   // decomposing into a tree reduction. If base_length <= 1, this pass is a
   // no-op because tree reduction cannot reduce the scan length.
-  explicit ReduceWindowRewriter(int64_t base_length)
-      : base_length_(base_length) {}
+  explicit ReduceWindowRewriter(int64_t base_length,
+                                HloPredicate filter = nullptr)
+      : base_length_(base_length), filter_(std::move(filter)) {}
 
   absl::string_view name() const override { return "reduce-window-rewriter"; }
 
@@ -64,6 +67,7 @@ class ReduceWindowRewriter : public HloModulePass {
 
  private:
   int64_t base_length_;
+  HloPredicate filter_;
 };
 
 // Decompose associative scan instructions into a single reduce-window op

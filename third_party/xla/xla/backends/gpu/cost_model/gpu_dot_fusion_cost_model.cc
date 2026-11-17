@@ -54,8 +54,6 @@ namespace xla::gpu::gpu_dot_fusion_cost_model {
 
 using ::xla::xtile::BlockLevelParameters;
 
-namespace detail {
-
 namespace {
 
 using ::xla::primitive_util::BitWidth;
@@ -674,8 +672,6 @@ double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
   return utilization;
 }
 
-}  // namespace detail
-
 absl::Status IsSupported(const HloDotInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
@@ -753,7 +749,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     ABSL_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
-  detail::DotProblemInfo dot_info(*dot);
+  DotProblemInfo dot_info(*dot);
 
   const std::vector<int64_t>& tile_shape = block_params.output_tile_sizes[0];
   if (tile_shape.size() < 2) {
@@ -766,23 +762,22 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   }
   int64_t tile_m = tile_shape[tile_shape.size() - 2];
   int64_t tile_n = tile_shape[tile_shape.size() - 1];
-  detail::DotTileSize dot_tile{/*m=*/tile_m,
-                               /*n=*/tile_n,
-                               /*k=*/block_k_val,
-                               /*b=*/tile_b};
+  DotTileSize dot_tile{/*m=*/tile_m,
+                       /*n=*/tile_n,
+                       /*k=*/block_k_val,
+                       /*b=*/tile_b};
 
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  ABSL_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
-                   detail::CalculateComputeTimeWithTileAndWaveQuantization(
+  ABSL_ASSIGN_OR_RETURN(ComputeAndFlops compute_and_flops,
+                   CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
   estimates.flops = compute_and_flops.flops_with_wave_quant;
 
   // Calculate HBM roofline.
-  detail::HbmEstimates hbm_timing =
-      detail::CalculateHbmTime(dot_info, device_info);
+  HbmEstimates hbm_timing = CalculateHbmTime(dot_info, device_info);
 
   estimates.read_time = hbm_timing.read_time;
   estimates.write_time = hbm_timing.write_time;
@@ -790,15 +785,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.bytes_written = hbm_timing.bytes_written;
   const int64_t num_stages = block_params.num_stages;
 
-  int64_t threadblock_count =
-      detail::CalculateNumThreadblocks(dot_info, dot_tile);
+  int64_t threadblock_count = CalculateNumThreadblocks(dot_info, dot_tile);
   estimates.l2_bytes_read =
-      detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+      CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
 
   estimates.shared_memory_per_block_bytes =
-      detail::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
-                                                 num_stages);
-  estimates.registers_per_thread = detail::CalculateRegistersPerThread(
+      CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile, num_stages);
+  estimates.registers_per_thread = CalculateRegistersPerThread(
       dot_info, dot_tile, block_params, device_info);
 
   TF_RET_CHECK(block_k_val > 0)
@@ -808,7 +801,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   const int64_t k_loop_iterations =
       CeilOfRatio<int64_t>(dot_info.k, block_k_val);
 
-  detail::LaunchConfig launch_config;
+  LaunchConfig launch_config;
   launch_config.num_stages = num_stages;
   launch_config.num_warps = block_params.num_warps;
   launch_config.k_loop_iterations = k_loop_iterations;
@@ -818,20 +811,20 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   launch_config.registers_per_thread = estimates.registers_per_thread;
 
   absl::Duration pipelined_loop_time =
-      detail::CalculatePipelinedLoopTimeWithLaunchWaves(
-          launch_config, compute_and_flops.compute_time, hbm_timing,
-          device_info);
-  absl::Duration l2_time = detail::CalculateL2Time(
-      k_loop_iterations, device_info, estimates.l2_bytes_read,
-      block_params.is_tma_allowed);
+      CalculatePipelinedLoopTimeWithLaunchWaves(launch_config,
+                                                compute_and_flops.compute_time,
+                                                hbm_timing, device_info);
+  absl::Duration l2_time =
+      CalculateL2Time(k_loop_iterations, device_info, estimates.l2_bytes_read,
+                      block_params.is_tma_allowed);
 
   // Assuming perfect overlap between compute and memory for the rest,
   // but main loop is now modeled precisely.
   estimates.exec_time = std::max({pipelined_loop_time, l2_time});
-  estimates.compute_utilization = detail::CalculateComputeUtilization(
+  estimates.compute_utilization = CalculateComputeUtilization(
       estimates, device_info, dot_info.output_element_type);
   estimates.memory_utilization =
-      detail::CalculateMemoryUtilization(estimates, device_info);
+      CalculateMemoryUtilization(estimates, device_info);
 
   return estimates;
 }

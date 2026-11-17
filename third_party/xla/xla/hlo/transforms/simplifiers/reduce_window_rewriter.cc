@@ -837,6 +837,9 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
          computation->MakeInstructionPostOrder()) {
       if (auto* reduce_window =
               DynCast<HloReduceWindowInstruction>(instruction)) {
+        if (filter_ && !filter_(reduce_window)) {
+          continue;
+        }
         ABSL_ASSIGN_OR_RETURN(bool result, TryOptimizeCumSumOrProd(
                                           this, base_length_, reduce_window));
         if (result) {
