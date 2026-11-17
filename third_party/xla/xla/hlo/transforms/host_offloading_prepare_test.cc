@@ -534,5 +534,42 @@ ENTRY main {
   EXPECT_THAT(pass_.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(HostOffloadingPrepareTest,
+       HostComputationSharedByCallerNotWrappedByAsyncStart) {
+  const std::string hlo_string = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT multiply.0 = s32[32] multiply(Arg_0.0, Arg_0.0)
+}, execution_thread="host"
+
+// CHECK-LABEL: %async_computation
+// CHECK: ROOT %custom-call = {{.*}} custom-call(%param_0), custom_call_target="HostExecute", called_computations={%host_computation}
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation
+}, execution_thread="host"
+
+// CHECK-LABEL: %main
+// CHECK: %start = {{.*}} async-start(%x), async_execution_thread="host", calls=%async_computation
+// CHECK: %done = {{.*}} async-done(%start)
+// CHECK: %direct_call = {{.*}} call(%x), to_apply=%host_computation
+// CHECK: ROOT %add = {{.*}} add(%done, %direct_call)
+ENTRY main {
+  x = s32[32] parameter(0)
+  start = ((s32[32]), s32[32], u32[]) async-start(x), async_execution_thread="host", calls=async_computation
+  done = s32[32] async-done(start)
+  direct_call = s32[32] call(x), to_apply=host_computation
+  ROOT add = s32[32] add(done, direct_call)
+}
+)";
+
+  HostOffloadingPrepare pass(Rewrite::kConvertToCustomCall);
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace xla
