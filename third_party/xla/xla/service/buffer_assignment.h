@@ -353,8 +353,8 @@ class BufferAllocation {
   // allocation. A single BufferAllocation may include multiple heap traces
   // in the case of the temporary block where there is a heap trace per
   // computation.
-  void AddHeapTrace(const HeapSimulatorTrace& heap_trace) {
-    heap_traces_.push_back(heap_trace);
+  void AddHeapTrace(HeapSimulatorTrace heap_trace) {
+    heap_traces_.push_back(std::move(heap_trace));
     heap_traces_.back().set_buffer_allocation_index(index());
   }
 

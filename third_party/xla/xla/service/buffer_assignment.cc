@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -3139,6 +3140,174 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
   return placed_buffers;
 }
 
+namespace {
+
+// Collects every HloInstruction pointer currently in `module` for membership
+// validation of preset trace positions.
+absl::flat_hash_set<const HloInstruction*> CollectModuleInstructions(
+    const HloModule& module) {
+  absl::flat_hash_set<const HloInstruction*> instructions;
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      instructions.insert(instruction);
+    }
+  }
+  return instructions;
+}
+
+// Validates and resolves an old preset trace buffer ID to its current
+// HloValue::Id using `buffer_id_to_position`, caching lookups in `id_cache`.
+// Requires ValueIsDefinedAt except on kWhile, kConditional, and kParameter ops
+// where OptimizePhiValues can collapse a trivial phi to a single value.
+absl::StatusOr<int64_t> ResolvePresetTraceBufferId(
+    int64_t old_id,
+    const absl::flat_hash_map<int64_t, HloPosition>& buffer_id_to_position,
+    LogicalBuffer::Color color, const HloDataflowAnalysis& dataflow,
+    const absl::flat_hash_set<const HloInstruction*>& module_instructions,
+    absl::flat_hash_map<int64_t, int64_t>& id_cache) {
+  if (auto cached = id_cache.find(old_id); cached != id_cache.end()) {
+    return cached->second;
+  }
+  auto it = buffer_id_to_position.find(old_id);
+  TF_RET_CHECK(it != buffer_id_to_position.end())
+      << "Missing preset trace position for buffer_id " << old_id;
+  const HloPosition& pos = it->second;
+  TF_RET_CHECK(module_instructions.contains(pos.instruction))
+      << "Preset trace position references instruction not in module";
+  TF_RET_CHECK(ShapeUtil::IndexIsValid(pos.instruction->shape(), pos.index))
+      << "Invalid shape index " << pos.index << " for preset trace position on "
+      << pos.instruction->ToString();
+  const HloValue* value = nullptr;
+  if (dataflow.ValueIsDefinedAt(pos.instruction, pos.index)) {
+    value = &dataflow.GetValueDefinedAt(pos.instruction, pos.index);
+  } else {
+    const HloOpcode opcode = pos.instruction->opcode();
+    TF_RET_CHECK(opcode == HloOpcode::kWhile ||
+                 opcode == HloOpcode::kConditional ||
+                 opcode == HloOpcode::kParameter)
+        << "Expected HloValue definition at preset trace position "
+        << pos.ToString();
+    const HloValueSet& value_set =
+        dataflow.GetValueSet(pos.instruction, pos.index);
+    TF_RET_CHECK(value_set.values().size() == 1)
+        << "Expected unique HloValue at preset trace position "
+        << pos.ToString() << ", got " << value_set.values().size();
+    value = &value_set.GetUniqueValue();
+  }
+  TF_RET_CHECK(value->has_color())
+      << "Expected colored HloValue at preset trace position "
+      << pos.ToString();
+  TF_RET_CHECK(value->color() == color)
+      << "Preset trace color mismatch at " << pos.ToString() << ": expected "
+      << color << ", got " << value->color();
+  id_cache.emplace(old_id, value->id());
+  return value->id();
+}
+
+// Tracks liveness and sharing state for one remapped HloValue::Id so collapsed
+// trivial phi events do not double count allocations or create self sharing.
+struct RemappedBufferState {
+  bool live = false;
+  int64_t live_sharers = 0;
+  int64_t dropped_frees = 0;
+  std::optional<int64_t> root;
+};
+
+// Applies one remapped trace event to `states`, rewriting self sharing
+// SHARE_WITH events to ALLOC when the buffer is free. Returns false when the
+// event is a nested reacquisition or its matching FREE and should be dropped.
+bool ApplyRemappedTraceEvent(
+    HeapSimulatorTrace::Event& event, std::optional<int64_t> new_canonical_id,
+    absl::flat_hash_map<int64_t, RemappedBufferState>& states) {
+  const int64_t new_buffer_id = event.buffer_id();
+  // A buffer whose memory is held by a live sharer is never reacquired, so
+  // roots never become sharers and one hop reaches the root.
+  std::optional<int64_t> root;
+  if (new_canonical_id.has_value()) {
+    auto it = states.find(*new_canonical_id);
+    root = it != states.end() && it->second.root.has_value()
+               ? *it->second.root
+               : *new_canonical_id;
+  }
+  RemappedBufferState& state = states[new_buffer_id];
+  if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+    if (state.dropped_frees > 0) {
+      --state.dropped_frees;
+      return false;
+    }
+    const std::optional<int64_t> held_root = state.root;
+    state.live = false;
+    state.root.reset();
+    if (held_root.has_value()) {
+      --states.at(*held_root).live_sharers;
+    }
+    return true;
+  }
+  if (state.live || state.live_sharers > 0) {
+    ++state.dropped_frees;
+    return false;
+  }
+  state.live = true;
+  if (root == new_buffer_id) {
+    event.set_kind(HeapSimulatorTrace::Event::ALLOC);
+    event.clear_share_with_canonical_id();
+  } else if (root.has_value()) {
+    event.set_share_with_canonical_id(*new_canonical_id);
+    state.root = root;
+    ++states[*root].live_sharers;
+  }
+  return true;
+}
+
+// Remaps `buffer_id` and `share_with_canonical_id` in `trace` from preset
+// assignment IDs to current HloValue IDs in `assignment`, validating module
+// membership, shape index, value definition, and `color` via
+// `buffer_id_to_position`. Lazily populates `module_instructions` on first use.
+//
+// Collapsed trivial phis can map multiple old IDs onto one new ID, nesting
+// ALLOC and FREE events or making a SHARE_WITH resolve to its own buffer.
+// Because XProf adds the buffer size on every ALLOC and ComputePeakMemoryImpl
+// rejects self sharing, reacquisitions while a buffer or a live sharer still
+// holds memory are dropped with their matching FREE, and direct self sharing on
+// a freed buffer is rewritten to ALLOC.
+absl::StatusOr<HeapSimulatorTrace> RemapPresetHeapTrace(
+    const HeapSimulatorTrace& trace,
+    const absl::flat_hash_map<int64_t, HloPosition>& buffer_id_to_position,
+    LogicalBuffer::Color color, const BufferAssignment& assignment,
+    std::optional<absl::flat_hash_set<const HloInstruction*>>&
+        module_instructions) {
+  if (!module_instructions.has_value()) {
+    module_instructions = CollectModuleInstructions(assignment.module());
+  }
+  HeapSimulatorTrace remapped_trace = trace;
+  remapped_trace.clear_events();
+  const HloDataflowAnalysis& dataflow = assignment.dataflow_analysis();
+  absl::flat_hash_map<int64_t, int64_t> id_cache;
+  absl::flat_hash_map<int64_t, RemappedBufferState> states;
+  for (const HeapSimulatorTrace::Event& old_event : trace.events()) {
+    HeapSimulatorTrace::Event event = old_event;
+    ABSL_ASSIGN_OR_RETURN(int64_t new_buffer_id,
+                     ResolvePresetTraceBufferId(
+                         event.buffer_id(), buffer_id_to_position, color,
+                         dataflow, *module_instructions, id_cache));
+    event.set_buffer_id(new_buffer_id);
+    std::optional<int64_t> new_canonical_id;
+    if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      ABSL_ASSIGN_OR_RETURN(
+          new_canonical_id,
+          ResolvePresetTraceBufferId(event.share_with_canonical_id(),
+                                     buffer_id_to_position, color, dataflow,
+                                     *module_instructions, id_cache));
+    }
+    if (ApplyRemappedTraceEvent(event, new_canonical_id, states)) {
+      *remapped_trace.add_events() = std::move(event);
+    }
+  }
+  return remapped_trace;
+}
+
+}  // namespace
+
 absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment,
@@ -3146,6 +3315,10 @@ absl::Status BufferAssigner::AssignPresetBuffers(
   if (!opts_.preset_assignments) {
     return absl::OkStatus();
   }
+
+  // Populated lazily if an active preset color has both trace events and
+  // position mappings, so dangling HloInstruction* entries fail cleanly.
+  std::optional<absl::flat_hash_set<const HloInstruction*>> module_instructions;
 
   // Create an allocation for each preset color.
   absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*>
@@ -3160,8 +3333,20 @@ absl::Status BufferAssigner::AssignPresetBuffers(
         color,
         assignment->NewEmptyAllocation(color_and_info.second.size, color));
     BufferAllocation* inserted_allocation = inserted.first->second;
-    inserted_allocation->AddHeapTrace(
-        color_and_info.second.heap_simulator_trace);
+    const auto& buffer_id_to_position =
+        color_and_info.second.buffer_id_to_position;
+    if (buffer_id_to_position.empty() ||
+        color_and_info.second.heap_simulator_trace.events().empty()) {
+      inserted_allocation->AddHeapTrace(
+          color_and_info.second.heap_simulator_trace);
+    } else {
+      ABSL_ASSIGN_OR_RETURN(
+          HeapSimulatorTrace remapped_trace,
+          RemapPresetHeapTrace(color_and_info.second.heap_simulator_trace,
+                               buffer_id_to_position, color, *assignment,
+                               module_instructions));
+      inserted_allocation->AddHeapTrace(std::move(remapped_trace));
+    }
     VLOG(3) << "Created preset buffer allocation "
             << inserted_allocation->index()
             << ", color: " << inserted_allocation->color()
@@ -4174,7 +4359,14 @@ absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
 
   for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
     for (const HeapSimulatorTrace::Event& event : trace.events()) {
-      Buffer* buffer = buffers.id_to_buffer[event.buffer_id()];
+      auto buffer_it = buffers.id_to_buffer.find(event.buffer_id());
+      if (buffer_it == buffers.id_to_buffer.end()) {
+        return Internal(
+            "HeapSimulatorTrace event references unknown buffer_id %d "
+            "(instruction: %s)",
+            event.buffer_id(), event.instruction_name());
+      }
+      Buffer* buffer = buffer_it->second;
       switch (event.kind()) {
         case HeapSimulatorTrace::Event::ALLOC:
           buffer->ref_count++;
@@ -4196,9 +4388,23 @@ absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
           break;
         }
         case HeapSimulatorTrace::Event::SHARE_WITH: {
-          Buffer* root = buffers.id_to_buffer[event.share_with_canonical_id()];
+          auto root_it =
+              buffers.id_to_buffer.find(event.share_with_canonical_id());
+          if (root_it == buffers.id_to_buffer.end()) {
+            return Internal(
+                "HeapSimulatorTrace SHARE_WITH event references unknown "
+                "share_with_canonical_id %d (instruction: %s)",
+                event.share_with_canonical_id(), event.instruction_name());
+          }
+          Buffer* root = root_it->second;
           while (root->underlying) {
             root = root->underlying;
+          }
+          if (buffer == root) {
+            return Internal(
+                "HeapSimulatorTrace SHARE_WITH event creates self-sharing "
+                "for buffer_id %d (instruction: %s)",
+                event.buffer_id(), event.instruction_name());
           }
           buffer->underlying = root;
           if (++root->ref_count == 1) {

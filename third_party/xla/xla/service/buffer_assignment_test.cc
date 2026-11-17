@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -303,6 +304,109 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                std::move(opts))
         .value();
+  }
+
+  struct WhilePhiRemapTestModule {
+    std::unique_ptr<VerifiedHloModule> module;
+    HloComputation* entry;
+    HloComputation* body_computation;
+    HloInstruction* data;
+    HloInstruction* negate;
+    HloInstruction* body_param;
+    HloInstruction* body_data;
+    HloInstruction* body_data_increment;
+    HloInstruction* body_data_next;
+    HloInstruction* body_root;
+    HloInstruction* while_op;
+  };
+
+  WhilePhiRemapTestModule BuildWhilePhiRemapTestModule() {
+    auto module = CreateNewVerifiedModule();
+    Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
+        F32, {10}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+        /*element_size_in_bits=*/0, /*memory_space=*/1);
+    Shape t_s32_f32v10_color1 =
+        ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
+
+    auto cond_builder = HloComputation::Builder("WhileCond");
+    HloInstruction* cond_param = cond_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "cond_param"));
+    HloInstruction* cond_iter = cond_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(s32_, cond_param, 0));
+    HloInstruction* cond_limit = cond_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(50)));
+    cond_builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                      cond_limit, ComparisonDirection::kLt));
+    HloComputation* cond_computation =
+        module->AddEmbeddedComputation(cond_builder.Build());
+
+    auto body_builder = HloComputation::Builder("WhileBody");
+    HloInstruction* body_param = body_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "body_param"));
+    HloInstruction* body_iter = body_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(s32_, body_param, 0));
+    HloInstruction* body_data = body_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(f32vec10_color1, body_param, 1));
+    HloInstruction* body_data_increment = body_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
+            {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f})));
+    HloInstruction* body_data_next =
+        body_builder.AddInstruction(HloInstruction::CreateBinary(
+            f32vec10_color1, HloOpcode::kAdd, body_data, body_data_increment));
+    HloInstruction* body_iter_increment = body_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+    HloInstruction* body_iter_next =
+        body_builder.AddInstruction(HloInstruction::CreateBinary(
+            s32_, HloOpcode::kAdd, body_iter, body_iter_increment));
+    HloInstruction* body_root = body_builder.AddInstruction(
+        HloInstruction::CreateTuple({body_iter_next, body_data_next}));
+    HloComputation* body_computation =
+        module->AddEmbeddedComputation(body_builder.Build());
+
+    auto builder = HloComputation::Builder(TestName());
+    HloInstruction* iter = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, s32_, "param_iter"));
+    HloInstruction* data = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, f32vec10_, "param_data"));
+    HloInstruction* negate = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec10_color1, HloOpcode::kNegate, data));
+    HloInstruction* tuple =
+        builder.AddInstruction(HloInstruction::CreateTuple({iter, negate}));
+    HloInstruction* while_op =
+        builder.AddInstruction(HloInstruction::CreateWhile(
+            t_s32_f32v10_color1, cond_computation, body_computation, tuple));
+    HloInstruction* while_data = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(f32vec10_color1, while_op, 1));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        f32vec10_, HloOpcode::kAdd, while_data, data));
+    HloComputation* entry = module->AddEntryComputation(builder.Build());
+    return WhilePhiRemapTestModule{std::move(module),
+                                   entry,
+                                   body_computation,
+                                   data,
+                                   negate,
+                                   body_param,
+                                   body_data,
+                                   body_data_increment,
+                                   body_data_next,
+                                   body_root,
+                                   while_op};
+  }
+
+  static void AddHeapTraceEvent(
+      PresetAssignments::AssignmentInformation* info,
+      HeapSimulatorTrace::Event::Kind kind, int64_t buffer_id,
+      const HloInstruction* instr,
+      std::optional<int64_t> canonical_id = std::nullopt) {
+    HeapSimulatorTrace::Event* event = info->heap_simulator_trace.add_events();
+    event->set_kind(kind);
+    event->set_buffer_id(buffer_id);
+    event->set_computation_name(std::string(instr->parent()->name()));
+    event->set_instruction_name(std::string(instr->name()));
+    if (canonical_id.has_value()) {
+      event->set_share_with_canonical_id(*canonical_id);
+    }
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithIsolationOptions(
@@ -2605,6 +2709,483 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
     EXPECT_EQ(value_and_offsetsize.second.offset, 100);
     EXPECT_EQ(value_and_offsetsize.second.size, 40);
     EXPECT_EQ(value_and_offsetsize.first->color(), LogicalBuffer::Color(1));
+  }
+}
+
+TEST_F(BufferAssignmentTest, PresetAssignmentsRemapsHeapTraceBufferIds) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {100}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0,
+      /*memory_space=*/1);
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kMultiply, param0, param1));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kAdd, mul, param1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param0));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* entry = module->AddEntryComputation(builder.Build());
+
+  // Record HloValue IDs before inserting an instruction before `mul`.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> pre_analysis,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
+  const int64_t old_mul_id = pre_analysis->GetUniqueValueAt(mul, {}).id();
+  const int64_t old_add_id = pre_analysis->GetUniqueValueAt(add, {}).id();
+
+  auto preset_assignments = std::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({mul, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(0, 400));
+  preset_assignments->add_chunk({add, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(400, 400));
+  PresetAssignments::AssignmentInformation* alt_info =
+      preset_assignments->assignment_information_for_space(/*memory_space=*/1);
+  alt_info->size = 800;
+  alt_info->buffer_id_to_position[old_mul_id] = HloPosition{mul, {}};
+  alt_info->buffer_id_to_position[old_add_id] = HloPosition{add, {}};
+
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_mul_id,
+                    mul);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::SHARE_WITH, old_add_id,
+                    add, old_mul_id);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_mul_id, mul);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_add_id, add);
+
+  // Insert an unrelated instruction before `mul` in postorder to shift all
+  // subsequent HloValue IDs in BufferAssigner's HloDataflowAnalysis.
+  HloInstruction* inserted_copy = entry->AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kCopy, param0));
+  ASSERT_OK(mul->ReplaceOperandWith(0, inserted_copy));
+
+  // ClonePresetAssignments must preserve buffer_id_to_position.
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      module.get(), preset_assignments->ClonePresetAssignments());
+  const BufferAssignmentProto ba_proto = buffers->ToProto();
+
+  ASSERT_OK_AND_ASSIGN(PeakMemorySizes peak,
+                       ComputePeakMemorySizes(ba_proto, module->ToProto()));
+  EXPECT_EQ(peak.padded, 1600);
+
+  const int64_t new_mul_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(mul, {}).id();
+  const int64_t new_add_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(add, {}).id();
+  EXPECT_NE(new_mul_id, old_mul_id);
+  EXPECT_NE(new_add_id, old_add_id);
+
+  absl::flat_hash_map<int64_t, const LogicalBufferProto*> id_to_lb;
+  for (const LogicalBufferProto& lb : ba_proto.logical_buffers()) {
+    id_to_lb[lb.id()] = &lb;
+  }
+
+  ASSERT_EQ(ba_proto.heap_simulator_traces_size(), 1);
+  const HeapSimulatorTrace& trace = ba_proto.heap_simulator_traces(0);
+  ASSERT_EQ(trace.events_size(), 4);
+  EXPECT_EQ(trace.events(0).buffer_id(), new_mul_id);
+  EXPECT_EQ(trace.events(1).buffer_id(), new_add_id);
+  EXPECT_EQ(trace.events(1).share_with_canonical_id(), new_mul_id);
+  EXPECT_EQ(trace.events(2).buffer_id(), new_mul_id);
+  EXPECT_EQ(trace.events(3).buffer_id(), new_add_id);
+  for (const HeapSimulatorTrace::Event& event : trace.events()) {
+    ASSERT_TRUE(id_to_lb.contains(event.buffer_id()));
+    const LogicalBufferProto* lb = id_to_lb.at(event.buffer_id());
+    if (event.instruction_name() == mul->name()) {
+      EXPECT_EQ(lb->defined_at().instruction_id(), mul->unique_id());
+    } else {
+      EXPECT_EQ(lb->defined_at().instruction_id(), add->unique_id());
+    }
+  }
+}
+
+TEST_F(BufferAssignmentTest,
+       PresetAssignmentsRemapsWhilePhiHeapTraceBufferIds) {
+  WhilePhiRemapTestModule tm = BuildWhilePhiRemapTestModule();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> pre_analysis,
+      HloDataflowAnalysis::Run(*tm.module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
+  const HloValue& old_negate_val =
+      pre_analysis->GetUniqueValueAt(tm.negate, {});
+  const HloValue& old_body_phi =
+      pre_analysis->GetUniqueValueAt(tm.body_param, {1});
+  const HloValue& old_while_phi =
+      pre_analysis->GetUniqueValueAt(tm.while_op, {1});
+  ASSERT_TRUE(old_body_phi.is_phi());
+  ASSERT_TRUE(old_while_phi.is_phi());
+  const int64_t old_negate_id = old_negate_val.id();
+  const int64_t old_body_phi_id = old_body_phi.id();
+  const int64_t old_while_phi_id = old_while_phi.id();
+
+  auto preset_assignments = std::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({tm.negate, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(0, 40));
+  PresetAssignments::AssignmentInformation* alt_info =
+      preset_assignments->assignment_information_for_space(/*memory_space=*/1);
+  alt_info->size = 40;
+  alt_info->buffer_id_to_position[old_negate_id] =
+      old_negate_val.defining_position();
+  alt_info->buffer_id_to_position[old_body_phi_id] =
+      old_body_phi.defining_position();
+  alt_info->buffer_id_to_position[old_while_phi_id] =
+      old_while_phi.defining_position();
+
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_negate_id,
+                    tm.negate);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_negate_id,
+                    tm.negate);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_body_phi_id,
+                    tm.body_param);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_body_phi_id,
+                    tm.body_param);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC,
+                    old_while_phi_id, tm.while_op);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_while_phi_id,
+                    tm.while_op);
+
+  // Insert an instruction in entry before `negate` to shift both regular and
+  // phi HloValue IDs in BufferAssigner's HloDataflowAnalysis.
+  HloInstruction* inserted_copy = tm.entry->AddInstruction(
+      HloInstruction::CreateUnary(f32vec10_, HloOpcode::kCopy, tm.data));
+  ASSERT_OK(tm.negate->ReplaceOperandWith(0, inserted_copy));
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      tm.module.get(), std::move(preset_assignments));
+  const BufferAssignmentProto ba_proto = buffers->ToProto();
+
+  ASSERT_OK_AND_ASSIGN(PeakMemorySizes peak,
+                       ComputePeakMemorySizes(ba_proto, tm.module->ToProto()));
+  EXPECT_EQ(peak.padded, 172);
+
+  const int64_t new_negate_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.negate, {}).id();
+  const int64_t new_body_phi_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.body_param, {1}).id();
+  const int64_t new_while_phi_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.while_op, {1}).id();
+  EXPECT_NE(new_negate_id, old_negate_id);
+  EXPECT_NE(new_body_phi_id, old_body_phi_id);
+  EXPECT_NE(new_while_phi_id, old_while_phi_id);
+
+  absl::flat_hash_map<int64_t, const LogicalBufferProto*> id_to_lb;
+  for (const LogicalBufferProto& lb : ba_proto.logical_buffers()) {
+    id_to_lb[lb.id()] = &lb;
+  }
+
+  ASSERT_EQ(ba_proto.heap_simulator_traces_size(), 1);
+  const HeapSimulatorTrace& trace = ba_proto.heap_simulator_traces(0);
+  ASSERT_EQ(trace.events_size(), 6);
+  EXPECT_EQ(trace.events(0).buffer_id(), new_negate_id);
+  EXPECT_EQ(trace.events(1).buffer_id(), new_negate_id);
+  EXPECT_EQ(trace.events(2).buffer_id(), new_body_phi_id);
+  EXPECT_EQ(trace.events(3).buffer_id(), new_body_phi_id);
+  EXPECT_EQ(trace.events(4).buffer_id(), new_while_phi_id);
+  EXPECT_EQ(trace.events(5).buffer_id(), new_while_phi_id);
+  ASSERT_TRUE(id_to_lb.contains(new_body_phi_id));
+  EXPECT_EQ(id_to_lb.at(new_body_phi_id)->defined_at().instruction_id(),
+            tm.body_param->unique_id());
+  ASSERT_TRUE(id_to_lb.contains(new_while_phi_id));
+  EXPECT_EQ(id_to_lb.at(new_while_phi_id)->defined_at().instruction_id(),
+            tm.while_op->unique_id());
+}
+
+TEST_F(BufferAssignmentTest,
+       PresetAssignmentsRemapsCollapsedWhilePhiAndSelfSharingTraceEvents) {
+  WhilePhiRemapTestModule tm = BuildWhilePhiRemapTestModule();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> pre_analysis,
+      HloDataflowAnalysis::Run(*tm.module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
+  const HloValue& old_negate_val =
+      pre_analysis->GetUniqueValueAt(tm.negate, {});
+  const HloValue& old_body_phi =
+      pre_analysis->GetUniqueValueAt(tm.body_param, {1});
+  const HloValue& old_while_phi =
+      pre_analysis->GetUniqueValueAt(tm.while_op, {1});
+  ASSERT_TRUE(old_body_phi.is_phi());
+  ASSERT_TRUE(old_while_phi.is_phi());
+  const int64_t old_negate_id = old_negate_val.id();
+  const int64_t old_body_phi_id = old_body_phi.id();
+  const int64_t old_while_phi_id = old_while_phi.id();
+
+  auto preset_assignments = std::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({tm.negate, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(0, 40));
+  PresetAssignments::AssignmentInformation* alt_info =
+      preset_assignments->assignment_information_for_space(/*memory_space=*/1);
+  alt_info->size = 40;
+  alt_info->buffer_id_to_position[old_negate_id] =
+      old_negate_val.defining_position();
+  alt_info->buffer_id_to_position[old_body_phi_id] =
+      old_body_phi.defining_position();
+  alt_info->buffer_id_to_position[old_while_phi_id] =
+      old_while_phi.defining_position();
+
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_negate_id,
+                    tm.negate);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_body_phi_id,
+                    tm.body_param);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::SHARE_WITH,
+                    old_while_phi_id, tm.while_op, old_negate_id);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_negate_id,
+                    tm.negate);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_body_phi_id,
+                    tm.body_param);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_while_phi_id,
+                    tm.while_op);
+
+  // Collapse the loop carried phi by forwarding `body_data` unchanged, and
+  // insert an instruction in entry to shift HloValue IDs.
+  ASSERT_OK(tm.body_root->ReplaceOperandWith(1, tm.body_data));
+  ASSERT_OK(tm.body_computation->RemoveInstruction(tm.body_data_next));
+  ASSERT_OK(tm.body_computation->RemoveInstruction(tm.body_data_increment));
+  HloInstruction* inserted_copy = tm.entry->AddInstruction(
+      HloInstruction::CreateUnary(f32vec10_, HloOpcode::kCopy, tm.data));
+  ASSERT_OK(tm.negate->ReplaceOperandWith(0, inserted_copy));
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      tm.module.get(), std::move(preset_assignments));
+  EXPECT_FALSE(
+      buffers->dataflow_analysis().ValueIsDefinedAt(tm.body_param, {1}));
+  EXPECT_FALSE(buffers->dataflow_analysis().ValueIsDefinedAt(tm.while_op, {1}));
+
+  const BufferAssignmentProto ba_proto = buffers->ToProto();
+  ASSERT_OK_AND_ASSIGN(PeakMemorySizes peak,
+                       ComputePeakMemorySizes(ba_proto, tm.module->ToProto()));
+  EXPECT_EQ(peak.padded, 132);
+
+  const int64_t new_negate_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.negate, {}).id();
+  EXPECT_NE(new_negate_id, old_negate_id);
+
+  // All three old IDs collapse onto `negate`'s value. The nested ALLOC and
+  // FREE events are dropped so XProf counts the buffer once.
+  ASSERT_EQ(ba_proto.heap_simulator_traces_size(), 1);
+  const HeapSimulatorTrace& trace = ba_proto.heap_simulator_traces(0);
+  ASSERT_EQ(trace.events_size(), 2);
+  for (const HeapSimulatorTrace::Event& event : trace.events()) {
+    EXPECT_EQ(event.buffer_id(), new_negate_id);
+    EXPECT_EQ(event.share_with_canonical_id(), 0);
+  }
+  EXPECT_EQ(trace.events(0).kind(), HeapSimulatorTrace::Event::ALLOC);
+  EXPECT_EQ(trace.events(0).instruction_name(), tm.negate->name());
+  EXPECT_EQ(trace.events(1).kind(), HeapSimulatorTrace::Event::FREE);
+  EXPECT_EQ(trace.events(1).instruction_name(), tm.while_op->name());
+}
+
+TEST_F(BufferAssignmentTest,
+       PresetAssignmentsRemapDropsTransitiveSelfSharingAfterPhiCollapse) {
+  WhilePhiRemapTestModule tm = BuildWhilePhiRemapTestModule();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> pre_analysis,
+      HloDataflowAnalysis::Run(*tm.module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
+  const HloValue& old_negate_val =
+      pre_analysis->GetUniqueValueAt(tm.negate, {});
+  const HloValue& old_while_phi =
+      pre_analysis->GetUniqueValueAt(tm.while_op, {1});
+  ASSERT_TRUE(old_while_phi.is_phi());
+  const int64_t old_negate_id = old_negate_val.id();
+  const int64_t old_while_phi_id = old_while_phi.id();
+
+  // Collapse the loop carried phi onto `negate`, and add a separate value that
+  // the trace shares in between: negate <- extra <- while phi.
+  ASSERT_OK(tm.body_root->ReplaceOperandWith(1, tm.body_data));
+  ASSERT_OK(tm.body_computation->RemoveInstruction(tm.body_data_next));
+  ASSERT_OK(tm.body_computation->RemoveInstruction(tm.body_data_increment));
+  HloInstruction* extra = tm.entry->AddInstruction(HloInstruction::CreateUnary(
+      tm.negate->shape(), HloOpcode::kNegate, tm.data));
+  HloInstruction* old_root = tm.entry->root_instruction();
+  tm.entry->set_root_instruction(
+      tm.entry->AddInstruction(HloInstruction::CreateBinary(
+          f32vec10_, HloOpcode::kAdd, old_root, extra)));
+  // Any ID unused by the pre insertion analysis works for the new value.
+  const int64_t old_extra_id = pre_analysis->values().size() + 100;
+
+  auto preset_assignments = std::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({tm.negate, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(0, 40));
+  PresetAssignments::AssignmentInformation* alt_info =
+      preset_assignments->assignment_information_for_space(/*memory_space=*/1);
+  alt_info->size = 40;
+  alt_info->buffer_id_to_position[old_negate_id] =
+      old_negate_val.defining_position();
+  alt_info->buffer_id_to_position[old_extra_id] = HloPosition{extra, {}};
+  alt_info->buffer_id_to_position[old_while_phi_id] =
+      old_while_phi.defining_position();
+
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::ALLOC, old_negate_id,
+                    tm.negate);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::SHARE_WITH,
+                    old_extra_id, extra, old_negate_id);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::SHARE_WITH,
+                    old_while_phi_id, tm.while_op, old_extra_id);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_while_phi_id,
+                    tm.while_op);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_extra_id,
+                    extra);
+  AddHeapTraceEvent(alt_info, HeapSimulatorTrace::Event::FREE, old_negate_id,
+                    tm.negate);
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      tm.module.get(), std::move(preset_assignments));
+  const int64_t new_negate_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.negate, {}).id();
+  const int64_t new_extra_id =
+      buffers->dataflow_analysis().GetUniqueValueAt(extra, {}).id();
+  ASSERT_EQ(
+      buffers->dataflow_analysis().GetUniqueValueAt(tm.while_op, {1}).id(),
+      new_negate_id);
+
+  // The while phi SHARE_WITH now names `negate`, the root of its canonical
+  // `extra`. It and its FREE nest inside `negate`'s live range and are dropped
+  // instead of tripping the self sharing check.
+  const BufferAssignmentProto ba_proto = buffers->ToProto();
+  ASSERT_OK_AND_ASSIGN(PeakMemorySizes peak,
+                       ComputePeakMemorySizes(ba_proto, tm.module->ToProto()));
+  EXPECT_EQ(peak.padded, 132);
+  ASSERT_EQ(ba_proto.heap_simulator_traces_size(), 1);
+  const HeapSimulatorTrace& trace = ba_proto.heap_simulator_traces(0);
+  ASSERT_EQ(trace.events_size(), 4);
+  EXPECT_EQ(trace.events(0).kind(), HeapSimulatorTrace::Event::ALLOC);
+  EXPECT_EQ(trace.events(0).buffer_id(), new_negate_id);
+  EXPECT_EQ(trace.events(1).kind(), HeapSimulatorTrace::Event::SHARE_WITH);
+  EXPECT_EQ(trace.events(1).buffer_id(), new_extra_id);
+  EXPECT_EQ(trace.events(1).share_with_canonical_id(), new_negate_id);
+  EXPECT_EQ(trace.events(2).kind(), HeapSimulatorTrace::Event::FREE);
+  EXPECT_EQ(trace.events(2).buffer_id(), new_extra_id);
+  EXPECT_EQ(trace.events(3).kind(), HeapSimulatorTrace::Event::FREE);
+  EXPECT_EQ(trace.events(3).buffer_id(), new_negate_id);
+}
+
+TEST_F(BufferAssignmentTest,
+       PresetAssignmentsRemapValidationErrorsReturnInternal) {
+  auto build_base = [&]() {
+    auto module = CreateNewVerifiedModule();
+    auto builder = HloComputation::Builder(TestName());
+    Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
+        F32, {10}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+        /*element_size_in_bits=*/0,
+        /*memory_space=*/1);
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, f32vec10_, "p0"));
+    HloInstruction* neg = builder.AddInstruction(HloInstruction::CreateUnary(
+        f32vec10_color1, HloOpcode::kNegate, param));
+    HloInstruction* neg_hbm = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec10_, HloOpcode::kNegate, param));
+    HloInstruction* tup =
+        builder.AddInstruction(HloInstruction::CreateTuple({neg, neg_hbm}));
+    HloInstruction* gte = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(f32vec10_color1, tup, 0));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(f32vec10_, HloOpcode::kAdd, gte, neg_hbm));
+    module->AddEntryComputation(builder.Build());
+    return std::tuple{std::move(module), neg, neg_hbm, gte};
+  };
+
+  auto run_preset = [&](HloModule* module,
+                        std::unique_ptr<PresetAssignments> preset,
+                        BufferAssigner::Colorer colorer = nullptr) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.preset_assignments = std::move(preset);
+    if (colorer != nullptr) {
+      opts.colorer = std::move(colorer);
+    }
+    return BufferAssigner::Run(
+        module, std::make_unique<DependencyHloOrdering>(module),
+        &BufferSizeBytes, &alias_info_, [](LogicalBuffer::Color) { return 1; },
+        std::move(opts));
+  };
+
+  auto make_single_event_preset = [](HloPosition pos, int64_t event_buffer_id,
+                                     HeapSimulatorTrace::Event::Kind kind =
+                                         HeapSimulatorTrace::Event::ALLOC,
+                                     std::optional<int64_t> canonical_id =
+                                         std::nullopt) {
+    auto preset = std::make_unique<PresetAssignments>();
+    auto* info = preset->assignment_information_for_space(1);
+    info->size = 40;
+    info->buffer_id_to_position[1] = std::move(pos);
+    auto* ev = info->heap_simulator_trace.add_events();
+    ev->set_kind(kind);
+    ev->set_buffer_id(event_buffer_id);
+    if (canonical_id.has_value()) {
+      ev->set_share_with_canonical_id(*canonical_id);
+    }
+    return preset;
+  };
+
+  // 1. Missing buffer_id in buffer_id_to_position.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    EXPECT_THAT(
+        run_preset(module.get(), make_single_event_preset({neg, {}}, 999)),
+        absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 2. Missing share_with_canonical_id in buffer_id_to_position.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    EXPECT_THAT(run_preset(module.get(),
+                           make_single_event_preset(
+                               {neg, {}}, 1,
+                               HeapSimulatorTrace::Event::SHARE_WITH, 999)),
+                absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 3. Dangling HloInstruction* removed from module.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    HloInstruction* dead = module->entry_computation()->AddInstruction(
+        HloInstruction::CreateUnary(neg->shape(), HloOpcode::kCopy, neg));
+    auto preset = make_single_event_preset({dead, {}}, 1);
+    ASSERT_OK(module->entry_computation()->RemoveInstruction(dead));
+    EXPECT_THAT(run_preset(module.get(), std::move(preset)),
+                absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 4. Invalid shape index on preset trace position.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    EXPECT_THAT(
+        run_preset(module.get(), make_single_event_preset({neg, {0}}, 1)),
+        absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 5. Disallowed nondefining opcode (kGetTupleElement).
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    EXPECT_THAT(
+        run_preset(module.get(), make_single_event_preset({gte, {}}, 1)),
+        absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 6. Uncolored HloValue at preset trace position.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    auto noop_colorer = [](HloAliasAnalysis*, const HloOrdering&) {
+      return absl::OkStatus();
+    };
+    EXPECT_THAT(run_preset(module.get(), make_single_event_preset({neg, {}}, 1),
+                           noop_colorer),
+                absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
+
+  // 7. Color mismatch between preset trace color and HloValue color.
+  {
+    auto [module, neg, neg_hbm, gte] = build_base();
+    EXPECT_THAT(
+        run_preset(module.get(), make_single_event_preset({neg_hbm, {}}, 1)),
+        absl_testing::StatusIs(absl::StatusCode::kInternal));
   }
 }
 
@@ -6120,6 +6701,67 @@ TEST(ComputePeakMemoryTest, LargeResult) {
   EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 1LL << 33);
   EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 1LL << 33);
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1LL << 33);
+}
+
+TEST(ComputePeakMemoryTest, UnknownBufferIdReturnsInternalError) {
+  HloModuleProto hlo;
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* event = trace->add_events();
+  event->set_buffer_id(999);
+  event->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  event->set_instruction_name("missing");
+
+  EXPECT_THAT(ComputePeakMemorySizes(proto, hlo),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(ComputePeakMemory(proto),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(ComputePeakMemoryTest, UnknownShareWithCanonicalIdReturnsInternalError) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
+  buffer0->set_size(16);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/16);
+
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* event = trace->add_events();
+  event->set_buffer_id(0);
+  event->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  event->set_share_with_canonical_id(999);
+  event->set_instruction_name("share_missing");
+
+  EXPECT_THAT(ComputePeakMemorySizes(proto, hlo),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(ComputePeakMemory(proto),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(ComputePeakMemoryTest, SelfSharingShareWithReturnsInternalError) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
+  buffer0->set_size(16);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/16);
+
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* event = trace->add_events();
+  event->set_buffer_id(0);
+  event->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  event->set_share_with_canonical_id(0);
+  event->set_instruction_name("share_self");
+
+  EXPECT_THAT(ComputePeakMemorySizes(proto, hlo),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(ComputePeakMemory(proto),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
