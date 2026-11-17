@@ -17,7 +17,6 @@ limitations under the License.
 #include <optional>
 
 #include "absl/log/check.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -293,14 +292,12 @@ void EliminateCallDce(CallOp call_op, mlir::ModuleOp module_op,
     }
   }
   llvm::SmallVector<mlir::Attribute> new_io_aliases;
-  for (mlir::DenseI32ArrayAttr raw_alias :
-       call_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
-    llvm::ArrayRef<int32_t> pair = raw_alias.asArrayRef();
-    const int32_t old_in = pair[0];
-    const int32_t old_out = pair[1];
-    if (old_in_to_new_in[old_in] != -1 && out_slice.old_to_new[old_out] != -1) {
+  for (const IoAlias& alias : call_op.getIoAliasPairs()) {
+    if (old_in_to_new_in[alias.input_index] != -1 &&
+        out_slice.old_to_new[alias.output_index] != -1) {
       new_io_aliases.push_back(rewriter.getDenseI32ArrayAttr(
-          {old_in_to_new_in[old_in], out_slice.old_to_new[old_out]}));
+          {old_in_to_new_in[alias.input_index],
+           out_slice.old_to_new[alias.output_index]}));
     }
   }
 

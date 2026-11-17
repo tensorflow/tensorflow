@@ -334,6 +334,26 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+func.func @io_aliases_should_not_have_negative_input_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #-1 to output #0 as only having 1 inputs}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <io_aliases=[array<i32: -1, 0>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
 func.func @io_aliases_should_only_alias_input_once(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
@@ -364,6 +384,26 @@ func.func @io_aliases_should_have_valid_output_index(
   // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #1 as only having 1 outputs}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     <io_aliases=[array<i32: 0, 1>]>
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                   [0,1]>
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+func.func @io_aliases_should_not_have_negative_output_index(
+    %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                       [0,1]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #-1 as only having 1 outputs}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
+    <io_aliases=[array<i32: 0, -1>]>
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                    [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,

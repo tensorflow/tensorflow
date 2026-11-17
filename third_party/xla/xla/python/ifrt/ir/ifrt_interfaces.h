@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
@@ -43,6 +44,26 @@ namespace ifrt {
 
 class IfrtControlType;
 class IfrtPairwiseArrayOpInterface;
+
+// Pair of `(input_index, output_index)` representing an `io_aliases` entry on
+// an IFRT call op where `inputs[input_index]` may alias
+// `outputs[output_index]`.
+struct IoAlias {
+  int32_t input_index;
+  int32_t output_index;
+
+  bool operator==(const IoAlias& other) const {
+    return input_index == other.input_index &&
+           output_index == other.output_index;
+  }
+  bool operator!=(const IoAlias& other) const { return !(*this == other); }
+};
+
+// Parses an `io_aliases` `mlir::ArrayAttr` (containing 2-element
+// `mlir::DenseI32ArrayAttr` entries) into typed `IoAlias` pairs. Returns an
+// empty vector if `io_aliases` is null. Index bounds (including
+// non-negativity) are validated during op verification.
+llvm::SmallVector<IoAlias, 4> GetIoAliases(mlir::ArrayAttr io_aliases);
 
 namespace detail {
 
@@ -180,6 +201,36 @@ void ReplaceKeptOutputs(mlir::RewriterBase& rewriter,
                         IfrtArrayOpInterface old_op,
                         IfrtArrayOpInterface new_op,
                         llvm::ArrayRef<int32_t> old_to_new);
+
+// Collects input indices of `call_op` that are donated
+// (`donated_input_indices`) or aliased to an output (`io_aliases`).
+llvm::SmallDenseSet<int32_t, 8> GetDonatedOrAliasedInputIndices(
+    IfrtCallOpInterface call_op);
+
+// Collects output indices of `call_op` that are aliased to an input in
+// `io_aliases`.
+llvm::SmallDenseSet<int32_t, 8> GetAliasedOutputIndices(
+    IfrtCallOpInterface call_op);
+
+// Returns true if `operand` is an array input marked as donated via
+// `donated_input_indices` (on `IfrtCallOpInterface`) or `donated = true`.
+// Note: `io_aliases` on `IfrtCallOpInterface` also consumes input buffer
+// ownership; use `IsDonatedOrAliasedOperand` when checking whether an input
+// buffer is consumed or aliased.
+bool IsDonatedOperand(mlir::OpOperand& operand);
+
+// Returns true if `operand` is an array input paired with an output via
+// `io_aliases` (on `IfrtCallOpInterface`, which consumes the input buffer) or
+// aliased without donation via `reuse = true` (`CopyArraysOp`) or
+// `donated = false` (`BitcastArraysOp`, `RemapArraysOp`, `AssembleOp`,
+// `DisassembleOp`).
+bool IsAliasedOperand(mlir::OpOperand& operand);
+
+// Returns true if `operand` is donated or aliased to its owner IFRT operation.
+bool IsDonatedOrAliasedOperand(mlir::OpOperand& operand);
+
+// Returns true if `value` is donated or aliased in any user `mlir::OpOperand`.
+bool IsDonatedOrAliasedByUser(mlir::Value value);
 
 namespace detail {
 

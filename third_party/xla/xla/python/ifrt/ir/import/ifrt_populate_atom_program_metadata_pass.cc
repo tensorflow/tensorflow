@@ -16,8 +16,10 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -31,9 +33,11 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/utils.h"
@@ -160,11 +164,9 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
   }
 
   // Alias inputs.
-  for (const auto& raw_io_alias :
-       call_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
-    llvm::ArrayRef<int> io_alias_as_array = raw_io_alias.asArrayRef();
-    callee_op.setArgAttr(io_alias_as_array[0], kAliasingOutputAttrName,
-                         builder.getI32IntegerAttr(io_alias_as_array[1]));
+  for (const IoAlias& io_alias : call_op.getIoAliasPairs()) {
+    callee_op.setArgAttr(io_alias.input_index, kAliasingOutputAttrName,
+                         builder.getI32IntegerAttr(io_alias.output_index));
   }
   for (const int32_t idx : call_op.getDonatedInputIndices()) {
     callee_op.setArgAttr(idx, kBufferDonationAttrName,

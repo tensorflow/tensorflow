@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -761,6 +764,304 @@ module {
   ASSERT_NE(filtered, nullptr);
   ASSERT_EQ(filtered.size(), 1u);
   EXPECT_EQ(filtered[0], non_empty_dict);
+}
+
+TEST_F(IfrtInterfacesTest, CallOpInterfaceAndIoAliasQueries) {
+  constexpr const char* kModuleStr = R"mlir(
+!arr = !ifrt.array<tensor<2x2xi32>,
+                   #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+module {
+  func.func private @atom_a(%a: tensor<2x2xi32>, %b: tensor<2x2xi32>,
+                            %c: tensor<2x2xi32>)
+      -> (tensor<2x2xi32>, tensor<2x2xi32>) {
+    return %a, %b : tensor<2x2xi32>, tensor<2x2xi32>
+  }
+  func.func private @atom_b(%a: tensor<2x2xi32>, %b: tensor<2x2xi32>,
+                            %c: tensor<2x2xi32>)
+      -> (tensor<2x2xi32>, tensor<2x2xi32>) {
+    return %b, %a : tensor<2x2xi32>, tensor<2x2xi32>
+  }
+  ifrt.LoadedExecutable @exec_a on devices [0,1]
+      : (!arr, !arr) -> (!arr, !arr)
+
+  func.func @main(%x0: !arr, %x1: !arr, %x2: !arr)
+      attributes {ifrt.function} {
+    %o0, %o1, %ctrl0 = ifrt.Call @atom_a(%x0, %x1, %x2) on devices [0,1]
+        <donated_input_indices = [0], io_aliases = [array<i32: 2, 1>]>
+        : (!arr, !arr, !arr) -> (!arr, !arr)
+    %l0, %l1, %ctrl1 = ifrt.CallLoadedExecutable @exec_a(%o0, %o1)
+        <io_aliases = [array<i32: 0, 1>]>
+        : (!arr, !arr) -> (!arr, !arr)
+    %r0, %ctrl2 = ifrt.Reshard(%l0) : (!arr) -> !arr
+    return
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_NE(main_func, nullptr);
+
+  EXPECT_TRUE(GetIoAliases(/*io_aliases=*/nullptr).empty());
+
+  int call_iface_count = 0;
+  for (mlir::Operation& op : main_func.getBody().front()) {
+    if (IfrtCallOpInterface call_iface =
+            llvm::dyn_cast<IfrtCallOpInterface>(&op);
+        call_iface != nullptr) {
+      ++call_iface_count;
+      IfrtArrayOpInterface as_array = call_iface;
+      EXPECT_EQ(as_array.getOperation(), &op);
+    } else {
+      EXPECT_TRUE((llvm::isa<ReshardOp, mlir::func::ReturnOp>(&op)));
+    }
+  }
+  EXPECT_EQ(call_iface_count, 2);
+
+  CallOp call_op = *main_func.getOps<CallOp>().begin();
+  IfrtCallOpInterface call_iface = call_op;
+  EXPECT_EQ(call_iface.getCalleeAttr().getRootReference(), "atom_a");
+  call_iface.setCalleeAttr(
+      mlir::FlatSymbolRefAttr::get(&mlir_context_, "atom_b"));
+  EXPECT_EQ(call_op.getCalleeAttr().getRootReference(), "atom_b");
+  EXPECT_EQ(call_iface.getArgAttrsAttr(), nullptr);
+  EXPECT_EQ(call_iface.getResAttrsAttr(), nullptr);
+
+  llvm::SmallVector<IoAlias, 4> call_aliases = call_iface.getIoAliasPairs();
+  ASSERT_EQ(call_aliases.size(), 1u);
+  EXPECT_EQ(call_aliases[0], (IoAlias{2, 1}));
+  EXPECT_NE(call_aliases[0], (IoAlias{1, 2}));
+
+  llvm::SmallDenseSet<int32_t, 8> donated_or_aliased_inputs =
+      GetDonatedOrAliasedInputIndices(call_iface);
+  EXPECT_EQ(donated_or_aliased_inputs.size(), 2u);
+  EXPECT_TRUE(donated_or_aliased_inputs.contains(0));
+  EXPECT_FALSE(donated_or_aliased_inputs.contains(1));
+  EXPECT_TRUE(donated_or_aliased_inputs.contains(2));
+
+  llvm::SmallDenseSet<int32_t, 8> aliased_outputs =
+      GetAliasedOutputIndices(call_iface);
+  EXPECT_EQ(aliased_outputs.size(), 1u);
+  EXPECT_FALSE(aliased_outputs.contains(0));
+  EXPECT_TRUE(aliased_outputs.contains(1));
+
+  CallLoadedExecutableOp call_exec_op =
+      *main_func.getOps<CallLoadedExecutableOp>().begin();
+  IfrtCallOpInterface exec_iface = call_exec_op;
+  llvm::SmallVector<IoAlias, 4> exec_aliases = exec_iface.getIoAliasPairs();
+  ASSERT_EQ(exec_aliases.size(), 1u);
+  EXPECT_EQ(exec_aliases[0], (IoAlias{0, 1}));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest, OperandDonationAndAliasingQueries) {
+  constexpr const char* kModuleStr = R"mlir(
+!arr = !ifrt.array<tensor<2x2xi32>,
+                   #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!arr_3d = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+!arr_d0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!arr_d1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!arr_sharded = !ifrt.array<tensor<2x4xi32>,
+                           #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+module {
+  func.func private @atom(%a: tensor<2x2xi32>, %b: tensor<2x2xi32>,
+                          %c: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %a : tensor<2x2xi32>
+  }
+  ifrt.LoadedExecutable @loaded_exec on devices [0,1]
+      : (!arr, !arr, !arr) -> !arr
+
+  func.func @main(%x_don: !arr, %x_alias: !arr, %x_plain: !arr,
+                  %x_le_don: !arr, %x_le_alias: !arr, %x_le_plain: !arr,
+                  %x_copy_plain: !arr, %x_copy_reuse: !arr, %x_copy_don: !arr,
+                  %x_reshard_plain: !arr, %x_reshard_don: !arr,
+                  %x_bitcast_alias: !arr, %x_bitcast_don: !arr,
+                  %s_remap_alias: !arr_d0, %s_remap_don: !arr_d0,
+                  %s0_alias: !arr_d0, %s1_alias: !arr_d1,
+                  %s0_don: !arr_d0, %s1_don: !arr_d1, %ctrl: !ifrt.control)
+      attributes {ifrt.function} {
+    %c_out, %c_ctrl = ifrt.Call @atom(%x_don, %x_alias, %x_plain) after %ctrl
+        on devices [0,1]
+        <donated_input_indices = [0], io_aliases = [array<i32: 1, 0>]>
+        : (!arr, !arr, !arr) -> !arr
+    %le_out, %le_ctrl = ifrt.CallLoadedExecutable @loaded_exec(
+        %x_le_don, %x_le_alias, %x_le_plain) after %ctrl
+        <donated_input_indices = [0], io_aliases = [array<i32: 1, 0>]>
+        : (!arr, !arr, !arr) -> !arr
+    %cp0, %cp_ctrl0 = ifrt.CopyArrays(%x_copy_plain) : (!arr) -> !arr
+    %cp1, %cp_ctrl1 = ifrt.CopyArrays(%x_copy_reuse) <reuse = true>
+        : (!arr) -> !arr
+    %cp2, %cp_ctrl2 = ifrt.CopyArrays(%x_copy_don) <donated = true>
+        : (!arr) -> !arr
+    %r0, %r_ctrl0 = ifrt.Reshard(%x_reshard_plain) : (!arr) -> !arr
+    %r1, %r_ctrl1 = ifrt.Reshard(%x_reshard_don) <donated = true>
+        : (!arr) -> !arr
+    %b0, %b_ctrl0 = ifrt.BitcastArrays(%x_bitcast_alias) : (!arr) -> !arr_3d
+    %b1, %b_ctrl1 = ifrt.BitcastArrays(%x_bitcast_don) <donated = true>
+        : (!arr) -> !arr_3d
+    %m0, %m_ctrl0 = ifrt.RemapArrays(%s_remap_alias)
+        mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+        after %ctrl : (!arr_d0) -> !arr_d0
+    %m1, %m_ctrl1 = ifrt.RemapArrays(%s_remap_don)
+        mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
+        after %ctrl <donated = true> : (!arr_d0) -> !arr_d0
+    %asm0, %asm_ctrl0 = ifrt.Assemble(%s0_alias, %s1_alias) after %ctrl
+        : (!arr_d0, !arr_d1) -> !arr_sharded
+    %asm1, %asm_ctrl1 = ifrt.Assemble(%s0_don, %s1_don) after %ctrl
+        <donated = true> : (!arr_d0, !arr_d1) -> !arr_sharded
+    %d0_alias, %d1_alias, %dis_ctrl0 = ifrt.Disassemble(%asm0) after %ctrl
+        : (!arr_sharded) -> (!arr_d0, !arr_d1)
+    %d0_don, %d1_don, %dis_ctrl1 = ifrt.Disassemble(%asm1) after %ctrl
+        <donated = true> : (!arr_sharded) -> (!arr_d0, !arr_d1)
+    %after_ctrl = "ifrt.After"(%x_plain) : (!arr) -> !ifrt.control
+    return
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_NE(main_func, nullptr);
+
+  // `CallOp` operand 0: donated; operand 1: aliased; operand 2: plain;
+  // operand 3: control input.
+  CallOp call_op = *main_func.getOps<CallOp>().begin();
+  EXPECT_TRUE(IsDonatedOperand(call_op->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(call_op->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(call_op->getOpOperand(0)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_op->getOpOperand(1)));
+  EXPECT_TRUE(IsAliasedOperand(call_op->getOpOperand(1)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(call_op->getOpOperand(1)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_op->getOpOperand(2)));
+  EXPECT_FALSE(IsAliasedOperand(call_op->getOpOperand(2)));
+  EXPECT_FALSE(IsDonatedOrAliasedOperand(call_op->getOpOperand(2)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_op->getOpOperand(3)));
+  EXPECT_FALSE(IsAliasedOperand(call_op->getOpOperand(3)));
+
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(call_op.getInputs()[0]));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(call_op.getInputs()[1]));
+  EXPECT_FALSE(IsDonatedOrAliasedByUser(call_op.getInputs()[2]));
+
+  // `CallLoadedExecutableOp` operand 0: donated; operand 1: aliased;
+  // operand 2: plain; operand 3: control input.
+  CallLoadedExecutableOp call_exec_op =
+      *main_func.getOps<CallLoadedExecutableOp>().begin();
+  EXPECT_TRUE(IsDonatedOperand(call_exec_op->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(call_exec_op->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(call_exec_op->getOpOperand(0)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_exec_op->getOpOperand(1)));
+  EXPECT_TRUE(IsAliasedOperand(call_exec_op->getOpOperand(1)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(call_exec_op->getOpOperand(1)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_exec_op->getOpOperand(2)));
+  EXPECT_FALSE(IsAliasedOperand(call_exec_op->getOpOperand(2)));
+  EXPECT_FALSE(IsDonatedOrAliasedOperand(call_exec_op->getOpOperand(2)));
+
+  EXPECT_FALSE(IsDonatedOperand(call_exec_op->getOpOperand(3)));
+  EXPECT_FALSE(IsAliasedOperand(call_exec_op->getOpOperand(3)));
+
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(call_exec_op.getInputs()[0]));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(call_exec_op.getInputs()[1]));
+  EXPECT_FALSE(IsDonatedOrAliasedByUser(call_exec_op.getInputs()[2]));
+
+  // `CopyArraysOp`: plain vs. `reuse = true` (aliased) vs. `donated = true`.
+  llvm::SmallVector<CopyArraysOp> copy_ops(main_func.getOps<CopyArraysOp>());
+  ASSERT_EQ(copy_ops.size(), 3u);
+  EXPECT_FALSE(IsDonatedOperand(copy_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(copy_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOrAliasedByUser(copy_ops[0].getInputs()[0]));
+  EXPECT_FALSE(IsDonatedOperand(copy_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsAliasedOperand(copy_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(copy_ops[1].getInputs()[0]));
+  EXPECT_TRUE(IsDonatedOperand(copy_ops[2]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(copy_ops[2]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(copy_ops[2].getInputs()[0]));
+
+  // `ReshardOp`: plain vs. `donated = true`.
+  llvm::SmallVector<ReshardOp> reshard_ops(main_func.getOps<ReshardOp>());
+  ASSERT_EQ(reshard_ops.size(), 2u);
+  EXPECT_FALSE(IsDonatedOperand(reshard_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(reshard_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOrAliasedByUser(reshard_ops[0].getInputs()[0]));
+  EXPECT_TRUE(IsDonatedOperand(reshard_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(reshard_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(reshard_ops[1].getInputs()[0]));
+
+  // `BitcastArraysOp`: `donated = false` (aliased) vs. `donated = true`
+  // (donated).
+  llvm::SmallVector<BitcastArraysOp> bitcasts(
+      main_func.getOps<BitcastArraysOp>());
+  ASSERT_EQ(bitcasts.size(), 2u);
+  EXPECT_FALSE(IsDonatedOperand(bitcasts[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsAliasedOperand(bitcasts[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(bitcasts[0].getInputs()[0]));
+  EXPECT_TRUE(IsDonatedOperand(bitcasts[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(bitcasts[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(bitcasts[1].getInputs()[0]));
+
+  // `RemapArraysOp`: `donated = false` (aliased) vs. `donated = true`
+  // (donated), plus control input operand.
+  llvm::SmallVector<RemapArraysOp> remap_ops(main_func.getOps<RemapArraysOp>());
+  ASSERT_EQ(remap_ops.size(), 2u);
+  EXPECT_FALSE(IsDonatedOperand(remap_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsAliasedOperand(remap_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(remap_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(remap_ops[0]->getOpOperand(1)));
+  EXPECT_FALSE(IsAliasedOperand(remap_ops[0]->getOpOperand(1)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(remap_ops[0].getInputs()[0]));
+
+  EXPECT_TRUE(IsDonatedOperand(remap_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(remap_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(remap_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(remap_ops[1]->getOpOperand(1)));
+  EXPECT_FALSE(IsAliasedOperand(remap_ops[1]->getOpOperand(1)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(remap_ops[1].getInputs()[0]));
+
+  // `AssembleOp`: `donated = false` (aliased) vs. `donated = true` (donated),
+  // plus control input operand.
+  llvm::SmallVector<AssembleOp> assemble_ops(main_func.getOps<AssembleOp>());
+  ASSERT_EQ(assemble_ops.size(), 2u);
+  EXPECT_FALSE(IsDonatedOperand(assemble_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsAliasedOperand(assemble_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(assemble_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(assemble_ops[0]->getOpOperand(2)));
+  EXPECT_FALSE(IsAliasedOperand(assemble_ops[0]->getOpOperand(2)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(assemble_ops[0].getInputs()[0]));
+
+  EXPECT_TRUE(IsDonatedOperand(assemble_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(assemble_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(assemble_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(assemble_ops[1]->getOpOperand(2)));
+  EXPECT_FALSE(IsAliasedOperand(assemble_ops[1]->getOpOperand(2)));
+  EXPECT_TRUE(IsDonatedOrAliasedByUser(assemble_ops[1].getInputs()[0]));
+
+  // `DisassembleOp`: `donated = false` (aliased) vs. `donated = true`
+  // (donated), plus control input operand.
+  llvm::SmallVector<DisassembleOp> disassemble_ops(
+      main_func.getOps<DisassembleOp>());
+  ASSERT_EQ(disassemble_ops.size(), 2u);
+  EXPECT_FALSE(IsDonatedOperand(disassemble_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsAliasedOperand(disassemble_ops[0]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(disassemble_ops[0]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(disassemble_ops[0]->getOpOperand(1)));
+  EXPECT_FALSE(IsAliasedOperand(disassemble_ops[0]->getOpOperand(1)));
+
+  EXPECT_TRUE(IsDonatedOperand(disassemble_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsAliasedOperand(disassemble_ops[1]->getOpOperand(0)));
+  EXPECT_TRUE(IsDonatedOrAliasedOperand(disassemble_ops[1]->getOpOperand(0)));
+  EXPECT_FALSE(IsDonatedOperand(disassemble_ops[1]->getOpOperand(1)));
+  EXPECT_FALSE(IsAliasedOperand(disassemble_ops[1]->getOpOperand(1)));
 }
 
 }  // namespace

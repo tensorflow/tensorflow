@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -35,8 +34,8 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/ir/utils.h"
@@ -63,36 +62,6 @@ mlir::Attribute GetNormalizedDictAttrAt(mlir::ArrayAttr attrs, size_t index) {
   return dict;
 }
 
-// Collects input indices of `call_op` that are donated or aliased to an output.
-// These inputs cannot be deduplicated because each donated or aliased buffer
-// has distinct ownership/in-place mutation semantics and cannot share an input
-// slot.
-llvm::SmallDenseSet<int32_t, 8> GetDonatedOrAliasedInputs(CallOp call_op) {
-  llvm::SmallDenseSet<int32_t, 8> donated_or_aliased_idxs;
-  donated_or_aliased_idxs.reserve(call_op.getDonatedInputIndices().size() +
-                                  call_op.getIoAliases().size());
-  donated_or_aliased_idxs.insert(call_op.getDonatedInputIndices().begin(),
-                                 call_op.getDonatedInputIndices().end());
-  for (const auto& io_alias :
-       call_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
-    donated_or_aliased_idxs.insert(io_alias.asArrayRef()[0]);
-  }
-  return donated_or_aliased_idxs;
-}
-
-// Collects output indices of `call_op` that are aliased to an input in
-// `io_aliases`. Aliased outputs are excluded from output deduplication to
-// preserve caller-visible buffer aliasing semantics.
-llvm::SmallDenseSet<int32_t, 8> GetAliasedOutputs(CallOp call_op) {
-  llvm::SmallDenseSet<int32_t, 8> aliased_idxs;
-  aliased_idxs.reserve(call_op.getIoAliases().size());
-  for (const auto& io_alias :
-       call_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
-    aliased_idxs.insert(io_alias.asArrayRef()[1]);
-  }
-  return aliased_idxs;
-}
-
 // Identifies duplicate non-donated, non-aliased inputs of `call_op`. Populates
 // `first_idxs` so `first_idxs[idx]` is the index of the first compatible
 // input matching `call_op.getInputs()[idx]` (or `idx` itself if unique or
@@ -101,7 +70,7 @@ llvm::SmallDenseSet<int32_t, 8> GetAliasedOutputs(CallOp call_op) {
 bool FindDuplicateArguments(CallOp call_op, mlir::func::FuncOp callee,
                             llvm::SmallVector<int32_t>& first_idxs) {
   llvm::SmallDenseSet<int32_t, 8> donated_or_aliased_idxs =
-      GetDonatedOrAliasedInputs(call_op);
+      GetDonatedOrAliasedInputIndices(call_op);
   mlir::Block& block = callee.getBody().front();
   mlir::ArrayAttr callee_arg_attrs = callee.getArgAttrsAttr();
   mlir::ArrayAttr call_arg_attrs = call_op.getArgAttrsAttr();
@@ -140,62 +109,6 @@ bool FindDuplicateArguments(CallOp call_op, mlir::func::FuncOp callee,
   return found_duplicate_with_uses;
 }
 
-// Returns true if `operand_num` falls within `inputs`.
-bool IsInOperandRange(int32_t operand_num, mlir::OperandRange inputs) {
-  return !inputs.empty() && operand_num >= inputs.getBeginOperandIndex() &&
-         operand_num < inputs.getBeginOperandIndex() + inputs.size();
-}
-
-// Returns true if `operand` is donated or aliased to its owner operation.
-bool IsDonatedOrAliasedOperand(mlir::OpOperand& operand) {
-  mlir::Operation* user = operand.getOwner();
-  const int32_t operand_num = operand.getOperandNumber();
-  return llvm::TypeSwitch<mlir::Operation*, bool>(user)
-      .Case<CallOp, CallLoadedExecutableOp>([&](auto call_like_op) {
-        mlir::OperandRange inputs = call_like_op.getInputs();
-        if (!IsInOperandRange(operand_num, inputs)) {
-          return false;
-        }
-        const int32_t input_idx = operand_num - inputs.getBeginOperandIndex();
-        if (llvm::is_contained(call_like_op.getDonatedInputIndices(),
-                               input_idx)) {
-          return true;
-        }
-        return llvm::any_of(call_like_op.getIoAliases()
-                                .template getAsRange<mlir::DenseI32ArrayAttr>(),
-                            [input_idx](mlir::DenseI32ArrayAttr io_alias) {
-                              return io_alias.asArrayRef()[0] == input_idx;
-                            });
-      })
-      .Case<CopyArraysOp>([&](CopyArraysOp copy_op) {
-        // `reuse = true` aliases the input buffer, while `donated = true`
-        // donates it.
-        return IsInOperandRange(operand_num, copy_op.getInputs()) &&
-               (copy_op.getDonated() || copy_op.getReuse());
-      })
-      .Case<ReshardOp>([&](ReshardOp reshard_op) {
-        return IsInOperandRange(operand_num, reshard_op.getInputs()) &&
-               reshard_op.getDonated();
-      })
-      .Case<BitcastArraysOp, RemapArraysOp, AssembleOp>([&](auto alias_op) {
-        // `BitcastArrays`, `RemapArrays`, and `Assemble` are metadata/view ops
-        // that always either donate (`donated = true`) or alias
-        // (`donated = false`) their input buffers without copying.
-        return IsInOperandRange(operand_num, alias_op.getInputs());
-      })
-      .Case<DisassembleOp>([&](DisassembleOp) {
-        // `Disassemble` creates per-device shard views aliasing `input`
-        // (operand 0).
-        return operand_num == 0;
-      })
-      .Default(false);
-}
-
-// Returns true if `value` is donated or aliased in any user `mlir::OpOperand`.
-bool IsDonatedOrAliasedByUser(mlir::Value value) {
-  return llvm::any_of(value.getUses(), IsDonatedOrAliasedOperand);
-}
-
 // Redirects caller uses of duplicate non-aliased, non-donated `call_op` outputs
 // to the first compatible output returning the same SSA value in `callee`. The
 // now-unused duplicate outputs on `call_op` and `callee` are left in place to
@@ -208,7 +121,8 @@ void RemoveDuplicatedResults(CallOp call_op, mlir::func::FuncOp callee) {
     return;
   }
 
-  llvm::SmallDenseSet<int32_t, 8> aliased_out_idxs = GetAliasedOutputs(call_op);
+  llvm::SmallDenseSet<int32_t, 8> aliased_out_idxs =
+      GetAliasedOutputIndices(call_op);
   mlir::ArrayAttr callee_res_attrs = callee.getResAttrsAttr();
   mlir::ArrayAttr call_res_attrs = call_op.getResAttrsAttr();
   // Two outputs are compatible duplicates iff they return the same `callee`

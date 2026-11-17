@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
 
 // Generated definitions.
 
@@ -46,6 +48,31 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
+namespace {
+
+// Returns true if `operand_num` falls within `inputs`.
+bool IsInOperandRange(unsigned operand_num, mlir::OperandRange inputs) {
+  return !inputs.empty() && operand_num >= inputs.getBeginOperandIndex() &&
+         operand_num < inputs.getBeginOperandIndex() + inputs.size();
+}
+
+}  // namespace
+
+llvm::SmallVector<IoAlias, 4> GetIoAliases(mlir::ArrayAttr io_aliases) {
+  llvm::SmallVector<IoAlias, 4> aliases;
+  if (io_aliases == nullptr) {
+    return aliases;
+  }
+  aliases.reserve(io_aliases.size());
+  for (mlir::Attribute attr : io_aliases) {
+    auto raw_alias = llvm::dyn_cast<mlir::DenseI32ArrayAttr>(attr);
+    CHECK(raw_alias != nullptr);
+    llvm::ArrayRef<int32_t> pair = raw_alias.asArrayRef();
+    CHECK_EQ(pair.size(), 2);
+    aliases.push_back(IoAlias{pair[0], pair[1]});
+  }
+  return aliases;
+}
 
 bool CanForwardControlInputs(mlir::Value control_output,
                              mlir::ValueRange control_inputs) {
@@ -189,6 +216,96 @@ void ReplaceKeptOutputs(mlir::RewriterBase& rewriter,
   rewriter.replaceAllUsesWith(old_op.getControlOutput(),
                               new_op.getControlOutput());
   rewriter.eraseOp(old_op);
+}
+
+llvm::SmallDenseSet<int32_t, 8> GetDonatedOrAliasedInputIndices(
+    IfrtCallOpInterface call_op) {
+  llvm::SmallVector<IoAlias, 4> io_aliases = call_op.getIoAliasPairs();
+  llvm::SmallDenseSet<int32_t, 8> donated_or_aliased_idxs;
+  donated_or_aliased_idxs.reserve(call_op.getDonatedInputIndices().size() +
+                                  io_aliases.size());
+  donated_or_aliased_idxs.insert(call_op.getDonatedInputIndices().begin(),
+                                 call_op.getDonatedInputIndices().end());
+  for (const IoAlias& io_alias : io_aliases) {
+    donated_or_aliased_idxs.insert(io_alias.input_index);
+  }
+  return donated_or_aliased_idxs;
+}
+
+llvm::SmallDenseSet<int32_t, 8> GetAliasedOutputIndices(
+    IfrtCallOpInterface call_op) {
+  llvm::SmallVector<IoAlias, 4> io_aliases = call_op.getIoAliasPairs();
+  llvm::SmallDenseSet<int32_t, 8> aliased_idxs;
+  aliased_idxs.reserve(io_aliases.size());
+  for (const IoAlias& io_alias : io_aliases) {
+    aliased_idxs.insert(io_alias.output_index);
+  }
+  return aliased_idxs;
+}
+
+bool IsDonatedOperand(mlir::OpOperand& operand) {
+  mlir::Operation* user = operand.getOwner();
+  const unsigned operand_num = operand.getOperandNumber();
+  return llvm::TypeSwitch<mlir::Operation*, bool>(user)
+      .Case<IfrtCallOpInterface>([&](IfrtCallOpInterface call_op) {
+        mlir::OperandRange inputs = call_op.getInputs();
+        if (!IsInOperandRange(operand_num, inputs)) {
+          return false;
+        }
+        const int32_t input_idx =
+            static_cast<int32_t>(operand_num - inputs.getBeginOperandIndex());
+        return llvm::is_contained(call_op.getDonatedInputIndices(), input_idx);
+      })
+      .Case<IfrtPairwiseArrayOpInterface>(
+          [&](IfrtPairwiseArrayOpInterface pairwise_op) {
+            return IsInOperandRange(operand_num, pairwise_op.getInputs()) &&
+                   pairwise_op.getDonated();
+          })
+      .Case<RemapArraysOp, AssembleOp>([&](auto op) {
+        return IsInOperandRange(operand_num, op.getInputs()) && op.getDonated();
+      })
+      .Case<DisassembleOp>([&](DisassembleOp disassemble_op) {
+        return operand_num == 0 && disassemble_op.getDonated();
+      })
+      .Default(false);
+}
+
+bool IsAliasedOperand(mlir::OpOperand& operand) {
+  mlir::Operation* user = operand.getOwner();
+  const unsigned operand_num = operand.getOperandNumber();
+  return llvm::TypeSwitch<mlir::Operation*, bool>(user)
+      .Case<IfrtCallOpInterface>([&](IfrtCallOpInterface call_op) {
+        mlir::OperandRange inputs = call_op.getInputs();
+        if (!IsInOperandRange(operand_num, inputs)) {
+          return false;
+        }
+        const int32_t input_idx =
+            static_cast<int32_t>(operand_num - inputs.getBeginOperandIndex());
+        return llvm::any_of(call_op.getIoAliasPairs(),
+                            [input_idx](const IoAlias& io_alias) {
+                              return io_alias.input_index == input_idx;
+                            });
+      })
+      .Case<CopyArraysOp>([&](CopyArraysOp copy_op) {
+        return IsInOperandRange(operand_num, copy_op.getInputs()) &&
+               copy_op.getReuse();
+      })
+      .Case<BitcastArraysOp, RemapArraysOp, AssembleOp>([&](auto alias_op) {
+        return IsInOperandRange(operand_num, alias_op.getInputs()) &&
+               !alias_op.getDonated();
+      })
+      .Case<DisassembleOp>([&](DisassembleOp disassemble_op) {
+        return operand_num == 0 && !disassemble_op.getDonated();
+      })
+      .Default(false);
+}
+
+bool IsDonatedOrAliasedOperand(mlir::OpOperand& operand) {
+  return IsDonatedOperand(operand) || IsAliasedOperand(operand);
+}
+
+bool IsDonatedOrAliasedByUser(mlir::Value value) {
+  return llvm::any_of(value.getUses(), IsDonatedOrAliasedOperand);
 }
 
 }  // namespace ifrt

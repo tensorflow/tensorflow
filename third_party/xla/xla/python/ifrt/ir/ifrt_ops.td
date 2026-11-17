@@ -221,7 +221,7 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     [AttrSizedOperandSegments,
      NestedInIfrtFunc,
      IfrtCallLike<"::mlir::func::FuncOp">,
-     Ifrt_ArrayOpInterface,
+     Ifrt_CallOpInterface,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some function on a set of devices";
@@ -271,7 +271,7 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     [AttrSizedOperandSegments,
      NestedInIfrtFunc,
      IfrtCallLike<"LoadedExecutableOp">,
-     Ifrt_ArrayOpInterface,
+     Ifrt_CallOpInterface,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some loaded executable";

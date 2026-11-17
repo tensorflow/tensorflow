@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/memory.h"
@@ -477,14 +478,13 @@ class DonationTracker {
   llvm::DenseMap<mlir::Value, ArrayStateRef> array_to_ref_;
 };
 
-// Verifies input donations and `io_aliases` for `CallOp` and
-// `CallLoadedExecutableOp`. For these ops, `donated_input_indices` and
-// `io_aliases` have identical input-consumption semantics: a donated or
-// aliased input array cannot be used after the call, and overlapping shards
-// (including the same SSA input array) cannot be donated or aliased more than
-// once or also passed as a non-donated input to the same call.
-template <typename CallOpT>
-mlir::LogicalResult VerifyCallOpAliasesAndDonations(CallOpT op,
+// Verifies input donations and `io_aliases` for `IfrtCallOpInterface` ops. For
+// these ops, `donated_input_indices` and `io_aliases` have identical
+// input-consumption semantics: a donated or aliased input array cannot be used
+// after the call, and overlapping shards (including the same SSA input array)
+// cannot be donated or aliased more than once or also passed as a non-donated
+// input to the same call.
+mlir::LogicalResult VerifyCallOpAliasesAndDonations(IfrtCallOpInterface op,
                                                     DonationTracker& tracker) {
   auto emit_already_donated =
       [&](size_t input_index,
@@ -502,19 +502,20 @@ mlir::LogicalResult VerifyCallOpAliasesAndDonations(CallOpT op,
   llvm::SmallBitVector donated_or_aliased_inputs(num_inputs);
   for (const int32_t input_index : op.getDonatedInputIndices()) {
     CHECK_GE(input_index, 0);
+    CHECK_LT(static_cast<unsigned>(input_index), num_inputs);
     donated_or_aliased_inputs.set(static_cast<unsigned>(input_index));
   }
-  for (const mlir::DenseI32ArrayAttr io_alias :
-       op.getIoAliases().template getAsRange<mlir::DenseI32ArrayAttr>()) {
-    const int32_t aliased_input = io_alias.asArrayRef().front();
-    CHECK_GE(aliased_input, 0);
-    donated_or_aliased_inputs.set(static_cast<unsigned>(aliased_input));
+  for (const IoAlias& io_alias : op.getIoAliasPairs()) {
+    CHECK_GE(io_alias.input_index, 0);
+    CHECK_LT(static_cast<unsigned>(io_alias.input_index), num_inputs);
+    donated_or_aliased_inputs.set(static_cast<unsigned>(io_alias.input_index));
   }
 
   for (const unsigned input_index : donated_or_aliased_inputs.set_bits()) {
     mlir::Operation* donated_by = nullptr;
-    if (mlir::failed(tracker.DonateInput(
-            op, input_index, op.getInputs()[input_index], donated_by))) {
+    if (mlir::failed(tracker.DonateInput(op.getOperation(), input_index,
+                                         op.getInputs()[input_index],
+                                         donated_by))) {
       return donated_by != nullptr
                  ? emit_already_donated(input_index, donated_by)
                  : mlir::failure();
@@ -779,7 +780,7 @@ void IfrtVerifyDonationPass::runOnOperation() {
   for (mlir::Operation& op : func_op.getOps()) {
     const mlir::LogicalResult op_result =
         llvm::TypeSwitch<mlir::Operation*, mlir::LogicalResult>(&op)
-            .Case<CallOp, CallLoadedExecutableOp>([&](auto call_op) {
+            .Case<IfrtCallOpInterface>([&](IfrtCallOpInterface call_op) {
               return VerifyCallOpAliasesAndDonations(call_op, tracker);
             })
             .Case<BitcastArraysOp>([&](BitcastArraysOp bitcast_op) {

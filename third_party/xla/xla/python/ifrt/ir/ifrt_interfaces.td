@@ -172,6 +172,59 @@ def Ifrt_PairwiseArrayOpInterface
   ];
 }
 
+def Ifrt_CallOpInterface
+    : Ifrt_OpInterface<"IfrtCallOpInterface", [Ifrt_ArrayOpInterface]> {
+  let description = [{
+    Interface for IFRT call operations (`ifrt.Call` and
+    `ifrt.CallLoadedExecutable`) sharing callee references, `io_aliases`,
+    `donated_input_indices`, and argument/result attribute dictionaries.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the callee `SymbolRefAttr`.",
+      /*retTy=*/"::mlir::SymbolRefAttr",
+      /*methodName=*/"getCalleeAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Sets the callee `SymbolRefAttr`.",
+      /*retTy=*/"void",
+      /*methodName=*/"setCalleeAttr",
+      /*args=*/(ins "::mlir::SymbolRefAttr":$attr)
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the raw `io_aliases` array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getIoAliases"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the donated input indices.",
+      /*retTy=*/"::llvm::ArrayRef<int32_t>",
+      /*methodName=*/"getDonatedInputIndices"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the optional per-argument dictionary array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getArgAttrsAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the optional per-result dictionary array attribute.",
+      /*retTy=*/"::mlir::ArrayAttr",
+      /*methodName=*/"getResAttrsAttr"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the parsed `(input_index, output_index)` `IoAlias` pairs.",
+      /*retTy=*/"::llvm::SmallVector<::xla::ifrt::IoAlias, 4>",
+      /*methodName=*/"getIoAliasPairs",
+      /*args=*/(ins),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::GetIoAliases($_op.getIoAliases());
+      }]
+    >,
+  ];
+}
+
 //===---------------------------------------------------------------------------
 // Attribute interfaces
 //===---------------------------------------------------------------------------
