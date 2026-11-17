@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,10 +26,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -40,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.pb.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
 #include "xla/stream_executor/platform.h"
@@ -51,8 +56,10 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::Gt;
 using ::testing::IsEmpty;
+using ::testing::Lt;
 using ::testing::Not;
 using ::testing::Optional;
 
@@ -376,6 +383,87 @@ TEST_F(CublasLtBackendTest, GetSupportedConfigsWithEstimates) {
   ASSERT_THAT(estimated_configs, Not(IsEmpty()));
   for (const auto& config : estimated_configs) {
     EXPECT_THAT(config.estimated_runtime, Optional(Gt(absl::ZeroDuration())));
+  }
+}
+
+// A cuBLASLt GEMM (lhs [m, k], rhs [k, n]) and its runtime in microseconds on
+// H100 and B200 as a median of 3 autotuner runs using the first algorithm.
+struct MeasuredGemm {
+  absl::string_view type;
+  int m;
+  int n;
+  int k;
+  absl::string_view epilogue;
+  std::optional<double> h100_us;
+  std::optional<double> b200_us;
+};
+
+constexpr MeasuredGemm kMeasuredGemms[] = {
+    // dtype, m, n, k, epilogue, h100_us, b200_us
+    {"bf16", 8, 8, 8, "DEFAULT", 5.70,
+     std::nullopt},  // No autotuner measurement on B200
+    {"bf16", 16, 16, 16, "DEFAULT", 5.71,
+     std::nullopt},  // No autotuner measurement on B200
+    {"f16", 2912, 512, 256, "DEFAULT", 9.12, 8.86},
+    {"bf16", 128, 4096, 4096, "DEFAULT", 23.32, 16.39},
+    {"bf16", 1024, 1024, 1024, "DEFAULT", 10.74, 10.21},
+    {"bf16", 2048, 2048, 2048, "GELU", 30.34, 26.28},
+    {"f32", 2048, 2048, 2048, "DEFAULT", 51.73, 33.41},
+    {"bf16", 4096, 4096, 4096, "DEFAULT", 175.52, 96.91},
+    {"f16", 59904, 1024, 256, "DEFAULT", 67.67, 39.90},
+    {"bf16", 8192, 8192, 4096, "DEFAULT", 665.48, 320.15},
+};
+
+TEST_F(CublasLtBackendTest, GetSupportedConfigsWithEstimatesMatchesMeasured) {
+  constexpr absl::string_view kMeasuredGemmHlo = R"hlo(
+    HloModule module
+
+    ENTRY main {
+      lhs = $0[$1,$3] parameter(0)
+      rhs = $0[$3,$2] parameter(1)
+      gemm = ($0[$1,$2], s8[33554432]) custom-call(lhs, rhs),
+        custom_call_target="__cublas$$lt$$matmul",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"]},
+          "epilogue":"$4"}}
+      ROOT result = $0[$1,$2] get-tuple-element(gemm), index=0
+    })hlo";
+
+  // The estimate is an adjusted Triton estimate, not a model of cuBLASLt, so
+  // it only has to be within a factor of 1.6 of the measured runtime.
+  constexpr float kTolerance = 1.6;
+
+  for (GpuModel gpu_model : {GpuModel::H100_SXM, GpuModel::B200}) {
+    ASSERT_OK_AND_ASSIGN(se::GpuTargetConfigProto proto,
+                         GetGpuTargetConfig(gpu_model));
+    ASSERT_OK_AND_ASSIGN(Compiler::GpuTargetConfig target_config,
+                         Compiler::GpuTargetConfig::FromProto(proto));
+    CublasLtBackend backend(stream_executor_, &debug_options_, &compiler_,
+                            &target_config, &mlir_context_);
+
+    for (const MeasuredGemm& gemm : kMeasuredGemms) {
+      const std::optional<double> measured_us =
+          gpu_model == GpuModel::H100_SXM ? gemm.h100_us : gemm.b200_us;
+      if (!measured_us.has_value()) {
+        continue;
+      }
+      const std::string hlo = absl::Substitute(
+          kMeasuredGemmHlo, gemm.type, gemm.m, gemm.n, gemm.k, gemm.epilogue);
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(hlo));
+      ASSERT_OK_AND_ASSIGN(
+          std::vector<CodegenBackend::EstimatedConfig> configs,
+          backend.GetSupportedConfigsWithEstimates(
+              *module->entry_computation()->root_instruction()->operand(0)));
+      ASSERT_THAT(configs, Not(IsEmpty()));
+      EXPECT_THAT(
+          configs[0].estimated_runtime,
+          Optional(AllOf(Gt(absl::Microseconds(*measured_us / kTolerance)),
+                         Lt(absl::Microseconds(*measured_us * kTolerance)))));
+    }
   }
 }
 

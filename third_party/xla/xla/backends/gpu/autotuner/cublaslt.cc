@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
@@ -119,12 +121,50 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateSyntheticTritonDotModule(
   return isolated_module;
 }
 
-absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
+// Adjusts the estimates to fit actual cuBLASLt runtimes better given a dot and
+// its estimates for Triton.
+absl::Duration AdjustDotEstimateForCublas(
+    const HloInstruction& dot_instr,
+    const stream_executor::DeviceDescription& device_info,
+    const absl::Duration triton_dot_estimate) {
+  absl::StatusOr<GemmConfig> gemm_config =
+      GemmConfig::For(&dot_instr, device_info.gpu_compute_capability());
+  if (!gemm_config.ok()) {
+    return triton_dot_estimate;
+  }
+
+  absl::Duration estimated_duration = triton_dot_estimate;
+
+  // TODO(b/503201785): Tweak this heuristic as we update the model.
+  // TODO(b/586376721): Replace the heuristical estimation with a proper
+  // cuBLASLt cost model if we get one.
+  // Runtime scale, fixed offset (5 us prior to Blackwell, 0 us on Blackwell and
+  // newer), and minimum matrix dimension threshold fitted to microbenchmarks
+  // and model profiles.
+  constexpr double kCublasLtRuntimeScale = 0.80;
+  constexpr absl::Duration kCublasLtRuntimeOffset = absl::Microseconds(5);
+  constexpr int64_t kMinScaledGemmDim = 128;
+
+  int64_t min_gemm_dim = std::min(
+      {gemm_config->lhs_layout.num_rows, gemm_config->lhs_layout.num_cols,
+       gemm_config->rhs_layout.num_rows, gemm_config->rhs_layout.num_cols});
+  if (min_gemm_dim >= kMinScaledGemmDim) {
+    estimated_duration *= kCublasLtRuntimeScale;
+  }
+
+  if (!device_info.cuda_compute_capability().IsAtLeastBlackwell()) {
+    estimated_duration += kCublasLtRuntimeOffset;
+  }
+  return estimated_duration;
+}
+
+absl::StatusOr<absl::Duration> EstimateTritonDotRuntime(
     const HloInstruction& instr, const GemmBackendConfig& backend_config,
     const stream_executor::DeviceDescription& device_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   if (mlir_context == nullptr) {
-    return std::nullopt;
+    return absl::FailedPreconditionError(
+        "Cannot estimate dot without MLIR Context");
   }
 
   // The dot search space and the cost model assume the dot is a part of a
@@ -145,16 +185,20 @@ absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
           GetDefaultTritonConfigs(device_info.gpu_compute_capability()));
 
   std::optional<absl::Duration> best_exec_time;
+  absl::Status last_status = absl::NotFoundError("No Triton config estimates");
+
   for (const auto& config : configs) {
     absl::StatusOr<xtile::BlockLevelParameters> block_params =
         FindBlockLevelParameters(dot, config, mlir_context, device_info);
     if (!block_params.ok()) {
+      last_status = block_params.status();
       continue;
     }
     absl::StatusOr<EstimateRunTimeData> estimate =
         gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
             dot, *block_params, device_info, config.block_k);
     if (!estimate.ok()) {
+      last_status = estimate.status();
       continue;
     }
 
@@ -163,7 +207,10 @@ absl::StatusOr<std::optional<absl::Duration>> EstimateTritonDotRuntime(
     }
   }
 
-  return best_exec_time;
+  if (best_exec_time.has_value()) {
+    return *best_exec_time;
+  }
+  return last_status;
 }
 
 }  // namespace
@@ -248,21 +295,22 @@ CublasLtBackend::GetSupportedConfigsWithEstimates(const HloInstruction& instr) {
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
+  const se::DeviceDescription& device_info = target_config().device_description;
 
   std::optional<absl::Duration> estimated_duration = std::nullopt;
-  if (backend_config.epilogue() == GemmBackendConfig::DEFAULT) {
-    // There is no specialized cuBLASLt cost model that we can use (yet?) but
-    // we expect it to be somewhere in the ballpark of the fastest Triton dot.
-    absl::StatusOr<std::optional<absl::Duration>> estimate_or =
-        EstimateTritonDotRuntime(instr, backend_config,
-                                 target_config().device_description,
-                                 debug_options(), mlir_context_);
-    if (estimate_or.ok()) {
-      estimated_duration = *estimate_or;
-    } else {
-      VLOG(1) << "Failed to estimate cuBLASLt dot runtime: "
-              << estimate_or.status();
-    }
+
+  // cuBLASLt has no standalone cost model; derive its estimate from the fastest
+  // isolated Triton dot by scaling large GEMMs and adjusting via heuristics.
+
+  absl::StatusOr<absl::Duration> triton_dot_runtime = EstimateTritonDotRuntime(
+      instr, backend_config, device_info, debug_options(), mlir_context_);
+
+  if (triton_dot_runtime.ok()) {
+    estimated_duration =
+        AdjustDotEstimateForCublas(instr, device_info, *triton_dot_runtime);
+  } else {
+    VLOG(1) << "Failed to estimate cuBLASLt dot runtime: "
+            << triton_dot_runtime.status();
   }
 
   // We do not have a good way to estimate each cublaslt config, so we use the
