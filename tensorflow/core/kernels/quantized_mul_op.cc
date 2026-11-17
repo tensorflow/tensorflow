@@ -309,9 +309,6 @@ class QuantizedMulOp : public OpKernel {
                        " vs. ", y.shape().DebugString())));
       return;
     }
-    Tensor* z;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, BCast::ToShape(bcast.output_shape()), &z));
 
     // Make sure that we have valid quantization ranges for the input buffers.
     // If the difference between the min and max is negative or zero, it makes
@@ -320,13 +317,60 @@ class QuantizedMulOp : public OpKernel {
                 absl::InvalidArgumentError("max_x must be larger than min_a."));
     OP_REQUIRES(context, (max_y > min_y),
                 absl::InvalidArgumentError("max_x must be larger than min_b."));
+
+    // Reject unsupported broadcasts before allocating z. The broadcast output
+    // of e.g. [N, 1] * [1, M] can be far larger than either input.
+    const int ndims = bcast.x_reshape().size();
+    const bool x_is_vector = x.NumElements() < y.NumElements();
+    if (ndims == 2) {
+      const int64_t vector_num_elements =
+          x_is_vector ? x.NumElements() : y.NumElements();
+      if (vector_num_elements == 0) {
+        context->SetStatus(
+            absl::InvalidArgumentError("vector must have at least 1 element"));
+        return;
+      }
+      // VectorTensorMultiply only writes tensor_num_elements outputs, tiling
+      // the vector along the last dimension. Reject other 2-D broadcasts
+      // (e.g. [N, 1] * [1, M]) instead of leaving part of z uninitialized.
+      const BCast::Vec& tensor_bcast =
+          x_is_vector ? bcast.y_bcast() : bcast.x_bcast();
+      const BCast::Vec& vector_reshape =
+          x_is_vector ? bcast.x_reshape() : bcast.y_reshape();
+      OP_REQUIRES(context,
+                  tensor_bcast[0] == 1 && tensor_bcast[1] == 1 &&
+                      vector_reshape[0] == 1,
+                  absl::UnimplementedError(absl::StrCat(
+                      "Broadcast between ", x.shape().DebugString(), " and ",
+                      y.shape().DebugString(), " is not supported yet.")));
+    } else if (ndims > 2) {
+      LOG(INFO) << "ndims=" << ndims;
+      LOG(INFO) << "bcast.x_reshape()="
+                << TensorShape(bcast.x_reshape()).DebugString();
+      LOG(INFO) << "bcast.y_reshape()="
+                << TensorShape(bcast.y_reshape()).DebugString();
+      LOG(INFO) << "bcast.x_bcast()="
+                << TensorShape(bcast.x_bcast()).DebugString();
+      LOG(INFO) << "bcast.y_bcast()="
+                << TensorShape(bcast.y_bcast()).DebugString();
+
+      context->SetStatus(absl::UnimplementedError(absl::StrCat(
+          "Broadcast between ", context->input(0).shape().DebugString(),
+          " and ", context->input(1).shape().DebugString(),
+          " is not supported yet.")));
+      return;
+    }
+
+    Tensor* z;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, BCast::ToShape(bcast.output_shape()), &z));
+
     const int32_t offset_x = FloatToQuantizedUnclamped<T>(0.0f, min_x, max_x);
     const int32_t offset_y = FloatToQuantizedUnclamped<T>(0.0f, min_y, max_y);
     const T* x_data = x.flat<T>().data();
     const T* y_data = y.flat<T>().data();
     Toutput* z_data = z->flat<Toutput>().data();
 
-    const int ndims = bcast.x_reshape().size();
     if (ndims <= 1) {
       if (x.NumElements() == 1) {
         ScalarMultiply<T, Toutput>(context, y_data, offset_y, y.NumElements(),
@@ -345,7 +389,7 @@ class QuantizedMulOp : public OpKernel {
       const T* tensor_data;
       int64_t tensor_num_elements;
       int32_t tensor_offset;
-      if (x.NumElements() < y.NumElements()) {
+      if (x_is_vector) {
         vector_data = x_data;
         vector_num_elements = x.NumElements();
         vector_offset = offset_x;
@@ -360,44 +404,9 @@ class QuantizedMulOp : public OpKernel {
         tensor_num_elements = x.NumElements();
         tensor_offset = offset_x;
       }
-      if (vector_num_elements == 0) {
-        context->SetStatus(
-            absl::InvalidArgumentError("vector must have at least 1 element"));
-        return;
-      }
-      // VectorTensorMultiply only writes tensor_num_elements outputs, tiling
-      // the vector along the last dimension. Reject other 2-D broadcasts
-      // (e.g. [N, 1] * [1, M]) instead of leaving part of z uninitialized.
-      const bool x_is_vector = x.NumElements() < y.NumElements();
-      const BCast::Vec& tensor_bcast =
-          x_is_vector ? bcast.y_bcast() : bcast.x_bcast();
-      const BCast::Vec& vector_reshape =
-          x_is_vector ? bcast.x_reshape() : bcast.y_reshape();
-      OP_REQUIRES(context,
-                  tensor_bcast[0] == 1 && tensor_bcast[1] == 1 &&
-                      vector_reshape[0] == 1,
-                  absl::UnimplementedError(absl::StrCat(
-                      "Broadcast between ", x.shape().DebugString(), " and ",
-                      y.shape().DebugString(), " is not supported yet.")));
       VectorTensorMultiply<T, Toutput>(
           vector_data, vector_offset, vector_num_elements, tensor_data,
           tensor_offset, tensor_num_elements, z_data);
-    } else {
-      LOG(INFO) << "ndims=" << ndims;
-      LOG(INFO) << "bcast.x_reshape()="
-                << TensorShape(bcast.x_reshape()).DebugString();
-      LOG(INFO) << "bcast.y_reshape()="
-                << TensorShape(bcast.y_reshape()).DebugString();
-      LOG(INFO) << "bcast.x_bcast()="
-                << TensorShape(bcast.x_bcast()).DebugString();
-      LOG(INFO) << "bcast.y_bcast()="
-                << TensorShape(bcast.y_bcast()).DebugString();
-
-      context->SetStatus(absl::UnimplementedError(absl::StrCat(
-          "Broadcast between ", context->input(0).shape().DebugString(),
-          " and ", context->input(1).shape().DebugString(),
-          " is not supported yet.")));
-      return;
     }
 
     float min_z_value;

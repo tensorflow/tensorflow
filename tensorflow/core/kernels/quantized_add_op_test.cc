@@ -15,10 +15,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -252,7 +256,10 @@ void TestVectorPlusTensor() {
 // broadcasts must fail instead of returning a partially written output.
 void TestUnsupportedBroadcast() {
   const std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>>
-      shapes = {{{3, 1}, {1, 4}}, {{1, 4}, {3, 1}}, {{4, 6}, {4, 1}}};
+      shapes = {{{3, 1}, {1, 4}},
+                {{1, 4}, {3, 1}},
+                {{4, 1}, {1, 3}},
+                {{4, 6}, {4, 1}}};
   for (const auto& [x_shape, y_shape] : shapes) {
     Scope root = Scope::NewRootScope();
     Tensor x_tensor(DT_QUINT8, TensorShape(x_shape));
@@ -271,7 +278,9 @@ void TestUnsupportedBroadcast() {
     std::vector<Tensor> outputs;
     const absl::Status status =
         session.Run(ClientSession::FeedType(), {op.z}, &outputs);
-    EXPECT_TRUE(errors::IsUnimplemented(status)) << status;
+    EXPECT_THAT(status, absl_testing::StatusIs(
+                            absl::StatusCode::kUnimplemented,
+                            ::testing::HasSubstr("is not supported yet")));
   }
 }
 

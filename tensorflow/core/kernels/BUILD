@@ -7936,6 +7936,8 @@ cc_binary(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ] + select({
         "//tensorflow:android": [
             ":portable_tensorflow_kernels",
@@ -7975,6 +7977,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 
@@ -8144,6 +8148,8 @@ cc_binary(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ] + select({
         "//tensorflow:android": [
             ":portable_tensorflow_kernels",
@@ -8182,6 +8188,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 
