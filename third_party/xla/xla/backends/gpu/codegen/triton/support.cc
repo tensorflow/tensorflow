@@ -799,14 +799,27 @@ bool IsBlock16ScaledOperand(const Shape& operand, const Shape& scale,
   return scale_k > 0 && scale_k * 16 == operand.dimensions(k_dim);
 }
 
-bool HasBlock16ScaledOperand(const HloScaledDotInstruction& dot) {
+CodegenDecision CheckBlackwellScaledDotSupport(
+    const HloScaledDotInstruction& dot) {
+  const Shape& lhs = dot.operand(0)->shape();
+  const Shape& rhs = dot.operand(1)->shape();
+  const Shape& lhs_scale = dot.operand(2)->shape();
+  const Shape& rhs_scale = dot.operand(3)->shape();
   const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
-  return IsBlock16ScaledOperand(dot.operand(0)->shape(),
-                                dot.operand(2)->shape(),
-                                dnums.lhs_contracting_dimensions()) ||
-         IsBlock16ScaledOperand(dot.operand(1)->shape(),
-                                dot.operand(3)->shape(),
-                                dnums.rhs_contracting_dimensions());
+  bool lhs_block16 = IsBlock16ScaledOperand(lhs, lhs_scale,
+                                            dnums.lhs_contracting_dimensions());
+  bool rhs_block16 = IsBlock16ScaledOperand(rhs, rhs_scale,
+                                            dnums.rhs_contracting_dimensions());
+  bool is_nvfp4 =
+      lhs.element_type() == F4E2M1FN && rhs.element_type() == F4E2M1FN &&
+      lhs_scale.element_type() == F8E4M3FN &&
+      rhs_scale.element_type() == F8E4M3FN && lhs_block16 && rhs_block16;
+  if ((lhs_block16 || rhs_block16) && !is_nvfp4) {
+    return CodegenDecision::Forbid(
+        "Triton's Blackwell MMA lowering only supports block-16 scaled dots "
+        "for NVFP4 (F4E2M1FN with F8E4M3FN scales).");
+  }
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedScaledDot(
@@ -873,10 +886,8 @@ CodegenDecision IsTritonSupportedScaledDot(
                      PrimitiveType_Name(rhs_type), " but is not all ones."));
   }
   if (const auto* cc = gpu_version.cuda_compute_capability();
-      cc && cc->IsAtLeastBlackwell() && HasBlock16ScaledOperand(dot)) {
-    return CodegenDecision::Forbid(
-        "Triton's Blackwell MMA lowering does not support block-16 scaled "
-        "dots.");
+      cc && cc->IsAtLeastBlackwell()) {
+    return CheckBlackwellScaledDotSupport(dot);
   }
   return CodegenDecision::Allow();
 }

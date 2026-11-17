@@ -462,7 +462,10 @@ ENTRY e {
                          GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
-    if (block_size == 16 && GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    bool is_nvfp4 = lhs_type == F4E2M1FN && rhs_type == F4E2M1FN &&
+                    scale_type == F8E4M3FN && block_size == 16;
+    if (block_size == 16 && !is_nvfp4 &&
+        GetCudaComputeCapability().IsAtLeastBlackwell()) {
       EXPECT_EQ(scaled_dot_computation, nullptr);
     } else {
       ASSERT_NE(scaled_dot_computation, nullptr);

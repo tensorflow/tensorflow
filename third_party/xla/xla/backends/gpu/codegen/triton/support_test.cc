@@ -2813,9 +2813,13 @@ TEST_F(HloHardwareIndependentTestBase, ScaledDotBlock16IsRejectedOnBlackwell) {
   };
   constexpr TestCase kCases[] = {
       {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e4m3fn[128,16]",
+       "f8e4m3fn[128,16]", /*allowed_on_blackwell=*/true},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e4m3fn[128,16]",
        "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
       {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
        "f8e4m3fn[128,16]", /*allowed_on_blackwell=*/false},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,16]",
+       "f8e8m0fnu[128,16]", /*allowed_on_blackwell=*/false},
       {"f8e4m3fn[128,256]", "f8e4m3fn[128,256]", "f8e8m0fnu[128,16]",
        "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
       {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
