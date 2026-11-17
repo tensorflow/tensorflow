@@ -1140,6 +1140,29 @@ class ArrayMethodsTest(test.TestCase):
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
 
+    a = np.array([[1, 2, 3], [4, 5, 6]])
+    mask = np.array([[True, False, True], [False, True, False]])
+    # `initial` multiplies once after the reduction.
+    self.match(np_array_ops.prod(a, initial=10), np.prod(a, initial=10))
+    self.match(
+        np_array_ops.prod(a, axis=0, initial=10),
+        np.prod(a, axis=0, initial=10))
+    self.match(
+        np_array_ops.prod(a, axis=1, initial=10, keepdims=True),
+        np.prod(a, axis=1, initial=10, keepdims=True))
+    # Masked-out elements use the multiplicative identity, so an entirely
+    # masked input yields 1 like NumPy.
+    self.match(np_array_ops.prod(a, where=mask), np.prod(a, where=mask))
+    self.match(
+        np_array_ops.prod(a, axis=0, where=mask),
+        np.prod(a, axis=0, where=mask))
+    self.match(
+        np_array_ops.prod(a, axis=1, where=mask, keepdims=True),
+        np.prod(a, axis=1, where=mask, keepdims=True))
+    self.match(
+        np_array_ops.prod(a, where=np.zeros_like(mask)),
+        np.prod(a, where=np.zeros_like(mask)))
+
   def _testReduce(self, math_fun, np_fun, name):
     axis_transforms = [
         lambda x: x,  # Identity,
@@ -1185,6 +1208,33 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.sum(5, axis=1)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.sum(5, axis=-2)
+
+    a = np.array([[1, 2, 3], [4, 5, 6]])
+    mask = np.array([[True, False, True], [False, True, False]])
+    # `initial` is added once after the reduction.
+    self.match(np_array_ops.sum(a, initial=10), np.sum(a, initial=10))
+    self.match(
+        np_array_ops.sum(a, axis=0, initial=10),
+        np.sum(a, axis=0, initial=10))
+    self.match(
+        np_array_ops.sum(a, axis=1, initial=10, keepdims=True),
+        np.sum(a, axis=1, initial=10, keepdims=True))
+    # `where` excludes elements without changing the result shape.
+    self.match(np_array_ops.sum(a, where=mask), np.sum(a, where=mask))
+    self.match(
+        np_array_ops.sum(a, axis=0, where=mask),
+        np.sum(a, axis=0, where=mask))
+    self.match(
+        np_array_ops.sum(a, axis=1, where=mask, keepdims=True),
+        np.sum(a, axis=1, where=mask, keepdims=True))
+    self.match(
+        np_array_ops.sum(a, where=mask, initial=10),
+        np.sum(a, where=mask, initial=10))
+    # Small integer inputs promote like NumPy, and a float `initial` is cast to
+    # the reduction dtype as NumPy does.
+    a8 = np.array([1, 2], np.int8)
+    self.match(np_array_ops.sum(a8, initial=1000), np.sum(a8, initial=1000))
+    self.match(np_array_ops.sum(a8, initial=1.5), np.sum(a8, initial=1.5))
 
   def testAmax(self):
     self._testReduce(np_array_ops.amax, np.amax, 'amax')

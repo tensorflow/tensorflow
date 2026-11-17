@@ -750,8 +750,14 @@ def size(x, axis=None):  # pylint: disable=missing-docstring
 
 @tf_export.tf_export('experimental.numpy.sum', v1=[])
 @np_utils.np_doc('sum')
-def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
-  return _reduce(
+def sum(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):  # pylint: disable=redefined-builtin
+  if where is not None:
+    # Mask before reducing so NumPy's `where` works for every axis/keepdims
+    # combination without extra shape handling.
+    a = asarray(a, dtype=np_utils.result_type(dtype) if dtype else None)
+    where = asarray(where, dtype=bool)
+    a = array_ops.where_v2(where, a, array_ops.zeros_like(a))
+  result = _reduce(
       math_ops.reduce_sum,
       a,
       axis=axis,
@@ -759,12 +765,23 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
       keepdims=keepdims,
       tf_bool_fn=math_ops.reduce_any,
   )
+  if initial is not None:
+    initial = asarray(initial, dtype=result.dtype.as_numpy_dtype)
+    result = math_ops.add(result, initial)
+  return result
 
 
 @tf_export.tf_export('experimental.numpy.prod', v1=[])
 @np_utils.np_doc('prod')
-def prod(a, axis=None, dtype=None, keepdims=None):
-  return _reduce(
+def prod(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):
+  if where is not None:
+    # Mask before reducing so NumPy's `where` works for every axis/keepdims
+    # combination without extra shape handling. The multiplicative identity is
+    # one, matching NumPy's result for an entirely masked-out input.
+    a = asarray(a, dtype=np_utils.result_type(dtype) if dtype else None)
+    where = asarray(where, dtype=bool)
+    a = array_ops.where_v2(where, a, array_ops.ones_like(a))
+  result = _reduce(
       math_ops.reduce_prod,
       a,
       axis=axis,
@@ -772,6 +789,10 @@ def prod(a, axis=None, dtype=None, keepdims=None):
       keepdims=keepdims,
       tf_bool_fn=math_ops.reduce_all,
   )
+  if initial is not None:
+    initial = asarray(initial, dtype=result.dtype.as_numpy_dtype)
+    result = math_ops.multiply(result, initial)
+  return result
 
 
 @tf_export.tf_export('experimental.numpy.mean', v1=[])
