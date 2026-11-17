@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -37,6 +38,15 @@ class ConvertOperandFolding : public OpExpanderPass {
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+
+  // Returns whether `instruction`, a dot or convolution, may have its converts
+  // folded, given its lhs and rhs element types after folding. A backend
+  // returns false when it contracts these types less precisely than the
+  // unfolded ones.
+  virtual bool CanFold(const HloInstruction& instruction, PrimitiveType lhs,
+                       PrimitiveType rhs) const {
+    return true;
+  }
 };
 
 }  // namespace xla

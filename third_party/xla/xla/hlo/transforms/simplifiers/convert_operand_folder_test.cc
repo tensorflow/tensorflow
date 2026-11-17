@@ -20,9 +20,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 namespace xla {
 namespace {
@@ -145,6 +147,90 @@ TEST_F(ConvertOperandFoldingTest, OneOperandFolded) {
       AllOf(op::Dot(op::Parameter(0), AllOf(op::Convert(op::Parameter(1)),
                                             op::Shape("s8[3,2]{0,1}"))),
             op::Shape("s16[2,2]{1,0}")));
+}
+
+constexpr absl::string_view kFp8Dot = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f8e4m3fn[2,3]{1,0} parameter(0)
+    p1 = f8e4m3fn[3,2]{1,0} parameter(1)
+    c0 = f32[2,3]{1,0} convert(p0)
+    c1 = f32[3,2]{1,0} convert(p1)
+    ROOT dot = f32[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+
+TEST_F(ConvertOperandFoldingTest, Fp8DotFoldedByDefault) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kFp8Dot));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConvertOperandFolding().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Parameter(0), op::Parameter(1)));
+}
+
+// A backend that contracts two fp8 operands less precisely.
+class NoFp8xFp8Folding : public ConvertOperandFolding {
+ protected:
+  bool CanFold(const HloInstruction& instruction, PrimitiveType lhs,
+               PrimitiveType rhs) const override {
+    return !(lhs == F8E4M3FN && rhs == F8E4M3FN);
+  }
+};
+
+TEST_F(ConvertOperandFoldingTest, Fp8DotKeepsConvertsWhenBackendAsks) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kFp8Dot));
+  ASSERT_OK_AND_ASSIGN(bool changed, NoFp8xFp8Folding().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Dot(op::Convert(op::Parameter(0)), op::Convert(op::Parameter(1))));
+}
+
+TEST_F(ConvertOperandFoldingTest,
+       Fp8DotWithOneUnwrappedOperandKeepsConvertWhenBackendAsks) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f8e4m3fn[2,3]{1,0} parameter(0)
+    p1 = f8e4m3fn[3,2]{1,0} parameter(1)
+    c1 = f32[3,2]{1,0} convert(p1)
+    ROOT dot = f32[2,2]{1,0} dot(p0, c1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, NoFp8xFp8Folding().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Parameter(0), op::Convert(op::Parameter(1))));
+}
+
+TEST_F(ConvertOperandFoldingTest,
+       Fp8DotWithFormattingOpKeepsConvertsWhenBackendAsks) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f8e4m3fn[3,2]{1,0} parameter(0)
+    p1 = f8e4m3fn[6]{0} parameter(1)
+    c0 = f32[3,2]{1,0} convert(p0)
+    t0 = f32[2,3]{1,0} transpose(c0), dimensions={1,0}
+    c1 = f32[6]{0} convert(p1)
+    r1 = f32[3,2]{1,0} reshape(c1)
+    ROOT dot = f32[2,2]{1,0} dot(t0, r1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, NoFp8xFp8Folding().Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Transpose(op::Convert(op::Parameter(0))),
+                      op::Reshape(op::Convert(op::Parameter(1)))));
 }
 
 TEST_F(ConvertOperandFoldingTest, FoldedWithFormatting) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/convert_operand_folder.h"
 
+#include <optional>
+
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,9 +29,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-bool IsUpcastConvert(const HloInstruction* hlo) {
+// Returns the pre-convert element type if `hlo` is a value-preserving convert
+// (possibly wrapped in formatting ops), or std::nullopt otherwise.
+std::optional<PrimitiveType> UpcastSourceType(const HloInstruction* hlo) {
   if (!hlo->shape().IsArray()) {
-    return false;
+    return std::nullopt;
   }
   switch (hlo->opcode()) {
     case HloOpcode::kDynamicSlice:
@@ -37,20 +41,24 @@ bool IsUpcastConvert(const HloInstruction* hlo) {
     case HloOpcode::kReshape:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose: {
-      return IsUpcastConvert(hlo->operand(0));
+      return UpcastSourceType(hlo->operand(0));
     }
     case HloOpcode::kReduce: {
       if (ShapeUtil::ElementsIn(hlo->shape()) ==
           ShapeUtil::ElementsIn(hlo->operand(0)->shape())) {
-        return IsUpcastConvert(hlo->operand(0));
+        return UpcastSourceType(hlo->operand(0));
       }
-      return false;
+      return std::nullopt;
     }
     case HloOpcode::kConvert:
-      return primitive_util::CastPreservesValues(
-          hlo->operand(0)->shape().element_type(), hlo->shape().element_type());
+      if (primitive_util::CastPreservesValues(
+              hlo->operand(0)->shape().element_type(),
+              hlo->shape().element_type())) {
+        return hlo->operand(0)->shape().element_type();
+      }
+      return std::nullopt;
     default:
-      return false;
+      return std::nullopt;
   }
 }
 
@@ -92,19 +100,28 @@ bool ConvertOperandFolding::InstructionMatchesPattern(
       instruction->opcode() != HloOpcode::kConvolution) {
     return false;
   }
-  for (auto* operand : instruction->operands()) {
-    if (IsUpcastConvert(operand)) {
-      return true;
-    }
+  std::optional<PrimitiveType> lhs_upcast =
+      UpcastSourceType(instruction->operand(0));
+  std::optional<PrimitiveType> rhs_upcast =
+      UpcastSourceType(instruction->operand(1));
+  bool has_upcast = lhs_upcast.has_value() || rhs_upcast.has_value();
+  for (int i = 2; !has_upcast && i < instruction->operand_count(); ++i) {
+    has_upcast = UpcastSourceType(instruction->operand(i)).has_value();
   }
-  return false;
+  if (!has_upcast) {
+    return false;
+  }
+  return CanFold(
+      *instruction,
+      lhs_upcast.value_or(instruction->operand(0)->shape().element_type()),
+      rhs_upcast.value_or(instruction->operand(1)->shape().element_type()));
 }
 
 absl::StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
     HloInstruction* instruction) {
   for (int i = 0; i < instruction->operand_count(); ++i) {
     auto* operand = instruction->mutable_operand(i);
-    if (IsUpcastConvert(operand)) {
+    if (UpcastSourceType(operand).has_value()) {
       ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWithDifferentShape(
           i, EffectiveOperand(operand)));
     }
