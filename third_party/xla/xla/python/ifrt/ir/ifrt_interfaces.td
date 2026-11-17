@@ -36,7 +36,33 @@ class Ifrt_OpInterface<string name, list<Interface> baseInterfaces = []>
   let cppNamespace = "::xla::ifrt";
 }
 
-def Ifrt_ArrayOpInterface : Ifrt_OpInterface<"IfrtArrayOpInterface"> {
+def Ifrt_ControlOpInterface : Ifrt_OpInterface<"IfrtControlOpInterface"> {
+  let description = [{
+    Interface for IFRT operations with variadic control inputs and a single
+    control output.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns the control input operands.",
+      /*retTy=*/"::mlir::Operation::operand_range",
+      /*methodName=*/"getControlInputs"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the mutable control input operands.",
+      /*retTy=*/"::mlir::MutableOperandRange",
+      /*methodName=*/"getControlInputsMutable"
+    >,
+    InterfaceMethod<
+      /*desc=*/"Returns the control output result.",
+      /*retTy=*/"::mlir::TypedValue<::xla::ifrt::IfrtControlType>",
+      /*methodName=*/"getControlOutput"
+    >,
+  ];
+}
+
+def Ifrt_ArrayOpInterface
+    : Ifrt_OpInterface<"IfrtArrayOpInterface", [Ifrt_ControlOpInterface]> {
   let description = [{
     Interface for IFRT operations with variadic array inputs/outputs, variadic
     control inputs, and a single control output.
@@ -57,21 +83,6 @@ def Ifrt_ArrayOpInterface : Ifrt_OpInterface<"IfrtArrayOpInterface"> {
       /*desc=*/"Returns the array output results.",
       /*retTy=*/"::mlir::Operation::result_range",
       /*methodName=*/"getOutputs"
-    >,
-    InterfaceMethod<
-      /*desc=*/"Returns the control input operands.",
-      /*retTy=*/"::mlir::Operation::operand_range",
-      /*methodName=*/"getControlInputs"
-    >,
-    InterfaceMethod<
-      /*desc=*/"Returns the mutable control input operands.",
-      /*retTy=*/"::mlir::MutableOperandRange",
-      /*methodName=*/"getControlInputsMutable"
-    >,
-    InterfaceMethod<
-      /*desc=*/"Returns the control output result.",
-      /*retTy=*/"::mlir::TypedValue<::xla::ifrt::IfrtControlType>",
-      /*methodName=*/"getControlOutput"
     >,
   ];
 }
@@ -100,6 +111,27 @@ def Ifrt_PairwiseArrayOpInterface
         assert(out.getOwner() == $_op.getOperation() &&
                out.getResultNumber() < $_op.getInputs().size());
         return $_op.getInputs()[out.getResultNumber()];
+      }]
+    >,
+    InterfaceMethod<
+      /*desc=*/[{
+        Clones the op at `rewriter`'s current insertion point with `loc`,
+        `inputs`, `output_types`, and `control_inputs`, preserving op
+        properties and discardable attributes.
+      }],
+      /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
+      /*methodName=*/"cloneWithNewInputsAndOutputs",
+      /*args=*/(ins
+        "::mlir::RewriterBase&":$rewriter,
+        "::mlir::Location":$loc,
+        "::mlir::ValueRange":$inputs,
+        "::mlir::TypeRange":$output_types,
+        "::mlir::ValueRange":$control_inputs
+      ),
+      /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        return ::xla::ifrt::detail::ClonePairwiseArrayOpWithNewInputsAndOutputs(
+            $_op, rewriter, loc, inputs, output_types, control_inputs);
       }]
     >,
     InterfaceMethod<

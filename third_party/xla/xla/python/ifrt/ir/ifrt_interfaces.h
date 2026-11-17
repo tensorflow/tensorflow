@@ -19,15 +19,18 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -43,11 +46,11 @@ class IfrtPairwiseArrayOpInterface;
 
 namespace detail {
 
-// Forwards `control_inputs` to all users of `control_output`, removing
-// `control_output` from each user's control dependencies.
-void ForwardControlInputsToUsers(mlir::Value control_output,
-                                 mlir::ValueRange control_inputs,
-                                 mlir::RewriterBase& rewriter);
+template <typename OpT>
+IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithNewInputsAndOutputs(
+    OpT op, mlir::RewriterBase& rewriter, mlir::Location loc,
+    mlir::ValueRange inputs, mlir::TypeRange output_types,
+    mlir::ValueRange control_inputs);
 
 template <typename OpT>
 IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithKeptOutputs(
@@ -132,14 +135,84 @@ class IfrtCallLikeTrait {
 
 namespace xla {
 namespace ifrt {
+
+// Returns true if `control_inputs` can be forwarded to all users of
+// `control_output` via `ForwardControlInputsToUsers` (either all users
+// implement `IfrtControlOpInterface`, or there is a single unique control
+// input).
+bool CanForwardControlInputs(mlir::Value control_output,
+                             mlir::ValueRange control_inputs);
+
+// Forwards `control_inputs` to all users of `control_output`, removing
+// `control_output` from each user's control dependencies.
+void ForwardControlInputsToUsers(mlir::Value control_output,
+                                 mlir::ValueRange control_inputs,
+                                 mlir::RewriterBase& rewriter);
+
+// Filters an array of per-argument or per-result dictionary attributes (e.g.,
+// `arg_attrs` or `res_attrs`) by dropping entries whose index is set in
+// `erase`. Returns `nullptr` if `dict_array` is null, all entries are erased,
+// or no kept entry is a non-empty `mlir::DictionaryAttr`.
+mlir::ArrayAttr FilterDictArrayAttr(mlir::ArrayAttr dict_array,
+                                    const llvm::BitVector& erase);
+
+// Partition of an `IfrtArrayOpInterface` op's array outputs into used (kept)
+// and unused (erased) results, along with index remapping and kept types.
+struct UsedOutputsSlice {
+  llvm::BitVector keep;
+  llvm::BitVector erase;
+  llvm::SmallVector<int32_t> old_to_new;
+  llvm::SmallVector<mlir::Type> kept_types;
+};
+
+// Inspects the array outputs of `op` and returns a `UsedOutputsSlice` recording
+// which outputs are used vs. unused, their compacted output indices, and the
+// types of the kept outputs.
+UsedOutputsSlice CollectUsedOutputs(IfrtArrayOpInterface op);
+
+// Replaces uses of kept array outputs of `old_op` with the corresponding
+// compacted outputs of `new_op` according to `old_to_new` (-1 for erased
+// outputs), forwards `old_op`'s control output to `new_op`'s control output,
+// and erases `old_op`. `CHECK`-fails if `old_to_new.size()` does not match
+// `old_op.getOutputs().size()`, any erased output still has uses, or any kept
+// output index is outside `[0, new_op.getOutputs().size())`.
+void ReplaceKeptOutputs(mlir::RewriterBase& rewriter,
+                        IfrtArrayOpInterface old_op,
+                        IfrtArrayOpInterface new_op,
+                        llvm::ArrayRef<int32_t> old_to_new);
+
 namespace detail {
+
+template <typename OpT>
+IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithNewInputsAndOutputs(
+    OpT op, mlir::RewriterBase& rewriter, mlir::Location loc,
+    mlir::ValueRange inputs, mlir::TypeRange output_types,
+    mlir::ValueRange control_inputs) {
+  assert(!inputs.empty() && inputs.size() == output_types.size());
+  llvm::SmallVector<mlir::Value> operands;
+  operands.reserve(inputs.size() + control_inputs.size());
+  operands.append(inputs.begin(), inputs.end());
+  operands.append(control_inputs.begin(), control_inputs.end());
+
+  llvm::SmallVector<mlir::Type> result_types;
+  result_types.reserve(output_types.size() + 1);
+  result_types.append(output_types.begin(), output_types.end());
+  result_types.push_back(op.getControlOutput().getType());
+
+  typename OpT::Properties props = op.getProperties();
+  props.operandSegmentSizes = {static_cast<int32_t>(inputs.size()),
+                               static_cast<int32_t>(control_inputs.size())};
+
+  OpT new_op = OpT::create(rewriter, loc, result_types, operands, props,
+                           op->getDiscardableAttrDictionary().getValue());
+  return llvm::cast<IfrtPairwiseArrayOpInterface>(new_op.getOperation());
+}
 
 template <typename OpT>
 IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithKeptOutputs(
     OpT op, mlir::RewriterBase& rewriter, const llvm::BitVector& keep) {
   const mlir::Operation::operand_range inputs = op.getInputs();
   const mlir::Operation::result_range outputs = op.getOutputs();
-  const mlir::Operation::operand_range control_inputs = op.getControlInputs();
   assert(inputs.size() == outputs.size());
   assert(keep.size() == outputs.size());
   if (keep.none()) {
@@ -147,26 +220,20 @@ IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithKeptOutputs(
   }
 
   const unsigned num_kept = keep.count();
-  llvm::SmallVector<mlir::Value> operands;
-  llvm::SmallVector<mlir::Type> result_types;
-  operands.reserve(num_kept + control_inputs.size());
-  result_types.reserve(num_kept + 1);
+  llvm::SmallVector<mlir::Value> kept_inputs;
+  llvm::SmallVector<mlir::Type> kept_output_types;
+  kept_inputs.reserve(num_kept);
+  kept_output_types.reserve(num_kept);
   for (int i : keep.set_bits()) {
-    operands.push_back(inputs[i]);
-    result_types.push_back(outputs[i].getType());
+    kept_inputs.push_back(inputs[i]);
+    kept_output_types.push_back(outputs[i].getType());
   }
-  operands.append(control_inputs.begin(), control_inputs.end());
-  result_types.push_back(op.getControlOutput().getType());
-
-  typename OpT::Properties props = op.getProperties();
-  props.operandSegmentSizes = {static_cast<int32_t>(num_kept),
-                               static_cast<int32_t>(control_inputs.size())};
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(op);
-  OpT new_op = OpT::create(rewriter, op.getLoc(), result_types, operands, props,
-                           op->getDiscardableAttrDictionary().getValue());
-  return llvm::cast<IfrtPairwiseArrayOpInterface>(new_op.getOperation());
+  return ClonePairwiseArrayOpWithNewInputsAndOutputs(
+      op, rewriter, op.getLoc(), kept_inputs, kept_output_types,
+      op.getControlInputs());
 }
 
 template <typename OpT>

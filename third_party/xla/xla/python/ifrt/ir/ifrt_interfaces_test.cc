@@ -15,17 +15,21 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/ifrt_ir_test_base.h"
@@ -544,6 +548,219 @@ module {
   EXPECT_EQ(disassemble_op.getControlInputs()[1], c1);
 
   EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest, ControlOpInterfaceMembershipAndForwardingHelpers) {
+  constexpr const char* kModuleStr = R"mlir(
+!array_d01 = !ifrt.array<tensor<2x2xi32>,
+                         #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array_d0 = !ifrt.array<tensor<2x2xi32>,
+                        #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array_d1 = !ifrt.array<tensor<2x2xi32>,
+                        #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!array_sharded = !ifrt.array<tensor<2x4xi32>,
+                             #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array_d01, %arg1: !array_d0, %arg2: !array_d1,
+                  %c0: !ifrt.control, %c1: !ifrt.control) -> !ifrt.control
+      attributes {ifrt.function} {
+    %after_ctrl = "ifrt.After"(%arg0) : (!array_d01) -> !ifrt.control
+    %asm, %ctrl_asm = ifrt.Assemble(%arg1, %arg2) after %c0, %c1
+        : (!array_d0, !array_d1) -> !array_sharded
+    %d0, %d1, %ctrl_dis = ifrt.Disassemble(%asm) after %ctrl_asm
+        : (!array_sharded) -> (!array_d0, !array_d1)
+    %r0, %ctrl_r = ifrt.Reshard(%arg0) after %c0, %c1
+        : (!array_d01) -> !array_d01
+    return %ctrl_r : !ifrt.control
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_NE(main_func, nullptr);
+
+  int control_op_count = 0;
+  for (mlir::Operation& op : main_func.getBody().front()) {
+    if (IfrtControlOpInterface control_op =
+            llvm::dyn_cast<IfrtControlOpInterface>(&op);
+        control_op != nullptr) {
+      ++control_op_count;
+      EXPECT_FALSE(control_op.getControlInputs().empty());
+      EXPECT_NE(control_op.getControlOutput(), nullptr);
+      EXPECT_EQ(control_op.getControlInputsMutable().size(),
+                control_op.getControlInputs().size());
+    } else {
+      EXPECT_TRUE((llvm::isa<AfterOp, mlir::func::ReturnOp>(&op)));
+    }
+  }
+  EXPECT_EQ(control_op_count, 3);
+
+  AssembleOp assemble_op = *main_func.getOps<AssembleOp>().begin();
+  DisassembleOp disassemble_op = *main_func.getOps<DisassembleOp>().begin();
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  IfrtArrayOpInterface array_op = reshard_op;
+  IfrtControlOpInterface base_from_array = array_op;
+  EXPECT_EQ(base_from_array.getOperation(), reshard_op.getOperation());
+
+  // `ctrl_asm` is consumed only by `DisassembleOp` (`IfrtControlOpInterface`),
+  // so 0 or 2 control inputs can be forwarded.
+  EXPECT_TRUE(CanForwardControlInputs(assemble_op.getControlOutput(),
+                                      assemble_op.getControlInputs()));
+  EXPECT_TRUE(CanForwardControlInputs(assemble_op.getControlOutput(),
+                                      /*control_inputs=*/mlir::ValueRange()));
+
+  // `ctrl_r` is consumed by `func.return` (non-variadic), so 2 distinct control
+  // inputs or 0 control inputs cannot be forwarded, whereas 1 unique control
+  // input (including duplicates) can.
+  EXPECT_FALSE(CanForwardControlInputs(reshard_op.getControlOutput(),
+                                       reshard_op.getControlInputs()));
+  EXPECT_FALSE(CanForwardControlInputs(reshard_op.getControlOutput(),
+                                       /*control_inputs=*/mlir::ValueRange()));
+  llvm::SmallVector<mlir::Value> dup_single = {main_func.getArgument(3),
+                                               main_func.getArgument(3)};
+  EXPECT_TRUE(
+      CanForwardControlInputs(reshard_op.getControlOutput(), dup_single));
+
+  mlir::IRRewriter rewriter(&mlir_context_);
+  ForwardControlInputsToUsers(assemble_op.getControlOutput(),
+                              assemble_op.getControlInputs(), rewriter);
+  ASSERT_EQ(disassemble_op.getControlInputs().size(), 2u);
+  EXPECT_EQ(disassemble_op.getControlInputs()[0], main_func.getArgument(3));
+  EXPECT_EQ(disassemble_op.getControlInputs()[1], main_func.getArgument(4));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest, CloneWithNewInputsAndOutputs) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!a1 = !ifrt.array<tensor<4xf32>,
+                  #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [2,3]>
+!b1 = !ifrt.array<tensor<4xf32>,
+                  #ifrt.sharding_param<2 to [0] on 2>, [2,3]>
+module {
+  func.func @main(%x0: !a0, %x1: !a1, %ctrl_in: !ifrt.control) -> (!b0, !b1)
+      attributes {ifrt.function} {
+    %y0, %ctrl0 = ifrt.CopyArrays(%x0) <reuse = true> {test.merged = "ok"}
+        : (!a0) -> !b0
+    %y1, %ctrl1 = ifrt.CopyArrays(%x1) <reuse = true> {test.merged = "ok"}
+        : (!a1) -> !b1
+    return %y0, %y1 : !b0, !b1
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_NE(main_func, nullptr);
+
+  llvm::SmallVector<CopyArraysOp> copy_ops(main_func.getOps<CopyArraysOp>());
+  ASSERT_EQ(copy_ops.size(), 2u);
+
+  mlir::IRRewriter rewriter(&mlir_context_);
+  rewriter.setInsertionPointAfter(copy_ops[1]);
+  IfrtPairwiseArrayOpInterface first_iface = copy_ops.front();
+  llvm::SmallVector<mlir::Value> merged_inputs = {main_func.getArgument(0),
+                                                  main_func.getArgument(1)};
+  llvm::SmallVector<mlir::Type> merged_output_types = {
+      copy_ops[0].getOutputs()[0].getType(),
+      copy_ops[1].getOutputs()[0].getType()};
+  llvm::SmallVector<mlir::Value> merged_controls = {main_func.getArgument(2)};
+
+  IfrtPairwiseArrayOpInterface merged_iface =
+      first_iface.cloneWithNewInputsAndOutputs(
+          rewriter, copy_ops[1].getLoc(), merged_inputs, merged_output_types,
+          merged_controls);
+  ASSERT_NE(merged_iface, nullptr);
+  EXPECT_EQ(merged_iface.getLoc(), copy_ops[1].getLoc());
+  EXPECT_EQ(merged_iface->getPrevNode(), copy_ops[1].getOperation());
+  CopyArraysOp merged_copy =
+      llvm::dyn_cast<CopyArraysOp>(merged_iface.getOperation());
+  ASSERT_NE(merged_copy, nullptr);
+  EXPECT_TRUE(merged_copy.getReuse());
+  EXPECT_FALSE(merged_copy.getDonated());
+  EXPECT_EQ(merged_copy.getInputs().size(), 2u);
+  EXPECT_EQ(merged_copy.getOutputs().size(), 2u);
+  ASSERT_EQ(merged_copy.getControlInputs().size(), 1u);
+  EXPECT_EQ(merged_copy.getControlInputs()[0], main_func.getArgument(2));
+  EXPECT_EQ(merged_copy->getDiscardableAttr("test.merged"),
+            mlir::StringAttr::get(&mlir_context_, "ok"));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest,
+       CollectUsedOutputsReplaceKeptOutputsAndFilterDictArrayAttr) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+module {
+  func.func @main(%x0: !a0) -> (!b0, !ifrt.control)
+      attributes {ifrt.function} {
+    %y0, %y1, %y2, %ctrl = ifrt.Reshard(%x0, %x0, %x0)
+        : (!a0, !a0, !a0) -> (!b0, !b0, !b0)
+    return %y2, %ctrl : !b0, !ifrt.control
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_NE(main_func, nullptr);
+
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  UsedOutputsSlice slice = CollectUsedOutputs(reshard_op);
+  ASSERT_EQ(slice.keep.size(), 3u);
+  EXPECT_FALSE(slice.keep.test(0));
+  EXPECT_FALSE(slice.keep.test(1));
+  EXPECT_TRUE(slice.keep.test(2));
+  EXPECT_TRUE(slice.erase.test(0));
+  EXPECT_TRUE(slice.erase.test(1));
+  EXPECT_FALSE(slice.erase.test(2));
+  ASSERT_EQ(slice.old_to_new.size(), 3u);
+  EXPECT_EQ(slice.old_to_new[0], -1);
+  EXPECT_EQ(slice.old_to_new[1], -1);
+  EXPECT_EQ(slice.old_to_new[2], 0);
+  ASSERT_EQ(slice.kept_types.size(), 1u);
+  EXPECT_EQ(slice.kept_types[0], reshard_op.getOutputs()[2].getType());
+
+  mlir::IRRewriter rewriter(&mlir_context_);
+  IfrtPairwiseArrayOpInterface cloned =
+      reshard_op.cloneWithKeptOutputs(rewriter, slice.keep);
+  ASSERT_NE(cloned, nullptr);
+  ReplaceKeptOutputs(rewriter, reshard_op, cloned, slice.old_to_new);
+
+  mlir::func::ReturnOp return_op =
+      *main_func.getOps<mlir::func::ReturnOp>().begin();
+  EXPECT_EQ(return_op.getOperand(0), cloned.getOutputs()[0]);
+  EXPECT_EQ(return_op.getOperand(1), cloned.getControlOutput());
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+
+  // Verify `FilterDictArrayAttr` edge cases.
+  EXPECT_EQ(FilterDictArrayAttr(/*dict_array=*/nullptr, slice.erase), nullptr);
+  mlir::DictionaryAttr empty_dict = rewriter.getDictionaryAttr({});
+  mlir::DictionaryAttr non_empty_dict = rewriter.getDictionaryAttr(
+      {rewriter.getNamedAttr("ifrt.tag", rewriter.getUnitAttr())});
+  mlir::ArrayAttr all_empty_after_filter =
+      rewriter.getArrayAttr({non_empty_dict, empty_dict, empty_dict});
+  EXPECT_EQ(FilterDictArrayAttr(all_empty_after_filter, slice.erase), nullptr);
+
+  mlir::ArrayAttr kept_non_empty =
+      rewriter.getArrayAttr({empty_dict, empty_dict, non_empty_dict});
+  mlir::ArrayAttr filtered = FilterDictArrayAttr(kept_non_empty, slice.erase);
+  ASSERT_NE(filtered, nullptr);
+  ASSERT_EQ(filtered.size(), 1u);
+  EXPECT_EQ(filtered[0], non_empty_dict);
 }
 
 }  // namespace

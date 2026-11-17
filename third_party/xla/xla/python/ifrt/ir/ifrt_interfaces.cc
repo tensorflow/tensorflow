@@ -15,21 +15,26 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
-#include <optional>
+#include <cstddef>
+#include <cstdint>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
-#include "xla/python/ifrt/ir/ifrt_ops.h"
 
 // Generated definitions.
 
@@ -41,21 +46,18 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
-namespace detail {
-namespace {
 
-// Returns the mutable `control_inputs` operand range of `op` if `op` accepts
-// variadic IFRT control dependencies, or `std::nullopt` otherwise.
-std::optional<mlir::MutableOperandRange> GetControlInputsMutable(
-    mlir::Operation* op) {
-  return llvm::TypeSwitch<mlir::Operation*,
-                          std::optional<mlir::MutableOperandRange>>(op)
-      .Case<IfrtArrayOpInterface, AssembleOp, DisassembleOp>(
-          [](auto control_op) { return control_op.getControlInputsMutable(); })
-      .Default([](mlir::Operation*) { return std::nullopt; });
+bool CanForwardControlInputs(mlir::Value control_output,
+                             mlir::ValueRange control_inputs) {
+  if (llvm::all_of(control_output.getUsers(), [](mlir::Operation* user) {
+        return llvm::isa<IfrtControlOpInterface>(user);
+      })) {
+    return true;
+  }
+  llvm::SmallDenseSet<mlir::Value, 4> unique(control_inputs.begin(),
+                                             control_inputs.end());
+  return unique.size() == 1;
 }
-
-}  // namespace
 
 void ForwardControlInputsToUsers(mlir::Value control_output,
                                  mlir::ValueRange control_inputs,
@@ -82,11 +84,13 @@ void ForwardControlInputsToUsers(mlir::Value control_output,
   }
 
   for (mlir::Operation* user : users) {
-    std::optional<mlir::MutableOperandRange> user_control_inputs =
-        GetControlInputsMutable(user);
-    if (user_control_inputs.has_value()) {
+    if (IfrtControlOpInterface control_op =
+            llvm::dyn_cast<IfrtControlOpInterface>(user);
+        control_op != nullptr) {
+      mlir::MutableOperandRange user_control_inputs =
+          control_op.getControlInputsMutable();
       mlir::OperandRange current_control_inputs =
-          user_control_inputs->getAsOperandRange();
+          user_control_inputs.getAsOperandRange();
       llvm::SmallVector<mlir::Value> new_control_inputs;
       new_control_inputs.reserve(current_control_inputs.size() +
                                  unique_control_inputs.size());
@@ -103,7 +107,7 @@ void ForwardControlInputsToUsers(mlir::Value control_output,
         }
       }
       rewriter.modifyOpInPlace(
-          user, [&]() { user_control_inputs->assign(new_control_inputs); });
+          user, [&]() { user_control_inputs.assign(new_control_inputs); });
       continue;
     }
 
@@ -122,7 +126,71 @@ void ForwardControlInputsToUsers(mlir::Value control_output,
   }
 }
 
-}  // namespace detail
+mlir::ArrayAttr FilterDictArrayAttr(mlir::ArrayAttr dict_array,
+                                    const llvm::BitVector& erase) {
+  if (dict_array == nullptr) {
+    return nullptr;
+  }
+  llvm::SmallVector<mlir::Attribute> kept;
+  kept.reserve(dict_array.size());
+  bool has_non_empty = false;
+  for (const auto& [idx, attr] : llvm::enumerate(dict_array)) {
+    if (idx < erase.size() && erase.test(idx)) {
+      continue;
+    }
+    kept.push_back(attr);
+    if (mlir::DictionaryAttr dict = llvm::dyn_cast<mlir::DictionaryAttr>(attr);
+        dict != nullptr && !dict.empty()) {
+      has_non_empty = true;
+    }
+  }
+  if (kept.empty() || !has_non_empty) {
+    return nullptr;
+  }
+  return mlir::ArrayAttr::get(dict_array.getContext(), kept);
+}
+
+UsedOutputsSlice CollectUsedOutputs(IfrtArrayOpInterface op) {
+  mlir::ResultRange outputs = op.getOutputs();
+  const unsigned num_outputs = outputs.size();
+  UsedOutputsSlice slice{llvm::BitVector(num_outputs),
+                         llvm::BitVector(num_outputs),
+                         llvm::SmallVector<int32_t>(num_outputs, -1),
+                         {}};
+  slice.kept_types.reserve(num_outputs);
+  for (unsigned i = 0; i < num_outputs; ++i) {
+    if (outputs[i].use_empty()) {
+      slice.erase.set(i);
+    } else {
+      slice.keep.set(i);
+      slice.old_to_new[i] = slice.kept_types.size();
+      slice.kept_types.push_back(outputs[i].getType());
+    }
+  }
+  return slice;
+}
+
+void ReplaceKeptOutputs(mlir::RewriterBase& rewriter,
+                        IfrtArrayOpInterface old_op,
+                        IfrtArrayOpInterface new_op,
+                        llvm::ArrayRef<int32_t> old_to_new) {
+  const mlir::ResultRange old_outputs = old_op.getOutputs();
+  const mlir::ResultRange new_outputs = new_op.getOutputs();
+  CHECK_EQ(old_to_new.size(), old_outputs.size());
+  for (const auto& [i, new_idx] : llvm::enumerate(old_to_new)) {
+    if (new_idx == -1) {
+      CHECK(old_outputs[i].use_empty());
+      continue;
+    }
+    CHECK_GE(new_idx, 0);
+    CHECK_LT(static_cast<size_t>(new_idx), new_outputs.size());
+    rewriter.replaceAllUsesWith(old_outputs[i], new_outputs[new_idx]);
+  }
+  rewriter.replaceAllUsesWith(old_op.getControlOutput(),
+                              new_op.getControlOutput());
+  rewriter.eraseOp(old_op);
+}
+
 }  // namespace ifrt
 }  // namespace xla
 
