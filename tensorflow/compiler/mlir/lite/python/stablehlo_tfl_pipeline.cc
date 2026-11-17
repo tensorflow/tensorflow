@@ -69,7 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/diagnostic_status_handler.h"
 #include "tensorflow/compiler/mlir/lite/utils/file_utils.h"
-#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 
 namespace mlir::TFL {
 namespace {
@@ -182,8 +181,15 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
       mlir::stablehlo::createStablehloCompatibilityExpanderPass(
           {tflite_supported_stablehlo_version}));
 
-  // CHLO -> StableHLO
-  mlir::stablehlo_ext::createChloLegalizeToStablehloPipeline(pass_manager);
+  // CHLO -> StableHLO. CHLO ops that the exporter preserved as
+  // `stablehlo.composite "chlo.<op>"` are recomposed first, so that they lower
+  // like CHLO ops.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateChloRecomposeOpsPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createShapeLegalizeToStablehloPass());
 
   pass_manager.addPass(mlir::odml::CreateTransposeCommuteOpsPass());
 
@@ -200,12 +206,6 @@ void AddLoweringPasses(mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
   pass_manager.addPass(mlir::createInlinerPass());
-
-  // Import cleanup (Tuple flattening)
-  // Defaulting to "main" for the entry function name for now.
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass(
-          {"main"}));
 
   // High-level StableHLO optimizations
   pass_manager.addNestedPass<mlir::func::FuncOp>(

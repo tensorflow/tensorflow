@@ -163,6 +163,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/stablehlo:build_stablehlo_composite",
+        "//tensorflow/compiler/mlir/lite/stablehlo:chlo_recompose_ops",
         "//tensorflow/compiler/mlir/lite/stablehlo:compose_uniform_quantized_type_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:composite_lowering",
         "//tensorflow/compiler/mlir/lite/stablehlo:drop_shape_assertions",
@@ -193,7 +194,6 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:vhlo_ops",
-        "@xla//xla/mlir_hlo:stablehlo_extension_passes",
     ],
 )
 

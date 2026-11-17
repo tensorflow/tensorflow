@@ -864,5 +864,55 @@ TEST_F(ConverterV2OptionsPipelineTest, EnableDebugWritesPassTimingToDebugDir) {
       llvm::sys::fs::exists(absl::StrCat(debug_dir, "/mlir_pass_timing.log")));
 }
 
+// CHLO ops that `jax.export` preserves as `stablehlo.composite "chlo.<op>"`
+// lower like the CHLO ops instead of being exported as composites. Reuses the
+// conversion helpers of `PreserveRegionPipelineTest`.
+class ChloRecomposePipelineTest : public PreserveRegionPipelineTest {};
+
+TEST_F(ChloRecomposePipelineTest, RecomposesChloTopKComposite) {
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<16xf32>) -> (tensor<4xf32>, tensor<4xi32>) {
+    %0:2 = stablehlo.composite "chlo.top_k" %arg0 {composite_attributes = {k = 4 : i64, largest = true}, decomposition = @chlo.top_k.impl, version = 1 : i32} : (tensor<16xf32>) -> (tensor<4xf32>, tensor<4xi32>)
+    return %0#0, %0#1 : tensor<4xf32>, tensor<4xi32>
+  }
+  func.func private @chlo.top_k.impl(%x: tensor<16xf32>) -> (tensor<4xf32>, tensor<4xi32>) {
+    %0 = stablehlo.slice %x [0:4] : (tensor<16xf32>) -> tensor<4xf32>
+    %1 = stablehlo.iota dim = 0 : tensor<4xi32>
+    return %0, %1 : tensor<4xf32>, tensor<4xi32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(model->subgraphs()->size(), Eq(1));
+  EXPECT_THAT(Ops(model), ElementsAre(tflite::BuiltinOperator_TOPK_V2));
+}
+
+TEST_F(ChloRecomposePipelineTest, RecomposesChloErfComposite) {
+  // The decomposition is a placeholder (tanh); the recomposed `chlo.erf` lowers
+  // to its polynomial approximation instead.
+  llvm::SmallString<0> flatbuffer = Convert(R"mlir(
+module {
+  func.func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+    %0 = stablehlo.composite "chlo.erf" %arg0 {decomposition = @chlo.erf.impl, version = 1 : i32} : (tensor<4xf32>) -> tensor<4xf32>
+    return %0 : tensor<4xf32>
+  }
+  func.func private @chlo.erf.impl(%x: tensor<4xf32>) -> tensor<4xf32> {
+    %0 = stablehlo.tanh %x : tensor<4xf32>
+    return %0 : tensor<4xf32>
+  }
+}
+)mlir");
+  ASSERT_FALSE(flatbuffer.empty());
+  const tflite::Model* model = tflite::GetModel(flatbuffer.data());
+  EXPECT_THAT(model->subgraphs()->size(), Eq(1));
+  std::vector<tflite::BuiltinOperator> ops = Ops(model);
+  EXPECT_THAT(ops, Not(Contains(tflite::BuiltinOperator_STABLEHLO_COMPOSITE)));
+  EXPECT_THAT(ops, Not(Contains(tflite::BuiltinOperator_TANH)));
+  EXPECT_THAT(ops, Contains(tflite::BuiltinOperator_MUL));
+  EXPECT_THAT(ops, Contains(tflite::BuiltinOperator_DIV));
+}
+
 }  // namespace
 }  // namespace mlir::TFL
