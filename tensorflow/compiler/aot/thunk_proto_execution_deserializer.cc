@@ -567,12 +567,8 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
          {{VALUES_PRIMITIVE_TYPE_SIZE_IN_BYTES}}
        };
 
-       // Type alias compatible with `FunctionLibrary::Comparator`.
-       using Comparator = bool(const void** data);
-       Comparator* comparator = reinterpret_cast<Comparator*>(
-           {{SORT_FUNCTION_NAME}});
-
-       absl::AnyInvocable<bool(const void** data)> less_than = comparator;
+       absl::AnyInvocable<bool(const void** data)> less_than =
+           [](const void** data) { return {{SORT_FUNCTION_NAME}}(data); };
 
        xla::cpu::internal::SortInplace(
          {
