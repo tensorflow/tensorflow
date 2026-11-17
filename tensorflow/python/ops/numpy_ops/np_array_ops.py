@@ -1060,6 +1060,21 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
 setattr(np_arrays.ndarray, '__round__', around)
 
 
+def _maybe_python_int(x):
+  """Returns `x` as a Python `int` if it is a NumPy integer scalar.
+
+  NumPy integers (e.g. from `np.argmax` or `np.int64(1)`) are not instances of
+  `int`, so without this they miss the static Python-int code paths below.
+  """
+  if isinstance(x, np.integer) or (
+      isinstance(x, np.ndarray)
+      and x.ndim == 0
+      and np.issubdtype(x.dtype, np.integer)
+  ):
+    return int(x)
+  return x
+
+
 @tf_export.tf_export('experimental.numpy.reshape', v1=[])
 @np_utils.np_doc('reshape')
 def reshape(a, newshape, order='C'):
@@ -1068,6 +1083,7 @@ def reshape(a, newshape, order='C'):
     raise ValueError('Unsupported order argument {}'.format(order))
 
   a = asarray(a)
+  newshape = _maybe_python_int(newshape)
   if isinstance(newshape, int):
     newshape = [newshape]
 
@@ -1086,7 +1102,9 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
   if kwargs:
     raise ValueError('Unsupported arguments: {}'.format(kwargs.keys()))
 
-  if len(newshape) == 1 and not isinstance(newshape[0], int):
+  if len(newshape) == 1 and not isinstance(
+      _maybe_python_int(newshape[0]), int
+  ):
     newshape = newshape[0]
 
   return reshape(a, newshape, order=order)
@@ -1177,6 +1195,8 @@ def transpose(a, axes=None):
 @np_utils.np_doc('swapaxes')
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = asarray(a)
+  axis1 = _maybe_python_int(axis1)
+  axis2 = _maybe_python_int(axis2)
 
   def adjust_axes(axes, rank):
     def f(x):
@@ -1250,6 +1270,8 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
 
   a = asarray(a)
 
+  source = _maybe_python_int(source)
+  destination = _maybe_python_int(destination)
   if isinstance(source, int):
     source = (source,)
   if isinstance(destination, int):
@@ -1607,6 +1629,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
 @np_utils.np_doc('split')
 def split(ary, indices_or_sections, axis=0):
   ary = asarray(ary)
+  indices_or_sections = _maybe_python_int(indices_or_sections)
   if isinstance(axis, (int, np.integer)):
     rank = ary.shape.rank
     if rank is not None:
@@ -1624,6 +1647,7 @@ def split(ary, indices_or_sections, axis=0):
 def _split_on_axis(np_fun_name, axis):  # pylint: disable=missing-function-docstring
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    indices_or_sections = _maybe_python_int(indices_or_sections)
     # for 1-D array, hsplit becomes vsplit
     new_axis = np_utils.cond(
         math_ops.equal(axis, 1),
@@ -2146,6 +2170,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   if axis is None:
     return take_along_axis(arr.ravel(), indices, 0)
+  axis = _maybe_python_int(axis)
 
   # Prefer the static rank so that `axis` and the branch predicate below stay
   # Python values. With a tensor predicate the conditional further down is
