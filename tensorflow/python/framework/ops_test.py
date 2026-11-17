@@ -2756,9 +2756,13 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("scope with spaces"):
           pass
-      with self.assertRaisesRegex(ValueError, invalid_msg):
-        with ops.name_scope_v2("invalid@scope"):
+      if context.executing_eagerly():
+        with ops.name_scope_v2("Recall@1"):
           pass
+      else:
+        with self.assertRaisesRegex(ValueError, invalid_msg):
+          with ops.name_scope_v2("invalid@scope"):
+            pass
 
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerRootScope(self):
@@ -2779,13 +2783,27 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("_leading_underscore"):
           pass
-    # Spaces and special chars must always raise.
+    # Whitespace must always raise.
     with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("scope with spaces"):
         pass
     with self.assertRaisesRegex(ValueError, invalid_msg):
-      with ops.name_scope_v2("invalid@scope"):
+      with ops.name_scope_v2("tab\tseparated"):
         pass
+    # Rejected before the trailing slash is read as an absolute name.
+    with self.assertRaisesRegex(ValueError, invalid_msg):
+      with ops.name_scope_v2("invalid space/"):
+        pass
+    if context.executing_eagerly():
+      # Other characters only warn in eager mode, so existing names such as
+      # Keras metric names keep working.
+      with self.assertLogs(level="WARNING"):
+        with ops.name_scope_v2("recall/Recall@1") as scope_name:
+          self.assertEqual("recall/Recall@1/", scope_name)
+    else:
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("invalid@scope"):
+          pass
 
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2ColonInEagerScopeName(self):
