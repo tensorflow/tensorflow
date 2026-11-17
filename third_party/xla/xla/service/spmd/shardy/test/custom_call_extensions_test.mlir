@@ -300,6 +300,16 @@ func.func @custom_call_partial_reduce_string_backend_config_insert_explicit_resh
   return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xf32>
 }
 
+// CHECK-LABEL: func @custom_call_custom_spmd_partitioning
+func.func @custom_call_custom_spmd_partitioning(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
+  // CHECK-NEXT: %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @CustomSPMDPartitioning(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : (tensor<8x4xf32>) -> tensor<8x4xf32>
+  // CHECK-NEXT: return %[[CUSTOM_CALL]] : tensor<8x4xf32>
+  %0 = stablehlo.custom_call @CustomSPMDPartitioning(%arg0) {
+    sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>
+  } : (tensor<8x4xf32>) -> tensor<8x4xf32>
+  return %0 : tensor<8x4xf32>
+}
+
 // CHECK-LABEL: func @unknown_custom_op
 func.func @unknown_custom_op(%arg0: tensor<8x2xui32>, %arg1: tensor<8x2xui32>) -> tensor<8x2xui64> {
   // expected-warning@+1 {{custom call @unknown_custom_op is unknown to SDY sharding rule registry}}

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/spmd/shardy/extensions/custom_spmd_partitioning.h"
 #include "xla/service/spmd/shardy/extensions/partial_reduce_custom_call.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
@@ -353,6 +354,13 @@ struct CustomCallShardingRuleOpInterface
       }
       return mlir::sdy::OpShardingRuleBuilder::buildPointwise(customCall);
     }
+    if (callTargetName == kCustomSPMDPartitioningTargetName ||
+        xla::GetCustomCallPartitioner(callTargetName) != nullptr) {
+      // Return no static rule without warning: JAX attaches
+      // `sdy.sharding_rule` directly when provided, and custom-partitioned
+      // targets lower via `CustomCallPartitioner` during export.
+      return mlir::sdy::OpShardingRuleAttr();
+    }
     // TODO(b/327191011): output unregistered op stats instead.
     static llvm::once_flag onceFlag;
     mlir::sdy::emitOpWarningOnce(
@@ -369,21 +377,22 @@ using ConvertGlobalToLocalHandler = mlir::LogicalResult (*)(
     mlir::stablehlo::CustomCallOp, mlir::ValueRange,
     mlir::ConversionPatternRewriter&, const mlir::SymbolTable&);
 
-// Dispatches `stablehlo.custom_call` global-to-local lowering by
-// `call_target_name`, returning `std::nullopt` for unhandled targets so Shardy
-// falls back to generic op localization.
+// Dispatches `stablehlo.custom_call` custom partitioning and global-to-local
+// conversion by `call_target_name`.
 struct CustomCallPartitioningOpInterface
     : public mlir::sdy::PartitioningOpInterface::ExternalModel<
           CustomCallPartitioningOpInterface, mlir::stablehlo::CustomCallOp> {
   std::optional<mlir::LogicalResult> resolvePermutationFactors(
       mlir::Operation* op, mlir::sdy::OpShardingRuleAttr shardingRule,
-      mlir::IRRewriter& rewriter, const mlir::SymbolTable& symbolTable) const {
+      mlir::IRRewriter& rewriter, mlir::SymbolTable& symbolTable,
+      int64_t& nextChannelId) const {
     auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
     if (customCall.getCallTargetName() == kPartialReduceTargetName) {
       return resolvePartialReduce(customCall, shardingRule, rewriter,
                                   symbolTable);
     }
-    return std::nullopt;
+    return resolveCustomCallPartitioning(customCall, rewriter, symbolTable,
+                                         nextChannelId);
   }
 
   std::optional<mlir::LogicalResult> convertGlobalToLocal(
@@ -417,6 +426,7 @@ struct CustomCallPartitioningOpInterface
 }  // namespace
 
 void registerCustomCallExtensions(mlir::DialectRegistry& registry) {
+  registerCustomSPMDPartitioningDialects(registry);
   registry.addExtension(+[](mlir::MLIRContext* ctx,
                             mlir::stablehlo::StablehloDialect*) {
     mlir::stablehlo::CustomCallOp::attachInterface<
