@@ -45,6 +45,12 @@ struct WindowLookup {
   size_t offset;
 };
 
+struct CommunicatorWithRankInfo {
+  XLA_FFI_Communicator* communicator;
+  int32_t rank;
+  int32_t size;
+};
+
 namespace internal {
 
 // C++ wrapper for the XLA FFI Collectives extension API.
@@ -79,24 +85,56 @@ class CommunicatorContextBase {
     return ErrorPolicy::Ok();
   }
 
-  // Returns the non-owning communicator handle for `groups`. The handle is
-  // backend-defined; the caller reinterprets it (e.g. as `ncclComm_t`).
+  // Returns the non-owning communicator handle for the current device's group.
+  // The handle is backend-defined; the caller reinterprets it (e.g. as
+  // `ncclComm_t`).
   StatusOr<XLA_FFI_Communicator*> GetCommunicator(
       GroupMode group_mode, const std::vector<std::vector<int64_t>>& groups,
       int64_t communication_id) {
     std::vector<XLA_FFI_ReplicaGroup> raw_groups = ToRawGroups(groups);
-    XLA_FFI_Communicator_Get_Args args;
+    XLA_FFI_Communicator_Get_Args args = {};
     args.struct_size = XLA_FFI_Communicator_Get_Args_STRUCT_SIZE;
-    args.extension_start = nullptr;
     args.group_mode = static_cast<XLA_FFI_CollectiveGroupMode>(group_mode);
     args.groups = raw_groups.data();
     args.num_groups = raw_groups.size();
     args.communication_id = communication_id;
-    args.communicator = nullptr;
+    args.rank = -1;
+    args.size = -1;
     if (XLA_FFI_Error* err = ext_->get_communicator(ext_, &args)) {
       return StatusOr<XLA_FFI_Communicator*>(ErrorPolicy::TakeError(api_, err));
     }
     return args.communicator;
+  }
+
+  // Returns the handle, rank, and size for the current device's group.
+  StatusOr<CommunicatorWithRankInfo> GetCommunicatorWithRankInfo(
+      GroupMode group_mode, const std::vector<std::vector<int64_t>>& groups,
+      int64_t communication_id) {
+    // Before 0.3, the callback fills only the communicator handle.
+    if (ext_->extension_base.id.major_version != 0 ||
+        ext_->extension_base.id.minor_version < 3) {
+      return StatusOr<CommunicatorWithRankInfo>(ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_UNIMPLEMENTED,
+          "Communicator metadata requires collectives extension 0.3 or newer"));
+    }
+    std::vector<XLA_FFI_ReplicaGroup> raw_groups = ToRawGroups(groups);
+    XLA_FFI_Communicator_Get_Args args = {};
+    args.struct_size = XLA_FFI_Communicator_Get_Args_STRUCT_SIZE;
+    args.group_mode = static_cast<XLA_FFI_CollectiveGroupMode>(group_mode);
+    args.groups = raw_groups.data();
+    args.num_groups = raw_groups.size();
+    args.communication_id = communication_id;
+    args.rank = -1;
+    args.size = -1;
+    if (XLA_FFI_Error* err = ext_->get_communicator(ext_, &args)) {
+      return StatusOr<CommunicatorWithRankInfo>(
+          ErrorPolicy::TakeError(api_, err));
+    }
+    if (args.size <= 0 || args.rank < 0 || args.rank >= args.size) {
+      return StatusOr<CommunicatorWithRankInfo>(ErrorPolicy::FromErrorCode(
+          XLA_FFI_Error_Code_INTERNAL, "Invalid communicator rank or size"));
+    }
+    return CommunicatorWithRankInfo{args.communicator, args.rank, args.size};
   }
 
   //===--------------------------------------------------------------------===//
@@ -189,6 +227,12 @@ struct CollectivesExtensionBase {
       XLA_FFI_Extension_Collectives_MajorVersion;
   static constexpr int32_t kMinorVersion =
       XLA_FFI_Extension_Collectives_MinorVersion;
+
+  // The communicator/window ABI starts at 0.2; methods guard newer features.
+  // TODO(mgoldfarb): Remove 0.2 runtime support on or after 2027-06-01.
+  static bool Support(int32_t major_version, int32_t minor_version) {
+    return major_version == kMajorVersion && minor_version >= 2;
+  }
 
   // Builds a context from the extension.
   static CommunicatorContextT Create(const XLA_FFI_Api* api,
