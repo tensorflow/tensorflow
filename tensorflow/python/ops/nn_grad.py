@@ -96,13 +96,13 @@ def _FusedLinearCrossEntropyGrad(op, grad_loss):
   x = op.inputs[0]
   w = op.inputs[1]
   labels = op.inputs[2]
-  
+
   logits = math_ops.matmul(x, w)
   probs = gen_nn_ops.softmax(logits)
-  
+
   # Compute gradients for x and w
   grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
-  
+
   grad_x = math_ops.matmul(grad_logits, w, transpose_b=True)
   grad_w = math_ops.matmul(x, grad_logits, transpose_a=True)
   grad_labels = None  # Labels do not require gradients
