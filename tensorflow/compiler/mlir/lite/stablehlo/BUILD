@@ -783,6 +783,30 @@ cc_library(
 )
 
 cc_library(
+    name = "chlo_recompose_ops",
+    srcs = [
+        "transforms/chlo_recompose_ops.cc",
+    ],
+    hdrs = ["transforms/stablehlo_passes.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tfl_legalize_chlo",
     srcs = [
         "transforms/tfl_legalize_chlo.cc",
@@ -1089,6 +1113,7 @@ tf_cc_binary(
     testonly = True,
     tags = ["hostonly"],
     deps = [
+        ":chlo_recompose_ops",
         ":compose_uniform_quantized_type_pass",
         ":drop_shape_assertions",
         ":legalize_einsum_to_dot_general",

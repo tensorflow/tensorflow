@@ -59,6 +59,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateCompositeLoweringPass();
 // Legalizes CHLO to tflite dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeChloToTflPass();
 
+// Recomposes CHLO ops serialized as `stablehlo.composite "chlo.<op>"`.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateChloRecomposeOpsPass();
+
 // Rewrites MHLO in preparation for tflite legalization.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
 

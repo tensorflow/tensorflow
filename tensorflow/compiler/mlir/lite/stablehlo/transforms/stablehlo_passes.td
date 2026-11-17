@@ -121,6 +121,21 @@ def TransposeCommuteOpsPass : Pass<"transpose-commute-ops", "ModuleOp"> {
   let constructor = "mlir::odml::CreateTransposeCommuteOpsPass()";
 }
 
+def ChloRecomposeOpsPass
+    : Pass<"tfl-chlo-recompose-ops", "mlir::func::FuncOp"> {
+  let summary = "Recomposes CHLO ops serialized as stablehlo.composite ops.";
+  let description = [{
+    Replaces `stablehlo.composite "chlo.<op>"` ops (version 1), which
+    serializers such as `jax.export` emit for CHLO ops that have no StableHLO
+    equivalent, with the CHLO op.
+  }];
+  let constructor = "mlir::odml::CreateChloRecomposeOpsPass()";
+  let dependentDialects = [
+    "mlir::chlo::ChloDialect",
+    "mlir::stablehlo::StablehloDialect",
+  ];
+}
+
 def LegalizeChloToTflPass
     : Pass<"tfl-legalize-chlo", "mlir::func::FuncOp"> {
   let summary = "Lower chlo directly to tfl.";
