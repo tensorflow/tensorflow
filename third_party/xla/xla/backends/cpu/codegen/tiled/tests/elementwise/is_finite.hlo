@@ -6,17 +6,15 @@
 // RUN: test_correctness %s
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG:[^:]+]]: memref<1x9xf16>,
-// CHECK-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<1x9xi1>,
 // CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[ARG]]
 // CHECK-SAME:    : memref<1x9xf16> -> tensor<1x16xf16>
 // CHECK:       %[[T_1:.*]] = math.isfinite %[[T_0]]
 // CHECK-SAME:    : tensor<1x16xf16>
-// CHECK:       %[[T_2:.*]] = stablehlo.convert %[[T_1]]
-// CHECK-SAME:    : (tensor<1x16xi1>) -> tensor<1x16xi8>
-// CHECK:       xtile.insert %[[T_2]] into %[[OUT]]
-// CHECK-SAME:    : tensor<1x16xi8> -> memref<1x9xi8>
+// CHECK:       xtile.insert %[[T_1]] into %[[OUT]]
+// CHECK-SAME:    : tensor<1x16xi1> -> memref<1x9xi1>
 
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR-SAME:    %[[ARG:[^:]+]]: memref<1x9xf16>, %[[OUT:[^:]+]]: memref<1x9xi8>, %[[PID:[^:]+]]: index

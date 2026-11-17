@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -45,6 +46,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -638,13 +641,62 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
 }
 
 Type StorageType(Type t) {
-  if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
-    return i.get(i.getContext(), 8, i.getSignedness());
-  }
   if (mlir::isa<mlir::Float4E2M1FNType>(t)) {
     return mlir::IntegerType::get(t.getContext(), 8);
   }
   return t;
+}
+
+Type MemoryStorageType(Type elem_type) {
+  if (elem_type.isInteger(1)) {
+    return mlir::IntegerType::get(elem_type.getContext(), 8);
+  }
+  return elem_type;
+}
+
+bool IsI1MemRef(Type type) {
+  auto memref_type = mlir::dyn_cast<mlir::MemRefType>(type);
+  return memref_type && memref_type.getElementType().isInteger(1);
+}
+
+bool HasUnlegalizedI1Storage(mlir::Operation* op) {
+  if (auto entry = mlir::dyn_cast<EntryFuncOp>(op)) {
+    return llvm::any_of(entry.getArgumentTypes(), IsI1MemRef);
+  }
+  if (auto select = mlir::dyn_cast<SelectBufferOp>(op)) {
+    return IsI1MemRef(select.getType());
+  }
+  if (auto tiled = mlir::dyn_cast<TiledBufferInterface>(op)) {
+    return tiled.getBuffer().getType().getElementType().isInteger(1) ||
+           tiled.getTile().getType().getElementType().isInteger(1);
+  }
+  return false;
+}
+
+TensorValue UnpackFromMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                    TensorValue storage_value,
+                                    Type logical_elem_type) {
+  if (!logical_elem_type.isInteger(1)) {
+    return storage_value;
+  }
+  Value zero = ma::ConstantOp::create(
+      b, loc,
+      mlir::DenseElementsAttr::get(storage_value.getType(),
+                                   b.getI8IntegerAttr(0)));
+  return mlir::cast<TensorValue>(
+      ma::CmpIOp::create(b, loc, ma::CmpIPredicate::ne, storage_value, zero)
+          .getResult());
+}
+
+TensorValue PackToMemoryStorage(mlir::OpBuilder& b, mlir::Location loc,
+                                TensorValue logical_value) {
+  mlir::RankedTensorType type = logical_value.getType();
+  if (!type.getElementType().isInteger(1)) {
+    return logical_value;
+  }
+  return mlir::cast<TensorValue>(
+      ma::ExtUIOp::create(b, loc, type.clone(b.getI8Type()), logical_value)
+          .getResult());
 }
 
 Type GetSignlessType(Type t) {

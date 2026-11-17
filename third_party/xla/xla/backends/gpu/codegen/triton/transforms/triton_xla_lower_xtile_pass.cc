@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -229,9 +228,7 @@ class XTileExtractToTriton
       mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType source_type = extract_op.getSource().getType();
     mlir::RankedTensorType result_type = extract_op.getType();
-
-    mlir::Value memref_to_ptr =
-        CreateMemrefToPtr(rewriter, extract_op.getSource());
+    auto memref_to_ptr = CreateMemrefToPtr(rewriter, extract_op.getSource());
 
     if (result_type.getRank() == 0) {
       mlir::Value scalar_value =
@@ -270,13 +267,13 @@ class XTileInsertToTriton : public mlir::OpRewritePattern<xtile::InsertTileOp> {
       xtile::InsertTileOp insert_op,
       mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType destination_type = insert_op.getDestination().getType();
-
-    mlir::Value memref_to_ptr =
+    mlir::RankedTensorType source_type = insert_op.getSource().getType();
+    auto memref_to_ptr =
         CreateMemrefToPtr(rewriter, insert_op.getDestination());
 
-    if (insert_op.getSource().getType().getRank() == 0) {
+    if (source_type.getRank() == 0) {
       mlir::Value scalar_value = mlir::tensor::ExtractOp::create(
-          rewriter, insert_op.getLoc(), insert_op.getSource());
+          rewriter, insert_op->getLoc(), insert_op.getSource());
 
       rewriter.replaceOpWithNewOp<ttir::StoreOp>(
           insert_op, memref_to_ptr, scalar_value, /*mask=*/nullptr);
@@ -371,6 +368,20 @@ class TritonXLALowerXTilePass
 
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
+    if (module
+            .walk<mlir::WalkOrder::PreOrder>([](mlir::Operation* op) {
+              if (xtile::HasUnlegalizedI1Storage(op)) {
+                op->emitOpError(
+                    "unlegalized i1 storage; run xtile-legalize-i1-storage "
+                    "first");
+                return mlir::WalkResult::interrupt();
+              }
+              return mlir::WalkResult::advance();
+            })
+            .wasInterrupted()) {
+      signalPassFailure();
+      return;
+    }
     mlir::MLIRContext* context = &getContext();
 
     mlir::RewritePatternSet patterns(context);

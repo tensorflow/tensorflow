@@ -209,3 +209,34 @@ func.func @unlowered_xtile_op_fails(%arg0: memref<16xf32>) -> memref<16xi32> {
   %0 = xtile.memref_bitcast %arg0 : memref<16xf32> -> memref<16xi32>
   return %0 : memref<16xi32>
 }
+
+// -----
+
+// expected-error@+1 {{'xtile.entry_func' op unlegalized i1 storage; run xtile-legalize-i1-storage first}}
+xtile.entry_func @unlegalized_i1_entry_arg_fails(%input: memref<32xi1>, %tile_id: index) {
+  xtile.return
+}
+
+// -----
+
+func.func @unlegalized_i1_select_buffer_fails(%src: memref<2xi64>, %replica_id: index) -> memref<128xi1> {
+  // expected-error@+1 {{'xtile.select_buffer' op unlegalized i1 storage; run xtile-legalize-i1-storage first}}
+  %0 = xtile.select_buffer %src[%replica_id] : memref<2xi64> -> memref<128xi1>
+  return %0 : memref<128xi1>
+}
+
+// -----
+
+func.func @unlegalized_i1_extract_fails(%input: memref<32xi1>, %off: index) -> tensor<4xi1> {
+  // expected-error@+1 {{'xtile.extract' op unlegalized i1 storage; run xtile-legalize-i1-storage first}}
+  %tile = xtile.extract %input[%off][4][1] : memref<32xi1> -> tensor<4xi1>
+  return %tile : tensor<4xi1>
+}
+
+// -----
+
+func.func @unlegalized_i1_insert_fails(%output: memref<32xi1>, %off: index, %tile: tensor<4xi1>) {
+  // expected-error@+1 {{'xtile.insert' op unlegalized i1 storage; run xtile-legalize-i1-storage first}}
+  xtile.insert %tile into %output[%off][4][1] : tensor<4xi1> -> memref<32xi1>
+  return
+}

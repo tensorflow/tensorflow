@@ -686,6 +686,7 @@ absl::Status LowerXTileToTriton(
         block_level_parameters.is_warp_specialization_allowed;
     pm.addPass(
         mlir::triton::xla::createStableHLOLowerToTritonPass(stablehlo_options));
+    pm.addPass(xtile::createLegalizeI1StoragePass());
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::createXTileLowerToTritonPass());
     pm.addPass(

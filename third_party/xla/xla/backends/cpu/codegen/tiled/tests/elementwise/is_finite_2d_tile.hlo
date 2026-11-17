@@ -32,7 +32,7 @@ fusion {
 
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG:[^:]+]]: memref<128x256xf32>,
-// CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xi8>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xi1>,
 // CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 1 : index]})
 
 // CHECK:  %[[C0:.*]] = arith.constant 0 : index
@@ -43,8 +43,7 @@ fusion {
 // CHECK:    %[[IDX_1:.*]] = xla.apply_indexing #indexing_map1(%[[TID]])
 // CHECK:    %[[T_0:.*]] = xtile.extract %[[ARG]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
 // CHECK:    %[[FIN:.*]] = math.isfinite %[[T_0]] : tensor<8x4xf32>
-// CHECK:    %[[CONV:.*]] = stablehlo.convert %[[FIN]] : (tensor<8x4xi1>) -> tensor<8x4xi8>
-// CHECK:    xtile.insert %[[CONV]] into %[[OUT]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
+// CHECK:    xtile.insert %[[FIN]] into %[[OUT]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
 // CHECK:  }
 // CHECK:  xtile.return
 

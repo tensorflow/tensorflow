@@ -48,6 +48,7 @@ cc_library(
     srcs = [
         "convert_elementwise_0d_tensor_to_scalar_pass.cc",
         "expand_xtile_complex_ops.cc",
+        "legalize_i1_storage.cc",
         "legalize_unsigned_integers_as_signless.cc",
         "lower_stablehlo_to_arith.cc",
         "verify_legal_xtile_ops.cc",

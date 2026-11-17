@@ -323,6 +323,7 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(xtile::createStablehloLowerToArithPass());
   pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+  pm.addPass(xtile::createLegalizeI1StoragePass());
   pm.addPass(cpu::createLegalizeNarrowFloatStoragePass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
