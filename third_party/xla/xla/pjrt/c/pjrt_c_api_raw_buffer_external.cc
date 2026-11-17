@@ -280,6 +280,9 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
     ABSL_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
                      pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                          c_api, extension, c_api_buffer->c_buffer()));
+    if (raw_buffer == nullptr) {
+      return PjRtRawBufferRef();
+    }
     return tsl::MakeRef<PjRtCApiRawBuffer>(
         raw_buffer, absl::down_cast<PjRtCApiClient*>(c_api_buffer->client()),
         c_api, extension);
