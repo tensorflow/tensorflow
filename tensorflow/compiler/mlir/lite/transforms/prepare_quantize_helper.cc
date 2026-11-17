@@ -17,6 +17,7 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
 namespace TFL {
