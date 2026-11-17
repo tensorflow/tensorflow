@@ -83,8 +83,8 @@ module @bitcast_arrays {
   func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
         : (!array0) -> !array0
-    %1, %ctrl_1 = ifrt.BitcastArrays(%0) : (!array0) -> !array1
-    %2, %ctrl_2 = ifrt.BitcastArrays(%1) : (!array1) -> !array0
+    %1, %ctrl_1 = ifrt.BitcastArrays(%0) <donated=true> : (!array0) -> !array1
+    %2, %ctrl_2 = ifrt.BitcastArrays(%1) <donated=true> : (!array1) -> !array0
     %3, %ctrl_3 = ifrt.Call @add_one(%2) on devices [0,1]
         : (!array0) -> !array0
     return %3 : !array0

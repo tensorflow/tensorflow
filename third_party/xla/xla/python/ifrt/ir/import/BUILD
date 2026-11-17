@@ -49,6 +49,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes_inc_gen",
+        "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:utils",
         "//xla/tsl/platform:env",

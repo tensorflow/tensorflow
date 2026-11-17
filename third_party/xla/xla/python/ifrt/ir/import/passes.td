@@ -136,11 +136,13 @@ the outputs of another ifrt op.
 
 def IfrtVerifyDonationPass :
     Pass<"ifrt-verify-donation", "mlir::func::FuncOp"> {
-  let summary = "Verify that `!ifrt.array` are not donated more than once.";
+  let summary = "Verify that `!ifrt.array` shards are not donated more than once.";
   let description = [{
-Verifiy that no `!ifrt.array` is donated more than once, and that all
-`ifrt.array`s that are donated and arguments of the main func have
-`ifrt.donated` attribute.
+Verifies per-shard donation and aliasing across IFRT ops so that no
+`!ifrt.array` shard is donated or used after being donated, array-consuming ops
+(e.g., `ifrt.Call`, `ifrt.BitcastArrays`) do not receive duplicate donated
+shards within the same op, and any donated shard originating from an argument of
+the IFRT function has the `ifrt.donated` attribute.
   }];
 }
 
