@@ -610,6 +610,12 @@ LogicalResult verifyGather(Operation* op, ArrayRef<int64_t> operand_shape,
            << absl::StrJoin(offsets_shape, ", ") << ")";
   }
 
+  if (result_shape.size() < offsets_rank) {
+    return op->emitOpError(
+               "Target (gather result) rank must be >= offsets rank, ")
+           << "got target rank: " << result_shape.size()
+           << ", offsets rank: " << offsets_rank;
+  }
   uint64_t slice_rank = result_shape.size() - offsets_rank;
   if (operand_shape.size() <= slice_rank) {
     return op->emitOpError(
@@ -695,6 +701,12 @@ LogicalResult verifyScatter(Operation* op, ArrayRef<int64_t> updates_shape,
            << absl::StrJoin(offsets_shape, ", ") << ")";
   }
 
+  if (updates_shape.size() < offsets_rank) {
+    return op->emitOpError(
+               "Source (scatter updates) rank must be >= offsets rank, ")
+           << "got source rank: " << updates_shape.size()
+           << ", offsets rank: " << offsets_rank;
+  }
   uint64_t slice_rank = updates_shape.size() - offsets_rank;
   if (operand_shape.size() <= slice_rank) {
     return op->emitOpError(

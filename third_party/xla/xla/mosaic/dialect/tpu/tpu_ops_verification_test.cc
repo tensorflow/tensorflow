@@ -1699,6 +1699,202 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaPrefixVectorGatherVerificationWorks) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*target=*/AllocaI32({5, 128}, MemorySpace::kVmem),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_OK(VerifyOp(dma));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaPrefixVectorScatterVerificationWorks) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({3, 128}, MemorySpace::kVmem),
+      /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_OK(VerifyOp(dma));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorGatherTargetRowsExceedOffsetsFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*target=*/AllocaI32({9, 128}, MemorySpace::kVmem),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_,
+               HasSubstr("Leading dimension of the target (gather result) "
+                         "must be static and in [1, 8], got 'memref<9x128")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorScatterSourceRowsExceedOffsetsFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({9, 128}, MemorySpace::kVmem),
+      /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_,
+               HasSubstr("Leading dimension of the source (scatter updates) "
+                         "must be static and in [1, 8], got 'memref<9x128")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorGatherZeroRowsFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*target=*/AllocaI32({0, 128}, MemorySpace::kVmem),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_,
+               HasSubstr("Leading dimension of the target (gather result) "
+                         "must be static and in [1, 8], got 'memref<0x128")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorGatherDynamicTargetLeadingDimFailsVerification) {
+  Value dyn_dim = Create<arith::ConstantIndexOp>(8).getResult();
+  Value dynamic_target =
+      Create<memref::AllocaOp>(
+          GetMemRefType({ShapedType::kDynamic, 128}, i32(), MemorySpace::kVmem),
+          ValueRange{dyn_dim})
+          .getMemref();
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*target=*/dynamic_target,
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_,
+               HasSubstr("Leading dimension of the target (gather result) "
+                         "must be static and in [1, 8], got 'memref<?x128")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorScatterDynamicSourceLeadingDimFailsVerification) {
+  Value dyn_dim = Create<arith::ConstantIndexOp>(8).getResult();
+  Value dynamic_source =
+      Create<memref::AllocaOp>(
+          GetMemRefType({ShapedType::kDynamic, 128}, i32(), MemorySpace::kVmem),
+          ValueRange{dyn_dim})
+          .getMemref();
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/dynamic_source,
+      /*target=*/AllocaI32({1024, 128}, MemorySpace::kHbm),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_,
+               HasSubstr("Leading dimension of the source (scatter updates) "
+                         "must be static and in [1, 8], got 'memref<?x128")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorGatherZeroRankTargetFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024}, MemorySpace::kHbm),
+      /*target=*/AllocaI32({}, MemorySpace::kVmem),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_, HasSubstr("Leading dimension of the target (gather result) "
+                            "must be static and in [1, 8], got 'memref<i32")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaVectorScatterZeroRankSourceFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({}, MemorySpace::kVmem),
+      /*target=*/AllocaI32({1024}, MemorySpace::kHbm),
+      /*offsets=*/
+      ConstantI32Vector(/*shape=*/{8}, /*values=*/{0, 1, 2, 3, 4, 5, 6, 7}),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_, HasSubstr("Leading dimension of the source (scatter updates) "
+                            "must be static and in [1, 8], got 'memref<i32")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaMemrefGatherZeroRankTargetFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({1024}, MemorySpace::kHbm),
+      /*target=*/AllocaI32({}, MemorySpace::kVmem),
+      /*offsets=*/AllocaI32({8}, MemorySpace::kVmem),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_, HasSubstr("Target (gather result) rank must be >= offsets "
+                            "rank, got target rank: 0, offsets rank: 1")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       IndirectDmaMemrefScatterZeroRankSourceFailsVerification) {
+  auto dma = Create<EnqueueIndirectDMAOp>(
+      /*source=*/AllocaI32({}, MemorySpace::kVmem),
+      /*target=*/AllocaI32({1024}, MemorySpace::kHbm),
+      /*offsets=*/AllocaI32({8}, MemorySpace::kVmem),
+      /*semaphore=*/AllocaDMASemaphore(),
+      /*offset_filter=*/nullptr,
+      /*add=*/false);
+
+  ASSERT_THAT(
+      VerifyOp(dma),
+      StatusIs(_, HasSubstr("Source (scatter updates) rank must be >= offsets "
+                            "rank, got source rank: 0, offsets rank: 1")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
        IndirectDmaScatterAddVerificationWorks) {
   auto dma = Create<EnqueueIndirectDMAOp>(
       /*source=*/AllocaI32({64, 128}, MemorySpace::kVmem),
@@ -1914,9 +2110,8 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
 
   ASSERT_THAT(
       VerifyOp(dma),
-      StatusIs(
-          _, HasSubstr("Offsets shape (8) must match the majormost dimensions "
-                       "of the target (gather result) shape (512, 32, 128)")));
+      StatusIs(_, HasSubstr("Leading dimension of the target (gather result) "
+                            "must be static and in [1, 8], got 'memref<512")));
 }
 
 TEST_F(TpuOpsVectorSubcoreVerificationTest,

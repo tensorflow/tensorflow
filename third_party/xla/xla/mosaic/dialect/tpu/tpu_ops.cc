@@ -2110,7 +2110,22 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
     offsets_shape = offsets_ty.getShape();
   } else if (auto offsets_ty = dyn_cast<VectorType>(offsets.getType());
              offsets_ty != nullptr) {
-    offsets_shape = offsets_ty.getShape();
+    // Vector offsets may have trailing padding lanes. The local memref's
+    // leading dim is the active prefix length, so it must be static and in
+    // [1, num_offsets]: only those rows are transferred, and
+    // wait_indirect_dma counts bytes from the local memref.
+    const MemRefType on_tile_ty = is_gather ? target_ty : source_ty;
+    const int64_t num_offsets = offsets_ty.getDimSize(0);
+    if (on_tile_ty.getRank() == 0 || on_tile_ty.isDynamicDim(0) ||
+        on_tile_ty.getDimSize(0) < 1 ||
+        on_tile_ty.getDimSize(0) > num_offsets) {
+      return emitOpError() << "Leading dimension of the "
+                           << (is_gather ? "target (gather result)"
+                                         : "source (scatter updates)")
+                           << " must be static and in [1, " << num_offsets
+                           << "], got " << on_tile_ty;
+    }
+    offsets_shape = on_tile_ty.getShape().take_front(1);
   } else {
     return emitOpError("Offsets must be a memref or vector type");
   }

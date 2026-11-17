@@ -1663,10 +1663,19 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
 // scatter) must have a shape `[z, s0, ..., sm]` or `[1, z, s0, ..., sm]`,
 // where `z` is the indexed dimension.
 //
-// The `offsets` argument must be of shape `[o]` or `[1, o]`.
-// Each of the `o` values indexes the `z` dimension within the range `[0, z-1]`.
+// The `offsets` argument must be a memref of shape `[o]` or `[1, o]`, or a 1D
+// vector of shape `[k]`.
+// - For memref offsets, the local memref (`target` for gather, `source` for
+//   scatter) must have shape `[o, s0, ..., sm]` or `[1, o, s0, ..., sm]`, and
+//   each of the `o` values indexes the `z` dimension within `[0, z-1]`.
+// - For 1D vector offsets of shape `[k]`, vector offsets may contain trailing
+//   padding lanes: the local memref must have shape `[n, s0, ..., sm]` where
+//   `n` is static and in `[1, k]`. Only the prefix `[0, n)` of `offsets` is
+//   used (each value indexing `z` within `[0, z-1]`), and trailing padding
+//   offsets `[n, k)` are ignored.
 //
-// Each offset selects a slice of shape `[s0, ..., sm]` (which can be elemental).
+// Each active offset selects a slice of shape `[s0, ..., sm]` (which can be
+// elemental).
 //
 // source          : Memref to copy from.
 // target          : Memref to copy to.
