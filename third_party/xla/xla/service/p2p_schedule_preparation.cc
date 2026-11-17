@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -165,12 +166,12 @@ struct P2PGroupNode {
   // Returns the pipeline stream used to execute the P2P instructions in the
   // group.
   P2PRuntimeStream GetRuntimeStream(const HloInstruction* start) const {
-    auto it = start->frontend_attributes().map().find(kSendRecvPipelineAttr);
-    if (it != start->frontend_attributes().map().end()) {
-      if (it->second == "0") {
+    if (std::optional<std::string> pipeline =
+            start->get_frontend_attribute(kSendRecvPipelineAttr)) {
+      if (*pipeline == "0") {
         return kStream0;
       }
-      if (it->second == "1") {
+      if (*pipeline == "1") {
         return kStream1;
       }
     }

@@ -190,9 +190,9 @@ class AnnotationTracker {
     return comp_annotation_map_.at(comp);
   }
   std::optional<int64_t> GetAnnotation(const HloInstruction* instr) const {
-    const auto& attrs = instr->frontend_attributes().map();
-    if (attrs.contains(kXlaSchedulingGroupIdAttr)) {
-      return std::stoi(attrs.at(kXlaSchedulingGroupIdAttr));
+    if (std::optional<std::string> annotation =
+            instr->get_frontend_attribute(kXlaSchedulingGroupIdAttr)) {
+      return std::stoi(*annotation);
     }
     return std::nullopt;
   }

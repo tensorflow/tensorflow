@@ -386,7 +386,7 @@ TEST_F(CallInlinerTest, PropagateFrontendAttributes) {
 
   const HloInstruction* c = root->operand(0);
   EXPECT_THAT(c, op::Constant());
-  EXPECT_FALSE(c->frontend_attributes().map().contains("mosaic_fusion_group"));
+  EXPECT_FALSE(c->has_frontend_attribute("mosaic_fusion_group"));
 
   const HloInstruction* one = root->operand(1);
   EXPECT_THAT(one, op::Constant());
@@ -421,7 +421,7 @@ TEST_F(CallInlinerTest, InlineCompositeCall) {
   EXPECT_THAT(*inst, op::Constant());
   ++inst;
   EXPECT_THAT(*inst, op::Add());
-  EXPECT_TRUE((*inst)->frontend_attributes().map().empty());
+  EXPECT_FALSE((*inst)->has_frontend_attributes());
 }
 
 TEST_F(CallInlinerTest, PreserveCompositeCall) {
@@ -450,7 +450,7 @@ TEST_F(CallInlinerTest, PreserveCompositeCall) {
   EXPECT_THAT(*inst, op::Constant());
   ++inst;
   EXPECT_THAT(*inst, op::Call());
-  EXPECT_FALSE((*inst)->frontend_attributes().map().empty());
+  EXPECT_TRUE((*inst)->has_frontend_attributes());
 }
 
 TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableFalse) {
@@ -1680,7 +1680,7 @@ ENTRY %main (param: f32[]) -> f32[] {
 
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kParameter);
-  EXPECT_TRUE(root->frontend_attributes().map().empty());
+  EXPECT_FALSE(root->has_frontend_attributes());
 }
 
 TEST_F(CallInlinerTest,

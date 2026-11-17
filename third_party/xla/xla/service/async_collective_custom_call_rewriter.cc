@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,12 +48,9 @@ namespace xla {
 namespace {
 
 std::string GetConfigString(HloInstruction* instr) {
-  if (instr->has_frontend_attributes()) {
-    const auto& map = instr->frontend_attributes().map();
-    auto it = map.find("async_collective_config");
-    if (it != map.end()) {
-      return it->second;
-    }
+  if (std::optional<std::string> config =
+          instr->get_frontend_attribute("async_collective_config")) {
+    return *std::move(config);
   }
   return instr->raw_backend_config_string();
 }

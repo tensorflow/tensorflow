@@ -1181,10 +1181,9 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
 
   // Transform while loops with static trip count of 1 into a call op, then
   // inline the call.
-  const auto& attrs = while_op->frontend_attributes().map();
   bool skip_trip_count_one_simplification =
-      attrs.contains("skip-simplify-while-loops_trip-count-one") &&
-      (attrs.at("skip-simplify-while-loops_trip-count-one") == "true");
+      while_op->get_frontend_attribute(
+          "skip-simplify-while-loops_trip-count-one") == "true";
   if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification &&
       CallInliner::InlineInstructionAllowed(while_op)) {
     // Do not simplify the loop away when there is a side-effectful op,

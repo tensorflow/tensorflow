@@ -4505,12 +4505,9 @@ ENTRY entry {
   const HloInstruction* cp1s = FindInstruction(hlo_module.get(), "cp1s");
   const HloInstruction* cp2s = FindInstruction(hlo_module.get(), "cp2s");
   const HloInstruction* cp3s = FindInstruction(hlo_module.get(), "cp3s");
-  EXPECT_FALSE(
-      cp1s->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_TRUE(
-      cp2s->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_FALSE(
-      cp3s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(cp1s->has_frontend_attribute("_scheduling_group_id"));
+  EXPECT_TRUE(cp2s->has_frontend_attribute("_scheduling_group_id"));
+  EXPECT_FALSE(cp3s->has_frontend_attribute("_scheduling_group_id"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, SchedulingAnnotationMakesAnotherGroupReady) {
@@ -6524,9 +6521,7 @@ TEST_F(LatencyHidingSchedulerTest, NoOOMWithManyComputationsAndBuffers) {
   // Add a dummy custom call with force_delay to trigger the scheduler.
   HloInstruction* custom_call = entry_builder.AddInstruction(
       HloInstruction::CreateCustomCall(scalar_shape, {param}, "dummy_target"));
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["scheduler_hint"] = "force_delay";
-  custom_call->set_frontend_attributes(attributes);
+  custom_call->set_frontend_attribute("scheduler_hint", "force_delay");
 
   // Create a flat chain of kNegate instructions to create kNumBuffers global
   // values/buffers.
@@ -6805,7 +6800,7 @@ ENTRY entry {
   // Verify LegalizeSchedulingAnnotations propagated group "0" onto `bc`.
   const HloInstruction* bc = FindInstruction(hlo_module.get(), "bc");
   ASSERT_NE(bc, nullptr);
-  EXPECT_TRUE(bc->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(bc->has_frontend_attribute("_scheduling_group_id"));
 
   const std::vector<HloInstruction*>& seq =
       hlo_module->schedule()

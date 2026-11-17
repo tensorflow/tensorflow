@@ -1157,15 +1157,8 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
   if (to_insert_into->opcode() == HloOpcode::kOptimizationBarrier) {
     gte_for_insert = to_insert_into->operand(0);
   }
-  bool always_sink = false;
-  if (dyn_update->has_frontend_attributes()) {
-    auto it = dyn_update->frontend_attributes().map().find(
-        CollectivePipeliner::kAlwaysSinkAttr);
-    if (it != dyn_update->frontend_attributes().map().end() &&
-        it->second == "1") {
-      always_sink = true;
-    }
-  }
+  bool always_sink = dyn_update->get_frontend_attribute(
+                         CollectivePipeliner::kAlwaysSinkAttr) == "1";
 
   if (!always_sink && level_to_operate_on == 0 &&
       (gte_for_insert->opcode() != HloOpcode::kGetTupleElement ||

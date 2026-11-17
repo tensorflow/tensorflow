@@ -487,7 +487,7 @@ TEST_F(AsyncComputeOnRewriterTest,
               input_metadata.SerializeAsString());
 
     // The replacement identity call does not inherit start/done annotations.
-    EXPECT_TRUE(root->frontend_attributes().map().empty());
+    EXPECT_FALSE(root->has_frontend_attributes());
     EXPECT_EQ(root->metadata().ByteSizeLong(), 0);
   }
 }

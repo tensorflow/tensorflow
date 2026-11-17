@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -85,11 +86,10 @@ class SourceTargetPairs {
 
   static absl::StatusOr<SourceTargetPairs> FromInstruction(
       const HloInstruction* instruction) {
-    auto source_target_pairs = instruction->frontend_attributes().map().find(
-        kSendRecvSourceTargetPairsAttr);
-    if (source_target_pairs != instruction->frontend_attributes().map().end()) {
-      ABSL_ASSIGN_OR_RETURN(SourceTargetPairs res,
-                       FromString(source_target_pairs->second));
+    if (std::optional<std::string> source_target_pairs =
+            instruction->get_frontend_attribute(
+                kSendRecvSourceTargetPairsAttr)) {
+      ABSL_ASSIGN_OR_RETURN(SourceTargetPairs res, FromString(*source_target_pairs));
       return res;
     }
     return Internal(

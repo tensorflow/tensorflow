@@ -334,7 +334,7 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
       break;
     }
 
-    if (while_instr->frontend_attributes().map().contains(
+    if (while_instr->has_frontend_attribute(
             "_xla_disable_loop_instr_hoisting")) {
       // If this frontend attr is present, we have knowledge from the framework
       // to disable hoisting from this loop.

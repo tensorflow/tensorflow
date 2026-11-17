@@ -329,20 +329,13 @@ bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
 }
 
 bool ComputeTypeIsHost(const HloInstruction* hlo_instruction) {
-  const auto& frontend_attributes_map =
-      hlo_instruction->frontend_attributes().map();
-  return (frontend_attributes_map.find(kXlaComputeTypeAttr) !=
-              frontend_attributes_map.end() &&
-          frontend_attributes_map.find(kXlaComputeTypeAttr)->second ==
-              kXlaComputeTypeHost);
+  return hlo_instruction->get_frontend_attribute(kXlaComputeTypeAttr) ==
+         kXlaComputeTypeHost;
 }
 
 void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
-  FrontendAttributes frontend_attributes =
-      host_instruction.frontend_attributes();
-  frontend_attributes.mutable_map()->insert(
-      {kXlaComputeTypeAttr, kXlaComputeTypeHost});
-  host_instruction.set_frontend_attributes(frontend_attributes);
+  host_instruction.add_frontend_attribute(kXlaComputeTypeAttr,
+                                          kXlaComputeTypeHost);
 }
 
 bool IsMoveToHostWithDynamicUpdateSlice(const HloInstruction* instr) {

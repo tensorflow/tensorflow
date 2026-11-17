@@ -45,14 +45,8 @@ namespace {
 
 // Extracts the original computation name from the frontend attributes.
 std::string GetMarkedComputationName(const HloInstruction* instruction) {
-  if (instruction->has_frontend_attributes()) {
-    auto it = instruction->frontend_attributes().map().find(
-        kCallMarkedComputationAttribute);
-    if (it != instruction->frontend_attributes().map().end()) {
-      return it->second;
-    }
-  }
-  return "";
+  return instruction->get_frontend_attribute(kCallMarkedComputationAttribute)
+      .value_or("");
 }
 
 // Safely replaces all uses of a marker with its operands, reconstructing
@@ -103,14 +97,10 @@ absl::Status RestoreMetadataAndDependencies(HloInstruction* call_instruction,
   }
 
   // Restore original instruction name if present.
-  std::string instruction_name;
-  if (innermost_after->has_frontend_attributes()) {
-    auto map = innermost_after->frontend_attributes().map();
-    auto it = map.find(kCallMarkedInstructionNameAttribute.data());
-    if (it != map.end()) {
-      instruction_name = it->second;
-    }
-  }
+  std::string instruction_name =
+      innermost_after
+          ->get_frontend_attribute(kCallMarkedInstructionNameAttribute)
+          .value_or("");
 
   // Restore original frontend attributes from the 'after' marker (excluding the
   // internal marker attributes).

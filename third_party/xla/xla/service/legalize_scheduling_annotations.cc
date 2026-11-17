@@ -458,9 +458,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::PropagateAnnotations(
 
 bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     HloInstruction* instr) {
-  const auto& attrs = instr->frontend_attributes().map();
-  if (attrs.contains(kXlaSchedulingGroupIdAttr) &&
-      attrs.at(kXlaSchedulingGroupIdAttr) == kXlaNoOpSchedulingGroup) {
+  if (instr->get_frontend_attribute(kXlaSchedulingGroupIdAttr) ==
+      kXlaNoOpSchedulingGroup) {
     return false;
   }
 

@@ -1877,28 +1877,29 @@ absl::Status ShapeVerifier::CheckCompositeCall(const HloInstruction* call) {
   }
   TF_RET_CHECK(call->has_frontend_attributes())
       << "A composite call op must have frontend attributes";
-  auto map = call->frontend_attributes().map();
-  if (auto name = map.find("composite.name");
-      name == map.end() || name->second.empty()) {
+  if (std::optional<std::string> name =
+          call->get_frontend_attribute("composite.name");
+      !name.has_value() || name->empty()) {
     return InvalidArgument(
         "A composite call op must have frontend attributes with key "
         "composite.name whose value is non-empty");
   }
-  if (auto attributes = map.find("composite.attributes");
-      attributes != map.end() && attributes->second.empty()) {
+  if (std::optional<std::string> attributes =
+          call->get_frontend_attribute("composite.attributes");
+      attributes.has_value() && attributes->empty()) {
     return InvalidArgument(
         "A composite call op must have frontend attributes with key "
         "composite.attributes whose value is default: {} or non-empty");
   }
-  if (auto version_str = map.find("composite.version");
-      version_str != map.end()) {
+  if (std::optional<std::string> version_str =
+          call->get_frontend_attribute("composite.version")) {
     int64_t version = 0;
-    if (!absl::SimpleAtoi(version_str->second, &version) || version < 0) {
+    if (!absl::SimpleAtoi(*version_str, &version) || version < 0) {
       return InvalidArgument(
           "A composite call op must have frontend attributes with a "
           "composite.version whose value is a non-negative integer but got: "
           "%s",
-          version_str->second);
+          *version_str);
     }
   }
   return absl::OkStatus();
@@ -1948,7 +1949,7 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         << "Invalid aliasing operand shape index.";
     TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
         << "Invalid aliasing output shape index.";
-    if (custom_call->frontend_attributes().map().contains(
+    if (custom_call->has_frontend_attribute(
             "xla_skip_custom_call_alias_shape_check")) {
       return absl::OkStatus();
     }
@@ -3520,8 +3521,7 @@ absl::StatusOr<bool> ShouldSkipDeadlockCheck(const T* instruction) {
   // For now we will skip checks for instructions annotated with
   // _xla_send_recv_pipeline, since they introduce extra constraints that have
   // not been modeled by this function.
-  if (instruction->frontend_attributes().map().contains(
-          kSendRecvPipelineAttr)) {
+  if (instruction->has_frontend_attribute(kSendRecvPipelineAttr)) {
     return true;
   }
   // Check that the instruction itself does not have conflicting
@@ -4641,9 +4641,9 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
       continue;
     }
     for (auto* inst : comp->instructions()) {
-      if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
-                                     inst->frontend_attributes().map().contains(
-                                         kXlaStreamAnnotationAttr))) {
+      if (inst->IsAsynchronous() ||
+          (inst->opcode() == HloOpcode::kCall &&
+           inst->has_frontend_attribute(kXlaStreamAnnotationAttr))) {
         // No need for additional buffer verification on start/update as the
         // correctness of buffer usage is guaranteed through consistency with
         // the wrapped computation and buffer verification inside it. For

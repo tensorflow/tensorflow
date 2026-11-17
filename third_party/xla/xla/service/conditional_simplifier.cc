@@ -469,9 +469,7 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   // have control predecessors/successors in either true/false computation.
   if (!conditional->parent()->IsSafelyRemovable(conditional) ||
       conditional->HasSideEffect() ||
-      (conditional->has_frontend_attributes() &&
-       conditional->frontend_attributes().map().contains(
-           kXlaSchedulingGroupIdAttr))) {
+      conditional->has_frontend_attribute(kXlaSchedulingGroupIdAttr)) {
     VLOG(2) << "Not attempting to remove conditional as it is not removable or "
                "has side effect: "
             << conditional->ToShortString();

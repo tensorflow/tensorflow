@@ -2121,9 +2121,7 @@ TEST_F(HloInstructionTest, StringifyAsyncOps_PreserveWrappedAttributes) {
   HloInstruction* custom_call = async_builder.AddInstruction(
       HloInstruction::CreateCustomCall(s2, {param},
                                        /*custom_call_target=*/"foo"));
-  FrontendAttributes attrs;
-  attrs.mutable_map()->insert({"key1", "value1"});
-  custom_call->set_frontend_attributes(attrs);
+  custom_call->set_frontend_attribute("key1", "value1");
   std::unique_ptr<HloComputation> async_computation = async_builder.Build();
 
   HloComputation::Builder entry_builder("Entry");
@@ -2162,9 +2160,7 @@ TEST_F(HloInstructionTest, StringifyAsyncOps_DeduplicateAttributes) {
   HloInstruction* custom_call = async_builder.AddInstruction(
       HloInstruction::CreateCustomCall(s2, {param},
                                        /*custom_call_target=*/"foo"));
-  FrontendAttributes attrs1;
-  attrs1.mutable_map()->insert({"key1", "value1"});
-  custom_call->set_frontend_attributes(attrs1);
+  custom_call->set_frontend_attribute("key1", "value1");
   std::unique_ptr<HloComputation> async_computation = async_builder.Build();
 
   HloComputation::Builder entry_builder("Entry");
@@ -3730,15 +3726,13 @@ TEST_F(HloInstructionTest, SetupDerivedInstructionResultAccuracy) {
 
   HloInstruction* attr_tanh = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kTanh, x));
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["key"] = "val";
-  attr_tanh->set_frontend_attributes(attributes);
-  EXPECT_FALSE(attr_tanh->frontend_attributes().map().empty());
+  attr_tanh->set_frontend_attribute("key", "val");
+  EXPECT_TRUE(attr_tanh->has_frontend_attributes());
   EXPECT_FALSE(attr_tanh->has_result_accuracy());
 
   attr_tanh->SetupDerivedInstruction(derived_exp.get());
   EXPECT_FALSE(derived_exp->has_result_accuracy());
-  EXPECT_EQ(derived_exp->frontend_attributes().map().at("key"), "val");
+  EXPECT_EQ(derived_exp->get_frontend_attribute("key"), "val");
 }
 
 }  // namespace

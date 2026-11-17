@@ -88,11 +88,12 @@ absl::Status VerifyAnnotation(const HloInstruction* instr,
 
 absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
     const HloInstruction* instr) {
-  const auto& attrs = instr->frontend_attributes().map();
-  if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
+  std::optional<std::string> annotation_attr =
+      instr->get_frontend_attribute(kXlaSchedulingGroupIdAttr);
+  if (!annotation_attr.has_value()) {
     return std::nullopt;
   }
-  absl::string_view annotation_str = attrs.at(kXlaSchedulingGroupIdAttr);
+  absl::string_view annotation_str = *annotation_attr;
   VLOG(2) << "Annotated instruction: " << instr->name() << " "
           << annotation_str;
   if (annotation_str == kXlaNoOpSchedulingGroup) {
@@ -125,7 +126,7 @@ absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
 }  // namespace
 
 bool HasSchedulingAnnotation(const HloInstruction* instr) {
-  return instr->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr);
+  return instr->has_frontend_attribute(kXlaSchedulingGroupIdAttr);
 }
 
 absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
@@ -136,15 +137,7 @@ absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
 absl::Status SetSchedulingAnnotation(HloInstruction* instr,
                                      std::string annotation) {
   ABSL_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation));
-  FrontendAttributes frontend_attributes = instr->frontend_attributes();
-  if (frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
-    frontend_attributes.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second =
-        annotation;
-  } else {
-    frontend_attributes.mutable_map()->insert(
-        {kXlaSchedulingGroupIdAttr, annotation});
-  }
-  instr->set_frontend_attributes(frontend_attributes);
+  instr->set_frontend_attribute(kXlaSchedulingGroupIdAttr, annotation);
   return absl::OkStatus();
 }
 
@@ -154,13 +147,7 @@ absl::Status SetSchedulingAnnotation(HloInstruction* instr,
 }
 
 bool RemoveSchedulingAnnotation(HloInstruction* instr) {
-  FrontendAttributes frontend_attributes = instr->frontend_attributes();
-  if (!frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
-    return false;
-  }
-  frontend_attributes.mutable_map()->erase(kXlaSchedulingGroupIdAttr);
-  instr->set_frontend_attributes(frontend_attributes);
-  return true;
+  return instr->erase_frontend_attribute(kXlaSchedulingGroupIdAttr) > 0;
 }
 
 absl::StatusOr<std::optional<AnnotationIterationId>>

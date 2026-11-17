@@ -1490,8 +1490,7 @@ const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo) {
 bool IsPipelinedP2P(const HloInstruction* instruction) {
   if (auto* send_recv = DynCast<HloSendRecvInstruction>(instruction)) {
     return !send_recv->is_host_transfer() &&
-           instruction->frontend_attributes().map().contains(
-               kSendRecvPipelineAttr);
+           instruction->has_frontend_attribute(kSendRecvPipelineAttr);
   }
   return false;
 }

@@ -270,12 +270,12 @@ const HloPassFactory* const kCallInlinerRegistration =
 // control over inlining specific calls.
 CallInliner::FrontendInlinePolicy CallInliner::GetFrontendInlinePolicy(
     const HloInstruction* instruction) {
-  auto it = instruction->frontend_attributes().map().find("inlineable");
-  if (it != instruction->frontend_attributes().map().end()) {
-    if (it->second == "false" || it->second == "xla_late") {
+  if (std::optional<std::string> inlineable =
+          instruction->get_frontend_attribute("inlineable")) {
+    if (*inlineable == "false" || *inlineable == "xla_late") {
       return FrontendInlinePolicy::kXlaLate;
     }
-    if (it->second == "true" || it->second == "xla_early") {
+    if (*inlineable == "true" || *inlineable == "xla_early") {
       return FrontendInlinePolicy::kXlaEarly;
     }
   }
@@ -289,11 +289,9 @@ CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
   if (call->is_composite()) {
     // Remove composite FE attrs before inlining, else they will appear on the
     // inlined instructions.
-    FrontendAttributes frontend_attributes = call->frontend_attributes();
-    frontend_attributes.mutable_map()->erase("composite.name");
-    frontend_attributes.mutable_map()->erase("composite.attributes");
-    frontend_attributes.mutable_map()->erase("composite.version");
-    call->set_frontend_attributes(frontend_attributes);
+    call->erase_frontend_attribute("composite.name");
+    call->erase_frontend_attribute("composite.attributes");
+    call->erase_frontend_attribute("composite.version");
   }
 
   const auto& callees = call->called_computations();
@@ -320,15 +318,12 @@ CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
       for (auto instruction : callee->instructions()) {
         // Do so for only fusible instructions.
         if (instruction->IsFusible()) {
-          FrontendAttributes frontend_attributes =
-              instruction->frontend_attributes();
           // Use assignment to overwrite any existing inner attributes. This
           // ensures that in nested fusion scopes, the outermost scope's ID
           // overrides inner IDs, unifying the entire region under a single
           // logical ID instead of fragmenting it.
-          (*frontend_attributes.mutable_map())[attribute] =
-              call_attributes.map().at(attribute);
-          instruction->set_frontend_attributes(frontend_attributes);
+          instruction->set_frontend_attribute(
+              attribute, call_attributes.map().at(attribute));
         }
       }
     }

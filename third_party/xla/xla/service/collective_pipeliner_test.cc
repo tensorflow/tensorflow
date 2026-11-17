@@ -3214,16 +3214,12 @@ TEST_F(CollectivePipelinerTest,
   // Mutate an existing attribute.
   auto postprocess_peeled = [&](HloInstruction* instr,
                                 HloInstruction* new_while_instr) {
-    xla::FrontendAttributes attributes = instr->frontend_attributes();
-    (*attributes.mutable_map())[kAttr] = "1";
-    instr->set_frontend_attributes(attributes);
+    instr->set_frontend_attribute(kAttr, "1");
     return absl::OkStatus();
   };
   auto postprocess_rotated = [&](HloInstruction* instr,
                                  HloInstruction* new_while_instr) {
-    xla::FrontendAttributes attributes = instr->frontend_attributes();
-    (*attributes.mutable_map())[kAttr] = "2";
-    instr->set_frontend_attributes(attributes);
+    instr->set_frontend_attribute(kAttr, "2");
     return absl::OkStatus();
   };
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
