@@ -143,8 +143,10 @@ class RawBufferEntry : public PullTable::Entry {
               size_t base_req_id) override;
 
  private:
+  // Handle() may be called concurrently. Guards num_consumed_bufs_ and the
+  // `buffer` of each element of arrs_; the rest is immutable once constructed.
   absl::Mutex mu_;
-  size_t num_consumed_bufs_ = 0;
+  size_t num_consumed_bufs_ ABSL_GUARDED_BY(mu_) = 0;
   std::vector<BufferRef> arrs_;
   std::shared_ptr<PremappedCopierState> state_;
   size_t xfer_size_;
@@ -166,8 +168,10 @@ class PjRtBufferEntry : public PullTable::Entry {
               size_t base_req_id) override;
 
  private:
+  // Handle() may be called concurrently. Guards num_consumed_bufs_ and the
+  // `buffer` of each element of arrs_; the rest is immutable once constructed.
   absl::Mutex mu_;
-  size_t num_consumed_bufs_ = 0;
+  size_t num_consumed_bufs_ ABSL_GUARDED_BY(mu_) = 0;
   std::vector<BufferRef> arrs_;
   std::shared_ptr<PremappedCopierState> state_;
   size_t xfer_size_;

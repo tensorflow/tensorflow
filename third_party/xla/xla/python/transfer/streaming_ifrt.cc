@@ -354,6 +354,7 @@ RawBufferEntry::RawBufferEntry(std::vector<BufferRef> arrs,
 bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                             const SocketTransferPullRequest& req,
                             size_t base_req_id) {
+  size_t num_consumed = 0;
   for (uint64_t bid : req.buffer_ids()) {
     auto req_id = base_req_id;
     ++base_req_id;
@@ -364,20 +365,24 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                                               bid, arrs_.size())));
       continue;
     }
+    xla::PjRtRawBufferRef buffer;
+    {
+      absl::MutexLock l(mu_);
+      buffer = std::move(arrs_[bid].buffer);
+    }
+    if (!buffer) {
+      state->SendError(req_id, 0, arrs_[bid].buf_size, true,
+                       absl::InternalError(absl::StrFormat(
+                           "Buffer id: %d has already been fetched", bid)));
+      continue;
+    }
+    ++num_consumed;
     arrs_[bid].ready_future.OnReady(
         [state, copier_state = state_, xfer_size = xfer_size_,
          buf_size = arrs_[bid].buf_size, req_id, bid,
-         buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
+         buffer = std::move(buffer)](absl::Status s) {
           if (!s.ok()) {
             state->SendError(req_id, 0, buf_size, true, s);
-            return;
-          }
-          if (!buffer) {
-            state->SendError(
-                req_id, 0, buf_size, true,
-                absl::InternalError(absl::StrFormat(
-                    "Buffer id: %d has already been fetched", bid)));
-
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
@@ -421,7 +426,11 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
         });
   }
 
-  num_consumed_bufs_ += req.buffer_ids().size();
+  if (num_consumed == 0) {
+    return false;
+  }
+  absl::MutexLock l(mu_);
+  num_consumed_bufs_ += num_consumed;
   return num_consumed_bufs_ == arrs_.size();
 }
 
@@ -438,6 +447,7 @@ PjRtBufferEntry::PjRtBufferEntry(std::vector<BufferRef> arrs,
 bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                              const SocketTransferPullRequest& req,
                              size_t base_req_id) {
+  size_t num_consumed = 0;
   for (uint64_t bid : req.buffer_ids()) {
     auto req_id = base_req_id;
     ++base_req_id;
@@ -448,20 +458,24 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                                               bid, arrs_.size())));
       continue;
     }
+    std::shared_ptr<xla::PjRtBuffer> buffer;
+    {
+      absl::MutexLock l(mu_);
+      buffer = std::move(arrs_[bid].buffer);
+    }
+    if (!buffer) {
+      state->SendError(req_id, 0, arrs_[bid].buf_size, true,
+                       absl::InternalError(absl::StrFormat(
+                           "Buffer id: %d has already been fetched", bid)));
+      continue;
+    }
+    ++num_consumed;
     arrs_[bid].ready_future.OnReady(
         [state, copier_state = state_, xfer_size = xfer_size_,
          buf_size = arrs_[bid].buf_size, req_id, bid,
-         buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
+         buffer = std::move(buffer)](absl::Status s) {
           if (!s.ok()) {
             state->SendError(req_id, 0, buf_size, true, s);
-            return;
-          }
-          if (!buffer) {
-            state->SendError(
-                req_id, 0, buf_size, true,
-                absl::InternalError(absl::StrFormat(
-                    "Buffer id: %d has already been fetched", bid)));
-
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
@@ -493,7 +507,11 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
         });
   }
 
-  num_consumed_bufs_ += req.buffer_ids().size();
+  if (num_consumed == 0) {
+    return false;
+  }
+  absl::MutexLock l(mu_);
+  num_consumed_bufs_ += num_consumed;
   return num_consumed_bufs_ == arrs_.size();
 }
 
