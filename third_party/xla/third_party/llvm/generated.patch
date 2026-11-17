@@ -1,1 +1,1015 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Interpreter/DeviceOffload.cpp b/clang/lib/Interpreter/DeviceOffload.cpp
+--- a/clang/lib/Interpreter/DeviceOffload.cpp
++++ b/clang/lib/Interpreter/DeviceOffload.cpp
+@@ -64,6 +64,7 @@
+   auto &PTU = PTUs.back();
+ 
+   CodeGenOptions CodeGenOptsForObj = DeviceCI.getCodeGenOpts();
++  CodeGenOptsForObj.DisableLLVMPasses = true;
+ 
+   ObjectContent.clear();
+   auto ObjOS = std::make_unique<llvm::raw_svector_ostream>(ObjectContent);
+diff -ruN --strip-trailing-cr a/clang/lib/Interpreter/Interpreter.cpp b/clang/lib/Interpreter/Interpreter.cpp
+--- a/clang/lib/Interpreter/Interpreter.cpp
++++ b/clang/lib/Interpreter/Interpreter.cpp
+@@ -406,11 +406,9 @@
+         "Detecting the device vendor is not supported yet.",
+         llvm::inconvertibleErrorCode());
+ 
+-  constexpr size_t NumDriverArgs = 6;
+-
+   const bool HipEnabled = Type == OffloadType::HIP;
+   std::vector<const char *> Argv;
+-  Argv.reserve(NumDriverArgs + UserArgs.size());
++  Argv.reserve(5 + 4 + UserArgs.size());
+   Argv.push_back(HipEnabled ? "-xhip" : "-xcuda");
+   Argv.push_back(device ? "--cuda-device-only" : "--cuda-host-only");
+ 
+@@ -432,11 +430,6 @@
+   std::string CUIDArg = "-cuid=" + OffloadCUID;
+   Argv.push_back(CUIDArg.c_str());
+ 
+-  // Unoptimized HIP kernels request hostcall support, which needs PCIe atomics
+-  // and fails to dispatch without them. A -O in UserArgs comes later and wins.
+-  if (device && HipEnabled)
+-    Argv.push_back("-O3");
+-
+   llvm::append_range(Argv, UserArgs);
+ 
+   std::string TT = TargetTriple ? *TargetTriple : llvm::sys::getProcessTriple();
+diff -ruN --strip-trailing-cr a/clang/unittests/Interpreter/DeviceOffloadTest.cpp b/clang/unittests/Interpreter/DeviceOffloadTest.cpp
+--- a/clang/unittests/Interpreter/DeviceOffloadTest.cpp
++++ b/clang/unittests/Interpreter/DeviceOffloadTest.cpp
+@@ -142,26 +142,6 @@
+       llvm::FailedWithMessage("Multiple device architectures are not "
+                               "supported. Pass a single --offload-arch"));
+ }
+-
+-TEST(DeviceOffloadBuilderTest, HIPDeviceDefaultsToO3) {
+-  IncrementalCompilerBuilder CB;
+-  CB.SetCompilerArgs({"--offload-arch=gfx1100", "-nogpulib", "-nogpuinc"});
+-  auto DeviceCI = CB.CreateDevice(OffloadType::HIP);
+-  ASSERT_THAT_EXPECTED(DeviceCI, llvm::Succeeded());
+-  EXPECT_EQ((*DeviceCI)->getCodeGenOpts().OptimizationLevel, 3u);
+-  auto HostCI = CB.CreateHost(OffloadType::HIP);
+-  ASSERT_THAT_EXPECTED(HostCI, llvm::Succeeded());
+-  EXPECT_EQ((*HostCI)->getCodeGenOpts().OptimizationLevel, 0u);
+-}
+-
+-TEST(DeviceOffloadBuilderTest, UserOptLevelOverridesHIPDeviceDefault) {
+-  IncrementalCompilerBuilder CB;
+-  CB.SetCompilerArgs(
+-      {"--offload-arch=gfx1100", "-nogpulib", "-nogpuinc", "-O1"});
+-  auto DeviceCI = CB.CreateDevice(OffloadType::HIP);
+-  ASSERT_THAT_EXPECTED(DeviceCI, llvm::Succeeded());
+-  EXPECT_EQ((*DeviceCI)->getCodeGenOpts().OptimizationLevel, 1u);
+-}
+ 
+ TEST_F(DeviceOffloadHIPTest, DeviceObjectIsGenerated) {
+   IncrementalCompilerBuilder CB;
+diff -ruN --strip-trailing-cr a/flang/docs/Extensions.md b/flang/docs/Extensions.md
+--- a/flang/docs/Extensions.md
++++ b/flang/docs/Extensions.md
+@@ -539,12 +539,6 @@
+ * A comma (or semicolon in `DECIMAL='COMMA'` or `DC` mode) in a
+   fixed-width numeric input field terminates the field rather than
+   signaling an invalid character error.
+-* The `B`, `O`, and `Z` edit descriptors may be used with `CHARACTER`
+-  items in formatted input and output.  The item's storage is edited as
+-  an unsigned integer of `LEN` times the character kind bytes in the
+-  host's byte order; on a little-endian host, `'AB'` is written by `Z4`
+-  as `4241`.  F2023 13.7.2.4 p1 permits these edit descriptors only for
+-  integer, real, complex, enum, and enumeration type items.
+ * Arguments to the intrinsic functions `MAX` and `MIN` are converted
+   when necessary to the type of the result.
+   An `OPTIONAL`, `POINTER`, or `ALLOCATABLE` argument after
+diff -ruN --strip-trailing-cr a/flang-rt/lib/runtime/edit-input.cpp b/flang-rt/lib/runtime/edit-input.cpp
+--- a/flang-rt/lib/runtime/edit-input.cpp
++++ b/flang-rt/lib/runtime/edit-input.cpp
+@@ -109,7 +109,6 @@
+     return false;
+   }
+   // Reset to start of significant digits
+-  auto fieldEnd{connection.positionInRecord - leftTabLimit};
+   io.HandleAbsolutePosition(start);
+   remaining.reset();
+   // Make a second pass now that the digit count is known
+@@ -152,17 +151,6 @@
+     *data |= digit << shift;
+     shift -= LOG2_BASE;
+   }
+-  // The second pass re-read characters already counted for SIZE=.  The
+-  // distance it moved is exactly what it added, because the slow
+-  // NextInField() path calls GotChar() once for each byte it moves past,
+-  // while a padding blank at the end of the record neither moves nor counts.
+-  // If the second pass is changed to read through a FastAsciiField, it should
+-  // re-scan the digits without counting them instead of keeping this
+-  // subtraction.
+-  io.GotChar(
+-      -static_cast<int>(connection.positionInRecord - leftTabLimit - start));
+-  // Resume after the whole field, including any trailing blanks or separator.
+-  io.HandleAbsolutePosition(fieldEnd);
+   return CheckCompleteListDirectedField(io, edit);
+ }
+ 
+diff -ruN --strip-trailing-cr a/flang-rt/test/Driver/boz-input-field.f90 b/flang-rt/test/Driver/boz-input-field.f90
+--- a/flang-rt/test/Driver/boz-input-field.f90
++++ b/flang-rt/test/Driver/boz-input-field.f90
+@@ -1,94 +0,0 @@
+-! B/O/Z input should consume its entire fixed-width field, including trailing
+-! blanks and an early terminating separator, so that the next edit
+-! descriptor starts after the field.  READ(SIZE=) should count each character
+-! of the field once.
+-!
+-! RUN: %flang %isysroot -L"%libdir" %s -o %t
+-! RUN: env LD_LIBRARY_PATH="$LD_LIBRARY_PATH:%libdir" %t | FileCheck %s
+-
+-! CHECK: int4: 1F "XY"
+-! CHECK: int8: 1F "XY"
+-! CHECK: int16: 1F "XY"
+-! CHECK: char: 4142 "XY"
+-! CHECK: comma: 1F 2
+-! CHECK: octal: 17 "XY"
+-! CHECK: binary: 5 "XY"
+-! CHECK: 2fields: 1F 2E
+-! CHECK: size: 1F 6
+-! CHECK: second: 2A "ZW" 8
+-! CHECK: size3: 1 2 3 12 "XY"
+-! CHECK: bzcomma: 1F 3
+-! CHECK: PASS
+-
+-program boz_input_field
+-  implicit none
+-  integer :: i4, j4, k4, iu, n
+-  integer(8) :: i8
+-  integer(16) :: i16
+-  character(4) :: c4
+-  character(2) :: c2
+-  character(:), allocatable :: s
+-
+-  s = '1F    XY'
+-  read (s, '(z6,a2)') i4, c2
+-  print '(a,z0,1x,3a)', 'int4: ', i4, '"', c2, '"'
+-  read (s, '(z6,a2)') i8, c2
+-  print '(a,z0,1x,3a)', 'int8: ', i8, '"', c2, '"'
+-  read (s, '(z6,a2)') i16, c2
+-  print '(a,z0,1x,3a)', 'int16: ', i16, '"', c2, '"'
+-
+-  ! B/O/Z editing of a CHARACTER item is an extension.
+-  s = '4142    XY'
+-  read (s, '(z8,a2)') c4, c2
+-  print '(a,z0,1x,3a)', 'char: ', transfer(c4, 0), '"', c2, '"'
+-
+-  ! A separator ending a fixed-width field early is an extension.
+-  s = '1f,2'
+-  read (s, '(z4,i2)') i4, j4
+-  print '(a,z0,1x,i0)', 'comma: ', i4, j4
+-
+-  s = '17  XY'
+-  read (s, '(o4,a2)') i4, c2
+-  print '(a,o0,1x,3a)', 'octal: ', i4, '"', c2, '"'
+-
+-  s = '101  XY'
+-  read (s, '(b5,a2)') i4, c2
+-  print '(a,i0,1x,3a)', 'binary: ', i4, '"', c2, '"'
+-
+-  ! A second B/O/Z field after a short value.
+-  s = '1F    2E'
+-  read (s, '(z6,z2)') i4, j4
+-  print '(a,z0,1x,z0)', '2fields: ', i4, j4
+-
+-  open (newunit=iu, status='scratch', form='formatted')
+-  write (iu, '(a)') '  1F  XY'
+-  rewind (iu)
+-  read (iu, '(z6)', advance='no', size=n) i4
+-  print '(a,z0,1x,i0)', 'size: ', i4, n
+-  close (iu)
+-
+-  ! A second non-advancing READ continues the record, so the field does not
+-  ! begin at the left tab limit of zero.
+-  open (newunit=iu, status='scratch', form='formatted')
+-  write (iu, '(a)') '  1F  XY 2A   ZW'
+-  rewind (iu)
+-  read (iu, '(z6,a2)', advance='no') i4, c2
+-  read (iu, '(z6,a2)', advance='no', size=n) i4, c2
+-  print '(a,z0,1x,3a,1x,i0)', 'second: ', i4, '"', c2, '"', n
+-  close (iu)
+-
+-  ! SIZE= accumulated over several fields, and with BZ and a separator.
+-  open (newunit=iu, status='scratch', form='formatted')
+-  write (iu, '(a)') '1   2   3   XY'
+-  write (iu, '(a)') '1F,  XY'
+-  rewind (iu)
+-  read (iu, '(3z4)', advance='no', size=n) i4, j4, k4
+-  read (iu, '(a2)') c2
+-  print '(a,3(z0,1x),i0,1x,3a)', 'size3: ', i4, j4, k4, n, '"', c2, '"'
+-  read (iu, '(bz,z6)', advance='no', size=n) i4
+-  read (iu, '(a)')
+-  print '(a,z0,1x,i0)', 'bzcomma: ', i4, n
+-  close (iu)
+-
+-  print '(a)', 'PASS'
+-end program
+diff -ruN --strip-trailing-cr a/flang-rt/unittests/Runtime/InputExtensions.cpp b/flang-rt/unittests/Runtime/InputExtensions.cpp
+--- a/flang-rt/unittests/Runtime/InputExtensions.cpp
++++ b/flang-rt/unittests/Runtime/InputExtensions.cpp
+@@ -73,35 +73,6 @@
+                          << j;
+   }
+ }
+-
+-TEST(InputExtensionTests, SeparatorInField_BOZ) {
+-  static const struct {
+-    int get;
+-    const char *format, *data;
+-    std::int64_t expect[3];
+-  } test[] = {
+-      {2, "(2Z4)", "1F,2E,", {0x1f, 0x2e}},
+-      {2, "(2Z4)", "1F ,2E ,", {0x1f, 0x2e}},
+-      {2, "(DC,2Z4)", "1F;2E;", {0x1f, 0x2e}},
+-      {2, "(DC,2Z4)", "1F ;2E ;", {0x1f, 0x2e}},
+-      {2, "(2O4)", "17,7,", {017, 07}},
+-      {2, "(2B4)", "101,11,", {5, 3}},
+-  };
+-  for (std::size_t j{0}; j < sizeof test / sizeof *test; ++j) {
+-    auto cookie{IONAME(BeginInternalFormattedInput)(test[j].data,
+-        std::strlen(test[j].data), test[j].format,
+-        std::strlen(test[j].format))};
+-    for (int k{0}; k < test[j].get; ++k) {
+-      std::int64_t got;
+-      IONAME(InputInteger)(cookie, got);
+-      ASSERT_EQ(got, test[j].expect[k])
+-          << "expected " << test[j].expect[k] << ", got " << got;
+-    }
+-    auto status{IONAME(EndIoStatement)(cookie)};
+-    ASSERT_EQ(status, 0) << "error status " << status << " on B/O/Z test case "
+-                         << j;
+-  }
+-}
+ 
+ TEST(InputExtensionTests, SeparatorInField_L) {
+   static const struct {
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/SPIRV/SPIRVEmitIntrinsics.cpp b/llvm/lib/Target/SPIRV/SPIRVEmitIntrinsics.cpp
+--- a/llvm/lib/Target/SPIRV/SPIRVEmitIntrinsics.cpp
++++ b/llvm/lib/Target/SPIRV/SPIRVEmitIntrinsics.cpp
+@@ -30,11 +30,9 @@
+ #include "llvm/IR/IntrinsicsSPIRV.h"
+ #include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/PatternMatch.h"
+-#include "llvm/IR/ReplaceConstant.h"
+ #include "llvm/IR/TypedPointerType.h"
+ #include "llvm/IR/Value.h"
+ #include "llvm/Support/Debug.h"
+-#include "llvm/Support/Error.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "llvm/Transforms/Utils/Local.h"
+ 
+@@ -192,8 +190,6 @@
+   SmallPtrSet<Instruction *, 0> AggrStores;
+   GlobalVariableUsers GVUsers;
+   SmallPtrSet<Value *, 0> Named;
+-  Error AccessChainErrors = Error::success();
+-  SmallPtrSet<GetElementPtrInst *, 4> InvalidGEPs;
+ 
+   // map of function declarations to <pointer arg index => element type>
+   MapVector<Function *, SmallVector<std::pair<unsigned, Type *>>> FDeclPtrTys;
+@@ -337,7 +333,7 @@
+   void useRoundingMode(ConstrainedFPIntrinsic *FPI, IRBuilder<> &B);
+   bool processMaskedMemIntrinsic(IntrinsicInst &I);
+   bool convertMaskedMemIntrinsics(Module &M);
+-  bool preprocessModule(Module &M);
++  bool foldStaticArrayAllocas(Module &M);
+   void preprocessBoolVectorBitcasts(Function &F);
+ 
+   void emitUnstructuredLoopControls(Function &F, IRBuilder<> &B);
+@@ -356,8 +352,8 @@
+   //      ElementType: the type of the elements stored in the parent array.
+   //      Offset: the Value* containing the byte offset into the array.
+   //      Multiplier: a scaling factor for the offset.
+-  // Return true for a fallback, false for a complete walk, or an error.
+-  Expected<bool> walkLogicalAccessChain(
++  // Return true if an error occurred during the walk, false otherwise.
++  bool walkLogicalAccessChain(
+       GetElementPtrInst &GEP,
+       const std::function<void(Type *PointedType, uint64_t Index)>
+           &OnLiteralIndexing,
+@@ -369,12 +365,10 @@
+       const std::function<void(Type *, uint64_t)> &OnLiteralIndexing,
+       const std::function<void(Type *, Value *, uint64_t)> &OnDynamicIndexing);
+ 
+-  Expected<bool> walkLogicalAccessChainConstant(
++  bool walkLogicalAccessChainConstant(
+       Type *CurType, uint64_t Offset,
+       const std::function<void(Type *, uint64_t)> &OnLiteralIndexing);
+ 
+-  void recordAccessChainError(GetElementPtrInst &GEP, Error Err);
+-
+   // Returns the type accessed using the given GEP instruction by relying
+   // on the GEP type.
+   // FIXME: GEP types are not supposed to be used to retrieve the pointed
+@@ -831,11 +825,10 @@
+   return AT == nullptr;
+ }
+ 
+-Expected<bool> SPIRVEmitIntrinsicsImpl::walkLogicalAccessChainConstant(
++bool SPIRVEmitIntrinsicsImpl::walkLogicalAccessChainConstant(
+     Type *CurType, uint64_t Offset,
+     const std::function<void(Type *, uint64_t)> &OnLiteralIndexing) {
+   auto &DL = CurrF->getDataLayout();
+-  Type *BaseType = CurType;
+ 
+   do {
+     if (ArrayType *AT = dyn_cast<ArrayType>(CurType)) {
+@@ -860,26 +853,21 @@
+       assert(EltSizeBits % 8 == 0 &&
+              "Element type size in bits must be a multiple of 8.");
+       uint32_t EltTypeSize = EltSizeBits / 8;
+-      if (Offset >= VT->getNumElements() * EltTypeSize)
+-        return createStringError(
+-            "Cannot lower an access to vector padding for Logical SPIR-V");
++      assert(Offset < VT->getNumElements() * EltTypeSize);
+       uint64_t Index = Offset / EltTypeSize;
+       Offset -= Index * EltTypeSize;
+       CurType = EltTy;
+       OnLiteralIndexing(CurType, Index);
+     } else {
+-      if (CurType == BaseType && Offset >= DL.getTypeAllocSize(CurType))
+-        return true;
+-      return createStringError(
+-          "Cannot lower a byte offset within a scalar or padding for "
+-          "Logical SPIR-V");
++      // Unknown composite kind; give up.
++      return true;
+     }
+   } while (Offset > 0);
+ 
+   return false;
+ }
+ 
+-Expected<bool> SPIRVEmitIntrinsicsImpl::walkLogicalAccessChain(
++bool SPIRVEmitIntrinsicsImpl::walkLogicalAccessChain(
+     GetElementPtrInst &GEP,
+     const std::function<void(Type *, uint64_t)> &OnLiteralIndexing,
+     const std::function<void(Type *, Value *, uint64_t)> &OnDynamicIndexing) {
+@@ -893,9 +881,6 @@
+ 
+   Value *Src = getPointerRoot(GEP.getPointerOperand());
+   Type *CurType = deduceElementType(Src, true);
+-  if (!CurType->isSized())
+-    return createStringError(
+-        "Cannot lower byte addressing with an unsized type for Logical SPIR-V");
+ 
+   Value *Operand = *GEP.idx_begin();
+   if (ConstantInt *CI = dyn_cast<ConstantInt>(Operand))
+@@ -905,21 +890,9 @@
+   return walkLogicalAccessChainDynamic(CurType, Operand, Multiplier,
+                                        OnLiteralIndexing, OnDynamicIndexing);
+ }
+-
+-void SPIRVEmitIntrinsicsImpl::recordAccessChainError(GetElementPtrInst &GEP,
+-                                                     Error Err) {
+-  InvalidGEPs.insert(&GEP);
+-  AccessChainErrors = joinErrors(
+-      std::move(AccessChainErrors),
+-      createStringError(Twine(toString(std::move(Err))) + " (in function '" +
+-                        GEP.getFunction()->getName() + "')"));
+-}
+ 
+ Instruction *SPIRVEmitIntrinsicsImpl::buildLogicalAccessChainFromGEP(
+     GetElementPtrInst &GEP) {
+-  if (InvalidGEPs.contains(&GEP))
+-    return nullptr;
+-
+   auto &DL = CurrF->getDataLayout();
+   IRBuilder<> B(GEP.getParent());
+   B.SetInsertPoint(&GEP);
+@@ -927,7 +900,7 @@
+   std::vector<Value *> Indices;
+   Indices.push_back(ConstantInt::get(
+       IntegerType::getInt32Ty(CurrF->getContext()), 0, /* Signed= */ false));
+-  auto Result = walkLogicalAccessChain(
++  walkLogicalAccessChain(
+       GEP,
+       [&Indices, &B](Type *EltType, uint64_t Index) {
+         Indices.push_back(
+@@ -957,12 +930,7 @@
+         insertAssignTypeIntrs(cast<Instruction>(Index), B);
+         Indices.push_back(Index);
+       });
+-  if (!Result) {
+-    recordAccessChainError(GEP, Result.takeError());
+-    return nullptr;
+-  }
+ 
+-  B.SetInsertPoint(&GEP);
+   SmallVector<Type *, 2> Types = {GEP.getType(), GEP.getOperand(0)->getType()};
+   SmallVector<Value *, 4> Args;
+   Args.push_back(B.getInt1(GEP.isInBounds()));
+@@ -975,20 +943,14 @@
+ }
+ 
+ Type *SPIRVEmitIntrinsicsImpl::getGEPTypeLogical(GetElementPtrInst *GEP) {
+-  if (InvalidGEPs.contains(GEP))
+-    return nullptr;
+ 
+   Type *CurType = GEP->getResultElementType();
+ 
+-  auto Result = walkLogicalAccessChain(
++  bool Interrupted = walkLogicalAccessChain(
+       *GEP, [&CurType](Type *EltType, uint64_t Index) { CurType = EltType; },
+       [&CurType](Type *EltType, Value *Index, uint64_t) { CurType = EltType; });
+-  if (!Result) {
+-    recordAccessChainError(*GEP, Result.takeError());
+-    return nullptr;
+-  }
+ 
+-  return *Result ? GEP->getResultElementType() : CurType;
++  return Interrupted ? GEP->getResultElementType() : CurType;
+ }
+ 
+ Type *SPIRVEmitIntrinsicsImpl::getGEPType(GetElementPtrInst *Ref) {
+@@ -2111,8 +2073,6 @@
+     SmallVector<Type *, 2> GepTypes = {ResultPtrTy, ScalarPtrTy};
+     Value *InBounds = B.getInt1(I.isInBounds());
+     Type *LanePointeeTy = getGEPType(&I);
+-    if (!LanePointeeTy)
+-      return nullptr;
+     Type *SrcElemTy = I.getSourceElementType();
+ 
+     // Pin the lane pointee type on the vector operand and on each extracted
+@@ -3939,8 +3899,6 @@
+     assert(I->use_empty() && "Dead instruction should not have any uses left");
+     I->eraseFromParent();
+   }
+-  if (AccessChainErrors)
+-    return true;
+ 
+   B.SetInsertPoint(Func.getEntryBlock().begin());
+   for (auto &GV : Func.getParent()->globals())
+@@ -4013,8 +3971,6 @@
+     // Visitors return either the original/newly created instruction for
+     // further processing, nullptr otherwise.
+     I = visit(*I);
+-    if (AccessChainErrors)
+-      return true;
+     if (!I)
+       continue;
+ 
+@@ -4376,24 +4332,16 @@
+   return Changed;
+ }
+ 
+-bool SPIRVEmitIntrinsicsImpl::preprocessModule(Module &M) {
++bool SPIRVEmitIntrinsicsImpl::foldStaticArrayAllocas(Module &M) {
+   bool Changed = false;
+-  bool IsLogical = TM.getSubtargetImpl()->isLogicalSPIRV();
+-  SmallVector<Constant *> GEPs;
+   Type *I32Ty = Type::getInt32Ty(M.getContext());
+   for (Function &F : M) {
+     if (F.isDeclaration())
+       continue;
+-    for (Instruction &I : instructions(F)) {
+-      if (IsLogical)
+-        for (Value *Op : I.operands())
+-          if (auto *CE = dyn_cast<ConstantExpr>(Op);
+-              CE && CE->getOpcode() == Instruction::GetElementPtr)
+-            GEPs.push_back(CE);
+-
+-      // Only entry-block allocations execute once per call, so a single array
+-      // object has the same meaning as the counted allocation. Allocations in
+-      // other blocks keep their lowering.
++    // Only entry-block allocations execute once per call, so a single array
++    // object has the same meaning as the counted allocation. Allocations in
++    // other blocks keep their lowering.
++    for (Instruction &I : F.getEntryBlock()) {
+       auto *AI = dyn_cast<AllocaInst>(&I);
+       if (!AI || !AI->isStaticAlloca() || !AI->isArrayAllocation() ||
+           AI->getAddressSpace() !=
+@@ -4409,21 +4357,13 @@
+       Changed = true;
+     }
+   }
+-  Changed |= convertMaskedMemIntrinsics(M);
+-
+-  // Materialize GEPs before pointer type inference so logical targets use
+-  // the typed access-chain lowering. Physical targets keep the existing
+-  // constant-expression handling.
+-  if (IsLogical) {
+-    // The list can contain both a constant and its users.
+-    Changed |= convertUsersOfConstantsToInstructions(
+-        GEPs, nullptr, /*RemoveDeadConstants=*/false, /*IncludeSelf=*/true);
+-  }
+   return Changed;
+ }
+ 
+ bool SPIRVEmitIntrinsicsImpl::runOnModule(Module &M) {
+-  bool Changed = preprocessModule(M);
++  // Fold static allocation counts before pointer type inference.
++  bool Changed = foldStaticArrayAllocas(M);
++  Changed |= convertMaskedMemIntrinsics(M);
+ 
+   parseFunDeclarations(M);
+   insertConstantsForFPFastMathDefault(M);
+@@ -4432,8 +4372,6 @@
+   TodoType.clear();
+   for (auto &F : M)
+     Changed |= runOnFunction(F);
+-  if (AccessChainErrors)
+-    report_fatal_error(Twine(toString(std::move(AccessChainErrors))), false);
+ 
+   // Specify function parameters after all functions were processed.
+   for (auto &F : M) {
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/SPIRV/SPIRVLegalizePointerCast.cpp b/llvm/lib/Target/SPIRV/SPIRVLegalizePointerCast.cpp
+--- a/llvm/lib/Target/SPIRV/SPIRVLegalizePointerCast.cpp
++++ b/llvm/lib/Target/SPIRV/SPIRVLegalizePointerCast.cpp
+@@ -351,17 +351,12 @@
+                                  Value *OriginalPtr) {
+     Type *OriginalElemTy = GR->findDeducedElementType(OriginalPtr);
+     const DataLayout &DL = B.getDataLayout();
+-    if (getResourceGetPointer(OriginalPtr) &&
+-        OriginalElemTy == Type::getInt8Ty(B.getContext()) &&
++    if (OriginalElemTy && OriginalElemTy == Type::getInt8Ty(B.getContext()) &&
+         AccessTy->isSingleValueType() && DL.getTypeStoreSize(AccessTy) > 1)
+       return true;
+ 
+     return false;
+   }
+-
+-  static bool canReinterpretType(Type *FromTy, Type *ToTy) {
+-    return FromTy && ToTy && CastInst::isBitCastable(FromTy, ToTy);
+-  }
+ 
+   bool tryReinterpretLoad(IRBuilder<> &B, Type *AccessTy, Value *OriginalPtr,
+                           Value *CastedPtr, LoadInst *IllegalLoad) {
+@@ -392,28 +387,17 @@
+       return true;
+     }
+ 
+-    Type *OriginalTy = GR->findDeducedElementType(OriginalPtr);
+-    if (!canReinterpretType(OriginalTy, AccessTy))
+-      report_fatal_error(
+-          "Cannot lower a pointer cast without equal-width numeric types for "
+-          "Logical SPIR-V",
+-          false);
+-    LoadInst *LI = B.CreateLoad(OriginalTy, OriginalPtr);
++    GR->buildAssignPtr(B, AccessTy, OriginalPtr);
++    LoadInst *LI = B.CreateLoad(AccessTy, OriginalPtr);
+     LI->setAlignment(Alignment);
+-    LI->setVolatile(IllegalLoad->isVolatile());
+-    LI->setAtomic(IllegalLoad->getOrdering(), IllegalLoad->getSyncScopeID());
+-    buildAssignType(B, OriginalTy, LI);
+-    Value *Loaded =
+-        B.CreateIntrinsic(Intrinsic::spv_bitcast, {AccessTy, OriginalTy}, {LI});
+-    buildAssignType(B, AccessTy, Loaded);
+-    GR->replaceAllUsesWith(IllegalLoad, Loaded, /* DeleteOld= */ true);
++    buildAssignType(B, AccessTy, LI);
++    GR->replaceAllUsesWith(IllegalLoad, LI, /* DeleteOld= */ true);
+     DeadInstructions.push_back(IllegalLoad);
+     return true;
+   }
+ 
+   bool tryReinterpretStore(IRBuilder<> &B, Type *AccessTy, Value *OriginalPtr,
+-                           Value *CastedPtr, Value *StoreSrc, Align Alignment,
+-                           Instruction *IllegalStore) {
++                           Value *CastedPtr, Value *StoreSrc, Align Alignment) {
+     Type *CastedElemTy = GR->findDeducedElementType(CastedPtr);
+     if (!CastedElemTy || CastedElemTy != AccessTy)
+       return false;
+@@ -434,21 +418,9 @@
+       return true;
+     }
+ 
+-    Type *OriginalTy = GR->findDeducedElementType(OriginalPtr);
+-    if (!canReinterpretType(AccessTy, OriginalTy))
+-      report_fatal_error(
+-          "Cannot lower a pointer cast without equal-width numeric types for "
+-          "Logical SPIR-V",
+-          false);
+-    Value *Stored = B.CreateIntrinsic(Intrinsic::spv_bitcast,
+-                                      {OriginalTy, AccessTy}, {StoreSrc});
+-    buildAssignType(B, OriginalTy, Stored);
+-    StoreInst *SI = B.CreateStore(Stored, OriginalPtr);
++    GR->buildAssignPtr(B, AccessTy, OriginalPtr);
++    StoreInst *SI = B.CreateStore(StoreSrc, OriginalPtr);
+     SI->setAlignment(Alignment);
+-    if (auto *OldSI = dyn_cast<StoreInst>(IllegalStore)) {
+-      SI->setVolatile(OldSI->isVolatile());
+-      SI->setAtomic(OldSI->getOrdering(), OldSI->getSyncScopeID());
+-    }
+     return true;
+   }
+ 
+@@ -770,8 +742,8 @@
+     auto ResultOpt = getPointerToFirstCompatibleType(B, Dst, Dst->getType(),
+                                                      Src->getType(), true);
+     if (!ResultOpt) {
+-      if (tryReinterpretStore(B, Src->getType(), Dst, CastedPtr, Src, Alignment,
+-                              IllegalStore))
++      if (tryReinterpretStore(B, Src->getType(), Dst, CastedPtr, Src,
++                              Alignment))
+         return;
+       llvm_unreachable("Failed to store to aggregate: "
+                        "Could not find compatible memory layout.");
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVEmitIntrinsics-logical-gep-dominance.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVEmitIntrinsics-logical-gep-dominance.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVEmitIntrinsics-logical-gep-dominance.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVEmitIntrinsics-logical-gep-dominance.ll
+@@ -1,32 +0,0 @@
+-; RUN: opt -S -passes=spirv-emit-intrinsics \
+-; RUN:   -mtriple=spirv1.6-unknown-vulkan1.3-compute %s -o - | FileCheck %s
+-
+-; Verify that the replacement llvm.spv.gep remains after its pointer operand.
+-%struct.MaskStruct = type { [4 x i32] }
+-
+-define void @logical_access_chain(
+-    target("spirv.VulkanBuffer", [0 x %struct.MaskStruct], 12, 0) %buffer,
+-    i32 %offset) {
+-entry:
+-  %index = zext i32 %offset to i64
+-  %base = call ptr addrspace(11)
+-      @llvm.spv.resource.getpointer.p11.tspirv.VulkanBuffer_a0s_struct.MaskStructs_12_0t.i32(
+-          target("spirv.VulkanBuffer", [0 x %struct.MaskStruct], 12, 0) %buffer,
+-          i32 0)
+-  %element = getelementptr [4 x i8], ptr addrspace(11) %base, i64 %index
+-  store i32 0, ptr addrspace(11) %element
+-  ret void
+-
+-; CHECK-LABEL: define void @logical_access_chain(
+-; CHECK: [[INDEX:%.*]] = zext i32 %offset to i64
+-; CHECK: [[BASE:%.*]] = call ptr addrspace(11) @llvm.spv.resource.getpointer
+-; CHECK: [[ELEMENT:%.*]] = call ptr addrspace(11)
+-; CHECK-SAME: @llvm.spv.gep.p11.p11(
+-; CHECK-SAME: ptr addrspace(11) [[BASE]]
+-; CHECK-SAME: i64 [[INDEX]])
+-; CHECK: store i32 0, ptr addrspace(11) [[ELEMENT]]
+-}
+-
+-declare ptr addrspace(11)
+-    @llvm.spv.resource.getpointer.p11.tspirv.VulkanBuffer_a0s_struct.MaskStructs_12_0t.i32(
+-        target("spirv.VulkanBuffer", [0 x %struct.MaskStruct], 12, 0), i32)
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-byte-array.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-byte-array.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-byte-array.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-byte-array.ll
+@@ -1,14 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower a pointer cast without equal-width numeric types for Logical SPIR-V
+-
+-@Values = external addrspace(3) global [8 x i8]
+-
+-define void @byteArray() {
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Values, i64 4), align 4
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-multiple-errors.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-multiple-errors.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-multiple-errors.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-multiple-errors.ll
+@@ -1,30 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower an access to vector padding for Logical SPIR-V (in function 'multipleErrors')
+-; CHECK-NEXT: Cannot lower a byte offset within a scalar or padding for Logical SPIR-V (in function 'multipleErrors')
+-; CHECK-NEXT: Cannot lower byte addressing with an unsized type for Logical SPIR-V (in function 'unsizedAfterErrors')
+-; CHECK-NOT: Cannot lower
+-
+-target datalayout = "e-p:64:64-i64:64-v96:128"
+-@Vectors = external addrspace(3) global [2 x <3 x i32>]
+-@Scalars = external addrspace(3) global [4 x i32]
+-%Opaque = type opaque
+-@Unsized = external addrspace(3) global %Opaque
+-
+-define void @multipleErrors() {
+-  %padding = getelementptr inbounds i8, ptr addrspace(3) @Vectors, i64 12
+-  %dependent = getelementptr i8, ptr addrspace(3) %padding, i64 1
+-  store i8 42, ptr addrspace(3) %dependent, align 1
+-  store i8 43, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Scalars, i64 1), align 1
+-  ret void
+-}
+-
+-define void @unsizedAfterErrors() {
+-  store i32 42, ptr addrspace(3) getelementptr
+-    (i8, ptr addrspace(3) @Unsized, i64 4), align 4
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-narrow-store.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-narrow-store.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-narrow-store.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-narrow-store.ll
+@@ -1,14 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower a pointer cast without equal-width numeric types for Logical SPIR-V
+-
+-@Values = external addrspace(3) global [4 x i32]
+-
+-define void @narrowStore() {
+-  store i16 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Values, i64 4), align 2
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-scalar-offset.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-scalar-offset.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-scalar-offset.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-scalar-offset.ll
+@@ -1,14 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower a byte offset within a scalar or padding for Logical SPIR-V
+-
+-@Values = external addrspace(3) global [4 x i32]
+-
+-define void @scalarOffset() {
+-  store i8 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Values, i64 1), align 1
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-struct-padding.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-struct-padding.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-struct-padding.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-struct-padding.ll
+@@ -1,14 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower a byte offset within a scalar or padding for Logical SPIR-V
+-
+-@Value = external addrspace(3) global { i32, i8 }
+-
+-define void @structPadding() {
+-  store i8 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Value, i64 6), align 1
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-unsized.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-unsized.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-unsized.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-unsized.ll
+@@ -1,15 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower byte addressing with an unsized type for Logical SPIR-V
+-
+-%Opaque = type opaque
+-@Value = external addrspace(3) global %Opaque
+-
+-define void @unsized() {
+-  store i32 42, ptr addrspace(3) getelementptr
+-    (i8, ptr addrspace(3) @Value, i64 4), align 4
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-vector-padding.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-vector-padding.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-vector-padding.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-vector-padding.ll
+@@ -1,15 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower an access to vector padding for Logical SPIR-V
+-
+-target datalayout = "e-p:64:64-i64:64-v96:128"
+-@Values = external addrspace(3) global [2 x <3 x i32>]
+-
+-define void @vectorPadding() {
+-  store i8 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Values, i64 12), align 1
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-wide-load.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-wide-load.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-wide-load.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast-invalid-wide-load.ll
+@@ -1,14 +0,0 @@
+-; RUN: not opt -S \
+-; RUN:   -passes='spirv-emit-intrinsics,function(spirv-legalize-pointer-cast)' \
+-; RUN:   -mtriple=spirv-unknown-vulkan-compute %s -o - \
+-; RUN:   2>&1 | FileCheck %s
+-
+-; CHECK: LLVM ERROR: Cannot lower a pointer cast without equal-width numeric types for Logical SPIR-V
+-
+-@Values = external addrspace(3) global [4 x i32]
+-
+-define i64 @wideLoad() {
+-  %value = load i64, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Values, i64 4), align 4
+-  ret i64 %value
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast.ll b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast.ll
+--- a/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast.ll
++++ b/llvm/test/CodeGen/SPIRV/passes/SPIRVLegalizePointerCast.ll
+@@ -362,135 +362,3 @@
+   store i16 %i16val, ptr addrspace(10) @outI16, align 2
+   ret void
+ }
+-
+-; A constant workgroup array index can become an i8 GEP followed by a ptrcast.
+-; Rebuild its byte offset as logical indices instead of byte-wise accesses.
+-
+-@WorkgroupValues = internal addrspace(3) global [257 x i32] zeroinitializer,
+-  align 4
+-
+-define void @workgroupStore() {
+-; CHECK-LABEL: define void @workgroupStore(
+-; CHECK-NOT: call {{.*}}@llvm.spv.ptrcast
+-; CHECK: %[[PTR:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(
+-; CHECK-SAME: i1 true, ptr addrspace(3) @WorkgroupValues, i32 0, i64 256)
+-; CHECK: call void @llvm.spv.assign.ptr.type.p3(
+-; CHECK-SAME: ptr addrspace(3) %[[PTR]], metadata i32 poison, i32 3)
+-; CHECK: store i32 42, ptr addrspace(3) %[[PTR]], align 4
+-entry:
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupValues, i64 1024), align 4
+-  ret void
+-}
+-
+-@WorkgroupNested = internal addrspace(3) global [2 x [4 x i32]]
+-  zeroinitializer, align 4
+-@WorkgroupStruct = internal addrspace(3) global { i32, [4 x i32] }
+-  zeroinitializer, align 4
+-@WorkgroupVectors = internal addrspace(3) global [2 x <4 x i32>]
+-  zeroinitializer, align 16
+-@WorkgroupFloat = internal addrspace(3) global float 0.0, align 4
+-
+-; Offset 16 reaches an array. The scalar access needs one more zero index.
+-define i32 @workgroupNested() {
+-; CHECK-LABEL: define i32 @workgroupNested(
+-; CHECK: %[[ARRAY:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) @WorkgroupNested, i32 0, i64 1)
+-; CHECK: %[[STORE:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) %[[ARRAY]], i32 0, i32 0)
+-; CHECK: store i32 42, ptr addrspace(3) %[[STORE]], align 4
+-; CHECK: %[[LOAD:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 false, ptr addrspace(3) %[[ARRAY]], i32 0, i32 0)
+-; CHECK: %[[VALUE:.*]] = load i32, ptr addrspace(3) %[[LOAD]], align 4
+-; CHECK: ret i32 %[[VALUE]]
+-entry:
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupNested, i64 16), align 4
+-  %value = load i32, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupNested, i64 16), align 4
+-  ret i32 %value
+-}
+-
+-define i32 @workgroupStruct() {
+-; CHECK-LABEL: define i32 @workgroupStruct(
+-; CHECK: %[[PTR:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) @WorkgroupStruct, i32 0, i64 1, i64 1)
+-; CHECK: store i32 42, ptr addrspace(3) %[[PTR]], align 4
+-; CHECK: %[[VALUE:.*]] = load i32, ptr addrspace(3) %[[PTR]], align 4
+-; CHECK: ret i32 %[[VALUE]]
+-entry:
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupStruct, i64 8), align 4
+-  %value = load i32, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupStruct, i64 8), align 4
+-  ret i32 %value
+-}
+-
+-define i32 @workgroupVectorElement() {
+-; CHECK-LABEL: define i32 @workgroupVectorElement(
+-; CHECK: %[[PTR:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) @WorkgroupVectors, i32 0, i64 1, i64 1)
+-; CHECK: store i32 42, ptr addrspace(3) %[[PTR]], align 4
+-; CHECK: %[[VALUE:.*]] = load i32, ptr addrspace(3) %[[PTR]], align 4
+-; CHECK: ret i32 %[[VALUE]]
+-entry:
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupVectors, i64 20), align 4
+-  %value = load i32, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupVectors, i64 20), align 4
+-  ret i32 %value
+-}
+-
+-define float @workgroupReinterpret(float %value) {
+-; CHECK-LABEL: define float @workgroupReinterpret(
+-; CHECK: %[[PTR:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) @WorkgroupValues, i32 0, i64 1)
+-; CHECK: %[[STORED:.*]] = call i32 @llvm.spv.bitcast.i32.f32(float %value)
+-; CHECK: store atomic volatile i32 %[[STORED]], ptr addrspace(3) %[[PTR]] release, align 4
+-; CHECK: %[[LOADED:.*]] = load atomic volatile i32, ptr addrspace(3) %[[PTR]] acquire, align 4
+-; CHECK: %[[RESULT:.*]] = call float @llvm.spv.bitcast.f32.i32(i32 %[[LOADED]])
+-; CHECK: ret float %[[RESULT]]
+-entry:
+-  store atomic volatile float %value, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @WorkgroupValues, i64 4) release, align 4
+-  %result = load atomic volatile float, ptr addrspace(3) getelementptr
+-    inbounds (i8, ptr addrspace(3) @WorkgroupValues, i64 4) acquire, align 4
+-  ret float %result
+-}
+-
+-define i32 @workgroupReinterpretScalar(i32 %value) {
+-; CHECK-LABEL: define i32 @workgroupReinterpretScalar(
+-; CHECK: %[[STORED:.*]] = call float @llvm.spv.bitcast.f32.i32(i32 %value)
+-; CHECK: store float %[[STORED]], ptr addrspace(3) @WorkgroupFloat, align 4
+-; CHECK: %[[LOADED:.*]] = load float, ptr addrspace(3) @WorkgroupFloat, align 4
+-; CHECK: %[[RESULT:.*]] = call i32 @llvm.spv.bitcast.i32.f32(float %[[LOADED]])
+-; CHECK: ret i32 %[[RESULT]]
+-entry:
+-  store i32 %value, ptr addrspace(3) @WorkgroupFloat, align 4
+-  %result = load i32, ptr addrspace(3) @WorkgroupFloat, align 4
+-  ret i32 %result
+-}
+-
+-define void @workgroupDynamic(i64 %index) {
+-; CHECK-LABEL: define void @workgroupDynamic(
+-; CHECK: %[[OFFSET:.*]] = shl i64 %index, 2
+-; CHECK: %[[INDEX:.*]] = udiv i64 %[[OFFSET]], 4
+-; CHECK: %[[PTR:.*]] = call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) @WorkgroupValues, i32 0, i64 %[[INDEX]])
+-; CHECK: store i32 42, ptr addrspace(3) %[[PTR]], align 4
+-entry:
+-  %offset = shl i64 %index, 2
+-  %ptr = getelementptr inbounds i8, ptr addrspace(3) @WorkgroupValues,
+-    i64 %offset
+-  store i32 42, ptr addrspace(3) %ptr, align 4
+-  ret void
+-}
+-
+-define void @workgroupNestedExpression() {
+-; CHECK-LABEL: define void @workgroupNestedExpression(
+-; CHECK: %[[VALUE:.*]] = load i32, ptr addrspace(3) {{%.*}}, align 4
+-; CHECK: call ptr addrspace(3) {{.*}}@llvm.spv.gep.p3.p3(i1 true, ptr addrspace(3) {{%.*}}, i32 0, i64 1)
+-; CHECK: store i32 %[[VALUE]], ptr addrspace(3) {{%.*}}, align 4
+-entry:
+-  %value = load i32, ptr addrspace(3) getelementptr inbounds inrange(0, 16)
+-    ([2 x [4 x i32]], ptr addrspace(3) @WorkgroupNested, i64 0, i64 1),
+-    align 4
+-  store i32 %value, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) getelementptr inbounds inrange(0, 16)
+-      ([2 x [4 x i32]], ptr addrspace(3) @WorkgroupNested, i64 0, i64 1),
+-      i64 4), align 4
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-array.ll b/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-array.ll
+--- a/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-array.ll
++++ b/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-array.ll
+@@ -28,6 +28,7 @@
+   
+   ; Dynamic index (stride 8)
+   ; CHECK: %[[#idx_dyn:]] = OpLoad %[[#int32]]
++  ; CHECK: %[[#access_dyn10:]] = OpInBoundsAccessChain %[[#ptr_arr5]] %[[#]] %[[#idx_dyn]]
+   ; CHECK: %[[#access_dyn:]] = OpInBoundsAccessChain %[[#ptr_vec]] %[[#]] %[[#idx_dyn]]
+   ; CHECK: %[[#val_dyn:]] = OpLoad %[[#vec2]] %[[#access_dyn]]
+   %gep_dyn = getelementptr inbounds nuw [8 x i8], ptr addrspace(10) @global_arr, i32 %idx
+@@ -42,7 +43,6 @@
+   store <2 x float> %val_const, ptr addrspace(10) @out_const
+ 
+   ; Dynamic index (stride 10)
+-  ; CHECK: %[[#access_dyn10:]] = OpInBoundsAccessChain %[[#ptr_arr5]] %[[#]] %[[#idx_dyn]]
+   ; CHECK: %[[#val_dyn10:]] = OpLoad %[[#arr5]] %[[#access_dyn10]]
+   %gep_dyn10 = getelementptr inbounds nuw [10 x i8], ptr addrspace(10) @global_arr_10, i32 %idx
+   %val_dyn10 = load [5 x i16], ptr addrspace(10) %gep_dyn10
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-constant.ll b/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-constant.ll
+--- a/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-constant.ll
++++ b/llvm/test/CodeGen/SPIRV/pointers/getelementptr-byte-addressing-constant.ll
+@@ -1,42 +0,0 @@
+-; RUN: llc -O0 -mtriple=spirv1.6-unknown-vulkan1.3-compute %s -o - \
+-; RUN:   | FileCheck %s
+-; RUN: %if spirv-tools %{ llc -O0 \
+-; RUN:   -mtriple=spirv1.6-unknown-vulkan1.3-compute %s -o - -filetype=obj \
+-; RUN:   | spirv-val --target-env vulkan1.3 %}
+-
+-; Check nested arrays, struct fields, vector elements, and value casts.
+-@Nested = external addrspace(3) global [2 x [4 x i32]]
+-@Struct = external addrspace(3) global { i32, [4 x i32] }
+-@Vectors = external addrspace(3) global [2 x <4 x i32>]
+-@Output = external addrspace(3) global float
+-
+-; CHECK-DAG: %[[#INT:]] = OpTypeInt 32 0
+-; CHECK-DAG: %[[#FLOAT:]] = OpTypeFloat 32
+-; CHECK-DAG: %[[#INT_PTR:]] = OpTypePointer Workgroup %[[#INT]]
+-
+-define void @main() #0 {
+-; CHECK: OpFunction
+-; CHECK: %[[#ARRAY:]] = OpInBoundsAccessChain
+-; CHECK: %[[#NESTED:]] = OpInBoundsAccessChain %[[#INT_PTR]] %[[#ARRAY]]
+-; CHECK: OpStore %[[#NESTED]]
+-; CHECK: %[[#FIELD:]] = OpInBoundsAccessChain %[[#INT_PTR]]
+-; CHECK: OpStore %[[#FIELD]]
+-; CHECK: %[[#ELEMENT:]] = OpInBoundsAccessChain %[[#INT_PTR]]
+-; CHECK: OpStore %[[#ELEMENT]]
+-; CHECK: %[[#LOADED:]] = OpLoad %[[#INT]] %[[#ELEMENT]]
+-; CHECK: %[[#CAST:]] = OpBitcast %[[#FLOAT]] %[[#LOADED]]
+-; CHECK: OpStore {{%[0-9]+}} %[[#CAST]]
+-entry:
+-  store i32 42, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Nested, i64 16), align 4
+-  store i32 43, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Struct, i64 8), align 4
+-  store i32 44, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Vectors, i64 20), align 4
+-  %value = load float, ptr addrspace(3) getelementptr inbounds
+-    (i8, ptr addrspace(3) @Vectors, i64 20), align 4
+-  store float %value, ptr addrspace(3) @Output, align 4
+-  ret void
+-}
+-
+-attributes #0 = { "hlsl.numthreads"="1,1,1" "hlsl.shader"="compute" }
