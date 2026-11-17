@@ -19,6 +19,13 @@
 //   - mi200 (gfx90a, HBM2e): the re-read is too expensive to duplicate, so the
 //     reduce stays a standalone fusion and the subtract ends up in its own
 //     wrapped fusion -> two fusions.
+//   - mi300 (gfx942, HBM3, 5.30 TB/s): same split form as mi200. The per-gfx
+//     MI300X bandwidth is still not enough to make the re-read pay off, which
+//     pins the flip between 5.30 and 7.78 TB/s.
+//   - mi450 and gfx1250_strict (640 GB/s): far below the threshold, so also the
+//     split form. Both target configs are placeholders copied from gfx1201, so
+//     these two expectations track a provisional bandwidth and must be
+//     rechecked once the real specs land.
 
 HloModule rf_8_256_1152
 
@@ -54,6 +61,24 @@ ENTRY main {
 // CHECK-mi200:      ENTRY
 // CHECK-mi200:      fusion({{.*}}), kind=kLoop, calls=%fused_add_reduce
 // CHECK-mi200:      fusion({{.*}}), kind=kLoop, calls=%wrapped_subtract_computation
+
+// mi300: 5.30 TB/s is below the duplication threshold -> same split as mi200.
+// CHECK-mi300:      %wrapped_subtract_computation
+// CHECK-mi300:      ENTRY
+// CHECK-mi300:      fusion({{.*}}), kind=kLoop, calls=%fused_add_reduce
+// CHECK-mi300:      fusion({{.*}}), kind=kLoop, calls=%wrapped_subtract_computation
+
+// mi450: placeholder 640 GB/s spec -> split form. Recheck when the spec lands.
+// CHECK-mi450:      %wrapped_subtract_computation
+// CHECK-mi450:      ENTRY
+// CHECK-mi450:      fusion({{.*}}), kind=kLoop, calls=%fused_add_reduce
+// CHECK-mi450:      fusion({{.*}}), kind=kLoop, calls=%wrapped_subtract_computation
+
+// gfx1250_strict: placeholder 640 GB/s spec -> split form. Recheck likewise.
+// CHECK-gfx1250_strict:      %wrapped_subtract_computation
+// CHECK-gfx1250_strict:      ENTRY
+// CHECK-gfx1250_strict:      fusion({{.*}}), kind=kLoop, calls=%fused_add_reduce
+// CHECK-gfx1250_strict:      fusion({{.*}}), kind=kLoop, calls=%wrapped_subtract_computation
 
 // CHECK-PTX: HloModule
 

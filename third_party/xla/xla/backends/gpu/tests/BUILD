@@ -748,6 +748,48 @@ xla_test(
     ],
 )
 
+# NVIDIA GPUs the hlo lit tests run on.
+_CUDA_LIT_GPUS = [
+    "a100_pcie_80",
+    "a6000",
+    "b200",
+    "h100_sxm",
+]
+
+# ROCm GPUs the hlo lit tests run on. Mirrors `rocm_gpus` in //xla:lit.bzl.
+_ROCM_LIT_GPUS = [
+    "gfx1250_strict",
+    "mi200",
+    "mi300",
+    "mi350",
+    "mi450",
+]
+
+# hlo lit tests that are NVIDIA-only. Skipped on every GPU in _ROCM_LIT_GPUS,
+# so a new ROCm GPU does not have to repeat them in its skip list below.
+_CUDA_ONLY_HLO_TESTS = [
+    "pdl.hlo",
+]
+
+_ROCM_ALLGPU_SKIPPED_HLO_TESTS = [
+    # TODO: re-enable once mi200.txtpb sets registers_per_block_limit.
+    "triton_scan_bf16.hlo",
+]
+
+# Per-GPU skips, on top of _CUDA_ONLY_HLO_TESTS. Each entry should say why.
+_ROCM_SKIPPED_HLO_TESTS = {
+    "mi200": [
+        # gfx90a cannot run this GEMM through hipBLASLt and the legacy cublas
+        # fallback is gone, so GemmRewriter fails the compile.
+        "dot_bf16.hlo",
+        "element_wise_row_vectorization.hlo",
+        "scatter_bf16.hlo",
+        "reduce_unnested.hlo",
+        "reduction_vectorization_sm_all.hlo",
+        "triton_async_copy.hlo",
+    ],
+}
+
 lit_test_suite_for_gpus(
     name = "hlo_lit_tests",
     srcs = enforce_glob(
@@ -783,57 +825,10 @@ lit_test_suite_for_gpus(
     cfg = "//xla:lit.cfg.py",
     default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     disabled_on_gpus = {
-        "mi200": [
-            "dot_bf16.hlo",
-            "element_wise_row_vectorization.hlo",
-            "scatter_bf16.hlo",
-            "reduce_unnested.hlo",
-            "reduction_vectorization_sm_all.hlo",
-            "triton_async_copy.hlo",
-            "pdl.hlo",
-            # TODO: re-enable once mi200.txtpb sets registers_per_block_limit.
-            "triton_scan_bf16.hlo",
-        ],
-        "mi300": [
-            "memory_bandwidth_fusion.hlo",
-            "dot_bf16.hlo",
-            "single_instruction.hlo",
-            "vectorization.hlo",
-            "pdl.hlo",
-        ],
-        "mi350": [
-            "dot_bf16.hlo",
-            "pdl.hlo",
-        ],
-        "mi450": [
-            # TODO: re-enable once mi450 memory_bandwidth is finalized.
-            "memory_bandwidth_fusion.hlo",
-            "vectorization.hlo",
-            "pdl.hlo",
-            # TODO: re-enable once mi450.txtpb sets registers_per_block_limit.
-            "triton_scan_bf16.hlo",
-        ],
-        "gfx1250_strict": [
-            # TODO: re-enable once gfx1250-strict memory_bandwidth is finalized.
-            "memory_bandwidth_fusion.hlo",
-            "vectorization.hlo",
-            "pdl.hlo",
-            # TODO: re-enable once gfx1250_strict.txtpb sets
-            # registers_per_block_limit.
-            "triton_scan_bf16.hlo",
-        ],
+        gpu: _ROCM_SKIPPED_HLO_TESTS.get(gpu, []) + _CUDA_ONLY_HLO_TESTS + _ROCM_ALLGPU_SKIPPED_HLO_TESTS
+        for gpu in _ROCM_LIT_GPUS
     },
-    gpus = [
-        "a100_pcie_80",
-        "a6000",
-        "b200",
-        "gfx1250_strict",
-        "h100_sxm",
-        "mi200",
-        "mi300",
-        "mi350",
-        "mi450",
-    ],
+    gpus = _CUDA_LIT_GPUS + _ROCM_LIT_GPUS,
     tags = ["no-oneapi"],
     tools = [
         "//xla/tools:hlo-opt",
