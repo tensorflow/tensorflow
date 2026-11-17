@@ -210,7 +210,7 @@ def embeddable_cuda_library(name, register_with_cudart = True, **kwargs):
     kwargs["copts"] = copts + no_compress_opts
     kwargs.update(if_google({"cuda_compress": False}, {}))
 
-    features = kwargs.pop("features", []) + ["-thin_lto", "cfi_opt_out"]
+    features = kwargs.pop("features", []) + ["-thin_lto", "-cfi"]
 
     raw_name = name + "_raw"
     redefined_name = name + "_redefined"
