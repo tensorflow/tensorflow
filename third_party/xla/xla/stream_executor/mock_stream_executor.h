@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -61,9 +60,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
   MOCK_METHOD(absl::StatusOr<ModuleHandle>, LoadModule,
               (const MultiModuleLoaderSpec& spec), (override));
-  MOCK_METHOD(absl::StatusOr<std::shared_ptr<DeviceAddressBase>>,
-              CreateOrShareConstant,
-              (Stream * stream, absl::Span<const uint8_t> content), (override));
   MOCK_METHOD(DeviceAddressBase, Allocate,
               (uint64_t size, int64_t memory_space), (override));
   MOCK_METHOD(void, Deallocate, (DeviceAddressBase * mem), (override));

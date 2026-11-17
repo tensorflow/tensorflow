@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -42,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hip/hip_version.h"
@@ -95,7 +93,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -114,11 +111,6 @@ hipDeviceptr_t AsROCmDevicePtr(const DeviceAddressBase& gpu_mem) {
 // See description on const version above.
 hipDeviceptr_t AsROCmDevicePtr(DeviceAddressBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
-}
-
-absl::uint128 Fingerprint128(const absl::string_view s) {
-  auto fp = tsl::Fingerprint128(s);
-  return absl::MakeUint128(fp.high64, fp.low64);
 }
 
 bool ShouldLaunchDelayKernel() {
@@ -396,60 +388,6 @@ absl::StatusOr<DeviceAddressBase> RocmExecutor::GetMemoryRange(
   return absl::InternalError(
       absl::StrFormat("failed to get pointer into for device pointer %p; %s",
                       location.opaque(), ToString(result).c_str()));
-}
-
-absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
-RocmExecutor::CreateOrShareConstant(Stream* stream,
-                                    absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{shared_constants_mu_};
-  // We assume all constants are uniquely identified by this hash. In the
-  // (highly unlikely) event of a hash collision, the program will likely crash
-  // (because the cached constant that will be returned by mistake is unlikely
-  // to have the correct size).
-  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
-      reinterpret_cast<const char*>(content.data()), content.size()));
-  // Must insert nullptr first to get an iterator to the insertion point.
-  auto insert_result = shared_constants_.insert(
-      {fingerprint, std::weak_ptr<DeviceAddressBase>()});
-  auto it = insert_result.first;
-  bool was_already_in_cache = !insert_result.second;
-  std::shared_ptr<DeviceAddressBase> shared_constant;
-
-  if (was_already_in_cache) {
-    shared_constant = it->second.lock();
-  }
-
-  if (shared_constant == nullptr) {
-    // Either the constant wasn't found in the cache, or it was but its
-    // weak_ptr had expired.
-    DeviceAddressBase* new_constant =
-        new DeviceAddressBase(Allocate(content.size(), /*memory_space=*/0));
-    if (new_constant->opaque() == nullptr) {
-      return absl::InternalError(absl::StrFormat(
-          "Failed to allocate %d bytes for new constant", content.size()));
-    }
-
-    ABSL_RETURN_IF_ERROR(
-        stream->Memcpy(new_constant, content.data(), content.size()));
-    absl::Status status = stream->BlockHostUntilDone();
-    if (!status.ok()) {
-      Deallocate(new_constant);
-      status.Update(absl::InternalError(absl::StrFormat(
-          "Memcpy to device address %p failed", new_constant->opaque())));
-      return status;
-    }
-
-    // Capturing 'this' in the custom deleter means this executor must
-    // outlive all shared uses of this constant.
-    shared_constant = std::shared_ptr<DeviceAddressBase>(
-        new_constant, [this](DeviceAddressBase* p) {
-          Deallocate(p);
-          delete p;
-        });
-    it->second = std::weak_ptr<DeviceAddressBase>(shared_constant);
-  }
-
-  return shared_constant;
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>

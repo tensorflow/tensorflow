@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
@@ -206,12 +205,6 @@ class StreamExecutor {
   // for the loaded module. Otherwise, returns the error which has occurred.
   virtual absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Creates a shared constant using the content provided.
-  virtual absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
-  CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
 

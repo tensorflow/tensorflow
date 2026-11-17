@@ -69,11 +69,6 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
 
-  // Returns a shared constant for the given content, creating it on the device
-  // if it does not already exist.
-  absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
-      Stream* stream, absl::Span<const uint8_t> content) override;
-
   // Allocates memory of the given size (in bytes) in the specified memory
   // space. Returns a DeviceMemoryBase for the allocation, or a null pointer
   // on failure. Caller must deallocate using Deallocate().
@@ -196,15 +191,6 @@ class SyclExecutor : public gpu::GpuExecutor {
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
-
-  // Guards the shared constants map.
-  absl::Mutex shared_constants_mu_;
-
-  // On-device constants that can be shared between multiple executables. A
-  // pointer for a given constant will expire when no executables require use
-  // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
-      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Guards the alive streams map.
   absl::Mutex alive_gpu_streams_mu_;

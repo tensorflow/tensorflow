@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -43,7 +42,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -68,7 +66,6 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor::sycl {
 
@@ -246,12 +243,6 @@ absl::StatusOr<std::unique_ptr<sycl::kernel>> GetModuleFunction(
   sycl::kernel kernel = sycl::make_kernel<sycl::backend::ext_oneapi_level_zero>(
       {kernel_bundle, lz_kernel}, sycl_context);
   return std::make_unique<sycl::kernel>(kernel);
-}
-
-// Computes a 128-bit fingerprint for the given string.
-absl::uint128 Fingerprint128(const absl::string_view s) {
-  auto fp = tsl::Fingerprint128(s);
-  return absl::MakeUint128(fp.high64, fp.low64);
 }
 
 // Retrieves the device address and size of a global symbol from a Level Zero
@@ -576,64 +567,6 @@ absl::StatusOr<ModuleHandle> SyclExecutor::LoadModule(
   }
   return absl::InternalError(
       "SyclExecutor::LoadModule: No SPIR-V binary found, cannot load module.");
-}
-
-absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
-SyclExecutor::CreateOrShareConstant(Stream* stream,
-                                    absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{&shared_constants_mu_};
-  // We assume all constants are uniquely identified by this hash. In the
-  // (highly unlikely) event of a hash collision, the program will likely crash
-  // (because the cached constant that will be returned by mistake is unlikely
-  // to have the correct size).
-  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
-      reinterpret_cast<const char*>(content.data()), content.size()));
-  // Must insert nullptr first to get an iterator to the insertion point.
-  auto insert_result = shared_constants_.insert(
-      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
-  auto it = insert_result.first;
-  bool was_already_in_cache = !insert_result.second;
-  std::shared_ptr<DeviceMemoryBase> shared_constant;
-
-  if (was_already_in_cache) {
-    shared_constant = it->second.lock();
-  }
-
-  if (shared_constant == nullptr) {
-    // Either the constant wasn't found in the cache, or it was but its
-    // weak_ptr had expired.
-    DeviceMemoryBase* new_constant =
-        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
-    if (new_constant->opaque() == nullptr) {
-      return absl::InternalError(
-          absl::StrFormat("SyclExecutor::CreateOrShareConstant: Failed to "
-                          "allocate %d bytes for new constant",
-                          content.size()));
-    }
-
-    ABSL_RETURN_IF_ERROR(
-        stream->Memcpy(new_constant, content.data(), content.size()));
-    absl::Status status = stream->BlockHostUntilDone();
-    if (!status.ok()) {
-      Deallocate(new_constant);
-      status.Update(absl::InternalError(
-          absl::StrFormat("SyclExecutor::CreateOrShareConstant: Memcpy to "
-                          "device address %p failed",
-                          new_constant->opaque())));
-      return status;
-    }
-
-    // Capturing 'this' in the custom deleter means this executor must
-    // outlive all shared uses of this constant.
-    shared_constant = std::shared_ptr<DeviceMemoryBase>(
-        new_constant, [this](DeviceMemoryBase* p) {
-          Deallocate(p);
-          delete p;
-        });
-    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
-  }
-
-  return shared_constant;
 }
 
 DeviceMemoryBase SyclExecutor::Allocate(uint64_t size, int64_t memory_space) {

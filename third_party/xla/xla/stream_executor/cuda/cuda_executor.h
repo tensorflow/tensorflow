@@ -19,7 +19,6 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -115,8 +113,6 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
-  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
-      Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceAddressBase* mem) override;
   blas::BlasSupport* AsBlas() override;
@@ -327,13 +323,6 @@ class CudaExecutor : public GpuExecutor {
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
-
-  absl::Mutex shared_constants_mu_;
-  // On-device constants that can be shared between multiple executables. A
-  // pointer for a given constant will expire when no executables require use
-  // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
-      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   struct LoadedModule {
     CUmodule module = nullptr;
