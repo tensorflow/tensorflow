@@ -42,8 +42,8 @@ constexpr char kSectionSplitter[] =
 const int kMaxContentDumpCnt = 5;
 
 // Returns string representation of the given tensor data up to 5 elements.
-const std::string get_tensor_data_str(const tflite::Tensor* tensor,
-                                      const tflite::Model* model) {
+std::string get_tensor_data_str(const tflite::Tensor* tensor,
+                                const tflite::Model* model) {
   std::stringstream ss;
   auto buffer_idx = tensor->buffer();
   if (buffer_idx != 0 && buffer_idx < model->buffers()->size()) {
@@ -52,7 +52,7 @@ const std::string get_tensor_data_str(const tflite::Tensor* tensor,
       return "";
     }
     ss << "[";
-    if (buffer->data()->size() != 0) {
+    if (!buffer->data()->empty()) {
       size_t type_size;
       switch (tensor->type()) {
         case tflite::TensorType_INT32:
@@ -111,8 +111,8 @@ const std::string get_tensor_data_str(const tflite::Tensor* tensor,
 }
 
 // Returns string representation of the given tensor of the subgraph.
-const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
-                             const tflite::Model* model = nullptr) {
+std::string tensor_str(const int tensor_idx, const int subgraph_idx,
+                       const tflite::Model* model = nullptr) {
   std::stringstream ss;
   if (subgraph_idx != 0 && tensor_idx != -1)
     ss << "T#" << subgraph_idx << "_" << tensor_idx;
@@ -131,7 +131,7 @@ const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
 }
 
 // Returns string representation of the given subgraph.
-const std::string subgraph_str(const int subgraph_idx) {
+std::string subgraph_str(const int subgraph_idx) {
   std::stringstream ss;
   ss << "Subgraph#" << subgraph_idx;
   return ss.str();
@@ -182,7 +182,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
   auto buffer_idx = tensor->buffer();
   if (buffer_idx != 0 && buffer_idx < model->buffers()->size()) {
     auto* buffer = model->buffers()->Get(buffer_idx);
-    if (buffer->data() && buffer->data()->size() != 0) {
+    if (buffer->data() && !buffer->data()->empty()) {
       out_stream << " RO " << buffer->data()->size() << " bytes";
       out_stream << ", buffer: " << buffer_idx;
       out_stream << ", data:" << get_tensor_data_str(tensor, model);
@@ -219,7 +219,7 @@ void dump_tensor_list(std::stringstream& out_stream,
 }
 
 // Returns the string representation of the given OperatorCode.
-const std::string get_op_name(const OperatorCode* op_code) {
+std::string get_op_name(const OperatorCode* op_code) {
   auto builtin_code = GetBuiltinCode(op_code);
   if (builtin_code != BuiltinOperator_CUSTOM) {
     return EnumNameBuiltinOperator(builtin_code);
@@ -267,7 +267,7 @@ void dump_model_summary(std::stringstream& out_stream,
       << "Your TFLite model has '" << subgraphs->size()
       << "' subgraph(s). In the subgraph description below,\nT# represents the "
          "Tensor numbers. ";
-  if (subgraphs->size() > 0 && subgraphs->Get(0)->operators()->size() > 0) {
+  if (!subgraphs->empty() && !subgraphs->Get(0)->operators()->empty()) {
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);
     const OperatorCode* first_op_code =
         model->operator_codes()->Get(first_op->opcode_index());
@@ -286,7 +286,7 @@ void dump_model_summary(std::stringstream& out_stream,
 void dump_model_signature_defs(std::stringstream& out_stream,
                                const ::tflite::Model* model) {
   auto* signatures = model->signature_defs();
-  if (signatures == nullptr || signatures->size() == 0) {
+  if (signatures == nullptr || signatures->empty()) {
     return;
   }
   out_stream << kSectionSplitter;
