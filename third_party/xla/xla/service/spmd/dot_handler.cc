@@ -4380,8 +4380,35 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
           HloSharding::V3ToV2Sharding(v2_output_sharding.named_sharding());
     }
 
-    PartitionedHloMX lhs_mx(lhs_operand, lhs_scale);
-    PartitionedHloMX rhs_mx(rhs_operand, rhs_scale);
+    // The sharded block-scaled dot infers the block size from the shard shapes,
+    // so each shard along the contracting dimension must hold whole blocks.
+    // Check against both scales since PartitionDot may reshard one operand to
+    // the other's contracting sharding. Otherwise, replicate that dimension.
+    const int64_t k_dim = lhs_operand.base_shape().dimensions().size() - 1;
+    const int64_t k = lhs_operand.base_shape().dimensions(k_dim);
+    auto holds_whole_blocks = [&](const PartitionedHlo& scale,
+                                  int64_t k_shards) {
+      const int64_t scale_k = scale.base_shape().dimensions(k_dim);
+      return scale_k > 0 && k % scale_k == 0 && scale_k % k_shards == 0;
+    };
+    auto reshard_to_whole_blocks = [&](const PartitionedHlo& operand) {
+      if (!operand.sharding().IsTiled()) {
+        return operand;
+      }
+      const int64_t k_shards = ShardCountAtDim(operand.sharding(), k_dim);
+      if (k_shards == 1 || (holds_whole_blocks(lhs_scale, k_shards) &&
+                            holds_whole_blocks(rhs_scale, k_shards))) {
+        return operand;
+      }
+      return operand.Reshard(
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              operand.sharding(), {k_dim}));
+    };
+    const PartitionedHlo lhs = reshard_to_whole_blocks(lhs_operand);
+    const PartitionedHlo rhs = reshard_to_whole_blocks(rhs_operand);
+
+    PartitionedHloMX lhs_mx(lhs, lhs_scale.Reshard(lhs.sharding()));
+    PartitionedHloMX rhs_mx(rhs, rhs_scale.Reshard(rhs.sharding()));
 
     ABSL_ASSIGN_OR_RETURN(
         partitioned_dot,

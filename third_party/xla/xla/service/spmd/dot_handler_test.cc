@@ -559,6 +559,75 @@ ENTRY entry {
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
+TEST_P(DotHandlerTest, MXCustomCall_MismatchedOperandAndScaleShardings) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,2]<=[2]}
+  lhs_scale = f8e8m0fnu[16,2] parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::AllReduce(op::CustomCall(
+                  {"__op$block_scaled_dot"}, op::Parameter(0),
+                  op::DynamicSlice(), op::DynamicSlice(), op::DynamicSlice())));
+}
+
+TEST_P(DotHandlerTest, MXCustomCall_ContractingShardNotMultipleOfBlockSize) {
+  // Each 16-wide lhs shard is smaller than the block size of 32, so the
+  // contracting dimension must be replicated.
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=4
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,4]<=[4]}
+  lhs_scale = f8e8m0fnu[16,2] parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/4));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::AllGather(op::Parameter(0)),
+                     op::Parameter(2), op::Parameter(1), op::Parameter(3)));
+}
+
+TEST_P(DotHandlerTest,
+       MXCustomCall_ContractingShardNotMultipleOfOtherBlockSize) {
+  // The lhs shards hold whole blocks of 16, but resharding rhs to match would
+  // split its blocks of 32, so the contracting dimension must be replicated.
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=4
+
+ENTRY e {
+  lhs = f8e4m3fn[16,64] parameter(0), sharding={devices=[1,4]<=[4]}
+  lhs_scale = f8e8m0fnu[16,4] parameter(1), sharding={devices=[1,4]<=[4]}
+  rhs = f8e4m3fn[4,64] parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,2] parameter(3), sharding={replicated}
+  ROOT d = f32[16,4] custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/4));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::AllGather(op::Parameter(0)),
+                     op::Parameter(2), op::AllGather(op::Parameter(1)),
+                     op::Parameter(3)));
+}
+
 TEST_P(DotHandlerTest, EinsumDisableRewriteForAgWithMultipleConsumers) {
   absl::string_view hlo_string = R"(
 HloModule test, entry_computation_layout={(bf16[2,2048,24576]{2,1,0}, bf16[24576,98304]{1,0}, bf16[24576,98304]{1,0})->bf16[2,2048,98304]{2,1,0}}, num_partitions=4
