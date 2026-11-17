@@ -6535,6 +6535,86 @@ ENTRY main {
   EXPECT_GT(CountCopies(*module->entry_computation()), 0);
 }
 
+TEST_F(CopyInsertionTest,
+       RegionAnalysisElidesConditionalPassthroughIntoAsyncOp) {
+  absl::string_view hlo_string = R"hlo(
+HloModule ConditionalPassthroughIntoAsyncOp
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  p = (s32[], f32[16]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  limit = s32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  p = (s32[], f32[16]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  acc = f32[16] get-tuple-element(p), index=1
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  next_acc = f32[16] add(acc, acc)
+  ROOT out = (s32[], f32[16]) tuple(next_i, next_acc)
+}
+
+branch_zero {
+  p = () parameter(0)
+  z = f32[] constant(0)
+  b = f32[16] broadcast(z), dimensions={}
+  ROOT out = (f32[16]) tuple(b)
+}
+
+branch_passthrough {
+  p = (f32[16]) parameter(0)
+  v = f32[16] get-tuple-element(p), index=0
+  ROOT out = (f32[16]) tuple(v)
+}
+
+rs_comp {
+  p = f32[16] parameter(0)
+  ROOT rs = f32[8] reduce-scatter(p), replica_groups={{0,1}}, dimensions={0},
+      to_apply=add_f32
+}
+
+ENTRY main {
+  branch_idx = s32[] parameter(0)
+  c0 = s32[] constant(0)
+  z = f32[] constant(0)
+  init_acc = f32[16] broadcast(z), dimensions={}
+  init = (s32[], f32[16]) tuple(c0, init_acc)
+  loop = (s32[], f32[16]) while(init), condition=while_cond, body=while_body
+  acc = f32[16] get-tuple-element(loop), index=1
+  empty = () tuple()
+  b1_arg = (f32[16]) tuple(acc)
+  cond = (f32[16]) conditional(branch_idx, empty, b1_arg),
+      branch_computations={branch_zero, branch_passthrough}
+  cond_out = f32[16] get-tuple-element(cond), index=0
+  rs_start = ((f32[16]), f32[8]) async-start(cond_out), calls=rs_comp
+  ROOT rs_done = f32[8] async-done(rs_start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  const HloComputation* branch_passthrough =
+      module->GetComputationWithName("branch_passthrough");
+  const HloComputation* branch_zero =
+      module->GetComputationWithName("branch_zero");
+  ASSERT_NE(branch_passthrough, nullptr);
+  ASSERT_NE(branch_zero, nullptr);
+  EXPECT_EQ(CountCopies(*branch_passthrough), 0);
+  EXPECT_EQ(CountCopies(*branch_zero), 0);
+}
+
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Values(int64_t{0},
