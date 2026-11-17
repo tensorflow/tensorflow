@@ -877,11 +877,14 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         ->IncrementBy(1);
   }
 
-  // Finally, create the saved model.
+  // Finally, create the saved model, retaining only `signature_def`.
+  tensorflow::MetaGraphDef slim_meta_graph_def;
+  slim_meta_graph_def.mutable_signature_def()->swap(
+      *meta_graph_def.mutable_signature_def());
   return {std::make_unique<SavedModelImpl>(
-      std::move(options), std::move(symbol_uids), std::move(meta_graph_def),
-      std::move(bef), std::move(bef_file), std::move(bytecode),
-      std::move(loaded_executable),
+      std::move(options), std::move(symbol_uids),
+      std::move(slim_meta_graph_def), std::move(bef), std::move(bef_file),
+      std::move(bytecode), std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
       std::move(runner_table), std::move(resource_array),
       std::move(graph_executor), inferred_model_type)};
