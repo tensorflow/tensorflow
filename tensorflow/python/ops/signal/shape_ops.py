@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -24,6 +25,18 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import util_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
+
+
+def _integer_to_int32(value):
+  """Casts an integer `Tensor` to int32, the dtype `frame` computes in.
+
+  The signal shape is int32, so this lets an int64 `frame_length` (or one that
+  is mixed with a Python int `frame_step`) work. Non-integer values are left
+  as they are.
+  """
+  if value.dtype.is_integer and value.dtype != dtypes.int32:
+    return math_ops.cast(value, dtypes.int32)
+  return value
 
 
 def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
@@ -114,8 +127,10 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
   with ops.name_scope(name, "frame", [signal, frame_length, frame_step,
                                       pad_value]):
     signal = ops.convert_to_tensor(signal, name="signal")
-    frame_length = ops.convert_to_tensor(frame_length, name="frame_length")
-    frame_step = ops.convert_to_tensor(frame_step, name="frame_step")
+    frame_length = _integer_to_int32(
+        ops.convert_to_tensor(frame_length, name="frame_length"))
+    frame_step = _integer_to_int32(
+        ops.convert_to_tensor(frame_step, name="frame_step"))
     axis = ops.convert_to_tensor(axis, name="axis")
 
     signal.shape.with_rank_at_least(1)

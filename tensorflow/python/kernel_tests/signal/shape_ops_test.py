@@ -294,6 +294,37 @@ class FrameTest(test.TestCase):
                              pad_end=False)
     self.assertEqual((2, 0, 4), result.shape)
 
+  def test_int64_frame_length_and_step(self):
+    signal = math_ops.range(10, dtype=dtypes.float32)
+    for pad_end in (False, True):
+      expected = self.evaluate(
+          shape_ops.frame(signal, 4, 2, pad_end=pad_end))
+      # A mix of int64 and int32 (Python int) values, and int64 for both.
+      for frame_length, frame_step in (
+          (constant_op.constant(4, dtypes.int64), 2),
+          (4, constant_op.constant(2, dtypes.int64)),
+          (np.int64(4), 2),
+          (constant_op.constant(4, dtypes.int64),
+           constant_op.constant(2, dtypes.int64)),
+      ):
+        result = shape_ops.frame(
+            signal, frame_length, frame_step, pad_end=pad_end)
+        self.assertAllEqual(expected, result)
+
+  def test_int64_frame_length_unknown_signal_shape(self):
+    if context.executing_eagerly():
+      return
+    signal = array_ops.placeholder_with_default(
+        math_ops.range(10, dtype=dtypes.float32), shape=[None])
+    frame_length = array_ops.placeholder_with_default(
+        constant_op.constant(4, dtypes.int64), shape=[])
+    for pad_end in (False, True):
+      expected = self.evaluate(
+          shape_ops.frame(math_ops.range(10, dtype=dtypes.float32), 4, 2,
+                          pad_end=pad_end))
+      result = shape_ops.frame(signal, frame_length, 2, pad_end=pad_end)
+      self.assertAllEqual(expected, result)
+
   def test_preserves_type(self):
     signal = math_ops.range(10, dtype=dtypes.float64)
     frame_length = 2
