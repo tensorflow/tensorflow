@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -33,12 +35,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/overflow_util.h"
 #include "xla/printer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -271,16 +276,90 @@ std::optional<IotaTileAssignment> TryToConvertV1ToV2(const TileAssignment& T) {
   return std::nullopt;
 }
 
+absl::StatusOr<int64_t> ValidateIotaDims(absl::Span<const int64_t> dims) {
+  if (dims.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Iota dimensions rank (%d) exceeds maximum (%d)",
+                        dims.size(), std::numeric_limits<int>::max()));
+  }
+  bool has_zero = false;
+  int64_t nonzero_product = 1;
+  for (int64_t dim : dims) {
+    if (dim < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Iota dimensions must be nonnegative, got %d", dim));
+    }
+    if (dim == 0) {
+      has_zero = true;
+      continue;
+    }
+    auto [next, overflow] = OverflowSafeMultiply(nonzero_product, dim);
+    if (overflow) {
+      return absl::InvalidArgumentError(
+          "Product of iota dimensions overflows int64_t");
+    }
+    nonzero_product = next;
+  }
+  return has_zero ? 0 : nonzero_product;
+}
+
+absl::Status ValidateIotaReshapeAndTranspose(
+    absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm, int64_t expected_elements) {
+  if (reshape_dims.empty()) {
+    return absl::InvalidArgumentError("Iota reshape_dims must not be empty");
+  }
+  if (reshape_dims.size() != transpose_perm.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Iota reshape_dims size (%d) must match transpose_perm size (%d)",
+        reshape_dims.size(), transpose_perm.size()));
+  }
+  ABSL_ASSIGN_OR_RETURN(const int64_t reshape_elements,
+                   ValidateIotaDims(reshape_dims));
+  if (reshape_elements != expected_elements) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Product of iota reshape_dims (%d) must match expected element count "
+        "(%d)",
+        reshape_elements, expected_elements));
+  }
+  absl::InlinedVector<bool, 6> seen_perm(transpose_perm.size(), false);
+  for (int perm_dim : transpose_perm) {
+    if (perm_dim < 0 ||
+        static_cast<size_t>(perm_dim) >= transpose_perm.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Iota transpose_perm entry %d out of range [0, %d)",
+                          perm_dim, transpose_perm.size()));
+    }
+    if (seen_perm[perm_dim]) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Iota transpose_perm entry %d is not unique", perm_dim));
+    }
+    seen_perm[perm_dim] = true;
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+/*static*/ absl::StatusOr<IotaTileAssignment> IotaTileAssignment::TryCreate(
     absl::Span<const int64_t> dims) {
-  return IotaTileAssignment(dims, {Product(dims)}, {0});
+  ABSL_ASSIGN_OR_RETURN(const int64_t product, ValidateIotaDims(dims));
+  return IotaTileAssignment(dims, {product}, {0});
 }
 
 /*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims) {
+  absl::StatusOr<IotaTileAssignment> iota = TryCreate(dims);
+  CHECK_OK(iota);
+  return *std::move(iota);
+}
+
+/*static*/ absl::StatusOr<IotaTileAssignment> IotaTileAssignment::TryCreate(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
     absl::Span<const int> transpose_perm) {
+  ABSL_ASSIGN_OR_RETURN(const int64_t expected_elements, ValidateIotaDims(dims));
+  ABSL_RETURN_IF_ERROR(ValidateIotaReshapeAndTranspose(reshape_dims, transpose_perm,
+                                                  expected_elements));
   absl::InlinedVector<int64_t, 6> canonicalized_dims(reshape_dims.begin(),
                                                      reshape_dims.end());
   absl::InlinedVector<int, 6> canonicalized_perm(transpose_perm.begin(),
@@ -295,6 +374,15 @@ std::optional<IotaTileAssignment> TryToConvertV1ToV2(const TileAssignment& T) {
     perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
+}
+
+/*static*/ IotaTileAssignment IotaTileAssignment::Create(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm) {
+  absl::StatusOr<IotaTileAssignment> iota =
+      TryCreate(dims, reshape_dims, transpose_perm);
+  CHECK_OK(iota);
+  return *std::move(iota);
 }
 
 /*static*/ IotaTileAssignment IotaTileAssignment::Create(
@@ -343,7 +431,9 @@ IotaTileAssignment::IotaTileAssignment(absl::Span<const int64_t> dims,
                                        absl::Span<const int> transpose_perm)
     : IotaTileAssignment(dims.size(), reshape_dims.size()) {
   DCHECK_EQ(reshape_dims.size(), transpose_perm.size());
-  std::memcpy(dims_ptr(), dims.data(), ndims_ * sizeof(int64_t));
+  if (ndims_ > 0) {
+    std::memcpy(dims_ptr(), dims.data(), ndims_ * sizeof(int64_t));
+  }
   DCHECK_EQ(num_elements(), Product(reshape_dims));
   std::memcpy(reshape_dims_ptr(), reshape_dims.data(),
               reshape_ndims_ * sizeof(int64_t));
@@ -559,9 +649,9 @@ std::string IotaTileAssignment::ToString() const {
 
 int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
   DCHECK_EQ(index.size(), ndims_);
-  int64_t linear_index = index[0];
+  int64_t linear_index = 0;
   auto dims = this->dims();
-  for (int64_t i = 1; i < ndims_; ++i) {
+  for (int64_t i = 0; i < ndims_; ++i) {
     linear_index *= dims[i];
     linear_index += index[i];
   }

@@ -228,7 +228,7 @@ TEST_F(HloShardingTest, FromProtoFailsWithNegativeOrOverflowingDimensions) {
   )pb");
   EXPECT_THAT(
       HloSharding::FromProto(proto),
-      StatusIs(absl::StatusCode::kInternal, HasSubstr("!any_overflow")));
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
 
   // 3 * 6148914691236517206 == 2^64 + 2, which wraps modulo 2^64 to 2.
   proto = ParseTextProtoOrDie<OpSharding>(R"pb(
@@ -238,7 +238,7 @@ TEST_F(HloShardingTest, FromProtoFailsWithNegativeOrOverflowingDimensions) {
   )pb");
   EXPECT_THAT(
       HloSharding::FromProto(proto),
-      StatusIs(absl::StatusCode::kInternal, HasSubstr("!any_overflow")));
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
 }
 
 TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
@@ -267,10 +267,11 @@ TEST_F(HloShardingTest, FromProtoFailsWithMoreLastTileDimsThanTileDims) {
 
 using TileTest = HloShardingTest;
 TEST_F(TileTest, FailsWithDuplicateDeviceInTileAssignment) {
-  HloSharding sharding =
-      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 0, 2, 3}));
-  EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
-                                     /*num_devices=*/4));
+  EXPECT_THAT(HloSharding::TryTile(Array<int64_t>({2, 2}, {0, 0, 2, 3})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 0 is not unique")));
+  EXPECT_DEATH((void)HloSharding::Tile(Array<int64_t>({2, 2}, {0, 0, 2, 3})),
+               "device 0 is not unique");
   // No need to test NamedSharding here as constructing Mesh with duplicate
   // device ids is not valid.
 }
@@ -1671,6 +1672,152 @@ TEST_F(HloShardingTest, UnreducedLeafNumTilesFails) {
                                 /*unreduced_axes=*/{"b"}));
   EXPECT_EQ(subgroup_v3.NumTiles(), 2);
   EXPECT_EQ(subgroup_v3.TotalNumTiles(), 4);
+}
+
+TEST_F(HloShardingTest, FromProtoRejectsDuplicateAndNegativeDevices) {
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_dimensions: 4
+                tile_assignment_devices: [ 0, 0, 2, 3 ]
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 0 is not unique")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_dimensions: 4
+                tile_assignment_devices: [ 2, 7, 5, 7 ]
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 7 is not unique")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_dimensions: 2
+                tile_assignment_devices: [ -1, 0 ]
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device -1 is negative")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_devices: -1
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device -1 is negative")));
+
+  // Sparse nonnegative unique device IDs and negative MAXIMAL IDs stay valid.
+  ASSERT_OK_AND_ASSIGN(
+      HloSharding sparse,
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: OTHER
+        tile_assignment_dimensions: [ 2, 1, 2 ]
+        tile_assignment_devices: [ 2, 3, 5, 7 ]
+      )pb")));
+  EXPECT_EQ(sparse.ToString(), "{devices=[2,1,2]2,3,5,7}");
+
+  ASSERT_OK_AND_ASSIGN(
+      HloSharding maximal_host,
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: MAXIMAL
+        tile_assignment_devices: -1
+      )pb")));
+  EXPECT_TRUE(maximal_host.IsSingleDevice());
+}
+
+TEST_F(HloShardingTest, FromProtoRejectsMalformedTileAssignments) {
+  // (2^62 + 1) * 4 wraps modulo 2^64 to 4 if overflow is not caught.
+  EXPECT_THAT(
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: OTHER
+        tile_assignment_dimensions: [ 4611686018427387905, 4 ]
+        tile_assignment_devices: [ 0, 1, 2, 3 ]
+      )pb")),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
+
+  EXPECT_THAT(
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: OTHER
+        tile_assignment_dimensions: 4
+        iota_reshape_dims: [ 4611686018427387905, 4 ]
+        iota_transpose_perm: [ 0, 1 ]
+      )pb")),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("overflows")));
+
+  EXPECT_THAT(
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: OTHER
+        tile_assignment_dimensions: 4
+        iota_reshape_dims: [ -2, -2 ]
+        iota_transpose_perm: [ 0, 1 ]
+      )pb")),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("nonnegative")));
+
+  EXPECT_THAT(
+      HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+        type: OTHER
+        tile_assignment_dimensions: 6
+        iota_reshape_dims: [ 2, 3 ]
+        iota_transpose_perm: [ 0, 0 ]
+      )pb")),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("not unique")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_dimensions: 1
+                iota_reshape_dims: [ 1, 1 ]
+                iota_transpose_perm: [ -1, 0 ]
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("transpose_perm")));
+
+  OpSharding invalid_subgroup_enum = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: [ 2, 2 ]
+    tile_assignment_devices: [ 0, 1, 2, 3 ]
+  )pb");
+  invalid_subgroup_enum.mutable_last_tile_dims()->Add(12345);
+  EXPECT_THAT(HloSharding::FromProto(invalid_subgroup_enum),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Invalid subgroup sharding type")));
+
+  EXPECT_THAT(HloSharding::FromProto(ParseTextProtoOrDie<OpSharding>(R"pb(
+                type: OTHER
+                tile_assignment_dimensions: [ 2, 2 ]
+                tile_assignment_devices: [ 0, 1, 2, 3 ]
+                last_tile_dims: [ TUPLE ]
+              )pb")),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported subgroup sharding type")));
+}
+
+TEST_F(HloShardingTest, FallibleTiledFactoriesEnforceInvariants) {
+  EXPECT_THAT(HloSharding::TryTile(Array<int64_t>({4}, {0, 0, 2, 3})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 0 is not unique")));
+  EXPECT_THAT(HloSharding::TryTile(Array<int64_t>({2}, {-1, 0})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device -1 is negative")));
+  EXPECT_THAT(HloSharding::TryTile(Array<int64_t>({0})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must be positive")));
+  EXPECT_THAT(
+      HloSharding::TryIotaTile({4}, {2, 2}, {0, 0}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("not unique")));
+  EXPECT_THAT(
+      HloSharding::TryPartialTile(TileAssignment(absl::Span<const int64_t>{})),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("at least one dimension")));
+  EXPECT_THAT(HloSharding::TryPartialTile(Array<int64_t>({2, 2}, {0, 1, 1, 3})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 1 is not unique")));
+  EXPECT_THAT(
+      HloSharding::TrySubgroup(TileAssignment({2, 1}), {OpSharding::TUPLE}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unsupported subgroup sharding type")));
+  ASSERT_OK_AND_ASSIGN(HloSharding scalar_iota, HloSharding::TryIotaTile({}));
+  EXPECT_EQ(scalar_iota.tile_assignment()(absl::Span<const int64_t>{}), 0);
+  EXPECT_OK(HloSharding::TryIotaTile({1, 1}));
 }
 
 }  // namespace

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -56,6 +57,8 @@ class IotaTileAssignment {
   // Create a trivial (i.e. the device array is a trivial iota without reshape
   // and transpose) IotaTileAssignment with given dimensions.
   static IotaTileAssignment Create(absl::Span<const int64_t> dims);
+  static absl::StatusOr<IotaTileAssignment> TryCreate(
+      absl::Span<const int64_t> dims);
   // Creates an IotaTileAssignment canonicalizing `reshape_dims` and
   // `transpose_perm`. More specifically the tile assignment array is as if it
   // is produced by the following numpy code:
@@ -75,6 +78,9 @@ class IotaTileAssignment {
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    absl::Span<const int64_t> reshape_dims,
                                    absl::Span<const int> transpose_perm);
+  static absl::StatusOr<IotaTileAssignment> TryCreate(
+      absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+      absl::Span<const int> transpose_perm);
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    const MeshProto::IotaTransform& transform);
 

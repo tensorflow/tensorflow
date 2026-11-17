@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -91,37 +92,49 @@ class HloSharding {
                                   absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
-  // specified by `tile_assignment`.
+  // specified by `tile_assignment`. Tile dimensions must be positive, and
+  // explicit device IDs must be nonnegative and unique.
   static HloSharding Tile(TileAssignment tile_assignment,
-                          absl::Span<const OpMetadata> metadata = {}) {
-    return HloSharding(std::move(tile_assignment),
-                       /*replicate_on_last_tile_dim=*/false, metadata);
-  }
+                          absl::Span<const OpMetadata> metadata = {});
+  static absl::StatusOr<HloSharding> TryTile(
+      TileAssignment tile_assignment,
+      absl::Span<const OpMetadata> metadata = {});
   static HloSharding Tile(Array<int64_t> tile_assignment,
                           absl::Span<const OpMetadata> metadata = {}) {
-    return HloSharding(TileAssignment(std::make_shared<const Array<int64_t>>(
-                           std::move(tile_assignment))),
-                       /*replicate_on_last_tile_dim=*/false, metadata);
+    return Tile(TileAssignment(std::make_shared<const Array<int64_t>>(
+                    std::move(tile_assignment))),
+                metadata);
+  }
+  static absl::StatusOr<HloSharding> TryTile(
+      Array<int64_t> tile_assignment,
+      absl::Span<const OpMetadata> metadata = {}) {
+    return TryTile(TileAssignment(std::make_shared<const Array<int64_t>>(
+                       std::move(tile_assignment))),
+                   metadata);
   }
   // Similar to `Tile` but use IotaTileAssignment format.
   static HloSharding IotaTile(absl::Span<const int64_t> tile_assignment_dims,
-                              absl::Span<const OpMetadata> metadata = {}) {
-    return HloSharding(TileAssignment(tile_assignment_dims),
-                       /*replicate_on_last_tile_dim=*/false, metadata);
-  }
+                              absl::Span<const OpMetadata> metadata = {});
+  static absl::StatusOr<HloSharding> TryIotaTile(
+      absl::Span<const int64_t> tile_assignment_dims,
+      absl::Span<const OpMetadata> metadata = {});
   static HloSharding IotaTile(absl::Span<const int64_t> tile_assignment_dims,
                               absl::Span<const int64_t> reshape_dims,
                               absl::Span<const int> transpose_perm,
-                              absl::Span<const OpMetadata> metadata = {}) {
-    return HloSharding(
-        TileAssignment(tile_assignment_dims, reshape_dims, transpose_perm),
-        /*replicate_on_last_tile_dim=*/false, metadata);
-  }
+                              absl::Span<const OpMetadata> metadata = {});
+  static absl::StatusOr<HloSharding> TryIotaTile(
+      absl::Span<const int64_t> tile_assignment_dims,
+      absl::Span<const int64_t> reshape_dims,
+      absl::Span<const int> transpose_perm,
+      absl::Span<const OpMetadata> metadata = {});
 
   // Creates a partially replicated tiled sharding with device-level tile
   // assignment, where the last dimension is the additional replication
   // dimension. Replication group members will be sorted.
   static HloSharding PartialTile(
+      const TileAssignment& tile_assignment_last_dim_replicate,
+      absl::Span<const OpMetadata> metadata = {});
+  static absl::StatusOr<HloSharding> TryPartialTile(
       const TileAssignment& tile_assignment_last_dim_replicate,
       absl::Span<const OpMetadata> metadata = {});
   static HloSharding PartialTile(
@@ -131,6 +144,13 @@ class HloSharding {
                            std::move(tile_assignment_last_dim_replicate))),
                        metadata);
   }
+  static absl::StatusOr<HloSharding> TryPartialTile(
+      Array<int64_t> tile_assignment_last_dim_replicate,
+      absl::Span<const OpMetadata> metadata = {}) {
+    return TryPartialTile(TileAssignment(std::make_shared<const Array<int64_t>>(
+                              std::move(tile_assignment_last_dim_replicate))),
+                          metadata);
+  }
 
   // Creates a subgroup sharding with device-level tile assignment, the
   // sharding type of each subgroup is defined by subgroup_types. When creating
@@ -138,12 +158,24 @@ class HloSharding {
   static HloSharding Subgroup(const TileAssignment& tile_assignment,
                               absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {});
+  static absl::StatusOr<HloSharding> TrySubgroup(
+      const TileAssignment& tile_assignment,
+      absl::Span<const OpSharding::Type> subgroup_types,
+      absl::Span<const OpMetadata> metadata = {});
   static HloSharding Subgroup(Array<int64_t> tile_assignment,
                               absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {}) {
     return Subgroup(TileAssignment(std::make_shared<const Array<int64_t>>(
                         std::move(tile_assignment))),
                     subgroup_types, metadata);
+  }
+  static absl::StatusOr<HloSharding> TrySubgroup(
+      Array<int64_t> tile_assignment,
+      absl::Span<const OpSharding::Type> subgroup_types,
+      absl::Span<const OpMetadata> metadata = {}) {
+    return TrySubgroup(TileAssignment(std::make_shared<const Array<int64_t>>(
+                           std::move(tile_assignment))),
+                       subgroup_types, metadata);
   }
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
