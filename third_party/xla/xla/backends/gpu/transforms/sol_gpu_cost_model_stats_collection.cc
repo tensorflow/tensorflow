@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
+#include "xla/backends/gpu/transforms/sol_gpu_cost_model_stats_collection.h"
 
 #include <cstdint>
 #include <memory>

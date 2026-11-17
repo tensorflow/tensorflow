@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/matmul_ptable_stats_collection.h"
+#include "xla/backends/gpu/transforms/matmul_ptable_stats_collection.h"
 
 #include <memory>
 #include <string>

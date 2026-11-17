@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
+#include "xla/backends/gpu/transforms/gpu_cost_model_stats_collection.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"

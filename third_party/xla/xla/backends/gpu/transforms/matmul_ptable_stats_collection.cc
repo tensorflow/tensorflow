@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/collective_ptable_stats_collection.h"
+#include "xla/backends/gpu/transforms/matmul_ptable_stats_collection.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -27,25 +28,27 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/model/sol_gpu_cost_model.h"
+#include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 namespace {
+
+constexpr absl::string_view kPerfTablesModelName = "perf-table-model";
 
 absl::StatusOr<HloInstructionProfileList> CollectProfiles(
     const std::string& perf_table_path,
@@ -63,44 +66,53 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
   return profile.entries().at(key);
 }
 
+absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
+                                absl::string_view reification_name) {
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr.backend_config<GpuBackendConfig>());
+  ReificationCost& reification_cost = *gpu_config.add_reification_cost();
+  reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
+  *reification_cost.mutable_name() = reification_name;
+  return instr.set_backend_config(gpu_config);
+}
+
+absl::Status MaybeRecordPerfTablesForDotsAndCustomCalls(
+    const se::DeviceDescription& device_info, HloInstruction& instr,
+    MatmulInterpolator& interpolator) {
+  if (HloPredicateIsNotOp<HloOpcode::kCustomCall, HloOpcode::kDot>(&instr)) {
+    VLOG(2) << "Not a dot or custom call: " << instr.ToString();
+    return absl::OkStatus();
+  }
+  std::optional<absl::Duration> exec_time =
+      interpolator.EstimatedRuntime(instr);
+  if (!exec_time.has_value()) {
+    return absl::InternalError(
+        absl::StrCat("Cannot estimate runtime for: ", instr.ToString()));
+  }
+  return SetReificationCost(instr, *exec_time, kPerfTablesModelName);
+}
+
 }  // namespace
 
-absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
+absl::StatusOr<bool> MatmulPerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   ABSL_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
                    CollectProfiles(perf_table_path_, device_info_));
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<CollectiveInterpolator> interpolator,
-      CollectiveInterpolator::Create(
-          SolGPUCostModel::GetConfig(module, device_info_).gpus_per_node,
-          profiles, device_info_));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<MatmulInterpolator> interpolator,
+                   MatmulInterpolator::Create(profiles, device_info_));
+
   hlo_query::ForEachInstructionWithPred(
       *module,
-      [](const HloInstruction* instr) {
-        return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
-      },
+      HloPredicateIsOp<HloOpcode::kCustomCall, HloOpcode::kFusion,
+                       HloOpcode::kDot>,
       [&](HloInstruction* instr) {
-        // Generate exec time for a collective.
-        HloCollectiveInstruction* coll_instr =
-            Cast<HloCollectiveInstruction>(instr);
-        auto estimation = interpolator->EstimatedRuntime(*coll_instr);
-        if (!estimation.ok()) {
-          LOG(WARNING) << "No estimation for: " << coll_instr->ToString()
-                       << ". Reason: " << estimation.status();
-          return;
+        if (absl::Status status = MaybeRecordPerfTablesForDotsAndCustomCalls(
+                device_info_, *instr, *interpolator);
+            !status.ok()) {
+          VLOG(1) << "Cannot record perf tables stats data: "
+                  << instr->ToString() << ". Status: " << status;
         }
-        absl::Duration exec_time = *estimation;
-
-        // Set it in the `CollectiveBackendConfig`.
-        auto gpu_config = instr->backend_config<GpuBackendConfig>();
-        CHECK_OK(gpu_config.status())
-            << "Cannot parse backend config: " << instr->ToString();
-        auto reification_cost = gpu_config->add_reification_cost();
-        reification_cost->set_exec_time_us(
-            absl::ToDoubleMicroseconds(exec_time));
-        *reification_cost->mutable_name() = name();
-        CHECK_OK(instr->set_backend_config(*gpu_config));
       });
 
   return false;

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_
-#define XLA_SERVICE_GPU_MODEL_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -53,4 +53,4 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_MODEL_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_SOL_GPU_COST_MODEL_STATS_COLLECTION_H_

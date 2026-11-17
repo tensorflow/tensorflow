@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_
-#define XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_ASSIGNER_PASS_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_ASSIGNER_PASS_H_
 
 #include <functional>
 #include <memory>
@@ -159,4 +159,4 @@ class ConfigAssignerPass : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_AUTOTUNING_CONFIG_ASSIGNER_PASS_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_CONFIG_ASSIGNER_PASS_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_COLLECTIVE_PTABLE_STATS_COLLECTION_H_
-#define XLA_SERVICE_GPU_MODEL_COLLECTIVE_PTABLE_STATS_COLLECTION_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_
 
 #include <string>
 
@@ -27,15 +27,15 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class CollectivePerfTableStatsCollection : public HloModulePass {
+class MatmulPerfTableStatsCollection : public HloModulePass {
  public:
-  explicit CollectivePerfTableStatsCollection(
+  explicit MatmulPerfTableStatsCollection(
       absl::string_view perf_table_path,
       const se::DeviceDescription& device_info)
       : perf_table_path_(perf_table_path), device_info_(device_info) {}
 
   absl::string_view name() const override {
-    return "collective-perf-table-stats-collection";
+    return "matmul-perf-table-stats-collection";
   }
 
  protected:
@@ -50,4 +50,4 @@ class CollectivePerfTableStatsCollection : public HloModulePass {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_MODEL_COLLECTIVE_PTABLE_STATS_COLLECTION_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_MATMUL_PTABLE_STATS_COLLECTION_H_

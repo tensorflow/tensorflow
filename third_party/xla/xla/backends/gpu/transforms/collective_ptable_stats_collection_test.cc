@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/collective_ptable_stats_collection.h"
+#include "xla/backends/gpu/transforms/collective_ptable_stats_collection.h"
 
 #include <string>
 #include <utility>

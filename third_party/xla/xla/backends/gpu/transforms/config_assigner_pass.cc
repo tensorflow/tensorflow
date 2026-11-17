@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/config_assigner_pass.h"
+#include "xla/backends/gpu/transforms/config_assigner_pass.h"
 
 #include <algorithm>
 #include <memory>
