@@ -1,3 +1,17 @@
+--- a/python/test/gsan/test_allocator.py
++++ b/python/test/gsan/test_allocator.py
+@@ -696,7 +696,9 @@ def test_export_import_allocation_handles():
+ def _run_byte_pool_import_capacity_check():
+     device = torch.cuda.current_device()
+     block_size = 128 * 1024**2
+-    capacity = 128 * 1024**3
++    pool_size = gsan_testing.POOL_RESERVE_SIZE_BYTES
++    capacity = min(pool_size // 2, pool_size // 2 // 24)
++    capacity = 1 << (capacity.bit_length() - 1)
+     handle_type = ShareableHandleType.POSIX_FILE_DESCRIPTOR
+     with ExitStack() as cleanup:
+         real_ptr = gsan_malloc(block_size, device, shadow_granularity=1)
+
 --- a/python/triton/experimental/gsan/src/AllocatorCommon.h
 +++ b/python/triton/experimental/gsan/src/AllocatorCommon.h
 @@ -232,8 +232,14 @@ inline CUresult ensureContext(int device) {
@@ -20,13 +34,13 @@
 
 --- a/python/triton/experimental/gsan/src/GSan.h
 +++ b/python/triton/experimental/gsan/src/GSan.h
-@@ -17,7 +17,7 @@ struct LaunchState {
+@@ -15,7 +15,7 @@ struct LaunchState {
+ };
+ 
+ // Allocate 8 TiB per pool
+-static constexpr size_t kPoolReserveSize = 1ull << 43;
++static constexpr size_t kPoolReserveSize = 1ull << 36;
  // A normal/write-once pair for each power-of-two granularity from 1 to 16.
  // The low pool-index bit selects the mode; the remaining bits encode log2
- // granularity. Six unused slots keep the reservation a power of two.
--static constexpr size_t kPoolReserveSize = 1ull << 40;
-+static constexpr size_t kPoolReserveSize = 1ull << 36;
- static constexpr int kNumPools = 10;
- static constexpr size_t kReserveSize = 16 * kPoolReserveSize;
- // Default normal granularity. Write-once allocations default to one byte.
+ // granularity. Pool offsets are relative to the reservation base.
 

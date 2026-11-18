@@ -2,18 +2,18 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
 
 --- a/include/triton/Tools/LLVMOptions.h
 +++ b/include/triton/Tools/LLVMOptions.h
-@@ -5,6 +5,10 @@
- #include <string>
+@@ -6,6 +6,10 @@
  #include <utility>
  #include <vector>
-+
+ 
 +namespace llvm::cl {
 +class LibraryOptionsContext;
 +} // namespace llvm::cl
- 
++
  namespace mlir::triton::tools {
  
-@@ -41,6 +45,8 @@
+ // LLVM command line options (cl::opt and TableGen library options) are
+@@ -41,6 +45,8 @@ public:
    ScopedLLVMOptions(const ScopedLLVMOptions &) = delete;
    ScopedLLVMOptions &operator=(const ScopedLLVMOptions &) = delete;
  
@@ -33,7 +33,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
  #include "llvm/Support/raw_ostream.h"
  
  #include <condition_variable>
-@@ -25,6 +26,7 @@
+@@ -25,6 +26,7 @@ struct Registry {
    // The override set currently applied to LLVM's registries. Empty whenever
    // `users` is zero.
    Settings active;
@@ -41,7 +41,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    // Live scopes sharing `active`.
    unsigned users = 0;
    // Scopes waiting to replace `active`. While any is pending, new scopes do not
-@@ -101,13 +103,15 @@
+@@ -101,13 +103,15 @@ void applySettings(Registry &reg, Settings settings) {
    // handles TableGen library options, including codegen's start/stop passes,
    // and owns any argument strings retained by those options. Keep ignoring
    // unknown options, which may differ between LLVM revisions.
@@ -58,7 +58,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    reg.active.clear();
  }
  
-@@ -152,6 +156,11 @@
+@@ -152,6 +156,11 @@ ScopedLLVMOptions::~ScopedLLVMOptions() {
    reg.changed.notify_all();
  }
  
@@ -70,7 +70,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
  ExclusiveLLVMOptionAccess::ExclusiveLLVMOptionAccess() {
    Registry &reg = registry();
    std::unique_lock<std::mutex> lock(reg.mutex);
-@@ -168,6 +177,7 @@
+@@ -168,6 +177,7 @@ ExclusiveLLVMOptionAccess::~ExclusiveLLVMOptionAccess() {
    if (registryGeneration != reg.generation)
      return;
    llvm::cl::ResetAllOptionOccurrences();
@@ -81,7 +81,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
 
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -279,6 +279,7 @@
+@@ -231,6 +231,7 @@ createTargetMachine(llvm::Module *module, std::string proc,
    opt.MCOptions.AsmVerbose = true;
    opt.MCOptions.PreserveAsmComments = true;
    opt.MCOptions.ABIName = abi;
@@ -89,7 +89,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
        module->getTargetTriple(), proc, features, opt, llvm::Reloc::PIC_,
        std::nullopt,
-@@ -650,6 +651,7 @@
+@@ -599,6 +600,7 @@ void init_triton_llvm(py::module_ &m) {
          }
          llvm::TargetOptions opt;
          opt.MCOptions.ABIName = abi;
@@ -100,7 +100,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
 
 --- a/third_party/amd/backend/codegen/amdgpu_codegen.cc
 +++ b/third_party/amd/backend/codegen/amdgpu_codegen.cc
-@@ -194,6 +194,8 @@
+@@ -194,6 +194,8 @@ createTargetMachine(llvm::Module &module, const CodegenOptions *options,
    targetOptions.MCOptions.AsmVerbose = true;
    targetOptions.MCOptions.PreserveAsmComments = true;
    targetOptions.MCOptions.ABIName = options->abi;
@@ -112,7 +112,7 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
 
 --- a/unittest/Tools/LLVMOptionsTest.cpp
 +++ b/unittest/Tools/LLVMOptionsTest.cpp
-@@ -64,9 +64,15 @@
+@@ -64,9 +64,15 @@ class DummyTargetMachine : public llvm::TargetMachine {
  public:
    DummyTargetMachine()
        : llvm::TargetMachine(target(), "", llvm::Triple(), "", "",
@@ -129,4 +129,3 @@ Adapt ScopedLLVMOptions to LibraryOptionsContext after LLVM cl/1022503860.
    static const llvm::Target &target() {
      static const llvm::Target instance{};
      return instance;
-

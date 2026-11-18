@@ -1,6 +1,6 @@
 --- a/python/test/unit/language/test_core.py
 +++ b/python/test/unit/language/test_core.py
-@@ -1303,12 +1303,19 @@ def test_math_divide_op(expr, num_ctas, device):
+@@ -1302,12 +1302,19 @@ def test_math_divide_op(expr, num_ctas, device):
  @pytest.mark.parametrize("enable_fp_fusion", [False, True])
  def test_fdiv_approx(approx, reciprocal, enable_fp_fusion, device):
  

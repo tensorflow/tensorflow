@@ -1,64 +1,38 @@
 --- a/test/Conversion/warp_specialize_to_llvm.mlir
 +++ b/test/Conversion/warp_specialize_to_llvm.mlir
-@@ -257,11 +257,8 @@
- 
+@@ -285,7 +285,6 @@
    // CHECK: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
--  // CHECK-NEXT: llvm.br [[DEFAULT_PARTITION:\^.*]]
--  // CHECK: [[DEFAULT_PARTITION]]:
    // CHECK-NEXT: "default"
-   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
 -  // CHECK-NEXT: llvm.br [[AFTER:\^.*]]
  
    // AMD: [[WID:%.*]] = rocdl.wave.id : i32
    // AMD-NEXT: [[IS_DEFAULT:%.*]] = llvm.icmp "ult" [[WID]], [[C4]]
-@@ -328,11 +325,8 @@
- 
+@@ -348,7 +347,6 @@
    // AMD: rocdl.barrier
    // AMD-NEXT: rocdl.barrier
--  // AMD-NEXT: llvm.br [[DEFAULT_PARTITION:\^bb[0-9]+]]
--  // AMD: [[DEFAULT_PARTITION]]:
    // AMD-NEXT: "default"
-   // AMD-NEXT: rocdl.barrier
 -  // AMD-NEXT: llvm.br [[AFTER:\^bb[0-9]+]]
  
    "before"() : () -> ()
-   ttg.warp_specialize() attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4, 8, 10>}
-@@ -352,7 +346,6 @@
+   %false = llvm.mlir.constant(false) : i1
+@@ -371,7 +369,6 @@
      "partition2"() : () -> ()
      ttg.warp_return
    } : () -> ()
 -  // CHECK: [[AFTER]]:
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: "after"
  
-   // CHECK-NEXT: [[SMEM_BASE:%.*]] = llvm.getelementptr [[SMEM_ADDR]][32]
-@@ -373,7 +366,6 @@
+@@ -393,7 +390,6 @@
    // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
    // CHECK-NEXT: llvm.return
  
 -  // AMD: [[AFTER:\^bb[0-9]+]]:
+   // AMD-NEXT: rocdl.barrier
    // AMD-NEXT: "after"
  
-   // AMD-NEXT: [[SMEM_BASE:%.*]] = llvm.getelementptr [[SMEM_ADDR]][32]
-@@ -881,8 +873,6 @@
- 
-   // CHECK: nvvm.barrier id = [[C1]] aligned = false
-   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
--  // CHECK: llvm.br [[DEFAULT:\^.*]]
--  // CHECK: [[DEFAULT]]:
-   // CHECK-NEXT: "something"()[[[A:\^.*]], [[B:\^.*]]]
-   // CHECK: [[A]]:
-   // CHECK-NEXT: "A"
-@@ -907,8 +897,6 @@
- 
-   // AMD: rocdl.barrier
-   // AMD-NEXT: rocdl.barrier
--  // AMD: llvm.br [[DEFAULT:\^bb[0-9]+]]
--  // AMD: [[DEFAULT]]:
-   // AMD-NEXT: "something"()[[[A:\^bb[0-9]+]], [[B:\^bb[0-9]+]]]
-   // AMD: [[A]]:
-   // AMD-NEXT: "A"
-@@ -978,7 +966,6 @@
+@@ -991,7 +987,6 @@
    %0 = builtin.unrealized_conversion_cast %cap : !llvm.ptr<1> to !tt.ptr<i32>
    %1 = ttg.warp_specialize(%0) attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4>}
    default {
@@ -66,15 +40,82 @@
      ttg.warp_yield %0 : !tt.ptr<i32>
    }
    partition0(%arg1: !tt.ptr<i32>) num_warps(2) {
-@@ -986,9 +973,8 @@
+@@ -999,9 +994,8 @@
      %4 = llvm.load %3 : !llvm.ptr<1> -> i32
      ttg.warp_return
    } : (!tt.ptr<i32>) -> !tt.ptr<i32>
 -  // COMMON: [[AFTER]]([[OUT:%.*]]: !llvm.ptr<1>):
    %2 = builtin.unrealized_conversion_cast %1 : !tt.ptr<i32> to !llvm.ptr<1>
--  // COMMON-NEXT: "use"([[OUT]])
+-  // COMMON: "use"([[OUT]])
 +  // COMMON: "use"([[CAP]])
    "use"(%2) : (!llvm.ptr<1>) -> ()
    llvm.return
  }
-
+@@ -1056,12 +1050,16 @@
+     ttg.warp_yield
+   }
+   partition0(%arg0: i32, %arg1: !llvm.ptr<3>) num_warps(4) {
+-  // CHECK: ^bb4:
++  // CHECK: ^bb1:
++    // CHECK-NEXT: nvvm.barrier
+     // CHECK-NEXT: "use"([[CAP0]], [[CAP1]])
+-  // AMD: ^bb4:
++    // CHECK-NEXT: nvvm.barrier
++  // AMD: ^bb1:
++    // AMD-NEXT: rocdl.barrier
+     // AMD-NEXT: "use"([[CAP0]], [[CAP1]])
++    // AMD-NEXT: rocdl.barrier
+     "use"(%arg0, %arg1) : (i32, !llvm.ptr<3>) -> ()
+-    // COMMON-NEXT: llvm.br
++    // COMMON-NEXT: llvm.return
+     ttg.warp_return
+   } : (i32, !llvm.ptr<3>) -> ()
+   llvm.return
+@@ -1081,20 +1079,24 @@
+     ttg.warp_yield
+   }
+   partition0(%arg2: !llvm.ptr<3>, %arg3: i32) num_warps(4) {
+-  // CHECK: ^bb4:
++  // CHECK: ^bb1:
++    // CHECK-NEXT: nvvm.barrier
+     // CHECK-NEXT: [[ADD:%.*]] = llvm.add %arg0, %arg1 : i32
+     // CHECK-NEXT: [[MUL:%.*]] = llvm.mul [[ADD]], %arg1 : i32
+     // CHECK-NEXT: [[SUB:%.*]] = llvm.sub [[ADD]], [[MUL]] : i32
+     // CHECK-NEXT: [[PTR:%.*]] = llvm.getelementptr [[ADDR]][%arg0]
+     // CHECK-NEXT: "use"([[PTR]], [[SUB]])
+-  // AMD: ^bb4:
++    // CHECK-NEXT: nvvm.barrier
++  // AMD: ^bb1:
++    // AMD-NEXT: rocdl.barrier
+     // AMD-NEXT: [[ADD:%.*]] = llvm.add %arg0, %arg1 : i32
+     // AMD-NEXT: [[MUL:%.*]] = llvm.mul [[ADD]], %arg1 : i32
+     // AMD-NEXT: [[SUB:%.*]] = llvm.sub [[ADD]], [[MUL]] : i32
+     // AMD-NEXT: [[PTR:%.*]] = llvm.getelementptr [[ADDR]][%arg0]
+     // AMD-NEXT: "use"([[PTR]], [[SUB]])
++    // AMD-NEXT: rocdl.barrier
+     "use"(%arg2, %arg3) : (!llvm.ptr<3>, i32) -> ()
+-    // COMMON-NEXT: llvm.br
++    // COMMON-NEXT: llvm.return
+     ttg.warp_return
+   } : (!llvm.ptr<3>, i32) -> ()
+   llvm.return
+@@ -1201,8 +1203,7 @@
+ 
+   // CHECK: [[LOW]]:
+   // CHECK-NEXT: nvvm.setmaxregister decrease 24
+-  // CHECK-NEXT: llvm.br [[PARTITION0:\^bb[0-9]+]]
+-  // CHECK: [[LOW_DONE:\^bb[0-9]+]]:
++  // CHECK-NEXT: "partition0"()
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister increase 80
+ 
+@@ -1219,9 +1220,6 @@
+   // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
+   // CHECK-NEXT: nvvm.setmaxregister decrease 80
+ 
+-  // CHECK: [[PARTITION0]]:
+-  // CHECK-NEXT: "partition0"()
+-  // CHECK-NEXT: llvm.br [[LOW_DONE]]
+   // CHECK: [[PARTITION1]]:
+   // CHECK-NEXT: "partition1"()
+   // CHECK-NEXT: llvm.br [[HIGH_DONE]]

@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1354 @@
+@@ -0,0 +1,1356 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -667,6 +667,7 @@ new file mode 100644
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:GPUDialect",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:InferIntRangeCommon",
 +        "@llvm-project//mlir:InferTypeOpInterface",
 +        "@llvm-project//mlir:InliningUtils",
 +        "@llvm-project//mlir:LLVMCommonConversion",  # for Utility
@@ -939,6 +940,7 @@ new file mode 100644
 +        "@llvm-project//mlir:Analysis",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SideEffectInterfaces",
 +        "@llvm-project//mlir:TransformUtils",
@@ -2411,7 +2413,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,399 @@
+@@ -0,0 +1,400 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2475,6 +2477,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ControlFlowDialect",
 +        "@llvm-project//mlir:ConvertToLLVM",
 +        "@llvm-project//mlir:FuncTransforms",
++        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:GPUDialect",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:InferTypeOpInterface",
@@ -2914,7 +2917,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,571 @@
+@@ -0,0 +1,572 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -3059,6 +3062,7 @@ new file mode 100644
 +        "@llvm-project//mlir:LLVMCommonConversion",
 +        "@llvm-project//mlir:LLVMDialect",
 +        "@llvm-project//mlir:MathToLLVM",
++        "@llvm-project//mlir:NVGPUDialect",
 +        "@llvm-project//mlir:NVVMDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFToControlFlow",

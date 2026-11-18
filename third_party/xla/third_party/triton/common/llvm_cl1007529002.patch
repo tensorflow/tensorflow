@@ -2,7 +2,7 @@
 # for LLVM commit flipping -nvptx-allow-ftz-atomics default to false (cl/1007529002).
 --- a/test/Conversion/tritongpu_to_llvm.mlir
 +++ b/test/Conversion/tritongpu_to_llvm.mlir
-@@ -4651,9 +4651,9 @@
+@@ -4703,9 +4703,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, "ttg.tar
    // CHECK-LABEL: @scalar_atomic_float_ops
    // CHECK-NOT: llvm.cond_br
    // CHECK: atom.global.gpu.relaxed.add.noftz.f16
@@ -35,7 +35,7 @@
 
 --- a/test/TritonNvidiaGPU/bf16-atomics.mlir
 +++ b/test/TritonNvidiaGPU/bf16-atomics.mlir
-@@ -24,7 +24,7 @@
+@@ -24,7 +24,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32,
    }
    // CHECK-LABEL: @unmasked_bf16_add
    // CHECK-NOT: llvm.cond_br
@@ -47,7 +47,7 @@
 
 --- a/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/AtomicPTXBuilder.h
 +++ b/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/AtomicPTXBuilder.h
-@@ -186,10 +186,12 @@
+@@ -186,10 +186,12 @@ emitAtomicRMW(ConversionPatternRewriter &rewriter, Location loc,
    auto ordering = getMemoryOrdering(sem);
    if (!binOp || !ordering)
      return failure();
@@ -67,7 +67,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
-@@ -71,10 +71,12 @@
+@@ -71,10 +71,12 @@ FailureOr<Value> emitSharedAtomicRMW(ConversionPatternRewriter &rewriter,
      auto binOp = matchAtomicOp(rmwOp);
      if (!binOp)
        return failure();
