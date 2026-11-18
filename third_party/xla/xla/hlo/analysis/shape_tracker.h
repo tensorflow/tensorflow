@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
@@ -90,6 +92,77 @@ class ShapeTracker {
 
   const xla::Shape& input_shape() const { return input_shape_; }
   const xla::Shape& output_shape() const { return output_shape_; }
+
+  // Shape transformations that the tracker records. Each step is applied to
+  // the result of the previous one.
+  struct Reshape {
+    // Target dimensions.
+    std::vector<int64_t> dimensions;
+
+    bool operator==(const Reshape& other) const {
+      return dimensions == other.dimensions;
+    }
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Reshape& step) {
+      sink.Append("Reshape[");
+      sink.Append(absl::StrJoin(step.dimensions, ","));
+      sink.Append("]");
+    }
+  };
+  struct Transpose {
+    // As in HloTransposeInstruction: output dimension `i` is input dimension
+    // `permutation[i]`.
+    std::vector<int64_t> permutation;
+
+    bool operator==(const Transpose& other) const {
+      return permutation == other.permutation;
+    }
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Transpose& step) {
+      sink.Append("Transpose[");
+      sink.Append(absl::StrJoin(step.permutation, ","));
+      sink.Append("]");
+    }
+  };
+  struct Broadcast {
+    // Target dimensions.
+    std::vector<int64_t> dimensions;
+    // Maps each operand dimension to its index in `dimensions` (matching
+    // HloBroadcastInstruction::dimensions()).
+    std::vector<int64_t> broadcast_dimensions;
+
+    bool operator==(const Broadcast& other) const {
+      return dimensions == other.dimensions &&
+             broadcast_dimensions == other.broadcast_dimensions;
+    }
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Broadcast& step) {
+      sink.Append("Broadcast[");
+      sink.Append(absl::StrJoin(step.dimensions, ","));
+      sink.Append("]{");
+      sink.Append(absl::StrJoin(step.broadcast_dimensions, ","));
+      sink.Append("}");
+    }
+  };
+  // Collapses dimensions (the formal inverse of a broadcast).
+  struct Reduce {
+    // Sorted indices of the dimensions to collapse.
+    std::vector<int64_t> dimensions;
+
+    bool operator==(const Reduce& other) const {
+      return dimensions == other.dimensions;
+    }
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Reduce& step) {
+      sink.Append("Reduce[");
+      sink.Append(absl::StrJoin(step.dimensions, ","));
+      sink.Append("]");
+    }
+  };
+  using Step = std::variant<Reshape, Transpose, Broadcast, Reduce>;
+
+  // Appends `step`, which is applied to the current output.
+  absl::Status Append(const Step& step);
 
   // Appends operations to the tracker.
   absl::Status AppendTranspose(absl::Span<const int64_t> permutation);
@@ -180,19 +253,6 @@ class ShapeTracker {
   absl::StatusOr<HloInstruction*> ToInstructionChain(
       HloInstruction* inst, bool avoid_combining_reshapes = true) const;
 
-  struct Step {
-    enum class Type { kReshape, kTranspose, kBroadcast, kReduce };
-    Type type;
-    // For kReshape: target shape dimensions.
-    // For kTranspose: permutation of dimensions.
-    // For kBroadcast: target shape dimensions.
-    // For kReduce: sorted dimension indices to collapse.
-    std::vector<int64_t> dimensions;
-    // For kBroadcast: maps each operand dimension to its index in `dimensions`
-    // (matching HloBroadcastInstruction::dimensions()). Empty for other steps.
-    std::vector<int64_t> broadcast_dimensions = {};
-  };
-
   // Returns the sequence of simplified steps represented by this tracker.
   std::vector<Step> GetSteps(bool avoid_combining_reshapes = true) const;
 
@@ -209,6 +269,11 @@ class ShapeTracker {
 
  private:
   struct SlicePropagationResult;
+
+  // Prepends `step`, which is applied to a tensor with dimensions `input_dims`
+  // and has to produce the current input dimensions. Leaves the tracker
+  // unchanged on error.
+  absl::Status Prepend(const Step& step, absl::Span<const int64_t> input_dims);
 
   absl::StatusOr<std::vector<BufferView>> UnflattenOutputDimensions();
   static void TryFoldProjections(std::vector<BufferView>& projections);

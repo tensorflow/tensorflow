@@ -23,15 +23,18 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -821,24 +824,90 @@ absl::Status ShapeTracker::ConcatenateFrom(const ShapeTracker& other) {
         "tracker");
   }
 
-  for (const auto& step : other.GetSteps()) {
-    switch (step.type) {
-      case Step::Type::kReshape:
-        ABSL_RETURN_IF_ERROR(AppendReshape(step.dimensions));
-        break;
-      case Step::Type::kTranspose:
-        ABSL_RETURN_IF_ERROR(AppendTranspose(step.dimensions));
-        break;
-      case Step::Type::kBroadcast:
-        ABSL_RETURN_IF_ERROR(
-            AppendBroadcast(step.dimensions, step.broadcast_dimensions));
-        break;
-      case Step::Type::kReduce:
-        ABSL_RETURN_IF_ERROR(AppendReduce(step.dimensions));
-        break;
-    }
+  for (const Step& step : other.GetSteps()) {
+    ABSL_RETURN_IF_ERROR(Append(step));
   }
+  return absl::OkStatus();
+}
 
+absl::Status ShapeTracker::Append(const Step& step) {
+  return std::visit(
+      absl::Overload{
+          [this](const Reshape& s) { return AppendReshape(s.dimensions); },
+          [this](const Transpose& s) { return AppendTranspose(s.permutation); },
+          [this](const Broadcast& s) {
+            return AppendBroadcast(s.dimensions, s.broadcast_dimensions);
+          },
+          [this](const Reduce& s) { return AppendReduce(s.dimensions); },
+      },
+      step);
+}
+
+namespace {
+
+// Returns the steps that map the result of applying `step` to a tensor with
+// dimensions `input_dims` back to `input_dims`. Assumes that `step` is valid
+// for `input_dims`.
+std::vector<ShapeTracker::Step> Inverse(const ShapeTracker::Reshape& /*step*/,
+                                        absl::Span<const int64_t> input_dims) {
+  return {ShapeTracker::Reshape{
+      std::vector<int64_t>(input_dims.begin(), input_dims.end())}};
+}
+std::vector<ShapeTracker::Step> Inverse(
+    const ShapeTracker::Transpose& step,
+    absl::Span<const int64_t> /*input_dims*/) {
+  return {ShapeTracker::Transpose{InversePermutation(step.permutation)}};
+}
+std::vector<ShapeTracker::Step> Inverse(
+    const ShapeTracker::Broadcast& step,
+    absl::Span<const int64_t> /*input_dims*/) {
+  // Collapse the broadcasted dimensions and transpose the remaining ones into
+  // the order of the operand.
+  std::vector<int64_t> sorted_kept = step.broadcast_dimensions;
+  absl::c_sort(sorted_kept);
+  std::vector<int64_t> permutation;
+  permutation.reserve(step.broadcast_dimensions.size());
+  for (int64_t d : step.broadcast_dimensions) {
+    permutation.push_back(absl::c_lower_bound(sorted_kept, d) -
+                          sorted_kept.begin());
+  }
+  std::vector<ShapeTracker::Step> steps = {ShapeTracker::Reduce{
+      ComplementIndices(step.dimensions.size(), sorted_kept)}};
+  if (!IsIdentityPermutation(permutation)) {
+    steps.push_back(ShapeTracker::Transpose{std::move(permutation)});
+  }
+  return steps;
+}
+std::vector<ShapeTracker::Step> Inverse(const ShapeTracker::Reduce& step,
+                                        absl::Span<const int64_t> input_dims) {
+  std::vector<int64_t> kept_dimensions =
+      ComplementIndices(input_dims.size(), step.dimensions);
+  return {ShapeTracker::Broadcast{
+      std::vector<int64_t>(input_dims.begin(), input_dims.end()),
+      std::move(kept_dimensions)}};
+}
+
+}  // namespace
+
+absl::Status ShapeTracker::Prepend(const Step& step,
+                                   absl::Span<const int64_t> input_dims) {
+  // Check that `step` is valid for `input_dims` and maps them to the current
+  // input.
+  ShapeTracker forward(
+      ShapeUtil::MakeShape(input_shape_.element_type(), input_dims));
+  ABSL_RETURN_IF_ERROR(forward.Append(step));
+  if (forward.output_shape_.dimensions() != input_shape_.dimensions()) {
+    return absl::InvalidArgumentError(
+        "The step does not produce the input of the tracker");
+  }
+  ABSL_ASSIGN_OR_RETURN(ShapeTracker result, GetInverted());
+  std::vector<Step> inverse_steps =
+      std::visit([&](const auto& s) { return Inverse(s, input_dims); }, step);
+  for (const Step& inverse_step : inverse_steps) {
+    ABSL_RETURN_IF_ERROR(result.Append(inverse_step));
+  }
+  ABSL_RETURN_IF_ERROR(result.Invert());
+  *this = std::move(result);
   return absl::OkStatus();
 }
 
@@ -944,21 +1013,25 @@ absl::Status ShapeTracker::Invert() {
 
 absl::Status ShapeTracker::PrependTranspose(
     absl::Span<const int64_t> permutation) {
+  if (permutation.size() != input_shape_.dimensions().size()) {
+    return absl::InvalidArgumentError("Rank mismatch");
+  }
   if (IsIdentityPermutation(permutation)) {
     return absl::OkStatus();
   }
-  ABSL_RETURN_IF_ERROR(Invert());
-  ABSL_RETURN_IF_ERROR(AppendTranspose(InversePermutation(permutation)));
-  ABSL_RETURN_IF_ERROR(Invert());
-  return absl::OkStatus();
+  if (!IsPermutation(permutation)) {
+    return absl::InvalidArgumentError("Invalid permutation");
+  }
+  return Prepend(
+      Transpose{std::vector<int64_t>(permutation.begin(), permutation.end())},
+      PermuteInverse(input_shape_.dimensions(), permutation));
 }
 
 absl::Status ShapeTracker::PrependReshape(
     absl::Span<const int64_t> dimensions) {
-  ABSL_RETURN_IF_ERROR(Invert());
-  ABSL_RETURN_IF_ERROR(AppendReshape(dimensions));
-  ABSL_RETURN_IF_ERROR(Invert());
-  return absl::OkStatus();
+  return Prepend(Reshape{std::vector<int64_t>(input_shape_.dimensions().begin(),
+                                              input_shape_.dimensions().end())},
+                 dimensions);
 }
 
 absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
@@ -972,42 +1045,21 @@ absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
 absl::Status ShapeTracker::PrependBroadcast(
     absl::Span<const int64_t> broadcast_dimensions) {
   const int64_t input_rank = input_shape_.dimensions().size();
-  llvm::SmallVector<bool, 6> is_kept(input_rank, false);
+  std::vector<int64_t> operand_dims;
+  operand_dims.reserve(broadcast_dimensions.size());
   for (int64_t d : broadcast_dimensions) {
     if (d < 0 || d >= input_rank) {
       return absl::InvalidArgumentError(
           "Broadcast dimension index out of bounds");
     }
-    if (is_kept[d]) {
-      return absl::InvalidArgumentError("broadcast_dimensions must be unique");
-    }
-    is_kept[d] = true;
+    operand_dims.push_back(input_shape_.dimensions(d));
   }
-
-  std::vector<int64_t> dims_to_reduce;
-  llvm::SmallVector<int64_t, 6> old_to_reduced_idx(input_rank, -1);
-  int64_t kept_count = 0;
-  for (int64_t d = 0; d < input_rank; ++d) {
-    if (is_kept[d]) {
-      old_to_reduced_idx[d] = kept_count++;
-    } else {
-      dims_to_reduce.push_back(d);
-    }
-  }
-
-  std::vector<int64_t> perm;
-  perm.reserve(broadcast_dimensions.size());
-  for (int64_t d : broadcast_dimensions) {
-    perm.push_back(old_to_reduced_idx[d]);
-  }
-
-  ABSL_RETURN_IF_ERROR(Invert());
-  ABSL_RETURN_IF_ERROR(AppendReduce(dims_to_reduce));
-  if (!IsIdentityPermutation(perm)) {
-    ABSL_RETURN_IF_ERROR(AppendTranspose(perm));
-  }
-  ABSL_RETURN_IF_ERROR(Invert());
-  return absl::OkStatus();
+  return Prepend(
+      Broadcast{std::vector<int64_t>(input_shape_.dimensions().begin(),
+                                     input_shape_.dimensions().end()),
+                std::vector<int64_t>(broadcast_dimensions.begin(),
+                                     broadcast_dimensions.end())},
+      operand_dims);
 }
 
 absl::Status ShapeTracker::PrependReduce(
@@ -1017,36 +1069,10 @@ absl::Status ShapeTracker::PrependReduce(
     return absl::InvalidArgumentError(
         "Reduce source dimensions must be positive");
   }
-  llvm::SmallVector<bool, 6> is_reduced(dimensions.size(), false);
-  for (int64_t d : dimensions_to_reduce) {
-    if (d < 0 || d >= static_cast<int64_t>(dimensions.size())) {
-      return absl::InvalidArgumentError("Dimension to reduce is out of bounds");
-    }
-    if (is_reduced[d]) {
-      return absl::InvalidArgumentError(
-          "dimensions_to_reduce must contain unique dimensions");
-    }
-    is_reduced[d] = true;
-  }
-
-  std::vector<int64_t> kept_dimensions;
-  std::vector<int64_t> expected_input_dims;
-  for (size_t i = 0; i < dimensions.size(); ++i) {
-    if (!is_reduced[i]) {
-      kept_dimensions.push_back(static_cast<int64_t>(i));
-      expected_input_dims.push_back(dimensions[i]);
-    }
-  }
-  if (!absl::c_equal(expected_input_dims, input_shape_.dimensions())) {
-    return absl::InvalidArgumentError(
-        "Remaining dimensions after reduction do not match current input "
-        "shape");
-  }
-
-  ABSL_RETURN_IF_ERROR(Invert());
-  ABSL_RETURN_IF_ERROR(AppendBroadcast(dimensions, kept_dimensions));
-  ABSL_RETURN_IF_ERROR(Invert());
-  return absl::OkStatus();
+  std::vector<int64_t> sorted_dimensions_to_reduce(dimensions_to_reduce.begin(),
+                                                   dimensions_to_reduce.end());
+  absl::c_sort(sorted_dimensions_to_reduce);
+  return Prepend(Reduce{std::move(sorted_dimensions_to_reduce)}, dimensions);
 }
 
 std::vector<ShapeTracker::Step> ShapeTracker::GetSteps(
@@ -1068,22 +1094,20 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps(
     if (!absl::c_equal(current_dims, transformation.input_reshape)) {
       current_dims.assign(transformation.input_reshape.begin(),
                           transformation.input_reshape.end());
-      steps.push_back({Step::Type::kReshape, current_dims});
+      steps.push_back(Reshape{current_dims});
     }
 
     if (!transformation.reduced_dims.empty()) {
       steps.push_back(
-          {Step::Type::kReduce,
-           std::vector<int64_t>(transformation.reduced_dims.begin(),
-                                transformation.reduced_dims.end())});
+          Reduce{std::vector<int64_t>(transformation.reduced_dims.begin(),
+                                      transformation.reduced_dims.end())});
       current_dims =
           RemoveIndices<int64_t>(current_dims, transformation.reduced_dims);
     }
 
     if (!IsIdentityPermutation(transformation.transpose)) {
-      steps.push_back({Step::Type::kTranspose,
-                       std::vector<int64_t>(transformation.transpose.begin(),
-                                            transformation.transpose.end())});
+      steps.push_back(Transpose{std::vector<int64_t>(
+          transformation.transpose.begin(), transformation.transpose.end())});
       current_dims = Permute(current_dims, transformation.transpose);
     }
 
@@ -1092,16 +1116,15 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps(
       current_dims.assign(transformation.output_dims.begin(),
                           transformation.output_dims.end());
       steps.push_back(
-          {Step::Type::kBroadcast, current_dims,
-           std::vector<int64_t>(transformation.broadcast_dims.begin(),
-                                transformation.broadcast_dims.end())});
+          Broadcast{current_dims,
+                    std::vector<int64_t>(transformation.broadcast_dims.begin(),
+                                         transformation.broadcast_dims.end())});
     }
   }
 
   if (!absl::c_equal(current_dims, output_shape_.dimensions())) {
-    steps.push_back({Step::Type::kReshape,
-                     std::vector<int64_t>(output_shape_.dimensions().begin(),
-                                          output_shape_.dimensions().end())});
+    steps.push_back(Reshape{std::vector<int64_t>(
+        output_shape_.dimensions().begin(), output_shape_.dimensions().end())});
   }
 
   if (avoid_combining_reshapes) {
@@ -1135,10 +1158,11 @@ struct ExpandedStep {
 // Do to that, it keeps the strides of the target dimensions (which we are
 // required to preserve), and inserts existing dimensions when it doesn't
 // violate divisibility.
-ExpandedStep ExpandReshapeStep(const ShapeTracker::Step& step,
-                               absl::Span<const int64_t> current_shape) {
+ExpandedStep ExpandStep(const ShapeTracker::Reshape& step,
+                        absl::Span<const int64_t> current_shape,
+                        absl::Span<const int64_t> /*expansion*/) {
   if (step.dimensions.empty()) {
-    return {ShapeTracker::Step{ShapeTracker::Step::Type::kReshape, {}}, {}, {}};
+    return {ShapeTracker::Reshape{}, {}, {}};
   }
   std::vector<int64_t> strides_to_preserve = PartialProducts(step.dimensions);
   std::vector<int64_t> strides_to_insert = PartialProducts(current_shape);
@@ -1177,13 +1201,13 @@ ExpandedStep ExpandReshapeStep(const ShapeTracker::Step& step,
   absl::c_adjacent_difference(new_shapes, new_shapes.begin(),
                               std::divides<int64_t>());
 
-  return {ShapeTracker::Step{ShapeTracker::Step::Type::kReshape, new_shapes},
-          new_shapes, std::move(new_mapping)};
+  return {ShapeTracker::Reshape{new_shapes}, new_shapes,
+          std::move(new_mapping)};
 }
 
-ExpandedStep ExpandReduceStep(const ShapeTracker::Step& step,
-                              absl::Span<const int64_t> current_shape,
-                              absl::Span<const int64_t> expansion) {
+ExpandedStep ExpandStep(const ShapeTracker::Reduce& step,
+                        absl::Span<const int64_t> current_shape,
+                        absl::Span<const int64_t> expansion) {
   std::vector<int64_t> expanded_reduced_dims;
   std::vector<int64_t> new_shape;
   std::vector<int64_t> new_mapping;
@@ -1204,24 +1228,23 @@ ExpandedStep ExpandReduceStep(const ShapeTracker::Step& step,
     }
     new_mapping.push_back(static_cast<int64_t>(new_shape.size()) - 1);
   }
-  return {ShapeTracker::Step{ShapeTracker::Step::Type::kReduce,
-                             std::move(expanded_reduced_dims)},
+  return {ShapeTracker::Reduce{std::move(expanded_reduced_dims)},
           std::move(new_shape), std::move(new_mapping)};
 }
 
 // Performs a transpose over an expanded shape.
-ExpandedStep ExpandTransposeStep(const ShapeTracker::Step& step,
-                                 absl::Span<const int64_t> current_shape,
-                                 absl::Span<const int64_t> expansion) {
+ExpandedStep ExpandStep(const ShapeTracker::Transpose& step,
+                        absl::Span<const int64_t> current_shape,
+                        absl::Span<const int64_t> expansion) {
   std::vector<int64_t> expanded;
   std::vector<int64_t> new_shape;
   std::vector<int64_t> new_mapping;
   if (!expansion.empty()) {
     expanded.reserve(expansion.back() + 1);
     new_shape.reserve(expansion.back() + 1);
-    new_mapping.reserve(step.dimensions.size());
+    new_mapping.reserve(step.permutation.size());
   }
-  for (const int64_t dim : step.dimensions) {
+  for (const int64_t dim : step.permutation) {
     const int64_t begin = dim == 0 ? 0 : expansion[dim - 1] + 1;
     const int64_t end = expansion[dim] + 1;
     for (int64_t k = begin; k < end; ++k) {
@@ -1230,14 +1253,13 @@ ExpandedStep ExpandTransposeStep(const ShapeTracker::Step& step,
     }
     new_mapping.push_back(static_cast<int64_t>(new_shape.size()) - 1);
   }
-  return {ShapeTracker::Step{ShapeTracker::Step::Type::kTranspose,
-                             std::move(expanded)},
-          std::move(new_shape), std::move(new_mapping)};
+  return {ShapeTracker::Transpose{std::move(expanded)}, std::move(new_shape),
+          std::move(new_mapping)};
 }
 
-ExpandedStep ExpandBroadcastStep(const ShapeTracker::Step& step,
-                                 absl::Span<const int64_t> current_shape,
-                                 absl::Span<const int64_t> expansion) {
+ExpandedStep ExpandStep(const ShapeTracker::Broadcast& step,
+                        absl::Span<const int64_t> current_shape,
+                        absl::Span<const int64_t> expansion) {
   std::vector<int64_t> expanded_output_dims;
   std::vector<int64_t> expanded_broadcast_dims;
   std::vector<int64_t> new_mapping;
@@ -1264,9 +1286,8 @@ ExpandedStep ExpandBroadcastStep(const ShapeTracker::Step& step,
                           1);
   }
   std::vector<int64_t> new_shape = expanded_output_dims;
-  return {ShapeTracker::Step{ShapeTracker::Step::Type::kBroadcast,
-                             std::move(expanded_output_dims),
-                             std::move(expanded_broadcast_dims)},
+  return {ShapeTracker::Broadcast{std::move(expanded_output_dims),
+                                  std::move(expanded_broadcast_dims)},
           std::move(new_shape), std::move(new_mapping)};
 }
 
@@ -1284,34 +1305,22 @@ std::vector<ShapeTracker::Step> ShapeTracker::OptimizeSteps(
 
   // If the final step is a reshape, skip it for two reasons:
   // - Unlike other steps, it may contain degenerate dimensions which
-  // ExpandReshapeStep can't handle.
+  // ExpandStep can't handle.
   // - It is redundant, a reshape will be applied at the end anyway.
   absl::Span<const Step> steps_span = steps;
-  if (!steps_span.empty() && steps_span.back().type == Step::Type::kReshape) {
+  if (!steps_span.empty() &&
+      std::holds_alternative<Reshape>(steps_span.back())) {
     steps_span.remove_suffix(1);
   }
 
-  for (const auto& step : steps_span) {
-    ExpandedStep expanded;
-    switch (step.type) {
-      case Step::Type::kReshape:
-        expanded = ExpandReshapeStep(step, current_shape);
-        if (expanded.shape != current_shape) {
-          optimized_steps.push_back(std::move(expanded.step));
-        }
-        break;
-      case Step::Type::kReduce:
-        expanded = ExpandReduceStep(step, current_shape, mapping);
-        optimized_steps.push_back(std::move(expanded.step));
-        break;
-      case Step::Type::kTranspose:
-        expanded = ExpandTransposeStep(step, current_shape, mapping);
-        optimized_steps.push_back(std::move(expanded.step));
-        break;
-      case Step::Type::kBroadcast:
-        expanded = ExpandBroadcastStep(step, current_shape, mapping);
-        optimized_steps.push_back(std::move(expanded.step));
-        break;
+  for (const Step& step : steps_span) {
+    ExpandedStep expanded = std::visit(
+        [&](const auto& s) { return ExpandStep(s, current_shape, mapping); },
+        step);
+    // Reshapes that do not change the expanded shape are dropped.
+    if (!std::holds_alternative<Reshape>(step) ||
+        expanded.shape != current_shape) {
+      optimized_steps.push_back(std::move(expanded.step));
     }
     current_shape = std::move(expanded.shape);
     mapping = std::move(expanded.mapping);
@@ -1320,11 +1329,64 @@ std::vector<ShapeTracker::Step> ShapeTracker::OptimizeSteps(
   if (current_shape != output_shape.dimensions()) {
     std::vector<int64_t> out_dims(output_shape.dimensions().begin(),
                                   output_shape.dimensions().end());
-    optimized_steps.push_back({Step::Type::kReshape, out_dims});
+    optimized_steps.push_back(Reshape{std::move(out_dims)});
   }
 
   return optimized_steps;
 }
+
+namespace {
+
+// Adds the instruction that applies `step` to `operand`.
+HloInstruction* AddStepInstruction(const ShapeTracker::Reshape& step,
+                                   HloInstruction* operand) {
+  return operand->parent()->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(operand->shape().element_type(), step.dimensions),
+      operand));
+}
+HloInstruction* AddStepInstruction(const ShapeTracker::Transpose& step,
+                                   HloInstruction* operand) {
+  return operand->parent()->AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::PermuteDimensions(step.permutation, operand->shape()), operand,
+      step.permutation));
+}
+HloInstruction* AddStepInstruction(const ShapeTracker::Broadcast& step,
+                                   HloInstruction* operand) {
+  return operand->parent()->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(operand->shape().element_type(), step.dimensions),
+      operand, step.broadcast_dimensions));
+}
+// Reductions have no computation and are rejected by ToInstructionChain.
+HloInstruction* AddStepInstruction(const ShapeTracker::Reduce& /*step*/,
+                                   HloInstruction* operand) {
+  return operand;
+}
+
+// Returns the dimensions that `step` produces from `dims`.
+std::vector<int64_t> ApplyToDimensions(const ShapeTracker::Reshape& step,
+                                       absl::Span<const int64_t> /*dims*/) {
+  return step.dimensions;
+}
+std::vector<int64_t> ApplyToDimensions(const ShapeTracker::Transpose& step,
+                                       absl::Span<const int64_t> dims) {
+  return Permute(dims, step.permutation);
+}
+std::vector<int64_t> ApplyToDimensions(const ShapeTracker::Broadcast& step,
+                                       absl::Span<const int64_t> /*dims*/) {
+  return step.dimensions;
+}
+std::vector<int64_t> ApplyToDimensions(const ShapeTracker::Reduce& step,
+                                       absl::Span<const int64_t> dims) {
+  return RemoveIndices<int64_t>(dims, step.dimensions);
+}
+
+// The prefix of `step` in DebugString().
+absl::string_view DebugPrefix(const ShapeTracker::Reshape&) { return "R"; }
+absl::string_view DebugPrefix(const ShapeTracker::Transpose&) { return "T"; }
+absl::string_view DebugPrefix(const ShapeTracker::Broadcast&) { return "B"; }
+absl::string_view DebugPrefix(const ShapeTracker::Reduce&) { return "Red"; }
+
+}  // namespace
 
 absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
     HloInstruction* inst, bool avoid_combining_reshapes) const {
@@ -1335,44 +1397,18 @@ absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
 
   std::vector<Step> steps = GetSteps(avoid_combining_reshapes);
   if (absl::c_any_of(steps, [](const Step& step) {
-        return step.type == Step::Type::kReduce;
+        return std::holds_alternative<Reduce>(step);
       })) {
     return absl::InvalidArgumentError(
         "Cannot materialize reduction step into HLO instruction chain "
         "without a reduction computation");
   }
 
-  HloComputation* computation = inst->parent();
   HloInstruction* current_inst = inst;
-
-  for (const auto& step : steps) {
-    switch (step.type) {
-      case Step::Type::kReshape: {
-        Shape new_shape = ShapeUtil::MakeShape(
-            current_inst->shape().element_type(), step.dimensions);
-        current_inst = computation->AddInstruction(
-            HloInstruction::CreateReshape(new_shape, current_inst));
-        break;
-      }
-      case Step::Type::kTranspose: {
-        current_inst =
-            computation->AddInstruction(HloInstruction::CreateTranspose(
-                ShapeUtil::PermuteDimensions(step.dimensions,
-                                             current_inst->shape()),
-                current_inst, step.dimensions));
-        break;
-      }
-      case Step::Type::kBroadcast: {
-        Shape new_shape = ShapeUtil::MakeShape(
-            current_inst->shape().element_type(), step.dimensions);
-        current_inst =
-            computation->AddInstruction(HloInstruction::CreateBroadcast(
-                new_shape, current_inst, step.broadcast_dimensions));
-        break;
-      }
-      case Step::Type::kReduce:
-        break;
-    }
+  for (const Step& step : steps) {
+    current_inst = std::visit(
+        [&](const auto& s) { return AddStepInstruction(s, current_inst); },
+        step);
   }
 
   return current_inst;
@@ -1384,29 +1420,14 @@ std::string ShapeTracker::DebugString(bool avoid_combining_reshapes) const {
   std::vector<int64_t> current_dims(input_shape_.dimensions().begin(),
                                     input_shape_.dimensions().end());
 
-  for (const auto& step : GetSteps(avoid_combining_reshapes)) {
-    switch (step.type) {
-      case Step::Type::kReshape:
-        current_dims = step.dimensions;
-        absl::StrAppend(&result, " -> R[", absl::StrJoin(current_dims, ","),
-                        "]");
-        break;
-      case Step::Type::kTranspose:
-        current_dims = Permute(current_dims, step.dimensions);
-        absl::StrAppend(&result, " -> T[", absl::StrJoin(current_dims, ","),
-                        "]");
-        break;
-      case Step::Type::kBroadcast:
-        current_dims = step.dimensions;
-        absl::StrAppend(&result, " -> B[", absl::StrJoin(current_dims, ","),
-                        "]");
-        break;
-      case Step::Type::kReduce:
-        current_dims = RemoveIndices<int64_t>(current_dims, step.dimensions);
-        absl::StrAppend(&result, " -> Red[", absl::StrJoin(current_dims, ","),
-                        "]");
-        break;
-    }
+  for (const Step& step : GetSteps(avoid_combining_reshapes)) {
+    std::visit(
+        [&](const auto& s) {
+          current_dims = ApplyToDimensions(s, current_dims);
+          absl::StrAppend(&result, " -> ", DebugPrefix(s), "[",
+                          absl::StrJoin(current_dims, ","), "]");
+        },
+        step);
   }
 
   return result;
@@ -1683,7 +1704,7 @@ bool ShapeTracker::MapsToOneStride(absl::Span<const int64_t> input_dims,
   }
   bool has_swaps =
       absl::c_any_of(narrowed->GetSteps(), [](const ShapeTracker::Step& step) {
-        return step.type == ShapeTracker::Step::Type::kTranspose;
+        return std::holds_alternative<ShapeTracker::Transpose>(step);
       });
   return !has_swaps;
 }
