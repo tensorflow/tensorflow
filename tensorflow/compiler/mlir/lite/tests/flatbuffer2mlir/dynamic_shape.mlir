@@ -21,3 +21,14 @@ func.func @main(%arg0: tensor<?x19x19x3xf32>) -> tensor<?x9x9x4xf32> {
   %0 = "tfl.conv_2d"(%arg0, %cst_3, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU6", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<?x19x19x3xf32>, tensor<4x3x3x3xf32>, tensor<4xf32>) -> tensor<?x9x9x4xf32>
   func.return %0 : tensor<?x9x9x4xf32>
 }
+
+// CHECK-LABEL: func.func private @conv_2d_f16_filter(%arg0: tensor<?x19x19x3xf32>) -> tensor<?x9x9x4xf32>
+// CHECK-DAG: %[[CST0:.*]] = "tfl.pseudo_const"() <{value = dense<2.000000e+00> : tensor<4x3x3x3xf16>}> : () -> tensor<4x3x3x3xf16>
+// CHECK-DAG: %[[CST1:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<4xf32>}> : () -> tensor<4xf32>
+// CHECK: "tfl.conv_2d"(%arg0, %[[CST0]], %[[CST1]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU6", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<?x19x19x3xf32>, tensor<4x3x3x3xf16>, tensor<4xf32>) -> tensor<?x9x9x4xf32>
+func.func @conv_2d_f16_filter(%arg0: tensor<?x19x19x3xf32>) -> tensor<?x9x9x4xf32> {
+  %cst = arith.constant dense<1.0> : tensor<4xf32>
+  %cst_3 = arith.constant dense<2.0> : tensor<4x3x3x3xf16>
+  %0 = "tfl.conv_2d"(%arg0, %cst_3, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU6", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<?x19x19x3xf32>, tensor<4x3x3x3xf16>, tensor<4xf32>) -> tensor<?x9x9x4xf32>
+  func.return %0 : tensor<?x9x9x4xf32>
+}
