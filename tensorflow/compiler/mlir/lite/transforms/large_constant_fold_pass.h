@@ -49,8 +49,7 @@ class LargeConstantFoldPass
     GetOptions().fold_fp16_resource_casts = fold_fp16_resource_casts;
     GetOptions().fold_elementwise_ops = fold_elementwise_ops;
   }
-  LargeConstantFoldPass(const LargeConstantFoldPass& other)
-      : TFL::Pass<LargeConstantFoldPass, LargeConstantFoldPassOptions>(other) {}
+  LargeConstantFoldPass(const LargeConstantFoldPass& other) : = default;
 
   void runOnOperation() override;
   static llvm::StringRef GetName() { return "LargeConstantFoldPass"; }
