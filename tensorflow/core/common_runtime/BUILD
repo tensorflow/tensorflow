@@ -131,7 +131,6 @@ cc_library(
     name = "testlib_ops",
     testonly = 1,
     srcs = ["testlib_ops.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

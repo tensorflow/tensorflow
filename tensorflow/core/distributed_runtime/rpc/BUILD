@@ -321,7 +321,6 @@ cc_library(
     srcs = ["grpc_server_lib.cc"],
     hdrs = ["grpc_server_lib.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         ":grpc_channel",
         ":grpc_master_service",
