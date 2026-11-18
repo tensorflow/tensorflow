@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -60,138 +59,6 @@ using ::xla::xtile::BlockLevelParameters;
 se::GpuComputeCapability GetComputeCapability() {
   return se::CudaComputeCapability::Ampere();
 }
-
-bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
-                              PrimitiveType output_type,
-                              se::GpuComputeCapability gpu_compute_capability) {
-  if (gpu_compute_capability.IsCuda()) {
-    auto* cuda_compute_capability =
-        gpu_compute_capability.cuda_compute_capability();
-    if (!cuda_compute_capability->IsAtLeastHopper() &&
-        (lhs_type == F8E4M3FN || rhs_type == F8E4M3FN ||
-         output_type == F8E4M3FN)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-class DotTest : public SupportTestBase,
-                public ::testing::WithParamInterface<
-                    std::tuple<PrimitiveType, HloOpcode>>,
-                public HloInterpreterReferenceMixin<HloTestBase> {
- protected:
-  DotTest()
-      : SupportTestBase(
-            [this](absl::string_view hlo_text)
-                -> absl::StatusOr<std::unique_ptr<VerifiedHloModule>> {
-              return ParseAndReturnVerifiedModule(hlo_text);
-            }) {}
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    auto options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    // It's necessary to set this manually, because it's disabled in optimized
-    // builds and there are some ASAN builds that run on TAP with -c opt.
-    options.set_xla_gpu_llvm_verification_level(1);
-    return options;
-  }
-
-  void TestDotWithTypes(PrimitiveType lhs_type, PrimitiveType rhs_type,
-                        PrimitiveType output_type) {
-    if (lhs_type == BF16 && !SupportsBF16(GetComputeCapability())) {
-      GTEST_SKIP();
-    }
-    const HloOpcode opcode = HloOpcode::kDot;
-    const std::string lhs =
-        primitive_util::LowercasePrimitiveTypeName(lhs_type);
-    const std::string rhs =
-        primitive_util::LowercasePrimitiveTypeName(rhs_type);
-    const std::string output =
-        primitive_util::LowercasePrimitiveTypeName(output_type);
-
-    const std::string kHloTestTemplate = R"(
-triton_computation {
-  p0 = $0[92,11]{1,0} parameter(0)
-  p1 = $1[11,63]{1,0} parameter(1)
-  ROOT dot = $2[92,63]{1,0} $3(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[16]}
-}
-
-ENTRY e {
-  parameter_0 = $0[92,11]{1,0} parameter(0)
-  parameter_1 = $1[11,63]{1,0} parameter(1)
-  ROOT triton_op = $2[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
-       "num_stages":4,"num_warps":8,"num_ctas":1}}}
-})";
-    const std::string hlo_test = absl::Substitute(
-        kHloTestTemplate, lhs, rhs, output, HloOpcodeString(opcode));
-    ASSERT_OK_AND_ASSIGN(
-        TestedInstruction ti,
-        ParseTemplateAndGetInstruction(hlo_test, /*data_type=*/{}, opcode));
-    if (legacy_triton::IsTritonSupportedInstruction(ti.Instruction(),
-                                                    GetComputeCapability())) {
-      EXPECT_OK(
-          ApplyFloatNormalization(ti.Module().get(), GetComputeCapability()));
-      EXPECT_TRUE(RunAndCompareNoHloPasses(
-          std::move(ti.Module()),
-          ErrorSpec{/*aabs=*/primitive_util::IsF8Type(lhs_type) ? 1.0 : 2e-4,
-                    /*arel=*/2e-4}));
-    } else {
-      if (CombinationCrashesTriton(lhs_type, rhs_type, output_type,
-                                   GetComputeCapability())) {
-        return;
-      }
-      const se::DeviceDescription dev_info =
-          TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-      auto block_level_parameters =
-          BlockLevelParameters::FromBlockLevelFusionConfig(
-              ti.TritonFusion()
-                  .backend_config<GpuBackendConfig>()
-                  ->fusion_backend_config()
-                  .block_level_fusion_config());
-      EXPECT_THAT(
-          TritonWrapper("test_fn", ti.TritonFusion(), GetComputeCapability(),
-                        dev_info, block_level_parameters, target_triple_,
-                        data_layout_, mlir_context_),
-          absl_testing::StatusIs(
-              absl::StatusCode::kInternal,
-              ::testing::HasSubstr("Failed to compile Triton kernel")));
-    }
-  }
-};
-
-TEST_P(DotTest, IsTritonSupportedExecutesCorrectlyForDot) {
-  PrimitiveType data_type;
-  HloOpcode opcode;
-  std::tie(data_type, opcode) = GetParam();
-  CHECK_EQ(opcode, HloOpcode::kDot);
-  TestDotWithTypes(data_type, data_type, data_type);
-
-  switch (data_type) {
-    case F8E5M2:
-      TestDotWithTypes(F8E5M2, F8E4M3FN, F32);
-      TestDotWithTypes(F8E5M2, F8E5M2, F16);
-      TestDotWithTypes(F8E5M2, F8E5M2, F32);
-      break;
-    case F8E4M3FN:
-      TestDotWithTypes(F8E4M3FN, F8E5M2, F32);
-      TestDotWithTypes(F8E4M3FN, F8E4M3FN, F16);
-      TestDotWithTypes(F8E4M3FN, F8E4M3FN, F32);
-      break;
-    default:
-      break;
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(DotTestTestSuite, DotTest,
-                         ::testing::Combine(::testing::Values(F16, F32, BF16,
-                                                              F8E5M2, F8E4M3FN),
-                                            ::testing::Values(HloOpcode::kDot)),
-                         SupportTestTypeAndOpcodeToString);
 
 struct DynamicSliceTestParam {
   PrimitiveType data_type;
@@ -289,18 +156,13 @@ ENTRY e {
       FindInstruction(dot.Module().get(), HloOpcode::kDynamicSlice);
   ASSERT_NE(dynamic_slice, nullptr);
 
-  const bool is_supported_instruction =
-      legacy_triton::IsTritonSupportedInstruction(*dynamic_slice,
-                                                  GetComputeCapability())
-          .IsAllowed();
   const bool is_supported_dynamic_slice =
       legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(dynamic_slice))
           .IsAllowed();
-  EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
-  if (is_supported_instruction) {
-    // TODO(goncharov): Change to `EXPECT_FALSE(is_supported_instruction)`.
+  if (is_supported_dynamic_slice) {
+    // TODO(goncharov): Change to `EXPECT_FALSE(is_supported_dynamic_slice)`.
     GTEST_SKIP() << "The generic emitter does not support dynamic slice yet.";
     EXPECT_OK(
         ApplyFloatNormalization(dot.Module().get(), GetComputeCapability()));
@@ -337,92 +199,6 @@ class SupportLegacyTest : public HloHardwareIndependentTestBase,
   }
 };
 
-TEST_F(SupportLegacyTest, UnsupportedDotOutputTypeFailsCanTritonHandleGEMM) {
-  const std::string kHloTest = R"(
-triton_computation {
-  p0 = f32[92,11]{1,0} parameter(0)
-  p1 = f32[11,63]{1,0} parameter(1)
-  ROOT dot = pred[92,63]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[16]}
-}
-ENTRY e {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  parameter_1 = f32[11,63]{1,0} parameter(1)
-  ROOT triton_op = pred[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
-       "num_stages":4,"num_warps":8,"num_ctas":1}}}
-})";
-  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                       ParseTemplateAndGetInstruction(
-                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  EXPECT_THAT(
-      legacy_triton::CanTritonHandleGEMM(
-          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Unsupported output data type for Dot op."));
-}
-
-TEST_F(SupportLegacyTest, UnsupportedIntFloatDotFailsCanTritonHandleGEMM) {
-  const std::string kHloTest = R"(
-triton_computation {
-  p0 = s8[92,11]{1,0} parameter(0)
-  p1 = s8[11,63]{1,0} parameter(1)
-  ROOT dot = f32[92,63]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[16]}
-}
-ENTRY e {
-  parameter_0 = s8[92,11]{1,0} parameter(0)
-  parameter_1 = s8[11,63]{1,0} parameter(1)
-  ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
-       "num_stages":4,"num_warps":8,"num_ctas":1}}}
-})";
-  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                       ParseTemplateAndGetInstruction(
-                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  EXPECT_THAT(
-      legacy_triton::CanTritonHandleGEMM(
-          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("Dots between integer and floating-point "
-                           "types are not supported."));
-}
-
-TEST_F(SupportLegacyTest,
-       UnsupportedDifferentOperandTypesDotFailsCanTritonHandleGEMM) {
-  const std::string kHloTest = R"(
-triton_computation {
-  p0 = f16[92,11]{1,0} parameter(0)
-  p1 = f32[11,63]{1,0} parameter(1)
-  ROOT dot = f32[92,63]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[16]}
-}
-ENTRY e {
-  parameter_0 = f16[92,11]{1,0} parameter(0)
-  parameter_1 = f32[11,63]{1,0} parameter(1)
-  ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
-       "num_stages":4,"num_warps":8,"num_ctas":1}}}
-})";
-  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                       ParseTemplateAndGetInstruction(
-                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  EXPECT_THAT(
-      legacy_triton::CanTritonHandleGEMM(
-          *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
-          .Explain(),
-      ::testing::HasSubstr("input types must be the same"));
-}
-
 TEST_F(SupportLegacyTest, DotWithMultipleBatchDimensionsIsSupportedWithTriton) {
   const std::string kHloTest = R"(
 triton_computation {
@@ -448,8 +224,6 @@ ENTRY e {
                            kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_TRUE(legacy_triton::IsTritonSupportedInstruction(
-      ti.Instruction(), GetComputeCapability()));
   auto block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           ti.TritonFusion()
@@ -483,10 +257,6 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                        ParseTemplateAndGetInstruction(
                            kHloTest, /*data_type=*/{}, HloOpcode::kDot));
-  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
-                  ti.Instruction(), GetComputeCapability())
-                  .Explain(),
-              ::testing::HasSubstr("No non-contracting dimensions."));
   EXPECT_THAT(TritonFusionAnalysis::Execute(ti.TritonComputation()),
               absl_testing::StatusIs(
                   absl::StatusCode::kInternal,

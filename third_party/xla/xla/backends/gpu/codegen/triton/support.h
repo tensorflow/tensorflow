@@ -50,11 +50,6 @@ CodegenDecision IsTritonSupportedDataType(
 // is supported by the Triton emitters for the given compute capability. Note
 // that this function makes no assumption about what happens if
 // `FloatNormalization` is run, unlike the legacy Triton utils.
-//
-// Note: this function is entirely dissociated from the legacy Triton emitters.
-// If you intend to add a feature to the legacy Triton emitters (which you
-// probably shouldn't), use `legacy_triton::IsTritonSupportedInstruction`
-// instead.
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 

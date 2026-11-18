@@ -34,9 +34,6 @@ using CodegenDecision = Decision;
 
 namespace legacy_triton {
 
-// Tells if f(a+b) == f(a) + f(b).
-bool IsDistributiveOverAddition(const HloInstruction& hlo);
-
 // Allowlist of unary elementwise operations supported by the legacy Triton
 // emitters.
 //
@@ -88,18 +85,7 @@ bool IsTritonSupportedDataType(PrimitiveType, const se::GpuComputeCapability&);
 bool IsTritonSupportedElementwiseUpToFloatNormalization(HloOpcode,
                                                         PrimitiveType);
 
-CodegenDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version);
-
-// Checks instruction against the requirements of the legacy Triton emitters.
-CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
-
 // Checks dynamic slice against the requirements of the legacy Triton emitters.
-//
-// This is exposed separately from IsTritonSupportedInstruction because we can
-// use it in the dimension order propagation without adding a dependency on the
-// GPU version.
 CodegenDecision IsTritonSupportedDynamicSlice(
     const HloDynamicSliceInstruction& instr);
 

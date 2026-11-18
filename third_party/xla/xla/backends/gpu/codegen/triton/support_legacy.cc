@@ -19,14 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/check.h"
-#include "absl/strings/str_format.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,22 +32,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace legacy_triton {
-
-bool IsDistributiveOverAddition(const HloInstruction& hlo) {
-  // The list is most likely incomplete.
-  // For example division can be added too but only for operand #0.
-  if (hlo.opcode() == HloOpcode::kMultiply ||
-      hlo.opcode() == HloOpcode::kNegate ||
-      hlo.opcode() == HloOpcode::kBitcast ||
-      hlo.opcode() == HloOpcode::kReshape || hlo.opcode() == HloOpcode::kCopy ||
-      hlo.opcode() == HloOpcode::kTranspose ||
-      hlo.opcode() == HloOpcode::kConvert ||
-      hlo.opcode() == HloOpcode::kBroadcast ||
-      hlo.opcode() == HloOpcode::kSlice) {
-    return true;
-  }
-  return false;
-}
 
 // Types that are supported by Triton as dot output.
 //
@@ -116,29 +96,6 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     default:
       return false;
   }
-}
-
-CodegenDecision IsInstructionSupportsDataTypes(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  if (!IsTritonSupportedDataType(instr.shape().element_type(), gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported output data type.");
-  }
-
-  for (const HloInstruction* operand : instr.operands()) {
-    const auto operand_type = operand->shape().element_type();
-    switch (instr.opcode()) {
-      case HloOpcode::kConvert:
-        if (operand_type == S4) {
-          continue;
-        }
-        [[fallthrough]];
-      default:
-        if (!IsTritonSupportedDataType(operand_type, gpu_version)) {
-          return CodegenDecision::Forbid("Unsupported input data type.");
-        }
-    }
-  }
-  return CodegenDecision::Allow();
 }
 
 std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
@@ -221,151 +178,6 @@ bool IsTritonSupportedElementwiseUpToFloatNormalization(
              opcode);
 }
 
-CodegenDecision CanTritonHandleElementwise(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  if (auto decision = IsInstructionSupportsDataTypes(instr, gpu_version);
-      decision.IsForbidden()) {
-    return decision;
-  }
-  if (instr.opcode() == HloOpcode::kConstant) {
-    return CodegenDecision::Allow();
-  }
-  if (!IsTritonSupportedElementwiseUpToFloatNormalization(
-          instr.opcode(), instr.operand(0)->shape().element_type())) {
-    return CodegenDecision::Forbid("Unsupported elementwise operation.");
-  }
-  return CodegenDecision::Allow();
-}
-
-bool IsDotAlgorithmSupportedByTriton(
-    PrecisionConfig::Algorithm algorithm,
-    const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
-  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      if (cuda_compute_capability || rocm_compute_capability) {
-        return true;
-      }
-      return false;
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-      if (cuda_compute_capability) {
-        return true;
-      }
-      if (rocm_compute_capability) {
-        return rocm_compute_capability->has_bf16_dtype_support();
-      }
-      return false;
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      // X6 and X9 algorithms on ROCm often require too much shared memory.
-      if (cuda_compute_capability) {
-        return true;
-      }
-      return false;
-
-    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
-    // here.
-    case PrecisionConfig::ALG_DOT_F16_F16_F32:
-      if (rocm_compute_capability) {
-        return true;
-      }
-      return false;
-    default:
-      return false;
-  }
-}
-
-CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto output_type = dot.shape().element_type();
-  if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
-  }
-
-  auto lhs_type = dot.operand(0)->shape().element_type();
-  auto rhs_type = dot.operand(1)->shape().element_type();
-  if (lhs_type != rhs_type && !(primitive_util::IsF8Type(lhs_type) &&
-                                primitive_util::IsF8Type(rhs_type))) {
-    return CodegenDecision::Forbid("Non-fp8 input types must be the same.");
-  }
-
-  if (!IsTritonSupportedDataType(lhs_type, gpu_version) ||
-      !IsTritonSupportedDataType(rhs_type, gpu_version)) {
-    return CodegenDecision::Forbid("Unsupported input data type for Dot op.");
-  }
-
-  if (output_type == PrimitiveType::S32 &&
-      !(primitive_util::Is8BitIntegralType(lhs_type) &&
-        primitive_util::Is8BitIntegralType(rhs_type))) {
-    return CodegenDecision::Forbid(
-        "Currently, S32 output is only supported for 8-bit integral inputs.");
-  }
-
-  if (primitive_util::IsIntegralType(lhs_type) !=
-      primitive_util::IsIntegralType(output_type)) {
-    return CodegenDecision::Forbid(
-        "Dots between integer and floating-point types are not supported.");
-  }
-
-  return CodegenDecision::Allow();
-}
-
-// Filters GEMMs which can be handled using Triton.
-CodegenDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
-  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
-  auto oneapi_compute_capability = gpu_version.oneapi_compute_capability();
-  // TODO(intel-tf): Support Triton on Intel GPUs.
-  if (oneapi_compute_capability) {
-    return CodegenDecision::Forbid(
-        "Triton backend is not supported on Intel GPUs.");
-  }
-
-  CHECK(cuda_compute_capability || rocm_compute_capability);
-
-  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (absl::c_any_of(dot.precision_config().operand_precision(),
-                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
-      return CodegenDecision::Forbid(
-          "Having non-default operand precisions for Dot op with unset "
-          "algorithm.");
-    }
-  } else {
-    if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
-                                         gpu_version)) {
-      return CodegenDecision::Forbid(absl::StrFormat(
-          "Unsupported algorithm on the current device(s): %s",
-          PrecisionConfig::Algorithm_Name(dot.precision_config().algorithm())));
-    }
-  }
-
-  if (auto decision =
-          AreDotInputAndOutputTypesSupportedAndCompatible(dot, gpu_version);
-      decision.IsForbidden()) {
-    return decision;
-  }
-
-  return CodegenDecision::Allow();
-}
-
-bool NoNonContractingDimension(const HloDotInstruction& dot) {
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().dimensions().size() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().dimensions().size()) {
-    return true;
-  }
-  return false;
-}
-
 CodegenDecision IsTritonSupportedDynamicSlice(
     const HloDynamicSliceInstruction& instr) {
   for (const HloInstruction* index_operand : instr.index_operands()) {
@@ -402,51 +214,6 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   // TODO(b/343143854): Check the subtleties of which dynamic slices are
   // supported, for example that a fragmented dimension cannot be sliced.
   return CodegenDecision::Allow();
-}
-
-CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  if (instr.IsElementwise()) {
-    return CanTritonHandleElementwise(instr, gpu_version);
-  }
-
-  switch (instr.opcode()) {
-    case HloOpcode::kDot: {
-      auto* dot = Cast<HloDotInstruction>(&instr);
-      // Cases where lhs or rhs have no non-contracting dims are not handled.
-      if (NoNonContractingDimension(*dot)) {
-        return CodegenDecision::Forbid("No non-contracting dimensions.");
-      }
-      return CanTritonHandleGEMM(*dot, gpu_version);
-    }
-    case HloOpcode::kTuple: {
-      if (instr.IsRoot()) {
-        return CodegenDecision::Allow();
-      }
-      return CodegenDecision::Forbid("Only supports root tuples.");
-    }
-    case HloOpcode::kDynamicSlice: {
-      return IsTritonSupportedDynamicSlice(
-          *Cast<HloDynamicSliceInstruction>(&instr));
-    }
-    case HloOpcode::kBitcast:
-      if (instr.shape().element_type() !=
-          instr.operand(0)->shape().element_type()) {
-        return CodegenDecision::Forbid("Bitcast-convert is not supported");
-      }
-      return CodegenDecision::Allow();
-    case HloOpcode::kTranspose:
-    case HloOpcode::kSlice:
-    case HloOpcode::kReshape:
-    case HloOpcode::kPad:
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kParameter:
-    case HloOpcode::kBroadcast:
-      return CodegenDecision::Allow();
-    default:
-      break;
-  }
-  return CodegenDecision::Forbid("Unsupported opcode.");
 }
 
 }  // namespace legacy_triton
