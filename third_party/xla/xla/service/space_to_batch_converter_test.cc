@@ -814,5 +814,261 @@ ENTRY computation {
   EXPECT_EQ(root->operand(0)->operand(0)->operand_count(), 5);
 }
 
+TEST_F(SpaceToBatchConverterTest,
+       SkipsSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,128,256] parameter(2)
+  ROOT %backprop_filter = bf16[32,3,3,256] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoLargeBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,128] parameter(0)
+  %p1 = bf16[1,1,128,128] parameter(1)
+  %convolution = bf16[1,256,256,128] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,128,128] parameter(2)
+  ROOT %backprop_filter = bf16[128,3,3,128] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoUnstridedSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,256,256,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,1,1,32] convolution(%convolution, %p2),
+    window={size=256x256}, dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoHighPaddedSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,64,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,3,9,32] convolution(%convolution, %p2),
+    window={size=128x64 pad=1_0x0_5 rhs_dilate=2x4 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       SkipsBackpropConvAtExactMaxBatchSizeAndFeatureBoundary) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[7,256,256,127] parameter(0)
+  %p1 = bf16[1,1,127,127] parameter(1)
+  %convolution = bf16[7,256,256,127] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[7,128,128,256] parameter(2)
+  ROOT %backprop_filter = bf16[127,3,3,256] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       SkipsBackpropConvWithAsymmetricSpatialViability) {
+  // Spatial dimension 0 has `lhs_spatial = 256 >= 128` and `rhs_spatial = 128
+  // >= 128` (`> batch = 1`), while spatial dimension 1 has `lhs_spatial = 48 <
+  // 128` and `rhs_spatial = 24`. Because dimension 0 is viable as the minor
+  // spatial dimension and fills the RHS lane tile (`(O, KW)`), propagation is
+  // skipped when `disable_backprop_filter_propagation_max_batch_size = 127`
+  // (whereas with `0` it propagates to 5D).
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,48,1] parameter(0)
+  %p1 = bf16[1,1,1,1] parameter(1)
+  %convolution = bf16[1,256,48,1] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,24,32] parameter(2)
+  ROOT %backprop_filter = bf16[1,3,3,32] convolution(%convolution, %p2),
+    window={size=128x24 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> baseline_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchController baseline_ctrl{true, true, true, true, 7};
+  EXPECT_THAT(SpaceToBatchConverter(baseline_ctrl).Run(baseline_module.get()),
+              IsOkAndHolds(true));
+  ASSERT_THAT(baseline_module->entry_computation()->root_instruction(),
+              op::Reshape(op::Convolution()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoAsymmetricBackpropConvWhenDim0RhsSmallerThanLaneTile) {
+  // Spatial dimension 1 has `lhs_spatial = 48 < 128` (inviable as minor), while
+  // spatial dimension 0 has `lhs_spatial = 128 >= 128` but `rhs_spatial = 64 <
+  // 128`, which would leave `rhs` in `{3, 2, 1, 0}` (`(KH, O)`). Propagation
+  // must continue rather than stranding the 2D convolution.
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,128,48,1] parameter(0)
+  %p1 = bf16[1,1,1,1] parameter(1)
+  %convolution = bf16[1,128,48,1] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,64,24,32] parameter(2)
+  ROOT %backprop_filter = bf16[1,3,3,32] convolution(%convolution, %p2),
+    window={size=64x24 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoLargeFilterOrIntegralBackpropConv) {
+  // Output spatial area `11 * 11 = 121 > 64` exceeds the spatial-minor VMEM
+  // filter cap, so space-to-batch propagation proceeds.
+  std::string large_filter_hlo = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,124,124,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,11,11,32] convolution(%convolution, %p2),
+    window={size=124x124 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> large_filter_module,
+                       ParseAndReturnVerifiedModule(large_filter_hlo));
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(large_filter_module.get()), IsOkAndHolds(true));
+  const HloInstruction* lf_root =
+      large_filter_module->entry_computation()->root_instruction();
+  ASSERT_THAT(lf_root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(lf_root->operand(0)->shape().dimensions().size(), 5);
+
+  // Integral `s8 -> s32` convolutions are not handled by
+  // `SpatialMinorMosaicEmitter`, so space-to-batch propagation proceeds.
+  std::string integral_hlo = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = s8[1,256,256,32] parameter(0)
+  %p1 = s8[1,1,32,32] parameter(1)
+  %convolution = s8[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = s8[1,128,128,32] parameter(2)
+  ROOT %backprop_filter = s32[32,3,3,32] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> integral_module,
+                       ParseAndReturnVerifiedModule(integral_hlo));
+  EXPECT_THAT(converter.Run(integral_module.get()), IsOkAndHolds(true));
+  const HloInstruction* int_root =
+      integral_module->entry_computation()->root_instruction();
+  ASSERT_THAT(int_root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(int_root->operand(0)->shape().dimensions().size(), 5);
+}
 }  // namespace
 }  // namespace xla

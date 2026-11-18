@@ -39,6 +39,12 @@ struct SpaceToBatchController {
   // layers is consistent.
   int64_t number_of_splits = 8;
   int64_t count_of_dimensions_to_convert = 1;
+  // When > 0, skips propagating space-to-batch into 2D backprop-filter
+  // convolutions where batch is at most this limit, input_feature is at most
+  // limit_on_batch_size, and at least one kernel spatial dimension exceeds
+  // batch, so that downstream passes can lower the 2D convolution using a
+  // spatial-minor layout instead.
+  int64_t disable_backprop_filter_propagation_max_batch_size = 0;
 };
 
 // Represents the different dimension mappings. Can be extended as needed.
