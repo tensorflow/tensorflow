@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
+#include "tensorflow/lite/delegates/xnnpack/qsa_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
@@ -1053,6 +1054,12 @@ class Subgraph {
       return new Subgraph(delegate, std::move(moe_kernel));
     }
 
+    std::unique_ptr<QsaDelegateKernel> qsa_kernel =
+        QsaDelegateKernel::Create(context, params, delegate.threadpool());
+    if (qsa_kernel != nullptr) {
+      return new Subgraph(delegate, std::move(qsa_kernel));
+    }
+
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
     const std::unordered_set<int> inputs(
         &params->input_tensors->data[0],
@@ -1540,6 +1547,9 @@ class Subgraph {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Prepare(context);
     }
+    if (qsa_kernel_ != nullptr) {
+      return qsa_kernel_->Prepare(context);
+    }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
     if (runtime_ == nullptr) {
@@ -1623,6 +1633,9 @@ class Subgraph {
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Invoke(context);
+    }
+    if (qsa_kernel_ != nullptr) {
+      return qsa_kernel_->Invoke(context);
     }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
@@ -7234,6 +7247,12 @@ class Subgraph {
         enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
         workspace_mutex_(delegate.workspace_mutex_) {}
 
+  Subgraph(Delegate& delegate, std::unique_ptr<QsaDelegateKernel> qsa_kernel)
+      : runtime_(nullptr, &xnn_delete_runtime),
+        qsa_kernel_(std::move(qsa_kernel)),
+        enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        workspace_mutex_(delegate.workspace_mutex_) {}
+
   // Keep track of expanded scales for shared tensors to manage their lifetime.
   // Must be declared before runtime_ so it outlives runtime_ during
   // destruction.
@@ -7246,6 +7265,9 @@ class Subgraph {
   // prototype path for moe, where dynamic routing cannot be
   // expressed as a pure XNNPACK subgraph today.
   std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel_;
+  // Optional single-node executor for the QSA sparse-attention StableHLO
+  // composites, which need top-k and dynamic gathers.
+  std::unique_ptr<QsaDelegateKernel> qsa_kernel_;
   // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
   // subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
@@ -7292,7 +7314,8 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   ClearTempScales();
 
   TfLiteIntArray* execution_plan = nullptr;
-  if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
+  if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk ||
+      execution_plan == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Unable to get graph execution plan.");
     return nullptr;
   }
@@ -7322,12 +7345,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
 
   TfLiteIntArray* nodes_to_delegate =
       TfLiteIntArrayCreate(execution_plan->size);
-  nodes_to_delegate->size = 0;
-  TfLiteIntArray* moe_nodes_to_delegate = nullptr;
-  if (moe_ops_to_delegate != nullptr) {
-    moe_nodes_to_delegate = TfLiteIntArrayCreate(execution_plan->size);
-    moe_nodes_to_delegate->size = 0;
-  }
+  TfLiteIntArray* moe_nodes_to_delegate =
+      moe_ops_to_delegate != nullptr
+          ? TfLiteIntArrayCreate(execution_plan->size)
+          : nullptr;
   auto cleanup_and_return_null = [&]() -> TfLiteIntArray* {
     TfLiteIntArrayFree(nodes_to_delegate);
     TfLiteIntArrayFree(moe_nodes_to_delegate);
@@ -7336,6 +7357,14 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
     }
     return nullptr;
   };
+  if (nodes_to_delegate == nullptr ||
+      (moe_ops_to_delegate != nullptr && moe_nodes_to_delegate == nullptr)) {
+    return cleanup_and_return_null();
+  }
+  nodes_to_delegate->size = 0;
+  if (moe_nodes_to_delegate != nullptr) {
+    moe_nodes_to_delegate->size = 0;
+  }
   for (int i = 0; i < execution_plan->size; ++i) {
     const int node_index = execution_plan->data[i];
 
@@ -7357,6 +7386,26 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
                                                 node_index) == kTfLiteOk) {
         moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
       }
+      continue;
+    }
+
+    // QSA composites are delegated as singleton partitions, like MoE.
+    if (moe_nodes_to_delegate != nullptr && registration != nullptr &&
+        node != nullptr && QsaDelegateKernel::IsQsaNode(registration, node) &&
+        QsaDelegateKernel::IsSupported(context, node, registration,
+                                       node_index) == kTfLiteOk) {
+      // The QSA kernel reads its inputs from TFLite tensors, so producers of
+      // quasi-static inputs must still run.
+      if (node->inputs != nullptr) {
+        for (int j = 0; j < node->inputs->size; j++) {
+          const auto it =
+              quasi_static_tensors_producers.find(node->inputs->data[j]);
+          if (it != quasi_static_tensors_producers.end()) {
+            static_unpack_nodes_.erase(it->second);
+          }
+        }
+      }
+      moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
       continue;
     }
 
@@ -7757,11 +7806,20 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   // default TensorFlow Lite kernels. Thus, if any of the ops in the model are
   // not supported by the delegate, they will cause a failure in
   // ::tflite::Interpreter::ModifyGraphWithDelegate, to be caught in the unit
-  // tests.
-  nodes_to_delegate->size = execution_plan->size;
-  std::copy(&execution_plan->data[0],
-            &execution_plan->data[execution_plan->size],
-            &nodes_to_delegate->data[0]);
+  // tests. Nodes handled by the singleton custom kernels (MoE, QSA) are
+  // excluded, since they are delegated separately as singleton partitions.
+  nodes_to_delegate->size = 0;
+  for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_index = execution_plan->data[i];
+    if (moe_nodes_to_delegate != nullptr && moe_nodes_to_delegate->size > 0 &&
+        std::binary_search(
+            &moe_nodes_to_delegate->data[0],
+            &moe_nodes_to_delegate->data[moe_nodes_to_delegate->size],
+            node_index)) {
+      continue;
+    }
+    nodes_to_delegate->data[nodes_to_delegate->size++] = node_index;
+  }
 #endif
   if (moe_ops_to_delegate != nullptr) {
     *moe_ops_to_delegate = moe_nodes_to_delegate;
