@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/cost_model/gpu_dot_fusion_cost_model.h"
 #include "xla/backends/gpu/cost_model/gpu_indexing_performance_model.h"
 #include "xla/backends/gpu/cost_model/gpu_performance_model.h"
 #include "xla/backends/gpu/cost_model/gpu_performance_model_base.h"
@@ -34,11 +33,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -46,71 +42,6 @@ namespace gpu {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
-
-absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
-    const se::DeviceDescription& device_info,
-    const HloInstruction& instruction) {
-  const HloFusionInstruction* fusion =
-      DynCast<HloFusionInstruction>(&instruction);
-  if (fusion == nullptr ||
-      fusion->fusion_kind() != HloInstruction::FusionKind::kCustom) {
-    return absl::FailedPreconditionError("Not a custom fusion.");
-  }
-
-  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig config,
-                   fusion->backend_config<GpuBackendConfig>());
-  if (config.fusion_backend_config().kind() != kTritonNestedGemmFusionKind) {
-    return absl::FailedPreconditionError("Not a Triton GeMM fusion.");
-  }
-
-  const HloInstruction* dot_instruction =
-      hlo_query::GetFirstInstructionWithOpcode(
-          *fusion->fused_instructions_computation(), HloOpcode::kDot);
-  if (dot_instruction == nullptr) {
-    return absl::FailedPreconditionError(
-        "No kDot instruction found in Triton fusion.");
-  }
-
-  const HloDotInstruction* dot =
-      DynCast<const HloDotInstruction>(dot_instruction);
-  if (dot == nullptr) {
-    return absl::FailedPreconditionError(
-        "No kDot instruction found in Triton fusion.");
-  }
-
-  if (!config.fusion_backend_config().has_block_level_fusion_config()) {
-    return absl::FailedPreconditionError(
-        "Fusion backend config does not have block level fusion config.");
-  }
-  BlockLevelParameters block_params =
-      BlockLevelParameters::FromBlockLevelFusionConfig(
-          config.fusion_backend_config().block_level_fusion_config());
-
-  return gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
-      dot, block_params, device_info);
-}
-
-// If `instruction` is a Triton-fused GEMM, computes its runtime estimation
-// using an analytical cost model and adds this as a reification cost.
-// This cost model focuses on the dot operation within the fusion. Fusions
-// with non-trivial operations on dot operands might not be fully accounted for.
-absl::Status RecordGemmCostModelEstimateIfApplicable(
-    const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  ABSL_ASSIGN_OR_RETURN(
-      EstimateRunTimeData runtime,
-      MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
-
-  ReificationCost cost =
-      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
-          runtime, device_info, "experimental-gemm-cost-model");
-
-  VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
-
-  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   instruction.backend_config<GpuBackendConfig>());
-  *gpu_config.add_reification_cost() = cost;
-  return instruction.set_backend_config(gpu_config);
-}
 
 absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
     GpuPerformanceModelWithIndexingAnalysis& perf_model,
@@ -177,15 +108,6 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
       gpu_performance_model.Get().RecordEstimatedRunTime(fusion_instr,
                                                          &cost_analysis_);
 
-      if (absl::Status status = RecordGemmCostModelEstimateIfApplicable(
-              device_info_, *fusion_instr);
-          !status.ok()) {
-        VLOG(1) << "Skipping GeMM fusion cost model estimate: "
-                << status.ToString(
-                       (VLOG_IS_ON(2))
-                           ? absl::StatusToStringMode::kWithEverything
-                           : absl::StatusToStringMode::kWithNoExtraData);
-      }
       if (absl::Status status =
               RecordIndexingPerformanceModelEstimateIfApplicable(
                   indexing_cost_analysis_, device_info_, *fusion_instr);

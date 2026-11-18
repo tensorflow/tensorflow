@@ -118,7 +118,7 @@ TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
-TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
+TEST_F(GpuCostModelStatsCollectionTest, IndexingCostModelAddedToGemmFusion) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
   HloModule test_module
 
@@ -155,9 +155,10 @@ TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
   ASSERT_OK_AND_ASSIGN(auto gpu_config,
                        root->backend_config<GpuBackendConfig>());
 
+  EXPECT_EQ(gpu_config.reification_cost_size(), 2);
   EXPECT_THAT(gpu_config.reification_cost(),
               Contains(Truly([](const ReificationCost& cost) {
-                return cost.name() == "experimental-gemm-cost-model" &&
+                return cost.name() == "indexing-cost-model" &&
                        cost.end_to_end_cycles() > 0;
               })));
 }
