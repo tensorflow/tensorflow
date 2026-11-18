@@ -15,8 +15,8 @@
 // RUN: tf-to-stablehlo-translate %s --input-arg-shapes=1 -o - | FileCheck %s
 
 // CHECK-LABEL: func.func @main
-// CHECK: %[[UQ:.*]] = stablehlo.uniform_quantize %arg0 : (tensor<1xf32>) -> tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>
-// CHECK: %[[BITCAST_CONVERT_0:.*]] = stablehlo.bitcast_convert %[[UQ]] : (tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1xi8>
+// CHECK: stablehlo.floor
+// CHECK: %[[BITCAST_CONVERT_0:.*]] = stablehlo.convert {{.*}} : (tensor<1xi64>) -> tensor<1xi8>
 // CHECK: %[[BITCAST_CONVERT_1:.*]] = stablehlo.bitcast_convert %[[BITCAST_CONVERT_0]] : (tensor<1xi8>) -> tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>
 // CHECK: %[[UDQ:.*]] = stablehlo.uniform_dequantize %[[BITCAST_CONVERT_1]] : (tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1xf32>
 // CHECK: return %[[UDQ]] : tensor<1xf32>
