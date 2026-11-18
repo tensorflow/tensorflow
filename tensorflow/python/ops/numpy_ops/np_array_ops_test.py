@@ -2073,6 +2073,67 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, [1, -2], axis=[-3, 2])
     _test(a, np.array([0, 1]), axis=np.array([-1, 1]))
 
+    # A scalar shift broadcast over several axes, and a sequence of shifts
+    # broadcast over a single axis. NumPy broadcasts `shift` against `axis`,
+    # so unequal lengths are valid as long as one of them has length one.
+    _test(a, 1, axis=(0, 1))
+    _test(a, (1,), axis=(0, 1))
+    _test(a, (1, 2), axis=0)
+    _test(a, [1, 2, 3], axis=-1)
+
+    # Repeating an axis accumulates the shifts, as in NumPy.
+    _test(a, (1, 2), axis=(0, 0))
+
+    # Without an axis the flattened array is rolled, and a sequence of shifts
+    # is summed first (`np.roll(a, (1, 2)) == np.roll(a, 3)`).
+    _test(a, (1, 2))
+    _test(a, [1, -2])
+    _test(a, (0, 0))
+    _test(a, ())
+    _test(a, np.array([1, 2]))
+    _test(a, np.array([]))
+    _test(a, range(2))
+    # Scalar shift types that NumPy coerces to integers, including 0-d arrays.
+    _test(a, np.int64(2))
+    _test(a, 2.0)
+    _test(a, (2.7, -1.9))
+    _test(a, True)
+    _test(a, True, axis=0)
+    _test(a, np.bool_(True), axis=0)
+    _test(a, 1.9, axis=0)
+    _test(np.array(42.0), (1, 2))
+    _test(np.arange(6).reshape(2, 3), (1, 2), axis=0)
+
+    # A scalar shift broadcast over several axes, and a sequence of shifts
+    # broadcast over a single axis. NumPy broadcasts `shift` against `axis`,
+    # so unequal lengths are valid as long as one of them has length one.
+    _test(a, 1, axis=(0, 1))
+    _test(a, (1,), axis=(0, 1))
+    _test(a, (1, 2), axis=0)
+    _test(a, [1, 2, 3], axis=-1)
+
+    # Repeating an axis accumulates the shifts, as in NumPy.
+    _test(a, (1, 2), axis=(0, 0))
+
+    # Without an axis the flattened array is rolled, and a sequence of shifts
+    # is summed first (`np.roll(a, (1, 2)) == np.roll(a, 3)`).
+    _test(a, (1, 2))
+    _test(a, [1, -2])
+    _test(a, (0, 0))
+    _test(a, ())
+    _test(a, np.array([1, 2]))
+    _test(a, np.array([]))
+    # Scalar shift types that NumPy coerces to integers, including 0-d arrays.
+    _test(a, np.int64(2))
+    _test(a, 2.0)
+    _test(a, (2.7, -1.9))
+    _test(a, True)
+    _test(a, True, axis=0)
+    _test(a, np.bool_(True), axis=0)
+    _test(a, 1.9, axis=0)
+    _test(np.array(42.0), (1, 2))
+    _test(np.arange(6).reshape(2, 3), (1, 2), axis=0)
+
     # Empty and scalar arrays, including rolls on the empty dimension itself
     # (exercising the max(dim_size, 1) safeguard).
     _test(np.empty((0, 3, 4)), 1, axis=0)
@@ -2117,6 +2178,24 @@ class ArrayMethodsTest(test.TestCase):
         (errors_impl.InvalidArgumentError, ValueError), 'out of range'
     ):
       f(a, constant_op.constant(1), constant_op.constant(3))
+
+    # Graph-mode broadcasting of a sequence of shifts over several axes.
+    self.assertAllEqual(
+        np.roll(a, (1, 2), axis=(0, 1)),
+        f(a, (1, 2), (0, 1)),
+    )
+    self.assertAllEqual(
+        np.roll(a, (1, 2)),
+        f(a, (1, 2), None),
+    )
+    with self.assertRaisesRegex(ValueError, 'scalars or 1D sequences'):
+      np_array_ops.roll(a, [[1, 2]])
+    with self.assertRaisesRegex(ValueError, 'scalars or 1D sequences'):
+      np_array_ops.roll(a, np.zeros((2, 2)))
+    with self.assertRaisesRegex(ValueError, 'scalars or 1D sequences'):
+      np_array_ops.roll(a, 1, axis=[[0, 1]])
+    with self.assertRaisesRegex(ValueError, 'shape mismatch'):
+      np_array_ops.roll(a, (1, 2, 3), axis=(0, 1))
 
   def testNdim(self):
     self.assertAllEqual(0, np_array_ops.ndim(0.5))

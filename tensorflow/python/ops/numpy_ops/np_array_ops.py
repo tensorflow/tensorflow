@@ -1952,13 +1952,125 @@ def fliplr(m):  # pylint: disable=missing-docstring
 def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
 
-  if axis is not None:
+  if axis is None:
+    # NumPy flattens the input, rolls it as a 1-d array, and restores the
+    # original shape. It also accepts a sequence of shifts in this path by
+    # summing them (`np.roll(a, (1, 2))` is `np.roll(a, 3)`), so the
+    # flattened path is not restricted to scalar `shift` values.
+    original_shape = array_ops.shape(a)
+    shift = _roll_total_shift(shift)
+    a = manip_ops.roll(array_ops.reshape(a, [-1]), shift, 0)
+    return array_ops.reshape(a, original_shape)
+
+  # `manip_ops.roll` requires a scalar `shift` and a scalar or 1-D `axis`.
+  # NumPy instead broadcasts `shift` against `axis`, allowing a scalar shift
+  # for several axes as well as mismatched-length sequences, so normalize
+  # both arguments before dispatching. Scalars already satisfy the kernel's
+  # contract and are passed through unchanged, which also keeps a graph-mode
+  # scalar `shift` Tensor working without a Python conversion.
+  if not _roll_needs_broadcast(shift, axis):
     return manip_ops.roll(a, shift, axis)
 
-  # If axis is None, the roll happens as a 1-d tensor.
-  original_shape = array_ops.shape(a)
-  a = manip_ops.roll(array_ops.reshape(a, [-1]), shift, 0)
-  return array_ops.reshape(a, original_shape)
+  shift, axis = _roll_broadcast_shift_axis(shift, axis)
+  return manip_ops.roll(a, shift, axis)
+
+
+def _roll_is_scalar(value):
+  """Whether `value` is a Python/NumPy scalar or a 0-D Tensor."""
+  if isinstance(value, core_tf_types.Tensor):
+    return value.shape.rank == 0
+  if isinstance(value, np.ndarray):
+    return value.ndim == 0
+  return not isinstance(value, (list, tuple, range))
+
+
+def _roll_is_plain_int(value):
+  """Whether `value` is an `int` that the kernel accepts as-is.
+
+  `bool` is a subclass of `int` but is not a valid `Tshift`/`Taxis` dtype, so
+  it is excluded here.
+  """
+  return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _roll_needs_broadcast(shift, axis):
+  """Whether `shift`/`axis` require NumPy-style broadcasting before dispatch."""
+  # A Tensor is left to the kernel: it may be a graph-mode value that cannot be
+  # converted to a Python int during tracing.
+  if isinstance(shift, core_tf_types.Tensor) or isinstance(
+      axis, core_tf_types.Tensor
+  ):
+    return False
+  if not _roll_is_scalar(shift) or not _roll_is_scalar(axis):
+    return True
+  # Python and NumPy scalars that are not plain `int` still have to be coerced
+  # to the kernel's `Tshift`/`Taxis` dtypes (int32/int64), e.g. `True`, `2.0`
+  # or `np.uint8(1)`.
+  return not _roll_is_plain_int(shift) or not _roll_is_plain_int(axis)
+
+
+def _roll_as_sequence(value, name):
+  """Converts a scalar or 1-D array-like `value` to a list of Python ints."""
+  if isinstance(value, core_tf_types.Tensor):
+    if value.shape.rank != 0:
+      raise ValueError(
+          f"'{name}' should be a scalar or 1D sequence, got a Tensor of rank "
+          f'{value.shape.rank}.'
+      )
+    return [int(value)]
+  if isinstance(value, np.ndarray):
+    if value.ndim > 1:
+      raise ValueError(f"'{name}' and 'axis' should be scalars or 1D sequences")
+    return [int(v) for v in value.reshape(-1)]
+  if isinstance(value, (list, tuple, range)):
+    if builtins.any(isinstance(v, (list, tuple, range, np.ndarray)) for v in value):
+      raise ValueError(f"'{name}' and 'axis' should be scalars or 1D sequences")
+    return [int(v) for v in value]
+  return [int(value)]
+
+
+def _roll_total_shift(shift):
+  """Sums a scalar or sequence of shifts, matching `np.roll(axis=None)`."""
+  if isinstance(shift, core_tf_types.Tensor) and shift.shape.rank == 0:
+    return shift
+  return builtins.sum(_roll_as_sequence(shift, 'shift'))
+
+
+def _roll_broadcast_shift_axis(shift, axis):
+  """Broadcasts `shift` against `axis` the way `np.roll` does.
+
+  Args:
+    shift: A scalar or 1-D sequence of shifts.
+    axis: A scalar or 1-D sequence of axes.
+
+  Returns:
+    A `(shift, axis)` pair of lists of Python ints with matching lengths.
+
+  Raises:
+    ValueError: If either argument is not a scalar or 1-D sequence, or if their
+      lengths are not broadcastable.
+  """
+  shifts = _roll_as_sequence(shift, 'shift')
+  axes = _roll_as_sequence(axis, 'axis')
+
+  if not shifts or not axes or (
+      len(shifts) != len(axes) and len(shifts) != 1 and len(axes) != 1
+  ):
+    raise ValueError(
+        'shape mismatch: objects cannot be broadcast to a single shape. '
+        f'Mismatch is between arg 0 with shape {len(shifts)} and arg 1 with '
+        f'shape {len(axes)}.'
+    )
+
+  # `np.roll` accumulates shifts for a repeated axis, which the `Roll` kernel
+  # already does, so duplicates are forwarded as-is. Out-of-bounds axes are
+  # also left to the kernel, which reports them with its own message.
+  count = builtins.max(len(shifts), len(axes))
+  if len(shifts) == 1:
+    shifts = shifts * count
+  if len(axes) == 1:
+    axes = axes * count
+  return shifts, axes
 
 
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
