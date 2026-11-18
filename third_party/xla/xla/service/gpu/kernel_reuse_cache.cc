@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,8 +41,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
@@ -81,7 +80,7 @@ absl::Status SetFileContent(absl::string_view path, absl::string_view content) {
 }
 }  // namespace
 
-constexpr int kCacheCompatibilityVersion = 3;
+constexpr int kCacheCompatibilityVersion = 4;
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
   if (proto.compatibility_version() != kCacheCompatibilityVersion) {
@@ -91,26 +90,17 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
   }
   absl::MutexLock lock(m_);
   for (const auto& [name, entry] : tsl::KeySortedRange(proto.entries())) {
-    std::optional<se::ClusterDim> cluster_dim;
-    if (entry.has_cluster_dim()) {
-      cluster_dim =
-          se::ClusterDim{entry.cluster_dim().x(), entry.cluster_dim().y(),
-                         entry.cluster_dim().z()};
-    }
+    ABSL_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                     LaunchDimensions::FromProto(entry.launch_dimensions()));
     std::shared_ptr<const std::vector<uint8_t>> binary =
         std::make_shared<const std::vector<uint8_t>>(
             entry.binary().data(),
             entry.binary().data() + entry.binary().size());
-    TF_RET_CHECK(
-        cache_
-            .insert(
-                {entry.fingerprint(),
-                 Entry{name,
-                       LaunchDimensions{
-                           entry.launch_dimensions().num_blocks(),
-                           entry.launch_dimensions().num_threads_per_block()},
-                       cluster_dim, entry.shmem_bytes(), std::move(binary)}})
-            .second);
+    TF_RET_CHECK(cache_
+                     .insert({entry.fingerprint(),
+                              Entry{name, launch_dimensions,
+                                    entry.shmem_bytes(), std::move(binary)}})
+                     .second);
   }
 
   return absl::OkStatus();
@@ -137,19 +127,8 @@ CompilationCacheProto KernelReuseCache::Export() const {
     CHECK(inserted) << cache_entry->kernel_name;
     CompilationCacheEntryProto& proto_entry = it->second;
     proto_entry.set_fingerprint(fingerprint);
-    CompilationCacheEntryProto::LaunchDimensionsProto launch_dimensions_proto;
-    launch_dimensions_proto.set_num_blocks(
-        cache_entry->launch_dimensions.num_blocks());
-    launch_dimensions_proto.set_num_threads_per_block(
-        cache_entry->launch_dimensions.num_threads_per_block());
-    *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
-    if (cache_entry->cluster_dim.has_value()) {
-      CompilationCacheEntryProto::ClusterDimProto cluster_dim_proto;
-      cluster_dim_proto.set_x(cache_entry->cluster_dim->x);
-      cluster_dim_proto.set_y(cache_entry->cluster_dim->y);
-      cluster_dim_proto.set_z(cache_entry->cluster_dim->z);
-      *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
-    }
+    *proto_entry.mutable_launch_dimensions() =
+        cache_entry->launch_dimensions.ToProto();
     proto_entry.set_shmem_bytes(cache_entry->shmem_bytes);
     if (cache_entry->binary != nullptr) {
       proto_entry.set_binary(absl::string_view(
@@ -236,7 +215,6 @@ KernelReuseCache::GetWithStatus(
                         entry.shmem_bytes,
                         entry.use_pdl,
                         entry.tma_metadata,
-                        entry.cluster_dim,
                     },
                     entry.binary,
                 };

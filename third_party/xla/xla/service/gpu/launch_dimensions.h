@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -31,8 +32,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Encapsulates the launch dimensions of a kernel, e.g., the block count and the
-// number of threads per block.
+// Encapsulates the launch dimensions of a kernel, e.g., the block count, the
+// number of threads per block, and optional cluster dimensions.
 class LaunchDimensions {
  public:
   // The default constructor creates a launch dimension that indicate
@@ -44,38 +45,50 @@ class LaunchDimensions {
       : block_counts_(block_x_count, 1, 1),
         thread_counts_per_block_(thread_x_count_per_block, 1, 1) {}
 
-  constexpr LaunchDimensions(const se::BlockDim& block_counts,
-                             const se::ThreadDim& thread_counts_per_block)
+  constexpr LaunchDimensions(
+      const se::BlockDim& block_counts,
+      const se::ThreadDim& thread_counts_per_block,
+      std::optional<se::ClusterDim> cluster_dims = std::nullopt)
       : block_counts_(block_counts),
-        thread_counts_per_block_(thread_counts_per_block) {}
+        thread_counts_per_block_(thread_counts_per_block),
+        cluster_dims_(cluster_dims) {}
 
-  const se::BlockDim& block_counts() const { return block_counts_; }
+  constexpr const se::BlockDim& block_counts() const { return block_counts_; }
 
-  const se::ThreadDim& thread_counts_per_block() const {
+  constexpr const se::ThreadDim& thread_counts_per_block() const {
     return thread_counts_per_block_;
   }
 
+  constexpr const std::optional<se::ClusterDim>& cluster_dims() const {
+    return cluster_dims_;
+  }
+
   // Returns the total number of blocks.
-  uint64_t num_blocks() const {
+  constexpr uint64_t num_blocks() const {
     return block_counts_.x * block_counts_.y * block_counts_.z;
   }
 
   // Returns the total number of threads in a block.
-  uint64_t num_threads_per_block() const {
+  constexpr uint64_t num_threads_per_block() const {
     return thread_counts_per_block_.x * thread_counts_per_block_.y *
            thread_counts_per_block_.z;
   }
 
-  uint64_t launch_bound() const {
+  constexpr uint64_t launch_bound() const {
     return num_blocks() * num_threads_per_block();
   }
 
   std::string ToString() const {
-    return absl::StrCat("blocks: {", block_counts_.x, ", ", block_counts_.y,
-                        ", ", block_counts_.z, "}, threads/block: {",
-                        thread_counts_per_block_.x, ", ",
-                        thread_counts_per_block_.y, ", ",
-                        thread_counts_per_block_.z, "}");
+    std::string str = absl::StrCat(
+        "blocks: {", block_counts_.x, ", ", block_counts_.y, ", ",
+        block_counts_.z, "}, threads/block: {", thread_counts_per_block_.x,
+        ", ", thread_counts_per_block_.y, ", ", thread_counts_per_block_.z,
+        "}");
+    if (cluster_dims_.has_value()) {
+      absl::StrAppend(&str, ", cluster: {", cluster_dims_->x, ", ",
+                      cluster_dims_->y, ", ", cluster_dims_->z, "}");
+    }
+    return str;
   }
 
   static absl::StatusOr<LaunchDimensions> FromWorkDimensions(
@@ -86,20 +99,23 @@ class LaunchDimensions {
   static absl::StatusOr<LaunchDimensions> FromProto(
       const LaunchDimensionsProto& proto);
 
-  friend bool operator==(const LaunchDimensions& lhs,
-                         const LaunchDimensions& rhs) {
-    return std::tie(lhs.block_counts_, lhs.thread_counts_per_block_) ==
-           std::tie(rhs.block_counts_, rhs.thread_counts_per_block_);
+  friend constexpr bool operator==(const LaunchDimensions& lhs,
+                                   const LaunchDimensions& rhs) {
+    return std::tie(lhs.block_counts_, lhs.thread_counts_per_block_,
+                    lhs.cluster_dims_) == std::tie(rhs.block_counts_,
+                                                   rhs.thread_counts_per_block_,
+                                                   rhs.cluster_dims_);
   }
 
-  friend bool operator!=(const LaunchDimensions& lhs,
-                         const LaunchDimensions& rhs) {
+  friend constexpr bool operator!=(const LaunchDimensions& lhs,
+                                   const LaunchDimensions& rhs) {
     return !(lhs == rhs);
   }
 
  private:
   se::BlockDim block_counts_;
   se::ThreadDim thread_counts_per_block_;
+  std::optional<se::ClusterDim> cluster_dims_;
 };
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.

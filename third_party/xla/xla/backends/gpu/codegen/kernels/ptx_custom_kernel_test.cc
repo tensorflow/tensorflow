@@ -138,15 +138,12 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernelWithClusterDim) {
                        platform.ExecutorForDevice(0));
   GpuKernelSpec spec{
       "AddI32",
-      LaunchDimensions{se::BlockDim(4), se::ThreadDim(1)},
+      LaunchDimensions{se::BlockDim(4), se::ThreadDim(1), se::ClusterDim(2)},
       emitters::KernelArguments{std::vector<emitters::KernelArgument>{
           emitters::KernelArgument{Shape{S32, {}}},
           emitters::KernelArgument{Shape{S32, {}}},
           emitters::KernelArgument{Shape{S32, {}}}}},
-      byte_length,
-      false,
-      {},
-      se::ClusterDim(2)};
+      byte_length};
   ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
                        GetPtxCustomKernel(spec, kAddI32KernelPtx));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,

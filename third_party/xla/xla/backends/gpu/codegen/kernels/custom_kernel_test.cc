@@ -71,12 +71,9 @@ TEST(CustomKernelTest, ToProtoWithClusterDims) {
   GpuKernelSpec spec{
       "kernel_name",
       LaunchDimensions{stream_executor::BlockDim(1, 2, 3),
-                       stream_executor::ThreadDim(4, 5, 6)},
-      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}},
-      10,
-      false,
-      {},
-      stream_executor::ClusterDim(7, 8, 9)};
+                       stream_executor::ThreadDim(4, 5, 6),
+                       stream_executor::ClusterDim(7, 8, 9)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{}}, 10};
   CustomKernel custom_kernel(
       spec,
       stream_executor::KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(

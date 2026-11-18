@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -38,7 +37,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
@@ -66,7 +64,6 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
     Kind kind = Kind::kLeaf;
     const HloFusionInstruction* fusion = nullptr;
     LaunchDimensions launch_dims;
-    std::optional<se::ClusterDim> cluster_dim;
     // Whether small leaf fusions should be unrolled/vectorized.
     bool unroll_small_fusions = false;
     std::vector<int64_t> input_arg_indices;
@@ -81,9 +78,6 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
 
   LaunchDimensions launch_dimensions() const override {
     return root_spec_.launch_dims;
-  }
-  std::optional<se::ClusterDim> cluster_dim() const {
-    return root_spec_.cluster_dim;
   }
 
   AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,

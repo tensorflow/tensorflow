@@ -38,8 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
-#include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/launch_dim.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -60,16 +58,14 @@ GpuKernelSpec::GpuKernelSpec(absl::string_view name,
                              const LaunchDimensions& launch_dimensions,
                              const emitters::KernelArguments& kernel_arguments,
                              std::optional<size_t> scratch_bytes, bool use_pdl,
-                             stream_executor::gpu::TmaMetadata tma_metadata,
-                             std::optional<se::ClusterDim> cluster_dim)
+                             stream_executor::gpu::TmaMetadata tma_metadata)
     : KernelSpec(name, launch_dimensions.AsWorkDimensions(),
                  kernel_arguments.GetArgumentShapedSlices(), {},
                  GetInvariantArguments(kernel_arguments), scratch_bytes),
       launch_dimensions_(launch_dimensions),
       kernel_arguments_(kernel_arguments),
       use_pdl_(use_pdl),
-      tma_metadata_(tma_metadata),
-      cluster_dim_(cluster_dim) {}
+      tma_metadata_(std::move(tma_metadata)) {}
 
 absl::StatusOr<GpuKernelSpec> GpuKernelSpec::FromProto(
     const GpuKernelSpecProto& proto,
@@ -92,15 +88,8 @@ absl::StatusOr<GpuKernelSpec> GpuKernelSpec::FromProto(
     ABSL_ASSIGN_OR_RETURN(tma_metadata, stream_executor::gpu::TmaMetadata::FromProto(
                                        proto.tma_metadata()));
   }
-  std::optional<stream_executor::ClusterDim> cluster_dim;
-  if (proto.has_cluster_dim()) {
-    ABSL_ASSIGN_OR_RETURN(
-        cluster_dim.emplace(),
-        stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
-  }
   return GpuKernelSpec(proto.name(), launch_dimensions, kernel_arguments,
-                       scratch_bytes, proto.use_pdl(), std::move(tma_metadata),
-                       cluster_dim);
+                       scratch_bytes, proto.use_pdl(), std::move(tma_metadata));
 }
 
 absl::StatusOr<GpuKernelSpecProto> GpuKernelSpec::ToProto() const {
@@ -120,9 +109,6 @@ absl::StatusOr<GpuKernelSpecProto> GpuKernelSpec::ToProto() const {
   proto.set_use_pdl(use_pdl_);
   if (!tma_metadata_.arg_index_to_tma_info.empty()) {
     *proto.mutable_tma_metadata() = tma_metadata_.ToProto();
-  }
-  if (cluster_dim_.has_value()) {
-    *proto.mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   return proto;
 }

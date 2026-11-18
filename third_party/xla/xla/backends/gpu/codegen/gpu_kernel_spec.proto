@@ -20,7 +20,6 @@ package xla.gpu;
 import "xla/codegen/emitters/kernel_arguments.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
-import "xla/stream_executor/launch_dim.proto";
 
 message GpuKernelSpecProto {
   string name = 1;
@@ -29,5 +28,6 @@ message GpuKernelSpecProto {
   optional int64 scratch_bytes = 4;
   bool use_pdl = 5;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 6;
-  optional stream_executor.ClusterDimProto cluster_dim = 7;
+  reserved 7;
+  reserved "cluster_dim";
 }

@@ -208,6 +208,7 @@ xla_cc_test(
     deps = [
         ":launch_dimensions",
         ":launch_dimensions_proto_cc",
+        "//xla/runtime:work_cluster",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status:status_matchers",
@@ -1593,6 +1594,7 @@ xla_cc_test(
 tf_proto_library(
     name = "kernel_reuse_cache_proto",
     srcs = ["kernel_reuse_cache.proto"],
+    deps = [":launch_dimensions_proto"],
 )
 
 cc_library(
@@ -3654,13 +3656,13 @@ cc_library(
     deps = [
         ":kernel_reuse_cache_proto_cc",
         ":launch_dimensions",
+        ":launch_dimensions_proto_cc",
         "//xla:future",
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
@@ -3688,7 +3690,9 @@ xla_cc_test(
     deps = [
         ":kernel_reuse_cache",
         ":kernel_reuse_cache_proto_cc",
+        ":launch_dimensions",
         "//xla/codegen/emitters:kernel_arguments",
+        "//xla/stream_executor:launch_dim",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",

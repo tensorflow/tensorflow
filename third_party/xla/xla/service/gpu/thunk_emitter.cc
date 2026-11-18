@@ -1729,7 +1729,6 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                 return KernelReuseCache::Entry{
                     std::string{spec.name()},
                     spec.launch_dimensions(),
-                    /*cluster_dim=*/std::nullopt,
                     static_cast<int64_t>(*spec.scratch_bytes()),
                     std::make_shared<const std::vector<uint8_t>>(cubin),
                     spec.tma_metadata(),

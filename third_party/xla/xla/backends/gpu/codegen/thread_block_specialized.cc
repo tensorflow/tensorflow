@@ -176,14 +176,15 @@ void EmitHorizontal(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
                     mlir::Value rel_bid, mlir::Value tid,
                     absl::Span<const mlir::Value> arg_ptrs,
                     const LeafDecls& leaf_decls) {
-  int64_t cluster_x = spec.cluster_dim.has_value()
-                          ? static_cast<int64_t>(spec.cluster_dim->x)
-                          : 1;
+  int64_t cluster_x =
+      spec.launch_dims.cluster_dims().has_value()
+          ? static_cast<int64_t>(spec.launch_dims.cluster_dims()->x)
+          : 1;
   int64_t block_offset = 0;
   for (size_t idx = 0; idx < spec.children.size(); ++idx) {
     const NestedKernelSpec& child = spec.children[idx];
     int64_t child_blocks = child.launch_dims.num_blocks();
-    int64_t allocated_blocks = child.cluster_dim.has_value()
+    int64_t allocated_blocks = child.launch_dims.cluster_dims().has_value()
                                    ? RoundUpTo<int64_t>(child_blocks, cluster_x)
                                    : child_blocks;
     int64_t upper_bound = block_offset + allocated_blocks;
@@ -229,7 +230,7 @@ void EmitPhased(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
   mlir::OpBuilder::InsertPoint caller_ip = b.saveInsertionPoint();
   auto is_single_block = [](const NestedKernelSpec& child) {
     return child.launch_dims.num_blocks() == 1 &&
-           !child.cluster_dim.has_value();
+           !child.launch_dims.cluster_dims().has_value();
   };
   // Contiguous single-block phases execute exclusively on relative block 0
   // (`rel_bid < 1`) and share a single block-range guard so block barriers
@@ -444,17 +445,20 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
       max_blocks = std::max(max_blocks, child.launch_dims.num_blocks());
       max_threads =
           std::max(max_threads, child.launch_dims.num_threads_per_block());
-      child_uses_cluster |= child.cluster_dim.has_value();
+      child_uses_cluster |= child.launch_dims.cluster_dims().has_value();
     }
     // Cluster barriers only synchronize blocks within one cluster, so allocate
     // a portable cluster of power-of-2 size in {2, 4, 8} when multiple blocks
     // are needed, or a single block without a cluster when `max_blocks <= 1`.
     uint64_t cluster_blocks = absl::bit_ceil(std::min<uint64_t>(
         max_blocks, ThreadBlockSpecializedFusion::kMaxBlocksPerCluster));
-    spec.launch_dims = LaunchDimensions(cluster_blocks, max_threads);
+    std::optional<se::ClusterDim> cluster_dims;
     if (cluster_blocks > 1 || child_uses_cluster) {
-      spec.cluster_dim = se::ClusterDim(cluster_blocks, 1, 1);
+      cluster_dims = se::ClusterDim(cluster_blocks, 1, 1);
     }
+    spec.launch_dims =
+        LaunchDimensions(se::BlockDim(cluster_blocks, 1, 1),
+                         se::ThreadDim(max_threads, 1, 1), cluster_dims);
     return spec;
   }
 
@@ -462,7 +466,7 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
   // occupies a multiple of `cluster_x` CTAs, while non-clustered children pack
   // contiguously afterward without per-child padding.
   absl::c_stable_partition(spec.children, [](const NestedKernelSpec& child) {
-    return child.cluster_dim.has_value();
+    return child.launch_dims.cluster_dims().has_value();
   });
 
   uint64_t max_threads = 0;
@@ -470,14 +474,15 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
   for (const NestedKernelSpec& child : spec.children) {
     max_threads =
         std::max(max_threads, child.launch_dims.num_threads_per_block());
-    if (child.cluster_dim.has_value()) {
-      cluster_x = std::max(cluster_x.value_or(1), child.cluster_dim->x);
+    if (child.launch_dims.cluster_dims().has_value()) {
+      cluster_x =
+          std::max(cluster_x.value_or(1), child.launch_dims.cluster_dims()->x);
     }
   }
 
   uint64_t total_blocks = 0;
   for (const NestedKernelSpec& child : spec.children) {
-    if (child.cluster_dim.has_value()) {
+    if (child.launch_dims.cluster_dims().has_value()) {
       total_blocks +=
           RoundUpTo<uint64_t>(child.launch_dims.num_blocks(), *cluster_x);
     } else {
@@ -485,10 +490,13 @@ NestedKernelSpec BuildNestedKernelSpec(const HloFusionAnalysis& analysis,
     }
   }
   total_blocks = RoundUpTo<uint64_t>(total_blocks, cluster_x.value_or(1));
-  spec.launch_dims = LaunchDimensions(total_blocks, max_threads);
+  std::optional<se::ClusterDim> cluster_dims;
   if (cluster_x.has_value()) {
-    spec.cluster_dim = se::ClusterDim(*cluster_x, 1, 1);
+    cluster_dims = se::ClusterDim(*cluster_x, 1, 1);
   }
+  spec.launch_dims =
+      LaunchDimensions(se::BlockDim(total_blocks, 1, 1),
+                       se::ThreadDim(max_threads, 1, 1), cluster_dims);
   return spec;
 }
 
@@ -753,7 +761,8 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
   ABSL_RETURN_IF_ERROR(LowerLauncherModuleToLlvmDialect(
       *launcher_module, device_info_, should_verify));
 
-  if (std::optional<se::ClusterDim> cluster_dim = this->cluster_dim()) {
+  if (std::optional<se::ClusterDim> cluster_dim =
+          launch_dimensions().cluster_dims()) {
     auto launcher_entry = launcher_module->lookupSymbol<mlir::LLVM::LLVMFuncOp>(
         entry_function_name);
     TF_RET_CHECK(launcher_entry != nullptr);
@@ -809,7 +818,7 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "ThreadBlockSpecializedFusion: "
           << fusion.fused_instructions_computation()->ToString();
-  if (cluster_dim().has_value()) {
+  if (launch_dimensions().cluster_dims().has_value()) {
     const auto* cuda_cc =
         ir_emitter_context.gpu_compute_capability().cuda_compute_capability();
     if (cuda_cc == nullptr || !cuda_cc->IsAtLeastHopper()) {
@@ -857,12 +866,12 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
         return ir_emitter_context.kernel_compiler()
             ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
                                     fingerprint, spec)
-            .Map([spec = std::move(spec), cluster_dim = cluster_dim(),
+            .Map([spec = std::move(spec),
                   max_shmem_bytes = llvm_source_wrapper.max_shmem_bytes](
                      const std::vector<uint8_t>& cubin) mutable {
               KernelReuseCache::Entry entry{
                   std::string{spec.name()}, spec.launch_dimensions(),
-                  cluster_dim, max_shmem_bytes,
+                  max_shmem_bytes,
                   std::make_shared<const std::vector<uint8_t>>(cubin)};
               entry.use_pdl = spec.use_pdl();
               return entry;

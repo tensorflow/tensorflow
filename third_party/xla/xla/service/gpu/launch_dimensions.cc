@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -53,6 +54,11 @@ absl::StatusOr<LaunchDimensions> LaunchDimensions::FromWorkDimensions(
 }
 
 WorkDimensions LaunchDimensions::AsWorkDimensions() const {
+  // Shared emitters use `WorkDimensions` for flat `(block_id, thread_id)`
+  // indexing (`num_work_groups` maps to total grid blocks) and ignore
+  // `NumWorkClusters`. GPU cluster launch configuration is carried directly on
+  // `LaunchDimensions::cluster_dims()`, so leave `NumWorkClusters` at its
+  // default `{1, 1, 1}`.
   return WorkDimensions{
       NumWorkClusters{},
       NumWorkGroups{block_counts_.x, block_counts_.y, block_counts_.z},
@@ -86,6 +92,9 @@ LaunchDimensionsProto LaunchDimensions::ToProto() const {
   LaunchDimensionsProto proto;
   *proto.mutable_block_counts() = block_counts_.ToProto();
   *proto.mutable_thread_counts_per_block() = thread_counts_per_block_.ToProto();
+  if (cluster_dims_.has_value()) {
+    *proto.mutable_cluster_dims() = cluster_dims_->ToProto();
+  }
   return proto;
 }
 
@@ -96,7 +105,12 @@ absl::StatusOr<LaunchDimensions> LaunchDimensions::FromProto(
   ABSL_ASSIGN_OR_RETURN(
       stream_executor::ThreadDim thread_counts_per_block,
       stream_executor::ThreadDim::FromProto(proto.thread_counts_per_block()));
-  return LaunchDimensions{block_counts, thread_counts_per_block};
+  std::optional<stream_executor::ClusterDim> cluster_dims;
+  if (proto.has_cluster_dims()) {
+    ABSL_ASSIGN_OR_RETURN(cluster_dims, stream_executor::ClusterDim::FromProto(
+                                       proto.cluster_dims()));
+  }
+  return LaunchDimensions{block_counts, thread_counts_per_block, cluster_dims};
 }
 }  // namespace gpu
 }  // namespace xla

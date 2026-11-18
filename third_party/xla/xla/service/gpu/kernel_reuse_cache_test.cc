@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -66,10 +68,13 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                   key: "kernel_name1"
                   value {
                     fingerprint: "fingerprint1"
-                    launch_dimensions { num_blocks: 1 num_threads_per_block: 1 }
+                    launch_dimensions {
+                      block_counts { coordinates { x: 1 y: 1 z: 1 } }
+                      thread_counts_per_block { coordinates { x: 1 y: 1 z: 1 } }
+                    }
                   }
                 }
-                compatibility_version: 3
+                compatibility_version: 4
               )pb"));
 
   EXPECT_OK(cache.Load(proto));
@@ -84,6 +89,56 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                          future.Await());
     EXPECT_EQ(result.spec.name(), kernel_name);
   }
+}
+
+TEST_F(KernelReuseTest, ExportAndLoadPreserves3DLaunchAndClusterDims) {
+  KernelReuseCache cache;
+  const std::string fingerprint = "clustered_fp";
+  const std::string kernel_name = "clustered_kernel";
+
+  auto [future, was_cached] =
+      cache.GetWithStatus(fingerprint, emitters::KernelArguments{{}}, [&]() {
+        return KernelReuseCache::Entry{
+            kernel_name,
+            LaunchDimensions{se::BlockDim(8, 4, 2), se::ThreadDim(128, 2, 1),
+                             se::ClusterDim(2, 2, 1)},
+            /*shmem_bytes=*/64};
+      });
+  EXPECT_FALSE(was_cached);
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Kernel& result, future.Await());
+  EXPECT_EQ(result.spec.launch_dimensions().cluster_dims(),
+            se::ClusterDim(2, 2, 1));
+
+  const CompilationCacheProto proto = cache.Export();
+  EXPECT_THAT(
+      proto, tsl::proto_testing::EquivToProto(R"pb(
+        entries {
+          key: "clustered_kernel"
+          value {
+            fingerprint: "clustered_fp"
+            launch_dimensions {
+              block_counts { coordinates { x: 8 y: 4 z: 2 } }
+              thread_counts_per_block { coordinates { x: 128 y: 2 z: 1 } }
+              cluster_dims { coordinates { x: 2 y: 2 z: 1 } }
+            }
+            shmem_bytes: 64
+          }
+        }
+        compatibility_version: 4
+      )pb"));
+
+  cache.Clear();
+  EXPECT_OK(cache.Load(proto));
+
+  auto [reloaded_future, reloaded_cached] = cache.GetWithStatus(
+      fingerprint, emitters::KernelArguments{{}},
+      []() { return absl::UnimplementedError("Should be cached"); });
+  EXPECT_TRUE(reloaded_cached);
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Kernel& reloaded,
+                       reloaded_future.Await());
+  EXPECT_EQ(reloaded.spec.launch_dimensions(),
+            LaunchDimensions(se::BlockDim(8, 4, 2), se::ThreadDim(128, 2, 1),
+                             se::ClusterDim(2, 2, 1)));
 }
 
 TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {

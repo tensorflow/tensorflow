@@ -410,7 +410,6 @@ AsyncThunkSequence MlirKernelFusion::Emit(
             .Map([spec = std::move(spec)](std::vector<uint8_t> cubin) mutable {
               KernelReuseCache::Entry entry{
                   std::string{spec.name()}, spec.launch_dimensions(),
-                  /*cluster_dim=*/std::nullopt,
                   /*shmem_bytes=*/0,
                   std::make_shared<const std::vector<uint8_t>>(
                       std::move(cubin))};

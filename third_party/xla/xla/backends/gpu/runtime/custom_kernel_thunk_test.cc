@@ -91,12 +91,10 @@ TEST(CustomKernelThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
 
   GpuKernelSpec clustered_kernel_spec{
       "clustered_name",
-      LaunchDimensions{se::BlockDim(6, 4, 2), se::ThreadDim(8, 10, 12)},
+      LaunchDimensions{se::BlockDim(6, 4, 2), se::ThreadDim(8, 10, 12),
+                       se::ClusterDim(2, 2, 2)},
       emitters::KernelArguments{std::vector<emitters::KernelArgument>{}},
-      /*scratch_bytes=*/84,
-      false,
-      {},
-      se::ClusterDim(2, 2, 2)};
+      /*scratch_bytes=*/84};
   CustomKernel clustered_kernel(
       clustered_kernel_spec,
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(

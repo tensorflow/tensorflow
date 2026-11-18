@@ -58,7 +58,7 @@ CustomKernel::CustomKernel(const GpuKernelSpec& spec,
       kernel_spec_(std::move(kernel_spec)),
       block_dims_(spec.launch_dimensions().block_counts()),
       thread_dims_(spec.launch_dimensions().thread_counts_per_block()),
-      cluster_dims_(spec.cluster_dim()),
+      cluster_dims_(spec.launch_dimensions().cluster_dims()),
       shared_memory_bytes_(spec.shmem_bytes()) {}
 
 absl::string_view CustomKernel::name() const { return name_; }

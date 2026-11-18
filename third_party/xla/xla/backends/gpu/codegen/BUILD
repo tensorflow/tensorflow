@@ -651,7 +651,6 @@ tf_proto_library(
     deps = [
         "//xla/codegen/emitters:kernel_arguments_proto",
         "//xla/service/gpu:launch_dimensions_proto",
-        "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:tma_metadata_proto",
     ],
 )
@@ -668,8 +667,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:launch_dimensions_proto_cc",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:launch_dim_proto_cc",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/stream_executor/gpu:tma_metadata_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -689,6 +686,7 @@ xla_cc_test(
         ":gpu_kernel_spec",
         ":gpu_kernel_spec_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/stream_executor:launch_dim",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
