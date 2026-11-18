@@ -550,17 +550,34 @@ xtile.entry_func @all_gather_without_remote_buffers_arg_doesnt_lower(%input: mem
 }
 
 // CHECK-LABEL: xtile.entry_func @reduce_scatter_one_shot(
+// CHECK-SAME: %[[INPUT:[a-zA-Z0-9_]+]]: memref<4x1024xf32>, %[[OUTPUT:[a-zA-Z0-9_]+]]: memref<2x1024xf32>, %[[REMOTE:[a-zA-Z0-9_]+]]: memref<2xi64>, %[[SIGNAL:[a-zA-Z0-9_]+]]: memref<2xi64>, %[[RANK:[a-zA-Z0-9_]+]]: index, %[[TILE_ID:[a-zA-Z0-9_]+]]: index)
 xtile.entry_func @reduce_scatter_one_shot(%input: memref<4x1024xf32>, %output: memref<2x1024xf32>, %remote_input_buffer: memref<2xi64>, %signal_buffer: memref<2xi64>, %device_rank: index, %tile_id: index) attributes {has_rank, has_signal_buffer, num_scratch_buffers = 1 : i32} {
   %c0 = arith.constant 0 : index
   %tile = xtile.extract %input[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
-  // CHECK: xtile.extract
-  // CHECK: xtile.select_buffer %{{.*}}[%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
-  // CHECK: xtile.insert {{.*}} : tensor<2x64xf32> -> memref<4x1024xf32>
-  // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
-  // CHECK: xtile.select_buffer %{{.*}}[%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
-  // CHECK: xtile.extract {{.*}} : memref<4x1024xf32> -> tensor<1x64xf32>
-  // CHECK: xtile.select_buffer %{{.*}}[%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
-  // CHECK: xtile.extract {{.*}} : memref<4x1024xf32> -> tensor<1x64xf32>
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK: %[[IN_TILE:.*]] = xtile.extract %[[INPUT]][%[[C0]], %[[TILE_ID]]] [2, 64] [1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
+  // CHECK: %[[RANK_I32:.*]] = arith.index_cast %[[RANK]] : index to i32
+  // CHECK: %[[PID:.*]] = tt.get_program_id x : i32
+  // CHECK: %[[SLOT:.*]] = arith.divui %[[PID]], %{{.*}} : i32
+  // CHECK: %[[COPY_RANK:.*]] = arith.index_cast %[[SLOT]] : i32 to index
+  // CHECK: %[[COPY_OFF:.*]] = arith.muli %[[COPY_RANK]], %[[C2]] : index
+  // CHECK: %[[INTRA_OFF:.*]] = arith.subi %[[C0]], %[[COPY_OFF]] : index
+  // CHECK: %[[LOCAL_OFF:.*]] = arith.muli %[[RANK]], %[[C2]] : index
+  // CHECK: %[[PUSH_OFF:.*]] = arith.addi %[[LOCAL_OFF]], %[[INTRA_OFF]] : index
+  // CHECK: %[[PEER_BUF:.*]] = xtile.select_buffer %[[REMOTE]][%[[COPY_RANK]]] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
+  // CHECK: xtile.insert %[[IN_TILE]] into %[[PEER_BUF]][%[[PUSH_OFF]], %[[TILE_ID]]] [2, 64] [1, 1] : tensor<2x64xf32> -> memref<4x1024xf32>
+  // CHECK: ttg.barrier local
+  // CHECK: %[[SIG_PTR:.*]] = triton_xla.memref_to_ptr %[[SIGNAL]] from memref<2xi64> to <i64>
+  // CHECK: triton_xla.block_barrier %[[SIG_PTR]], %[[RANK_I32]], %{{.*}}, %[[SLOT]] <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
+  // CHECK: %[[RED_INTRA_OFF:.*]] = arith.subi %[[C0]], %{{.*}} : index
+  // CHECK: %[[RED_OFF0:.*]] = arith.addi %[[RED_INTRA_OFF]], %[[COPY_RANK]] : index
+  // CHECK: %[[LOCAL_BUF:.*]] = xtile.select_buffer %[[REMOTE]][%[[RANK]]] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
+  // CHECK: %[[R0:.*]] = xtile.extract %[[LOCAL_BUF]][%[[RED_OFF0]], %[[TILE_ID]]] [1, 64] [1, 1] : memref<4x1024xf32> -> tensor<1x64xf32>
+  // CHECK: %[[RED_OFF1:.*]] = arith.addi %[[RED_OFF0]], %[[C2]] : index
+  // CHECK: %[[R1:.*]] = xtile.extract %[[LOCAL_BUF]][%[[RED_OFF1]], %[[TILE_ID]]] [1, 64] [1, 1] : memref<4x1024xf32> -> tensor<1x64xf32>
+  // CHECK: %[[SUM:.*]] = arith.addf %[[R0]], %[[R1]] : tensor<1x64xf32>
+  // CHECK: xtile.insert %[[SUM]] into %[[OUTPUT]][%[[C0]], %[[TILE_ID]]] [1, 64] [1, 1] : tensor<1x64xf32> -> memref<2x1024xf32>
   // CHECK-NOT: xtile.reduce_scatter
   %reduce_scatter = xtile.reduce_scatter(%tile) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>) -> (tensor<1x64xf32>) {
   ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
@@ -646,18 +663,16 @@ xtile.entry_func @variadic_reduce_scatter_one_shot(%input0: memref<4x1024xf32>, 
   %c0 = arith.constant 0 : index
   %tile0 = xtile.extract %input0[%c0, %tile_id][2, 64][1, 1] : memref<4x1024xf32> -> tensor<2x64xf32>
   %tile1 = xtile.extract %input1[%c0, %tile_id][2, 1][1, 1] : memref<4x16xf32> -> tensor<2x1xf32>
-  // Copy phase: one store per operand into its own symmetric buffer.
+  // Push phase: one store per operand into the peer rank's symmetric buffer.
   // CHECK: xtile.select_buffer %[[REMOTE0]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
   // CHECK: xtile.select_buffer %[[REMOTE1]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x16xf32>
   // A single barrier covers both operands.
   // CHECK: triton_xla.block_barrier {{.*}} <world_size = 2, signal_stride = 16, barrier_mode = producer_symmetric>
   // CHECK-NOT: triton_xla.block_barrier
   // CHECK-NOT: xtile.reduce_scatter
-  // Reduce phase: pull from both ranks and reduce, per operand.
-  // CHECK: xtile.select_buffer %[[REMOTE0]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
+  // Reduce phase: read both ranks' slices from this rank's symmetric buffer and reduce, per operand.
   // CHECK: xtile.select_buffer %[[REMOTE0]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x1024xf32>
   // CHECK: arith.addf {{.*}} : tensor<1x64xf32>
-  // CHECK: xtile.select_buffer %[[REMOTE1]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x16xf32>
   // CHECK: xtile.select_buffer %[[REMOTE1]][%{{.*}}] offset %{{.*}} : memref<2xi64> -> memref<4x16xf32>
   // CHECK: arith.addf {{.*}} : tensor<1x1xf32>
   %out0, %out1 = xtile.reduce_scatter(%tile0, %tile1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x1xf32>) -> (tensor<1x64xf32>, tensor<1x1xf32>) {

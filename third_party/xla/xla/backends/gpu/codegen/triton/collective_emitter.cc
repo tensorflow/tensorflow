@@ -652,21 +652,31 @@ class ReductionEmitter {
         op_ctx.remote_input_buffers, rank_idx, state.buffer_offset);
   }
 
-  // Loads a tile of `operand_idx` from the remote buffer of the given rank.
+  // Loads a tile of `operand_idx` from `remote_memref`.
   // Offsets must be global index offsets from the start of the remote buffer.
   // Shape must be exact shape of the tile to be loaded.
+  xtile::TensorValue LoadTileFromBuffer(
+      int64_t operand_idx, mlir::TypedValue<mlir::MemRefType> remote_memref,
+      mlir::ValueRange offsets, llvm::ArrayRef<int64_t> strides,
+      llvm::ArrayRef<int64_t> shape) {
+    CHECK(initialized_);
+    const OperandState& state = operand_states_[operand_idx];
+    auto tile_type = mlir::RankedTensorType::get(shape, state.elem_type);
+    return xtile::ExtractTileOp::create(builder_, tile_type, remote_memref,
+                                        offsets, shape, strides)
+        .getResult();
+  }
+
+  // Loads a tile of `operand_idx` from the remote buffer of the given rank.
   xtile::TensorValue LoadTileForRank(int64_t operand_idx, mlir::Value rank_idx,
                                      mlir::ValueRange offsets,
                                      llvm::ArrayRef<int64_t> strides,
                                      llvm::ArrayRef<int64_t> shape) {
     CHECK(initialized_);
-    const OperandState& state = operand_states_[operand_idx];
     mlir::TypedValue<mlir::MemRefType> remote_memref =
         GetRemoteBufferMemref(operand_idx, rank_idx);
-    auto tile_type = mlir::RankedTensorType::get(shape, state.elem_type);
-    return xtile::ExtractTileOp::create(builder_, tile_type, remote_memref,
-                                        offsets, shape, strides)
-        .getResult();
+    return LoadTileFromBuffer(operand_idx, remote_memref, offsets, strides,
+                              shape);
   }
 
   // Overload for integer rank.
@@ -679,17 +689,29 @@ class ReductionEmitter {
   }
 
   // Stores an entire tile of `operand_idx` to the symmetric buffer of
+  // `dst_rank`.
+  void EmitCopyToSymmetric(int64_t operand_idx,
+                           xtile::TensorValue tile_to_store,
+                           mlir::ValueRange offsets,
+                           llvm::ArrayRef<int64_t> strides,
+                           llvm::ArrayRef<int64_t> shape,
+                           mlir::Value dst_rank) {
+    CHECK(initialized_);
+    mlir::TypedValue<mlir::MemRefType> remote_memref =
+        GetRemoteBufferMemref(operand_idx, dst_rank);
+    xtile::InsertTileOp::create(builder_, tile_to_store, remote_memref, offsets,
+                                shape, strides);
+  }
+
+  // Stores an entire tile of `operand_idx` to the symmetric buffer of
   // this device's rank.
   void EmitCopyToSymmetric(int64_t operand_idx,
                            xtile::TensorValue tile_to_store,
                            mlir::ValueRange offsets,
                            llvm::ArrayRef<int64_t> strides,
                            llvm::ArrayRef<int64_t> shape) {
-    CHECK(initialized_);
-    mlir::TypedValue<mlir::MemRefType> remote_memref =
-        GetRemoteBufferMemref(operand_idx, base_ctx_.xtile_entry_fn.getRank());
-    xtile::InsertTileOp::create(builder_, tile_to_store, remote_memref, offsets,
-                                shape, strides);
+    EmitCopyToSymmetric(operand_idx, tile_to_store, offsets, strides, shape,
+                        base_ctx_.xtile_entry_fn.getRank());
   }
 
   void EmitSync(mlir::Value signal_value) {
@@ -1075,84 +1097,135 @@ class ReduceScatterEmitter : public ReductionEmitter {
                        mlir::PatternRewriter& rewriter)
       : ReductionEmitter(ctx, rewriter), ctx_(ctx) {}
 
-  // Pull-based one-shot reduce-scatter.
+  // Returns the tile's offset along `scatter_dimension` within `copy_rank`'s
+  // input shard (`input_offset - copy_rank * per_rank_size`).
+  mlir::Value CalculateIntraRankOffset(const ReductionOperandContext& operand,
+                                       mlir::Value copy_rank,
+                                       mlir::Value per_rank_size) {
+    xtile::ExtractTileOp input_extract = operand.input_extract;
+    mlir::Value copy_rank_offset =
+        arith::MulIOp::create(builder_, copy_rank, per_rank_size);
+    return arith::SubIOp::create(
+        builder_, input_extract.getOffsets()[ctx_.scatter_dimension],
+        copy_rank_offset);
+  }
+
+  // Calculates the destination offsets in `copy_rank`'s symmetric buffer at
+  // slot `local_rank`.
+  llvm::SmallVector<mlir::Value> CalculatePushOffsets(
+      const ReductionOperandContext& operand, mlir::Value local_rank,
+      mlir::Value copy_rank) {
+    xtile::ExtractTileOp input_extract = operand.input_extract;
+    llvm::SmallVector<mlir::Value> offsets = input_extract.getOffsets();
+    mlir::Value per_rank_size =
+        arith::ConstantIndexOp::create(builder_, operand.per_rank_size);
+    mlir::Value intra_rank_offset =
+        CalculateIntraRankOffset(operand, copy_rank, per_rank_size);
+    mlir::Value local_rank_offset =
+        arith::MulIOp::create(builder_, local_rank, per_rank_size);
+    offsets[ctx_.scatter_dimension] =
+        arith::AddIOp::create(builder_, local_rank_offset, intra_rank_offset);
+    return offsets;
+  }
+
+  // Calculates the base offsets of the output sub-tile within slot 0 of the
+  // local symmetric buffer (slot `rank` adds `rank * per_rank_size` along
+  // `scatter_dimension`).
+  llvm::SmallVector<mlir::Value> CalculateReduceBaseOffsets(
+      const ReductionOperandContext& operand, mlir::Value copy_rank) {
+    const int64_t scatter_dim = ctx_.scatter_dimension;
+    xtile::ExtractTileOp input_extract = operand.input_extract;
+    llvm::SmallVector<mlir::Value> offsets = input_extract.getOffsets();
+    mlir::Value per_rank_size =
+        arith::ConstantIndexOp::create(builder_, operand.per_rank_size);
+    mlir::Value intra_rank_offset =
+        CalculateIntraRankOffset(operand, copy_rank, per_rank_size);
+    mlir::Value subtile_size = arith::ConstantIndexOp::create(
+        builder_, operand.output_tile_shape[scatter_dim]);
+    mlir::Value subtile_offset =
+        arith::MulIOp::create(builder_, copy_rank, subtile_size);
+    offsets[scatter_dim] =
+        arith::AddIOp::create(builder_, intra_rank_offset, subtile_offset);
+    return offsets;
+  }
+
+  // Push-based one-shot reduce-scatter.
   //
   // The input is [world_size * shard_size, ...] and the output is
   // [shard_size, ...] (scatter dimension `d`). The tiling guarantees that the
   // input tile of every program (`output_tile[d] * world_size` rows starting at
   // `output_offset[d] * world_size`) lies within a single shard, so program
-  // `pid` produces a tile destined to exactly one rank.
-  //   1. Copy phase: every program copies its local input tile into the local
-  //      rank's symmetric buffer. This replaces a host-launched D2D copy of the
-  //      input into the scratch buffer.
+  // `pid` produces a tile destined to exactly one rank (`copy_rank =
+  // pid / signal_stride`).
+  //   1. Push phase: every program pushes its local input tile (from shard
+  //      `copy_rank`) into slot `local_rank` of peer `copy_rank`'s symmetric
+  //      buffer.
   //   2. Sync phase: a producer-symmetric block barrier. Every program signals
   //      its own slot, and waits only for the (unique) program on every peer
-  //      that staged the input tile this program reduces.
-  //   3. Reduce phase: pull the output tile from the symmetric buffers of all
-  //      ranks (at shard `rank`) and reduce them in rank order.
+  //      that pushed the input tile this program reduces.
+  //   3. Reduce phase: read the pushed tiles from all `world_size` slots of
+  //      this rank's local symmetric buffer and reduce them in rank order.
   mlir::LogicalResult EmitImpl() {
     CHECK(initialized_);
     const int64_t scatter_dim = ctx_.scatter_dimension;
+    const int64_t num_operands = ctx_.operands.size();
 
-    // 1. CopyPhase: local input tiles to the symmetric buffers of this rank.
-    for (int64_t i = 0; i < ctx_.operands.size(); ++i) {
-      ReductionOperandContext& operand = ctx_.operands[i];
-      EmitCopyToSymmetric(i, operand.input_tile,
-                          operand.input_extract.getOffsets(),
-                          operand.input_extract.getStrides(),
-                          operand.input_tile.getType().getShape());
-    }
-
-    // 2. Synchronization phase: wait for the producers of our input tiles.
     mlir::Value signal_slot = arith::DivUIOp::create(
         builder_, block_id_,
         arith::ConstantOp::create(
             builder_, builder_.getI32IntegerAttr(
                           static_cast<int32_t>(ctx_.signal_stride))));
+    mlir::Value local_rank = ctx_.xtile_entry_fn.getRank();
+    mlir::Value copy_rank = arith::IndexCastOp::create(
+        builder_, builder_.getIndexType(), signal_slot);
+
+    // 1. Push phase: push local input tiles to peer `copy_rank`'s symmetric
+    // buffers at slot `local_rank`.
+    for (int64_t i = 0; i < num_operands; ++i) {
+      ReductionOperandContext& operand = ctx_.operands[i];
+      llvm::SmallVector<mlir::Value> push_offsets =
+          CalculatePushOffsets(operand, local_rank, copy_rank);
+      EmitCopyToSymmetric(i, operand.input_tile, push_offsets,
+                          operand.input_extract.getStrides(),
+                          operand.input_tile.getType().getShape(), copy_rank);
+    }
+
+    // 2. Synchronization phase: wait for the producers of our input tiles.
     EmitBlockBarrier(builder_, signal_buffers_, device_rank_, signal_value_,
                      ctx_.world_size, signal_slot, ctx_.signal_stride,
                      mtx::BarrierMode::kProducerSymmetric,
                      /*emit_local_barrier=*/true);
 
-    // 3. Reduce phase: pull this rank's output tiles from every peer.
+    // 3. Reduce phase: read this rank's output tiles from the local symmetric
+    // buffer and reduce across all sender ranks.
     //
-    // Each block copies one input tile (step 1) and writes one output tile.
+    // Each block pushes one input tile (step 1) and writes one output tile.
     // The input tile is R (world_size) times the output tile. Example with
     // R = 2, input f32[16] -> output f32[8] and two blocks, on rank 0:
-    //   block 0: copies input 0..8 (for rank 0). Writes output 0..4.
-    //   block 1: copies input 8..16 (for rank 1). Writes output 4..8.
-    mlir::Value local_rank = ctx_.xtile_entry_fn.getRank();
-    mlir::Value copy_rank = arith::IndexCastOp::create(
-        builder_, builder_.getIndexType(), signal_slot);
+    //   block 0: pushes input 0..8 (to rank 0). Writes output 0..4.
+    //   block 1: pushes input 8..16 (to rank 1). Writes output 4..8.
     llvm::SmallVector<mlir::Value, 2> results;
-    results.reserve(ctx_.operands.size());
-    for (int64_t i = 0; i < ctx_.operands.size(); ++i) {
+    results.reserve(num_operands);
+    for (int64_t i = 0; i < num_operands; ++i) {
       ReductionOperandContext& operand = ctx_.operands[i];
-      llvm::SmallVector<mlir::Value> pull_offsets =
-          operand.input_extract.getOffsets();
-      llvm::SmallVector<int64_t> strides{operand.input_extract.getStrides()};
-      mlir::Value per_rank_size =
-          arith::ConstantIndexOp::create(builder_, operand.per_rank_size);
-      mlir::Value copy_rank_offset =
-          arith::MulIOp::create(builder_, copy_rank, per_rank_size);
-      mlir::Value intra_rank_offset = arith::SubIOp::create(
-          builder_, pull_offsets[scatter_dim], copy_rank_offset);
-      mlir::Value subtile_size = arith::ConstantIndexOp::create(
-          builder_, operand.output_tile_shape[scatter_dim]);
-      mlir::Value subtile_offset =
-          arith::MulIOp::create(builder_, copy_rank, subtile_size);
-      mlir::Value output_offset =
-          arith::AddIOp::create(builder_, intra_rank_offset, subtile_offset);
-      mlir::Value local_rank_offset =
-          arith::MulIOp::create(builder_, local_rank, per_rank_size);
-      pull_offsets[scatter_dim] =
-          arith::AddIOp::create(builder_, local_rank_offset, output_offset);
-
+      llvm::SmallVector<mlir::Value> reduce_offsets =
+          CalculateReduceBaseOffsets(operand, copy_rank);
+      mlir::Value base_scatter_offset = reduce_offsets[scatter_dim];
+      llvm::ArrayRef<int64_t> strides = operand.input_extract.getStrides();
+      mlir::TypedValue<mlir::MemRefType> local_memref =
+          GetRemoteBufferMemref(i, local_rank);
       // Accumulate in the element type (rounding after every step) to match the
       // numerics of NCCL and the Triton all-reduce kernel.
       auto load = [&](int32_t rank) -> xtile::TensorValue {
-        return LoadTileForRank(i, rank, pull_offsets, strides,
-                               operand.output_tile_shape);
+        if (rank > 0) {
+          reduce_offsets[scatter_dim] =
+              arith::AddIOp::create(builder_, base_scatter_offset,
+                                    arith::ConstantIndexOp::create(
+                                        builder_, static_cast<int64_t>(rank) *
+                                                      operand.per_rank_size));
+        }
+        return LoadTileFromBuffer(i, local_memref, reduce_offsets, strides,
+                                  operand.output_tile_shape);
       };
       xtile::TensorValue accumulator = load(0);
       for (int32_t rank = 1; rank < ctx_.world_size; ++rank) {
