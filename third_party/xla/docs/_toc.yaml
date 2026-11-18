@@ -104,7 +104,7 @@ toc:
   # TPU debugging bundles sub-section
   - heading: TPU debugging
   - title: TPU debugging overview
-    path: /xla/tpu/debugging_overview
+    path: /xla/tpu/index
   - title: Debug Megascale
     path: /xla/megascale/debugging_workflow
   - title: Debug OOM errors with XProf
