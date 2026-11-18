@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/collective_pipeliner.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner.h"
 
 #include <cstdint>
 #include <functional>
@@ -48,12 +48,12 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner_utils.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/host_offload_utils.h"

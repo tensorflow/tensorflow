@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/p2p_schedule_preparation.h"
+#include "xla/hlo/transforms/collectives/p2p_schedule_preparation.h"
 
 #include <cstdint>
 #include <memory>

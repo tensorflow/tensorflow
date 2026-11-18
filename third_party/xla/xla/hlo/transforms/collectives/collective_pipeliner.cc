@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/collective_pipeliner.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner_utils.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/service/value_range.h"

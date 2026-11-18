@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/collective_pipeliner_utils.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner_utils.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 

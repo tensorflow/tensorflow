@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/collective_pipeliner_utils.h"
+#include "xla/hlo/transforms/collectives/collective_pipeliner_utils.h"
 
 namespace xla {
 
