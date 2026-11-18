@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/snapshot_utils.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/platform/coding.h"
