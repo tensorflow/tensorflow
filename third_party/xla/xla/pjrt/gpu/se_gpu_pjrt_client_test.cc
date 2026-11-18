@@ -3237,14 +3237,8 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
-  if (gpu_client->platform_name() != xla::RocmName()) {
-    // Some ROCm driver versions report page-granularity range size (4096) for
-    // hipDrvPointerGetAttributes, so querying host_dma_ptr + 5 (size 1024)
-    // stays within the 4KB pinned page and returns true on those ROCm runners.
-    // Only CUDA consistently enforces exact byte-length range bounds.
-    EXPECT_FALSE(client->IsHostMemoryPinned(
-        reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
-  }
+  EXPECT_FALSE(client->IsHostMemoryPinned(
+      reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
   EXPECT_FALSE(client->IsHostMemoryPinned(host_dma_ptr, dma_size));
 }

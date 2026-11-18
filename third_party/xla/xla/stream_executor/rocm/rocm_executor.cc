@@ -1070,6 +1070,17 @@ absl::StatusOr<MemorySpace> RocmExecutor::GetPointerMemorySpace(
     const void* ptr) {
   hipDeviceptr_t pointer =
       reinterpret_cast<hipDeviceptr_t>(const_cast<void*>(ptr));
+
+  // Managed memory is reported with a device/unified memory type depending on
+  // where it currently resides, so query the managed attribute first (as the
+  // CUDA executor does) to classify it consistently.
+  unsigned int is_managed = 0;
+  if (hipPointerGetAttribute(&is_managed, HIP_POINTER_ATTRIBUTE_IS_MANAGED,
+                             pointer) == hipSuccess &&
+      is_managed) {
+    return MemorySpace::kUnified;
+  }
+
   unsigned int value;
   hipError_t result = hipPointerGetAttribute(
       &value, HIP_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer);
@@ -1079,6 +1090,9 @@ absl::StatusOr<MemorySpace> RocmExecutor::GetPointerMemorySpace(
         return MemorySpace::kDevice;
       case hipMemoryTypeHost:
         return MemorySpace::kHost;
+      case hipMemoryTypeManaged:
+      case hipMemoryTypeUnified:
+        return MemorySpace::kUnified;
       default:
         return absl::InternalError(
             absl::StrCat("unknown memory space provided by ROCM API: ", value));
@@ -1097,9 +1111,12 @@ bool RocmExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
   hipDeviceptr_t pointer =
       reinterpret_cast<hipDeviceptr_t>(const_cast<void*>(ptr));
 
-  uint64_t start_addr;
-  uint64_t range_size;
-  unsigned int memory_type;
+  // For pageable host memory, hipDrvPointerGetAttributes succeeds but doesn't
+  // write RANGE_START_ADDR and RANGE_SIZE. So don't leave the results
+  // uninitialized.
+  uint64_t start_addr = 0;
+  uint64_t range_size = 0;
+  unsigned int memory_type = 0;
   hipPointer_attribute attrs[3] = {HIP_POINTER_ATTRIBUTE_MEMORY_TYPE,
                                    HIP_POINTER_ATTRIBUTE_RANGE_START_ADDR,
                                    HIP_POINTER_ATTRIBUTE_RANGE_SIZE};

@@ -149,11 +149,14 @@ xla_test(
         ":rocm_event",
         ":rocm_executor",
         ":rocm_platform_id",
+        ":rocm_stream",
         "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:rocm_headers",
     ],
@@ -247,11 +250,13 @@ xla_test(
     deps = [
         ":rocm_executor",
         ":rocm_platform_id",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
@@ -305,11 +310,14 @@ xla_test(
     ],
     deps = [
         ":rocm_platform_id",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
@@ -1703,9 +1711,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "rocm_raw_memory_allocation_test",
     srcs = ["rocm_raw_memory_allocation_test.cc"],
+    backends = ["gpu"],
     tags = [
         "gpu",
         "rocm-only",
@@ -1752,9 +1761,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "rocm_memory_reservation_test",
     srcs = ["rocm_memory_reservation_test.cc"],
+    backends = ["gpu"],
     tags = [
         "gpu",
         "rocm-only",

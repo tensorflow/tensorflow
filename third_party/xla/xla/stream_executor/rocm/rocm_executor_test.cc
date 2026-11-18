@@ -15,18 +15,23 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -134,6 +139,143 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                        platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemorySpace::kDevice),
               Not(absl_testing::IsOk()));
+}
+
+TEST(RocmExecutorTest, AllocateArrayReturnsRequestedSize) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  // AllocateArray exposes the logical array byte range, not any padding the
+  // backend allocator may have added.
+  DeviceAddress<uint64_t> buffer = executor->AllocateScalar<uint64_t>();
+  ASSERT_NE(buffer.opaque(), nullptr);
+  EXPECT_EQ(buffer.size(), sizeof(uint64_t));
+  executor->Deallocate(&buffer);
+}
+
+TEST(RocmExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       executor->HostMemoryAllocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->address().opaque()),
+              absl_testing::IsOkAndHolds(MemorySpace::kHost));
+}
+
+TEST(RocmExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  DeviceAddressBase allocation = executor->Allocate(256);
+  ASSERT_NE(allocation.opaque(), nullptr);
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
+              absl_testing::IsOkAndHolds(MemorySpace::kDevice));
+  executor->Deallocate(&allocation);
+}
+
+TEST(RocmExecutorTest, IsHostMemoryPinnedWorksWithHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       executor->HostMemoryAllocate(256));
+  EXPECT_TRUE(
+      executor->IsHostMemoryPinned(allocation->address().opaque(), 256));
+}
+
+TEST(RocmExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(auto unified_memory_allocator,
+                       executor->CreateMemoryAllocator(MemorySpace::kUnified));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       unified_memory_allocator->Allocate(256));
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->address().opaque()),
+              absl_testing::IsOkAndHolds(MemorySpace::kUnified));
+}
+
+TEST(RocmExecutorTest, IsHostMemoryPinnedWorksWithRegisteredHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  constexpr size_t kSize = 64 * 1024;
+  std::vector<uint8_t> buffer(kSize);
+  // Pageable host memory isn't pinned until we register it.
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data() + 1024, 4096));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), 0));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data() + kSize / 2, kSize));
+
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
+TEST(RocmExecutorTest, IsHostMemoryPinnedIsFalseForDeviceAddress) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  DeviceAddressBase allocation = executor->Allocate(256);
+  ASSERT_NE(allocation.opaque(), nullptr);
+  EXPECT_FALSE(executor->IsHostMemoryPinned(allocation.opaque(), 256));
+  executor->Deallocate(&allocation);
+}
+
+TEST(RocmExecutorTest, MultipleExecutorsForSameDevice) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0);
+
+  // Create multiple executors for device 0, bypassing the platform cache.
+  // This simulates the scenario where multiple PjRt clients are created
+  // without preallocation for the same physical GPU.
+  constexpr int kNumExecutors = 3;
+  std::vector<std::unique_ptr<RocmExecutor>> executors;
+  for (int i = 0; i < kNumExecutors; ++i) {
+    auto executor =
+        std::make_unique<RocmExecutor>(platform, /*device_ordinal=*/0);
+    ASSERT_THAT(executor->Init(), absl_testing::IsOk());
+    executors.push_back(std::move(executor));
+  }
+
+  // Verify all executors can create device descriptions and allocate memory.
+  for (int i = 0; i < kNumExecutors; ++i) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> desc,
+                         executors[i]->CreateDeviceDescription());
+    EXPECT_THAT(desc->name(), Not(IsEmpty()));
+
+    DeviceAddressBase ptr = executors[i]->Allocate(1024, /*memory_space=*/0);
+    EXPECT_NE(ptr.opaque(), nullptr);
+    executors[i]->Deallocate(&ptr);
+
+    // Allocate collective memory through the device allocator.
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<MemoryAllocator> collective_allocator,
+        executors[i]->CreateMemoryAllocator(MemorySpace::kCollective));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<MemoryAllocation> collective_allocation,
+        collective_allocator->Allocate(4096));
+    EXPECT_NE(collective_allocation->address().opaque(), nullptr);
+  }
 }
 
 }  // namespace
