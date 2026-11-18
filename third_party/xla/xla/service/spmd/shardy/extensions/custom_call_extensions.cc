@@ -349,6 +349,40 @@ struct CustomCallShardingRuleOpInterface
                      mlir::sdy::FactorType::kNeedReplication)
           .build();
     }
+    if (callTargetName == "EighTpu") {
+      if (customCall.getNumOperands() != 4 || customCall.getNumResults() != 6) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      // Propagate batch dimensions pointwise and require replication on the
+      // trailing quadrant and eigenvalue dimensions.
+      mlir::ShapedType inType = mlir::sdy::dynCastStaticShapedType(
+          customCall.getOperand(0).getType());
+      if (!inType) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      llvm::ArrayRef<int64_t> inShape = inType.getShape();
+      if (inShape.size() < 2 || inShape[inShape.size() - 2] != inShape.back() ||
+          !allHaveStaticShape(customCall.getOperands().drop_front(1),
+                              inShape) ||
+          !allHaveStaticShape(customCall.getResults().take_front(2),
+                              inShape.drop_back(1)) ||
+          !allHaveStaticShape(customCall.getResults().drop_front(2), inShape)) {
+        return mlir::sdy::OpShardingRuleAttr();
+      }
+      int64_t nonBatchDim1 = inShape.size() - 2;
+      int64_t nonBatchDim2 = inShape.size() - 1;
+      constexpr int64_t kNull = mlir::sdy::kNullDim;
+      return mlir::sdy::OpShardingRuleBuilder(customCall)
+          .addPointwise(inShape.drop_back(2))
+          .addFactor(nonBatchDim1, inShape[nonBatchDim1],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .addFactor({nonBatchDim2, nonBatchDim2, nonBatchDim2, nonBatchDim2},
+                     {kNull, kNull, nonBatchDim2, nonBatchDim2, nonBatchDim2,
+                      nonBatchDim2},
+                     inShape[nonBatchDim2],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .build();
+    }
     if (callTargetName == "TopK") {
       assert(customCall.getNumOperands() == 1 &&
              customCall.getNumResults() == 2);

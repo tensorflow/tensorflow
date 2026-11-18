@@ -2135,6 +2135,66 @@ TEST_P(ShardyXLATest, InvertDiagBlocksAndCompactWyConvertGlobalToLocal) {
   EXPECT_EQ(customCallCount, 6);
 }
 
+TEST_P(ShardyXLATest, EighTpuConvertGlobalToLocal) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    HloModule main, num_partitions=4, allow_spmd_sharding_propagation_to_output={true,true,true,true,true,true}
+
+    ENTRY %main {
+      %p0 = f32[8,8]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+      %eigh_2d = (f32[8]{0}, f32[8]{0}, f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8,8]{1,0}) custom-call(%p0, %p0, %p0, %p0),
+        custom_call_target="EighTpu",
+        operand_layout_constraints={f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8,8]{1,0}, f32[8,8]{1,0}},
+        sharding={{devices=[2,2]<=[4] last_tile_dim_replicate}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {devices=[2,2]<=[2,2]T(1,0)}, {devices=[2,2]<=[2,2]T(1,0)}, {devices=[2,2]<=[2,2]T(1,0)}, {devices=[2,2]<=[2,2]T(1,0)}}
+      %w_2d = f32[8]{0} get-tuple-element(%eigh_2d), index=0
+      %v_2d = f32[8,8]{1,0} get-tuple-element(%eigh_2d), index=2
+      %p1 = f32[6,8,8]{2,1,0} parameter(1), sharding={devices=[2,2,1]<=[4]}
+      %eigh_xy_none = (f32[6,8]{1,0}, f32[6,8]{1,0}, f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}) custom-call(%p1, %p1, %p1, %p1),
+        custom_call_target="EighTpu",
+        operand_layout_constraints={f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}, f32[6,8,8]{2,1,0}}
+      %w_xy_none = f32[6,8]{1,0} get-tuple-element(%eigh_xy_none), index=0
+      %v_xy_none = f32[6,8,8]{2,1,0} get-tuple-element(%eigh_xy_none), index=2
+      %p2 = f32[5,8,8]{2,1,0} parameter(2), sharding={devices=[1,2,2]<=[4]}
+      %eigh_none_xy = (f32[5,8]{1,0}, f32[5,8]{1,0}, f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}) custom-call(%p2, %p2, %p2, %p2),
+        custom_call_target="EighTpu",
+        operand_layout_constraints={f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}, f32[5,8,8]{2,1,0}}
+      %w_none_xy = f32[5,8]{1,0} get-tuple-element(%eigh_none_xy), index=0
+      %v_none_xy = f32[5,8,8]{2,1,0} get-tuple-element(%eigh_none_xy), index=2
+      ROOT %out = (f32[8]{0}, f32[8,8]{1,0}, f32[6,8]{1,0}, f32[6,8,8]{2,1,0}, f32[5,8]{1,0}, f32[5,8,8]{2,1,0}) tuple(%w_2d, %v_2d, %w_xy_none, %v_xy_none, %w_none_xy, %v_none_xy)
+    })"));
+  mlir::sdy::PropagationOptions propagationOptions;
+  propagationOptions.partitionerStage =
+      mlir::sdy::PartitionerStage::kConvertGlobalToLocal;
+  runShardyWithStablehloImport(module.get(),
+                               /*runSdyShardingPropagation=*/true,
+                               /*expectChanged=*/true, propagationOptions);
+
+  EXPECT_NE(FindInstruction(module.get(), xla::HloOpcode::kAllGather), nullptr);
+  std::vector<Shape> customCallShapes;
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    if (inst->opcode() == xla::HloOpcode::kCustomCall) {
+      EXPECT_EQ(inst->custom_call_target(), "EighTpu");
+      customCallShapes.push_back(inst->shape());
+    }
+  }
+  ASSERT_EQ(customCallShapes.size(), 3);
+  auto expectedTuple = [](const Shape& w, const Shape& v) {
+    return ShapeUtil::MakeTupleShape({w, w, v, v, v, v});
+  };
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      customCallShapes[0], expectedTuple(ShapeUtil::MakeShape(F32, {8}),
+                                         ShapeUtil::MakeShape(F32, {8, 8}))));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      customCallShapes[1],
+      expectedTuple(ShapeUtil::MakeShape(F32, {3, 8}),
+                    ShapeUtil::MakeShape(F32, {3, 8, 8}))));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      customCallShapes[2],
+      expectedTuple(ShapeUtil::MakeShape(F32, {5, 8}),
+                    ShapeUtil::MakeShape(F32, {5, 8, 8}))));
+}
+
 // NOLINTEND(misc-override-with-different-visibility)
 
 INSTANTIATE_TEST_SUITE_P(
