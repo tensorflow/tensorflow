@@ -695,6 +695,25 @@ DotEstimates MergeDotEstimates(DotEstimates dst, const DotEstimates& src) {
   return dst;
 }
 
+// Returns the number of unswitched K-loop copies produced by `kConcatenate`
+// instructions in `region`. Triton unswitches the K-loop across the
+// mutually-exclusive branches of each `kConcatenate` in the loop body, and
+// the resulting loop copies don't alias their shared-memory buffers.
+int64_t GetConcatLoopCopies(const TiledHloRegion& region) {
+  int64_t copies = 1;
+  for (const TiledHloInstruction* instr : region.instructions()) {
+    if (instr->hlo()->opcode() == HloOpcode::kConcatenate &&
+        !instr->hlo_regions().empty()) {
+      int64_t branch_copies = 0;
+      for (const TiledHloRegion& branch : instr->hlo_regions()) {
+        branch_copies += GetConcatLoopCopies(branch);
+      }
+      copies *= branch_copies;
+    }
+  }
+  return copies;
+}
+
 // Computes block launch resource footprints and dot runtime estimates.
 absl::StatusOr<DotEstimates> BuildDotEstimates(
     const TiledHloInstruction* tiled_hlo,
@@ -728,14 +747,20 @@ absl::StatusOr<DotEstimates> BuildDotEstimates(
                    dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
 
+  const int64_t concat_loop_copies =
+      block_params.num_stages > 1
+          ? GetConcatLoopCopies(tiled_hlo->hlo_regions().front())
+          : 1;
+  const int64_t shared_memory_per_block_bytes =
+      concat_loop_copies * dot_model::CalculateSharedMemoryPerBlockBytes(
+                               dot_info, dot_tile, block_params.num_stages);
+
   return DotEstimates{
       /*output_element_type=*/dot_info.output_element_type,
       /*flops_with_wave_quant=*/compute_and_flops.flops_with_wave_quant,
       /*compute_time=*/compute_and_flops.compute_time,
       /*k_loop_iterations=*/CeilOfRatio<int64_t>(dot_info.k, block_k),
-      /*shared_memory_per_block_bytes=*/
-      dot_model::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
-                                                    block_params.num_stages),
+      /*shared_memory_per_block_bytes=*/shared_memory_per_block_bytes,
       /*registers_per_thread=*/
       dot_model::CalculateRegistersPerThread(dot_info, dot_tile, block_params,
                                              device_info),
@@ -795,6 +820,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
 
   // Compute time for dot flops is counted separately.
   int64_t dot_flops = 0;
+  int64_t prologue_flops = 0;
   int64_t flops = 0;
   int64_t bytes_read = 0;
   int64_t dot_l2_bytes_read = 0;
@@ -854,7 +880,11 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
           }
 
           // Tiles inside the computation contribute to the total FLOPs count.
-          flops += flops_per_element_fn(hlo) * num_elements;
+          int64_t inst_flops = flops_per_element_fn(hlo) * num_elements;
+          flops += inst_flops;
+          if (in_dot_region) {
+            prologue_flops += inst_flops;
+          }
           return;
         }
         // Calculate the total number of elements that are read from memory
@@ -920,6 +950,12 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   double memory_utilization = 0.0;
   const bool has_dot = dot_estimates.k_loop_iterations > 0;
   if (has_dot) {
+    // Triton fails to compile kernels whose shared memory exceeds the per-block
+    // opt-in limit.
+    if (dot_estimates.shared_memory_per_block_bytes >
+        device_info.shared_memory_per_block_optin()) {
+      return EstimateRunTimeData::Infinite();
+    }
     int64_t net_bytes_read = GetNetBytesRead(n_bytes_total_map, shape_size);
     int64_t total_net_hbm_bytes = net_bytes_read + bytes_written;
     float effective_hbm_bandwidth =
@@ -952,9 +988,32 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         /*registers_per_thread=*/dot_estimates.registers_per_thread,
     };
     absl::Duration post_mainloop_time = epilogue_read_time + write_time;
+    const dot_model::SmOccupancy occupancy =
+        dot_model::CalculateSmOccupancy(launch_config, device_info);
+    const int64_t blocks_per_sm =
+        std::min(occupancy.active_blocks_per_sm,
+                 CeilOfRatio<int64_t>(num_blocks, device_info.core_count()));
+    const int64_t active_threads_per_sm = blocks_per_sm *
+                                          block_level_parameters.num_warps *
+                                          WarpSize(device_info);
+    // TODO(b/581767811): Replace with a throughput-based SIMT compute model.
+    constexpr int64_t kEmpiricalSimtComputeDivisor = 8;
+    absl::Duration prologue_compute_time =
+        GpuPerformanceModelBase::ComputeTime(
+            device_info, prologue_flops, num_blocks, active_threads_per_sm) /
+        kEmpiricalSimtComputeDivisor;
+    const bool has_async_mma =
+        device_info.cuda_compute_capability().IsAtLeastHopper();
+    // Asynchronous MMA (wgmma/tcgen05) overlaps with SIMT prologue operations,
+    // whereas mma.sync issues from the same warps and serializes with them.
+    absl::Duration mainloop_compute_time =
+        has_async_mma
+            ? GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
+                  dot_estimates.compute_time, prologue_compute_time)
+            : dot_estimates.compute_time + prologue_compute_time;
     absl::Duration mainloop_time =
         dot_model::CalculatePipelinedLoopTimeWithLaunchWaves(
-            launch_config, dot_estimates.compute_time,
+            launch_config, mainloop_compute_time,
             dot_model::HbmEstimates{dot_dram_read_time, absl::ZeroDuration()},
             device_info);
     // The epilogue (operand reads and output writes) runs after the K loop and

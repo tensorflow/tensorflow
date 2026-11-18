@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
@@ -1258,6 +1259,139 @@ ENTRY main {
   constexpr int64_t kOperandBytes = (2 * 512 * 512 + 512 * 2048) * 2;
   EXPECT_GE(result.read_time, absl::Seconds(static_cast<double>(kOperandBytes) /
                                             device_info_.memory_bandwidth()));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ConcatOperandMultipliesSharedMemory) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0_a = bf16[256, 2048] parameter(0)
+  p0_b = bf16[256, 2048] parameter(1)
+  p1 = bf16[2048, 512] parameter(2)
+  cat = bf16[512, 2048] concatenate(p0_a, p0_b), dimensions={0}
+  ROOT dot = bf16[512, 512] dot(cat, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+})"));
+  const HloInstruction* cat =
+      module->entry_computation()->GetInstructionWithName("cat");
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  auto estimate = [&](const HloFusionAdaptor& fusion, int num_stages) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        fusion, BlockLevelParameters{/*output_tile_sizes=*/{{64, 64}},
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*num_stages=*/num_stages});
+  };
+  auto dot_fusion = HloFusionAdaptor::ForInstruction(dot);
+  auto concat_dot_fusion = HloFusionAdaptor::ForProducerConsumer(cat, dot);
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData plain, estimate(*dot_fusion, 3));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData concat,
+                       estimate(*concat_dot_fusion, 3));
+  // Triton unswitches the K-loop into one copy per concatenate operand.
+  EXPECT_EQ(concat.shared_memory_per_block_bytes,
+            2 * plain.shared_memory_per_block_bytes);
+
+  // Without pipelining there is a single set of transient tiles.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData plain_s1, estimate(*dot_fusion, 1));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData concat_s1,
+                       estimate(*concat_dot_fusion, 1));
+  EXPECT_EQ(concat_s1.shared_memory_per_block_bytes,
+            plain_s1.shared_memory_per_block_bytes);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotSharedMemoryOverLimitIsInfinite) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0_a = bf16[1024, 4096] parameter(0)
+  p0_b = bf16[1024, 4096] parameter(1)
+  p0_c = bf16[1024, 4096] parameter(2)
+  p1 = bf16[4096, 1024] parameter(3)
+  cat = bf16[3072, 4096] concatenate(p0_a, p0_b, p0_c), dimensions={0}
+  ROOT d = bf16[3072, 1024] dot(cat, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+})"));
+  const HloInstruction* cat =
+      module->entry_computation()->GetInstructionWithName("cat");
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  auto estimate = [&](int num_stages) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *HloFusionAdaptor::ForProducerConsumer(cat, dot),
+        BlockLevelParameters{/*output_tile_sizes=*/{{128, 128}},
+                             /*num_warps=*/4,
+                             /*num_ctas=*/1,
+                             /*num_stages=*/num_stages});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData fits, estimate(/*num_stages=*/1));
+  EXPECT_FALSE(fits.IsInfinite());
+
+  // 3 loop copies * 3 stages * (16 KiB + 16 KiB) = 288 KiB exceeds the 99 KiB
+  // per-block opt-in shared-memory limit on RTX A6000 (whereas 1 copy = 96 KiB
+  // would fit).
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData over_limit,
+                       estimate(/*num_stages=*/3));
+  EXPECT_TRUE(over_limit.IsInfinite());
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotPrologueComputeInMainloop) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = f32[512, 2048] parameter(0)
+  p1 = f32[2048, 512] parameter(1)
+  e0 = f32[512, 2048] exponential(p0)
+  ROOT d = f32[512, 512] dot(e0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+})"));
+  const HloInstruction* exp_instr =
+      module->entry_computation()->GetInstructionWithName("e0");
+  const HloInstruction* dot = module->entry_computation()->root_instruction();
+  auto plain_fusion = HloFusionAdaptor::ForInstruction(dot);
+  auto exp_fusion = HloFusionAdaptor::ForProducerConsumer(exp_instr, dot);
+  auto estimate = [&](const HloFusionAdaptor& fusion,
+                      const se::DeviceDescription& device_info) {
+    HloFusionAnalysisCache cache(device_info);
+    GpuPerformanceModelWithIndexingAnalysis model(
+        &device_info, &cache, HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+        /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+    return model.EstimateRunTimeForTiledFusion(
+        fusion, BlockLevelParameters{/*output_tile_sizes=*/{{64, 64}},
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*num_stages=*/1});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData plain,
+                       estimate(*plain_fusion, device_info_));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData exp,
+                       estimate(*exp_fusion, device_info_));
+  EXPECT_GT(exp.flops, plain.flops);
+  EXPECT_EQ(exp.read_time, plain.read_time);
+  // On mma.sync (RTX A6000) the SIMT prologue (`ComputeTime / 8`) serializes
+  // with the MMA and adds directly to the mainloop time.
+  absl::Duration expected_prologue_time =
+      (exp.compute_time - plain.compute_time) / 8;
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(exp.exec_time - plain.exec_time),
+              absl::ToDoubleNanoseconds(expected_prologue_time), 1.0);
+
+  // On Hopper (wgmma), `CombineComputeAndMemoryAccessTime` overlaps 95% of the
+  // SIMT prologue with the asynchronous MMA.
+  se::DeviceDescription hopper_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::CudaComputeCapability::Hopper());
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData hopper_plain,
+                       estimate(*plain_fusion, hopper_info));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData hopper_exp,
+                       estimate(*exp_fusion, hopper_info));
+  absl::Duration hopper_prologue_time =
+      (hopper_exp.compute_time - hopper_plain.compute_time) / 8;
+  EXPECT_NEAR(
+      absl::ToDoubleNanoseconds(hopper_exp.exec_time - hopper_plain.exec_time),
+      absl::ToDoubleNanoseconds(
+          hopper_prologue_time *
+          (1.0 - GpuPerformanceModelBase::kMemoryComputeParallelism)),
+      1.0);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
