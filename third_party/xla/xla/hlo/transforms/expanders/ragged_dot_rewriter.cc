@@ -541,7 +541,8 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries() &&
       cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
-      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
+      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere() &&
+      !cuda_cc->IsBlackwell();
 
   // Gather all Ragged Dot operations that need to be expanded into regular
   // dots. Ragged-dots that can be lowered through Gpublaslt GroupGemm or
