@@ -141,6 +141,7 @@ def cc_library_with_tflite(
         name,
         srcs = [],
         tflite_jni_binaries = [],
+        android_jni_library = None,
         deps = [],
         tflite_deps = [],
         tflite_deps_selects = [],
@@ -161,6 +162,8 @@ def cc_library_with_tflite(
       srcs: as for cc_library.
       tflite_jni_binaries: dependencies on shared libraries that are defined
         using 'jni_binary_with_tflite'.
+      android_jni_library: Optional Android JNI library target to use on Android
+        instead of tflite_jni_binaries. Unused in open-source builds.
       deps: as for cc_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite'.
@@ -174,6 +177,7 @@ def cc_library_with_tflite(
         dependencies listed in 'tflite_deps' use _opaque_delegate variant.
       **kwargs: Additional cc_library parameters.
     """
+    _ = android_jni_library
     native.cc_library(
         name = name,
         srcs = srcs + tflite_jni_binaries,
