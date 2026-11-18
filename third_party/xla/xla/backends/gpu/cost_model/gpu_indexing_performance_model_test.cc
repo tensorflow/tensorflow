@@ -321,6 +321,141 @@ ENTRY e {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
+       TritonGemmDifferentContractingDimsHaveSameRuntime) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_1_0 {
+  p0 = bf16[8192,1024] parameter(0)
+  p1 = bf16[1024,4096] parameter(1)
+  ROOT r = bf16[8192,4096] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_bf16, backend_config={"sizes":["32"]}
+}
+dot_0_1 {
+  p0 = bf16[1024,8192]{0,1} parameter(0)
+  p1 = bf16[4096,1024]{0,1} parameter(1)
+  ROOT r = bf16[8192,4096] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1},
+    algorithm=dot_bf16_bf16_bf16, backend_config={"sizes":["32"]}
+}
+ENTRY main {
+  p0 = bf16[8192,1024] parameter(0)
+  p1 = bf16[1024,4096] parameter(1)
+  p2 = bf16[1024,8192]{0,1} parameter(2)
+  p3 = bf16[4096,1024]{0,1} parameter(3)
+  f0 = bf16[8192,4096] fusion(p0, p1), kind=kCustom, calls=dot_1_0
+  ROOT f1 = bf16[8192,4096] fusion(p2, p3), kind=kCustom, calls=dot_0_1
+})"));
+  BlockLevelParameters block_params{/*output_tile_sizes=*/{{128, 128}},
+                                    /*num_warps=*/4,
+                                    /*num_ctas=*/1,
+                                    /*num_stages=*/1};
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime_1_0,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *HloFusionAdaptor::ForComputation(
+                               module->GetComputationWithName("dot_1_0")),
+                           block_params));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime_0_1,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *HloFusionAdaptor::ForComputation(
+                               module->GetComputationWithName("dot_0_1")),
+                           block_params));
+  EXPECT_FALSE(runtime_1_0.IsInfinite());
+  EXPECT_GT(runtime_1_0.exec_time, absl::ZeroDuration());
+  EXPECT_EQ(runtime_1_0.exec_time, runtime_0_1.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemm3DAnd4DIsSupported) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_3d {
+  p0 = bf16[16,1024,2048] parameter(0)
+  p1 = bf16[16,2048,1024] parameter(1)
+  ROOT r = bf16[16,1024,1024] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    algorithm=dot_bf16_bf16_bf16, backend_config={"sizes":["32"]}
+}
+dot_4d {
+  p0 = bf16[2,8,1024,2048] parameter(0)
+  p1 = bf16[2,8,2048,1024] parameter(1)
+  ROOT r = bf16[2,8,1024,1024] dot(p0, p1),
+    lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+    lhs_contracting_dims={3}, rhs_contracting_dims={2},
+    algorithm=dot_bf16_bf16_bf16, backend_config={"sizes":["32"]}
+}
+ENTRY main {
+  p0 = bf16[16,1024,2048] parameter(0)
+  p1 = bf16[16,2048,1024] parameter(1)
+  p2 = bf16[2,8,1024,2048] parameter(2)
+  p3 = bf16[2,8,2048,1024] parameter(3)
+  f0 = bf16[16,1024,1024] fusion(p0, p1), kind=kCustom, calls=dot_3d
+  ROOT f1 = bf16[2,8,1024,1024] fusion(p2, p3), kind=kCustom, calls=dot_4d
+})"));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_3d,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForComputation(
+              module->GetComputationWithName("dot_3d")),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 128, 128}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/1}));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData runtime_4d,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForComputation(
+              module->GetComputationWithName("dot_4d")),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 1, 128, 128}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/1}));
+  EXPECT_FALSE(runtime_3d.IsInfinite());
+  EXPECT_GT(runtime_3d.exec_time, absl::ZeroDuration());
+  EXPECT_EQ(runtime_3d.exec_time, runtime_4d.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, TritonGemmComputeBoundA100Bf16) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+triton_dot {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT dot = bf16[8192,8192] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_bf16, backend_config={"sizes":["32"]}
+}
+ENTRY e {
+  p0 = bf16[8192,8192] parameter(0)
+  p1 = bf16[8192,8192] parameter(1)
+  ROOT _ = bf16[8192,8192] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {"kind": "__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["128", "128"]}],"num_warps":"4","num_stages":"3","num_ctas":"1"}}}
+})"));
+  se::DeviceDescription dda100 = TestGpuDeviceInfo::A100SXMDeviceInfo();
+  HloFusionAnalysisCache a100_cache(dda100);
+  GpuPerformanceModelWithIndexingAnalysis a100_model(
+      &dda100, &a100_cache, HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime_a100,
+                       a100_model.EstimateRunTimeForTriton(root, nullptr));
+  const auto* dot_instr =
+      Cast<HloDotInstruction>(root->fused_expression_root());
+  ASSERT_OK_AND_ASSIGN(
+      dot_model::ComputeAndFlops expected_compute_and_flops_a100,
+      dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot_model::DotProblemInfo(*dot_instr),
+          dot_model::DotTileSize{128, 128}, dda100));
+  absl::Duration expected_time =
+      expected_compute_and_flops_a100.compute_time + dot_model::kLoopLatencyTax;
+  EXPECT_EQ(runtime_a100.compute_time,
+            expected_compute_and_flops_a100.compute_time);
+  EXPECT_GE(runtime_a100.exec_time, expected_time);
+  EXPECT_LE(runtime_a100.exec_time, expected_time * 1.25);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        TritonSoftmaxFusionInstructionIsSupported) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
