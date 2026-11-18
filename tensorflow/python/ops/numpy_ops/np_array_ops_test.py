@@ -1417,14 +1417,16 @@ class ArrayMethodsTest(test.TestCase):
     run_test([1, 2, 3, 4], [2, 1, 2])
 
     # NumPy names the second parameter `shape`, so it is also accepted as a
-    # keyword argument.
+    # keyword argument. The expected value is built with a positional argument
+    # because `shape=` only exists from NumPy 2.1 onwards, while TensorFlow
+    # supports NumPy 1.26 and later.
     self.assertAllEqual(
         np_array_ops.reshape([1, 2, 3, 4], shape=[2, 2]),
-        np.reshape([1, 2, 3, 4], shape=[2, 2]),
+        np.reshape([1, 2, 3, 4], [2, 2]),
     )
     self.assertAllEqual(
         np_array_ops.reshape([1, 2, 3, 4], shape=-1),
-        np.reshape([1, 2, 3, 4], shape=-1),
+        np.reshape([1, 2, 3, 4], -1),
     )
     with self.assertRaisesRegex(TypeError, 'multiple values'):
       np_array_ops.reshape([1, 2, 3, 4], [2, 2], shape=[2, 2])
