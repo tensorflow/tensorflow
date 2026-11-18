@@ -404,10 +404,17 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
       scratch.data(), output.data(), &context);
+#if TFLITE_SINGLE_ROUNDING
+  const std::vector<int16_t> expected_output = {
+      -210, 331,  153, 139, -570, -657, 258, 515,  -495,
+      91,   -243, -73, 603, -744, -268, 168, -748, -174,
+  };
+#else
   const std::vector<int16_t> expected_output = {
       -210, 331,  153, 139, -570, -657, 258, 515,  -495,
       91,   -243, -73, 603, -744, -269, 169, -748, -174,
   };
+#endif
 
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
@@ -719,12 +726,21 @@ TEST(uKernels, QuantApplyLayerNormTest) {
   std::vector<int16_t> output(2 * 15, 0);
   ApplyLayerNorm(input.data(), layer_norm_weights.data(), bias_weight.data(),
                  multiplier, shift, limit, 2, 15, output.data());
+#if TFLITE_SINGLE_ROUNDING
+  const std::vector<int16_t> expected_output = {
+      -9407,  5846,   -4802,  -5295,  4822,   -2390,  930,   -5282,
+      -20352, -7846,  -26538, -18703, -15829, -8627,  10313, -2522,
+      -132,   -16049, -8205,  -19158, -13296, -14407, -1235, 20612,
+      -18591, -6738,  -2274,  2602,   -11621, 1564,
+  };
+#else
   const std::vector<int16_t> expected_output = {
       -9407,  5846,   -4802,  -5295,  4822,   -2390,  930,   -5283,
       -20352, -7846,  -26539, -18704, -15829, -8627,  10313, -2522,
       -132,   -16058, -8206,  -19158, -13296, -14407, -1235, 20612,
       -18591, -6738,  -2274,  2602,   -11622, 1565,
   };
+#endif
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
@@ -1779,6 +1795,21 @@ TEST(uKernels, VectorBatchVectorCwiseProductAccumulateInteger) {
                                           batch_vector.data(), kBatchSize,
                                           1073741824, -1, batch_output.data());
 
+#if TFLITE_SINGLE_ROUNDING
+  const std::vector<int16_t> expected_output = {
+      /* batch 0 */
+      -35, 34, 32, 30, 27, 24, 20, 16, 11, -1, 10, 13, 16, 18, 19, 20, 21, 21,
+      20, 0, 4, 8, 12, 17, 23, 29, 35, 42, 50,
+      /* batch 1 */
+      27, 23, 20, 17, 15, 13, 12, 11, 1, 1, 2, 6, 10, 15, 20, 26, 32, 39, 26, 9,
+      11, 13, 15, 18, 22, 26, 30, 35, 51,
+      /* batch 2 */
+      11, 14, 4, 6, 8, 9, 10, 10, 10, 9, 8, 11, -6, 14, 14, 13, 12, 10, 8, 5,
+      27, 31, 46, 53, 61, 69, 78, 87, 97,
+      /* batch 3 */
+      17, 20, 14, 16, 18, 19, 20, 20, 20, 19, 18, -8, 13, 13, 13, 12, 11, 9, 7,
+      4, 26, 30, 37, 55, 63, 71, 80, 89, 99};
+#else
   const std::vector<int16_t> expected_output = {
       /* batch 0 */
       -35, 34, 32, 30, 27, 24, 20, 16, 11, -1, 10, 13, 16, 18, 19, 20, 21, 21,
@@ -1792,6 +1823,7 @@ TEST(uKernels, VectorBatchVectorCwiseProductAccumulateInteger) {
       /* batch 3 */
       17, 21, 14, 17, 18, 20, 20, 21, 20, 20, 18, -7, 13, 14, 13, 13, 11, 10, 7,
       5, 26, 31, 37, 56, 63, 72, 80, 90, 99};
+#endif
   // Only allow 1 element difference for the rounding result.
   CompareRoundingResults<int16_t>(4 * 29, expected_output.data(),
                                   batch_output.data(), 1, 1);

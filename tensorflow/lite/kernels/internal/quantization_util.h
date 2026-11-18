@@ -103,6 +103,10 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
 }
 
 // LINT.IfChange
+#ifndef TFLITE_SINGLE_ROUNDING
+#define TFLITE_SINGLE_ROUNDING 1
+#endif  // TFLITE_SINGLE_ROUNDING
+
 // Converts a floating-point number to an integer. For all inputs x where
 // static_cast<IntOut>(x) is legal according to the C++ standard, the result
 // is identical to that cast (i.e. the result is x with its fractional part

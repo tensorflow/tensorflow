@@ -76,6 +76,11 @@ class QuantizedDivOpModel : public BaseDivOpModel {
   using BaseDivOpModel::BaseDivOpModel;
 
   template <typename integer_dtype>
+  std::vector<integer_dtype> GetOutput() {
+    return ExtractVector<integer_dtype>(output_);
+  }
+
+  template <typename integer_dtype>
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<integer_dtype>(ExtractVector<integer_dtype>(output_),
                                      GetScale(output_), GetZeroPoint(output_));
@@ -477,6 +482,59 @@ TEST(QuantizedDivOpTest, AsymmetricQuantizedDivisorZeroCheck) {
     m.QuantizeAndPopulate<int8_t>(m.input1(), {1.0});
     m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  }
+}
+
+TEST(QuantizedDivOpTest, QuantizedDivShiftBounds) {
+  auto check = [](std::initializer_list<int8_t> in1, float s1, int zp1,
+                  int8_t div_val, float s2, float sout, int zp_out,
+                  std::initializer_list<int8_t> expect) {
+    for (bool broadcast : {false, true}) {
+      QuantizedDivOpModel m(
+          {TensorType_INT8, {1, 4}, 0.0f, 0.0f, s1, zp1},
+          {TensorType_INT8,
+           broadcast ? std::vector<int>{1, 1} : std::vector<int>{1, 4}, 0.0f,
+           0.0f, s2, 0},
+          {TensorType_INT8, {}, 0.0f, 0.0f, sout, zp_out},
+          ActivationFunctionType_NONE);
+      m.PopulateTensor<int8_t>(m.input1(), in1);
+      if (broadcast) {
+        m.PopulateTensor<int8_t>(m.input2(), {div_val});
+      } else {
+        m.PopulateTensor<int8_t>(m.input2(),
+                                 {div_val, div_val, div_val, div_val});
+      }
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
+      EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray(expect));
+    }
+  };
+
+  check({0, -1, 1, -2}, 1.0f / 16.0f, 0, -2, 1.0f / 16.0f, 1.0f / 16.0f, 0,
+        {0, 8, -8, 16});
+  check({0, -1, -2, 3}, 1.0f, 0, 1, 1.0f, 2.5f, 0, {0, 0, -1, 1});
+  check({0, -1, -2, 3}, 1.0f, 0, 1, 1.0f, 5.0f, 0, {0, 0, 0, 1});
+  check({0, 1, -1, 100}, 1000.0f, 0, 1, 1e-5f, 1.0f, 0, {0, 127, -128, 127});
+  check({0, -128, 127, -1}, 1.0f, 0, 1, 3.0f, 1.98682155e-8f, -128,
+        {-128, -128, 127, -128});
+
+  // Symmetric int16 [-0.25, 0.25] hits total_shift = +1 on ordinary scales.
+  constexpr float kInt16Scale = 0.25f / 32767.0f;
+  for (bool broadcast : {false, true}) {
+    QuantizedDivOpModel m(
+        {TensorType_INT16, {1, 3}, 0.0f, 0.0f, kInt16Scale, 0},
+        {TensorType_INT16,
+         broadcast ? std::vector<int>{1, 1} : std::vector<int>{1, 3}, 0.0f,
+         0.0f, kInt16Scale, 0},
+        {TensorType_INT16, {}, 0.0f, 0.0f, kInt16Scale, 0},
+        ActivationFunctionType_NONE);
+    m.PopulateTensor<int16_t>(m.input1(), {0, 26214, -26214});
+    if (broadcast) {
+      m.PopulateTensor<int16_t>(m.input2(), {1});
+    } else {
+      m.PopulateTensor<int16_t>(m.input2(), {1, 1, 1});
+    }
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAreArray({0, 32767, -32768}));
   }
 }
 
