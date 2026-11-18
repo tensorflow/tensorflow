@@ -29,21 +29,29 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
-// TFLite dialect string type - uses the TF string type as implementation
+// TFLite element types. See tfl_types.h.
+//
+// The constraints accept both the TFLite types and the matching `tf_type` types
+// (matched by name, without depending on the `tf_type` dialect). The builders
+// build the TFLite types.
 //===----------------------------------------------------------------------===//
-def TFL_Str : Type<CPred<"llvm::isa<mlir::TF::StringType>($_self)">,
+
+// `!tfl.string` or `!tf_type.string`.
+def TFL_Str : Type<CPred<"::mlir::TFL::IsStringType($_self)">,
                   "TFLite string type">,
-             BuildableType<"getType<mlir::TF::StringType>()">;
+             BuildableType<"$_builder.getType<::mlir::TFL::StringType>()">;
 
-//===----------------------------------------------------------------------===//
-// TFLite dialect quint8 type - uses the TF quint8 type as implementation
-//===----------------------------------------------------------------------===//
-def TFL_Quint8 : Type<CPred<"llvm::isa<mlir::TF::Quint8Type>($_self)">,
+// `!tfl.quint8` or `!tf_type.quint8`.
+def TFL_Quint8 : Type<CPred<"::mlir::TFL::IsQuint8Type($_self)">,
                     "TFLite quint8 type">,
-              BuildableType<"getType<mlir::TF::Quint8Type>()">;
+              BuildableType<"$_builder.getType<::mlir::TFL::Quint8Type>()">;
+
+// `!tfl.resource` or `!tf_type.resource`, with or without subtypes.
+def TFL_Resource : Type<CPred<"::mlir::TFL::IsResourceType($_self)">,
+                        "resource">,
+                   BuildableType<"$_builder.getType<::mlir::TFL::ResourceType>()">;
 
 //===----------------------------------------------------------------------===//
 // Type that represents control dependencies
@@ -155,7 +163,7 @@ def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
 def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
-def TFL_ResourceTensor : TFL_TensorOf<[TF_Resource]>;
+def TFL_ResourceTensor : TFL_TensorOf<[TFL_Resource]>;
 
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
@@ -310,20 +318,21 @@ class TFL_NumElementsTrait<int x, int n> :
   PredOpTrait<"operand " # x # " has num of elements equals to  " # n,
     TFL_NumElements<x, n>>;
 
-// tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
-// when used as element types.
+// uint8 and quint8 (and uint16 and quint16) are mapped to the same tflite
+// types, so they are equal when used as element types. quint<num> is
+// `!tfl.quint8` or `!tf_type.quint<num>`.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
   And<[
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getResult(" # i # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getResult(" # i # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isUnsignedInteger(" # num # ")">]>,
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # j # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # j # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_TFOperandTypesWithSameBits<int i, int j, int num> :
   And<[
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # i # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # i # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # i # ")).isUnsignedInteger(" # num # ")">]>,
-    Or<[CPred<"llvm::isa<mlir::TF::Quint" # num # "Type>(getElementTypeOrSelf($_op.getOperand(" # j # ")))">,
+    Or<[CPred<"::mlir::TFL::IsQuintType(getElementTypeOrSelf($_op.getOperand(" # j # ")), " # num # ")">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_OperandIsNoneOrHasRank<int n, int m> :
@@ -892,7 +901,7 @@ def TFL_CeilOp: TFL_Op<"ceil", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1083,7 +1092,7 @@ def TFL_CosOp: TFL_Op<"cos", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
 
   }];
@@ -1453,7 +1462,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1862,7 +1871,7 @@ def TFL_ExpOp: TFL_Op<"exp", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -1994,7 +2003,7 @@ def TFL_FloorOp: TFL_Op<"floor", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -2348,7 +2357,7 @@ def TFL_LogOp: TFL_Op<"log", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 
@@ -2542,7 +2551,7 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -2797,7 +2806,7 @@ def TFL_NegOp: TFL_Op<"neg", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3458,7 +3467,7 @@ def TFL_SinOp: TFL_Op<"sin", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3534,7 +3543,7 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }
@@ -3559,7 +3568,7 @@ def TFL_SquareOp: TFL_Op<"square", [
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
+      return TFL::ArraysAreCastCompatible(l, r);
     }
   }];
 }

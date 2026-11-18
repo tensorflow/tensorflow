@@ -33,10 +33,10 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace OpTrait {
@@ -45,29 +45,26 @@ namespace TFL {
 namespace detail {
 
 // Verifies that all operands and results have the same element type (or type,
-// if not shaped) after resolving TF reference types.
+// if not shaped). Unlike the TF dialect trait, reference types are not
+// resolved: TFLite ops don't support them.
 inline LogicalResult VerifySameOperandsAndResultElementTypeResolveRef(
     Operation* op) {
   Type element_type;
   if (op->getNumResults() > 0) {
-    element_type = mlir::tf_type::GetElementTypeOrSelfResolveRef(
-        op->getResult(0).getType());
+    element_type = getElementTypeOrSelf(op->getResult(0).getType());
   } else if (op->getNumOperands() > 0) {
-    element_type = mlir::tf_type::GetElementTypeOrSelfResolveRef(
-        op->getOperand(0).getType());
+    element_type = getElementTypeOrSelf(op->getOperand(0).getType());
   } else {
     return success();
   }
   for (Type result_type : op->getResultTypes()) {
-    if (mlir::tf_type::GetElementTypeOrSelfResolveRef(result_type) !=
-        element_type) {
+    if (getElementTypeOrSelf(result_type) != element_type) {
       return op->emitOpError(
           "requires compatible element types for all operands and results");
     }
   }
   for (Type operand_type : op->getOperandTypes()) {
-    if (mlir::tf_type::GetElementTypeOrSelfResolveRef(operand_type) !=
-        element_type) {
+    if (getElementTypeOrSelf(operand_type) != element_type) {
       return op->emitOpError(
           "requires compatible element types for all operands and results");
     }
@@ -93,9 +90,10 @@ inline ShapedType MergeType(ShapedType a, ShapedType b) {
 
 }  // namespace detail
 
-// Verifies that the op has the same operand and result types after resolving
-// TF reference types, allowing compatible shapes (e.g. `tensor<*xf32>` and
-// `tensor<4xf32>`). Infers the result type from the operands.
+// Verifies that the op has the same operand and result types, allowing
+// compatible shapes (e.g. `tensor<*xf32>` and `tensor<4xf32>`). Infers the
+// result type from the operands. The name is kept from the TF dialect trait;
+// unlike it, reference types are not resolved.
 //
 // This is the TFLite counterpart of the TF dialect trait with the same name,
 // so that the TFLite dialect does not depend on the TF dialect ops.

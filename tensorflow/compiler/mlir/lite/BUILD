@@ -78,7 +78,6 @@ td_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
@@ -557,12 +556,14 @@ cc_library(
         "ir/tfl_ops_enums.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "ir/tfl_types.cc",
         "runtime_verifiers.inc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
         "ir/tfl_ops_in_place_transpose.h",
         "ir/tfl_traits.h",
+        "ir/tfl_types.h",
     ],
     deps = [
         ":attribute_utils",
@@ -577,7 +578,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

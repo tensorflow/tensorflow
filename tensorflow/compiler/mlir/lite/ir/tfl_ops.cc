@@ -85,13 +85,13 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_types.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 // TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
 // more peformant folder implementations.
@@ -887,6 +887,7 @@ void TFLDialect::printType(Type type, DialectAsmPrinter& os) const {
     PrintBlockwiseQuantType(blockwise_type, os);
     return;
   }
+  if (PrintTflType(type, os)) return;
   os << "<unknown TFL type>";
 }
 
@@ -896,6 +897,10 @@ Type TFLDialect::parseType(DialectAsmParser& parser) const {
   if (data_type == "control") return ControlType::get(getContext());
   if (data_type == "blockwise_quant") {
     return ParseBlockwiseQuantType(getContext(), parser);
+  }
+  if (std::optional<Type> type =
+          ParseTflType(getContext(), data_type, parser)) {
+    return *type;
   }
   parser.emitError(parser.getNameLoc()) << "unknown TFL type: " << data_type;
   return nullptr;
@@ -912,7 +917,8 @@ void TFLDialect::initialize() {
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
-  addTypes<ControlType, BlockwiseQuantType>();
+  addTypes<ControlType, BlockwiseQuantType, StringType, Quint8Type,
+           ResourceType, VariantType>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1796,7 +1802,7 @@ LogicalResult GatherOp::verify() {
   GatherOp op = *this;
   ShapedType params_type = mlir::cast<ShapedType>(op.getParams().getType());
   // TFLite gather kernel supports 1D string input only.
-  if (isa<mlir::TF::StringType>(params_type.getElementType())) {
+  if (IsStringType(params_type.getElementType())) {
     if (params_type.hasRank() && params_type.getRank() != 1) {
       return op.emitOpError(
                  "expect 1d input when the given type is string, got ")
@@ -4124,7 +4130,7 @@ mlir::LogicalResult ReshapeOp::verify() {
                               << output_ty_size << " and " << input_ty_size;
   }
 
-  if (!TF::AreCastCompatible({output_ty, expected_ty}))
+  if (!TFL::AreCastCompatible({output_ty, expected_ty}))
     return op.emitOpError()
            << "requires 'output' type " << output_ty
            << " to be cast compatible with expected type " << expected_ty;
@@ -6919,7 +6925,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     for (auto ba : body_block.getArguments()) {
       int arg_no = ba.getArgNumber();
       // Skip removing resources that are not read-only variables.
-      if (mlir::isa<TF::ResourceType>(getElementTypeOrSelf(ba.getType()))) {
+      if (IsResourceType(getElementTypeOrSelf(ba.getType()))) {
         bool has_read_only_variables = true;
         for (auto user : ba.getUsers()) {
           // Terminator ops, for example, tfl::yield op, should be ignored since
