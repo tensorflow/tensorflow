@@ -316,4 +316,58 @@ module {
     %1 = "tfl.reshape"(%0, %cst) : (tensor<1x14x14x32x2xf32>, tensor<4xi32>) -> tensor<1x14x14x64xf32>
     func.return %1 : tensor<1x14x14x64xf32>
   }
+
+  // The pass reads every dimension and writes shapes back as constants, so a
+  // function with an unranked tensor or a dynamic dimension anywhere is left
+  // alone as a whole (and must not crash the pass).
+  // CHECK-LABEL: func.func @unranked_unary_no_rewrite
+  func.func @unranked_unary_no_rewrite(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: return %[[ABS]]
+    %0 = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func.func @unranked_binary_no_rewrite
+  func.func @unranked_binary_no_rewrite(%arg0: tensor<*xf32>, %arg1: tensor<1x1x2x3x4xf32>) -> tensor<*xf32> {
+    // CHECK: %[[ADD:.*]] = tfl.add(%arg0, %arg1) {{.*}} -> tensor<*xf32>
+    // CHECK-NEXT: return %[[ADD]]
+    %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<1x1x2x3x4xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func.func @dynamic_dim_unary_no_rewrite
+  func.func @dynamic_dim_unary_no_rewrite(%arg0: tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32>
+    // CHECK-NEXT: return %[[ABS]]
+    %0 = "tfl.abs"(%arg0) : (tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32>
+    func.return %0 : tensor<1x1x?x3x4xf32>
+  }
+
+  // CHECK-LABEL: func.func @dynamic_dim_binary_no_rewrite
+  func.func @dynamic_dim_binary_no_rewrite(%arg0: tensor<?x1x2x3x4xf32>, %arg1: tensor<?x1x2x3x4xf32>) -> tensor<?x1x2x3x4xf32> {
+    // CHECK: %[[ADD:.*]] = tfl.add %arg0, %arg1 {{.*}} : tensor<?x1x2x3x4xf32>
+    // CHECK-NEXT: return %[[ADD]]
+    %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x1x2x3x4xf32>, tensor<?x1x2x3x4xf32>) -> tensor<?x1x2x3x4xf32>
+    func.return %0 : tensor<?x1x2x3x4xf32>
+  }
+
+  // CHECK-LABEL: func.func @unranked_reshape_of_unary_no_rewrite
+  func.func @unranked_reshape_of_unary_no_rewrite(%arg0: tensor<*xf32>) -> tensor<25xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0)
+    // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%[[ABS]], %{{.*}})
+    // CHECK-NEXT: return %[[RESHAPE]]
+    %cst = "tfl.pseudo_const"() {value = dense<[25]> : tensor<1xi32>} : () -> tensor<1xi32>
+    %0 = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tfl.reshape"(%0, %cst) : (tensor<*xf32>, tensor<1xi32>) -> tensor<25xf32>
+    func.return %1 : tensor<25xf32>
+  }
+
+  // CHECK-LABEL: func.func @static_op_in_dynamic_function_no_rewrite
+  func.func @static_op_in_dynamic_function_no_rewrite(%arg0: tensor<1x1x2x3x4xf32>, %arg1: tensor<?x4xf32>) -> (tensor<1x1x2x3x4xf32>, tensor<?x4xf32>) {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    // CHECK-NEXT: return %[[ABS]], %arg1
+    %0 = "tfl.abs"(%arg0) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    func.return %0, %arg1 : tensor<1x1x2x3x4xf32>, tensor<?x4xf32>
+  }
 }

@@ -131,6 +131,29 @@ DenseIntElementsAttr getIterativeConstantValue(Value v) {
   return nullptr;
 }
 
+// The rewrites below read every dimension of the tensors they touch and write
+// shapes back as reshape constants, so they are only meaningful for a function
+// whose tensors are all ranked with static shapes. The pass also assumes the
+// model runs with the batch size it was exported with, which a dynamic
+// dimension contradicts. Such functions are left alone as a whole.
+bool HasOnlyStaticShapes(func::FuncOp func) {
+  auto is_static = [](Type type) {
+    if (isa<NoneType>(type)) return true;
+    auto ranked = dyn_cast<RankedTensorType>(type);
+    return ranked && ranked.hasStaticShape();
+  };
+  if (!llvm::all_of(func.getArgumentTypes(), is_static)) return false;
+  bool all_static = true;
+  func.walk([&](Operation* op) {
+    if (!llvm::all_of(op->getResultTypes(), is_static)) {
+      all_static = false;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return all_static;
+}
+
 bool canLiftThroughSlice(SliceOp slice_op, ArrayRef<int> squeezed_indices) {
   auto begin_attr = getIterativeConstantValue(slice_op.getBegin());
   auto size_attr = getIterativeConstantValue(slice_op.getSize());
@@ -139,7 +162,9 @@ bool canLiftThroughSlice(SliceOp slice_op, ArrayRef<int> squeezed_indices) {
   auto begin_values = begin_attr.getValues<int32_t>();
   auto size_values = size_attr.getValues<int32_t>();
 
-  auto slice_input_ty = cast<RankedTensorType>(slice_op.getInput().getType());
+  auto slice_input_ty =
+      dyn_cast<RankedTensorType>(slice_op.getInput().getType());
+  if (!slice_input_ty) return false;
   for (int i : squeezed_indices) {
     if (begin_values[i] != 0 || size_values[i] != 1) return false;
     if (slice_input_ty.getDimSize(i) != 1) return false;
@@ -184,7 +209,6 @@ struct SinkReshapeThroughUnaryElementwise : public OpRewritePattern<OpType> {
     auto reshape_op =
         unary_op->getOperand(0).template getDefiningOp<ReshapeOp>();
     if (!reshape_op) return failure();
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
     // Only sink if it's a rank-expanding reshape (adds unit dimensions).
@@ -220,7 +244,6 @@ struct LiftReshapeThroughUnaryElementwise : public OpRewritePattern<ReshapeOp> {
         unary_op->getNumOperands() != 1) {
       return failure();
     }
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
     // Only lift if it's a rank-collapsing reshape (removes dimensions).
@@ -259,7 +282,6 @@ struct LiftReshapeThroughConcatenation : public OpRewritePattern<ReshapeOp> {
     auto concat_op = dyn_cast_or_null<ConcatenationOp>(
         reshape_op.getInput().getDefiningOp());
     if (!concat_op) return failure();
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
 
@@ -1274,6 +1296,7 @@ class RankReductionPass
 
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
+    if (!HasOnlyStaticShapes(func_op)) return;
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     patterns.add<LiftReshapeThroughConcatenation>(ctx);
