@@ -46,18 +46,6 @@ cc_library(
         "@platforms//os:windows": ["LZMA_API_STATIC"],
         "//conditions:default": [],
     }),
-    implementation_deps = [
-        ":config",
-        ":src_common",
-        ":src_liblzma",
-        ":src_liblzma_check",
-        ":src_liblzma_common",
-        ":src_liblzma_delta",
-        ":src_liblzma_lz",
-        ":src_liblzma_lzma",
-        ":src_liblzma_rangecoder",
-        ":src_liblzma_simple",
-    ],
     linkopts = select({
         "@platforms//os:android": [],
         "@platforms//os:windows": [],
@@ -70,6 +58,18 @@ cc_library(
     }),
     strip_include_prefix = "src/liblzma/api",
     visibility = ["//visibility:public"],
+    implementation_deps = [
+        ":config",
+        ":src_common",
+        ":src_liblzma",
+        ":src_liblzma_check",
+        ":src_liblzma_common",
+        ":src_liblzma_delta",
+        ":src_liblzma_lz",
+        ":src_liblzma_lzma",
+        ":src_liblzma_rangecoder",
+        ":src_liblzma_simple",
+    ],
 )
 
 # Generate config.h from config_generic.h

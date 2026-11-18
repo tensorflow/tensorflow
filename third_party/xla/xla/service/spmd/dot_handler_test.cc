@@ -159,6 +159,98 @@ ENTRY main {
   }
 }
 
+TEST_P(DotHandlerTest, ReduceScatterWindowedEinsumPermutedContractingSharding) {
+  struct TestCase {
+    absl::string_view name;
+    int64_t num_partitions;
+    bool expect_lhs_cp;
+    bool expect_rhs_cp;
+    bool check_rhs_pairs;
+    absl::string_view hlo;
+  };
+  static constexpr TestCase kCases[] = {
+      {"1d_permuted_rhs_smaller_f32", 4, false, true, true, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = f32[32,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(0,1)}
+  rhs = f32[16,16]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[4,1]<=[2,2]T(0,1)}
+})hlo"},
+      {"1d_permuted_lhs_smaller_bf16", 4, true, false, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[16,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(0,1)}
+  rhs = bf16[16,32]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = bf16[16,32]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[1,4]<=[2,2]T(0,1)}
+})hlo"},
+      {"2d_contracting_permuted_axes_f32", 4, false, true, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = f32[32,4,4]{2,1,0} parameter(0), sharding={devices=[1,2,2]<=[2,2]T(0,1)}
+  rhs = f32[4,4,16]{2,1,0} parameter(1), sharding={devices=[2,2,1]<=[2,2]T(1,0)}
+  ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1},
+    sharding={devices=[4,1]<=[2,2]T(0,1)}
+})hlo"},
+      {"batched_and_permuted_contracting_bf16", 8, false, true, false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[2,32,16]{2,1,0} parameter(0), sharding={devices=[2,1,4]<=[2,2,2]T(0,1,2)}
+  rhs = bf16[2,16,16]{2,1,0} parameter(1), sharding={devices=[2,4,1]<=[2,2,2]T(0,2,1)}
+  ROOT dot = bf16[2,32,16]{2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    sharding={devices=[2,4,1]<=[2,2,2]T(0,1,2)}
+})hlo"},
+      {"matching_permuted_contracting_no_pre_reshard_bf16", 4, false, false,
+       false, R"hlo(
+HloModule test
+ENTRY main {
+  lhs = bf16[32,16]{1,0} parameter(0), sharding={devices=[1,4]<=[2,2]T(1,0)}
+  rhs = bf16[16,16]{1,0} parameter(1), sharding={devices=[4,1]<=[2,2]T(1,0)}
+  ROOT dot = bf16[32,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[4,1]<=[2,2]T(1,0)}
+})hlo"},
+  };
+
+  for (const TestCase& tc : kCases) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        PartitionComputation(tc.hlo, tc.num_partitions,
+                             /*max_windowed_einsum_iteration=*/32,
+                             /*threshold_for_windowed_einsum_mib=*/0));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    if (tc.expect_lhs_cp) {
+      EXPECT_THAT(while_inst->operand(0)->operand(0),
+                  op::CollectivePermute(op::Parameter(0)));
+    } else {
+      EXPECT_THAT(while_inst->operand(0)->operand(0), op::Parameter(0));
+    }
+    if (tc.expect_rhs_cp) {
+      ASSERT_THAT(while_inst->operand(0)->operand(1),
+                  op::CollectivePermute(op::Parameter(1)));
+      if (tc.check_rhs_pairs) {
+        EXPECT_THAT(
+            while_inst->operand(0)->operand(1)->source_target_pairs(),
+            ::testing::UnorderedElementsAre(std::pair<int64_t, int64_t>{0, 0},
+                                            std::pair<int64_t, int64_t>{2, 1},
+                                            std::pair<int64_t, int64_t>{1, 2},
+                                            std::pair<int64_t, int64_t>{3, 3}));
+      }
+    } else {
+      EXPECT_THAT(while_inst->operand(0)->operand(1), op::Parameter(1));
+    }
+  }
+}
+
 TEST_P(DotHandlerTest, MaxWindowedEinsumIterationBatchDims) {
   // Test with batch dimension sharding
   absl::string_view hlo_string = R"(

@@ -550,12 +550,13 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           PartitionedHlo(partitioned_rhs->hlo(), partitioned_rhs->base_shape(),
                          partitioned_rhs->state());
 
-      // Check if contracting dimension sharding requires lhs/rhs resharding.
-      if (RequiresTransposeSharding(lhs->sharding(), rhs->sharding(),
-                                    dims_mapping.contracting_dims) &&
-          rhs_sharding_transposed_to_match_lhs.has_value() &&
-          lhs_sharding_transposed_to_match_rhs.has_value()) {
-        if (ShapeSizeInBytes(lhs->shape()) < ShapeSizeInBytes(rhs->shape())) {
+      // Check if contracting dimension sharding requires lhs/rhs resharding due
+      // to differing dimension shard counts or device order.
+      if (rhs_sharding_transposed_to_match_lhs.has_value() &&
+          lhs_sharding_transposed_to_match_rhs.has_value() &&
+          lhs_sharding != *rhs_sharding_transposed_to_match_lhs) {
+        if (ShapeSizeInBytes(new_lhs.hlo()->shape()) <
+            ShapeSizeInBytes(new_rhs.hlo()->shape())) {
           new_lhs = new_lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
         } else {
           new_rhs = new_rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
@@ -931,11 +932,12 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
     rhs = rhs.PadWithZero();
   }
 
-  // Check if contracting dimension sharding requires lhs/rhs resharding.
-  if (RequiresTransposeSharding(lhs.hlo()->sharding(), rhs.hlo()->sharding(),
-                                dims_mapping.contracting_dims) &&
+  // Check if contracting dimension sharding requires lhs/rhs resharding due to
+  // differing dimension shard counts or device order.
+  if (operands_sharded_at_contracting_dims &&
       rhs_sharding_transposed_to_match_lhs.has_value() &&
-      lhs_sharding_transposed_to_match_rhs.has_value()) {
+      lhs_sharding_transposed_to_match_rhs.has_value() &&
+      lhs.sharding() != *rhs_sharding_transposed_to_match_lhs) {
     if (ShapeSizeInBytes(lhs.hlo()->shape()) <
         ShapeSizeInBytes(rhs.hlo()->shape())) {
       lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
