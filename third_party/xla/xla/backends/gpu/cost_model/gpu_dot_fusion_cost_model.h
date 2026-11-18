@@ -45,8 +45,6 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const se::DeviceDescription& device_info,
     std::optional<int64_t> block_k = std::nullopt);
 
-namespace detail {
-
 // This tax models the static, fixed overhead incurred during each iteration of
 // the memory loop. The value 1300ns was measured using a small skinny GEMM
 // example with no pipelining. There is a deeper explanation in
@@ -206,8 +204,6 @@ double CalculateComputeUtilization(const EstimateRunTimeData& estimates,
 // may exceed 1.0 if the underlying time estimates are inaccurate.
 double CalculateMemoryUtilization(const EstimateRunTimeData& estimates,
                                   const se::DeviceDescription& device_info);
-
-}  // namespace detail
 
 }  // namespace xla::gpu::gpu_dot_fusion_cost_model
 
