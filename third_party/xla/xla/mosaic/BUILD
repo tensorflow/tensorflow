@@ -31,7 +31,10 @@ cc_library(
     name = "tpu_dialect",
     srcs = [
         "dialect/tpu/tpu_dialect.cc",
+        "dialect/tpu/tpu_dialect_impl.cc",
+        "dialect/tpu/tpu_dialect_impl.h",
         "dialect/tpu/tpu_ops.cc",
+        "dialect/tpu/tpu_ops_impl.cc",
         "dialect/tpu/util.cc",
     ],
     hdrs = [
@@ -39,6 +42,7 @@ cc_library(
         "dialect/tpu/util.h",
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
+    textual_hdrs = ["dialect/tpu/tpu_ops_impl.h"],
     deps = [
         ":stringify_util",
         ":tpu_enums_inc_gen",
@@ -164,9 +168,11 @@ td_library(
     name = "tpu_td_files",
     srcs = [
         "dialect/tpu/tpu.td",
+        "dialect/tpu/tpu_attr_base.td",
         "dialect/tpu/tpu_enums.td",
         "dialect/tpu/tpu_matmul_ops.td",
         "dialect/tpu/tpu_ops.td",
+        "dialect/tpu/tpu_type_base.td",
         "dialect/tpu/tpu_types.td",
     ],
     compatible_with = get_compatible_with_libtpu_portable(),

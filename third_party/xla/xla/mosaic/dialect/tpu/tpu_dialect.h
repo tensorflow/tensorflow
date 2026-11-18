@@ -84,21 +84,6 @@ DotDimensionNumbersAttr defaultDimensionNumbers(Builder& builder,
                                                 bool transpose_lhs,
                                                 bool transpose_rhs);
 
-// True if source represents a shared memory space and target represents a local
-// memory space. TC VMEM is "shared" here but it is not shared between TCs.
-FailureOr<bool> isGather(Operation& op, MemorySpace source_memory_space,
-                         std::optional<CoreType> source_core_type,
-                         MemorySpace target_memory_space,
-                         std::optional<CoreType> target_core_type);
-
-LogicalResult verifyGather(Operation* op, ArrayRef<int64_t> operand_shape,
-                           ArrayRef<int64_t> offsets_shape,
-                           ArrayRef<int64_t> result_shape);
-
-LogicalResult verifyScatter(Operation* op, ArrayRef<int64_t> updates_shape,
-                            ArrayRef<int64_t> offsets_shape,
-                            ArrayRef<int64_t> operand_shape);
-
 #define GEN_PASS_REGISTRATION
 #include "xla/mosaic/dialect/tpu/tpu_passes.h.inc"
 
