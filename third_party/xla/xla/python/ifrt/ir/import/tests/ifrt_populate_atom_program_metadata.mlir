@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-populate-atom-program-metadata -ifrt-duplicated-callee-elimination -symbol-dce -split-input-file | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-populate-atom-program-metadata -ifrt-duplicated-callee-elimination -symbol-dce -split-input-file -verify-diagnostics | FileCheck %s
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
@@ -136,19 +136,21 @@ module @populate_result_metadata {
 // CHECK-LABEL: @calls_outlined_to_single_module
 module @calls_outlined_to_single_module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // CHECK: %[[OUT_0:.+]], %{{.+}} = ifrt.Call @[[CALLEE:.+]]::@main(%arg0)
+    // All calls share one metadata key, so `@add_one` is populated in place
+    // with zero cloning and preserves its original symbol name.
+    // CHECK: %[[OUT_0:.+]], %{{.+}} = ifrt.Call @add_one::@main(%arg0)
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
         : (!array) -> !array
-    // CHECK: %[[OUT_1:.+]], %[[CTRL_1:.+]] = ifrt.Call @[[CALLEE]]::@main(%[[OUT_0]])
+    // CHECK: %[[OUT_1:.+]], %[[CTRL_1:.+]] = ifrt.Call @add_one::@main(%[[OUT_0]])
     %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) on devices [0,1]
         : (!array) -> !array
-    // CHECK: ifrt.Call @[[CALLEE]]::@main(%[[OUT_1]]) after %[[CTRL_1]]
+    // CHECK: ifrt.Call @add_one::@main(%[[OUT_1]]) after %[[CTRL_1]]
     %2, %ctrl_2 = ifrt.Call @add_one::@main(%1) after %ctrl_1 on devices [0,1]
         : (!array) -> !array
     return %1 : !array
   }
 
-  // CHECK: module @[[CALLEE]] <sym_visibility = "private">
+  // CHECK: module @add_one <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 2
   // CHECK-SAME: }
@@ -157,6 +159,7 @@ module @calls_outlined_to_single_module {
   // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-SAME: -> (tensor<2x2xi32>
   // CHECK-DAG: ifrt.sharding = #sp
+  // CHECK-NOT: module @add_one_
   // CHECK-NOT: ifrt
   module @add_one <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -404,6 +407,87 @@ module @populate_device_attr_permutation {
   module @callee <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) {
       return
+    }
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK-LABEL: @recursive_outlined_callee_isolates_internal_uses
+module @recursive_outlined_callee_isolates_internal_uses {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.Call @rec_callee::@main(%arg0)
+    %0, %ctrl_0 = ifrt.Call @rec_callee::@main(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  // CHECK: module @rec_callee <sym_visibility = "private">
+  // CHECK-SAME: attributes {
+  // CHECK-DAG:    ifrt.num_devices = 2
+  // CHECK-SAME: }
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
+  // CHECK-DAG: ifrt.sharding = #sp
+  // CHECK: call @[[HELPER:main_.+]](%arg0)
+  // CHECK: func.func private @[[HELPER]](%arg0: tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK-NOT: ifrt.sharding
+  // CHECK: call @[[HELPER]](%arg0)
+  // CHECK-NOT: module @rec_callee_
+  module @rec_callee <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      %0 = func.call @main(%arg0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+      return %0 : tensor<2x2xi32>
+    }
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array_unspecified = !ifrt.array<tensor<2x2xi32>,
+                                 #ifrt.sharding_unspecified, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
+// CHECK-LABEL: @interleaved_calls_claim_earliest_variant_in_place
+module @interleaved_calls_claim_earliest_variant_in_place {
+  func.func @main(%arg0: !array) -> (!array, !array_unspecified, !array)
+      attributes {ifrt.function} {
+    // Call 0 and Call 2 share the earliest variant key, so `@add_one` is
+    // claimed in place while Call 1 clones once into `@add_one_0`.
+    // CHECK: %[[OUT0:.+]], %{{.+}} = ifrt.Call @add_one::@main(%arg0)
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+        : (!array) -> !array
+    // CHECK: %[[OUT1:.+]], %{{.+}} = ifrt.Call @[[CLONED:add_one_.+]]::@main(%[[OUT0]])
+    %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) on devices [0,1]
+        : (!array) -> !array_unspecified
+    // CHECK: %[[OUT2:.+]], %{{.+}} = ifrt.Call @add_one::@main(%[[OUT0]])
+    %2, %ctrl_2 = ifrt.Call @add_one::@main(%0) on devices [0,1]
+        : (!array) -> !array
+    return %0, %1, %2 : !array, !array_unspecified, !array
+  }
+
+  // CHECK: module @add_one <sym_visibility = "private">
+  // CHECK-SAME: ifrt.num_devices = 2
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
+  // CHECK-DAG: ifrt.sharding = #sp
+  // CHECK-SAME: -> (tensor<2x2xi32>
+  // CHECK-DAG: ifrt.sharding = #sp
+
+  // CHECK: module @[[CLONED]] <sym_visibility = "private">
+  // CHECK-SAME: ifrt.num_devices = 2
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
+  // CHECK-DAG: ifrt.sharding = #sp
+  // CHECK-SAME: -> (tensor<2x2xi32>
+  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_unspecified
+  // CHECK-NOT: module @add_one_
+  module @add_one <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+      %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+      %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+      return %1 : tensor<2x2xi32>
     }
   }
 }
