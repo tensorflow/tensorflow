@@ -1,0 +1,20 @@
+Use llvm::stable_sort instead of llvm::sort when sorting warp group partitions
+by size so equal-sized partitions preserve their relative order deterministically
+across C++ standard library implementations (e.g. libc++ vs libstdc++).
+Remove once upstreamed, b/418732604.
+
+--- a/lib/Conversion/TritonGPUToLLVM/AllocateWarpGroups.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/AllocateWarpGroups.cpp
+@@ -153,8 +153,9 @@
+       SmallVector<std::pair<unsigned, int32_t>> idxAndSize;
+       for (auto [i, size] : llvm::enumerate(arr))
+         idxAndSize.emplace_back(i, size);
+-      llvm::sort(idxAndSize,
+-                 [&](auto lhs, auto rhs) { return lhs.second > rhs.second; });
++      llvm::stable_sort(idxAndSize, [&](auto lhs, auto rhs) {
++        return lhs.second > rhs.second;
++      });
+ 
+       SmallVector<int32_t> startIds(arr.size());
+       int startId = baseNumWarps;
+
