@@ -220,6 +220,19 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "CudaTilePreviewFeaturesIncGen",
+    tbl_outs = [
+        (
+            ["-gen-cuda-tile-preview-features"],
+            "include/cuda_tile/Dialect/CudaTile/IR/PreviewFeatures.inc",
+        ),
+    ],
+    tblgen = ":cuda-tile-tblgen",
+    td_file = "include/cuda_tile/Dialect/CudaTile/IR/PreviewFeatureGen.td",
+    deps = [":CudaTileTdFiles"],
+)
+
+gentbl_cc_library(
     name = "CudaTileOpsCanonicalizationIncGen",
     tbl_outs = [
         (
@@ -254,6 +267,7 @@ cc_library(
         ":CudaTileInterfacesIncGen",
         ":CudaTileOpsCanonicalizationIncGen",
         ":CudaTileOpsIncGen",
+        ":CudaTilePreviewFeaturesIncGen",
         ":CudaTileRemarksIncGen",
         ":CudaTileTypesIncGen",
         "@llvm-project//llvm:Core",

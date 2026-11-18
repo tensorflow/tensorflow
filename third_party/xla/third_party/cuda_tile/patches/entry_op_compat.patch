@@ -1,0 +1,54 @@
+Retain 7-argument EntryOp::create and 6-argument EntryOp::build overloads without sym_visibility for TensorIR compatibility.
+
+diff --git a/include/cuda_tile/Dialect/CudaTile/IR/Ops.td b/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
+--- a/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
++++ b/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
+@@ -2434,6 +2434,48 @@
+               /*sym_visibility=*/{}, arg_attrs, res_attrs,
+               OptimizationHintsAttr::get(odsBuilder.getContext(),
+                   DictionaryAttr::get(odsBuilder.getContext())));
++    }
++    static void build(::mlir::OpBuilder &odsBuilder,
++                      ::mlir::OperationState &odsState,
++                      ::mlir::StringAttr sym_name,
++                      ::mlir::TypeAttr function_type,
++                      ::mlir::ArrayAttr arg_attrs,
++                      ::mlir::ArrayAttr res_attrs,
++                      ::mlir::cuda_tile::OptimizationHintsAttr optimization_hints) {
++        build(odsBuilder, odsState, sym_name, function_type,
++              /*sym_visibility=*/{}, arg_attrs, res_attrs, optimization_hints);
++    }
++    static void build(::mlir::OpBuilder &odsBuilder,
++                      ::mlir::OperationState &odsState,
++                      ::llvm::StringRef sym_name,
++                      ::mlir::FunctionType function_type,
++                      ::mlir::ArrayAttr arg_attrs,
++                      ::mlir::ArrayAttr res_attrs,
++                      ::mlir::cuda_tile::OptimizationHintsAttr optimization_hints) {
++        build(odsBuilder, odsState, sym_name, function_type,
++              /*sym_visibility=*/{}, arg_attrs, res_attrs, optimization_hints);
++    }
++    static EntryOp create(::mlir::OpBuilder &odsBuilder,
++                          ::mlir::Location location,
++                          ::mlir::StringAttr sym_name,
++                          ::mlir::TypeAttr function_type,
++                          ::mlir::ArrayAttr arg_attrs,
++                          ::mlir::ArrayAttr res_attrs,
++                          ::mlir::cuda_tile::OptimizationHintsAttr optimization_hints) {
++        return create(odsBuilder, location, sym_name, function_type,
++                      /*sym_visibility=*/::mlir::StringAttr{}, arg_attrs,
++                      res_attrs, optimization_hints);
++    }
++    static EntryOp create(::mlir::OpBuilder &odsBuilder,
++                          ::mlir::Location location,
++                          ::llvm::StringRef sym_name,
++                          ::mlir::FunctionType function_type,
++                          ::mlir::ArrayAttr arg_attrs,
++                          ::mlir::ArrayAttr res_attrs,
++                          ::mlir::cuda_tile::OptimizationHintsAttr optimization_hints) {
++        return create(odsBuilder, location, sym_name, function_type,
++                      /*sym_visibility=*/::mlir::StringAttr{}, arg_attrs,
++                      res_attrs, optimization_hints);
+     }
+ 
+   }];
