@@ -217,11 +217,16 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
     )
     self.assertAllEqual(result, [[5, 6], [1, 2, 3]])
 
-  @parameterized.parameters(np.int64(1), np.float32(0))
+  @parameterized.parameters(1, np.int64(1))
   def testRaggedGatherNdNonZeroBatchDimsStillUnsupported(self, batch_dims):
     params = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
     with self.assertRaisesRegex(ValueError, 'batch_dims != 0 is not supported'):
       ragged_gather_ops.gather_nd(params, [[2], [0]], batch_dims=batch_dims)
+
+  def testRaggedGatherNdInvalidBatchDimsType(self):
+    params = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    with self.assertRaisesRegex(TypeError, 'batch_dims must be an integer'):
+      ragged_gather_ops.gather_nd(params, [[2], [0]], batch_dims=np.float32(0))
 
   def testRaggedGatherNdUnknownRankError(self):
     if context.executing_eagerly():
