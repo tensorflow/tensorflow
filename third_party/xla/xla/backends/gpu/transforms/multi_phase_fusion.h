@@ -26,8 +26,8 @@ limitations under the License.
 namespace xla::gpu {
 
 // Fuses small fusions with producer-consumer dependencies into nested fusions.
-// Nested fusions are lowered as a sequence of phases of a phased block-cluster
-// kernel by `ThreadBlockSpecializedFusion`. Phases are separated by cluster
+// Nested fusions are lowered as a sequence of phases of a single kernel by
+// `ThreadBlockSpecializedFusion`. Phases are separated by block or cluster
 // barriers and exchange data via DRAM and caches. Execution as sequential
 // phases of a single kernel pays that launch overhead only once.
 //
@@ -40,10 +40,8 @@ namespace xla::gpu {
 // are projected via `get-tuple-element`.
 //
 // Current limitations (to be lifted in follow-up CLs):
-//   * Greedily forms straight-line producer-consumer chains rather than general
-//     multi-branch DAGs, requiring each phase to directly consume the
-//     immediately preceding phase without skip-phase edges.
-//   * Only `kLoop` stages fitting within one thread-block cluster.
+//   * Only native MLIR emitter stages (`kLoop`, `kReduction`, `kTranspose`,
+//     `kConcatenate`) fitting within one thread-block cluster.
 class MultiPhaseFusion : public HloModulePass {
  public:
   explicit MultiPhaseFusion(const se::DeviceDescription& device_info)

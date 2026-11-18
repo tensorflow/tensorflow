@@ -44,15 +44,7 @@ namespace {
 
 void ExpectStepsEqual(const std::vector<ShapeTracker::Step>& actual,
                       const std::vector<ShapeTracker::Step>& expected) {
-  ASSERT_EQ(actual.size(), expected.size());
-  for (size_t i = 0; i < expected.size(); ++i) {
-    EXPECT_EQ(actual[i].type, expected[i].type)
-        << "Step mismatch at index " << i;
-    EXPECT_EQ(actual[i].dimensions, expected[i].dimensions)
-        << "Step mismatch at index " << i;
-    EXPECT_EQ(actual[i].broadcast_dimensions, expected[i].broadcast_dimensions)
-        << "Step broadcast_dimensions mismatch at index " << i;
-  }
+  EXPECT_EQ(actual, expected);
 }
 
 using BufferView = ShapeTracker::BufferView;
@@ -239,6 +231,37 @@ TEST(ShapeTrackerTest, AppendBitcastTricky) {
             (std::vector<int64_t>{39, 1, 11, 10, 7}));
 }
 
+TEST(ShapeTrackerStepTest, AppendStepMatchesTypedAppend) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker expected(shape);
+  ASSERT_OK(expected.AppendTranspose({2, 0, 1}));
+  ASSERT_OK(expected.AppendReshape({4, 6}));
+  ASSERT_OK(expected.AppendBroadcast({4, 5, 6}, {0, 2}));
+  ASSERT_OK(expected.AppendReduce({1}));
+
+  ShapeTracker tracker(shape);
+  ASSERT_OK(tracker.Append(ShapeTracker::Transpose{{2, 0, 1}}));
+  ASSERT_OK(tracker.Append(ShapeTracker::Reshape{{4, 6}}));
+  ASSERT_OK(tracker.Append(ShapeTracker::Broadcast{{4, 5, 6}, {0, 2}}));
+  ASSERT_OK(tracker.Append(ShapeTracker::Reduce{{1}}));
+  EXPECT_EQ(tracker, expected);
+}
+
+TEST(ShapeTrackerStepTest, PrependStepWithWrongInputLeavesTrackerUnchanged) {
+  ShapeTracker tracker(ShapeUtil::MakeShape(F32, {6}));
+  ASSERT_OK(tracker.AppendReshape({2, 3}));
+  const ShapeTracker original = tracker;
+
+  // A reshape from [5] does not produce the current input [6].
+  EXPECT_THAT(tracker.PrependReshape({5}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(tracker, original);
+  // An identity permutation of the wrong rank.
+  EXPECT_THAT(tracker.PrependTranspose({0, 1}),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(tracker, original);
+}
+
 TEST(ShapeTrackerTest, ConcatenateFrom) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
   ShapeTracker tracker1(shape1);
@@ -254,10 +277,8 @@ TEST(ShapeTrackerTest, ConcatenateFrom) {
 
   std::vector<ShapeTracker::Step> steps = tracker1.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{6}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{6}}));
 }
 
 TEST(ShapeTrackerTest, ConcatenateFromIncompatible) {
@@ -287,8 +308,7 @@ TEST(ShapeTrackerTest, GetStepsSingleTranspose) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0}}));
 }
 
 TEST(ShapeTrackerTest, GetStepsSingleTransposeMergingDimensions) {
@@ -298,8 +318,8 @@ TEST(ShapeTrackerTest, GetStepsSingleTransposeMergingDimensions) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{0, 2, 3, 1}));
+  EXPECT_EQ(steps[0],
+            ShapeTracker::Step(ShapeTracker::Transpose{{0, 2, 3, 1}}));
 }
 
 TEST(ShapeTrackerTest, GetInvertedDoubleIdentity) {
@@ -400,10 +420,8 @@ TEST(ShapeTrackerTest, GetStepsAndDebugString) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 0, 1}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 3, 2}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{2, 0, 1}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{1, 3, 2}}));
 
   EXPECT_EQ(tracker.DebugString(), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
 }
@@ -419,10 +437,8 @@ TEST(ShapeTrackerTest, GetStepsFallback) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 0, 1}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{8, 3}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{2, 0, 1}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{8, 3}}));
 
   EXPECT_EQ(tracker.DebugString(), "[2,3,4] -> T[4,2,3] -> R[8,3]");
 }
@@ -440,8 +456,7 @@ TEST(ShapeTrackerTest, PrependTranspose) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0, 2}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0, 2}}));
 }
 
 TEST(ShapeTrackerTest, PrependTransposeNonSymmetric) {
@@ -456,8 +471,7 @@ TEST(ShapeTrackerTest, PrependTransposeNonSymmetric) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 2, 0}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 2, 0}}));
 
   EXPECT_EQ(tracker.DebugString(), "[4,2,3] -> T[2,3,4]");
 }
@@ -472,8 +486,7 @@ TEST(ShapeTrackerTest, ScalarShapeBitcast) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 1}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{1, 1}}));
 }
 
 TEST(ShapeTrackerTest, PrependReshape) {
@@ -487,8 +500,7 @@ TEST(ShapeTrackerTest, PrependReshape) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{6}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{6}}));
 }
 
 TEST(ShapeTrackerTest, PrependBitcast) {
@@ -742,10 +754,8 @@ TEST(ShapeTrackerTest, AppendBitcastSourcePhysicalLogicalDiffer) {
   // by a Reshape.
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{6}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{6}}));
 }
 
 TEST(ShapeTrackerTest, AppendBitcastNonDefaultLayoutCorrectness) {
@@ -762,10 +772,8 @@ TEST(ShapeTrackerTest, AppendBitcastNonDefaultLayoutCorrectness) {
   // Check that steps represent the correct logical transposition and reshape.
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{0, 2, 1}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{2, 12}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{0, 2, 1}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{2, 12}}));
 }
 
 TEST(ShapeTrackerTest, SimplifyConsecutiveReshapes) {
@@ -780,19 +788,17 @@ TEST(ShapeTrackerTest, SimplifyConsecutiveReshapes) {
   // The intermediate reshape to [512, 5376] is skipped, and we go directly
   // from [5376, 512] to [1, 512, 5376] via a single reshape.
   ASSERT_EQ(steps.size(), 3);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{512, 5376}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 0}));
-  EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{1, 512, 5376}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{512, 5376}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0}}));
+  EXPECT_EQ(steps[2],
+            ShapeTracker::Step(ShapeTracker::Reshape{{1, 512, 5376}}));
 
   std::vector<ShapeTracker::Step> opt_steps = tracker.GetSteps();
   ASSERT_EQ(opt_steps.size(), 2);
-  EXPECT_EQ(opt_steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(opt_steps[0].dimensions, (std::vector<int64_t>{2, 0, 1}));
-  EXPECT_EQ(opt_steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(opt_steps[1].dimensions, (std::vector<int64_t>{1, 512, 5376}));
+  EXPECT_EQ(opt_steps[0],
+            ShapeTracker::Step(ShapeTracker::Transpose{{2, 0, 1}}));
+  EXPECT_EQ(opt_steps[1],
+            ShapeTracker::Step(ShapeTracker::Reshape{{1, 512, 5376}}));
 }
 
 TEST(ShapeTrackerTest, AppendBitcastOneSixToSix) {
@@ -806,8 +812,7 @@ TEST(ShapeTrackerTest, AppendBitcastOneSixToSix) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{6}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{6}}));
 }
 
 TEST(ShapeTrackerTest, AppendBitcastSixToOneSix) {
@@ -821,8 +826,7 @@ TEST(ShapeTrackerTest, AppendBitcastSixToOneSix) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 6}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{1, 6}}));
 }
 
 TEST(ShapeTrackerTest, OneElementReshapeTransposeBitcastChain) {
@@ -840,8 +844,7 @@ TEST(ShapeTrackerTest, OneElementReshapeTransposeBitcastChain) {
   EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{1}));
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reshape{{1}}));
 
   // Prepend operations
   ShapeTracker tracker2(ShapeUtil::MakeShape(F32, {1}));
@@ -854,8 +857,7 @@ TEST(ShapeTrackerTest, OneElementReshapeTransposeBitcastChain) {
 
   std::vector<ShapeTracker::Step> steps2 = tracker2.GetSteps();
   ASSERT_EQ(steps2.size(), 1);
-  EXPECT_EQ(steps2[0].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps2[0].dimensions, (std::vector<int64_t>{1}));
+  EXPECT_EQ(steps2[0], ShapeTracker::Step(ShapeTracker::Reshape{{1}}));
 }
 
 TEST(ShapeTrackerTest, OptimizeStepsDebugString) {
@@ -1400,8 +1402,7 @@ TEST(ShapeTrackerTest, NarrowFoldsProjectionsToTranspose) {
   // If folding occurred, it should be represented by a single transpose step.
   std::vector<ShapeTracker::Step> steps = narrowed.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{1, 0}}));
 }
 
 TEST(ShapeTrackerTest, RemappingInSliceProjectionsWorksForTransposedInput) {
@@ -1520,10 +1521,8 @@ TEST(ShapeTrackerTest, ZipWithOneElementShape) {
 
   std::vector<ShapeTracker::Step> steps = zipped.GetSteps();
   ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 0, 1}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 3, 2}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Transpose{{2, 0, 1}}));
+  EXPECT_EQ(steps[1], ShapeTracker::Step(ShapeTracker::Reshape{{1, 3, 2}}));
 
   EXPECT_EQ(zipped.DebugString(), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
 }
@@ -1986,9 +1985,8 @@ TEST(ShapeTrackerBroadcastReduceTest, AppendBroadcastSimple) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kBroadcast);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{4, 2, 5, 3}));
-  EXPECT_EQ(steps[0].broadcast_dimensions, (std::vector<int64_t>{1, 3}));
+  EXPECT_EQ(steps[0],
+            ShapeTracker::Step(ShapeTracker::Broadcast{{4, 2, 5, 3}, {1, 3}}));
 }
 
 TEST(ShapeTrackerBroadcastReduceTest, AppendBroadcastScalar) {
@@ -2091,8 +2089,7 @@ TEST(ShapeTrackerBroadcastReduceTest, AppendReduceSimple) {
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
   ASSERT_EQ(steps.size(), 1);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReduce);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1}));
+  EXPECT_EQ(steps[0], ShapeTracker::Step(ShapeTracker::Reduce{{1}}));
 }
 
 TEST(ShapeTrackerBroadcastReduceTest, AppendReduceToScalar) {
