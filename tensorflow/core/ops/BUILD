@@ -380,6 +380,7 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["array_grad.cc"],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
         ":array_ops_op_lib",
         "//tensorflow/c/kernels:bitcast_op_lib",
@@ -392,6 +393,7 @@ cc_library(
 cc_library(
     name = "functional_grad",
     srcs = ["functional_grad.cc"],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
         ":functional_ops_op_lib",
         "//tensorflow/core:framework",
@@ -406,6 +408,7 @@ cc_library(
         "math_grad.cc",
         "stateless_random_grad.cc",
     ],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
         ":math_ops_op_lib",
         ":random_grad_op_lib",
@@ -419,6 +422,7 @@ cc_library(
 cc_library(
     name = "nn_grad",
     srcs = ["nn_grad.cc"],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
         ":nn_ops_op_lib",
         "//tensorflow/core:framework",
