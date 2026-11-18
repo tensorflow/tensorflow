@@ -1,0 +1,126 @@
+diff --git a/include/tensor_ir/Analysis/TileAnalyzer.h b/include/tensor_ir/Analysis/TileAnalyzer.h
+--- a/include/tensor_ir/Analysis/TileAnalyzer.h
++++ b/include/tensor_ir/Analysis/TileAnalyzer.h
+@@ -59,6 +59,9 @@
+     const int ccVersion = toCcInt(cc);
+     if (ccVersion >= 120) {
+       return 148;
++    }
++    if (cc == ComputeCapability::Sm107) {
++      return 212;
+     }
+     if (ccVersion >= 100) {
+       return 132;
+diff --git a/include/tensor_ir/Dialect/TensorEnums.td b/include/tensor_ir/Dialect/TensorEnums.td
+--- a/include/tensor_ir/Dialect/TensorEnums.td
++++ b/include/tensor_ir/Dialect/TensorEnums.td
+@@ -175,6 +175,7 @@
+     I32EnumAttrCase<"Sm90",              90,  "sm_90">,
+     I32EnumAttrCase<"Sm100",             100, "sm_100">,
+     I32EnumAttrCase<"Sm103",             103, "sm_103">,
++    I32EnumAttrCase<"Sm107",             107, "sm_107">,
+     I32EnumAttrCase<"Sm110",             110, "sm_110">,
+     I32EnumAttrCase<"Sm120",             120, "sm_120">,
+     I32EnumAttrCase<"Sm121",             121, "sm_121">,
+diff --git a/include/tensor_ir/Utils/ComputeCapability.h b/include/tensor_ir/Utils/ComputeCapability.h
+--- a/include/tensor_ir/Utils/ComputeCapability.h
++++ b/include/tensor_ir/Utils/ComputeCapability.h
+@@ -77,8 +77,9 @@
+ 
+ /// Returns true if \p cc belongs to the sm_100f family.
+ inline bool isSm100fFamily(ComputeCapability cc) {
+-  bool isFamily =
+-      cc == ComputeCapability::Sm100 || cc == ComputeCapability::Sm103;
++  bool isFamily = cc == ComputeCapability::Sm100 ||
++                  cc == ComputeCapability::Sm103 ||
++                  cc == ComputeCapability::Sm107;
+   return isFamily;
+ }
+ 
+@@ -98,6 +99,11 @@
+   return isFamily;
+ }
+ 
++/// Returns true if \p cc belongs to the Rubin family.
++inline bool isRubinFamily(ComputeCapability cc) {
++  return cc == ComputeCapability::Sm107;
++}
++
+ } // namespace mlir::nv_tensor_ir
+ 
+ #endif // TENSOR_IR_INCLUDE_UTILS_COMPUTECAPABILITY_H_
+diff --git a/lib/Analysis/Tiling/Arch.cpp b/lib/Analysis/Tiling/Arch.cpp
+--- a/lib/Analysis/Tiling/Arch.cpp
++++ b/lib/Analysis/Tiling/Arch.cpp
+@@ -63,6 +63,14 @@
+     /*tensorCoreVersions=*/kMMAv2 | kMMAv5,
+ };
+ 
++static const ArchInfo archInfoSm107 = {
++    /*numSMs=*/0,
++    /*maxBlocksPerSM=*/16,
++    /*maxWarpsPerSM=*/32,
++    /*maxSharedMemoryPerSM=*/228,
++    /*tensorCoreVersions=*/kMMAv2 | kMMAv5,
++};
++
+ static const ArchInfo archInfoSm110 = {
+     /*numSMs=*/0,
+     /*maxBlocksPerSM=*/24,
+@@ -111,6 +119,8 @@
+     return archInfoSm100;
+   case ComputeCapability::Sm103:
+     return archInfoSm103;
++  case ComputeCapability::Sm107:
++    return archInfoSm107;
+   case ComputeCapability::Sm110:
+     return archInfoSm110;
+   case ComputeCapability::Sm120:
+diff --git a/test/Tools/tensor-ir-compiler-options.mlir b/test/Tools/tensor-ir-compiler-options.mlir
+--- a/test/Tools/tensor-ir-compiler-options.mlir
++++ b/test/Tools/tensor-ir-compiler-options.mlir
+@@ -32,6 +32,19 @@
+ // RUN: env TIR_OVERRIDE_OPTIONS=#verbose \
+ // RUN:   tensor_ir-compiler --verbose %s 2>&1 \
+ // RUN:   | FileCheck %s --check-prefix=OVERRIDE --implicit-check-not="Target SM:"
++// RUN: tensor_ir-compiler %s --kernel-target=sm_107a --verbose 2>&1 \
++// RUN:   | FileCheck %s --check-prefix=SM107A
++// RUN: tensor_ir-compiler %s --kernel-target=sm_107f --verbose 2>&1 \
++// RUN:   | FileCheck %s --check-prefix=SM107F
++// RUN: tensor_ir-compiler %s --kernel-target=sm_100f --codegen-target=107 \
++// RUN:   --verbose 2>&1 \
++// RUN:   | FileCheck %s --check-prefix=SM100F-CODEGEN-107
++// RUN: not tensor_ir-compiler %s --kernel-target=sm_107f \
++// RUN:   --codegen-target=100 2>&1 \
++// RUN:   | FileCheck %s --check-prefix=BAD-SM107F-CODEGEN-100
++// RUN: not tensor_ir-compiler %s --kernel-target=sm_107f \
++// RUN:   --codegen-target=110 2>&1 \
++// RUN:   | FileCheck %s --check-prefix=BAD-SM107F-CODEGEN-110
+ 
+ // DEFAULT: Launch: no
+ // DEFAULT: Compiled successfully
+@@ -50,6 +63,13 @@
+ // BAD-AUTO-GDC: for the --auto-gdc-insertion option: Cannot find option named 'bogus'
+ // BAD-AUTO-GDC-VERSION: auto-gdc-insertion=conservative requires CUDA Tile bytecode 13.4 or newer
+ // OVERRIDE: Compiled successfully
++// SM107A: Target SM: sm_107a
++// SM107A: Compiled successfully
++// SM107F: Target SM: sm_107f
++// SM107F: Compiled successfully
++// SM100F-CODEGEN-107: Compiled successfully
++// BAD-SM107F-CODEGEN-100: Codegen compute capability 100 is incompatible with kernel target 'sm_107f'
++// BAD-SM107F-CODEGEN-110: Codegen compute capability 110 is incompatible with kernel target 'sm_107f'
+ 
+ module {
+   nv_tensor_ir.graph @compiler_options(
+diff --git a/test/Tools/tensor_ir-opt.mlir b/test/Tools/tensor_ir-opt.mlir
+--- a/test/Tools/tensor_ir-opt.mlir
++++ b/test/Tools/tensor_ir-opt.mlir
+@@ -1,5 +1,7 @@
+ // RUN: tensor_ir-opt --help | FileCheck %s
++// RUN: tensor_ir-opt --pass-pipeline="builtin.module(nv_tensor_ir.graph(test-tiling-evaluator{compute-capability=107 tile-shape=64,8 reduction-tile-size=8}))" %S/../Integration/Compiler/matmul_8x8x8.mlir | FileCheck %s --check-prefix=SM107-MMA
+ 
+ // CHECK: OVERVIEW: Tensor IR optimizer test driver
+ // CHECK: USAGE: tensor_ir-opt [options] <input file>
+ // CHECK: --canonicalize
++// SM107-MMA: "tiling-evaluation" = "{{.*}}mmaV5:1"

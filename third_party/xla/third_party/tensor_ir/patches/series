@@ -5,3 +5,4 @@ llvm_compat.patch
 deterministic_tile_sort.patch
 llvm_cl1014096632.patch
 llvm_cl1017850910.patch
+sm107_support.patch
