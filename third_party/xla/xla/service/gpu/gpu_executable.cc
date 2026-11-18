@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/log_severity.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -698,9 +700,10 @@ namespace {
 
 // Logs a progress-tracker dump for `tracker` when a host or device execution
 // watchdog fires.
-void LogExecutionProgress(absl::string_view watchdog_name,
-                          int32_t device_ordinal, int32_t max_thunks_to_log,
-                          ThunkExecutor::ProgressTracker* tracker) {
+void LogExecutionProgress(
+    absl::string_view watchdog_name, int32_t device_ordinal,
+    int32_t max_thunks_to_log, ThunkExecutor::ProgressTracker* tracker,
+    absl::LogSeverity severity = absl::LogSeverity::kError) {
   if (tracker == nullptr) {
     return;
   }
@@ -710,11 +713,12 @@ void LogExecutionProgress(absl::string_view watchdog_name,
   size_t num_completed = tracker->NumCompletedThunks();
   size_t num_pending = tracker->NumPendingThunks();
 
-  LOG(ERROR) << absl::StreamFormat("Progress tracking for %s:", watchdog_name);
-  LOG(ERROR) << absl::StreamFormat(
+  LOG(LEVEL(severity)) << absl::StreamFormat("Progress tracking for %s:",
+                                             watchdog_name);
+  LOG(LEVEL(severity)) << absl::StreamFormat(
       "[%d] Completed thunks: %d/%d (unique thunks: %d)", device_ordinal,
       num_completed, num_executions, num_thunks);
-  LOG(ERROR) << absl::StreamFormat(
+  LOG(LEVEL(severity)) << absl::StreamFormat(
       "[%d] Pending thunks: %d/%d (unique thunks: %d)", device_ordinal,
       num_pending, num_executions, num_thunks);
 
@@ -722,8 +726,8 @@ void LogExecutionProgress(absl::string_view watchdog_name,
       [&](absl::string_view label,
           std::vector<ThunkExecutor::ProgressTracker::ThunkExecution> thunks,
           bool log_nested_thunks) {
-        LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
-                                         label, thunks.size());
+        LOG(LEVEL(severity)) << absl::StreamFormat(
+            "[%d] %s: size=%d", device_ordinal, label, thunks.size());
         absl::c_sort(thunks, [](const auto& a, const auto& b) {
           return a.exec_idx < b.exec_idx;
         });
@@ -733,7 +737,7 @@ void LogExecutionProgress(absl::string_view watchdog_name,
             absl::StrAppendFormat(&loop_info, " [%s iter=%d]", state.loop_name,
                                   state.loop_iteration);
           }
-          LOG(ERROR) << absl::StreamFormat(
+          LOG(LEVEL(severity)) << absl::StreamFormat(
               "[%d]   - exec[%d] thunk[%d/%d] %v: %s at %s%s", device_ordinal,
               thunk.exec_idx, thunk.thunk_idx, num_thunks, thunk.kind,
               thunk.name,
@@ -742,7 +746,7 @@ void LogExecutionProgress(absl::string_view watchdog_name,
               loop_info);
           if (log_nested_thunks) {
             for (const auto& nested : thunk.nested_thunks) {
-              LOG(ERROR) << absl::StreamFormat(
+              LOG(LEVEL(severity)) << absl::StreamFormat(
                   "[%d]       nested thunk[%d/%d] %v: %s", device_ordinal,
                   nested.thunk_idx, num_thunks, nested.kind, nested.name);
             }
@@ -843,32 +847,63 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       tracker.has_value() ? tracker->tracker() : nullptr;
 
   auto make_progress_logger =
-      [&](absl::string_view watchdog_name) -> HangWatchdog::CancelCallback {
+      [&](absl::string_view watchdog_name,
+          absl::LogSeverity severity =
+              absl::LogSeverity::kError) -> HangWatchdog::CancelCallback {
     if (progress_tracker == nullptr) {
       return nullptr;
     }
     return [watchdog_name = std::string(watchdog_name),
             device_ordinal = executor->device_ordinal(), max_thunks_to_log,
-            progress_tracker]() {
+            progress_tracker, severity]() {
       LogExecutionProgress(watchdog_name, device_ordinal, max_thunks_to_log,
-                           progress_tracker.get());
+                           progress_tracker.get(), severity);
     };
   };
 
-  absl::Duration host_timeout = absl::InfiniteDuration();
-  absl::Duration device_timeout = absl::InfiniteDuration();
+  auto make_warn_callback = [&](absl::string_view watchdog_name,
+                                absl::Duration timeout) {
+    return [watchdog_name = std::string(watchdog_name), timeout,
+            log_progress = make_progress_logger(
+                watchdog_name, absl::LogSeverity::kWarning)]() mutable {
+      LOG(WARNING) << absl::StreamFormat(
+          "%s has not finished in %v (warn stuck timeout); continuing "
+          "execution without aborting.",
+          watchdog_name, timeout);
+      if (log_progress) {
+        std::move(log_progress)();
+      }
+    };
+  };
 
-  if (!debug_options.xla_gpu_execution_terminate_timeout().empty()) {
-    TF_RET_CHECK(absl::ParseDuration(
-        debug_options.xla_gpu_execution_terminate_timeout(), &host_timeout))
-        << "Failed to parse XLA host execution terminate timeout";
-  }
-  if (!debug_options.xla_gpu_device_execution_terminate_timeout().empty()) {
-    TF_RET_CHECK(absl::ParseDuration(
-        debug_options.xla_gpu_device_execution_terminate_timeout(),
-        &device_timeout))
-        << "Failed to parse XLA device execution terminate timeout";
-  }
+  auto parse_timeout =
+      [](absl::string_view value,
+         absl::string_view label) -> absl::StatusOr<absl::Duration> {
+    absl::Duration timeout = absl::InfiniteDuration();
+    if (!value.empty()) {
+      TF_RET_CHECK(absl::ParseDuration(value, &timeout) &&
+                   timeout >= absl::ZeroDuration())
+          << "Failed to parse non-negative " << label;
+    }
+    return timeout;
+  };
+
+  ABSL_ASSIGN_OR_RETURN(
+      absl::Duration host_warn_timeout,
+      parse_timeout(debug_options.xla_gpu_execution_warn_stuck_timeout(),
+                    "XLA host execution warn stuck timeout"));
+  ABSL_ASSIGN_OR_RETURN(
+      absl::Duration host_timeout,
+      parse_timeout(debug_options.xla_gpu_execution_terminate_timeout(),
+                    "XLA host execution terminate timeout"));
+  ABSL_ASSIGN_OR_RETURN(
+      absl::Duration device_warn_timeout,
+      parse_timeout(debug_options.xla_gpu_device_execution_warn_stuck_timeout(),
+                    "XLA device execution warn stuck timeout"));
+  ABSL_ASSIGN_OR_RETURN(
+      absl::Duration device_timeout,
+      parse_timeout(debug_options.xla_gpu_device_execution_terminate_timeout(),
+                    "XLA device execution terminate timeout"));
 
   // Timeout handlers for this execution, partitioned into host and device.
   std::vector<ExecutionTimeoutHandler> handlers;
@@ -892,6 +927,12 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       ExecutionTimeoutGuards(host_handlers, host_watchdog_name,
                              executor->device_ordinal(), max_thunks_to_log,
                              progress_tracker);
+
+  if (host_warn_timeout < absl::InfiniteDuration()) {
+    host_guards.push_back(HangWatchdog::Global().Watch(
+        host_watchdog_name, host_warn_timeout,
+        make_warn_callback(host_watchdog_name, host_warn_timeout)));
+  }
 
   if (host_timeout < absl::InfiniteDuration()) {
     host_guards.push_back(HangWatchdog::Global().Watch(
@@ -1113,6 +1154,12 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       ExecutionTimeoutGuards(device_handlers, device_watchdog_name,
                              executor->device_ordinal(), max_thunks_to_log,
                              progress_tracker);
+
+  if (device_warn_timeout < absl::InfiniteDuration()) {
+    device_guards.push_back(HangWatchdog::Global().Watch(
+        device_watchdog_name, device_warn_timeout,
+        make_warn_callback(device_watchdog_name, device_warn_timeout)));
+  }
 
   if (device_timeout < absl::InfiniteDuration()) {
     device_guards.push_back(HangWatchdog::Global().Watch(

@@ -988,6 +988,23 @@ message DebugOptions {
   // time running on the device.
   optional string xla_gpu_device_execution_terminate_timeout = 553;
 
+  // Time duration to wait before logging a warning (and progress-tracker dump,
+  // if enabled) that a single host-side XLA:GPU execution has not finished.
+  // Does not terminate the process.
+  //
+  // Uses the same duration string format as
+  // xla_gpu_execution_terminate_timeout. Empty or "inf" disables the warning.
+  optional string xla_gpu_execution_warn_stuck_timeout = 585;
+
+  // Time duration to wait before logging a warning (and progress-tracker dump,
+  // if enabled) that enqueued XLA:GPU device work has not completed after host
+  // dispatch. Does not terminate the process.
+  //
+  // Uses the same duration string format as
+  // xla_gpu_device_execution_terminate_timeout. Empty or "inf" disables the
+  // warning.
+  optional string xla_gpu_device_execution_warn_stuck_timeout = 586;
+
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
   // If true, autotune all fusions with block level emitter.
@@ -2065,7 +2082,7 @@ message DebugOptions {
   // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
   optional bool xla_gpu_experimental_enable_raft_u64_radix = 584;
 
-  // Next id: 585
+  // Next id: 587
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -522,6 +522,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_execution_terminate_timeout("inf");
   opts.set_xla_gpu_device_execution_terminate_timeout("inf");
+  opts.set_xla_gpu_execution_warn_stuck_timeout("");
+  opts.set_xla_gpu_device_execution_warn_stuck_timeout("");
   opts.set_xla_gpu_execution_progress_tracking(0);
 
   opts.set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds(20);
@@ -754,12 +756,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         };
       };
 
-  // Custom setter that checks that argument is a valid `absl::Duration`.
+  // Custom setter that checks that argument is a valid non-negative
+  // `absl::Duration` (or empty).
   auto duration_setter_for =
       [debug_options](
           void (DebugOptions::*member_setter)(const std::string& value)) {
         return [debug_options, member_setter](const std::string& value) {
-          if (absl::Duration duration; !absl::ParseDuration(value, &duration)) {
+          if (absl::Duration duration;
+              !value.empty() && (!absl::ParseDuration(value, &duration) ||
+                                 duration < absl::ZeroDuration())) {
             return false;
           }
           (debug_options->*member_setter)(value);
@@ -3570,6 +3575,24 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         debug_options->xla_gpu_device_execution_terminate_timeout(),
         "Set timeout to abort if enqueued XLA:GPU device work does not "
         "complete after host dispatch (inf to disable)"));
+
+    flag_list->push_back(tsl::Flag(
+        "xla_gpu_execution_warn_stuck_timeout",
+        duration_setter_for(
+            &DebugOptions::set_xla_gpu_execution_warn_stuck_timeout),
+        debug_options->xla_gpu_execution_warn_stuck_timeout(),
+        "Set timeout to log a warning if host-side XLA:GPU execution does not "
+        "complete (empty or inf to disable); does not wait for asynchronous "
+        "device work or terminate the process"));
+
+    flag_list->push_back(tsl::Flag(
+        "xla_gpu_device_execution_warn_stuck_timeout",
+        duration_setter_for(
+            &DebugOptions::set_xla_gpu_device_execution_warn_stuck_timeout),
+        debug_options->xla_gpu_device_execution_warn_stuck_timeout(),
+        "Set timeout to log a warning if enqueued XLA:GPU device work does not "
+        "complete after host dispatch (empty or inf to disable); does not "
+        "terminate the process"));
 
     flag_list->push_back(tsl::Flag(
         "xla_gpu_execution_progress_tracking",
