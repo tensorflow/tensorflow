@@ -524,7 +524,7 @@ class QuantizationMode:
 
   def _validate_int8_required(self):
     """Int8 mode requires certain parameters to exist and be compatible."""
-    # Validate target_spec attibute.
+    # Validate target_spec attribute.
     if set(self._target_spec.supported_ops) == {
         OpsSet.TFLITE_BUILTINS_INT8
     } and not (
@@ -550,7 +550,7 @@ class QuantizationMode:
           "`representative_dataset` must be specified."
       )
 
-    # Update represenative dataset to the expected format.
+    # Update representative dataset to the expected format.
     if self._representative_dataset:
       if not isinstance(self._representative_dataset, RepresentativeDataset):
         self._representative_dataset = RepresentativeDataset(
@@ -566,7 +566,7 @@ class QuantizationMode:
       )
 
   def _validate_full_integer_quantization_bias_type(self):
-    """Validates bias type for full interger quantization."""
+    """Validates bias type for full integer quantization."""
     bias_type = self._full_integer_quantization_bias_type
     if not bias_type:
       return

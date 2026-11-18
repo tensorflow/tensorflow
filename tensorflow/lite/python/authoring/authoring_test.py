@@ -210,7 +210,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f(tf.constant([3.0]))
     warning_messages = f.get_compatibility_log()
 
-    # Test if compatiblility checks happens only once.
+    # Test if compatibility checks happens only once.
     # The number of warning_messages will be 2 by op location detail.
     self.assertEqual(2, len(warning_messages))
 
