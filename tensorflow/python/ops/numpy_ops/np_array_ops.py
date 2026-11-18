@@ -1334,7 +1334,7 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
 
 @tf_export.tf_export('experimental.numpy.pad', v1=[])
 @np_utils.np_doc('pad')
-def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-name
+def pad(array, pad_width, mode='constant', **kwargs):  # pylint: disable=redefined-outer-name
   """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
   constant_values = kwargs.get('constant_values', 0)
   if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
@@ -2140,12 +2140,19 @@ def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstrin
 # numpy.
 @tf_export.tf_export('experimental.numpy.take_along_axis', v1=[])
 @np_utils.np_doc('take_along_axis')
-def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
+def take_along_axis(arr, indices, axis=-1):  # pylint: disable=missing-docstring
   arr = asarray(arr)
   indices = asarray(indices)
 
   if axis is None:
-    return take_along_axis(arr.ravel(), indices, 0)
+    # NumPy flattens `arr` and requires 1-D `indices` in this mode. `asarray`
+    # returns a `Tensor` here, which has no `.reshape` method, so use the
+    # module-level `reshape`.
+    if indices.shape.rank is not None and indices.shape.rank != 1:
+      raise ValueError(
+          'when axis=None, `indices` must have a single dimension.'
+      )
+    return take_along_axis(reshape(arr, [-1]), indices, 0)
 
   # Prefer the static rank so that `axis` and the branch predicate below stay
   # Python values. With a tensor predicate the conditional further down is

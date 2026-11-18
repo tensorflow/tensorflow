@@ -1547,6 +1547,18 @@ class ArrayMethodsTest(test.TestCase):
         [[2, 1, 1, 2, 3, 3, 2], [2, 1, 1, 2, 3, 3, 2], [5, 4, 4, 5, 6, 6, 5],
          [5, 4, 4, 5, 6, 6, 5]])
 
+    # `mode` defaults to 'constant', as in NumPy, so it may be omitted along
+    # with any other keyword argument.
+    self.assertAllEqual(np_array_ops.pad(t, paddings), np.pad(t, paddings))
+    self.assertAllEqual(np_array_ops.pad(t, 1), np.pad(t, 1))
+    self.assertAllEqual(
+        np_array_ops.pad(t, 2, constant_values=9),
+        np.pad(t, 2, constant_values=9),
+    )
+    # An unsupported mode is still rejected with the same message.
+    with self.assertRaisesRegex(ValueError, 'Unsupported padding mode'):
+      np_array_ops.pad(t, 1, 'edge')
+
   def testPadWidthSemantics(self):
     # NumPy broadcasts `pad_width` against the input rank before using it
     # and requires integral entries, raising TypeError/ValueError before
@@ -1761,6 +1773,20 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.take_along_axis(x, ind, axis=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.take_along_axis(x, ind, axis=-3)
+
+    # `axis` defaults to -1, as in NumPy.
+    self.assertAllEqual(
+        np_array_ops.take_along_axis(x, ind),
+        np.take_along_axis(x, ind),
+    )
+    flat_ind = ind.ravel()
+    self.assertAllEqual(
+        np_array_ops.take_along_axis(x, flat_ind, axis=None),
+        np.take_along_axis(x, flat_ind, axis=None),
+    )
+    # NumPy requires 1-D `indices` when the axis is not given.
+    with self.assertRaisesRegex(ValueError, 'must have a single dimension'):
+      np_array_ops.take_along_axis(x, ind, axis=None)
 
   def testTakeAlongAxisJitCompile(self):
     if test_util.is_xla_enabled():
