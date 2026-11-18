@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/enable_tf2_utils.h"
 
+#include <string>
+
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/env_var.h"
 
