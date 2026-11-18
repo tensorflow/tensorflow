@@ -857,12 +857,8 @@ func.func @test_dot_general_scalar(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf
 // CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<8x16xf32> to vector<8x16xf32>
 // CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<16x8xf32> to vector<16x8xf32>
 // CHECK-DAG: %[[ACC_VEC:.*]] = builtin.unrealized_conversion_cast %[[ARG2]] : tensor<f32> to vector<f32>
-// CHECK: %[[RHS_T:.*]] = vector.transpose %[[RHS]], [1, 0] : vector<16x8xf32> to vector<8x16xf32>
-// CHECK: %[[PROD:.*]] = arith.mulf %[[LHS]], %[[RHS_T]] : vector<8x16xf32>
-// CHECK: %[[ACC:.*]] = vector.extract %[[ACC_VEC]][] : f32 from vector<f32>
-// CHECK: %[[RES:.*]] = vector.multi_reduction <add>, %[[PROD]], %[[ACC]] [0, 1] : vector<8x16xf32> to f32
-// CHECK: %[[BCAST:.*]] = vector.broadcast %[[RES]] : f32 to vector<f32>
-// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<f32> to tensor<f32>
+// CHECK: %[[RES:.*]] = vector.contract {indexing_maps = [#{{.*}}, #{{.*}}, #{{.*}}], iterator_types = ["reduction", "reduction"], kind = #vector.kind<add>} %[[LHS]], %[[RHS]], %[[ACC_VEC]] : vector<8x16xf32>, vector<16x8xf32> into vector<f32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<f32> to tensor<f32>
 // CHECK: return %[[RET]]
 
 // -----
@@ -877,12 +873,8 @@ func.func @test_dot_general_scalar_i32(%arg0: tensor<8x16xi32>, %arg1: tensor<16
 // CHECK-DAG: %[[LHS:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<8x16xi32> to vector<8x16xi32>
 // CHECK-DAG: %[[RHS:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<16x8xi32> to vector<16x8xi32>
 // CHECK-DAG: %[[ACC_VEC:.*]] = builtin.unrealized_conversion_cast %[[ARG2]] : tensor<i32> to vector<i32>
-// CHECK: %[[RHS_T:.*]] = vector.transpose %[[RHS]], [1, 0] : vector<16x8xi32> to vector<8x16xi32>
-// CHECK: %[[PROD:.*]] = arith.muli %[[LHS]], %[[RHS_T]] : vector<8x16xi32>
-// CHECK: %[[ACC:.*]] = vector.extract %[[ACC_VEC]][] : i32 from vector<i32>
-// CHECK: %[[RES:.*]] = vector.multi_reduction <add>, %[[PROD]], %[[ACC]] [0, 1] : vector<8x16xi32> to i32
-// CHECK: %[[BCAST:.*]] = vector.broadcast %[[RES]] : i32 to vector<i32>
-// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[BCAST]] : vector<i32> to tensor<i32>
+// CHECK: %[[RES:.*]] = vector.contract {indexing_maps = [#{{.*}}, #{{.*}}, #{{.*}}], iterator_types = ["reduction", "reduction"], kind = #vector.kind<add>} %[[LHS]], %[[RHS]], %[[ACC_VEC]] : vector<8x16xi32>, vector<16x8xi32> into vector<i32>
+// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[RES]] : vector<i32> to tensor<i32>
 // CHECK: return %[[RET]]
 
 // -----
@@ -1048,3 +1040,27 @@ func.func @test_fma(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8x
 }
 // CHECK-LABEL: @test_fma
 // CHECK: math.fma %{{.*}}, %{{.*}}, %{{.*}} : vector<8xf32>
+
+// -----
+
+func.func @test_dot_general_0d_mixed_precision(
+    %lhs: tensor<8xbf16>, %rhs: tensor<8xbf16>, %acc: tensor<f32>) -> tensor<f32> {
+  %dot = stablehlo.dot_general %lhs, %rhs,
+    contracting_dims = [0] x [0] : (tensor<8xbf16>, tensor<8xbf16>) -> tensor<f32>
+  %add = arith.addf %acc, %dot : tensor<f32>
+  return %add : tensor<f32>
+}
+// CHECK-LABEL: @test_dot_general_0d_mixed_precision
+// CHECK: vector.contract {indexing_maps = [#{{.*}}, #{{.*}}, #{{.*}}], iterator_types = ["reduction"], kind = #vector.kind<add>} %{{.*}}, %{{.*}}, %{{.*}} : vector<8xbf16>, vector<8xbf16> into vector<f32>
+
+// -----
+
+func.func @test_dot_general_standalone(
+    %lhs: tensor<8x8xi32>, %rhs: tensor<8x1xi32>) -> tensor<8x1xi32> {
+  %dot = stablehlo.dot_general %lhs, %rhs,
+    contracting_dims = [1] x [0] : (tensor<8x8xi32>, tensor<8x1xi32>) -> tensor<8x1xi32>
+  return %dot : tensor<8x1xi32>
+}
+// CHECK-LABEL: @test_dot_general_standalone
+// CHECK: %[[ZERO:.*]] = arith.constant dense<0> : vector<8x1xi32>
+// CHECK: vector.contract {{.*}} %{{.*}}, %{{.*}}, %[[ZERO]] : vector<8x8xi32>, vector<8x1xi32> into vector<8x1xi32>

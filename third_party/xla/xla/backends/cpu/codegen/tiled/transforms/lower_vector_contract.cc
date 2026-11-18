@@ -248,7 +248,7 @@ LogicalResult LowerAllUnitParallelContraction(
 }
 
 // Drops size-1 parallel (batch and free) dimensions from `vector.contract`.
-// When all parallel dimensions are size 1, lowers directly to a 1D
+// When there are no non-unit parallel dimensions, lowers directly to a 1D
 // multiply + `vector.reduction<add>` to avoid scalarization.
 LogicalResult DropContractionUnitDims(mv::ContractionOp op,
                                       PatternRewriter& rewriter) {
@@ -289,12 +289,12 @@ LogicalResult DropContractionUnitDims(mv::ContractionOp op,
     }
   }
 
-  if (!has_unit_parallel) {
-    return mlir::failure();
-  }
-
   if (num_kept_parallel == 0) {
     return LowerAllUnitParallelContraction(op, iter_types, rewriter);
+  }
+
+  if (!has_unit_parallel) {
+    return mlir::failure();
   }
 
   llvm::SmallVector<int64_t> iter_remap(num_iters, -1);

@@ -535,12 +535,6 @@ struct VectorizeDotGeneralOp
           op, "complex types are not supported by vector operations");
     }
 
-    mlir::Operation* add_op;
-    Value accumulator;
-    if (mlir::failed(GetFusedAddUnit(op, rewriter, add_op, accumulator))) {
-      return mlir::failure();
-    }
-
     auto lhs_vector =
         mlir::dyn_cast<mlir::TypedValue<mlir::VectorType>>(adaptor.getLhs());
     auto rhs_vector =
@@ -555,10 +549,19 @@ struct VectorizeDotGeneralOp
     mlir::VectorType result_vector_type = mlir::cast<mlir::VectorType>(
         this->getTypeConverter()->convertType(op.getType()));
 
-    Value acc_vector = accumulator;
-    if (acc_vector.getType() != result_vector_type) {
-      acc_vector = this->getTypeConverter()->materializeTargetConversion(
-          rewriter, op.getLoc(), result_vector_type, acc_vector);
+    mlir::Operation* add_op = nullptr;
+    mlir::Operation* replace_op = op;
+    Value acc_vector;
+    if (mlir::succeeded(GetFusedAddUnit(op, rewriter, add_op, acc_vector))) {
+      replace_op = add_op;
+      if (acc_vector.getType() != result_vector_type) {
+        acc_vector = this->getTypeConverter()->materializeTargetConversion(
+            rewriter, op.getLoc(), result_vector_type, acc_vector);
+      }
+    } else {
+      acc_vector =
+          ma::ConstantOp::create(rewriter, op.getLoc(), result_vector_type,
+                                 rewriter.getZeroAttr(result_vector_type));
     }
 
     mlir::stablehlo::DotDimensionNumbersAttr dimension_numbers =
@@ -573,35 +576,6 @@ struct VectorizeDotGeneralOp
         dimension_numbers.getRhsBatchingDimensions();
     llvm::ArrayRef<int64_t> rhs_contracting =
         dimension_numbers.getRhsContractingDimensions();
-
-    if (result_vector_type.getRank() == 0) {
-      mlir::Location loc = op.getLoc();
-      rewriter.setInsertionPoint(add_op);
-      llvm::SmallVector<int64_t> perm(lhs_rank);
-      for (auto [lhs_dim, rhs_dim] :
-           llvm::zip(lhs_contracting, rhs_contracting)) {
-        perm[lhs_dim] = rhs_dim;
-      }
-      mlir::Value rhs_aligned = rhs_vector;
-      if (!llvm::is_sorted(perm)) {
-        rhs_aligned = mv::TransposeOp::create(rewriter, loc, rhs_vector, perm);
-      }
-      mlir::Value product =
-          mlir::isa<mlir::FloatType>(lhs_vector.getType().getElementType())
-              ? mlir::Value(
-                    ma::MulFOp::create(rewriter, loc, lhs_vector, rhs_aligned))
-              : mlir::Value(
-                    ma::MulIOp::create(rewriter, loc, lhs_vector, rhs_aligned));
-      mlir::Value acc = mv::ExtractOp::create(rewriter, loc, acc_vector);
-      llvm::SmallVector<bool> reduction_mask(lhs_rank, true);
-      mlir::Value reduction = mv::MultiDimReductionOp::create(
-          rewriter, loc, product, acc, reduction_mask, mv::CombiningKind::ADD);
-      mlir::Value result =
-          mv::BroadcastOp::create(rewriter, loc, result_vector_type, reduction);
-      rewriter.replaceOp(add_op, result);
-      rewriter.eraseOp(op);
-      return mlir::success();
-    }
 
     int64_t lhs_free_dims =
         lhs_rank - lhs_batch.size() - lhs_contracting.size();
@@ -623,13 +597,15 @@ struct VectorizeDotGeneralOp
     mlir::ArrayAttr iterator_types = GetIteratorTypes(
         rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
 
-    rewriter.setInsertionPoint(add_op);
+    rewriter.setInsertionPoint(replace_op);
     mlir::Value result = mlir::vector::ContractionOp::create(
         rewriter, op->getLoc(), lhs_vector, rhs_vector, acc_vector,
         indexing_maps, iterator_types);
 
-    rewriter.replaceOp(add_op, result);
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(replace_op, result);
+    if (replace_op != op) {
+      rewriter.eraseOp(op);
+    }
 
     return mlir::success();
   }
