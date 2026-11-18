@@ -62,7 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/export/tensor_names.h"
 #include "tensorflow/compiler/mlir/lite/export/types.h"
 #include "tensorflow/compiler/mlir/lite/export/vhlo_operators.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_operator_writers.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"

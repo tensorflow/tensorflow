@@ -34,7 +34,7 @@ cc_library(
         ":tensor_names",
         ":types",
         ":vhlo_operators",
-        "//tensorflow/compiler/mlir/lite:flatbuffer_tflite_operator_lib",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_tflite_operator_writers",
         "//tensorflow/compiler/mlir/lite:lite_version",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/core:macros",
