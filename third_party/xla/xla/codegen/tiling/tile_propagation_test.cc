@@ -1625,6 +1625,41 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
   )"));
 }
 
+TEST_F(TilePropagationTest, AllGatherTwoShotPropagatesIdentityShardTile) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[2,16] parameter(0)
+      ROOT ag = f32[8,16] all-gather(p0),
+        replica_groups={{0,1,2,3}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+    ENTRY e {
+      p0 = f32[2,16] parameter(0)
+      ROOT fusion = f32[8,16] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TilingSpace> tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
+  const HloInstruction* ag =
+      root->fused_instructions_computation()->GetInstructionWithName("ag");
+  ASSERT_EQ(tiling_space->tiled_roots().size(), 1);
+  EXPECT_EQ(tiling_space->tiled_roots()[0].num_replica_ids(), 0);
+  ASSERT_OK_AND_ASSIGN(
+      Tiles operand_tiles,
+      PropagateTileToInput(*tiling_space, *ag, tiling_space->tiled_roots()[0],
+                           /*output_index=*/0));
+  EXPECT_THAT(operand_tiles, MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 1]
+         upper bounds [2, 16]
+  )"));
+}
+
 TEST_F(TilePropagationTest, CanPropagateToInputOfAllToAllOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m

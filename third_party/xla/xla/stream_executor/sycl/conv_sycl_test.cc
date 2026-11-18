@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
