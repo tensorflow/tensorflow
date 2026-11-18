@@ -1230,42 +1230,33 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
                                  lb.getIntegerAttr(elementType, 2));
   Value step = arith::ConstantIndexOp::create(lb, 1);
   Value lowerBound = arith::ConstantIndexOp::create(lb, 0);
-  // Everything else would overflow for any exponent > 1, as 2^64
-  // is the larget possible exponent for a 64-bit integer, and
-  // that's 1 << 6.
-  Value upperBound = arith::ConstantIndexOp::create(lb, 6);
+  Value upperBound =
+      arith::ConstantIndexOp::create(lb, elementType.getIntOrFloatBitWidth());
   auto originalBase = adaptor.getLhs();
   auto originalExponent = adaptor.getRhs();
 
-  auto forOp = scf::ForOp::create(
-      lb, lowerBound, upperBound, step,
-      SmallVector<Value>({one, originalBase, originalExponent}),
-      [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
-        Value accum = iters[0];
-        Value base = iters[1];
-        Value exponent = iters[2];
+  Value accum =
+      scf::ForOp::create(
+          lb, lowerBound, upperBound, step,
+          SmallVector<Value>({one, originalBase, originalExponent}),
+          [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
+            Value accum = iters[0];
+            Value base = iters[1];
+            Value exponent = iters[2];
 
-        Value condition = arith::CmpIOp::create(
-            b, loc, arith::CmpIPredicate::eq,
-            ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
-        Value multiplied = ::mlir::arith::MulIOp::create(b, loc, accum, base);
-        accum = ::mlir::arith::SelectOp::create(b, loc, condition, multiplied,
-                                                accum);
-        base = ::mlir::arith::MulIOp::create(b, loc, base, base);
-        exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
-        scf::YieldOp::create(b, loc,
-                             SmallVector<Value>({accum, base, exponent}));
-      });
-  Value accum = forOp.getResult(0);
-  Value remainingExponent = forOp.getResult(2);
-  Value exponentNonZero = arith::CmpIOp::create(lb, arith::CmpIPredicate::ne,
-                                                remainingExponent, zero);
-  Value baseIsEven = arith::CmpIOp::create(
-      lb, arith::CmpIPredicate::eq,
-      ::mlir::arith::AndIOp::create(lb, originalBase, one), zero);
-  accum = ::mlir::arith::SelectOp::create(
-      lb, ::mlir::arith::AndIOp::create(lb, exponentNonZero, baseIsEven), zero,
-      accum);
+            Value condition = arith::CmpIOp::create(
+                b, loc, arith::CmpIPredicate::eq,
+                ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
+            Value multiplied =
+                ::mlir::arith::MulIOp::create(b, loc, accum, base);
+            accum = ::mlir::arith::SelectOp::create(b, loc, condition,
+                                                    multiplied, accum);
+            base = ::mlir::arith::MulIOp::create(b, loc, base, base);
+            exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
+            scf::YieldOp::create(b, loc,
+                                 SmallVector<Value>({accum, base, exponent}));
+          })
+          .getResult(0);
 
   if (IsUnsignedIntegerType{}(getElementTypeOrSelf(argTypes.front()))) {
     return accum;
