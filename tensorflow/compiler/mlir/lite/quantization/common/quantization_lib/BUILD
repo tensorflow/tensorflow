@@ -97,6 +97,7 @@ tf_cc_test(
     srcs = ["quantization_driver_test.cc"],
     deps = [
         ":quantization_lib",
+        ":tfl_quantization_driver",
         "//tensorflow/compiler/mlir/lite/quantization/common:test_base",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
