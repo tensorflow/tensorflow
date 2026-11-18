@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla {
