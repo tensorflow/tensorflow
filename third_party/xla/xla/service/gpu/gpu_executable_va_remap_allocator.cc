@@ -564,7 +564,7 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
     const Shape& result_shape, const DebugOptions* debug_options,
     ThunkExecutor* thunk_executor, int num_devices)
     : GpuExecutableBufferAllocator(module_name, allocations, result_shape,
-                                   debug_options, thunk_executor),
+                                   debug_options, thunk_executor, num_devices),
       remappings_(num_devices) {
   // Allocation colors are matched against the VMM allocator's memory spaces.
   static_assert(Layout::kHostMemorySpace ==
@@ -580,7 +580,7 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
   ForEachCommandBufferAllocation(
       allocations, thunk_executor,
       [&](BufferAllocation::Index index, const BufferAllocation& allocation) {
-        if (allocation.is_constant()) {
+        if (allocation.is_constant() || allocation.is_persistent()) {
           // Collected by the base class.
           return;
         }
@@ -598,8 +598,8 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
         }
       });
 
-  AllocationIndexSet persistent(constant_alloc_indices().begin(),
-                                constant_alloc_indices().end());
+  AllocationIndexSet persistent(fixed_alloc_indices().begin(),
+                                fixed_alloc_indices().end());
   persistent.insert(va_remapped_alloc_indices_.begin(),
                     va_remapped_alloc_indices_.end());
   set_persistent_alloc_indices(std::vector<BufferAllocation::Index>(
@@ -618,8 +618,8 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
 void GpuExecutableVaRemapAllocator::AddVaRemappedAllocationForTesting(
     BufferAllocation::Index index) {
   va_remapped_alloc_indices_.insert(index);
-  AllocationIndexSet persistent(constant_alloc_indices().begin(),
-                                constant_alloc_indices().end());
+  AllocationIndexSet persistent(fixed_alloc_indices().begin(),
+                                fixed_alloc_indices().end());
   persistent.insert(va_remapped_alloc_indices_.begin(),
                     va_remapped_alloc_indices_.end());
   set_persistent_alloc_indices(std::vector<BufferAllocation::Index>(
@@ -696,14 +696,15 @@ void GpuExecutableVaRemapAllocator::TransitionProfiledRemapping(
     remapping->phase = Remapping::ProfilePhase::kDisabled;
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
         "VA remapping: module %s profile found no stable command buffer "
-        "allocations; passing only constants as persistent",
+        "allocations; passing only constants and persistent buffers as "
+        "persistent",
         module_name());
     return;
   }
 
   remapping->profiled_va_remapped_alloc_indices = std::move(selected);
-  AllocationIndexSet persistent(constant_alloc_indices().begin(),
-                                constant_alloc_indices().end());
+  AllocationIndexSet persistent(fixed_alloc_indices().begin(),
+                                fixed_alloc_indices().end());
   persistent.insert(remapping->profiled_va_remapped_alloc_indices.begin(),
                     remapping->profiled_va_remapped_alloc_indices.end());
   remapping->profiled_persistent_alloc_indices.assign(persistent.begin(),
@@ -794,7 +795,8 @@ GpuExecutableVaRemapAllocator::CreateExecutionScope(
     }
     if (remapping->phase == Remapping::ProfilePhase::kDisabled) {
       // Nothing to remap for this executor; behave like a scope without
-      // remapping, which passes only constants as persistent.
+      // remapping, which passes only constants and persistent buffers as
+      // persistent.
       return scope_without_remapping();
     }
   }

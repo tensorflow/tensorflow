@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_BUFFER_ALLOCATOR_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_BUFFER_ALLOCATOR_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -31,7 +32,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
@@ -39,6 +42,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -48,13 +53,17 @@ class ThunkExecutor;
 // Owns executable-scoped buffer allocation state for one GpuExecutable.
 //
 // This base class implements the ALWAYS_UPDATE command buffer update mode,
-// which needs no allocation-address policy beyond global constants. The
+// which needs no allocation-address policy beyond global constants and
+// persistent buffers. The
 // SKIP_TEMP and SKIP_PROFILED update modes are implemented by
 // GpuExecutableVaRemapAllocator (see gpu_executable_va_remap_allocator.h),
 // which assigns stable addresses to selected command-buffer allocations via
 // VMM VA remapping. The base-class behavior also serves as the runtime
 // fallback for those modes when VA remapping is unavailable for an execution.
 class GpuExecutableBufferAllocator {
+ private:
+  struct PersistentBufferState;
+
  public:
   struct ParameterBuffer {
     se::DeviceAddressBase buffer;
@@ -80,7 +89,8 @@ class GpuExecutableBufferAllocator {
   // to run the executable with those allocations.
   //
   // This base class resolves allocation addresses without any VA remapping
-  // and passes only global constants as persistent allocations. Subclasses
+  // and passes only global constants and persistent buffers as persistent
+  // allocations. Subclasses
   // override the protected hooks to install a per-execution
   // allocation-address policy.
   class ExecutionScope {
@@ -117,8 +127,8 @@ class GpuExecutableBufferAllocator {
         absl::FunctionRef<absl::Status(absl::Status)> allocation_error);
 
     // Runs `execute` with the allocation-address policy for this execution.
-    // The base implementation passes the command-buffer-referenced constant
-    // allocations as the persistent allocation indices.
+    // The base implementation passes the constant and persistent allocations
+    // referenced by command buffers as the persistent allocation indices.
     virtual absl::Status ExecuteWithBufferAllocations(
         const BufferAllocations& owning_buffer_allocations,
         absl::FunctionRef<absl::Status(
@@ -161,6 +171,7 @@ class GpuExecutableBufferAllocator {
     absl::StatusOr<se::DeviceAddressBase> BufferForAllocation(
         ParameterBufferResolver get_parameter_buffer,
         const BufferAllocToDeviceMemoryMap* globals,
+        const PersistentBufferState* persistent_state,
         const BufferAllocation& allocation,
         se::DeviceAddressAllocator* memory_allocator, int64_t arg_idx);
 
@@ -182,7 +193,7 @@ class GpuExecutableBufferAllocator {
       absl::string_view module_name,
       absl::Span<const BufferAllocation* const> allocations,
       const Shape& result_shape, const DebugOptions* debug_options,
-      ThunkExecutor* thunk_executor);
+      ThunkExecutor* thunk_executor, int num_devices = 0);
   virtual ~GpuExecutableBufferAllocator() = default;
 
   size_t command_buffer_allocation_count() const {
@@ -207,8 +218,8 @@ class GpuExecutableBufferAllocator {
     return allocations_;
   }
   const DebugOptions* debug_options() const { return debug_options_; }
-  absl::Span<const BufferAllocation::Index> constant_alloc_indices() const {
-    return constant_alloc_indices_;
+  absl::Span<const BufferAllocation::Index> fixed_alloc_indices() const {
+    return fixed_alloc_indices_;
   }
   absl::Span<const BufferAllocation::Index> persistent_alloc_indices() const {
     return persistent_alloc_indices_;
@@ -219,17 +230,37 @@ class GpuExecutableBufferAllocator {
   }
 
  private:
+  // Persistent buffers of one physical `StreamExecutor` (keyed by
+  // `executor->device_ordinal()`). `executor` and `buffers` are written once,
+  // under `mu`, before `initialized` is set; afterwards they are read without
+  // the lock.
+  struct PersistentBufferState {
+    absl::Mutex mu;
+    std::atomic<bool> initialized{false};
+    se::StreamExecutor* executor = nullptr;
+    absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressHandle>
+        buffers;
+  };
+
+  // Allocates and initializes the persistent buffers of `stream->parent()` on
+  // its first successful call; a failed call is retried by the next one.
+  absl::StatusOr<const PersistentBufferState*> EnsurePersistentAllocations(
+      se::Stream* stream) const;
+
   std::string module_name_;
   std::vector<const BufferAllocation*> allocations_;
   Shape result_shape_;
   const DebugOptions* debug_options_ = nullptr;
+  bool has_persistent_allocations_ = false;
+  mutable PerDeviceState<PersistentBufferState> persistent_allocations_;
 
-  // Sorted indices of command-buffer-referenced constant allocations. Their
-  // global addresses are stable without VMM remapping.
-  std::vector<BufferAllocation::Index> constant_alloc_indices_;
+  // Sorted indices of constant and persistent allocations referenced by
+  // command buffers. Their addresses are stable across executions without VMM
+  // remapping.
+  std::vector<BufferAllocation::Index> fixed_alloc_indices_;
 
-  // Sorted indices of command-buffer-referenced allocations with stable
-  // addresses across executions. Equals `constant_alloc_indices_` here;
+  // Sorted indices of allocations referenced by command buffers with stable
+  // addresses across executions. Equals `fixed_alloc_indices_` here;
   // subclasses extend it with VA-remapped allocations.
   std::vector<BufferAllocation::Index> persistent_alloc_indices_;
 };

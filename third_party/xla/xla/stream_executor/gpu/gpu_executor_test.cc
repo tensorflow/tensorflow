@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/gpu/gpu_executor.h"
+
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -71,6 +74,27 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
                        executor->GetPointerMemorySpace(mem.opaque()));
   EXPECT_EQ(memory_space, MemorySpace::kDevice);
   executor->Deallocate(&mem);
+}
+
+TEST_F(GpuExecutorTest, AllocateAlignsDeviceMemory) {
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       GetPlatform()->ExecutorForDevice(0));
+  // Small requests are the ones a backend may serve with a weaker alignment.
+  // They stay live together so that a pooling backend hands out neighbors.
+  constexpr uint64_t kSizes[] = {1, 16, 16, 16, 16, 64, 100, 4096};
+  std::vector<DeviceAddressBase> buffers;
+  for (uint64_t size : kSizes) {
+    DeviceAddressBase mem = executor->Allocate(size);
+    ASSERT_FALSE(mem.is_null()) << "size " << size;
+    buffers.push_back(mem);
+  }
+  for (DeviceAddressBase& mem : buffers) {
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(mem.opaque()) %
+                  gpu::kDeviceMemoryAlignBytes,
+              0)
+        << mem.opaque();
+    executor->Deallocate(&mem);
+  }
 }
 
 using HostMemoryAllocateTest = GpuExecutorTest;

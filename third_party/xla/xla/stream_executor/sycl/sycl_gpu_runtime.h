@@ -253,17 +253,23 @@ absl::Status SyclMemfillDeviceAsync(::sycl::queue* stream_handle,
                                     void* dst_device, uint32_t value,
                                     size_t count) ABSL_ATTRIBUTE_NONNULL(1);
 
+// Alignment of the memory returned by SyclMallocDevice, SyclMallocHost and
+// SyclMallocShared, whatever the requested size.
+inline constexpr size_t kUsmAlignBytes = 256;
+
 // Allocates a block of memory on the given device ordinal using the default
-// stream for that device. The memory is aligned to 64 bytes.
+// stream for that device. The memory is aligned to
+// kUsmAlignBytes.
 absl::StatusOr<void*> SyclMallocDevice(int device_ordinal, size_t byte_count);
 
 // Allocates a block of host-accessible memory on the given device ordinal
-// using the default stream for that device. The memory is aligned to 64 bytes.
+// using the default stream for that device. The memory is aligned to
+// kUsmAlignBytes.
 absl::StatusOr<void*> SyclMallocHost(int device_ordinal, size_t byte_count);
 
 // Allocates a block of shared memory that is accessible by both the host and
 // the specified device ordinal, using the default stream for that device. The
-// memory is aligned to 64 bytes.
+// memory is aligned to kUsmAlignBytes.
 absl::StatusOr<void*> SyclMallocShared(int device_ordinal, size_t byte_count);
 
 // Frees a previously allocated block of memory on the specified device ordinal

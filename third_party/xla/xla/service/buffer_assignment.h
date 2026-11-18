@@ -96,7 +96,8 @@ class BufferAllocation {
         is_entry_computation_parameter_(false),
         is_parameter_aliased_with_output_(false),
         maybe_live_out_(false),
-        is_constant_(false) {}
+        is_constant_(false),
+        is_persistent_(false) {}
 
   BufferAllocation(const BufferAllocation&) = default;
   BufferAllocation& operator=(const BufferAllocation&) = default;
@@ -118,10 +119,12 @@ class BufferAllocation {
   bool is_reusable() const {
     // We do not reuse thread-local buffers for now, because they are
     // dynamically allocated and their lifetimes are hard to compute.
+    // Persistent buffers hold executable state outside HLO dataflow and never
+    // take LogicalBuffer assignments.
     //
     // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
     // assumes longer buffer liveness than indicated by the analysis.
-    return !is_thread_local() && !is_tuple();
+    return !is_thread_local() && !is_tuple() && !is_persistent();
   }
 
   // Whether this allocation is read-only i.e. backed by memory we cannot write
@@ -167,6 +170,12 @@ class BufferAllocation {
   // references to these buffer allocations to a global in the readonly section
   // of the binary.
   bool is_constant() const { return is_constant_; }
+
+  // Whether this allocation is an executable scoped persistent buffer that is
+  // allocated once per device, optionally initialized from initial_data(), and
+  // preserved across executions.
+  bool is_persistent() const { return is_persistent_; }
+  absl::Span<const uint8_t> initial_data() const { return initial_data_; }
 
   // If this allocation holds a Buffer from a parameter of the entry
   // computation, this methods returns the parameter number. CHECKs otherwise.
@@ -346,7 +355,9 @@ class BufferAllocation {
            // Thread-local buffers are allocated using `alloca`s.
            !is_thread_local() &&
            // Constant buffers are allocated as global values.
-           !is_constant();
+           !is_constant() &&
+           // Persistent buffers live across executions.
+           !is_persistent();
   }
 
   // Add a heap trace which was used to assign slices to logical buffers in this
@@ -414,6 +425,12 @@ class BufferAllocation {
 
   void set_constant(bool is_constant) { is_constant_ = is_constant; }
 
+  void set_persistent(bool is_persistent) { is_persistent_ = is_persistent; }
+
+  void set_initial_data(std::vector<uint8_t> initial_data) {
+    initial_data_ = std::move(initial_data);
+  }
+
   struct ValueLiveRange {
     int64_t start;
     int64_t end;
@@ -480,6 +497,13 @@ class BufferAllocation {
 
   // See comment on the is_constant() accessor.
   bool is_constant_ : 1;
+
+  // See comment on the is_persistent() accessor.
+  bool is_persistent_ : 1;
+
+  // Optional initial bytes copied into a persistent allocation on first device
+  // initialization; empty implies zero initialization.
+  std::vector<uint8_t> initial_data_;
 
   bool has_must_not_live_out_value_ = false;
   size_t must_not_live_out_checked_count_ = 0;
@@ -777,6 +801,8 @@ class BufferAssignment {
     int64_t parameter_allocation_bytes = 0;
     int64_t constant_allocation_count = 0;
     int64_t constant_allocation_bytes = 0;
+    int64_t persistent_allocation_count = 0;
+    int64_t persistent_allocation_bytes = 0;
     int64_t maybe_live_out_allocation_count = 0;
     int64_t maybe_live_out_allocation_bytes = 0;
     int64_t preallocated_temp_allocation_count = 0;
@@ -857,6 +883,19 @@ class BufferAssignment {
   // LogicalBuffers. Ownership is maintained internally.
   BufferAllocation* NewEmptyAllocation(int64_t size,
                                        LogicalBuffer::Color color);
+
+  // Creates and appends an executable scoped persistent BufferAllocation of
+  // `size` bytes in the default memory space, initialized with `initial_data`
+  // (or zero initialized when empty). Because `allocations_` is a
+  // `std::vector`, every call to `AddPersistentAllocation` must complete before
+  // retaining any `BufferAllocation*` or `BufferAllocation::Slice` from
+  // `Allocations()` or an earlier `AddPersistentAllocation` call.
+  //
+  // REQUIRES:
+  // - `size > 0`
+  // - `initial_data.empty() || initial_data.size() == size`
+  absl::StatusOr<BufferAllocation*> AddPersistentAllocation(
+      int64_t size, std::vector<uint8_t> initial_data = {});
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
     DCHECK_GE(buffer.id(), 0);

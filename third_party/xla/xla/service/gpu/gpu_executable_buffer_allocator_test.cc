@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
@@ -48,9 +49,12 @@ namespace xla::gpu {
 namespace {
 
 using ::absl_testing::StatusIs;
+using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::NiceMock;
 using ::testing::Pair;
+using ::testing::Return;
 
 constexpr int64_t kDefault = static_cast<int64_t>(MemorySpaceColor::kDefault);
 constexpr int64_t kCollective =
@@ -121,6 +125,7 @@ class RecordingAllocator final : public se::DeviceAddressAllocator {
 class GpuExecutableBufferAllocatorTest : public ::testing::Test {
  protected:
   GpuExecutableBufferAllocatorTest() : allocator_(&platform_, &stream_) {
+    ON_CALL(stream_, parent()).WillByDefault(Return(&executor_));
     run_options_.set_stream(&stream_);
     service_run_options_ = ServiceExecutableRunOptions(run_options_);
   }
@@ -148,6 +153,7 @@ class GpuExecutableBufferAllocatorTest : public ::testing::Test {
   }
 
   NiceMock<se::MockPlatform> platform_;
+  NiceMock<se::MockStreamExecutor> executor_;
   NiceMock<se::MockStream> stream_;
   RecordingAllocator allocator_;
   ExecutableRunOptions run_options_;
@@ -234,6 +240,304 @@ TEST_F(GpuExecutableBufferAllocatorTest,
               StatusIs(absl::StatusCode::kResourceExhausted));
   // The collective buffer was requested before the default one failed.
   EXPECT_THAT(allocator_.requests(), ElementsAre(Pair(kCollective, 2048)));
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       AllocatesAndInitializesPersistentBufferOnceAndOutlivesStepAllocator) {
+  BufferAllocation persistent(/*index=*/0, /*size=*/16, kDefault);
+  persistent.set_persistent(true);
+  persistent.set_initial_data(
+      {0x95, 0x23, 0x01, 0x07, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  BufferAllocation zero_init_persistent(/*index=*/1, /*size=*/32, kDefault);
+  zero_init_persistent.set_persistent(true);
+  BufferAllocation temp(/*index=*/2, /*size=*/64, kDefault);
+  std::vector<const BufferAllocation*> allocations = {
+      &persistent, &zero_init_persistent, &temp};
+
+  EXPECT_FALSE(persistent.IsPreallocatedTempBuffer());
+  EXPECT_FALSE(persistent.is_readonly());
+
+  alignas(kAlignment) uint8_t persistent_storage_0[16]{};
+  alignas(kAlignment) uint8_t persistent_storage_1[32]{};
+  EXPECT_CALL(executor_, Allocate(16, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase(persistent_storage_0, 16)));
+  EXPECT_CALL(executor_, Allocate(32, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase(persistent_storage_1, 32)));
+
+  int executor_deallocations = 0;
+  EXPECT_CALL(executor_, Deallocate(_))
+      .Times(2)
+      .WillRepeatedly([&](se::DeviceAddressBase* mem) {
+        if (!mem->is_null()) {
+          ++executor_deallocations;
+        }
+      });
+
+  std::vector<uint8_t> copied_bytes;
+  EXPECT_CALL(stream_, Memcpy(_, persistent.initial_data().data(), 16))
+      .WillOnce([&](se::DeviceAddressBase*, const void* src, uint64_t size) {
+        const auto* bytes = static_cast<const uint8_t*>(src);
+        copied_bytes.assign(bytes, bytes + size);
+        return absl::OkStatus();
+      });
+  EXPECT_CALL(stream_, MemZero(_, 32)).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(stream_, BlockHostUntilDone()).WillOnce(Return(absl::OkStatus()));
+
+  {
+    GpuExecutableBufferAllocator executable_allocator(
+        "test", allocations, ShapeUtil::MakeShape(F32, {64}), &debug_options_,
+        /*thunk_executor=*/nullptr, /*num_devices=*/1);
+    auto no_params = [&](const BufferAllocation&)
+        -> absl::StatusOr<GpuExecutableBufferAllocator::ParameterBuffer> {
+      return absl::InternalError("unexpected parameter");
+    };
+
+    se::DeviceAddressBase run1_persistent_0;
+    se::DeviceAddressBase run1_persistent_1;
+    {
+      // Simulate a per step DeviceAddressAllocator (such as TF XLA's
+      // TfAllocatorAdapter) that is destroyed before executable_allocator.
+      RecordingAllocator step1_allocator(&platform_, &stream_);
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope1,
+          executable_allocator.CreateExecutionScope(&service_run_options_,
+                                                    &step1_allocator,
+                                                    /*device_ordinal=*/0));
+      ASSERT_OK_AND_ASSIGN(
+          BufferAllocations buffers1,
+          scope1->GenerateBufferAllocations(&service_run_options_, no_params,
+                                            &globals_, &step1_allocator));
+      run1_persistent_0 = buffers1.GetDeviceAddress(0);
+      run1_persistent_1 = buffers1.GetDeviceAddress(1);
+      EXPECT_THAT(step1_allocator.requests(), ElementsAre(Pair(kDefault, 64)));
+      EXPECT_OK(scope1->TearDown(/*live_addresses=*/{}, buffers1));
+      EXPECT_EQ(step1_allocator.num_deallocations(), 1);
+    }
+
+    EXPECT_EQ(executor_deallocations, 0);
+
+    {
+      RecordingAllocator step2_allocator(&platform_, &stream_);
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope2,
+          executable_allocator.CreateExecutionScope(&service_run_options_,
+                                                    &step2_allocator,
+                                                    /*device_ordinal=*/0));
+      ASSERT_OK_AND_ASSIGN(
+          BufferAllocations buffers2,
+          scope2->GenerateBufferAllocations(&service_run_options_, no_params,
+                                            &globals_, &step2_allocator));
+      EXPECT_EQ(run1_persistent_0.opaque(),
+                buffers2.GetDeviceAddress(0).opaque());
+      EXPECT_EQ(run1_persistent_1.opaque(),
+                buffers2.GetDeviceAddress(1).opaque());
+      EXPECT_THAT(step2_allocator.requests(), ElementsAre(Pair(kDefault, 64)));
+      EXPECT_OK(scope2->TearDown(/*live_addresses=*/{}, buffers2));
+      EXPECT_EQ(step2_allocator.num_deallocations(), 1);
+    }
+
+    EXPECT_EQ(executor_deallocations, 0);
+  }
+
+  // Persistent allocations are freed via StreamExecutor only when
+  // executable_allocator goes out of scope.
+  EXPECT_THAT(copied_bytes, ElementsAre(0x95, 0x23, 0x01, 0x07, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0));
+  EXPECT_EQ(executor_deallocations, 2);
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       ReturnsResourceExhaustedWhenPersistentBufferAllocationFails) {
+  BufferAllocation persistent(/*index=*/0, /*size=*/16, kDefault);
+  persistent.set_persistent(true);
+  std::vector<const BufferAllocation*> allocations = {&persistent};
+
+  EXPECT_CALL(executor_, Allocate(16, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase()));
+
+  EXPECT_THAT(Generate(allocations).status(),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("persistent buffer allocation 0")));
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       RetriesPersistentInitializationAfterAllocationFailure) {
+  BufferAllocation first(/*index=*/0, /*size=*/16, kDefault);
+  first.set_persistent(true);
+  first.set_initial_data(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  BufferAllocation second(/*index=*/1, /*size=*/32, kDefault);
+  second.set_persistent(true);
+  std::vector<const BufferAllocation*> allocations = {&first, &second};
+
+  alignas(kAlignment) uint8_t storage_0[16]{};
+  alignas(kAlignment) uint8_t storage_1[32]{};
+  EXPECT_CALL(executor_, Allocate(16, kDefault))
+      .Times(2)
+      .WillRepeatedly(Return(se::DeviceAddressBase(storage_0, 16)));
+  EXPECT_CALL(executor_, Allocate(32, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase()))
+      .WillOnce(Return(se::DeviceAddressBase(storage_1, 32)));
+  int executor_deallocations = 0;
+  ON_CALL(executor_, Deallocate(_))
+      .WillByDefault([&](se::DeviceAddressBase* mem) {
+        if (!mem->is_null()) {
+          ++executor_deallocations;
+        }
+      });
+  EXPECT_CALL(stream_, Memcpy(_, first.initial_data().data(), 16))
+      .WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(stream_, MemZero(_, 32)).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(stream_, BlockHostUntilDone()).WillOnce(Return(absl::OkStatus()));
+
+  {
+    GpuExecutableBufferAllocator executable_allocator(
+        "test", allocations, ShapeUtil::MakeShape(F32, {64}), &debug_options_,
+        /*thunk_executor=*/nullptr, /*num_devices=*/1);
+    auto no_params = [&](const BufferAllocation&)
+        -> absl::StatusOr<GpuExecutableBufferAllocator::ParameterBuffer> {
+      return absl::InternalError("unexpected parameter");
+    };
+    auto generate = [&]() -> absl::StatusOr<BufferAllocations> {
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope,
+          executable_allocator.CreateExecutionScope(&service_run_options_,
+                                                    &allocator_,
+                                                    /*device_ordinal=*/0));
+      return scope->GenerateBufferAllocations(&service_run_options_, no_params,
+                                              &globals_, &allocator_);
+    };
+
+    EXPECT_THAT(generate().status(),
+                StatusIs(absl::StatusCode::kResourceExhausted,
+                         HasSubstr("persistent buffer allocation 1")));
+    // The buffer allocated before the failure is freed rather than cached.
+    EXPECT_EQ(executor_deallocations, 1);
+
+    ASSERT_OK_AND_ASSIGN(BufferAllocations buffers, generate());
+    EXPECT_EQ(buffers.GetDeviceAddress(0).opaque(),
+              static_cast<void*>(storage_0));
+    EXPECT_EQ(buffers.GetDeviceAddress(1).opaque(),
+              static_cast<void*>(storage_1));
+    EXPECT_EQ(executor_deallocations, 1);
+  }
+  EXPECT_EQ(executor_deallocations, 3);
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       RejectsPersistentBufferInNonDefaultMemorySpace) {
+  BufferAllocation persistent(/*index=*/0, /*size=*/16, kCollective);
+  persistent.set_persistent(true);
+  std::vector<const BufferAllocation*> allocations = {&persistent};
+
+  EXPECT_CALL(executor_, Allocate(_, _)).Times(0);
+
+  EXPECT_THAT(Generate(allocations).status(),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Unsupported memory space color")));
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       VirtualDevicesOnSamePhysicalExecutorSharePersistentBuffers) {
+  BufferAllocation persistent(/*index=*/0, /*size=*/16, kDefault);
+  persistent.set_persistent(true);
+  BufferAllocation temp(/*index=*/1, /*size=*/64, kDefault);
+  std::vector<const BufferAllocation*> allocations = {&persistent, &temp};
+
+  alignas(kAlignment) uint8_t persistent_storage[16]{};
+  ON_CALL(executor_, device_ordinal()).WillByDefault(Return(0));
+  EXPECT_CALL(executor_, Allocate(16, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase(persistent_storage, 16)));
+  EXPECT_CALL(executor_, Deallocate(_)).Times(1);
+  EXPECT_CALL(stream_, MemZero(_, 16)).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(stream_, BlockHostUntilDone()).WillOnce(Return(absl::OkStatus()));
+
+  GpuExecutableBufferAllocator executable_allocator(
+      "test", allocations, ShapeUtil::MakeShape(F32, {64}), &debug_options_,
+      /*thunk_executor=*/nullptr, /*num_devices=*/2);
+  auto no_params = [&](const BufferAllocation&)
+      -> absl::StatusOr<GpuExecutableBufferAllocator::ParameterBuffer> {
+    return absl::InternalError("unexpected parameter");
+  };
+
+  // Logical device ordinals 0 and 1 share physical `executor_` (ordinal 0), so
+  // both scopes must resolve the same persistent buffer address (matching
+  // CommandBufferThunk), while transient allocations keep their logical
+  // ordinals.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope0,
+      executable_allocator.CreateExecutionScope(
+          &service_run_options_, &allocator_, /*device_ordinal=*/0));
+  ASSERT_OK_AND_ASSIGN(
+      BufferAllocations buffers0,
+      scope0->GenerateBufferAllocations(&service_run_options_, no_params,
+                                        &globals_, &allocator_));
+  EXPECT_EQ(buffers0.device_ordinal(), 0);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutableBufferAllocator::ExecutionScope> scope1,
+      executable_allocator.CreateExecutionScope(
+          &service_run_options_, &allocator_, /*device_ordinal=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      BufferAllocations buffers1,
+      scope1->GenerateBufferAllocations(&service_run_options_, no_params,
+                                        &globals_, &allocator_));
+  EXPECT_EQ(buffers1.device_ordinal(), 1);
+  EXPECT_EQ(buffers0.GetDeviceAddress(0).opaque(),
+            buffers1.GetDeviceAddress(0).opaque());
+
+  // Validate stream and StreamExecutor on the acquire fast path too.
+  ExecutableRunOptions null_stream_opts;
+  ServiceExecutableRunOptions null_stream_service_opts(null_stream_opts);
+  EXPECT_THAT(scope0
+                  ->GenerateBufferAllocations(&null_stream_service_opts,
+                                              no_params, &globals_, &allocator_)
+                  .status(),
+              StatusIs(absl::StatusCode::kInternal));
+
+  NiceMock<se::MockStreamExecutor> other_executor;
+  ON_CALL(other_executor, device_ordinal()).WillByDefault(Return(0));
+  NiceMock<se::MockStream> other_stream;
+  ON_CALL(other_stream, parent()).WillByDefault(Return(&other_executor));
+  ExecutableRunOptions other_opts;
+  other_opts.set_stream(&other_stream);
+  ServiceExecutableRunOptions other_service_opts(other_opts);
+  EXPECT_THAT(scope0
+                  ->GenerateBufferAllocations(&other_service_opts, no_params,
+                                              &globals_, &allocator_)
+                  .status(),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("StreamExecutor mismatch")));
+
+  EXPECT_OK(scope0->TearDown(/*live_addresses=*/{}, buffers0));
+  EXPECT_OK(scope1->TearDown(/*live_addresses=*/{}, buffers1));
+}
+
+TEST_F(GpuExecutableBufferAllocatorTest,
+       RejectsMisalignedPersistentBufferFromExecutor) {
+  BufferAllocation persistent(/*index=*/0, /*size=*/16, kDefault);
+  persistent.set_persistent(true);
+  persistent.set_initial_data(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  std::vector<const BufferAllocation*> allocations = {&persistent};
+
+  alignas(kAlignment) uint8_t backing[512]{};
+  uint8_t* unaligned = backing + 64;
+  EXPECT_CALL(executor_, Allocate(16, kDefault))
+      .WillOnce(Return(se::DeviceAddressBase(unaligned, 16)));
+  std::vector<se::DeviceAddressBase> deallocated;
+  EXPECT_CALL(executor_, Deallocate(_))
+      .WillOnce(
+          [&](se::DeviceAddressBase* mem) { deallocated.push_back(*mem); });
+  EXPECT_CALL(stream_, Memcpy(_, persistent.initial_data().data(), _)).Times(0);
+  EXPECT_CALL(stream_, BlockHostUntilDone()).Times(0);
+
+  EXPECT_THAT(Generate(allocations).status(),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("not aligned to 256 bytes")));
+  ASSERT_EQ(deallocated.size(), 1);
+  EXPECT_EQ(deallocated[0].opaque(), static_cast<void*>(unaligned));
+  EXPECT_EQ(deallocated[0].size(), 16);
 }
 
 }  // namespace

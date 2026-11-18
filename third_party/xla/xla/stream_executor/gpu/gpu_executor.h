@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -32,6 +33,12 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 class GpuStream;
+
+// Every GpuExecutor aligns the device memory returned by Allocate() to at least
+// this many bytes, whatever the requested size. BFCAllocator requires it of the
+// regions it manages, and XLA of the buffers it allocates straight from an
+// executor.
+inline constexpr size_t kDeviceMemoryAlignBytes = 256;
 
 // Intermediate implementation class for StreamExecutors that are used with
 // GPUs.

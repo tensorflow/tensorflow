@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -490,6 +491,23 @@ TEST(CudaExecutorTest, DisabledVmmRejectsReservationAndPhysicalAllocation) {
   DeviceAddressBase memory = executor.Allocate(4096, /*memory_space=*/0);
   EXPECT_NE(memory.opaque(), nullptr);
   executor.Deallocate(&memory);
+
+  // cuMemAlloc has no alignment parameter, so pin what the driver hands out.
+  // Keep the buffers live together so neighboring allocations are checked.
+  constexpr uint64_t kSizes[] = {1, 16, 16, 16, 16, 64, 100, 4096};
+  std::vector<DeviceAddressBase> buffers;
+  for (uint64_t size : kSizes) {
+    DeviceAddressBase small = executor.Allocate(size, /*memory_space=*/0);
+    ASSERT_FALSE(small.is_null()) << "size " << size;
+    buffers.push_back(small);
+  }
+  for (DeviceAddressBase& small : buffers) {
+    EXPECT_EQ(
+        reinterpret_cast<uintptr_t>(small.opaque()) % kDeviceMemoryAlignBytes,
+        0)
+        << small.opaque();
+    executor.Deallocate(&small);
+  }
 }
 
 // Reservations and physical allocations created through the executor use its

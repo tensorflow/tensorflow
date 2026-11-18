@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
@@ -307,6 +308,9 @@ absl::Status SyclSynchronousMemcpyD2H(SyclContext* context, void* host_dst,
       host_dst);
   return absl::OkStatus();
 }
+
+static_assert(kUsmAlignBytes >= gpu::kDeviceMemoryAlignBytes,
+              "USM allocations must honor the GpuExecutor alignment contract");
 
 // Allocates memory on the GPU device.
 void* DeviceAllocate(SyclContext* context, uint64_t bytes) {

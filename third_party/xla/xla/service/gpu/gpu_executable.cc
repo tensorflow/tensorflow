@@ -1552,6 +1552,8 @@ void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
       const BufferAllocation& allocation = *allocation_ptrs_[i];
       const char* allocation_type = allocation.is_entry_computation_parameter()
                                         ? "parameter"
+                                    : allocation.is_constant()    ? "constant"
+                                    : allocation.is_persistent()  ? "persistent"
                                     : allocation.maybe_live_out() ? "live-out"
                                                                   : "temp";
       changed_allocations.emplace_back(i, allocation_type);
@@ -1617,7 +1619,7 @@ absl::Status GpuExecutable::ExecuteThunks(
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   int64_t size = binary().size();
   for (const BufferAllocation* allocation : GetAllocations()) {
-    if (allocation->is_constant()) {
+    if (allocation->is_constant() || allocation->is_persistent()) {
       size += allocation->size();
     }
   }

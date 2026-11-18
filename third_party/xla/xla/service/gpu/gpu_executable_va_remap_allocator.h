@@ -112,7 +112,8 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
       kProfiling,
       // Profile transition done; the selected allocation set is VA-remapped.
       kActive,
-      // No automatic or profiled allocations; executions pass only constants.
+      // No automatic or profiled allocations; executions pass only constants
+      // and persistent buffers.
       kDisabled,
     };
 

@@ -800,6 +800,7 @@ xla_test(
     srcs = ["gpu_executor_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":gpu_executor_header",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
