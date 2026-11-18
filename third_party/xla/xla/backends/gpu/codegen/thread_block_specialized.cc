@@ -156,6 +156,9 @@ void EmitLeaf(mlir::ImplicitLocOpBuilder& b, const NestedKernelSpec& spec,
               absl::Span<const mlir::Value> arg_ptrs,
               const LeafDecls& leaf_decls) {
   EmitUpperBoundGuard(b, rel_bid, spec.launch_dims.num_blocks());
+  // TODO(b/480040242): Utilize all threads in the outer CTA (e.g. `tid >= 128`)
+  // in `LoopFusion` sub-kernels when a sibling stage expands the block size,
+  // instead of masking extra threads off here.
   EmitUpperBoundGuard(b, tid, spec.launch_dims.num_threads_per_block());
 
   llvm::SmallVector<mlir::Value> call_args;
