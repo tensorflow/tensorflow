@@ -983,6 +983,109 @@ bool IsTrivialElementwise(HloInstruction* hlo) {
   return hlo->IsElementwise();
 }
 
+// Returns true when `conv` is a 2D backward-weight convolution with small
+// `batch` (`<= max_batch_size`) and `input_feature` (`<= max_input_feature`)
+// whose element types, filter footprint, window, and spatial extents match the
+// strided/transposed backward-weight pattern handled by the TPU spatial-minor
+// convolution emitter (`TpuSpatialMinorConvRewriter`).
+bool IsSpatialMinorBackpropFilterCandidate(const HloInstruction* conv,
+                                           int64_t max_batch_size,
+                                           int64_t max_input_feature) {
+  if (max_batch_size <= 0 || conv->feature_group_count() != 1 ||
+      conv->batch_group_count() != 1) {
+    return false;
+  }
+  const auto& dnums = conv->convolution_dimension_numbers();
+  const Window& window = conv->window();
+  if (dnums.input_spatial_dimensions_size() != 2 ||
+      dnums.kernel_spatial_dimensions_size() != 2 ||
+      dnums.output_spatial_dimensions_size() != 2 ||
+      window.dimensions_size() != 2) {
+    return false;
+  }
+  const Shape& lhs_shape = conv->operand(0)->shape();
+  const Shape& rhs_shape = conv->operand(1)->shape();
+  const Shape& out_shape = conv->shape();
+  const PrimitiveType lhs_type = lhs_shape.element_type();
+  const PrimitiveType rhs_type = rhs_shape.element_type();
+  const PrimitiveType out_type = out_shape.element_type();
+  if ((lhs_type != BF16 && lhs_type != F32) || lhs_type != rhs_type ||
+      (out_type != BF16 && out_type != F32)) {
+    return false;
+  }
+
+  const int64_t batch = lhs_shape.dimensions(dnums.input_batch_dimension());
+  const int64_t input_feature =
+      lhs_shape.dimensions(dnums.input_feature_dimension());
+  if (batch > max_batch_size || input_feature > max_input_feature) {
+    return false;
+  }
+
+  // `SpatialMinorMosaicEmitter` pins the full spatial filter output tile in
+  // VMEM as an f32 accumulator; cap the 2D filter area so large-filter shapes
+  // continue using space-to-batch instead of exceeding the VMEM budget.
+  constexpr int64_t kMaxOutputSpatialElements = 64;
+  const int64_t out_spatial_0 =
+      out_shape.dimensions(dnums.output_spatial_dimensions(0));
+  const int64_t out_spatial_1 =
+      out_shape.dimensions(dnums.output_spatial_dimensions(1));
+  if (out_spatial_0 <= 0 || out_spatial_1 <= 0 ||
+      out_spatial_0 > kMaxOutputSpatialElements ||
+      out_spatial_0 * out_spatial_1 > kMaxOutputSpatialElements) {
+    return false;
+  }
+
+  int64_t lhs_spatial[2];
+  int64_t rhs_spatial[2];
+  int64_t num_reversed = 0;
+  for (int64_t s = 0; s < 2; ++s) {
+    const WindowDimension& wd = window.dimensions(s);
+    lhs_spatial[s] = lhs_shape.dimensions(dnums.input_spatial_dimensions(s));
+    rhs_spatial[s] = rhs_shape.dimensions(dnums.kernel_spatial_dimensions(s));
+    if (wd.stride() != 1 || wd.base_dilation() != 1 || wd.padding_low() < 0 ||
+        wd.padding_low() > 1 || wd.padding_high() < 0 ||
+        wd.padding_high() > 1 || wd.size() != rhs_spatial[s]) {
+      return false;
+    }
+    num_reversed += wd.window_reversal() ? 1 : 0;
+  }
+
+  const int64_t min_lhs_spatial_minor_extent = max_batch_size + 1;
+  const int64_t min_rhs_spatial_minor_extent = max_input_feature + 1;
+  for (int64_t minor_dim = 0; minor_dim < 2; ++minor_dim) {
+    const int64_t major_dim = 1 - minor_dim;
+    const int64_t dilation_minor =
+        window.dimensions(minor_dim).window_dilation();
+    const int64_t dilation_major =
+        window.dimensions(major_dim).window_dilation();
+    if (dilation_major != 2 ||
+        (dilation_minor != 1 && dilation_minor != 2 && dilation_minor != 4)) {
+      continue;
+    }
+    const bool reversal_ok =
+        num_reversed == 0 || num_reversed == 2 ||
+        (num_reversed == 1 && !window.dimensions(minor_dim).window_reversal());
+    if (!reversal_ok) {
+      continue;
+    }
+    if (lhs_spatial[minor_dim] < min_lhs_spatial_minor_extent ||
+        rhs_spatial[minor_dim] <= batch) {
+      continue;
+    }
+    // When `minor_dim == 0`, `rhs_spatial[0]` must be large enough to occupy
+    // the RHS lane dimension (`(O, KW)`), since `rhs_spatial[0] < 128` leaves
+    // `rhs` in the default `{3, 2, 1, 0}` layout (`s = 1` in sublanes, `O` in
+    // lanes = `(KH, O)`), which `SpatialMinorMosaicEmitter` does not support.
+    const int64_t required_rhs_minor_extent =
+        (minor_dim == 0) ? min_lhs_spatial_minor_extent
+                         : min_rhs_spatial_minor_extent;
+    if (rhs_spatial[minor_dim] >= required_rhs_minor_extent) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
                                       HloInstruction* producer) {
   if (IsTrivialElementwise(consumer)) {
@@ -1194,6 +1297,12 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     }
 
     if (!IsThisBackPropFilterConv(consumer)) {
+      return false;
+    }
+
+    if (IsSpatialMinorBackpropFilterCandidate(
+            consumer, ctrl_.disable_backprop_filter_propagation_max_batch_size,
+            ctrl_.limit_on_batch_size)) {
       return false;
     }
     // Check for space-to-depth readiness here. Note this is not done in
