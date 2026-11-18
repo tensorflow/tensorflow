@@ -421,7 +421,7 @@ class _CoordinatedClosureQueue(object):
     # The cancellation manager cannot be reused once cancelled. After all
     # closures (queued or inflight) are cleaned up, recreate the cancellation
     # manager with clean state.
-    # Note on thread-safety: this is triggered when one of theses
+    # Note on thread-safety: this is triggered when one of these
     # ClusterCoordinator APIs are called: `schedule`, `wait`, and `done`. At the
     # same time, no new closures can be constructed (which reads the
     # _cancellation_mgr to get cancellable functions).

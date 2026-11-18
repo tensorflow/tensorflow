@@ -43,7 +43,7 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
   """Byte swaps.
 
   Args:
-    tensor: Target tensor to change endiness.
+    tensor: Target tensor to change endianness.
     from_endiness: The original endianness format. "big" or "little"
     to_endiness: The target endianness format. "big" or "little"
   """
@@ -75,10 +75,10 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
 def swap_tensor_content_in_graph_function(
     graph_def, from_endiness, to_endiness
 ):
-  """Fix endiness of tensor contents.
+  """Fix endianness of tensor contents.
 
   Args:
-    graph_def: Target graph_def to change endiness.
+    graph_def: Target graph_def to change endianness.
     from_endiness: The original endianness format. "big" or "little"
     to_endiness: The target endianness format. "big" or "little"
   """

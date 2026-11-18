@@ -192,7 +192,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
     updates = [("assign", per_replica_value), ("assign_add", per_replica_value),
                ("assign_sub", per_replica_sub_value)]
-    # We don't support assigning PerReplica valus to vars in replica context
+    # We don't support assigning PerReplica values to vars in replica context
     # with aggregation=NONE.
     aggregations = [
         variables_lib.VariableAggregation.SUM,
@@ -838,7 +838,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", per_replica_value)]
-    # We don't support assigning PerReplica valus to vars in replica context
+    # We don't support assigning PerReplica values to vars in replica context
     # with aggregation=NONE.
     aggregations = [
         variables_lib.VariableAggregation.SUM,
