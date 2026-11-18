@@ -39,6 +39,7 @@ const PjRtPlatformId kTestPlatformId = tsl::Fingerprint64(kTestPlatform);
 TEST(CompilerVariantFromNameTest, MapEmptyAndLinkedToLinkedVariantId) {
   EXPECT_EQ(CompilerVariantFromName(""), LinkedCompilerVariantId());
   EXPECT_EQ(CompilerVariantFromName(kLinkedVariant), LinkedCompilerVariantId());
+  EXPECT_NE(CompilerVariantFromName("remote"), LinkedCompilerVariantId());
 }
 
 TEST(PjRtCompilerVariantPickerRegistryTest, DefaultsToLinked) {
@@ -64,9 +65,9 @@ TEST(PjRtCompilerVariantPickerRegistryTest,
   EXPECT_THAT(registry.PickVariantName(kTestPlatform),
               IsOkAndHolds("variant_a"));
   EXPECT_THAT(registry.PickVariant(kTestPlatformId),
-              IsOkAndHolds(tsl::Fingerprint64("variant_a")));
+              IsOkAndHolds(CompilerVariantFromName("variant_a")));
   EXPECT_THAT(registry.PickVariant(kTestPlatform),
-              IsOkAndHolds(tsl::Fingerprint64("variant_a")));
+              IsOkAndHolds(CompilerVariantFromName("variant_a")));
 }
 
 TEST(PjRtCompilerVariantPickerRegistryTest,
@@ -92,7 +93,7 @@ TEST(PjRtCompilerVariantPickerRegistryTest, StrongOverridesWeakInEitherOrder) {
         []() -> absl::StatusOr<std::string> { return "strong_v"; },
         /*is_weak=*/false);
     EXPECT_THAT(registry.PickVariant(kTestPlatformId),
-                IsOkAndHolds(tsl::Fingerprint64("strong_v")));
+                IsOkAndHolds(CompilerVariantFromName("strong_v")));
   }
 
   {
@@ -105,7 +106,7 @@ TEST(PjRtCompilerVariantPickerRegistryTest, StrongOverridesWeakInEitherOrder) {
         kTestPlatform, []() -> absl::StatusOr<std::string> { return "weak_v"; },
         /*is_weak=*/true);
     EXPECT_THAT(registry.PickVariant(kTestPlatformId),
-                IsOkAndHolds(tsl::Fingerprint64("strong_v")));
+                IsOkAndHolds(CompilerVariantFromName("strong_v")));
   }
 }
 
@@ -125,7 +126,7 @@ TEST(PjRtCompilerVariantPickerRegistryTest,
               StatusIs(absl::StatusCode::kUnavailable,
                        HasSubstr("transient picker error")));
   EXPECT_THAT(registry.PickVariant(kTestPlatformId),
-              IsOkAndHolds(tsl::Fingerprint64("variant_a")));
+              IsOkAndHolds(CompilerVariantFromName("variant_a")));
 }
 
 TEST(PjRtCompilerVariantPickerRegistryTest, FreeFunctionDefaultsToGlobal) {
@@ -137,7 +138,7 @@ TEST(PjRtCompilerVariantPickerRegistryTest, FreeFunctionDefaultsToGlobal) {
 
   EXPECT_THAT(PjRtCompilerVariantPickerRegistry::Global().PickVariant(
                   kGlobalTestPlatform),
-              IsOkAndHolds(tsl::Fingerprint64("variant_b")));
+              IsOkAndHolds(CompilerVariantFromName("variant_b")));
 
   const PjRtPlatformId global_id_platform =
       tsl::Fingerprint64("global_id_variant_picker_test_platform");
@@ -146,7 +147,7 @@ TEST(PjRtCompilerVariantPickerRegistryTest, FreeFunctionDefaultsToGlobal) {
       []() -> absl::StatusOr<std::string> { return "variant_a"; });
   EXPECT_THAT(PjRtCompilerVariantPickerRegistry::Global().PickVariant(
                   global_id_platform),
-              IsOkAndHolds(tsl::Fingerprint64("variant_a")));
+              IsOkAndHolds(CompilerVariantFromName("variant_a")));
 }
 
 }  // namespace

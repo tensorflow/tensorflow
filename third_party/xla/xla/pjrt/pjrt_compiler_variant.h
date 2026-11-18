@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 
 // Represents the PjRt compiler variant to use.
-using PjRtCompilerVariant = uint64_t;
+enum class PjRtCompilerVariant : uint64_t {};
 
 // XLA linked in as a library.
 inline constexpr absl::string_view kLinkedVariant = "linked";
@@ -39,7 +39,7 @@ inline constexpr absl::string_view kUnknownVariant = "unknown";
 
 inline PjRtCompilerVariant LinkedCompilerVariantId() {
   static const PjRtCompilerVariant kLinkedVariantId =
-      tsl::Fingerprint64(kLinkedVariant);
+      static_cast<PjRtCompilerVariant>(tsl::Fingerprint64(kLinkedVariant));
   return kLinkedVariantId;
 }
 
@@ -50,7 +50,7 @@ inline PjRtCompilerVariant CompilerVariantFromName(
   if (variant_name.empty() || variant_name == kLinkedVariant) {
     return LinkedCompilerVariantId();
   }
-  return tsl::Fingerprint64(variant_name);
+  return static_cast<PjRtCompilerVariant>(tsl::Fingerprint64(variant_name));
 }
 
 // This function has a weak default implementation in the

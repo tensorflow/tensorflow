@@ -42,13 +42,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
 absl::StatusOr<PjRtCompilerVariant> PickTpuCompilerVariant() {
   static const PjRtCompilerVariant kFactoryVariantId =
-      tsl::Fingerprint64("factory_variant");
+      CompilerVariantFromName("factory_variant");
   return kFactoryVariantId;
 }
 
@@ -56,7 +55,7 @@ std::string CompilerVariantToString(PjRtCompilerVariant variant) {
   if (variant == LinkedCompilerVariantId()) {
     return std::string(kLinkedVariant);
   }
-  if (variant == tsl::Fingerprint64("factory_variant")) {
+  if (variant == CompilerVariantFromName("factory_variant")) {
     return "factory_variant";
   }
   return std::string(kUnknownVariant);
@@ -350,10 +349,12 @@ TEST(PjRtCompilerTest, GetPjRtCompilerTopologyRegistryAndVariants) {
   // LinkedCompilerVariantId() maps to the default ("") compiler variant.
   EXPECT_THAT(GetPjRtCompiler(topology, LinkedCompilerVariantId()),
               IsOkAndHolds(Eq(default_ptr)));
-  EXPECT_THAT(GetPjRtCompiler(topology, tsl::Fingerprint64("factory_variant")),
-              IsOkAndHolds(Eq(variant_ptr)));
   EXPECT_THAT(
-      GetPjRtCompiler(topology, tsl::Fingerprint64("unregistered_variant")),
+      GetPjRtCompiler(topology, CompilerVariantFromName("factory_variant")),
+      IsOkAndHolds(Eq(variant_ptr)));
+  EXPECT_THAT(
+      GetPjRtCompiler(topology,
+                      CompilerVariantFromName("unregistered_variant")),
       StatusIs(absl::StatusCode::kNotFound, HasSubstr(kUnknownVariant)));
 }
 
