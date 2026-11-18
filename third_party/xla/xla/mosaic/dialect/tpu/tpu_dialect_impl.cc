@@ -35,22 +35,22 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/layout.h"
-#include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 #include "xla/mosaic/util.h"
 
-namespace mlir::tpu {
+namespace mlir::tpu::impl {
 
-void TiledLayoutAttr::print(AsmPrinter& printer) const {
+void printTiledLayout(ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides,
+                      AsmPrinter& printer) {
   printer << '<';
-  for (const xla::Tile& tile : getTiles()) {
+  for (const xla::Tile& tile : tiles) {
     printer << tile.ToString();
   }
   printer << ",[";
-  for (int i = 0; i < getTileStrides().size(); ++i) {
+  for (int i = 0; i < tile_strides.size(); ++i) {
     if (i > 0) {
       printer << ',';
     }
-    int64_t stride = getTileStrides()[i];
+    int64_t stride = tile_strides[i];
     if (ShapedType::isDynamic(stride)) {
       printer << "?";
     } else {
@@ -60,11 +60,12 @@ void TiledLayoutAttr::print(AsmPrinter& printer) const {
   printer << "]>";
 }
 
-Attribute TiledLayoutAttr::parse(AsmParser& parser, Type type) {
+LogicalResult parseTiledLayout(AsmParser& parser,
+                               SmallVectorImpl<xla::Tile>& tiles,
+                               SmallVectorImpl<int64_t>& tile_strides) {
   if (failed(parser.parseLess())) {
-    return {};
+    return failure();
   }
-  SmallVector<xla::Tile, 2> tiles;
   int64_t size;
   while (succeeded(parser.parseOptionalLParen())) {
     xla::Tile& tile = tiles.emplace_back();
@@ -72,52 +73,54 @@ Attribute TiledLayoutAttr::parse(AsmParser& parser, Type type) {
     while (!succeeded(parser.parseOptionalRParen())) {
       if (!first) {
         if (failed(parser.parseComma())) {
-          return {};
+          return failure();
         }
       }
       first = false;
       if (failed(parser.parseInteger(size))) {
-        return {};
+        return failure();
       }
       tile.add_dimensions(size);
     }
   }
-  SmallVector<int64_t, 2> tile_strides;
   int64_t stride;
   if (failed(parser.parseComma())) {
-    return {};
+    return failure();
   }
   if (succeeded(parser.parseOptionalLSquare())) {
     bool first = true;
     while (!succeeded(parser.parseOptionalRSquare())) {
       if (!first) {
         if (failed(parser.parseComma())) {
-          return {};
+          return failure();
         }
       }
       first = false;
       if (succeeded(parser.parseOptionalQuestion())) {
         stride = ShapedType::kDynamic;
       } else if (failed(parser.parseInteger(stride))) {
-        return {};
+        return failure();
       }
       tile_strides.push_back(stride);
     }
   } else {
-    return {};
+    return failure();
   }
   if (failed(parser.parseGreater())) {
-    return {};
+    return failure();
   }
-  return get(parser.getContext(), tiles, tile_strides);
+  return success();
 }
 
-AffineMap TiledLayoutAttr::getAffineMap() const {
+AffineMap getTiledLayoutAffineMap(MLIRContext* context,
+                                  ArrayRef<xla::Tile> tiles,
+                                  ArrayRef<int64_t> tile_strides) {
+  const int64_t rank = tile_strides.size();
   SmallVector<AffineExpr, 8> exprs;
-  for (int64_t i = 0; i < getRank(); ++i) {
-    exprs.push_back(getAffineDimExpr(i, getContext()));
+  for (int64_t i = 0; i < rank; ++i) {
+    exprs.push_back(getAffineDimExpr(i, context));
   }
-  for (const xla::Tile& tile : getTiles()) {
+  for (const xla::Tile& tile : tiles) {
     SmallVector<AffineExpr, 8> new_exprs;
     auto dimensions = tile.dimensions();
     int64_t untiled_rank = exprs.size() - dimensions.size();
@@ -134,17 +137,19 @@ AffineMap TiledLayoutAttr::getAffineMap() const {
     exprs = std::move(new_exprs);
   }
   int64_t num_symbols = 0;
-  AffineExpr result = getAffineConstantExpr(0, getContext());
-  SmallVector<int64_t> strides = getExpandedStrides();
+  AffineExpr result = getAffineConstantExpr(0, context);
+  FailureOr<SmallVector<int64_t>> expanded_strides =
+      getExpandedStrides(tiles, tile_strides);
+  CHECK(succeeded(expanded_strides));
+  SmallVector<int64_t> strides = *std::move(expanded_strides);
   CHECK_EQ(strides.size(), exprs.size());
   for (int64_t i = 0; i < exprs.size(); ++i) {
-    AffineExpr stride_expr =
-        ShapedType::isDynamic(strides[i])
-            ? getAffineSymbolExpr(num_symbols++, getContext())
-            : getAffineConstantExpr(strides[i], getContext());
+    AffineExpr stride_expr = ShapedType::isDynamic(strides[i])
+                                 ? getAffineSymbolExpr(num_symbols++, context)
+                                 : getAffineConstantExpr(strides[i], context);
     result = result + exprs[i] * stride_expr;
   }
-  return AffineMap::get(getRank(), num_symbols, result);
+  return AffineMap::get(rank, num_symbols, result);
 }
 
 int64_t getUntiledRank(ArrayRef<xla::Tile> tiles, const int64_t rank) {
@@ -212,10 +217,9 @@ SmallVector<int64_t> getContiguousTileStrides(const ArrayRef<xla::Tile> tiles,
   return strides;
 }
 
-int64_t TiledLayoutAttr::getNumTrailingDimsWithContiguousTiles(
-    const ArrayRef<int64_t> shape) const {
-  const ArrayRef<xla::Tile> tiles = getTiles();
-  const ArrayRef<int64_t> tile_strides = getTileStrides();
+int64_t getNumTrailingDimsWithContiguousTiles(
+    const ArrayRef<xla::Tile> tiles, const ArrayRef<int64_t> tile_strides,
+    const ArrayRef<int64_t> shape) {
   int64_t stride = 1;
   const xla::Tile* const first_tile = tiles.empty() ? nullptr : &tiles.front();
   const int64_t first_tile_rank =
@@ -259,8 +263,8 @@ FailureOr<SmallVector<int64_t>> getExpandedStrides(
   const xla::Tile& first_tile = tiles.front();
   FAILUREOR_ASSIGN_OR_RETURN(
       SmallVector<int64_t> expanded_tile,
-      mlir::tpu::getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
-                                  /*require_alignment=*/true));
+      getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
+                       /*require_alignment=*/true));
   const int64_t rank = tile_strides.size();
   strides.resize_for_overwrite(rank + expanded_tile.size());
   int64_t first_tile_size = llvm::product_of(first_tile.dimensions());
@@ -279,10 +283,9 @@ FailureOr<SmallVector<int64_t>> getExpandedStrides(
   return strides;
 }
 
-LogicalResult TiledLayoutAttr::verify(
-    function_ref<InFlightDiagnostic()> emitError,
-    const llvm::ArrayRef<xla::Tile> tiles,
-    const llvm::ArrayRef<int64_t> tile_strides) {
+LogicalResult verifyTiledLayout(function_ref<InFlightDiagnostic()> emitError,
+                                const llvm::ArrayRef<xla::Tile> tiles,
+                                const llvm::ArrayRef<int64_t> tile_strides) {
   if (tiles.empty()) {
     return success();
   }
@@ -296,14 +299,13 @@ LogicalResult TiledLayoutAttr::verify(
   // The interpretation of tile strides is unclear if there is nested tiling
   // across first tiles (e.g. T(8, 128)(2, 4, 64)), and this has no applications
   // anyway.
-  if (mlir::tpu::getUntiledRank(tiles, rank) != rank - first_tile_rank) {
+  if (getUntiledRank(tiles, rank) != rank - first_tile_rank) {
     return emitError() << "Not implemented: Nested tiling across first tiles";
   }
   // Check that nested tiles evenly divide previous tiles (so they don't add any
   // padding or change the tile size)
-  if (failed(mlir::tpu::getExpandedShape(first_tile.dimensions(),
-                                         tiles.drop_front(),
-                                         /*require_alignment=*/true))) {
+  if (failed(getExpandedShape(first_tile.dimensions(), tiles.drop_front(),
+                              /*require_alignment=*/true))) {
     return emitError() << "Not implemented: Nested tiles must evenly divide "
                        << "the first tile " << first_tile.ToString()
                        << " but they do not (would add padding)";
@@ -311,13 +313,13 @@ LogicalResult TiledLayoutAttr::verify(
   return success();
 }
 
-LogicalResult TiledLayoutAttr::verifyLayout(
-    ArrayRef<int64_t> shape,
-    function_ref<InFlightDiagnostic()> emitError) const {
-  if (getRank() != shape.size()) {
+LogicalResult verifyTiledLayoutRank(
+    const int64_t layout_rank, ArrayRef<int64_t> shape,
+    function_ref<InFlightDiagnostic()> emitError) {
+  if (layout_rank != shape.size()) {
     return emitError() << "Layout rank does not match shape rank";
   }
   return success();
 }
 
-}  // namespace mlir::tpu
+}  // namespace mlir::tpu::impl

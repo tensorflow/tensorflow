@@ -27,4 +27,6 @@ class TPU_Type<string name, string mnemonic_, list<Trait> traits = [],
   let mnemonic = mnemonic_;
 }
 
+def TPU_Float8EXMYType : TPU_Float8EXMYTypeBase<TPU_Dialect>;
+
 #endif  // TPU_TYPES

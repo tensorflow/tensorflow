@@ -18,9 +18,8 @@ limitations under the License.
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
-include "xla/mosaic/dialect/tpu/tpu.td"
 
-def TPU_Float8EXMYType : TypeDef<TPU_Dialect, "Float8EXMY",
+class TPU_Float8EXMYTypeBase<Dialect dialect> : TypeDef<dialect, "Float8EXMY",
                             [DeclareTypeInterfaceMethods<FloatTypeInterface, ["getFloatSemantics"]>]> {
     let mnemonic = "float8_exmy";
     let summary = "EXMY type in a 8 bit container";
@@ -36,6 +35,12 @@ def TPU_Float8EXMYType : TypeDef<TPU_Dialect, "Float8EXMY",
 
     let assemblyFormat = [{
       `<` $underlying_type `>`
+    }];
+
+    let extraClassDefinition = [{
+      const ::llvm::fltSemantics& $cppClass::getFloatSemantics() const {
+        return getUnderlyingType().getFloatSemantics();
+      }
     }];
 }
 

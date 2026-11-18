@@ -53,6 +53,8 @@ def TPU_ElementWindowAttr : TPU_Attr<"ElementWindow", "element_window"> {
   let assemblyFormat = "`<` `[` $pad_low `]` `,` `[` $pad_high `]` `>`";
 }
 
+def TPU_TiledLayoutAttr : TPU_TiledLayoutAttrBase<TPU_Dialect>;
+
 def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
   let mnemonic = "memory_space";
   let cppNamespace = "::mlir::tpu";
@@ -71,6 +73,13 @@ def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
 
 class TPU_Op<string mnemonic, list<Trait> traits = []> :
     Op<TPU_Dialect, mnemonic, traits> {
+  bit hasCustomVerifier = 0;
+  let hasVerifier = hasCustomVerifier;
+  let extraClassDefinition = !if(!and(hasVerifier, !not(hasCustomVerifier)), [{
+    ::llvm::LogicalResult $cppClass::verify() {
+      return TpuOpVerifiers::verify$cppClass(*this);
+    }
+  }], [{}]);
 }
 
 def DefaultMemWrite : MemoryEffects<[MemWrite<DefaultResource>]>;
@@ -865,7 +874,7 @@ def TPU_GatherOp : TPU_Op<"gather", [Pure]> {
   }];
 }
 
-def TPU_DynamicGatherOp : TPU_Op<"dynamic_gather", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>, AllShapesMatch<["indices", "output"]>, AllElementTypesMatch<["source", "output"]>]> {
+def TPU_DynamicGatherOp : TPU_Op<"dynamic_gather", [Pure, InferTypeOpAdaptor, AllShapesMatch<["indices", "output"]>, AllElementTypesMatch<["source", "output"]>]> {
   let description = [{
     Gathers elements from `source` using `indices`.
 
@@ -1074,7 +1083,7 @@ def TPU_MatmulPopFifoOp : TPU_Op<"matmul_pop_fifo"> {
 
 include "xla/mosaic/dialect/tpu/tpu_matmul_ops.td"
 
-def TPU_ConcatenateOp : TPU_Op<"concatenate", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def TPU_ConcatenateOp : TPU_Op<"concatenate", [Pure, InferTypeOpAdaptor]> {
   let arguments = (ins
     Variadic<AnyVectorOfNonZeroRank>:$sources,
     I32Attr:$dimension
@@ -1318,7 +1327,7 @@ def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure, ViewLikeOpInt
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getMemRef(); }
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure, ViewLikeOpInterface]> {
@@ -1482,7 +1491,7 @@ def TPU_CoreIdOp : TPU_Op<"core_id", [Pure]> {
   let arguments = (ins);
   let results = (outs I32:$result);
   let assemblyFormat = [{ attr-dict `:` type($result) }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 // Returns the logical ID of the current subcore.
@@ -1491,7 +1500,7 @@ def TPU_SubcoreIdOp : TPU_Op<"subcore_id", [Pure]> {
   let arguments = (ins);
   let results = (outs I32:$result);
   let assemblyFormat = [{ attr-dict `:` type($result) }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 def TPU_SemaphoreReadOp : TPU_Op<"sem_read"> {
@@ -1534,7 +1543,7 @@ def TPU_SemaphoreSignalOp : TPU_Op<"sem_signal", [AttrSizedOperandSegments]> {
 let assemblyFormat = [{
     $semaphore `,` $amount (`device_id` $device_id^)? (`core_id` $core_id^)? (`subcore_id` $subcore_id^)? attr-dict `:` type($semaphore)
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
   let builders = [
     // A backward-compatible builder that sets `subcore_id` to nullptr.
     OpBuilder<(ins "Value":$semaphore, "Value":$amount, "Value":$device_id, "Value":$core_id)>,
@@ -1598,7 +1607,7 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
     (`subcore_id` `(` $subcore_id^ `)`)?
     prop-dict attr-dict
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
   let builders = [
     // A backward-compatible builder that sets `subcore_id` to nullptr.
     OpBuilder<(ins "Value":$source, "Value":$source_semaphore, "Value":$target, "Value":$target_semaphore, "Value":$device_id, "Value":$core_id, CArg<"uint32_t", "0">:$priority, CArg<"bool", "false">:$strict_ordering)>,
@@ -1656,7 +1665,7 @@ def TPU_EnqueueIndirectDMAOp : TPU_Op<"enqueue_indirect_dma"> {
     `semaphore` `(` $semaphore `:` type($semaphore) `)`
     prop-dict attr-dict
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 // tpu.wait_dma2 waits for a DMA to complete.
@@ -1680,7 +1689,7 @@ def TPU_WaitDMA2Op : TPU_Op<"wait_dma2", [AttrSizedOperandSegments]> {
     (`core_id` `(` $core_id^ `)`)?
     prop-dict attr-dict
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
   // A backward-compatible builder that sets `device_id` and `core_id` to nullptr.
   let builders = [
     OpBuilder<(ins "Value":$semaphore, "Value":$src, "Value":$dst)>
@@ -1711,7 +1720,7 @@ def TPU_WaitDMAOp : TPU_Op<"wait_dma", [AttrSizedOperandSegments]> {
     (`subcore_id` `(` $subcore_id^ `)`)?
     prop-dict attr-dict
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 // Like tpu.wait_dma2, but for indirect DMAs.
@@ -1732,7 +1741,7 @@ def TPU_WaitIndirectDMAOp : TPU_Op<"wait_indirect_dma"> {
     `dst` `(` $dst `:` type($dst) `)`
     attr-dict
   }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 def TPU_RegionOp : TPU_Op<"region", [RecursiveMemoryEffects, SingleBlockImplicitTerminator<"tpu::YieldOp">]> {
@@ -1914,7 +1923,7 @@ def TPU_LogOp : TPU_Op<"log"> {
   );
   let results = (outs);
   let assemblyFormat = [{ $tag prop-dict attr-dict (`:`  `[` $inputs^ `]` `:` type($inputs))? }];
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 def TPU_LogBufferOp : TPU_Op<"log_buffer"> {
@@ -1965,7 +1974,7 @@ def TPU_FetchAndAddSyncOp : TPU_Op<"fetch_and_add_sync", [DefaultMemRead, Defaul
     attr-dict `:` type($base) `,` type($value) `->` type($result)
   }];
 
-  let hasVerifier = 1;
+  let hasCustomVerifier = 1;
 }
 
 def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {

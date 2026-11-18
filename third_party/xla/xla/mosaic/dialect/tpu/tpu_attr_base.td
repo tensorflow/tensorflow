@@ -18,11 +18,11 @@ limitations under the License.
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
-include "xla/mosaic/dialect/tpu/tpu.td"
 
-def TPU_TiledLayoutAttr
-  : TPU_Attr<"TiledLayout", "tiled",
+class TPU_TiledLayoutAttrBase<Dialect dialect, code extraDecl = "">
+  : AttrDef<dialect, "TiledLayout",
              [DeclareAttrInterfaceMethods<MemRefLayoutAttrInterface, ["verifyLayout"]>]> {
+  let mnemonic = "tiled";
   let description = [{
     This attribute represents tiled layouts in memrefs.
 
@@ -42,6 +42,8 @@ def TPU_TiledLayoutAttr
     ArrayRefParameter<"int64_t", "">:$tile_strides
   );
   let extraClassDeclaration = [{
+    static ::llvm::SmallVector<int64_t> getContiguousTileStrides(
+        ::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
     static TiledLayoutAttr getContiguous(::mlir::MLIRContext* context, ::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape);
 
     // Returns the number of trailing dimensions where tiles can be statically
@@ -64,6 +66,76 @@ def TPU_TiledLayoutAttr
     // Returns true if any of the tile strides are dynamic.
     bool hasDynamicStrides() const;
     int64_t getNumDynamicStrides() const;
+  }] # extraDecl;
+  let extraClassDefinition = [{
+    void $cppClass::print(::mlir::AsmPrinter& printer) const {
+      ::mlir::tpu::impl::printTiledLayout(getTiles(), getTileStrides(),
+                                          printer);
+    }
+
+    ::mlir::Attribute $cppClass::parse(::mlir::AsmParser& parser,
+                                       ::mlir::Type type) {
+      ::llvm::SmallVector<::xla::Tile, 2> tiles;
+      ::llvm::SmallVector<int64_t, 2> tile_strides;
+      if (::mlir::failed(::mlir::tpu::impl::parseTiledLayout(
+              parser, tiles, tile_strides))) {
+        return {};
+      }
+      return $cppClass::get(parser.getContext(), tiles, tile_strides);
+    }
+
+    ::mlir::AffineMap $cppClass::getAffineMap() const {
+      return ::mlir::tpu::impl::getTiledLayoutAffineMap(
+          getContext(), getTiles(), getTileStrides());
+    }
+
+    ::llvm::SmallVector<int64_t> $cppClass::getContiguousTileStrides(
+        ::llvm::ArrayRef<::xla::Tile> tiles, ::llvm::ArrayRef<int64_t> shape) {
+      return ::mlir::tpu::impl::getContiguousTileStrides(tiles, shape);
+    }
+
+    $cppClass $cppClass::getContiguous(::mlir::MLIRContext* context,
+                                       ::llvm::ArrayRef<::xla::Tile> tiles,
+                                       ::llvm::ArrayRef<int64_t> shape) {
+      return ::mlir::tpu::impl::getContiguousTiledLayout<$cppClass>(
+          context, tiles, shape);
+    }
+
+    int64_t $cppClass::getNumTrailingDimsWithContiguousTiles(
+        ::llvm::ArrayRef<int64_t> shape) const {
+      return ::mlir::tpu::impl::getNumTrailingDimsWithContiguousTiles(
+          getTiles(), getTileStrides(), shape);
+    }
+
+    ::llvm::SmallVector<int64_t> $cppClass::getExpandedStrides() const {
+      auto strides =
+          ::mlir::tpu::impl::getExpandedStrides(getTiles(), getTileStrides());
+      CHECK(::mlir::succeeded(strides));
+      return *strides;
+    }
+
+    bool $cppClass::hasDynamicStrides() const {
+      return ::llvm::any_of(getTileStrides(), ::mlir::ShapedType::isDynamic);
+    }
+
+    int64_t $cppClass::getNumDynamicStrides() const {
+      return ::llvm::count_if(getTileStrides(), ::mlir::ShapedType::isDynamic);
+    }
+
+    ::llvm::LogicalResult $cppClass::verify(
+        ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+        ::llvm::ArrayRef<::xla::Tile> tiles,
+        ::llvm::ArrayRef<int64_t> tile_strides) {
+      return ::mlir::tpu::impl::verifyTiledLayout(emitError, tiles,
+                                                  tile_strides);
+    }
+
+    ::llvm::LogicalResult $cppClass::verifyLayout(
+        ::llvm::ArrayRef<int64_t> shape,
+        ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError) const {
+      return ::mlir::tpu::impl::verifyTiledLayoutRank(getRank(), shape,
+                                                      emitError);
+    }
   }];
 
   let hasCustomAssemblyFormat = 1;

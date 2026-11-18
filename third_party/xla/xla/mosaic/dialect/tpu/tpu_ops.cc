@@ -25,15 +25,17 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
-#include "xla/mosaic/dialect/tpu/tpu_ops_impl.h"  // IWYU pragma: keep.
+#include "xla/mosaic/dialect/tpu/tpu_ops_impl.h"
 #include "xla/mosaic/dialect/tpu/util.h"
 #include "xla/mosaic/util.h"
 
@@ -54,6 +56,34 @@ std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
   return space.getCoreType();
 }
 
+struct TpuDialectBindings {
+  using DMASemaphoreType = tpu::DMASemaphoreType;
+  using EnqueueIndirectDMAOp = tpu::EnqueueIndirectDMAOp;
+  using MemorySpace = tpu::MemorySpace;
+  using MemorySpaceAttr = tpu::MemorySpaceAttr;
+  using PackSubelementsOp = tpu::PackSubelementsOp;
+  using ReductionKind = tpu::ReductionKind;
+  using SemaphoreType = tpu::SemaphoreType;
+  using TiledLayoutAttr = tpu::TiledLayoutAttr;
+  using WaitIndirectDMAOp = tpu::WaitIndirectDMAOp;
+
+  static unsigned getTypeBitwidth(Type ty) { return tpu::getTypeBitwidth(ty); }
+  static MemRefType getMemRefType(Value value) {
+    return tpu::getMemRefType(value);
+  }
+  static unsigned getElementTypeBitwidth(Type ty) {
+    return tpu::getElementTypeBitwidth(ty);
+  }
+  static unsigned getElementTypeBitwidth(MemRefType ty) {
+    return tpu::getElementTypeBitwidth(ty);
+  }
+  static bool HasMemorySpace(MemRefType ty, MemorySpace space) {
+    return tpu::HasMemorySpace(ty, space);
+  }
+};
+
+using TpuOpVerifiers = impl::OpVerifiers<TpuDialectBindings>;
+
 }  // namespace
 
 LogicalResult SharedMemRefSliceOp::verify() {
@@ -61,7 +91,7 @@ LogicalResult SharedMemRefSliceOp::verify() {
   if (core_type != CoreType::kScVectorSubcore) {
     return emitOpError("Unsupported core type: ") << core_type;
   }
-  return verifySharedMemRefSliceOp(
+  return TpuOpVerifiers::verifySharedMemRefSliceOp(
       *this, MemorySpaceAttr::get(getContext(), MemorySpace::kVmem,
                                   CoreType::kScVectorSubcore));
 }
@@ -96,12 +126,12 @@ void SemaphoreSignalOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SemaphoreSignalOp::verify() {
-  RETURN_IF_FAILED(verifySemaphoreSignalOp(*this));
+  RETURN_IF_FAILED(TpuOpVerifiers::verifySemaphoreSignalOp(*this));
 
   CoreType issuing_core_type = GetCoreTypeOfParentOp(**this);
   CoreType target_core_type = getSemaphoreSignalTargetCoreType(*this);
 
-  if (!isRemote(*this)) {
+  if (!TpuOpVerifiers::isRemote(*this)) {
     if (target_core_type != issuing_core_type) {
       return emitOpError(
           absl::StrFormat("Target core type (%s) must match source core type "
@@ -217,11 +247,11 @@ LogicalResult EnqueueDMAOp::verify() {
   MemRefType source_ty = getMemRefType(getSource());
   MemRefType target_ty = getMemRefType(getTarget());
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  bool is_remote = isRemote(*this);
+  bool is_remote = TpuOpVerifiers::isRemote(*this);
   bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
                issuing_core == CoreType::kScScalarSubcore;
 
-  RETURN_IF_FAILED(verifyEnqueueDMAOp(*this, is_sc));
+  RETURN_IF_FAILED(TpuOpVerifiers::verifyEnqueueDMAOp(*this, is_sc));
   RETURN_IF_FAILED(verifyCommonDmaCoreParams(
       getOperation(), source_ty, target_ty, getSourceSemaphore(),
       getTargetSemaphore(), getCoreId(), getSubcoreId(), getStrictOrdering(),
@@ -264,7 +294,7 @@ LogicalResult EnqueueIndirectDMAOp::verify() {
     return emitOpError(
         "Enqueue indirect DMA is supported only on the SC vector subcore");
   }
-  return verifyEnqueueIndirectDMAOp(*this);
+  return TpuOpVerifiers::verifyEnqueueIndirectDMAOp(*this);
 }
 
 void WaitDMA2Op::build(OpBuilder& builder, OperationState& state,
@@ -274,7 +304,7 @@ void WaitDMA2Op::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult WaitDMA2Op::verify() {
-  RETURN_IF_FAILED(verifyWaitDMA2Op(*this));
+  RETURN_IF_FAILED(TpuOpVerifiers::verifyWaitDMA2Op(*this));
 
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
   if (getRefCoreType(getSemaphore()).value_or(issuing_core) != issuing_core) {
@@ -287,11 +317,11 @@ LogicalResult WaitDMAOp::verify() {
   MemRefType source_ty = getMemRefType(getSource());
   MemRefType target_ty = getMemRefType(getTarget());
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  bool is_remote = isRemote(*this);
+  bool is_remote = TpuOpVerifiers::isRemote(*this);
   bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
                issuing_core == CoreType::kScScalarSubcore;
 
-  RETURN_IF_FAILED(verifyWaitDMAOp(*this, is_sc));
+  RETURN_IF_FAILED(TpuOpVerifiers::verifyWaitDMAOp(*this, is_sc));
   RETURN_IF_FAILED(verifyCommonDmaCoreParams(
       getOperation(), source_ty, target_ty, getSourceSemaphore(),
       getTargetSemaphore(), getCoreId(), getSubcoreId(), getStrictOrdering(),
@@ -350,7 +380,7 @@ LogicalResult WaitIndirectDMAOp::verify() {
     return emitOpError(
         "Wait indirect DMA is supported only on the SC vector subcore");
   }
-  return verifyWaitIndirectDMAOp(*this);
+  return TpuOpVerifiers::verifyWaitIndirectDMAOp(*this);
 }
 
 LogicalResult LogOp::verify() {
@@ -389,6 +419,27 @@ void PackMaskOp::build(OpBuilder& builder, OperationState& state,
   build(builder, state, output_type, sources, positions);
 }
 
+LogicalResult ScanCountOp::inferReturnTypes(
+    MLIRContext* context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  return TpuOpVerifiers::inferReturnTypesScanCountOp(context, location, adaptor,
+                                                     inferredReturnTypes);
+}
+
+LogicalResult DynamicGatherOp::inferReturnTypes(
+    MLIRContext* context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  return TpuOpVerifiers::inferReturnTypesDynamicGatherOp(
+      context, location, adaptor, inferredReturnTypes);
+}
+
+LogicalResult ConcatenateOp::inferReturnTypes(
+    MLIRContext* context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  return TpuOpVerifiers::inferReturnTypesConcatenateOp(
+      context, location, adaptor, inferredReturnTypes);
+}
+
 LogicalResult FetchAndAddSyncOp::verify() {
   CoreType issuing_core = GetCoreTypeOfParentOp(**this);
   CoreType target_core = getRefCoreType(getBase()).value_or(issuing_core);
@@ -401,7 +452,7 @@ LogicalResult FetchAndAddSyncOp::verify() {
       return emitOpError("Only SC vector subcore is supported, got ")
              << target_core;
   }
-  return verifyFetchAndAddSyncOp(*this);
+  return TpuOpVerifiers::verifyFetchAndAddSyncOp(*this);
 }
 
 LogicalResult CoreIdOp::verify() {

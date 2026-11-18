@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/mosaic/dialect/tpu/tpu_ops_impl.h"
+
 #include <cstdint>
 #include <string>
 
@@ -25,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
-namespace mlir::tpu {
+namespace mlir::tpu::impl {
 
 LogicalResult verifyGather(Operation* op, ArrayRef<int64_t> operand_shape,
                            ArrayRef<int64_t> offsets_shape,
@@ -208,4 +210,4 @@ LogicalResult verifyScatter(Operation* op, ArrayRef<int64_t> updates_shape,
   }
   return success();
 }
-}  // namespace mlir::tpu
+}  // namespace mlir::tpu::impl

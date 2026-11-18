@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 
-#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -25,7 +24,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -41,7 +39,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/layout.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.cc.inc"
-#include "xla/mosaic/dialect/tpu/tpu_dialect_impl.h"  // IWYU pragma: keep.
+#include "xla/mosaic/dialect/tpu/tpu_dialect_impl.h"
 #include "xla/mosaic/dialect/tpu/tpu_enums.cc.inc"
 
 // This is a bit unclean, but we need to squat the xla namespace to make sure
@@ -96,15 +94,7 @@ void TPUDialect::initialize() {
 
 LogicalResult TPUDialect::verifyOperationAttribute(Operation* const op,
                                                    NamedAttribute attr) {
-  CHECK(op != nullptr);
-  if (attr.getName() == GetMainKey()) {
-    if (!isa<func::FuncOp>(op) || !isa<mlir::UnitAttr>(attr.getValue())) {
-      return op->emitOpError() << GetMainKey()
-                               << " attribute is expected to be a unit "
-                                  "attribute on a func.func operation";
-    }
-  }
-  return success();
+  return impl::verifyOperationAttribute<TPUDialect>(op, attr);
 }
 
 Operation* GetParentOpWithCoreType(Operation& op) {
@@ -172,27 +162,6 @@ absl::StatusOr<func::FuncOp> GetMainFunc(ModuleOp module, CoreType core_type) {
       core_type));
 }
 
-TiledLayoutAttr TiledLayoutAttr::getContiguous(MLIRContext* context,
-                                               ArrayRef<xla::Tile> tiles,
-                                               ArrayRef<int64_t> shape) {
-  return TiledLayoutAttr::get(context, tiles,
-                              getContiguousTileStrides(tiles, shape));
-}
-
-SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
-  auto strides = mlir::tpu::getExpandedStrides(getTiles(), getTileStrides());
-  CHECK(succeeded(strides));
-  return *strides;
-}
-
-bool TiledLayoutAttr::hasDynamicStrides() const {
-  return llvm::any_of(getTileStrides(), ShapedType::isDynamic);
-}
-
-int64_t TiledLayoutAttr::getNumDynamicStrides() const {
-  return llvm::count_if(getTileStrides(), ShapedType::isDynamic);
-}
-
 LogicalResult MemorySpaceAttr::verify(
     function_ref<InFlightDiagnostic()> emitError, MemorySpace value,
     std::optional<CoreType> core_type) {
@@ -234,19 +203,8 @@ MemRefType getMemRefType(Value value) {
 DotDimensionNumbersAttr defaultDimensionNumbers(Builder& builder,
                                                 bool transpose_lhs,
                                                 bool transpose_rhs) {
-  return tpu::DotDimensionNumbersAttr::get(
-      builder.getContext(),
-      /*lhs_contracting_dims=*/{transpose_lhs ? 0 : 1},
-      /*rhs_contracting_dims=*/{transpose_rhs ? 1 : 0},
-      /*lhs_non_contracting_dims=*/{transpose_lhs ? 1 : 0},
-      /*rhs_non_contracting_dims=*/{transpose_rhs ? 0 : 1},
-      /*output_dim_order=*/{0, transpose_lhs ? 1 : 0, 1, transpose_rhs ? 0 : 1},
-      /*lhs_batch_dims=*/{},
-      /*rhs_batch_dims=*/{});
-}
-
-const ::llvm::fltSemantics& Float8EXMYType::getFloatSemantics() const {
-  return getUnderlyingType().getFloatSemantics();
+  return impl::defaultDimensionNumbers<DotDimensionNumbersAttr>(
+      builder, transpose_lhs, transpose_rhs);
 }
 
 namespace {
