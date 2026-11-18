@@ -165,6 +165,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",

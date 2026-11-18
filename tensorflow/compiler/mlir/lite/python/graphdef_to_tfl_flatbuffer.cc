@@ -120,6 +120,9 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
       converter_flags.convert_to_stablehlo();
   pass_config.canonicalizing_inf_as_min_max_float =
       converter_flags.canonicalizing_inf_as_min_max_float();
+  pass_config.rank_reduction = converter_flags.rank_reduction();
+  pass_config.unsafe_gpu_compatibility =
+      converter_flags.unsafe_gpu_compatibility();
 
   // StableHLO Quantizer is not supported for GraphDef inputs, so
   // quantization_py_function_lib is set to nullptr.
