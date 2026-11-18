@@ -36,9 +36,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/autotune_cache.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -63,7 +65,8 @@ absl::StatusOr<std::unique_ptr<ConfigRunner>> ConfigRunner::Create(
 absl::StatusOr<std::vector<ConfigRunner::ConfigProfile>>
 ConfigRunner::ProfileAll(
     std::vector<ConfigRunner::ExecutableCandidate> candidates,
-    const HloInstruction* instr) {
+    const HloInstruction* instr,
+    absl::Span<const autotuner::Backend> excluded_backends) {
   std::vector<ConfigRunner::ConfigProfile> config_results(candidates.size());
 
   absl::MutexLock lock(profiler_m_);
@@ -97,6 +100,9 @@ ConfigRunner::ProfileAll(
         ProfileCandidate(std::move(candidates[i]), *input_buffers, clusters,
                          /*is_trusted_config=*/true,
                          /*allow_new_cluster=*/true);
+    MaybeRecordValidatedCandidate(config_results[i], *input_buffers,
+                                  excluded_backends, clusters,
+                                  /*require_corroboration=*/false);
   }
 
   const bool has_trusted_reference = !clusters.empty();
@@ -106,6 +112,10 @@ ConfigRunner::ProfileAll(
         ProfileCandidate(std::move(candidates[i]), *input_buffers, clusters,
                          /*is_trusted_config=*/false,
                          /*allow_new_cluster=*/!has_trusted_reference);
+    MaybeRecordValidatedCandidate(config_results[i], *input_buffers,
+                                  excluded_backends, clusters,
+                                  /*require_corroboration=*/
+                                  !has_trusted_reference);
   }
 
   if (options_.enable_correctness_check) {
@@ -180,6 +190,44 @@ ConfigRunner::ConfigProfile ConfigRunner::ProfileCandidate(
                        /*cluster_index=*/assigned_cluster,
                        /*diff_report_with_first_cluster=*/
                        std::move(diff_report_with_first_cluster)};
+}
+
+void ConfigRunner::MaybeRecordValidatedCandidate(
+    const ConfigProfile& result, const InputBuffers& input_buffers,
+    absl::Span<const autotuner::Backend> excluded_backends,
+    std::vector<OutputCluster>& clusters, bool require_corroboration) {
+  if (result.failure.has_value()) {
+    return;
+  }
+  // With correctness checks enabled, only candidates whose output matched a
+  // reference cluster are eligible for selection.
+  if (options_.enable_correctness_check && result.cluster_index < 0) {
+    return;
+  }
+  const bool is_selectable =
+      result.config.codegen_backend == nullptr ||
+      !absl::c_linear_search(excluded_backends,
+                             result.config.codegen_backend->backend());
+  if (options_.enable_correctness_check && require_corroboration) {
+    // Without a trusted reference, a new cluster may be formed by a single
+    // wrong-output candidate that `DemoteNonWinningClusterConfigs` later
+    // rejects. Only report members once at least two candidates agree.
+    OutputCluster& cluster = clusters[result.cluster_index];
+    if (cluster.count < 2) {
+      if (is_selectable && !cluster.pending_selectable_duration.has_value()) {
+        cluster.pending_selectable_duration = result.duration;
+      }
+      return;
+    }
+    if (cluster.pending_selectable_duration.has_value()) {
+      profiler_->RecordValidatedCandidate(input_buffers,
+                                          *cluster.pending_selectable_duration);
+      cluster.pending_selectable_duration.reset();
+    }
+  }
+  if (is_selectable) {
+    profiler_->RecordValidatedCandidate(input_buffers, result.duration);
+  }
 }
 
 int ConfigRunner::AssignToOutputCluster(

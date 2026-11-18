@@ -1868,8 +1868,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         "xla_gpu_autotune_num_timed_runs",
         int32_setter_for(&DebugOptions::set_xla_gpu_autotune_num_timed_runs),
         debug_options->xla_gpu_autotune_num_timed_runs(),
-        "Number of timed runs of each candidate during GPU autotuning. The "
-        "mean run time is used to rank the candidates."));
+        "Maximum number of timed runs of each candidate during GPU "
+        "autotuning. Clearly dominated or long-running candidates may stop "
+        "after the first timed run; the mean run time over executed passes "
+        "ranks the candidates."));
     flag_list->push_back(tsl::Flag(
         "xla_force_host_platform_device_count",
         int32_setter_for(

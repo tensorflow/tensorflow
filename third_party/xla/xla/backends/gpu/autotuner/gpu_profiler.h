@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_AUTOTUNER_GPU_PROFILER_H_
 #define XLA_BACKENDS_GPU_AUTOTUNER_GPU_PROFILER_H_
 
+#include <atomic>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -24,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
@@ -38,6 +41,26 @@ namespace gpu {
 struct GpuInputBuffers : public InputBuffers {
   // We only use the input buffers from the redzone buffers.
   RedzoneBuffers redzone_buffers;
+
+  // Lowest positive mean duration (in nanoseconds) among candidates profiled
+  // with these input buffers that passed correctness checks and are eligible
+  // for selection (reported via `GpuProfiler::RecordValidatedCandidate`), or
+  // `max()` before the first such candidate. Scoped to `GpuInputBuffers` so
+  // each autotuned HLO instruction tracks its own competitive baseline
+  // independently.
+  mutable std::atomic<int64_t> best_duration_ns{
+      std::numeric_limits<int64_t>::max()};
+
+  void RecordCandidateDurationNs(int64_t duration_ns) const {
+    if (duration_ns <= 0) {
+      return;
+    }
+    int64_t prev = best_duration_ns.load(std::memory_order_relaxed);
+    while (duration_ns < prev &&
+           !best_duration_ns.compare_exchange_weak(prev, duration_ns,
+                                                   std::memory_order_relaxed)) {
+    }
+  }
 };
 
 class GpuProfiler : public Profiler {
@@ -59,6 +82,11 @@ class GpuProfiler : public Profiler {
                                         const InputBuffers& buffers) override;
 
   absl::Status CheckInputBuffers(InputBuffers& buffers) override;
+
+  // Updates the competitive baseline of `buffers` used by adaptive early
+  // stopping. No-op if `ProfileOptions::adaptive_early_stopping` is disabled.
+  void RecordValidatedCandidate(const InputBuffers& buffers,
+                                absl::Duration duration) override;
 
   absl::Status CheckOutputBuffer(ScopedShapedBuffer& output,
                                  ScopedShapedBuffer& reference,

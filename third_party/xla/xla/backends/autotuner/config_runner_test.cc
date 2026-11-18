@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuning.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/mock_codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -84,6 +85,9 @@ class MockProfiler : public Profiler {
   MOCK_METHOD(absl::Status, CheckOutputBuffer,
               (ScopedShapedBuffer & output, ScopedShapedBuffer& reference,
                float rtol),
+              (override));
+  MOCK_METHOD(void, RecordValidatedCandidate,
+              (const InputBuffers& buffers, absl::Duration duration),
               (override));
 };
 
@@ -296,6 +300,158 @@ TEST_F(ConfigRunnerTest, FiltersWrongResultsAgainstTrusted) {
   EXPECT_EQ(profiles[1].failure->kind,
             ConfigRunner::FailureKind::kWrongResults);
   EXPECT_THAT(profiles[1].failure->message, HasSubstr("Don't match"));
+}
+
+TEST_F(ConfigRunnerTest, RecordsOnlyCandidatesThatPassCorrectnessChecks) {
+  ConfigRunner::CorrectnessCheckOptions options;
+  options.enable_correctness_check = true;
+
+  auto profiler = std::make_unique<MockProfiler>();
+  ScopedShapedBuffer output_1(Shape(), nullptr, 0),
+      output_2(Shape(), nullptr, 0);
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, CheckInputBuffers(_))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2), std::move(output_1)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1), std::move(output_2)})));
+  EXPECT_CALL(*profiler, CheckOutputBuffer(_, _, _))
+      .WillOnce(Return(absl::InternalError("Don't match")));
+  // The faster candidate produces wrong results, so it must not become the
+  // competitive baseline.
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(2)))
+      .Times(1);
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(1)))
+      .Times(0);
+
+  ASSERT_OK_AND_ASSIGN(auto runner,
+                       ConfigRunner::Create(std::move(profiler), options));
+
+  MockCodegenBackend trusted_backend;
+  MockCodegenBackendWithWrongResults untrusted_backend;
+
+  std::vector<ConfigRunner::ExecutableCandidate> candidates;
+  candidates.push_back({
+      /*config=*/{&trusted_backend, GetTestConfig("test_config_1")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+  candidates.push_back({
+      /*config=*/{&untrusted_backend, GetTestConfig("wrong_results_config")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto profiles,
+                       runner->ProfileAll(std::move(candidates)));
+  ASSERT_THAT(profiles, SizeIs(2));
+  EXPECT_FALSE(profiles[0].failure.has_value());
+  ASSERT_TRUE(profiles[1].failure.has_value());
+}
+
+TEST_F(ConfigRunnerTest, DoesNotRecordCandidatesOfExcludedBackends) {
+  ConfigRunner::CorrectnessCheckOptions options;
+  options.enable_correctness_check = false;
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1), std::nullopt})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2), std::nullopt})));
+  // The faster candidate belongs to an excluded backend and cannot be
+  // selected, so it must not become the competitive baseline.
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(2)))
+      .Times(1);
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(1)))
+      .Times(0);
+
+  ASSERT_OK_AND_ASSIGN(auto runner,
+                       ConfigRunner::Create(std::move(profiler), options));
+
+  MockCodegenBackend excluded_backend;
+  EXPECT_CALL(excluded_backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::CUBLASLT_FISSION));
+  MockCodegenBackend allowed_backend;
+  EXPECT_CALL(allowed_backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::TRITON));
+
+  std::vector<ConfigRunner::ExecutableCandidate> candidates;
+  candidates.push_back({
+      /*config=*/{&excluded_backend, GetTestConfig("excluded_config")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+  candidates.push_back({
+      /*config=*/{&allowed_backend, GetTestConfig("allowed_config")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto profiles,
+      runner->ProfileAll(std::move(candidates), /*instr=*/nullptr,
+                         /*excluded_backends=*/
+                         {autotuner::Backend::CUBLASLT_FISSION}));
+  ASSERT_THAT(profiles, SizeIs(2));
+  EXPECT_FALSE(profiles[0].failure.has_value());
+  EXPECT_FALSE(profiles[1].failure.has_value());
+}
+
+TEST_F(ConfigRunnerTest,
+       DefersRecordingUntrustedCandidatesUntilClusterIsCorroborated) {
+  ConfigRunner::CorrectnessCheckOptions options;
+  options.enable_correctness_check = true;
+
+  auto profiler = std::make_unique<MockProfiler>();
+  ScopedShapedBuffer out_a1(Shape(), nullptr, 0), out_b(Shape(), nullptr, 0),
+      out_a2(Shape(), nullptr, 0);
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, CheckInputBuffers(_))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(3), std::move(out_a1)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1), std::move(out_b)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2), std::move(out_a2)})));
+  // `out_b` does not match cluster 0 and forms a singleton cluster; `out_a2`
+  // matches cluster 0.
+  EXPECT_CALL(*profiler, CheckOutputBuffer(_, _, _))
+      .WillOnce(Return(absl::InternalError("minority")))
+      .WillOnce(Return(absl::OkStatus()));
+  // Cluster 0 is corroborated once `out_a2` joins it, so both of its members
+  // are reported. The singleton (later demoted) fastest candidate is never
+  // reported, so it cannot lower the competitive baseline.
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(3)))
+      .Times(1);
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(2)))
+      .Times(1);
+  EXPECT_CALL(*profiler, RecordValidatedCandidate(_, absl::Seconds(1)))
+      .Times(0);
+
+  ASSERT_OK_AND_ASSIGN(auto runner,
+                       ConfigRunner::Create(std::move(profiler), options));
+
+  MockCodegenBackendWithWrongResults untrusted_backend;
+  std::vector<ConfigRunner::ExecutableCandidate> candidates;
+  candidates.push_back({
+      /*config=*/{&untrusted_backend, GetTestConfig("majority_slow")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+  candidates.push_back({
+      /*config=*/{&untrusted_backend, GetTestConfig("minority_fastest")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+  candidates.push_back({
+      /*config=*/{&untrusted_backend, GetTestConfig("majority_fast")},
+      /*executable=*/std::make_unique<CountingDestructorExecutable>(),
+  });
+
+  ASSERT_OK_AND_ASSIGN(auto profiles,
+                       runner->ProfileAll(std::move(candidates)));
+  ASSERT_THAT(profiles, SizeIs(3));
+  EXPECT_FALSE(profiles[0].failure.has_value());
+  ASSERT_TRUE(profiles[1].failure.has_value());
+  EXPECT_EQ(profiles[1].failure->kind,
+            ConfigRunner::FailureKind::kWrongResults);
+  EXPECT_FALSE(profiles[2].failure.has_value());
 }
 
 TEST_F(ConfigRunnerTest, ClustersOutputsWhenAllBackendsUntrusted) {
