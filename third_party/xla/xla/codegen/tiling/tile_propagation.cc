@@ -1802,51 +1802,46 @@ std::string ToString(const Tiles& tiles) {
 
 namespace {
 
-// One-shot all-gather: every output tile lies inside exactly one peer's shard,
-// so the peer is `offset / local_size`. It is attached to the input tile as a
-// replica id so the emitter reads the tile from that peer.
-Tiles PropagateOneShotAllGatherTile(const Tile& output_tile, int64_t gather_dim,
-                                    int64_t local_size, int64_t output_dim_size,
-                                    int64_t num_replicas) {
+// Maps a one-shot all-gather output tile back to its input tile: each output
+// tile reads from peer `offset / local_size`'s remote buffer at `offset %
+// local_size`, so we attach `offset / local_size` to `replica_ids`.
+Tiles PropagateAllGatherTile(const Tile& output_tile, int64_t gather_dim,
+                             int64_t local_size, int64_t output_dim_size,
+                             int64_t num_replicas) {
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
-  SymbolicExpr replica_id = output_dim_tile.offset / local_size;
+  mlir::MLIRContext* ctx = output_tile.mlir_context();
   // `offset % local_size` maps an output offset into `[0, local_size)`.
   // However, if the variadic schedule padded this tile past `output_dim_size`
-  // (e.g., offset = 5 when local_size = 2 and output_dim_size = 4), `5 % 2 = 1`
-  // would wrap it back in-bounds. Adding
-  // `(offset / output_dim_size) * local_size` is 0 for valid tiles and pushes
-  // padded tiles to `>= local_size` so they get masked out.
+  // (e.g., offset = 5 when local_size = 2 and output_dim_size = 4), `5 % 2 =
+  // 1` would wrap it back in-bounds. Adding `(offset / output_dim_size) *
+  // local_size` is 0 for valid tiles and pushes padded tiles to `>=
+  // local_size` so they get masked out.
   SymbolicExpr input_offset =
       (output_dim_tile.offset % local_size) +
       (output_dim_tile.offset / output_dim_size) * local_size;
+  llvm::SmallVector<DimTile> replica_id_dim_tiles =
+      llvm::to_vector(output_tile.replica_ids());
+  replica_id_dim_tiles.push_back(DimTile{
+      /*offset=*/output_dim_tile.offset / local_size,
+      /*size=*/CreateSymbolicConstant(1, ctx),
+      /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/CreateSymbolicConstant(num_replicas, ctx),
+  });
 
   llvm::SmallVector<DimTile> input_dim_tiles;
   input_dim_tiles.reserve(output_tile.num_dim_tiles());
-
   for (int64_t i = 0; i < output_tile.num_dim_tiles(); ++i) {
     if (i == gather_dim) {
-      input_dim_tiles.push_back(DimTile{
-          input_offset, output_dim_tile.size, output_dim_tile.stride,
-          CreateSymbolicConstant(local_size, output_tile.mlir_context())});
+      input_dim_tiles.push_back(
+          DimTile{input_offset, output_dim_tile.size, output_dim_tile.stride,
+                  CreateSymbolicConstant(local_size, ctx)});
     } else {
       input_dim_tiles.push_back(output_tile.dim_tiles()[i]);
     }
   }
 
-  mlir::MLIRContext* ctx = output_tile.mlir_context();
-  llvm::SmallVector<DimTile> replica_id_dim_tiles =
-      llvm::to_vector(output_tile.replica_ids());
-  replica_id_dim_tiles.push_back(DimTile{
-      /*offset=*/replica_id,
-      /*size=*/CreateSymbolicConstant(1, ctx),
-      /*stride=*/CreateSymbolicConstant(1, ctx),
-      /*upper_bound=*/
-      CreateSymbolicConstant(num_replicas, ctx),
-  });
-
   Tile input_tile(output_tile.tiling_space(), std::move(input_dim_tiles),
                   std::move(replica_id_dim_tiles), output_tile.constraints());
-
   return Tiles{input_tile};
 }
 
@@ -1886,8 +1881,12 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
     }
   }
 
-  return PropagateOneShotAllGatherTile(output_tile, gather_dim, local_size,
-                                       output_dim_size, num_replicas);
+  if (tiling_space.HasPerPeerBuffer(
+          hlo, GetResultDimensionOffset(hlo, output_index) + gather_dim)) {
+    return Tiles{output_tile};
+  }
+  return PropagateAllGatherTile(output_tile, gather_dim, local_size,
+                                output_dim_size, num_replicas);
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForAllToAllOp(

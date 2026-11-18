@@ -92,6 +92,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -867,6 +868,7 @@ xla_test(
         "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
