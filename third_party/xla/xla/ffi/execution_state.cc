@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -65,7 +66,9 @@ absl::StatusOr<void*> ExecutionState::Get(TypeId type_id) const {
 
   return state_.get();
 }
-absl::StatusOr<ExecutionStateProto> ExecutionState::ToProto() const {
+
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<ExecutionStateProto>
+ExecutionState::ToProto() const {
   if (state_ == nullptr) {
     return ExecutionStateProto();
   }
@@ -86,8 +89,8 @@ absl::StatusOr<ExecutionStateProto> ExecutionState::ToProto() const {
   return proto;
 }
 
-absl::StatusOr<ExecutionState> ExecutionState::FromProto(
-    const ExecutionStateProto& proto) {
+ABSL_ATTRIBUTE_NO_SANITIZE_CFI absl::StatusOr<ExecutionState>
+ExecutionState::FromProto(const ExecutionStateProto& proto) {
   ExecutionState state;
   if (proto.type_name().empty()) {
     return state;
