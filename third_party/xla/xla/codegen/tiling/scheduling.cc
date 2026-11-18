@@ -420,8 +420,8 @@ absl::StatusOr<IndexWiseVariadicInfo> BuildIndexWiseVariadicInfo(
 
 // Internal struct for holding the parallel dimensions of a root.
 struct RootDims {
-  // Parallel output dimension (all-gather) or `kReplica` dimension
-  // (reduce-scatter) whose tile ID encodes the peer index.
+  // Parallel output dimension partitioned across peers (gather dimension for
+  // all-gather, scatter dimension for reduce-scatter).
   std::optional<int64_t> peer_dim_id;
   int64_t tiles_per_peer = 1;
   llvm::SmallVector<int64_t, 4> non_peer_dim_ids;
@@ -458,10 +458,8 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
               "index.",
               root_index, hlo.name()));
         }
-        if (dim->peer_dim.has_value()) {
-          root.peer_dim_id = dim->peer_dim->dim_id.value();
-        } else {
-          root.peer_dim_id = dim_id;
+        root.peer_dim_id = dim_id;
+        if (!dim->peer_dim.has_value()) {
           root.tiles_per_peer = it->second;
           continue;
         }
@@ -484,13 +482,15 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
 }
 
 absl::StatusOr<Schedule> BuildIndexWiseVariadicSchedule(
-    mlir::MLIRContext* ctx, const IndexWiseVariadicInfo& info,
-    llvm::ArrayRef<RootDims> roots, int64_t num_tiles_per_pid,
-    int64_t max_tiles, SymbolicExpr global_tile_id) {
+    mlir::MLIRContext* ctx, const TilingSpace& tiling_space,
+    const IndexWiseVariadicInfo& info, llvm::ArrayRef<RootDims> roots,
+    int64_t num_tiles_per_pid, int64_t max_tiles, SymbolicExpr global_tile_id) {
   Schedule schedule;
   SymbolicExpr peer = global_tile_id.floorDiv(max_tiles);
   SymbolicExpr intra_peer_tile_id =
       info.num_peers > 1 ? global_tile_id % max_tiles : global_tile_id;
+  llvm::SmallVector<TilingSpace::DimensionInfo, 4> dims =
+      tiling_space.dimensions();
   for (const RootDims& root : roots) {
     llvm::SmallVector<int64_t, 4> block_counts = root.non_peer_block_counts;
     if (root.tiles_per_peer > 1) {
@@ -507,18 +507,33 @@ absl::StatusOr<Schedule> BuildIndexWiseVariadicSchedule(
     if (!root.peer_dim_id.has_value()) {
       continue;
     }
-    SymbolicExpr peer_tile_id = peer * root.tiles_per_peer;
-    if (root.tiles_per_peer > 1) {
-      peer_tile_id = peer_tile_id + delinearized.back();
+    const TilingSpace::DimensionInfo& peer_dim = dims[*root.peer_dim_id];
+    if (peer_dim.peer_dim.has_value()) {
+      schedule.dim_id_to_pid_expr[peer_dim.peer_dim->dim_id.value()] = peer;
+    } else {
+      SymbolicExpr peer_tile_id = peer * root.tiles_per_peer;
+      if (root.tiles_per_peer > 1) {
+        peer_tile_id = peer_tile_id + delinearized.back();
+      }
+      schedule.dim_id_to_pid_expr[*root.peer_dim_id] = peer_tile_id;
     }
     if (root.num_tiles < max_tiles) {
-      // Push the peer tile id past the last peer on padded programs so both
-      // the output and input tiles are out of bounds.
-      peer_tile_id =
-          peer_tile_id + intra_peer_tile_id.floorDiv(root.num_tiles) *
-                             (info.num_peers * root.num_tiles);
+      // Push the padded dimension past the last peer (`d_replica` when peers
+      // stride across the root dimension, or the spatial dimension when
+      // `kReplica` selects a peer output buffer so it stays in `[0,
+      // num_peers)`).
+      int64_t padded_dim_id =
+          peer_dim.peer_dim.has_value() &&
+                  peer_dim.peer_dim->mode !=
+                      TilingSpace::PeerIndexing::kPerPeerBuffer
+              ? peer_dim.peer_dim->dim_id.value()
+              : *root.peer_dim_id;
+      SymbolicExpr& padded_pid_expr =
+          schedule.dim_id_to_pid_expr[padded_dim_id];
+      padded_pid_expr =
+          padded_pid_expr + intra_peer_tile_id.floorDiv(root.num_tiles) *
+                                (info.num_peers * root.num_tiles);
     }
-    schedule.dim_id_to_pid_expr[*root.peer_dim_id] = peer_tile_id;
   }
   schedule.num_tiles = info.num_peers * max_tiles;
   schedule.num_pids = CeilOfRatio(schedule.num_tiles, num_tiles_per_pid);
@@ -550,7 +565,8 @@ absl::StatusOr<Schedule> GetIndexWiseVariadicSchedule(
     max_tiles = std::max(max_tiles, root.num_tiles);
   }
   // Now build the scheduled rooted on the output with the max number of tiles.
-  return BuildIndexWiseVariadicSchedule(ctx, info, roots, num_tiles_per_pid,
+  return BuildIndexWiseVariadicSchedule(ctx, tiled_computation.tiling_space(),
+                                        info, roots, num_tiles_per_pid,
                                         max_tiles, global_tile_id);
 }
 
