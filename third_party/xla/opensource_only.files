@@ -4,6 +4,8 @@ tensorflow/compiler/xla/internal/package_groups.bzl:
 tensorflow/compiler/xla/megascale/package_groups.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/mosaic/dialect/tpu/tpu_matmul_ops.td:
+tensorflow/compiler/xla/mosaic/dialect/tpu/tpu_matmul_ops_verify.inc:
+tensorflow/compiler/xla/mosaic/dialect/tpu/transforms/tpu_matmul_serde.inc:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/gpu/package_groups.bzl:
