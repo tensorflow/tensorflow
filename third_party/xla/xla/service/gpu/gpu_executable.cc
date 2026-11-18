@@ -694,10 +694,81 @@ absl::Status RendezvousAfterExecution(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions& debug_options);
 
+namespace {
+
+// Logs a progress-tracker dump for `tracker` when a host or device execution
+// watchdog fires.
+void LogExecutionProgress(absl::string_view watchdog_name,
+                          int32_t device_ordinal, int32_t max_thunks_to_log,
+                          ThunkExecutor::ProgressTracker* tracker) {
+  if (tracker == nullptr) {
+    return;
+  }
+
+  size_t num_thunks = tracker->num_thunks();
+  size_t num_executions = tracker->num_executions();
+  size_t num_completed = tracker->NumCompletedThunks();
+  size_t num_pending = tracker->NumPendingThunks();
+
+  LOG(ERROR) << absl::StreamFormat("Progress tracking for %s:", watchdog_name);
+  LOG(ERROR) << absl::StreamFormat(
+      "[%d] Completed thunks: %d/%d (unique thunks: %d)", device_ordinal,
+      num_completed, num_executions, num_thunks);
+  LOG(ERROR) << absl::StreamFormat(
+      "[%d] Pending thunks: %d/%d (unique thunks: %d)", device_ordinal,
+      num_pending, num_executions, num_thunks);
+
+  auto log_thunks =
+      [&](absl::string_view label,
+          std::vector<ThunkExecutor::ProgressTracker::ThunkExecution> thunks,
+          bool log_nested_thunks) {
+        LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
+                                         label, thunks.size());
+        absl::c_sort(thunks, [](const auto& a, const auto& b) {
+          return a.exec_idx < b.exec_idx;
+        });
+        for (const auto& thunk : thunks) {
+          std::string loop_info;
+          for (const auto& state : thunk.loop_nest) {
+            absl::StrAppendFormat(&loop_info, " [%s iter=%d]", state.loop_name,
+                                  state.loop_iteration);
+          }
+          LOG(ERROR) << absl::StreamFormat(
+              "[%d]   - exec[%d] thunk[%d/%d] %v: %s at %s%s", device_ordinal,
+              thunk.exec_idx, thunk.thunk_idx, num_thunks, thunk.kind,
+              thunk.name,
+              absl::FormatTime("%Y-%m-%d %H:%M:%S.%E6f", thunk.executed,
+                               absl::LocalTimeZone()),
+              loop_info);
+          if (log_nested_thunks) {
+            for (const auto& nested : thunk.nested_thunks) {
+              LOG(ERROR) << absl::StreamFormat(
+                  "[%d]       nested thunk[%d/%d] %v: %s", device_ordinal,
+                  nested.thunk_idx, num_thunks, nested.kind, nested.name);
+            }
+          }
+        }
+      };
+
+  log_thunks("Last completed thunks",
+             tracker->LastCompletedThunks(max_thunks_to_log),
+             /*log_nested_thunks=*/false);
+  log_thunks("First pending thunks",
+             tracker->FirstPendingThunks(max_thunks_to_log),
+             /*log_nested_thunks=*/true);
+  if (num_pending > static_cast<size_t>(max_thunks_to_log)) {
+    log_thunks("Last pending thunks",
+               tracker->LastPendingThunks(max_thunks_to_log),
+               /*log_nested_thunks=*/true);
+  }
+}
+
 // Returns HangWatchdog guards for the given execution timeout handlers.
-static std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
+std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
     absl::Span<ExecutionTimeoutHandler> handlers,
-    absl::string_view watchdog_name) {
+    absl::string_view watchdog_name, int32_t device_ordinal,
+    int32_t max_thunks_to_log,
+    std::shared_ptr<ThunkExecutor::ProgressTracker> progress_tracker) {
   std::vector<std::shared_ptr<HangWatchdog::Guard>> guards;
   for (ExecutionTimeoutHandler& handler : handlers) {
     if (!handler.callback || handler.timeout == absl::InfiniteDuration()) {
@@ -707,15 +778,20 @@ static std::vector<std::shared_ptr<HangWatchdog::Guard>> ExecutionTimeoutGuards(
     guards.push_back(HangWatchdog::Global().Watch(
         watchdog_name, handler.timeout,
         [watchdog_name = std::string(watchdog_name), timeout = handler.timeout,
+         device_ordinal, max_thunks_to_log, progress_tracker,
          callback = std::move(handler.callback)]() mutable {
           LOG(ERROR) << absl::StreamFormat(
               "%s failed to finish in %v, call execution timeout handler.",
               watchdog_name, timeout);
+          LogExecutionProgress(watchdog_name, device_ordinal, max_thunks_to_log,
+                               progress_tracker.get());
           std::move(callback)(watchdog_name, timeout);
         }));
   }
   return guards;
 }
+
+}  // namespace
 
 absl::Status GpuExecutable::ExecuteThunksImpl(
     const DebugOptions& debug_options, const std::string& module_name,
@@ -756,13 +832,28 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   }
 
   // Maybe install progress tracker for this execution.
-  int32_t progress_tracking_n =
+  int32_t max_thunks_to_log =
       debug_options.xla_gpu_execution_progress_tracking();
 
   std::optional<ThunkExecutor::ScopedProgressTracker> tracker;
-  if (progress_tracking_n > 0) {
+  if (max_thunks_to_log > 0) {
     ABSL_ASSIGN_OR_RETURN(tracker, InstallProgressTracker(executor, thunk_executor));
   }
+  std::shared_ptr<ThunkExecutor::ProgressTracker> progress_tracker =
+      tracker.has_value() ? tracker->tracker() : nullptr;
+
+  auto make_progress_logger =
+      [&](absl::string_view watchdog_name) -> HangWatchdog::CancelCallback {
+    if (progress_tracker == nullptr) {
+      return nullptr;
+    }
+    return [watchdog_name = std::string(watchdog_name),
+            device_ordinal = executor->device_ordinal(), max_thunks_to_log,
+            progress_tracker]() {
+      LogExecutionProgress(watchdog_name, device_ordinal, max_thunks_to_log,
+                           progress_tracker.get());
+    };
+  };
 
   absl::Duration host_timeout = absl::InfiniteDuration();
   absl::Duration device_timeout = absl::InfiniteDuration();
@@ -798,57 +889,15 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
 
   // Monitors that host thread makes progress and does not get stuck.
   std::vector<std::shared_ptr<HangWatchdog::Guard>> host_guards =
-      ExecutionTimeoutGuards(host_handlers, host_watchdog_name);
+      ExecutionTimeoutGuards(host_handlers, host_watchdog_name,
+                             executor->device_ordinal(), max_thunks_to_log,
+                             progress_tracker);
 
   if (host_timeout < absl::InfiniteDuration()) {
-    HangWatchdog::CancelCallback pre_abort;
-    if (tracker.has_value()) {
-      pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
-                   device_ordinal = executor->device_ordinal()] {
-        auto log_progress = [&](auto label, auto thunks) {
-          LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
-                                           label, thunks.size());
-          absl::c_sort(thunks, [](const auto& a, const auto& b) {
-            return a.executed < b.executed;
-          });
-          for (auto& thunk : thunks) {
-            std::string loop_info;
-            for (const auto& state : thunk.loop_nest) {
-              absl::StrAppend(&loop_info,
-                              absl::StrFormat(" [%s iter=%d]", state.loop_name,
-                                              state.loop_iteration));
-            }
-            LOG(ERROR) << absl::StreamFormat(
-                "  - exec[%d] thunk[%d/%d] %v: %s at %s%s", thunk.exec_idx,
-                thunk.thunk_idx, tracker->num_thunks(), thunk.kind, thunk.name,
-                absl::FormatTime("%Y-%m-%d %H:%M:%S.%E6f", thunk.executed,
-                                 absl::LocalTimeZone()),
-                loop_info);
-          }
-        };
-
-        size_t num_executions = tracker->num_executions();
-        LOG(ERROR) << absl::StreamFormat(
-            "[%d] Completed thunks: %d/%d (unique thunks: %d)", device_ordinal,
-            tracker->NumCompletedThunks(), num_executions,
-            tracker->num_thunks());
-        LOG(ERROR) << absl::StreamFormat(
-            "[%d] Pending thunks: %d/%d (unique thunks: %d)", device_ordinal,
-            tracker->NumPendingThunks(), num_executions, tracker->num_thunks());
-
-        log_progress("Last completed thunks",
-                     tracker->LastCompletedThunks(progress_tracking_n));
-        log_progress("First pending thunks",
-                     tracker->FirstPendingThunks(progress_tracking_n));
-        log_progress("Last pending thunks",
-                     tracker->LastPendingThunks(progress_tracking_n));
-      };
-    }
-
     host_guards.push_back(HangWatchdog::Global().Watch(
         host_watchdog_name, host_timeout,
         HangWatchdog::Abort(host_watchdog_name, host_timeout,
-                            std::move(pre_abort))));
+                            make_progress_logger(host_watchdog_name))));
   }
 
   // Borrow stream for tracing command buffers.
@@ -1040,6 +1089,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
   ABSL_RETURN_IF_ERROR(thunk_executor.ExecuteOnStream(execute_params));
+  tracker.reset();
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
@@ -1060,12 +1110,15 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
                       executor->device_ordinal(), module_name, run_id);
 
   std::vector<std::shared_ptr<HangWatchdog::Guard>> device_guards =
-      ExecutionTimeoutGuards(device_handlers, device_watchdog_name);
+      ExecutionTimeoutGuards(device_handlers, device_watchdog_name,
+                             executor->device_ordinal(), max_thunks_to_log,
+                             progress_tracker);
 
   if (device_timeout < absl::InfiniteDuration()) {
     device_guards.push_back(HangWatchdog::Global().Watch(
         device_watchdog_name, device_timeout,
-        HangWatchdog::Abort(device_watchdog_name, device_timeout)));
+        HangWatchdog::Abort(device_watchdog_name, device_timeout,
+                            make_progress_logger(device_watchdog_name))));
   }
 
   if (!device_guards.empty()) {
