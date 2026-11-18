@@ -290,20 +290,20 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
                   bool lhs) {
   auto update_dims =
       [&reshaped_dim](tsl::protobuf::RepeatedField<int64_t>* dims) {
-        bool add_reshaped_dim = false;
-        if (absl::c_linear_search(*dims, reshaped_dim)) {
-          add_reshaped_dim = true;
+        std::optional<int64_t> insert_pos;
+        if (auto it = absl::c_find(*dims, reshaped_dim); it != dims->end()) {
+          insert_pos = it - dims->begin();
         }
         for (int64_t& dim : *dims) {
           if (reshaped_dim <= dim) {
             dim += 1;
           }
         }
-        if (add_reshaped_dim) {
+        if (insert_pos.has_value()) {
           dims->Add(reshaped_dim);
-          // Sort the dimensions (assumes they were sorted before the addition)
-          for (int64_t i = dims->size() - 1;
-               i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
+          // Contracting and batch dimensions pair by list position, so insert
+          // at the original position rather than sorting by dimension index.
+          for (int64_t i = dims->size() - 1; i > *insert_pos; --i) {
             dims->SwapElements(i - 1, i);
           }
         }

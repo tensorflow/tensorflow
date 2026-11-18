@@ -421,6 +421,111 @@ ENTRY main {
   }
 }
 
+TEST_P(DotHandlerTest,
+       BidirectionalWindowedEinsumPreservesUnsortedDimensionNumbers) {
+  auto partition_bidirectional = [this](absl::string_view hlo_string)
+      -> absl::StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config = GetModuleConfigForTest(1, /*num_partitions=*/4);
+    config.set_use_spmd_partitioning(true);
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_enable_hlo_sharding_v3(
+        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
+    config.set_debug_options(debug_options);
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_string, config));
+    ShardingFormatPicker format_picker(GetParam());
+    ABSL_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
+
+    SpmdPartitionerOptions options;
+    options.threshold_for_windowed_einsum_mib = 0;
+    options.bidirectional_windowed_einsum = true;
+    options.skip_checking_windowed_einsum_users = true;
+
+    HloPassPipeline pass("partitioning");
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+    pass.AddPass<SpmdPartitioner>(/*num_partitions=*/4, /*num_replicas=*/1,
+                                  std::move(options));
+    pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
+                              /*allow_mixed_precision=*/false);
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    return module;
+  };
+
+  {
+    SCOPED_TRACE("unsorted_contracting_dims");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule test, num_partitions=4
+
+ENTRY main {
+  lhs = f32[16,2,8]{2,1,0} parameter(0), sharding={devices=[4,1,1]<=[4]}
+  rhs = f32[8,2,16]{2,1,0} parameter(1), sharding={devices=[4,1,1]<=[4]}
+  ROOT dot = f32[16,16]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={2,1}, rhs_contracting_dims={0,1},
+    sharding={devices=[4,1]<=[4]}
+}
+)hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         partition_bidirectional(kHlo));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    int64_t live_dot_count = 0;
+    for (const HloInstruction* inst :
+         while_inst->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kDot && inst->user_count() > 0) {
+        ++live_dot_count;
+        const DotDimensionNumbers& dnums = inst->dot_dimension_numbers();
+        EXPECT_THAT(dnums.lhs_contracting_dimensions(),
+                    ::testing::ElementsAre(2, 3, 1));
+        EXPECT_THAT(dnums.rhs_contracting_dimensions(),
+                    ::testing::ElementsAre(0, 1, 2));
+      }
+    }
+    EXPECT_EQ(live_dot_count, 2);
+  }
+
+  {
+    SCOPED_TRACE("unsorted_batch_dims");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule test, num_partitions=4
+
+ENTRY main {
+  lhs = f32[8,2,16,4]{3,2,1,0} parameter(0), sharding={devices=[1,1,4,1]<=[4]}
+  rhs = f32[2,8,4,16]{3,2,1,0} parameter(1), sharding={devices=[1,4,1,1]<=[4]}
+  ROOT dot = f32[2,8,16,16]{3,2,1,0} dot(lhs, rhs),
+    lhs_batch_dims={1,0}, rhs_batch_dims={0,1},
+    lhs_contracting_dims={3}, rhs_contracting_dims={2},
+    sharding={devices=[1,1,4,1]<=[4]}
+}
+)hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         partition_bidirectional(kHlo));
+    const HloInstruction* while_inst =
+        FindInstruction(module.get(), HloOpcode::kWhile);
+    ASSERT_NE(while_inst, nullptr);
+    int64_t live_dot_count = 0;
+    for (const HloInstruction* inst :
+         while_inst->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kDot && inst->user_count() > 0) {
+        ++live_dot_count;
+        const DotDimensionNumbers& dnums = inst->dot_dimension_numbers();
+        EXPECT_THAT(dnums.lhs_batch_dimensions(),
+                    ::testing::ElementsAre(2, 0, 1));
+        EXPECT_THAT(dnums.rhs_batch_dimensions(),
+                    ::testing::ElementsAre(0, 1, 2));
+        EXPECT_THAT(dnums.lhs_contracting_dimensions(),
+                    ::testing::ElementsAre(4));
+        EXPECT_THAT(dnums.rhs_contracting_dimensions(),
+                    ::testing::ElementsAre(3));
+      }
+    }
+    EXPECT_EQ(live_dot_count, 2);
+  }
+}
+
 TEST_P(DotHandlerTest, MXCustomCall_BatchAndBatch) {
   absl::string_view hlo_string = R"(
 HloModule module
