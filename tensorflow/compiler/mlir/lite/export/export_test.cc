@@ -292,6 +292,69 @@ TEST_F(ExportTest, ExportsBlockwiseQuantizationParametersAsTensors) {
               ElementsAre(0.5f, 0.25f));
 }
 
+TEST_F(ExportTest, CollapsesBroadcastBlockwiseZeroPoints) {
+  const std::string file = ExportOrDie(R"mlir(
+    func.func @main() -> (tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>) {
+      %w0 = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i2 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<-0.5> : tensor<2x2xf32>>>, value = dense<1> : tensor<2x4xi2>} : () -> tensor<2x4x!tfl.blockwise_quant<i2 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<-0.5> : tensor<2x2xf32>>>
+      %0 = "tfl.dequantize"(%w0) : (tensor<2x4x!tfl.blockwise_quant<i2 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<-0.5> : tensor<2x2xf32>>>) -> tensor<2x4xf32>
+
+      %w1 = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 1], [-1, -1]]> : tensor<2x2xi4>>>, value = dense<1> : tensor<2x4xi4>} : () -> tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 1], [-1, -1]]> : tensor<2x2xi4>>>
+      %1 = "tfl.dequantize"(%w1) : (tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 1], [-1, -1]]> : tensor<2x2xi4>>>) -> tensor<2x4xf32>
+
+      %w2 = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, -1], [1, -1]]> : tensor<2x2xi4>>>, value = dense<1> : tensor<2x4xi4>} : () -> tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, -1], [1, -1]]> : tensor<2x2xi4>>>
+      %2 = "tfl.dequantize"(%w2) : (tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, -1], [1, -1]]> : tensor<2x2xi4>>>) -> tensor<2x4xf32>
+
+      %w3 = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 2], [3, 4]]> : tensor<2x2xi4>>>, value = dense<1> : tensor<2x4xi4>} : () -> tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 2], [3, 4]]> : tensor<2x2xi4>>>
+      %3 = "tfl.dequantize"(%w3) : (tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 2], scales = dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>, zero_points = dense<[[1, 2], [3, 4]]> : tensor<2x2xi4>>>) -> tensor<2x4xf32>
+
+      func.return %0, %1, %2, %3 : tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>
+    }
+  )mlir");
+  const tflite::Model* model = tflite::GetModel(file.data());
+  const tflite::SubGraph* subgraph = model->subgraphs()->Get(0);
+
+  auto get_zp = [&](int op_index) -> const tflite::Tensor* {
+    const int weight_idx =
+        subgraph->operators()->Get(op_index)->inputs()->Get(0);
+    const tflite::Tensor* weight = subgraph->tensors()->Get(weight_idx);
+    const tflite::BlockwiseQuantization* bw =
+        weight->quantization()->details_as_BlockwiseQuantization();
+    EXPECT_NE(bw, nullptr);
+    return subgraph->tensors()->Get(bw->zero_points());
+  };
+
+  // Uniform float zero point collapses to [1, 1].
+  const tflite::Tensor* zp0 = get_zp(0);
+  EXPECT_EQ(zp0->type(), tflite::TensorType_FLOAT32);
+  EXPECT_THAT(std::vector<int32_t>(zp0->shape()->begin(), zp0->shape()->end()),
+              ElementsAre(1, 1));
+  EXPECT_THAT(GetValues<float>(GetData(file, model, zp0)), ElementsAre(-0.5f));
+
+  // Axis 1 uniform collapses to [2, 1].
+  const tflite::Tensor* zp1 = get_zp(1);
+  EXPECT_EQ(zp1->type(), tflite::TensorType_INT32);
+  EXPECT_THAT(std::vector<int32_t>(zp1->shape()->begin(), zp1->shape()->end()),
+              ElementsAre(2, 1));
+  EXPECT_THAT(GetValues<int32_t>(GetData(file, model, zp1)),
+              ElementsAre(1, -1));
+
+  // Axis 0 uniform collapses to [1, 2].
+  const tflite::Tensor* zp2 = get_zp(2);
+  EXPECT_EQ(zp2->type(), tflite::TensorType_INT32);
+  EXPECT_THAT(std::vector<int32_t>(zp2->shape()->begin(), zp2->shape()->end()),
+              ElementsAre(1, 2));
+  EXPECT_THAT(GetValues<int32_t>(GetData(file, model, zp2)),
+              ElementsAre(1, -1));
+
+  // Non-uniform zero points keep full [2, 2] shape.
+  const tflite::Tensor* zp3 = get_zp(3);
+  EXPECT_EQ(zp3->type(), tflite::TensorType_INT32);
+  EXPECT_THAT(std::vector<int32_t>(zp3->shape()->begin(), zp3->shape()->end()),
+              ElementsAre(2, 2));
+  EXPECT_THAT(GetValues<int32_t>(GetData(file, model, zp3)),
+              ElementsAre(1, 2, 3, 4));
+}
+
 TEST_F(ExportTest, ExportsCompositeWithDecompositionSubgraph) {
   OwningOpRef<ModuleOp> module = Parse(R"mlir(
     func.func private @decomposition(%x: tensor<2xf32>) -> tensor<2xf32> {
