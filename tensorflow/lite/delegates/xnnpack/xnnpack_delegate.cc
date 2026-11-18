@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
@@ -1495,13 +1496,34 @@ class Subgraph {
     }
     flags |= delegate.runtime_flags();
 
-    // `DelegatePrepare` scopes a single weight-cache build step across all
-    // delegated partitions of the TFLite subgraph.
+    // Run a build step per partition so packed weights are committed and mapped
+    // incrementally. Skip if an outer caller already owns the active build
+    // step.
+    MMapWeightCacheProvider& weight_cache = *delegate.weight_cache_provider_;
+    const bool manage_build_step =
+        weight_cache.CanStartBuildStep() && !weight_cache.IsBuilding();
+    if (manage_build_step && !weight_cache.StartBuildStep()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to start cache build step.");
+      return nullptr;
+    }
     {
       std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
       status = xnn_create_runtime_v4(
           subgraph.get(), delegate.weights_cache(), delegate.workspace(),
           delegate.threadpool(), flags, &runtime_ptr);
+    }
+    // Keep the staging buffer allocated across partitions to avoid repeated
+    // reallocation and page faults; DelegatePrepare releases it on exit.
+    if (manage_build_step &&
+        !weight_cache.StopBuildStep(/*release_staging_buffer=*/false)) {
+      if (runtime_ptr != nullptr) {
+        std::lock_guard lock(*delegate.workspace_mutex_);
+        xnn_delete_runtime(runtime_ptr);
+      }
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to stop cache build step.");
+      return nullptr;
     }
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
@@ -7803,27 +7825,16 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     return kTfLiteError;
   }
 
+  // Release the staging buffer retained across partition build steps in
+  // Subgraph::Create (no-op if an outer caller owns the build step).
+  ScopeGuard release_staging_buffer([&xnnpack_delegate] {
+    xnnpack_delegate.weight_cache_provider().ReleaseStagingBuffer();
+  });
+
   TfLiteStatus status = kTfLiteOk;
   if (ops_to_replace->size != 0) {
-    // Scope a single weight-cache build step across all delegated partitions of
-    // this TFLite subgraph so they share one staging buffer and cache-file
-    // update; skip if an outer caller is already managing a build step.
-    MMapWeightCacheProvider& weight_cache =
-        xnnpack_delegate.weight_cache_provider();
-    const bool manage_build_step =
-        weight_cache.CanStartBuildStep() && !weight_cache.IsBuilding();
-    if (manage_build_step && !weight_cache.StartBuildStep()) {
-      TF_LITE_KERNEL_LOG(context,
-                         "XNNPack delegate failed to start cache build step.");
-      return kTfLiteError;
-    }
     status = context->ReplaceNodeSubsetsWithDelegateKernels(
         context, kSubgraphRegistration, ops_to_replace.get(), delegate);
-    if (manage_build_step && !weight_cache.StopBuildStep()) {
-      TF_LITE_KERNEL_LOG(context,
-                         "XNNPack delegate failed to stop cache build step.");
-      return kTfLiteError;
-    }
   }
   if (status != kTfLiteOk) {
     return status;

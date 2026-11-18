@@ -177,8 +177,16 @@ class WeightCacheBuilder {
                         int fingerprint_id);
 
   // Writes the flatbuffer to disk.
+  //
+  // Frees the temporary staging buffer when `release_staging_buffer` is true.
+  // When false, the caller must call `ReleaseStagingBuffer()` (including on
+  // error paths).
   [[nodiscard /*Writing the weight cache can fail.*/]]
-  bool StopBuildStep();
+  bool StopBuildStep(bool release_staging_buffer = true);
+
+  // Releases the temporary staging buffer if no build step is currently active.
+  // Not thread-safe; callers must synchronize externally.
+  void ReleaseStagingBuffer();
 
   // Get the offset in the cache file of the data written during the last step.
   //
@@ -368,8 +376,16 @@ class MMapWeightCacheProvider {
   bool StartBuildStep();
 
   // Prepares to use data that was added to the cache during a build step.
+  //
+  // Frees the builder's temporary staging buffer when `release_staging_buffer`
+  // is true. When false, the caller must call `ReleaseStagingBuffer()`
+  // (including on error paths).
   [[nodiscard /*Updating cache data may fail.*/]]
-  bool StopBuildStep();
+  bool StopBuildStep(bool release_staging_buffer = true);
+
+  // Releases the builder's temporary staging buffer if no build step is
+  // currently active. Not thread-safe; callers must synchronize externally.
+  void ReleaseStagingBuffer() { builder_.ReleaseStagingBuffer(); }
 
   // Creates the tensor map.
   [[nodiscard]]

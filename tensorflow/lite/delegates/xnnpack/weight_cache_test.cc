@@ -295,6 +295,74 @@ TEST_F(WeightCacheBuilderTest, EmptyBuildStepEndsTheStep) {
   EXPECT_EQ(packed_weights->buffers()->size(), 2);
 }
 
+TEST_F(WeightCacheBuilderTest, RetainAndReleaseStagingBufferAcrossSteps) {
+  const std::string cache_path = testing::TempDir() + "/retain_staging_cache";
+  const std::string payload1 = "First step payload.";
+  const std::string payload2 = "Second step payload.";
+  const PackIdentifier id1{1, 2, 3};
+  const PackIdentifier id2{4, 5, 6};
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // Step 1 retains the staging buffer on stop.
+  ASSERT_TRUE(builder.StartBuildStep());
+  void* buf1 = builder.Reserve(4096);
+  ASSERT_NE(buf1, nullptr);
+  std::memcpy(buf1, payload1.data(), payload1.size());
+  ASSERT_FALSE(
+      builder.Append(id1, buf1, payload1.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  uint8_t* const retained_data = builder.data();
+  const size_t retained_capacity = builder.capacity();
+  ASSERT_NE(retained_data, nullptr);
+  EXPECT_GE(retained_capacity, 4096);
+
+  // Step 2 reuses the retained staging buffer without reallocating, and
+  // ReleaseStagingBuffer is a no-op while a build step is active.
+  ASSERT_TRUE(builder.StartBuildStep());
+  void* buf2 = builder.Reserve(1024);
+  ASSERT_NE(buf2, nullptr);
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+  builder.ReleaseStagingBuffer();
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+  std::memcpy(buf2, payload2.data(), payload2.size());
+  ASSERT_FALSE(
+      builder.Append(id2, buf2, payload2.size(), kDefaultFingerprint.id)
+          .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+
+  // An empty step with retention also preserves the staging buffer.
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_TRUE(builder.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.data(), retained_data);
+  EXPECT_EQ(builder.capacity(), retained_capacity);
+
+  // Explicit release frees the staging buffer once no step is active.
+  builder.ReleaseStagingBuffer();
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(cache_path.c_str()));
+  const auto& header =
+      *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+  const cache::schema::BufferList* const packed_weights =
+      cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+  ASSERT_NE(packed_weights, nullptr);
+  ASSERT_NE(packed_weights->buffers(), nullptr);
+  EXPECT_EQ(packed_weights->buffers()->size(), 2);
+}
+
 TEST_F(WeightCacheBuilderTest, FailedAppendDoesNotCorruptSchema) {
   const std::string cache_path = testing::TempDir() + "/cache";
   const std::string bad_payload = "Unwritten payload.";
@@ -865,6 +933,46 @@ TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
 
   ASSERT_TRUE(cache_provider.IsActive());
   EXPECT_FALSE(cache_provider.IsBuilding());
+}
+
+TEST_P(BuildMMapWeightCacheProviderTest,
+       RetainAndReleaseStagingBufferAcrossSteps) {
+  enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  void* const buf1 = cache_provider.ReserveSpace(4096);
+  ASSERT_NE(buf1, nullptr);
+  const auto pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(),
+                                         kAlgoSeed1, kWeightIndex1, kBiasIndex);
+  ASSERT_TRUE(cache_provider.StopBuildStep(/*release_staging_buffer=*/false));
+  EXPECT_FALSE(cache_provider.IsBuilding());
+
+  // Step 1's buffer is mapped and readable immediately after step 1 stops.
+  const xnn_weights_cache_look_up_key key_1 =
+      ctx.LookUpKey(kAlgoSeed1, kWeightIndex1, kBiasIndex);
+  const size_t offset_1 = cache_provider.LookUp(&key_1);
+  ASSERT_EQ(offset_1, ctx.packed_buffers.find(pack_id_1)->second.offset);
+  EXPECT_NE(cache_provider.OffsetToAddr(offset_1), nullptr);
+
+  // Step 2 reuses the retained staging buffer and maps step 2's buffer, while
+  // ReleaseStagingBuffer is a no-op during the active build step.
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  EXPECT_EQ(cache_provider.ReserveSpace(1024), buf1);
+  cache_provider.ReleaseStagingBuffer();
+  EXPECT_EQ(cache_provider.ReserveSpace(1024), buf1);
+  const auto pack_id_2 = ctx.PackTensors(&cache_provider.GetCacheProvider(),
+                                         kAlgoSeed2, kWeightIndex2);
+  ASSERT_TRUE(cache_provider.StopBuildStep(/*release_staging_buffer=*/false));
+
+  const xnn_weights_cache_look_up_key key_2 =
+      ctx.LookUpKey(kAlgoSeed2, kWeightIndex2);
+  const size_t offset_2 = cache_provider.LookUp(&key_2);
+  ASSERT_EQ(offset_2, ctx.packed_buffers.find(pack_id_2)->second.offset);
+  EXPECT_NE(cache_provider.OffsetToAddr(offset_2), nullptr);
+
+  cache_provider.ReleaseStagingBuffer();
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  EXPECT_NE(cache_provider.ReserveSpace(1024), nullptr);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
 }
 
 TEST_P(BuildMMapWeightCacheProviderTest, MemoryLockCacheWorks) {

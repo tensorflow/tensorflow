@@ -24,6 +24,7 @@ limitations under the License.
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>  // IWYU pragma: keep
 #include <cinttypes>
 #include <cstddef>
@@ -224,6 +225,13 @@ bool WeightCacheBuilder::StartBuildStep() {
 
 void WeightCacheBuilder::Reset() { *this = WeightCacheBuilder(); }
 
+void WeightCacheBuilder::ReleaseStagingBuffer() {
+  if (!is_build_step_.load(std::memory_order_acquire)) {
+    data_.reset();
+    capacity_ = 0;
+  }
+}
+
 void* WeightCacheBuilder::Reserve(size_t size) {
   if (size > capacity_) {
     // We don't care about the data when we are reserving space. We save memory
@@ -300,16 +308,19 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   return loc;
 }
 
-bool WeightCacheBuilder::StopBuildStep() {
-  XNNPACK_RETURN_CHECK(is_build_step_,
+bool WeightCacheBuilder::StopBuildStep(bool release_staging_buffer) {
+  XNNPACK_RETURN_CHECK(is_build_step_.load(std::memory_order_acquire),
                        "Attempting to stop a non existing build step. This may "
                        "be a concurrency issue.");
-  // The staging buffer is only used within a step, so free it whenever the step
-  // ends.
-  ScopeGuard end_build_step([this] {
-    data_.reset();
-    capacity_ = 0;
-    is_build_step_ = false;
+  // End the build step on every exit path. Free the staging buffer before
+  // clearing `is_build_step_` so a concurrent `StartBuildStep` cannot race on
+  // `data_` (`ReleaseStagingBuffer()` is a no-op while building).
+  ScopeGuard end_build_step([this, release_staging_buffer] {
+    if (release_staging_buffer) {
+      data_.reset();
+      capacity_ = 0;
+    }
+    is_build_step_.store(false, std::memory_order_release);
   });
   XNNPACK_RETURN_CHECK(fd_.IsValid(), "cache file ('%s') is not open.",
                        file_path_.c_str());
@@ -697,8 +708,8 @@ bool MMapWeightCacheProvider::StartBuildStep() {
   return builder_.StartBuildStep();
 }
 
-bool MMapWeightCacheProvider::StopBuildStep() {
-  XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
+bool MMapWeightCacheProvider::StopBuildStep(bool release_staging_buffer) {
+  XNNPACK_RETURN_CHECK(builder_.StopBuildStep(release_staging_buffer));
 #if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by

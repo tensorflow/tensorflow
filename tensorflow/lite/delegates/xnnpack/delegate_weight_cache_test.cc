@@ -178,7 +178,8 @@ TEST_F(XnnpackDelegateWeightCacheTest,
 
     // Main subgraph: `FullyConnected -> StableHLOComposite -> FullyConnected`.
     // The unsupported composite op splits `main_graph` into two XNNPACK
-    // partitions that share one build step in `DelegatePrepare`.
+    // partitions, each running its own build step while sharing a staging
+    // buffer released on `DelegatePrepare` exit.
     auto input = NewInput(main_graph, kTfLiteFloat32);
     SetShape(input, {2, 4});
     auto fc1 = FullyConnected(input, weights1);
@@ -186,10 +187,11 @@ TEST_F(XnnpackDelegateWeightCacheTest,
     SetShape(mid[0], {2, 3});
     MarkOutput(FullyConnected(mid[0], weights2));
 
-    // Delegate the interpreter; `run == 0` lets `DelegatePrepare` scope a
-    // single build step across both XNNPACK partitions, while `run == 1`
-    // starts an outer build step and verifies that partition creation does not
-    // prematurely stop it.
+    // Delegate the interpreter; `run == 0` commits each XNNPACK partition in
+    // its own build step and releases the retained staging buffer on
+    // `DelegatePrepare` exit, while `run == 1` starts an outer build step and
+    // verifies that partition creation does not prematurely stop it or release
+    // its staging buffer.
     tflite::Interpreter interpreter;
     builder.Build(interpreter);
 
@@ -197,8 +199,11 @@ TEST_F(XnnpackDelegateWeightCacheTest,
         TfLiteXNNPackDelegateCreate(&xnnpack_options),
         TfLiteXNNPackDelegateDelete);
 
+    void* outer_staging_buffer = nullptr;
     if (run == 1) {
       ASSERT_TRUE(shared_weight_cache_provider.StartBuildStep());
+      outer_staging_buffer = shared_weight_cache_provider.ReserveSpace(1024);
+      ASSERT_NE(outer_staging_buffer, nullptr);
     }
     ASSERT_EQ(interpreter.ModifyGraphWithDelegate(std::move(xnnpack_delegate)),
               kTfLiteOk);
@@ -206,6 +211,8 @@ TEST_F(XnnpackDelegateWeightCacheTest,
     EXPECT_TRUE(shared_weight_cache_provider.IsActive());
     if (run == 1) {
       EXPECT_TRUE(shared_weight_cache_provider.IsBuilding());
+      EXPECT_EQ(shared_weight_cache_provider.ReserveSpace(1024),
+                outer_staging_buffer);
       ASSERT_TRUE(shared_weight_cache_provider.StopBuildStep());
     }
     EXPECT_FALSE(shared_weight_cache_provider.IsBuilding());
