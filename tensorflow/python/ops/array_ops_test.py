@@ -539,6 +539,29 @@ class TestFoldInputValidation(test.TestCase):
       )
       self.assertAllEqual(self.evaluate(expected), self.evaluate(actual))
 
+  def test_numpy_integer_sequence_arguments(self):
+    # (h, w) pairs of NumPy integers, as tuples and as lists.
+    patches = random_ops.random_normal([1, 3, 3, 4])
+    expected = array_ops.fold(
+        patches,
+        output_size=(4, 4),
+        sizes=(2, 2),
+        strides=(2, 2),
+        padding=1,
+        rates=(1, 1),
+    )
+    for i in (np.int32, np.int64):
+      for seq in (tuple, list):
+        actual = array_ops.fold(
+            patches,
+            output_size=seq([i(4), i(4)]),
+            sizes=seq([i(2), i(2)]),
+            strides=seq([i(2), i(2)]),
+            padding=1,
+            rates=seq([i(1), i(1)]),
+        )
+        self.assertAllEqual(self.evaluate(expected), self.evaluate(actual))
+
 @test_util.run_all_in_graph_and_eager_modes
 class TestFoldGradients(test.TestCase):
   """Tests fold differentiability and numerical gradient correctness.
