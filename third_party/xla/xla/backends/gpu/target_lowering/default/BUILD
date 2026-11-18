@@ -14,13 +14,13 @@
 # ==============================================================================
 
 # Description:
-#   Default implementations for llvm_gpu_backend
+#   Default implementations for target_lowering
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/service/gpu/llvm_gpu_backend:__pkg__"],
+    default_visibility = ["//xla/backends/gpu/target_lowering:__pkg__"],
     licenses = ["notice"],
 )
 
@@ -28,7 +28,7 @@ cc_library(
     name = "nvptx_libdevice_path",
     srcs = ["nvptx_libdevice_path.cc"],
     deps = [
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_utils",
+        "//xla/backends/gpu/target_lowering:nvptx_utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

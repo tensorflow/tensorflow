@@ -16,22 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_UTILS_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_UTILS_H_
 
-#include <string>
-
-#include "absl/strings/string_view.h"
-
-namespace xla {
-namespace gpu {
-
-// Convenience function for replacing the extension of the given filename.
-// If the filename has no extension, the new extension is appended to its name.
-//
-// For example:
-//   ReplaceFilenameExtension("/foo/baz.txt", "cc") --> "/foo/baz.cc"
-std::string ReplaceFilenameExtension(absl::string_view filename,
-                                     absl::string_view new_extension);
-
-}  // namespace gpu
-}  // namespace xla
+// IWYU pragma: private, include "xla/backends/gpu/target_lowering/utils.h"
+#include "xla/backends/gpu/target_lowering/utils.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_LLVM_GPU_BACKEND_UTILS_H_

@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/cost_model/triton_emitter_constraints.h"
+#include "xla/backends/gpu/target_lowering/nvptx_libdevice_path.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
@@ -112,7 +113,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/error_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -267,7 +267,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   // TODO: b/363203060 - Upstream Triton sets specific flags for the LLVM
   // optimizer to get best performance. Figure out if we can gain any of it by
   // propagating these flags to
-  // xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc.
+  // xla/backends/gpu/target_lowering/gpu_backend_lib.cc.
   return llvmModule;
 }
 

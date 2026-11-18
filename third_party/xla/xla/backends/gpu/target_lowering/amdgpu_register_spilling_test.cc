@@ -20,11 +20,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/gpu/target_lowering/amdgpu_backend.h"
+#include "xla/backends/gpu/target_lowering/load_ir_module.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
-#include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_stats.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
@@ -56,8 +57,8 @@ class AMDGPURegisterSpillingTest
   std::unique_ptr<llvm::Module> LoadTestModule(llvm::LLVMContext* context,
                                                const std::string& filename) {
     return LoadIRModule(
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                          "llvm_gpu_backend", "tests_data", filename),
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "backends", "gpu",
+                          "target_lowering", "tests_data", filename),
         context);
   }
 
@@ -164,8 +165,8 @@ TEST(AMDGPUCacheHitModuleStatsTest, CacheHitReturnsIdenticalModuleStats) {
   const std::string module_id = "cache_hit_stats_test";
   auto load_module = [&context]() {
     return LoadIRModule(
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                          "llvm_gpu_backend", "tests_data",
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "backends", "gpu",
+                          "target_lowering", "tests_data",
                           "amdgpu_vgpr_spills.ll"),
         &context);
   };

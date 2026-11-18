@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
+#include "xla/backends/gpu/target_lowering/nvptx_backend.h"
 
 #include <optional>
 #include <string>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
+#include "xla/backends/gpu/target_lowering/ptx_version_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"

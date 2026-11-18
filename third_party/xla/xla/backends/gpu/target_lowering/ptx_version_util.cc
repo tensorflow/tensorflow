@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
+#include "xla/backends/gpu/target_lowering/ptx_version_util.h"
 
 namespace xla::gpu::nvptx {
 

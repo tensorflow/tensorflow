@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
+#include "xla/backends/gpu/target_lowering/spirv_backend.h"
 
 #include <memory>
 #include <set>

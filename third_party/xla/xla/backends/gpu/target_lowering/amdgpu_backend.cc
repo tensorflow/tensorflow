@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
+#include "xla/backends/gpu/target_lowering/amdgpu_backend.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -88,8 +88,8 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
+#include "xla/backends/gpu/target_lowering/gpu_backend_lib.h"
+#include "xla/backends/gpu/target_lowering/load_ir_module.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -115,7 +115,7 @@ LLD_HAS_DRIVER(elf)
 #endif
 
 #ifdef HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_device_lib_data.h"
+#include "xla/backends/gpu/target_lowering/amdgpu_device_lib_data.h"
 #else
 constexpr const char* kAMDGPUDeviceLibData = "";
 #endif

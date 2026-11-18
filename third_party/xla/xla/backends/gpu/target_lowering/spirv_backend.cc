@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
+#include "xla/backends/gpu/target_lowering/spirv_backend.h"
 
 #include <memory>
 #include <string>
@@ -38,8 +38,8 @@ limitations under the License.
 #include "llvm/lib/Target/SPIRV/SPIRVAPI.h"
 #include "llvm/lib/Target/SPIRV/SPIRVSubtarget.h"
 #include "llvm/lib/Target/SPIRV/SPIRVTargetMachine.h"
+#include "xla/backends/gpu/target_lowering/gpu_backend_lib.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "tsl/platform/errors.h"
 

@@ -13,45 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// LLVM-based compiler backend.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_AMDGPU_BACKEND_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_AMDGPU_BACKEND_H_
 
-#include <cstdint>
-#include <string>
-#include <vector>
-
-#include "absl/status/statusor.h"
-#include "llvm/IR/Module.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/kernel_stats.h"
-#include "xla/xla.pb.h"
-
-namespace xla::gpu::amdgpu {
-
-// Result of compiling an LLVM module to HSACO format (in-memory bytes and
-// path).
-struct HsacoResult {
-  std::vector<uint8_t> hsaco;  // in-memory bytes of HSACO file
-  ModuleStats module_stats;    // module statistics
-};
-
-// Links ROCm-Device-Libs into the given module if the module needs it.
-absl::Status LinkROCDLIfNecessary(llvm::Module* module,
-                                  const std::string& gfx_version,
-                                  const DebugOptions& debug_options);
-
-// Compiles the argument module and returns it with LLVM AMDGPU backend.
-// rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
-// The contents of the module may be changed.
-absl::StatusOr<HsacoResult> CompileToHsaco(
-    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options,
-    const std::string& module_config_cache_key);
-
-// Returns the LLVM command line flags that we use for compilation.
-std::vector<std::string> GetAMDGPUBackendOptions(
-    const DebugOptions& debug_options);
-}  // namespace xla::gpu::amdgpu
+// IWYU pragma: private, include "xla/backends/gpu/target_lowering/amdgpu_backend.h"
+#include "xla/backends/gpu/target_lowering/amdgpu_backend.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_LLVM_GPU_BACKEND_AMDGPU_BACKEND_H_

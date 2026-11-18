@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_LOAD_IR_MODULE_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_LOAD_IR_MODULE_H_
 
-#include <memory>
-#include <string>
-
-#include "absl/strings/string_view.h"
-
-namespace llvm {
-class LLVMContext;
-class Module;
-}  // namespace llvm
-
-namespace xla::gpu {
-
-// Convenience function for loading a LLVM module from an IR file. The module
-// is created in the given LLVM context.
-//
-// If loading fails for some reason, dies printing a diagnostic error.
-std::unique_ptr<llvm::Module> LoadIRModule(const std::string& filename,
-                                           llvm::LLVMContext* llvm_context);
-
-// Convenience function for replacing the extension of the given filename.
-// If the filename has no extension, the new extension is appended to its name.
-//
-// For example:
-//   ReplaceFilenameExtension("/foo/baz.txt", "cc") --> "/foo/baz.cc"
-std::string ReplaceFilenameExtension(absl::string_view filename,
-                                     absl::string_view new_extension);
-
-}  // namespace xla::gpu
+// IWYU pragma: private, include "xla/backends/gpu/target_lowering/load_ir_module.h"
+#include "xla/backends/gpu/target_lowering/load_ir_module.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_LLVM_GPU_BACKEND_LOAD_IR_MODULE_H_

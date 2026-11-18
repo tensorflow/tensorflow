@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
+#include "xla/backends/gpu/target_lowering/nvptx_utils.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"

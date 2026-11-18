@@ -9,26 +9,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
-
+#ifndef XLA_BACKENDS_GPU_TARGET_LOWERING_NVPTX_LIBDEVICE_PATH_H_
+#define XLA_BACKENDS_GPU_TARGET_LOWERING_NVPTX_LIBDEVICE_PATH_H_
 #include <string>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/cuda_root_path.h"
 
 namespace xla::gpu::nvptx {
 
-std::string CantFindCudaMessage(absl::string_view msg,
-                                absl::string_view xla_gpu_cuda_data_dir) {
-  return absl::StrCat(
-      msg, "\nSearched for CUDA in the following directories:\n  ",
-      absl::StrJoin(tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir}),
-                    "\n  "),
-      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
-      "in HloModule's DebugOptions.  For most apps, setting the environment "
-      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
-}
+// Returns path to libdevice file.
+std::string LibDevicePath(absl::string_view xla_gpu_data_dir);
 
 }  // namespace xla::gpu::nvptx
+
+#endif  // XLA_BACKENDS_GPU_TARGET_LOWERING_NVPTX_LIBDEVICE_PATH_H_

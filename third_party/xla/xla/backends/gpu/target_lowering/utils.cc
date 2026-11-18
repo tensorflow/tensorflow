@@ -1,26 +1,35 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2017 The OpenXLA Authors.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
 
-#include <gtest/gtest.h>
-#include "tsl/platform/test.h"
+#include "xla/backends/gpu/target_lowering/utils.h"
 
-namespace xla::gpu::nvptx {
-namespace {
+#include <string>
 
-TEST(NvptxUtilsTest, CantFindCudaMessageTest) {
-  auto msg = CantFindCudaMessage("foo", "/bar");
-  EXPECT_NE(msg.length(), 0);
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+
+namespace xla {
+namespace gpu {
+
+std::string ReplaceFilenameExtension(absl::string_view filename,
+                                     absl::string_view new_extension) {
+  auto pos = filename.rfind('.');
+  absl::string_view stem =
+      pos == absl::string_view::npos ? filename : filename.substr(0, pos);
+  return absl::StrCat(stem, ".", new_extension);
 }
 
-}  // namespace
-}  // namespace xla::gpu::nvptx
+}  // namespace gpu
+}  // namespace xla

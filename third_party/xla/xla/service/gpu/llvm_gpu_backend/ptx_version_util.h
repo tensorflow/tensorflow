@@ -16,16 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_PTX_VERSION_UTIL_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_PTX_VERSION_UTIL_H_
 
-#include "xla/stream_executor/semantic_version.h"
-
-namespace xla::gpu::nvptx {
-
-// Determine PTX version from CUDA version.
-stream_executor::SemanticVersion
-DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::SemanticVersion cuda_version,
-    int compute_capability_major = 0);
-
-}  // namespace xla::gpu::nvptx
+// IWYU pragma: private, include "xla/backends/gpu/target_lowering/ptx_version_util.h"
+#include "xla/backends/gpu/target_lowering/ptx_version_util.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GPU_LLVM_GPU_BACKEND_PTX_VERSION_UTIL_H_

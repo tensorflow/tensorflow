@@ -13,23 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/llvm_gpu_backend/utils.h"
+#include "xla/backends/gpu/target_lowering/utils.h"
 
-#include <string>
-
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
-std::string ReplaceFilenameExtension(absl::string_view filename,
-                                     absl::string_view new_extension) {
-  auto pos = filename.rfind('.');
-  absl::string_view stem =
-      pos == absl::string_view::npos ? filename : filename.substr(0, pos);
-  return absl::StrCat(stem, ".", new_extension);
+TEST(UtilsTest, TestReplaceFilenameExtension) {
+  ASSERT_EQ(ReplaceFilenameExtension("baz.tx", "cc"), "baz.cc");
+  ASSERT_EQ(ReplaceFilenameExtension("/foo/baz.txt", "cc"), "/foo/baz.cc");
+  ASSERT_EQ(ReplaceFilenameExtension("/foo/baz.", "-nvptx.dummy"),
+            "/foo/baz.-nvptx.dummy");
+  ASSERT_EQ(ReplaceFilenameExtension("/foo/baz", "cc"), "/foo/baz.cc");
 }
 
+}  // namespace
 }  // namespace gpu
 }  // namespace xla

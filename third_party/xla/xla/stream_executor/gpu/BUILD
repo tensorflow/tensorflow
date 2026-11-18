@@ -363,7 +363,7 @@ xla_test(
     deps = [
         ":asm_compiler",
         "//xla:debug_options_flags",
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/backends/gpu/target_lowering:amdgpu_backend",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",

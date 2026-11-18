@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
 #include "absl/status/status_macros.h"
+#include "xla/backends/gpu/target_lowering/spirv_backend.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_pipeline.h"
-#include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_verifier.h"

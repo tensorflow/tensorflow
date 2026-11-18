@@ -19,9 +19,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/gpu/target_lowering/amdgpu_backend.h"
+#include "xla/backends/gpu/target_lowering/load_ir_module.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
-#include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -29,8 +29,8 @@ namespace xla::gpu {
 namespace {
 
 std::string TestIRFile() {
-  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                           "llvm_gpu_backend", "tests_data", "amdgpu.ll");
+  return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "backends", "gpu",
+                           "target_lowering", "tests_data", "amdgpu.ll");
 }
 
 bool HasUndefinedFunctions(const llvm::Module& M) {
