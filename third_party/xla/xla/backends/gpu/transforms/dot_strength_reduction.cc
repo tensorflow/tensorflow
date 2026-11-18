@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/transforms/one_hot_gather_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -608,6 +608,23 @@ absl::StatusOr<HloInstruction*> ExpandOneHotDot(HloDotInstruction* dot,
   return selected;
 }
 
+// Returns true if `ExpandInstruction` can emit the multiply for `algorithm`.
+bool StrengthReduceAlgorithmSupports(PrecisionConfig::Algorithm algorithm) {
+  switch (algorithm) {
+    case PrecisionConfig::ALG_UNSET:
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
@@ -675,10 +692,7 @@ bool DotStrengthReduction::InstructionMatchesPattern(
       MatchOneHotDot(dot, compute_capability_).has_value()) {
     return true;
   }
-  // FP8xN dots are decomposed by DotAlgorithmRewriter after layout assignment.
-  const auto algorithm = dot->precision_config().algorithm();
-  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 ||
-      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
+  if (!StrengthReduceAlgorithmSupports(dot->precision_config().algorithm())) {
     return false;
   }
   const HloInstruction* lhs = dot->operand(0);
@@ -725,7 +739,10 @@ bool DotStrengthReduction::InstructionMatchesPattern(
 
   // If GemmFusion cannot handle this dot, we should strength-reduce it so that
   // it can be handled by the fusion pipeline.
-  return !legacy_triton::CanTritonHandleGEMM(*dot, compute_capability_);
+  if (!EnsureTritonSupportsComputeCapability(compute_capability_).ok()) {
+    return true;
+  }
+  return !IsTritonSupportedInstruction(*dot, compute_capability_);
 }
 
 }  // namespace gpu

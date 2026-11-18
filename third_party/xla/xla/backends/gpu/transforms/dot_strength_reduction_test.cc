@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -406,6 +407,43 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   DotStrengthReduction pass{
       se::GpuComputeCapability(se::CudaComputeCapability::Ampere())};
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(DotStrengthReductionTest,
+       MatrixVectorDotShouldBeStrengthReducedOnOneApi) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[32, 5000, 7000] parameter(0)
+  p1 = f32[32, 5000] parameter(1)
+  ROOT dot = f32[32,7000] dot(p0, p1), lhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::OneAPIComputeCapability::BMG())};
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(DotStrengthReductionTest,
+       DotWithAlgorithmUnsupportedByStrengthReductionIsNotRewritten) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f16[10,1000]{1,0} parameter(0)
+  p1 = f16[10,1000,2000]{2,1,0} parameter(1)
+  ROOT dot = f32[2000]{0} dot(p0, p1),
+    lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1},
+    algorithm=dot_f16_f16_f32
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx942"))};
   ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 }
