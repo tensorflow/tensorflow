@@ -476,7 +476,9 @@ NcclCommunicator::~NcclCommunicator() {
 
     XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
         << "Destroy " << description;
-    return XLA_NCCL_STATUS(ncclCommDestroy(comm_->comm));
+    ncclComm_t comm = std::exchange(comm_->comm, nullptr);
+    comm_->num_symmetric_windows = 0;
+    return XLA_NCCL_STATUS(ncclCommDestroy(comm));
   };
 
   if (absl::Status s = Execute(f).Await(); !s.ok()) {
@@ -500,7 +502,9 @@ absl::Status NcclCommunicator::Abort() {
     // Note that we intentionally don't call PollUntilDone. Once comm_
     // has been aborted, we can no longer safely touch it.
     absl::MutexLock lock(comm_->mutex);
-    return XLA_NCCL_STATUS(ncclCommAbort(comm_->comm));
+    ncclComm_t comm = std::exchange(comm_->comm, nullptr);
+    comm_->num_symmetric_windows = 0;
+    return XLA_NCCL_STATUS(ncclCommAbort(comm));
   });
 }
 
@@ -1453,6 +1457,9 @@ NcclDeviceCommunicator::~NcclDeviceCommunicator() {
     auto activation = stream_executor_->Activate();
     {
       absl::MutexLock lock(parent_comm_->mutex);
+      if (parent_comm_->comm == nullptr) {
+        return absl::OkStatus();
+      }
       return XLA_NCCL_STATUS(
           ncclDevCommDestroy(parent_comm_->comm, &dev_comm_));
     }

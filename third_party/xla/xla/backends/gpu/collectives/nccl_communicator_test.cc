@@ -25,11 +25,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
@@ -71,6 +73,7 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
+using ::testing::_;
 using ::testing::Contains;
 using ::testing::Each;
 using ::testing::Gt;
@@ -900,6 +903,127 @@ TEST(NcclCommunicatorTest, AllGatherCopyEngineGuardedByIsRma) {
     EXPECT_THAT(info.num_batch_mem_op_nodes, Gt(0));
   }
 }
+
+// Members are declared in creation order so that implicit destruction
+// releases child resources before their communicators and allocations.
+struct TeardownResources {
+  std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
+  std::vector<std::unique_ptr<se::MemoryAllocation>> allocs;
+  std::vector<std::unique_ptr<GpuCommunicator>> comms;
+  std::vector<std::unique_ptr<RegisteredMemory>> registered_memories;
+  std::vector<std::unique_ptr<SymmetricMemory>> symmetric_memories;
+  std::vector<std::unique_ptr<GpuDeviceCommunicator>> device_comms;
+};
+
+absl::StatusOr<TeardownResources> CreateTeardownResources(
+    absl::Span<se::StreamExecutor* const> executors, bool blocking) {
+  TeardownResources resources;
+  ABSL_ASSIGN_OR_RETURN(resources.allocators, CreateMemoryAllocators(executors));
+  ABSL_ASSIGN_OR_RETURN(resources.allocs, Allocate(resources.allocators, 1024));
+  ABSL_ASSIGN_OR_RETURN(resources.comms,
+                   CreateCommunicators(executors, {kD0, kD1}, blocking));
+
+  resources.registered_memories.reserve(executors.size());
+  for (size_t i = 0; i < executors.size(); ++i) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<RegisteredMemory> registered,
+                     resources.comms[i]->CreateRegisteredMemory(
+                         resources.allocs[i]->address()));
+    resources.registered_memories.push_back(std::move(registered));
+  }
+
+  // NCCL window registration on a non-blocking communicator returns a null
+  // window, so symmetric memories and device comms need a blocking one.
+  if (blocking && executors[0]->CanEnablePeerAccessTo(executors[1]) &&
+      resources.comms[0]->SupportsDeviceComm() &&
+      resources.comms[1]->SupportsDeviceComm()) {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test",
+                                 executors.size());
+    tsl::Executor& exec = *pool.AsExecutor();
+
+    ABSL_ASSIGN_OR_RETURN(resources.symmetric_memories,
+                     AwaitSymmetricMemory(CreateSymmetricMemory(
+                         exec, resources.comms, resources.allocs,
+                         /*symmetric_window=*/false)));
+
+    GpuDeviceCommunicator::Requirements reqs;
+    reqs.lsa_barrier_count = 8;
+    std::vector<Future<std::unique_ptr<GpuDeviceCommunicator>>> futures;
+    futures.reserve(executors.size());
+    for (size_t i = 0; i < executors.size(); ++i) {
+      futures.push_back(MakeFutureOn(
+          exec, [&, i] { return resources.comms[i]->CreateDeviceComm(reqs); }));
+    }
+    ABSL_ASSIGN_OR_RETURN(resources.device_comms,
+                     JoinFutures(absl::MakeSpan(futures)).Await());
+  } else if (blocking) {
+    LOG(WARNING) << "Skipping symmetric memory and device comm teardown "
+                    "coverage: requires peer access and device comm support";
+  }
+  return resources;
+}
+
+// Sets up `TeardownResources` on two CUDA devices, or returns `std::nullopt`
+// if fewer than two GPUs are visible.
+absl::StatusOr<std::optional<TeardownResources>> SetUpTeardownResources(
+    bool blocking) {
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
+                   se::PlatformManager::PlatformWithName("CUDA"));
+  constexpr int kNumDevices = 2;
+  if (platform->VisibleDeviceCount() < kNumDevices) {
+    return std::nullopt;
+  }
+  ABSL_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> executors,
+                   CreateExecutors(platform, kNumDevices));
+  return CreateTeardownResources(executors, blocking);
+}
+
+using NcclCommunicatorTeardownTest = testing::TestWithParam<bool>;
+
+TEST_P(NcclCommunicatorTeardownTest, DestroyChildResourcesAfterAbort) {
+  ASSERT_OK_AND_ASSIGN(std::optional<TeardownResources> resources,
+                       SetUpTeardownResources(GetParam()));
+  if (!resources.has_value()) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _, _)).Times(0);
+  log.StartCapturingLogs();
+
+  for (std::unique_ptr<GpuCommunicator>& comm : resources->comms) {
+    ASSERT_OK(comm->Abort());
+    EXPECT_EQ(comm->platform_comm().handle, nullptr);
+  }
+
+  resources->device_comms.clear();
+  resources->symmetric_memories.clear();
+  resources->registered_memories.clear();
+  resources->comms.clear();
+}
+
+TEST_P(NcclCommunicatorTeardownTest,
+       DestroyChildResourcesAfterParentDestroyed) {
+  ASSERT_OK_AND_ASSIGN(std::optional<TeardownResources> resources,
+                       SetUpTeardownResources(GetParam()));
+  if (!resources.has_value()) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  absl::ScopedMockLog log;
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _, _)).Times(0);
+  log.StartCapturingLogs();
+
+  resources->comms.clear();
+  resources->device_comms.clear();
+  resources->symmetric_memories.clear();
+  resources->registered_memories.clear();
+}
+
+INSTANTIATE_TEST_SUITE_P(Blocking, NcclCommunicatorTeardownTest,
+                         testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Blocking" : "Async";
+                         });
 
 }  // namespace
 }  // namespace xla::gpu

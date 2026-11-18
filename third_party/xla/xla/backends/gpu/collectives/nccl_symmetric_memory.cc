@@ -146,6 +146,9 @@ NcclSymmetricMemory::~NcclSymmetricMemory() {
                 "Destroy %v with addr=%p, size=%ld executor=%p", *this,
                 addr_.opaque(), addr_.size(), executor_.get());
             absl::MutexLock lock(comm_state_->mutex);
+            if (comm_state_->comm == nullptr) {
+              return absl::OkStatus();
+            }
             ncclResult_t nccl_status =
                 ncclCommWindowDeregister(comm_state_->comm, win_);
             if (nccl_status == ncclSuccess && symmetric_window_) {

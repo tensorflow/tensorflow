@@ -55,6 +55,9 @@ NcclRegisteredMemory::Create(std::shared_ptr<NcclCommState> comm_state,
 NcclRegisteredMemory::~NcclRegisteredMemory() {
   VLOG(3) << absl::StrFormat("Destroy %v", *this);
   absl::MutexLock lock(comm_->mutex);
+  if (comm_->comm == nullptr) {
+    return;
+  }
   XLA_NCCL_LOG_IF_ERROR(ncclCommDeregister(comm_->comm, handle_));
 }
 
