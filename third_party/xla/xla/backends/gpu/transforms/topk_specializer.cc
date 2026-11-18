@@ -240,28 +240,227 @@ absl::StatusOr<HloInstruction*> BuildUnpackU64ToF32(HloInstruction* u64_values,
       HloInstruction::CreateBitcastConvert(f32_shape, original_u32));
 }
 
-// Upper bounds for using RAFT select_k.
-// The heuristic for deciding when to use Raft select_k versus Sort + Slice
-// was developed as part of the initial research in b/409009349.
-size_t GetRaftSelectKMaxK(PrimitiveType dtype, size_t batch, size_t n) {
-  size_t max_k = 128;
-  if (dtype == F32) {
-    if (batch >= 64 && n >= 16384) {
-      max_k = 256;
-    }
-  } else if (dtype == BF16) {
-    if (batch >= 16 && n >= 65536) {
-      max_k = 256;
-    }
-    if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
-      max_k = 64;
-    }
+// Decision-tree heuristics for routing TopK to RAFT select_k vs Sort+Slice on
+// H100 (also used for pre-H100 GPUs) and B200 (also used for Vera Rubin until
+// dedicated heuristics are derived) GPU families across 4 pairs:
+//   1. select_k<F32>  vs unstable sort<F32>
+//   2. select_k<BF16> vs unstable sort<BF16>
+//   3. select_k<U64>  vs stable sort<F32>
+//   4. select_k<U64>  vs stable sort<BF16>
+// The heuristic generation process is described in b/409009349.
+// TODO(b/409009349): Derive dedicated heuristics for Vera Rubin (SM 10.7+) once
+// hardware is more widely available to experiment with.
+
+// 1. select_k<F32> vs unstable sort<F32>
+bool ShouldUseRaftSelectKF32OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
   }
-  return max_k;
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return (batch <= 48 && k <= 192) || (batch > 48 && k > 384);
+  }
+  if (n <= 229376) {
+    return batch > 1;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKF32OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return (batch > 48 && k > 384) || k <= 192;
+  }
+  if (n <= 114688) {
+    return batch > 3 || k <= 192;
+  }
+  return batch > 1;
+}
+
+// 2. select_k<BF16> vs unstable sort<BF16>
+bool ShouldUseRaftSelectKBF16OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 12288) {
+    return (batch <= 12 && k <= 192) || batch > 96;
+  }
+  if (n <= 24576) {
+    return batch > 48 || k <= 192;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKBF16OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 12288) {
+    return batch > 96;
+  }
+  if (n <= 24576) {
+    return batch > 48 || k <= 192;
+  }
+  if (n <= 49152) {
+    return batch > 24 || k <= 192;
+  }
+  return true;
+}
+
+// 3. select_k<U64> vs stable sort<F32>
+bool ShouldUseRaftSelectKU64ForF32OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 48) {
+    return true;
+  }
+  if (n <= 4608) {
+    return batch <= 24 && k <= 96;
+  }
+  if (n <= 24576) {
+    return (batch <= 24 && k <= 96) || (batch > 48 && k > 384);
+  }
+  if (n <= 81920) {
+    return (batch > 1 && k <= 192) || batch > 6 || k <= 96;
+  }
+  return batch > 1 || k <= 96;
+}
+
+bool ShouldUseRaftSelectKU64ForF32OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (batch <= 3) {
+    return false;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return batch > 48 && (batch <= 96 || k > 384);
+  }
+  if (n <= 163840) {
+    return batch > 6 || k <= 192;
+  }
+  return true;
+}
+
+// 4. select_k<U64> vs stable sort<BF16>
+bool ShouldUseRaftSelectKU64ForBF16OnH100(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 48) {
+    return true;
+  }
+  if (n <= 4608) {
+    return batch <= 24 && k <= 96;
+  }
+  if (n <= 24576) {
+    return (batch <= 24 && k <= 96) || (batch > 96 && k > 384);
+  }
+  if (n <= 81920) {
+    return (batch <= 3 && k <= 192) || batch > 12 || k <= 96;
+  }
+  if (n <= 163840) {
+    return batch > 3 || k <= 192;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectKU64ForBF16OnB200(size_t batch, size_t n, size_t k) {
+  if (k > 1024) {
+    return false;
+  }
+  if (k <= 96) {
+    return true;
+  }
+  if (batch <= 3) {
+    return false;
+  }
+  if (n <= 4608) {
+    return false;
+  }
+  if (n <= 24576) {
+    return batch > 192 && k > 384;
+  }
+  if (n <= 49152) {
+    return batch > 48;
+  }
+  if (n <= 163840) {
+    return batch > 6;
+  }
+  return true;
+}
+
+bool ShouldUseRaftSelectK(const se::CudaComputeCapability& cuda_cc,
+                          PrimitiveType dtype, size_t batch, size_t n,
+                          size_t k) {
+  // TODO(b/409009349): Update for Vera Rubin (SM 10.7+) once hardware is more
+  // widely available to experiment with.
+  const bool use_b200_heuristic = cuda_cc.IsAtLeastBlackwell();
+  if (dtype == F32) {
+    return use_b200_heuristic ? ShouldUseRaftSelectKF32OnB200(batch, n, k)
+                              : ShouldUseRaftSelectKF32OnH100(batch, n, k);
+  }
+  if (dtype == BF16) {
+    return use_b200_heuristic ? ShouldUseRaftSelectKBF16OnB200(batch, n, k)
+                              : ShouldUseRaftSelectKBF16OnH100(batch, n, k);
+  }
+  return false;
+}
+
+bool ShouldUseRaftSelectKU64(const se::CudaComputeCapability& cuda_cc,
+                             PrimitiveType dtype, size_t batch, size_t n,
+                             size_t k) {
+  // TODO(b/409009349): Update for Vera Rubin (SM 10.7+) once hardware is more
+  // widely available to experiment with.
+  const bool use_b200_heuristic = cuda_cc.IsAtLeastBlackwell();
+  if (dtype == F32) {
+    return use_b200_heuristic
+               ? ShouldUseRaftSelectKU64ForF32OnB200(batch, n, k)
+               : ShouldUseRaftSelectKU64ForF32OnH100(batch, n, k);
+  }
+  if (dtype == BF16) {
+    return use_b200_heuristic
+               ? ShouldUseRaftSelectKU64ForBF16OnB200(batch, n, k)
+               : ShouldUseRaftSelectKU64ForBF16OnH100(batch, n, k);
+  }
+  return false;
 }
 
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
-bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
+bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk,
+                                     const se::CudaComputeCapability& cuda_cc) {
   // The Uint64 bit-packing adapter supports TOTAL and PARTIAL ordering.
   ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
   if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
@@ -287,9 +486,8 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
 
-  // Skip degenerate zero-sized batches and small N (where sort + slice is
-  // faster than RAFT select_k).
-  if (batch == 0 || n < 1024 || k == 0) {
+  // Skip degenerate zero-sized dimensions.
+  if (batch == 0 || n == 0 || k == 0) {
     return false;
   }
 
@@ -314,7 +512,17 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
     return false;
   }
 
-  return k <= GetRaftSelectKMaxK(dtype, batch, n);
+  // TODO(b/409009349): Remove this guard after 2026-11-28 once the 14-day GPU
+  // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
+  if (k > 129 && (n > 20215 || k > 256) &&
+      !topk->GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_raft_u64_radix()) {
+    return false;
+  }
+
+  return ShouldUseRaftSelectKU64(cuda_cc, dtype, batch, n, k);
 }
 
 absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
@@ -390,7 +598,8 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
 }
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
-    HloCustomCallInstruction* topk, bool is_cuda, int sm_count) {
+    HloCustomCallInstruction* topk, const se::CudaComputeCapability* cuda_cc,
+    int sm_count) {
   ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
   if (order != ComparisonOrder::kTotal && order != ComparisonOrder::kPartial) {
     return InvalidArgument(
@@ -416,6 +625,11 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   size_t batch = has_batch ? data_shape.dimensions(0) : 1;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
+  if (batch == 0 || n == 0 || k == 0) {
+    return InvalidArgument(
+        "TopK dimensions must be positive (batch=%zu, n=%zu, k=%zu)", batch, n,
+        k);
+  }
   constexpr size_t kMaxInt32 =
       static_cast<size_t>(std::numeric_limits<int32_t>::max());
   if (batch > kMaxInt32 || n > kMaxInt32 || k > kMaxInt32) {
@@ -432,19 +646,23 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   // Enable RAFT if TopK is_stable = false.
   bool use_raft = !hlo_instruction_utils::IsTopKStable(topk);
 
-  if (is_cuda && use_raft) {
-    min_n = 1;
-    max_k = GetRaftSelectKMaxK(dtype, batch, n);
-  }
-
-  if (k > max_k) {
-    return InvalidArgument("k too large (%d), must be <= %d", k, max_k);
-  }
-  if (n < min_n) {
-    return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
+  if (cuda_cc != nullptr && use_raft) {
+    if (!ShouldUseRaftSelectK(*cuda_cc, dtype, batch, n, k)) {
+      return InvalidArgument(
+          "RAFT select_k heuristic rejected shape (dtype=%s, batch=%d, n=%d, "
+          "k=%d)",
+          primitive_util::LowercasePrimitiveTypeName(dtype), batch, n, k);
+    }
+  } else {
+    if (k > max_k) {
+      return InvalidArgument("k too large (%d), must be <= %d", k, max_k);
+    }
+    if (n < min_n) {
+      return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
+    }
   }
   Shape cc_shape = topk->shape();
-  if (is_cuda && use_raft) {
+  if (cuda_cc != nullptr && use_raft) {
     if (uint64_t{batch} * uint64_t{k} >
         static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
       return InvalidArgument(
@@ -499,22 +717,23 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     TF_RET_CHECK(topk->operand_count() == 1);
-    bool is_cuda = compute_capability_.IsCuda();
+    const se::CudaComputeCapability* cuda_cc =
+        compute_capability_.cuda_compute_capability();
     bool enable_raft_for_stable_topk =
         topk->GetModule()
             ->config()
             .debug_options()
             .xla_gpu_experimental_enable_raft_for_stable_topk();
     // Route stable TopK to RAFT select_k via Uint64 adapter
-    if (is_cuda && enable_raft_for_stable_topk &&
-        ShouldRewriteStableTopKToUint64(topk)) {
+    if (cuda_cc != nullptr && enable_raft_for_stable_topk &&
+        ShouldRewriteStableTopKToUint64(topk, *cuda_cc)) {
       VLOG(2) << "Rewriting stable TopK to RAFT select_k via Uint64 adapter";
       ABSL_ASSIGN_OR_RETURN(HloInstruction * new_topk,
                        RewriteStableTopKToUint64(topk, sm_count_));
       return ReplaceInstruction(topk, new_topk);
     }
 
-    if (auto small_topk = SmallBufferOptimization(topk, is_cuda, sm_count_);
+    if (auto small_topk = SmallBufferOptimization(topk, cuda_cc, sm_count_);
         small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
     } else {  // NOLINT(readability-else-after-return)

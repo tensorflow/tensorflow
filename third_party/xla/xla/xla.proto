@@ -2060,7 +2060,12 @@ message DebugOptions {
   // cache miss.
   optional bool xla_fail_on_autotune_cache_miss = 583;
 
-  // Next id: 584
+  // If true, enables RAFT select_k Radix paths for U64-packed stable TopK.
+  // TODO(b/409009349): Enable by default after 2026-11-28 once the 14-day GPU
+  // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
+  optional bool xla_gpu_experimental_enable_raft_u64_radix = 584;
+
+  // Next id: 585
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

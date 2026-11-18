@@ -382,6 +382,46 @@ TEST_F(TopkTest, RewriteStableTopKDefaultAndDisableFlag) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(TopkTest, RewriteStableTopKU64RadixDefaultAndEnableFlag) {
+  const char* hlo = R"hlo(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT,
+          order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = f32[64,32768] parameter(0)
+      ROOT result = (f32[64,256], s32[64,256]) custom-call(arg),
+          custom_call_target="TopK", called_computations={%compare-gt.1},
+          backend_config={is_stable = true, order = "TOTAL"}
+    }
+  )hlo";
+  if (!device_description().gpu_compute_capability().IsCuda()) {
+    GTEST_SKIP() << "RAFT is CUDA-only.";
+  }
+  // Disabled by default during GPU AOT forward-compatibility rollout.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       TopkSpecializer(device_description()).Run(module.get()));
+  EXPECT_FALSE(changed);
+  // Can be enabled via flag.
+  HloModuleConfig enabled_config = GetModuleConfigForTest();
+  enabled_config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_u64_radix(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> enabled_module,
+                       ParseAndReturnVerifiedModule(hlo, enabled_config));
+  ASSERT_OK_AND_ASSIGN(
+      changed, TopkSpecializer(device_description()).Run(enabled_module.get()));
+  EXPECT_TRUE(changed);
+}
+
 TEST_F(TopkTest, RewriteStablePartialOrderTopKF32ToUint64) {
   const char* hlo = R"(
     HloModule m
@@ -834,15 +874,17 @@ TEST_F(TopkTest, StableTopKViaUint64UsesEstimatedScratchSize) {
   }
 
   // Verify HLO scratch sizing and end-to-end GPU execution across
-  // WarpImmediate (f32[8,1024], k=32), WarpFiltered (f32[64,16384], k=256),
-  // and Radix11bits (f32[64,32768], k=256).
+  // WarpImmediate (f32[8,1024], k=32), WarpDistributedShm (f32[64,25600],
+  // k=128), Radix8bits (f32[64,16384], k=512), and Radix11bits
+  // (f32[64,32768], k=256).
   struct TestCase {
     int batch;
     int n;
     int k;
   };
-  for (const TestCase& tc : {TestCase{8, 1024, 32}, TestCase{64, 16384, 256},
-                             TestCase{64, 32768, 256}}) {
+  for (const TestCase& tc :
+       {TestCase{8, 1024, 32}, TestCase{64, 25600, 128},
+        TestCase{64, 16384, 512}, TestCase{64, 32768, 256}}) {
     SCOPED_TRACE(
         absl::Substitute("batch=$0, n=$1, k=$2", tc.batch, tc.n, tc.k));
     const std::string hlo = absl::Substitute(
@@ -867,6 +909,8 @@ TEST_F(TopkTest, StableTopKViaUint64UsesEstimatedScratchSize) {
     HloModuleConfig config = GetModuleConfigForTest();
     config.mutable_debug_options()
         .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_raft_u64_radix(true);
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
                          ParseAndReturnVerifiedModule(hlo, config));
     std::unique_ptr<HloModule> reference_module =
@@ -1051,6 +1095,99 @@ TEST_F(TopkTest, RejectsTopKExceedingInt32DimensionLimit) {
     }
   }
 }
+
+struct RaftHeuristicTestCase {
+  absl::string_view dtype;
+  bool is_stable;
+  int batch;
+  int n;
+  int k;
+  bool expected_on_h100;
+  bool expected_on_b200;
+};
+
+class RaftHeuristicDispatchTest
+    : public HloPjRtGpuTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<RaftHeuristicTestCase, se::CudaComputeCapability>> {
+ protected:
+  RaftHeuristicDispatchTest()
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{.verifier_layout_sensitive = true}) {}
+};
+
+TEST_P(RaftHeuristicDispatchTest, DispatchesRaftHeuristicsByGpuArchitecture) {
+  // Verify that all 4 RAFT heuristic pairs (F32 unstable, BF16 unstable, F32
+  // stable U64, BF16 stable U64) use the B200 trees on Blackwell+ and the H100
+  // trees on Hopper and earlier CUDA GPUs.
+  const auto& [tc, cc] = GetParam();
+  const std::string hlo = absl::Substitute(
+      R"hlo(
+    HloModule m
+
+    %compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = $0[] parameter(0)
+      p.0.rhs = $0[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY top_k {
+      arg = $0[$1,$2] parameter(0)
+      ROOT result = ($0[$1,$3], s32[$1,$3]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = $4, order = "TOTAL"}
+    }
+  )hlo",
+      tc.dtype, tc.batch, tc.n, tc.k, tc.is_stable ? "true" : "false");
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo, config));
+
+  se::DeviceDescription desc;
+  desc.set_cuda_compute_capability(cc);
+  desc.set_core_count(132);
+
+  ASSERT_OK_AND_ASSIGN(bool changed, TopkSpecializer(desc).Run(module.get()));
+  const bool expected =
+      cc.IsAtLeastBlackwell() ? tc.expected_on_b200 : tc.expected_on_h100;
+  EXPECT_EQ(changed, expected);
+}
+
+std::string RaftHeuristicDispatchTestName(
+    const ::testing::TestParamInfo<RaftHeuristicDispatchTest::ParamType>&
+        info) {
+  const auto& [tc, cc] = info.param;
+  return absl::Substitute("$0_$1_b$2_n$3_k$4_sm_$5_$6", tc.dtype,
+                          tc.is_stable ? "stable" : "unstable", tc.batch, tc.n,
+                          tc.k, cc.major, cc.minor);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RaftHeuristicDispatchTests, RaftHeuristicDispatchTest,
+    Combine(
+        Values(
+            // 1. select_k<F32> vs unstable sort<F32>
+            RaftHeuristicTestCase{"f32", false, 2, 32768, 256, true, false},
+            RaftHeuristicTestCase{"f32", false, 64, 16384, 128, false, true},
+            // 2. select_k<BF16> vs unstable sort<BF16> (B200's accepted set is
+            // a strict subset of H100's, so no (false, true) shape exists).
+            RaftHeuristicTestCase{"bf16", false, 8, 8192, 128, true, false},
+            RaftHeuristicTestCase{"bf16", false, 8, 65536, 256, true, true},
+            // 3. select_k<U64> vs stable sort<F32>
+            RaftHeuristicTestCase{"f32", true, 2, 32768, 128, true, false},
+            RaftHeuristicTestCase{"f32", true, 64, 16384, 256, false, true},
+            // 4. select_k<U64> vs stable sort<BF16>
+            RaftHeuristicTestCase{"bf16", true, 1, 32768, 128, true, false},
+            RaftHeuristicTestCase{"bf16", true, 32, 16384, 64, false, true},
+            // Root k > 1024 rejection across both architectures.
+            RaftHeuristicTestCase{"f32", false, 64, 65536, 1025, false, false}),
+        Values(se::CudaComputeCapability::Ampere(),
+               se::CudaComputeCapability::Hopper(),
+               se::CudaComputeCapability::Blackwell())),
+    RaftHeuristicDispatchTestName);
 
 }  // namespace
 }  // namespace xla::gpu
