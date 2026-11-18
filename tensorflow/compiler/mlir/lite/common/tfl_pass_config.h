@@ -116,8 +116,13 @@ struct PassConfig {
   // explicit broadcasting in the source model.
   bool unsafe_fuse_dynamic_shaped_broadcast = false;
 
-  // When set to true, enable unsafe single batch rank reduction.
-  bool unsafe_single_batch_rank_reduction = false;
+  // When set to true, run RankReductionPass: fold unit dimensions out of ops
+  // over tensors of rank > 4, assuming the exported batch size is kept.
+  bool rank_reduction = false;
+
+  // When set to true, run GpuCompatibilityPass: rewrite ops the GPU delegates
+  // reject into forms they accept. Unbounded materialization; GPU-only.
+  bool unsafe_gpu_compatibility = false;
 
   // When set to true, fold f16 <-> f32 casts around float fully_connected ops
   // into them, producing mixed precision (f16 activation) fully_connected ops.
@@ -156,8 +161,9 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nmodel_origin_framework: "
             << tflite::ConverterFlags::ModelOriginFramework_Name(
                    pass_config.model_origin_framework)
-            << "\nunsafe_single_batch_rank_reduction: "
-            << pass_config.unsafe_single_batch_rank_reduction
+            << "\nrank_reduction: " << pass_config.rank_reduction
+            << "\nunsafe_gpu_compatibility: "
+            << pass_config.unsafe_gpu_compatibility
             << "\nfold_fp16_casts_into_fully_connected: "
             << pass_config.fold_fp16_casts_into_fully_connected << "\n";
 }
