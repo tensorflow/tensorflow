@@ -304,6 +304,26 @@ TEST(QuantizedDivOpTest, QuantizedNoActivationInt8) {
   QuantizedNoActivation<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedDivOpTest, SmallQuotientsInt8) {
+  for (bool broadcast : {false, true}) {
+    SCOPED_TRACE(broadcast);
+    for (int8_t divisor : {-128, 4, 8, 64, 127}) {
+      SCOPED_TRACE(static_cast<int>(divisor));
+      const std::vector<int> input2_shape = {broadcast ? 1 : 3};
+      QuantizedDivOpModel m({TensorType_INT8, {3}, 0, 0, 1.0f},
+                            {TensorType_INT8, input2_shape, 0, 0, 1.0f},
+                            {TensorType_INT8, {}, 0, 0, 1.0f},
+                            ActivationFunctionType_NONE);
+      m.PopulateTensor<int8_t>(m.input1(), {-1, 0, 1});
+      m.PopulateTensor<int8_t>(m.input2(),
+                               std::vector<int8_t>(broadcast ? 1 : 3, divisor));
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
+      EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+                  ElementsAreArray({0.0f, 0.0f, 0.0f}));
+    }
+  }
+}
+
 TEST(QuantizedDivOpTest, QuantizedNoActivationInt16) {
   QuantizedNoActivation<TensorType_INT16, int16_t>();
 }
