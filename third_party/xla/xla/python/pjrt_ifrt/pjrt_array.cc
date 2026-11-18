@@ -679,8 +679,10 @@ absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
 
 tsl::Future<> PjRtArray::GetReadyFuture() const {
   if (IsDeleted()) {
-    return tsl::Future<>(
-        InvalidArgument("Array has already been deleted or donated."));
+    // Match `PjRtBuffer::GetReadyFuture()`'s error message, which JAX relies on
+    // to translate deleted/donated buffer errors in `AwaitBuffersReady()`.
+    return tsl::Future<>(InvalidArgument(
+        "GetReadyFuture() called on deleted or donated buffer"));
   }
   if (pjrt_buffers_.size() == 1) {
     return pjrt_buffers_.front()->GetReadyFuture();
