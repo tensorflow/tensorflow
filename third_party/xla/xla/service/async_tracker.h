@@ -36,9 +36,8 @@ limitations under the License.
 
 namespace xla {
 
-// Defined in latency_hiding_scheduler.h, which includes this header.
-// `AsyncTracker` only uses them by pointer.
-class HloGraphNode;
+// Defined in hlo_schedule_graph.h, which includes this header.
+// `AsyncTracker` only uses it by pointer.
 class HloScheduleGraph;
 
 enum class ResourceType {
@@ -189,11 +188,11 @@ class AsyncTracker {
   GetReleasedNonextendableResourcesFromVector(
       const ResourcesVector& resources) const;
 
-  // Returns whether the provided node releases a selective resource.
-  bool ReleasesSelectiveResource(const HloGraphNode* node) const;
+  // Returns whether `resources` releases a selective resource.
+  bool ReleasesSelectiveResource(const ResourcesVector& resources) const;
 
-  // Returns whether the provided node occupies a selective resource.
-  bool OccupiesSelectiveResource(const HloGraphNode* node) const;
+  // Returns whether `resources` occupies a selective resource.
+  bool OccupiesSelectiveResource(const ResourcesVector& resources) const;
 
   // Returns whether the resource is an in-order resource (e.g. hardware FIFO
   // command queue) where operations are processed sequentially and cannot be

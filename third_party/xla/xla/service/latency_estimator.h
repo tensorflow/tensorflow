@@ -35,7 +35,7 @@ CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
 using GetCanonicalAsyncOpFunc =
     std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
 
-// Defined in latency_hiding_scheduler.h.
+// Defined in hlo_schedule_graph.h.
 class HloGraphNode;
 
 // Class used to estimate latency between instructions and cost of HLOs.
@@ -69,8 +69,8 @@ class LatencyEstimator {
   // Recv -> RecvDone pair.
   bool IsP2pPair(const HloInstruction& from,
                  const HloInstruction& target) const;
-  // HloGraphNode overloads of the above. Defined inline in
-  // latency_hiding_scheduler.h, which owns the HloGraphNode definition.
+  // HloGraphNode overloads of the above. Defined in hlo_schedule_graph.cc,
+  // which owns the HloGraphNode definition.
   bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
   bool IsP2pPair(const HloGraphNode& from, const HloGraphNode& target) const;
   explicit LatencyEstimator(

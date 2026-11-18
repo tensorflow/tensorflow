@@ -40,7 +40,6 @@ limitations under the License.
 
 namespace xla {
 
-// Returns if this is an Async done op that the scheduler supports.
 bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   if (op.outer == HloOpcode::kSendDone || op.outer == HloOpcode::kRecvDone) {
@@ -70,7 +69,6 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   return false;
 }
 
-// Returns if this is an Async op start that the scheduler supports.
 bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   if (op.outer == HloOpcode::kSend || op.outer == HloOpcode::kRecv) {
@@ -521,6 +519,24 @@ ResourceHazardType AsyncTracker::GetResourceHazardType(
     return ResourceHazardType::kShareable;
   }
   return ResourceHazardType::kUnshareable;
+}
+
+bool AsyncTracker::ReleasesSelectiveResource(
+    const ResourcesVector& resources) const {
+  return absl::c_any_of(resources, [&](const ResourcePair& resource) {
+    return resource.second == ResourceUsageType::kResourceRelease &&
+           GetResourceHazardType(resource.first) ==
+               ResourceHazardType::kSelective;
+  });
+}
+
+bool AsyncTracker::OccupiesSelectiveResource(
+    const ResourcesVector& resources) const {
+  return absl::c_any_of(resources, [&](const ResourcePair& resource) {
+    return resource.second == ResourceUsageType::kResourceOccupy &&
+           GetResourceHazardType(resource.first) ==
+               ResourceHazardType::kSelective;
+  });
 }
 
 absl::string_view AsyncTracker::GetResourceUsageName(
