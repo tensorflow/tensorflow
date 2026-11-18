@@ -5819,11 +5819,14 @@ tf_cc_test(
         ":ops_util",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5851,6 +5854,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     ],

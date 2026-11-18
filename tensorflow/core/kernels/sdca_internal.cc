@@ -17,10 +17,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sdca_internal.h"
 
+#include <cstdint>
 #include <limits>
 #include <numeric>
 #include <random>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -431,6 +434,22 @@ absl::Status Examples::CreateSparseFeatureRepresentation(
     const OpInputList& sparse_feature_indices_inputs,
     const OpInputList& sparse_feature_values_inputs,
     std::vector<Example>* const examples) {
+  // When values are present they are indexed in lockstep with
+  // feature_indices below, so their sizes must match.
+  for (int i = 0; i < num_sparse_features; ++i) {
+    if (sparse_feature_values_inputs.size() > i) {
+      const int64_t num_indices =
+          sparse_feature_indices_inputs[i].NumElements();
+      const int64_t num_values =
+          sparse_feature_values_inputs[i].NumElements();
+      if (num_values != num_indices) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Found mismatched feature_indices and feature_values sizes [",
+            num_indices, "] vs [", num_values, "]"));
+      }
+    }
+  }
+
   mutex mu;
   absl::Status result;  // Guarded by mu
   auto parse_partition = [&](const int64_t begin, const int64_t end) {
@@ -448,11 +467,15 @@ absl::Status Examples::CreateSparseFeatureRepresentation(
             example_indices, "] vs [", feature_indices, "]");
         return;
       }
+      const bool has_values = sparse_feature_values_inputs.size() > i;
+      const float* const feature_weights_data =
+          has_values ? sparse_feature_values_inputs[i].flat<float>().data()
+                     : nullptr;
 
       // Parse features for each example. Features for a particular example
       // are at the offsets (start_id, end_id]
-      int start_id = -1;
-      int end_id = 0;
+      int64_t start_id = -1;
+      int64_t end_id = 0;
       for (int example_id = 0; example_id < num_examples; ++example_id) {
         start_id = end_id;
         while (end_id < example_indices.size() &&
@@ -464,12 +487,10 @@ absl::Status Examples::CreateSparseFeatureRepresentation(
         if (start_id < example_indices.size() &&
             example_indices(start_id) == example_id) {
           sparse_features->indices.reset(new UnalignedInt64Vector(
-              &(feature_indices(start_id)), end_id - start_id));
-          if (sparse_feature_values_inputs.size() > i) {
-            auto feature_weights =
-                sparse_feature_values_inputs[i].flat<float>();
+              feature_indices.data() + start_id, end_id - start_id));
+          if (has_values) {
             sparse_features->values.reset(new UnalignedFloatVector(
-                &(feature_weights(start_id)), end_id - start_id));
+                feature_weights_data + start_id, end_id - start_id));
           }
           // If features are non empty.
           if (end_id - start_id > 0) {
@@ -489,13 +510,11 @@ absl::Status Examples::CreateSparseFeatureRepresentation(
         } else {
           // Add a Tensor that has size 0.
           sparse_features->indices.reset(
-              new UnalignedInt64Vector(&(feature_indices(0)), 0));
+              new UnalignedInt64Vector(feature_indices.data(), 0));
           // If values exist for this feature group.
-          if (sparse_feature_values_inputs.size() > i) {
-            auto feature_weights =
-                sparse_feature_values_inputs[i].flat<float>();
+          if (has_values) {
             sparse_features->values.reset(
-                new UnalignedFloatVector(&(feature_weights(0)), 0));
+                new UnalignedFloatVector(feature_weights_data, 0));
           }
         }
       }

@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -20,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -117,6 +123,89 @@ Node* RandomZeroOrOneMatrix(Graph* const g, const int n, int d) {
     return (random::New64() % 2) == 0 ? 0.0f : 1.0f;
   });
   return test::graph::Constant(g, data);
+}
+
+absl::Status RunSdcaWithSparseSizes(const int num_examples,
+                                    const int sparse_indices_size,
+                                    const int sparse_values_size) {
+  Graph g(OpRegistry::Global());
+  Tensor sparse_ex_idx_t(DT_INT64, TensorShape({sparse_indices_size}));
+  test::FillFn<int64_t>(&sparse_ex_idx_t, [](const int i) { return 0; });
+  Tensor sparse_ft_idx_t(DT_INT64, TensorShape({sparse_indices_size}));
+  test::FillFn<int64_t>(&sparse_ft_idx_t, [](const int i) { return i; });
+  Tensor sparse_ft_val_t(DT_FLOAT, TensorShape({sparse_values_size}));
+  test::FillFn<float>(&sparse_ft_val_t, [](const int i) { return 1.0f; });
+
+  std::vector<NodeBuilder::NodeOut> sparse_example_indices = {
+      test::graph::Constant(&g, sparse_ex_idx_t)};
+  std::vector<NodeBuilder::NodeOut> sparse_feature_indices = {
+      test::graph::Constant(&g, sparse_ft_idx_t)};
+  std::vector<NodeBuilder::NodeOut> sparse_values = {
+      test::graph::Constant(&g, sparse_ft_val_t)};
+  std::vector<NodeBuilder::NodeOut> dense_features;
+  std::vector<NodeBuilder::NodeOut> sparse_indices = {
+      SparseIndices(&g, sparse_indices_size + 1)};
+  std::vector<NodeBuilder::NodeOut> sparse_weights = {
+      Zeros(&g, sparse_indices_size + 1)};
+  std::vector<NodeBuilder::NodeOut> dense_weights;
+
+  Node* const weights = Ones(&g, num_examples);
+  Node* const labels = Ones(&g, num_examples);
+  Node* const example_state_data = Zeros(&g, TensorShape({num_examples, 4}));
+
+  Node* sdca = nullptr;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(g.NewName("sdca"), "SdcaOptimizer")
+          .Attr("loss_type", "logistic_loss")
+          .Attr("num_sparse_features", 1)
+          .Attr("num_sparse_features_with_values", 1)
+          .Attr("num_dense_features", 0)
+          .Attr("l1", 0.0f)
+          .Attr("l2", 1.0f)
+          .Attr("num_loss_partitions", 1)
+          .Attr("num_inner_iterations", 1)
+          .Input(sparse_example_indices)
+          .Input(sparse_feature_indices)
+          .Input(sparse_values)
+          .Input(dense_features)
+          .Input(weights)
+          .Input(labels)
+          .Input(sparse_indices)
+          .Input(sparse_weights)
+          .Input(dense_weights)
+          .Input(example_state_data)
+          .Finalize(&g, &sdca));
+
+  GraphDef def;
+  g.ToGraphDef(&def);
+  std::unique_ptr<Session> session(NewSession(*GetSingleThreadedOptions()));
+  TF_RETURN_IF_ERROR(session->Create(def));
+  std::vector<Tensor> outputs;
+  return session->Run({}, {}, {sdca->name()}, &outputs);
+}
+
+TEST(SdcaOptimizerTest, MismatchedSparseFeatureValuesSize) {
+  const absl::Status short_status = RunSdcaWithSparseSizes(
+      /*num_examples=*/1, /*sparse_indices_size=*/4, /*sparse_values_size=*/1);
+  EXPECT_EQ(short_status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      short_status.message(),
+      ::testing::HasSubstr(
+          "Found mismatched feature_indices and feature_values sizes"));
+
+  const absl::Status long_status = RunSdcaWithSparseSizes(
+      /*num_examples=*/1, /*sparse_indices_size=*/4, /*sparse_values_size=*/5);
+  EXPECT_EQ(long_status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      long_status.message(),
+      ::testing::HasSubstr(
+          "Found mismatched feature_indices and feature_values sizes"));
+}
+
+TEST(SdcaOptimizerTest, EmptySparseFeatureGroup) {
+  const absl::Status status = RunSdcaWithSparseSizes(
+      /*num_examples=*/1, /*sparse_indices_size=*/0, /*sparse_values_size=*/0);
+  EXPECT_TRUE(status.ok()) << status;
 }
 
 void GetGraphs(const int32_t num_examples,
