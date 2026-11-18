@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
