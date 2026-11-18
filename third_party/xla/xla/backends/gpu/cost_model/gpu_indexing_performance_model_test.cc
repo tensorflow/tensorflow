@@ -125,6 +125,17 @@ class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
     return GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
         fusion_adaptor, tiled_hlo_computation);
   }
+
+  absl::StatusOr<EstimateRunTimeData> EstimateRunTimeOnH100(
+      const HloFusionAdaptor& fusion_adaptor,
+      const BlockLevelParameters& params) {
+    se::DeviceDescription h100_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+    HloFusionAnalysisCache cache(h100_info);
+    GpuPerformanceModelWithIndexingAnalysis h100_model(
+        &h100_info, &cache, HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+        /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+    return h100_model.EstimateRunTimeForTiledFusion(fusion_adaptor, params);
+  }
 };
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -1528,6 +1539,73 @@ TEST_F(GpuIndexingPerformanceModelTest,
   EXPECT_EQ(result.compute_time,
             uninflated_dot.compute_time *
                 (static_cast<double>(kLaunchedBlocks) / kDotGridBlocks));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_PipelinedOddMinorDotOperand) {
+  auto estimate = [&](int64_t block_k) -> absl::StatusOr<EstimateRunTimeData> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(absl::Substitute(R"hlo(
+HloModule m
+ENTRY main {
+  p0 = f32[2051, 256]{1,0} parameter(0)
+  p1 = f32[4096, 2051]{1,0} parameter(1)
+  ROOT d = f32[256, 4096]{1,0} dot(p0, p1), lhs_contracting_dims={0},
+    rhs_contracting_dims={1}, backend_config={sizes:[$0]}
+})hlo",
+                                                                   block_k)));
+    return EstimateRunTimeOnH100(
+        *HloFusionAdaptor::ForInstruction(
+            module->entry_computation()->root_instruction()),
+        BlockLevelParameters{/*output_tile_sizes=*/{{16, 32}},
+                             /*num_warps=*/2,
+                             /*num_ctas=*/1,
+                             /*num_stages=*/3});
+  };
+
+  // When the contiguous tile dimension fits within the thread count, the odd
+  // dimension extent forces scalar loads that cause shared-memory bank
+  // conflicts.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData block_k_128,
+                       estimate(/*block_k=*/128));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData block_k_64,
+                       estimate(/*block_k=*/64));
+  EXPECT_GT(block_k_64.exec_time, 5 * block_k_128.exec_time);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_PipelinedStridedDotOperand) {
+  // A stride-2 slice along K cannot vectorize `cp.async`, causing shared-memory
+  // bank conflicts when pipelined.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> strided_module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+fused_dot {
+  p0 = f32[2048, 256]{1,0} parameter(0)
+  p1 = f32[4096, 4096]{1,0} parameter(1)
+  sliced_p1 = f32[4096, 2048]{1,0} slice(p1), slice={[0:4096:1], [0:4096:2]}
+  ROOT d = f32[256, 4096]{1,0} dot(p0, sliced_p1), lhs_contracting_dims={0},
+    rhs_contracting_dims={1}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = f32[2048, 256]{1,0} parameter(0)
+  p1 = f32[4096, 4096]{1,0} parameter(1)
+  ROOT f = f32[256, 4096]{1,0} fusion(p0, p1), kind=kCustom, calls=fused_dot
+})hlo"));
+  auto estimate = [&](int num_stages) -> absl::StatusOr<EstimateRunTimeData> {
+    return EstimateRunTimeOnH100(
+        *HloFusionAdaptor::ForInstruction(
+            strided_module->entry_computation()->root_instruction()),
+        BlockLevelParameters{/*output_tile_sizes=*/{{16, 32}},
+                             /*num_warps=*/2,
+                             /*num_ctas=*/1,
+                             /*num_stages=*/num_stages});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData s1_strided,
+                       estimate(/*num_stages=*/1));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData s3_strided,
+                       estimate(/*num_stages=*/3));
+  EXPECT_GT(s3_strided.exec_time, 1.3 * s1_strided.exec_time);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

@@ -714,6 +714,63 @@ int64_t GetConcatLoopCopies(const TiledHloRegion& region) {
   return copies;
 }
 
+// Estimates the shared-memory bank-conflict serialization factor for one tile
+// of a pipelined dot operand.
+int64_t GetSmemBankConflictMultiplier(const Shape& shape,
+                                      absl::Span<const int64_t> tile_sizes,
+                                      absl::Span<const int64_t> tile_strides,
+                                      int64_t padded_elements,
+                                      int64_t num_threads) {
+  const int64_t bit_width = primitive_util::BitWidth(shape.element_type());
+  // Shared-memory transpose bank conflicts only affect 2D+ tiles loaded via
+  // `cp.async` (which requires >= 4-byte elements).
+  if (shape.dimensions().size() < 2 || bit_width < 32) {
+    return 1;
+  }
+  const int64_t minor_dim = shape.layout().minor_to_major().front();
+  const int64_t padded_minor = llvm::PowerOf2Ceil(tile_sizes[minor_dim]);
+  // Vector loads require contiguous elements and an even minor dimension so
+  // every minor-dimension slice starts at a 2-element-aligned address.
+  const bool can_vectorize =
+      tile_strides[minor_dim] == 1 && shape.dimensions(minor_dim) % 2 == 0;
+  // Holding multiple minor-dimension elements per thread keeps the minor
+  // dimension contiguous in shared memory, avoiding bank conflicts:
+  // https://github.com/triton-lang/triton/blob/f8cddb947b471d6902a39f62d0894d1e552e5e75/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td#L886-L887
+  if (can_vectorize || padded_minor > num_threads) {
+    return 1;
+  }
+  // In the transposed shared-memory tile, consecutive threads along the minor
+  // dimension write one major row apart, colliding on the same bank.
+  const int64_t padded_major = padded_elements / padded_minor;
+  const int64_t stride_banks = (padded_major * bit_width) / kBankBitwidth;
+  return std::min({kNumShmemBanks, padded_minor, stride_banks});
+}
+
+// Estimates shared-memory traffic (1 write + 1 read) for one tile of a
+// pipelined dot operand.
+int64_t GetPipelinedLeafSmemBytesPerTile(const Shape& shape,
+                                         absl::Span<const int64_t> tile_sizes,
+                                         absl::Span<const int64_t> tile_strides,
+                                         int64_t num_threads) {
+  const int64_t bit_width = primitive_util::BitWidth(shape.element_type());
+  const int64_t padded_elements = GetPaddedTileSize(tile_sizes);
+  const int64_t tile_bytes =
+      CeilOfRatio<int64_t>(padded_elements * bit_width, 8);
+  const int64_t bank_conflict_multiplier = GetSmemBankConflictMultiplier(
+      shape, tile_sizes, tile_strides, padded_elements, num_threads);
+  return 2 * bank_conflict_multiplier * tile_bytes;
+}
+
+// Estimates shared-memory transfer time at peak bank bandwidth across all SMs.
+absl::Duration EstimateSmemTime(int64_t smem_bytes,
+                                const se::DeviceDescription& device_info) {
+  constexpr int64_t kBytesPerClockPerSm = kNumShmemBanks * (kBankBitwidth / 8);
+  double clock_hz = device_info.clock_rate_ghz() * 1e9;
+  double smem_bytes_per_sec =
+      device_info.core_count() * kBytesPerClockPerSm * clock_hz;
+  return absl::Seconds(smem_bytes / smem_bytes_per_sec);
+}
+
 // Computes block launch resource footprints and dot runtime estimates.
 absl::StatusOr<DotEstimates> BuildDotEstimates(
     const TiledHloInstruction* tiled_hlo, int64_t num_launched_blocks,
@@ -848,7 +905,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   int64_t flops = 0;
   int64_t bytes_read = 0;
   int64_t dot_l2_bytes_read = 0;
+  int64_t dot_smem_bytes = 0;
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
+  const int64_t num_threads =
+      block_level_parameters.num_warps * WarpSize(device_info);
 
   DotEstimates dot_estimates;
 
@@ -944,6 +1004,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         if (in_dot_region) {
           dot_l2_bytes_read += EstimateL2BytesRead(
               tile_bytes_read, dram_utilization, device_info);
+          absl::StatusOr<llvm::SmallVector<int64_t>> tile_strides =
+              tiled_hlo->tile(0).GetStaticTileStrides();
+          CHECK_OK(tile_strides);
+          dot_smem_bytes +=
+              num_blocks_cur_hlo *
+              GetPipelinedLeafSmemBytesPerTile(hlo->shape(), *tile_sizes,
+                                               *tile_strides, num_threads);
         }
         RecordOperandRead(hlo, tile_bytes_read, dram_utilization,
                           n_bytes_total_map);
@@ -960,9 +1027,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   }
 
   absl::Duration compute_time =
-      GpuPerformanceModelBase::ComputeTime(
-          device_info, flops, num_blocks,
-          block_level_parameters.num_warps * WarpSize(device_info)) +
+      GpuPerformanceModelBase::ComputeTime(device_info, flops, num_blocks,
+                                           num_threads) +
       dot_estimates.compute_time;
 
   absl::Duration read_time;
@@ -1015,9 +1081,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     const int64_t blocks_per_sm =
         std::min(occupancy.active_blocks_per_sm,
                  CeilOfRatio<int64_t>(num_blocks, device_info.core_count()));
-    const int64_t active_threads_per_sm = blocks_per_sm *
-                                          block_level_parameters.num_warps *
-                                          WarpSize(device_info);
+    const int64_t active_threads_per_sm = blocks_per_sm * num_threads;
     // TODO(b/581767811): Replace with a throughput-based SIMT compute model.
     constexpr int64_t kEmpiricalSimtComputeDivisor = 8;
     absl::Duration prologue_compute_time =
@@ -1038,6 +1102,13 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
             launch_config, mainloop_compute_time,
             dot_model::HbmEstimates{dot_dram_read_time, absl::ZeroDuration()},
             device_info);
+    // Only multi-stage, multi-iteration K-loops are software-pipelined through
+    // shared memory (single-iteration loops are unrolled).
+    if (block_level_parameters.num_stages > 1 &&
+        dot_estimates.k_loop_iterations > 1) {
+      mainloop_time = std::max(mainloop_time,
+                               EstimateSmemTime(dot_smem_bytes, device_info));
+    }
     // The epilogue (operand reads and output writes) runs after the K loop and
     // doesn't overlap with it.
     absl::Duration pipelined_loop_time = mainloop_time + post_mainloop_time;
