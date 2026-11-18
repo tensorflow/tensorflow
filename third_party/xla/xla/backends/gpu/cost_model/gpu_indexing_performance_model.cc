@@ -716,8 +716,8 @@ int64_t GetConcatLoopCopies(const TiledHloRegion& region) {
 
 // Computes block launch resource footprints and dot runtime estimates.
 absl::StatusOr<DotEstimates> BuildDotEstimates(
-    const TiledHloInstruction* tiled_hlo,
-    const se::DeviceDescription& device_info,
+    const TiledHloInstruction* tiled_hlo, int64_t num_launched_blocks,
+    bool in_dot_region, const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_params) {
   const HloDotInstruction* dot_instr =
       Cast<HloDotInstruction>(tiled_hlo->hlo());
@@ -746,6 +746,17 @@ absl::StatusOr<DotEstimates> BuildDotEstimates(
   ABSL_ASSIGN_OR_RETURN(dot_model::ComputeAndFlops compute_and_flops,
                    dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
                        dot_info, dot_tile, device_info));
+  // The dot model counts CTAs from the dot's own shape, but the fusion kernel
+  // launches `num_launched_blocks` CTAs from the root shape (which can be
+  // larger when an epilogue reshape splits and pads a dot dimension).
+  if (!in_dot_region) {
+    double block_scale = std::max(
+        1.0, static_cast<double>(num_launched_blocks) /
+                 dot_model::CalculateNumThreadblocks(dot_info, dot_tile));
+    compute_and_flops.flops_with_wave_quant = static_cast<int64_t>(
+        compute_and_flops.flops_with_wave_quant * block_scale);
+    compute_and_flops.compute_time *= block_scale;
+  }
 
   const int64_t concat_loop_copies =
       block_params.num_stages > 1
@@ -764,9 +775,9 @@ absl::StatusOr<DotEstimates> BuildDotEstimates(
       /*registers_per_thread=*/
       dot_model::CalculateRegistersPerThread(dot_info, dot_tile, block_params,
                                              device_info),
-      /*l2_bytes_at_dot_type=*/
-      CalculateOperandBytesPerBlockAtDotType(*dot_instr, dot_info, dot_tile,
-                                             batch_tile_sizes),
+      /*l2_bytes_at_dot_type=*/num_launched_blocks *
+          CalculateOperandBytesPerBlockAtDotType(*dot_instr, dot_info, dot_tile,
+                                                 batch_tile_sizes),
   };
 }
 
@@ -805,6 +816,19 @@ absl::Duration ComputeOutputWriteTime(
     write_time += absl::Seconds(root_bytes / bytes_per_second);
   }
   return write_time;
+}
+
+// Uncoalesced reads still fetch full 32B L2 sectors, so L2 transfers more
+// bytes than the logical elements used (`logical_bytes_read`).
+int64_t EstimateL2BytesRead(int64_t logical_bytes_read, double dram_utilization,
+                            const se::DeviceDescription& device_info) {
+  constexpr double kL2SectorBytes = 32.0;
+  double l2_sector_utilization = std::min(
+      1.0, dram_utilization * (device_info.dram_to_l2_transaction_size_bytes() /
+                               kL2SectorBytes));
+  return l2_sector_utilization > 0.0
+             ? static_cast<int64_t>(logical_bytes_read / l2_sector_utilization)
+             : logical_bytes_read;
 }
 
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
@@ -859,11 +883,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
 
           if (hlo->opcode() == HloOpcode::kDot) {
             if (absl::StatusOr<DotEstimates> cur_dot_estimates =
-                    BuildDotEstimates(tiled_hlo, device_info,
+                    BuildDotEstimates(tiled_hlo, num_blocks_cur_hlo,
+                                      in_dot_region, device_info,
                                       block_level_parameters);
                 cur_dot_estimates.ok()) {
-              // BuildDotEstimates() counts one block; scale to all blocks.
-              cur_dot_estimates->l2_bytes_at_dot_type *= num_blocks_cur_hlo;
               dot_estimates =
                   MergeDotEstimates(dot_estimates, *cur_dot_estimates);
 
@@ -913,19 +936,18 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
                          info_cur_hlo.in_bound_read_fraction);
 
         bytes_read += tile_bytes_read;
-        if (in_dot_region) {
-          dot_l2_bytes_read += tile_bytes_read;
-        }
 
-        double effective_bandwidth_utilization_rate =
+        double dram_utilization =
             BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*tiled_hlo,
                                                                   device_info);
 
-        RecordOperandRead(hlo, tile_bytes_read,
-                          effective_bandwidth_utilization_rate,
+        if (in_dot_region) {
+          dot_l2_bytes_read += EstimateL2BytesRead(
+              tile_bytes_read, dram_utilization, device_info);
+        }
+        RecordOperandRead(hlo, tile_bytes_read, dram_utilization,
                           n_bytes_total_map);
-        RecordOperandRead(hlo, tile_bytes_read,
-                          effective_bandwidth_utilization_rate,
+        RecordOperandRead(hlo, tile_bytes_read, dram_utilization,
                           in_dot_region ? dot_region_operand_read_map
                                         : epilogue_operand_read_map);
       });

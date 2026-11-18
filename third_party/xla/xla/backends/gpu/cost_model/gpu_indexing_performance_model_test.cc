@@ -1395,6 +1395,142 @@ ENTRY main {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithDownstreamTranspose) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY main {
+  p0 = bf16[1024, 512] parameter(0)
+  p1 = bf16[512, 2048] parameter(1)
+  d = bf16[1024, 2048] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[32]}
+  ROOT t = bf16[2048, 1024] transpose(d), dimensions={1, 0}
+})"));
+  // Root `t` has shape [2048, 1024] (N, M), so root tile [16, 128] maps to
+  // dot tile [128, 16] (M=128, N=16).
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* dot = root->operand(0);
+  auto estimate = [&](const HloFusionAdaptor& fusion,
+                      std::vector<int64_t> tile) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        fusion, BlockLevelParameters{/*output_tile_sizes=*/{std::move(tile)},
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*num_stages=*/3});
+  };
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData transposed,
+      estimate(*HloFusionAdaptor::ForProducerConsumer(dot, root), {16, 128}));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData dot_128x16,
+      estimate(*HloFusionAdaptor::ForInstruction(dot), {128, 16}));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData dot_16x128,
+      estimate(*HloFusionAdaptor::ForInstruction(dot), {16, 128}));
+
+  EXPECT_EQ(transposed.compute_time, dot_128x16.compute_time);
+  EXPECT_NE(transposed.compute_time, dot_16x128.compute_time);
+}
+
+constexpr int64_t kTileM = 128;
+constexpr int64_t kTileN = 64;
+constexpr int64_t kTileK = 64;
+constexpr int64_t kBf16Bytes = 2;
+
+// Dot whose N = 16 * n_outer is split into [n_outer, 16] and transposed, so
+// root tile [1, kTileN, kTileM] reads `p1` with stride 16 along N.
+std::string StridedTransposedDotHlo(int64_t n_outer) {
+  return absl::Substitute(R"(
+HloModule m
+strided_transposed_dot {
+  p0 = bf16[4096, 2048] parameter(0)
+  p1 = bf16[2048, $0] parameter(1)
+  d = bf16[4096, $0] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+  bc = bf16[4096, $1, 16] bitcast(d)
+  ROOT t = bf16[16, $1, 4096] transpose(bc), dimensions={2, 1, 0}
+}
+ENTRY main {
+  p0 = bf16[4096, 2048] parameter(0)
+  p1 = bf16[2048, $0] parameter(1)
+  ROOT f = bf16[16, $1, 4096] fusion(p0, p1), kind=kCustom,
+    calls=strided_transposed_dot
+})",
+                          16 * n_outer, n_outer);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithStridedTransposeL2SectorTraffic) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(StridedTransposedDotHlo(/*n_outer=*/64)));
+  // Root tile [1, 64, 128] maps through `transpose` (`[128, 64, 1]`) and
+  // `bitcast` to dot tile [128, 64] (stride 16 along `p1`'s 1024-elem N dim).
+  BlockLevelParameters params{/*output_tile_sizes=*/{{1, kTileN, kTileM}},
+                              /*num_warps=*/4,
+                              /*num_ctas=*/1,
+                              /*num_stages=*/4};
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForComputation(
+              module->GetComputationWithName("strided_transposed_dot")),
+          params));
+
+  constexpr int64_t kBlocks = (16 / 1) * (64 / kTileN) * (4096 / kTileM);
+  constexpr int64_t kKIterations = 2048 / kTileK;
+
+  // Contiguous `p0` reads at 1x sector traffic, while stride-16 `p1` reads at
+  // 16x sector traffic (one 32B L2 sector per 2B element).
+  constexpr int64_t kP0LogicalBytes =
+      kBlocks * kKIterations * (kTileM * kTileK * kBf16Bytes);
+  constexpr int64_t kP1LogicalBytes =
+      kBlocks * kKIterations * (kTileK * kTileN * kBf16Bytes);
+  EXPECT_EQ(result.bytes_read, kP0LogicalBytes + kP1LogicalBytes);
+  EXPECT_EQ(result.l2_bytes_read, kP0LogicalBytes + 16 * kP1LogicalBytes);
+  EXPECT_EQ(result.exec_time,
+            dot_model::CalculateL2Time(kKIterations, device_info_,
+                                       result.l2_bytes_read,
+                                       /*is_tma_allowed=*/false));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithReshapedEpilogueBlockInflation) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(StridedTransposedDotHlo(/*n_outer=*/50)));
+  HloComputation* comp =
+      module->GetComputationWithName("strided_transposed_dot");
+  const HloInstruction* dot = comp->GetInstructionWithName("d");
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData result,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForComputation(comp),
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, kTileN, kTileM}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/4}));
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData uninflated_dot,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *HloFusionAdaptor::ForInstruction(dot),
+          BlockLevelParameters{/*output_tile_sizes=*/{{kTileM, kTileN}},
+                               /*num_warps=*/4,
+                               /*num_ctas=*/1,
+                               /*num_stages=*/4}));
+
+  // The split-and-transposed root launches 512 CTAs vs 416 for the dot's own
+  // grid, scaling dot compute time by 512 / 416.
+  constexpr int64_t kLaunchedBlocks =
+      (16 / 1) * CeilOfRatio<int64_t>(50, kTileN) * (4096 / kTileM);  // 512
+  constexpr int64_t kDotGridBlocks =
+      (4096 / kTileM) * CeilOfRatio<int64_t>(800, kTileN);  // 416
+  EXPECT_EQ(result.compute_time,
+            uninflated_dot.compute_time *
+                (static_cast<double>(kLaunchedBlocks) / kDotGridBlocks));
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

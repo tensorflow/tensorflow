@@ -359,9 +359,10 @@ backend_config={"sizes":["32"]}
               absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
-// TODO(b/501002656): Remove this test once we support transposes in the dot
-// fusion cost model.
-TEST_F(GpuDotFusionCostModelTest, GpuDotWithDownstreamTransposeIsRejected) {
+// TODO(b/510718798): Remove once EstimateRunTimeForDotOpWithBlockParameters
+// supports downstream transposes.
+TEST_F(GpuDotFusionCostModelTest,
+       EstimateRunTimeForDotOpWithDownstreamTransposeIsRejected) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -375,8 +376,13 @@ ROOT r = bf16[1024,1024] transpose(d), dimensions={1,0}
 
   auto* root = module->entry_computation()->root_instruction();
   auto* dot = Cast<HloDotInstruction>(root->operand(0));
-  EXPECT_THAT(gpu_dot_fusion_cost_model::IsSupported(dot),
-              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{64, 64}};
+  EXPECT_THAT(
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_),
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_F(GpuDotFusionCostModelTest, CalculateIterBytes) {

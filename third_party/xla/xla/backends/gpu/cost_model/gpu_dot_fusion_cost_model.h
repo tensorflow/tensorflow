@@ -132,6 +132,10 @@ struct SmOccupancy {
 SmOccupancy CalculateSmOccupancy(const LaunchConfig& config,
                                  const se::DeviceDescription& device_info);
 
+// Calculates the number of threadblocks launched for the dot problem and tile.
+int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
+                                 const DotTileSize& dot_tile);
+
 // Calculates the estimated number of hardware launch waves required to execute
 // the threadblocks.
 int64_t CalculateHardwareLaunchWaves(const LaunchConfig& config,

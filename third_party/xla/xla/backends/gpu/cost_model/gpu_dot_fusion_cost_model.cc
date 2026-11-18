@@ -193,19 +193,6 @@ MemoryBandwidthSpec GetMemoryBandwidthSpec(
   };
 }
 
-int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
-                                 const DotTileSize& dot_tile) {
-  // TODO(maniananth): Add special handling for grouped matmuls here.
-  int64_t num_tiles_along_b_dimension = CeilOfRatio<int64_t>(dot.b, dot_tile.b);
-  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dot.m, dot_tile.m);
-  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dot.n, dot_tile.n);
-  int64_t num_threadblocks = num_tiles_along_b_dimension *
-                             num_tiles_along_m_dimension *
-                             num_tiles_along_n_dimension;
-
-  return num_threadblocks;
-}
-
 int64_t CalculateNumWaves(int64_t threadblock_count,
                           const se::DeviceDescription& device_info) {
   int64_t core_count = device_info.core_count();
@@ -251,6 +238,19 @@ int64_t CalculateL2Bytes(const DotProblemInfo& dot, const DotTileSize& out_tile,
 }
 
 }  // namespace
+
+int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
+                                 const DotTileSize& dot_tile) {
+  // TODO(maniananth): Add special handling for grouped matmuls here.
+  int64_t num_tiles_along_b_dimension = CeilOfRatio<int64_t>(dot.b, dot_tile.b);
+  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dot.m, dot_tile.m);
+  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dot.n, dot_tile.n);
+  int64_t num_threadblocks = num_tiles_along_b_dimension *
+                             num_tiles_along_m_dimension *
+                             num_tiles_along_n_dimension;
+
+  return num_threadblocks;
+}
 
 double GetEffectiveFlopsPerNsForTileSize(
     int64_t tile_m, const se::DeviceDescription& device_info,
@@ -706,26 +706,6 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
-  // TODO(b/501002656): Support downstream transposes by fixing dimension
-  // mapping.
-  std::vector<const HloInstruction*> stack;
-  absl::flat_hash_set<const HloInstruction*> visited;
-  stack.push_back(dot);
-  visited.insert(dot);
-  while (!stack.empty()) {
-    const HloInstruction* current = stack.back();
-    stack.pop_back();
-    if (current != dot && current->opcode() == HloOpcode::kTranspose) {
-      return absl::UnimplementedError(
-          "Dot with a downstream transpose is not supported.");
-    }
-    for (const HloInstruction* user : current->users()) {
-      if (visited.insert(user).second) {
-        stack.push_back(user);
-      }
-    }
-  }
-
   return absl::OkStatus();
 }
 
@@ -744,6 +724,22 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
   ABSL_RETURN_IF_ERROR(IsSupported(dot));
+  // Reject epilogue transposes since root tiles are not propagated to the dot.
+  std::vector<const HloInstruction*> stack = {dot};
+  absl::flat_hash_set<const HloInstruction*> visited = {dot};
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    if (current->opcode() == HloOpcode::kTranspose) {
+      return absl::UnimplementedError(
+          "Dot with a downstream transpose is not supported.");
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (visited.insert(user).second) {
+        stack.push_back(user);
+      }
+    }
+  }
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
