@@ -4419,6 +4419,29 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
   @parameterized.named_parameters(
+      ('RankReduction', '_experimental_rank_reduction'),
+      ('GpuCompatibility', '_experimental_unsafe_gpu_compatibility'),
+  )
+  @test_util.run_v2_only
+  def testKerasLSTMStatesStaySeparateWith(self, converter_attr):
+    # The fused LSTM op has two stateful operands that start as identical
+    # constants. A late pass that merges them makes both states one tensor.
+    input_data = tf.constant(
+        np.array(np.random.random_sample((4, 10, 10)), dtype=np.float32)
+    )
+    x = tf.keras.layers.Input(batch_shape=(4, 10, 10))
+    y = tf.keras.layers.LSTM(units=10, input_shape=(10, 10))(x)
+    model = tf.keras.Model(inputs=[x], outputs=[y])
+
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    setattr(converter, converter_attr, True)
+    tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+
+    expected_value = model.predict(input_data)
+    self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+  @parameterized.named_parameters(
       ('LSTM', tf.keras.layers.LSTM),
       ('SimpleRNN', tf.keras.layers.SimpleRNN),
       ('GRU', tf.keras.layers.GRU),

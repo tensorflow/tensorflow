@@ -23,10 +23,15 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -139,6 +144,31 @@ DenseIntElementsAttr getIterativeConstantValue(Value v) {
   return nullptr;
 }
 
+// The rewrites below read every dimension of the tensors they touch and write
+// shapes back as reshape constants, so they are only meaningful for a function
+// whose tensors are all ranked with static shapes. The pass also assumes the
+// model runs with the batch size it was exported with, which a dynamic
+// dimension contradicts. Such functions are left alone as a whole.
+bool HasOnlyStaticShapes(func::FuncOp func) {
+  // Unranked tensors fail `hasStaticShape()` too; non-shaped types (`none`,
+  // `!tfl.control`) are no concern of the rewrites.
+  auto is_static = [](Type type) {
+    auto shaped = dyn_cast<ShapedType>(type);
+    return !shaped || shaped.hasStaticShape();
+  };
+  // The pattern driver visits nested regions (e.g. a `tfl.while` body) as
+  // well, so look at every op's operands and not only at its results: that
+  // also covers block arguments, of the function and of nested regions.
+  return !func.walk([&](mlir::Operation* op) {
+                if (llvm::all_of(op->getOperandTypes(), is_static) &&
+                    llvm::all_of(op->getResultTypes(), is_static)) {
+                  return mlir::WalkResult::advance();
+                }
+                return mlir::WalkResult::interrupt();
+              })
+              .wasInterrupted();
+}
+
 bool canLiftThroughSlice(SliceOp slice_op, ArrayRef<int> squeezed_indices) {
   auto begin_attr = getIterativeConstantValue(slice_op.getBegin());
   auto size_attr = getIterativeConstantValue(slice_op.getSize());
@@ -192,7 +222,6 @@ struct SinkReshapeThroughUnaryElementwise : public OpRewritePattern<OpType> {
     auto reshape_op =
         unary_op->getOperand(0).template getDefiningOp<ReshapeOp>();
     if (!reshape_op) return failure();
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
     // Only sink if it's a rank-expanding reshape (adds unit dimensions).
@@ -228,7 +257,6 @@ struct LiftReshapeThroughUnaryElementwise : public OpRewritePattern<ReshapeOp> {
         unary_op->getNumOperands() != 1) {
       return failure();
     }
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
     // Only lift if it's a rank-collapsing reshape (removes dimensions).
@@ -267,7 +295,6 @@ struct LiftReshapeThroughConcatenation : public OpRewritePattern<ReshapeOp> {
     auto concat_op = dyn_cast_or_null<ConcatenationOp>(
         reshape_op.getInput().getDefiningOp());
     if (!concat_op) return failure();
-
     auto input_ty = cast<RankedTensorType>(reshape_op.getInput().getType());
     auto output_ty = cast<RankedTensorType>(reshape_op.getType());
 
@@ -828,28 +855,24 @@ struct ReducePadRank : public OpRewritePattern<PadOpTy> {
 // Reduces reduction operation rank by squeezing leading unit dimensions.
 // Pattern: Reduction(X, axes) -> Output
 // Becomes: Reshape(Reduction(Reshape(X), adjusted_axes)) -> Output
+//
+// Without keep_dims the output has fewer dimensions than the input, so input
+// dimensions are mapped to output dimensions explicitly rather than by index.
 template <typename OpType>
 struct ReduceReductionRank : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter& rewriter) const override {
-    auto input_ty = cast<RankedTensorType>(op.getInput().getType());
-    auto out_ty = cast<RankedTensorType>(op.getType());
-
-    int rank = input_ty.getRank();
-    if (rank <= 4) return failure();
-
-    // Identify unit dimensions we can squeeze.
-    int target_rank = 4;
-    SmallVector<int, 4> squeezed_indices;
-    for (int i = 0; i < rank; ++i) {
-      if (input_ty.getDimSize(i) == 1 && out_ty.getDimSize(i) == 1) {
-        squeezed_indices.push_back(i);
-        if (rank - squeezed_indices.size() <= target_rank) break;
-      }
+    auto input_ty = dyn_cast<RankedTensorType>(op.getInput().getType());
+    auto out_ty = dyn_cast<RankedTensorType>(op.getType());
+    if (!input_ty || !out_ty || !input_ty.hasStaticShape() ||
+        !out_ty.hasStaticShape()) {
+      return failure();
     }
-    if (squeezed_indices.empty()) return failure();
+
+    const int rank = input_ty.getRank();
+    if (rank <= 4) return failure();
 
     // Reduction axes must be constant to adjust.
     Value axes_val;
@@ -858,20 +881,47 @@ struct ReduceReductionRank : public OpRewritePattern<OpType> {
     } else {
       axes_val = op.getAxes();
     }
-
     DenseIntElementsAttr axes_attr;
     if (!matchPattern(axes_val, m_Constant(&axes_attr))) return failure();
 
-    SmallVector<int32_t, 4> new_axes_vec;
+    SmallVector<int32_t, 4> axes;
     for (auto axis : axes_attr.getValues<int32_t>()) {
       int32_t a = axis;
       if (a < 0) a += rank;
-      // If we reduce a squeezed dimension, it must be keep_dims=true
-      // so it remains a unit dimension in the output (which we also squeeze).
-      if (llvm::is_contained(squeezed_indices, a)) {
-        if (!op.getKeepDims()) return failure();
+      if (a < 0 || a >= rank) return failure();
+      axes.push_back(a);
+    }
+
+    // Map each input dimension to its output dimension; reduced dimensions
+    // are dropped without keep_dims.
+    const bool keep_dims = op.getKeepDims();
+    SmallVector<int, 6> out_index(rank, -1);
+    int next_out = 0;
+    for (int i = 0; i < rank; ++i) {
+      if (!keep_dims && llvm::is_contained(axes, i)) continue;
+      out_index[i] = next_out++;
+    }
+    if (next_out != out_ty.getRank()) return failure();
+
+    // Identify unit dimensions we can squeeze: unit in the input and still
+    // present as a unit dimension in the output. A reduced dimension thus
+    // only qualifies with keep_dims, in which case it is dropped from the
+    // axes as well.
+    const int target_rank = 4;
+    SmallVector<int, 4> squeezed_indices;
+    for (int i = 0; i < rank; ++i) {
+      if (input_ty.getDimSize(i) != 1 || out_index[i] < 0 ||
+          out_ty.getDimSize(out_index[i]) != 1) {
         continue;
       }
+      squeezed_indices.push_back(i);
+      if (rank - squeezed_indices.size() <= target_rank) break;
+    }
+    if (squeezed_indices.empty()) return failure();
+
+    SmallVector<int32_t, 4> new_axes_vec;
+    for (int32_t a : axes) {
+      if (llvm::is_contained(squeezed_indices, a)) continue;
       int32_t new_a = a;
       for (int s : squeezed_indices) {
         if (s < a) new_a--;
@@ -893,15 +943,15 @@ struct ReduceReductionRank : public OpRewritePattern<OpType> {
 
     SmallVector<int64_t, 4> new_out_shape;
     for (int i = 0; i < rank; ++i) {
-      if (!llvm::is_contained(squeezed_indices, i)) {
-        new_out_shape.push_back(out_ty.getDimSize(i));
+      if (out_index[i] >= 0 && !llvm::is_contained(squeezed_indices, i)) {
+        new_out_shape.push_back(out_ty.getDimSize(out_index[i]));
       }
     }
     auto new_out_ty =
         RankedTensorType::get(new_out_shape, out_ty.getElementType());
 
     auto new_op = rewriter.create<OpType>(op.getLoc(), new_out_ty, new_input,
-                                          new_axes_const, op.getKeepDims());
+                                          new_axes_const, keep_dims);
 
     SmallVector<int32_t, 4> final_shape_v32;
     for (auto d : out_ty.getShape())
@@ -1363,6 +1413,7 @@ class RankReductionPass
 
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
+    if (!HasOnlyStaticShapes(func_op)) return;
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     patterns.add<LiftReshapeThroughConcatenation>(ctx);

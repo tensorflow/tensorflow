@@ -158,6 +158,38 @@ module {
     func.return %1 : tensor<1x25x1x1x1xf32>
   }
 
+  // Without keep_dims the output has one dimension fewer than the input; the
+  // leading unit dimension is still squeezed and the axis shifted.
+  // CHECK-LABEL: @reduce_sum_rank_no_keep_dims
+  func.func @reduce_sum_rank_no_keep_dims(%arg0: tensor<25x64x1x128xf32>) -> tensor<1x25x64x1xf32> {
+    // CHECK-NOT: tfl.reshape
+    // CHECK: %[[AXES:.*]] = "tfl.pseudo_const"() <{value = dense<3> : tensor<1xi32>}> : () -> tensor<1xi32>
+    // CHECK: %[[SUM:.*]] = "tfl.sum"(%arg0, %[[AXES]]) <{keep_dims = false}> : (tensor<25x64x1x128xf32>, tensor<1xi32>) -> tensor<25x64x1xf32>
+    // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%[[SUM]], %{{.*}}) : (tensor<25x64x1xf32>, tensor<4xi32>) -> tensor<1x25x64x1xf32>
+    // CHECK: return %[[RESHAPE]]
+    %cst_axes = "tfl.pseudo_const"() {value = dense<[4]> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_shape = "tfl.pseudo_const"() {value = dense<[1, 25, 64, 1, 128]> : tensor<5xi32>} : () -> tensor<5xi32>
+    %0 = "tfl.reshape"(%arg0, %cst_shape) : (tensor<25x64x1x128xf32>, tensor<5xi32>) -> tensor<1x25x64x1x128xf32>
+    %1 = "tfl.sum"(%0, %cst_axes) {keep_dims = false} : (tensor<1x25x64x1x128xf32>, tensor<1xi32>) -> tensor<1x25x64x1xf32>
+    func.return %1 : tensor<1x25x64x1xf32>
+  }
+
+  // A reduced unit dimension cannot be squeezed without keep_dims (it is gone
+  // from the output); the other leading unit dimension is.
+  // CHECK-LABEL: @reduce_mean_rank_no_keep_dims_reduced_unit_dim
+  func.func @reduce_mean_rank_no_keep_dims_reduced_unit_dim(%arg0: tensor<1x25x64x128xf32>) -> tensor<1x25x64x128xf32> {
+    // CHECK-NOT: tfl.reshape
+    // CHECK: %[[AXES:.*]] = "tfl.pseudo_const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
+    // CHECK: %[[MEAN:.*]] = "tfl.mean"(%arg0, %[[AXES]]) <{keep_dims = false}> : (tensor<1x25x64x128xf32>, tensor<1xi32>) -> tensor<25x64x128xf32>
+    // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%[[MEAN]], %{{.*}}) : (tensor<25x64x128xf32>, tensor<4xi32>) -> tensor<1x25x64x128xf32>
+    // CHECK: return %[[RESHAPE]]
+    %cst_axes = "tfl.pseudo_const"() {value = dense<[1]> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_shape = "tfl.pseudo_const"() {value = dense<[1, 1, 25, 64, 128]> : tensor<5xi32>} : () -> tensor<5xi32>
+    %0 = "tfl.reshape"(%arg0, %cst_shape) : (tensor<1x25x64x128xf32>, tensor<5xi32>) -> tensor<1x1x25x64x128xf32>
+    %1 = "tfl.mean"(%0, %cst_axes) {keep_dims = false} : (tensor<1x1x25x64x128xf32>, tensor<1xi32>) -> tensor<1x25x64x128xf32>
+    func.return %1 : tensor<1x25x64x128xf32>
+  }
+
   // CHECK-LABEL: @reduce_cumsum_rank
   func.func @reduce_cumsum_rank(%arg0: tensor<25x1x1x1xf32>) -> tensor<1x25x1x1x1xf32> {
     // CHECK-NOT: tfl.reshape
@@ -370,5 +402,82 @@ module {
     // CHECK: "tfl.fully_connected"(%arg0, %arg1, %arg2)
     %0 = "tfl.fully_connected"(%arg0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x7x7x24xf32>, tensor<24x24xf32>, tensor<24xf32>) -> tensor<1x7x7x24xf32>
     func.return %0 : tensor<1x7x7x24xf32>
+  }
+
+  // The pass reads every dimension and writes shapes back as constants, so a
+  // function with an unranked tensor or a dynamic dimension anywhere is left
+  // alone as a whole (and must not crash the pass).
+  // CHECK-LABEL: func.func @unranked_unary_no_rewrite
+  func.func @unranked_unary_no_rewrite(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: return %[[ABS]]
+    %0 = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func.func @unranked_binary_no_rewrite
+  func.func @unranked_binary_no_rewrite(%arg0: tensor<*xf32>, %arg1: tensor<1x1x2x3x4xf32>) -> tensor<*xf32> {
+    // CHECK: %[[ADD:.*]] = tfl.add(%arg0, %arg1) {{.*}} -> tensor<*xf32>
+    // CHECK-NEXT: return %[[ADD]]
+    %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<1x1x2x3x4xf32>) -> tensor<*xf32>
+    func.return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func.func @dynamic_dim_unary_no_rewrite
+  func.func @dynamic_dim_unary_no_rewrite(%arg0: tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32>
+    // CHECK-NEXT: return %[[ABS]]
+    %0 = "tfl.abs"(%arg0) : (tensor<1x1x?x3x4xf32>) -> tensor<1x1x?x3x4xf32>
+    func.return %0 : tensor<1x1x?x3x4xf32>
+  }
+
+  // CHECK-LABEL: func.func @dynamic_dim_binary_no_rewrite
+  func.func @dynamic_dim_binary_no_rewrite(%arg0: tensor<?x1x2x3x4xf32>, %arg1: tensor<?x1x2x3x4xf32>) -> tensor<?x1x2x3x4xf32> {
+    // CHECK: %[[ADD:.*]] = tfl.add %arg0, %arg1 {{.*}} : tensor<?x1x2x3x4xf32>
+    // CHECK-NEXT: return %[[ADD]]
+    %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x1x2x3x4xf32>, tensor<?x1x2x3x4xf32>) -> tensor<?x1x2x3x4xf32>
+    func.return %0 : tensor<?x1x2x3x4xf32>
+  }
+
+  // CHECK-LABEL: func.func @unranked_reshape_of_unary_no_rewrite
+  func.func @unranked_reshape_of_unary_no_rewrite(%arg0: tensor<*xf32>) -> tensor<25xf32> {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0)
+    // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%[[ABS]], %{{.*}})
+    // CHECK-NEXT: return %[[RESHAPE]]
+    %cst = "tfl.pseudo_const"() {value = dense<[25]> : tensor<1xi32>} : () -> tensor<1xi32>
+    %0 = "tfl.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tfl.reshape"(%0, %cst) : (tensor<*xf32>, tensor<1xi32>) -> tensor<25xf32>
+    func.return %1 : tensor<25xf32>
+  }
+
+  // CHECK-LABEL: func.func @static_op_in_dynamic_function_no_rewrite
+  func.func @static_op_in_dynamic_function_no_rewrite(%arg0: tensor<1x1x2x3x4xf32>, %arg1: tensor<?x4xf32>) -> (tensor<1x1x2x3x4xf32>, tensor<?x4xf32>) {
+    // CHECK: %[[ABS:.*]] = "tfl.abs"(%arg0) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    // CHECK-NEXT: return %[[ABS]], %arg1
+    %0 = "tfl.abs"(%arg0) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    func.return %0, %arg1 : tensor<1x1x2x3x4xf32>, tensor<?x4xf32>
+  }
+
+  // A nested region (here a `tfl.while` body) has block arguments of its own,
+  // which the function's arguments and op results do not show. An unranked one
+  // feeding a static-result reshape must still keep the pass off the function.
+  // CHECK-LABEL: func.func @unranked_block_arg_in_while_body_no_rewrite
+  func.func @unranked_block_arg_in_while_body_no_rewrite(%arg0: tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32> {
+    // CHECK: "tfl.while"
+    // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%{{.*}}, %{{.*}}) : (tensor<*xf32>, tensor<5xi32>) -> tensor<1x1x2x3x4xf32>
+    // CHECK-NEXT: %[[ABS:.*]] = "tfl.abs"(%[[RESHAPE]]) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    // CHECK-NEXT: "tfl.yield"(%[[ABS]])
+    %0 = "tfl.while"(%arg0) ({
+    ^bb0(%carg0: tensor<*xf32>):
+      %false = "tfl.pseudo_const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+      "tfl.yield"(%false) : (tensor<i1>) -> ()
+    }, {
+    ^bb0(%barg0: tensor<*xf32>):
+      %cst = "tfl.pseudo_const"() {value = dense<[1, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
+      %1 = "tfl.reshape"(%barg0, %cst) : (tensor<*xf32>, tensor<5xi32>) -> tensor<1x1x2x3x4xf32>
+      %2 = "tfl.abs"(%1) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+      "tfl.yield"(%2) : (tensor<1x1x2x3x4xf32>) -> ()
+    }) : (tensor<1x1x2x3x4xf32>) -> tensor<1x1x2x3x4xf32>
+    func.return %0 : tensor<1x1x2x3x4xf32>
   }
 }
