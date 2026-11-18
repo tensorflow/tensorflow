@@ -86,26 +86,43 @@ td_library(
     ],
 )
 
+# Patterns on TFLite ops only, without the TF dialect.
 td_library(
-    name = "tensorflow_lite_patterns_td_files",
+    name = "tensorflow_lite_tfl_patterns_td_files",
     srcs = [
-        "transforms/legalize_patterns.td",
-        "transforms/legalize_variables.td",
         "transforms/optimize_batch_matmul.td",
         "transforms/optimize_broadcast_like_patterns.td",
         "transforms/optimize_patterns.td",
         "transforms/post_quantize_patterns.td",
-        "transforms/prepare_patterns.td",
         "transforms/quantization/strict_quantize_patterns.td",
         "transforms/quantize_by_converter_patterns.td",
         "transforms/quantize_patterns.td",
-        "transforms/tensorlist_patterns.td",
         "utils/utils.td",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflow_lite_ops_td_files",
+        "@llvm-project//mlir:ArithOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+# Patterns that also use the TF dialect (TF -> TFLite legalization).
+td_library(
+    name = "tensorflow_lite_patterns_td_files",
+    srcs = [
+        "transforms/legalize_patterns.td",
+        "transforms/legalize_variables.td",
+        "transforms/prepare_patterns.td",
+        "transforms/tensorlist_patterns.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+        ":tensorflow_lite_tfl_patterns_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_optimize_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
@@ -250,7 +267,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_optimize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -259,7 +276,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_optimize_batch_matmul.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_batch_matmul.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -268,7 +285,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_optimize_broadcast_like.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_broadcast_like_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -277,7 +294,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantize_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -286,7 +303,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/quantization/generated_strict_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantization/strict_quantize_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -295,7 +312,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_quantize_by_converter.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantize_by_converter_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -304,7 +321,7 @@ gentbl_cc_library(
     tbl_outs = {"transforms/generated_post_quantize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/post_quantize_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 gentbl_cc_library(
@@ -345,7 +362,7 @@ gentbl_cc_library(
     tbl_outs = {"ir/tfl_canonicalize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_canonicalize.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    deps = [":tensorflow_lite_tfl_patterns_td_files"],
 )
 
 cc_library(
