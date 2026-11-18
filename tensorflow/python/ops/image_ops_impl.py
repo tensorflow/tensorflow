@@ -4846,14 +4846,31 @@ def image_gradients(image):
     gradients (1-step finite difference).
 
   Raises:
-    ValueError: If `image` is not a 4D tensor.
+    ValueError: If `image` has a known rank that is not 4.
+    InvalidArgumentError: If `image` has an unknown rank at graph construction
+      time and does not have 4 dimensions at runtime.
   """
   image = ops.convert_to_tensor(image, name='image')
-  if image.get_shape().ndims != 4:
+  rank = image.get_shape().ndims
+  if rank is not None and rank != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
+  assertions = []
+  if rank is None:
+    assertions.append(
+        check_ops.assert_rank(
+            image,
+            4,
+            message=(
+                'image_gradients expects a 4D tensor [batch_size, h, w, d].'
+            ),
+        )
+    )
+  image = control_flow_ops.with_dependencies(assertions, image)
   image_shape = array_ops.shape(image)
-  batch_size, height, width, depth = array_ops_stack.unstack(image_shape)
+  batch_size, height, width, depth = array_ops_stack.unstack(
+      image_shape, num=4
+  )
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
   dx = image[:, :, 1:, :] - image[:, :, :-1, :]
 
