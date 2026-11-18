@@ -26,6 +26,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -59,12 +62,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -245,6 +250,17 @@ std::unique_ptr<CublasLtMatmulThunk> CreateCublasLtMatmulThunk(
       se::gpu::BlasLt::Epilogue::kDefault, 0, 0, a, b, c, d, std::nullopt,
       std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
       std::nullopt, std::nullopt, std::nullopt);
+}
+
+std::unique_ptr<KernelThunk> CreateKernelThunk(const BufferAllocation& alloc) {
+  BufferAllocation::Slice slice(&alloc, 0, 1024);
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  std::vector<ShapedSlice> args = {{slice, shape}};
+  std::vector<BufferUse::MemoryAccess> args_access = {
+      BufferUse::MemoryAccess::kWrite};
+  return KernelThunk::MakeKernelThunk("kernel", args, args_access,
+                                      LaunchDimensions(), /*shmem_bytes=*/0,
+                                      /*devices_per_host=*/1);
 }
 
 std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
@@ -784,11 +800,12 @@ TEST(CommandBufferConversionPassTest, ConvertConvolutionAndGemmThunks) {
 
   ThunkSequence thunks;
 
-  // Create a {CopyThunk, CublasLtMatmulThunk, ConvolutionThunk}
+  // Create a {CopyThunk, KernelThunk, CublasLtMatmulThunk, ConvolutionThunk}
   BufferAllocation alloc0(0, 1024, 0);
   BufferAllocation alloc1(1, 2048, 0);
   BufferAllocation alloc2(2, 2048, 0);
   thunks.push_back(CreateCopyThunk(alloc0));
+  thunks.push_back(CreateKernelThunk(alloc2));
   thunks.push_back(CreateCublasLtMatmulThunk(alloc1));
   thunks.push_back(CreateConvolutionThunk(alloc0));
 
@@ -807,16 +824,39 @@ TEST(CommandBufferConversionPassTest, ConvertConvolutionAndGemmThunks) {
                        device_info, allocator),
               IsOkAndHolds(true));
 
-  // Expected transformation: Convert all 5 thunks into command buffer
+  // Expected transformation: Convert all 4 thunks into command buffer
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
 
   const auto* command_buffer_thunk =
       static_cast<const CommandBufferThunk*>(thunks[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(
-      thunks_in_command_buffer,
-      ThunkKindsAre(Thunk::kCopy, Thunk::kCublasLtMatmul, Thunk::kConvolution));
+  EXPECT_THAT(thunks_in_command_buffer,
+              ThunkKindsAre(Thunk::kCopy, Thunk::kKernel,
+                            Thunk::kCublasLtMatmul, Thunk::kConvolution));
+
+  static const absl::NoDestructor<absl::flat_hash_map<Thunk::Kind, bool>>
+      kExpectedRequiresWarmup({
+          {Thunk::kCopy, false},
+          {Thunk::kKernel, false},
+          {Thunk::kCublasLtMatmul, false},
+          {Thunk::kConvolution, true},
+      });
+  size_t num_commands = 0;
+  EXPECT_THAT(command_buffer_thunk->WalkCommands([&](const Command* command) {
+    ++num_commands;
+    auto it = kExpectedRequiresWarmup->find(command->kind());
+    if (it == kExpectedRequiresWarmup->end()) {
+      ADD_FAILURE() << "No requires_warmup expectation for "
+                    << Thunk::KindToString(command->kind());
+    } else {
+      EXPECT_EQ(command->requires_warmup(), it->second)
+          << Thunk::KindToString(command->kind());
+    }
+    return absl::OkStatus();
+  }),
+              IsOk());
+  EXPECT_EQ(num_commands, kExpectedRequiresWarmup->size());
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
