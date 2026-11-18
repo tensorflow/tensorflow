@@ -313,6 +313,32 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[[-9, 5, -4, 4], [9, -5, 4, -4]],
         diags_format="matrix")
 
+  def testCompactFormatWithNumpyAndListInputs(self):
+    self._test(
+        diags=_sample_diags.astype(np.float64),
+        rhs=_sample_rhs.astype(np.float64),
+        expected=_sample_result)
+    self._test(
+        diags=constant_op.constant(_sample_diags, dtypes.float32),
+        rhs=[1, 2, 3, 4],
+        expected=_sample_result)
+
+  def testSequenceFormatWithListInputs(self):
+    self._test(
+        diags=([2., 1., 4.], [1., 3., 2., 2.], [1., -1., 1.]),
+        rhs=[1., 2., 3., 4.],
+        expected=[-9, 5, -4, 4],
+        diags_format="sequence")
+
+  def testMatrixFormatWithNumpyInputs(self):
+    self._test(
+        diags=np.array(
+            [[1, 2, 0, 0], [1, 3, 1, 0], [0, -1, 2, 4], [0, 0, 1, 2]],
+            dtype=np.float64),
+        rhs=np.array([1, 2, 3, 4], dtype=np.float64),
+        expected=[-9, 5, -4, 4],
+        diags_format="matrix")
+
   def testRightHandSideAsColumn(self):
     self._testWithLists(
         diags=_sample_diags,

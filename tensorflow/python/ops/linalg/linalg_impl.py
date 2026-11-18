@@ -634,6 +634,11 @@ def tridiagonal_solve(diagonals,
       raise ValueError('Expected diagonals to be a sequence of length 3.')
 
     superdiag, maindiag, subdiag = diagonals
+    maindiag = ops.convert_to_tensor(maindiag, name='maindiag')
+    superdiag = ops.convert_to_tensor(
+        superdiag, dtype_hint=maindiag.dtype, name='superdiag')
+    subdiag = ops.convert_to_tensor(
+        subdiag, dtype_hint=maindiag.dtype, name='subdiag')
     if (not subdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1]) or
         not superdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1])):
       raise ValueError(
@@ -663,6 +668,7 @@ def tridiagonal_solve(diagonals,
                                              perturb_singular, name)
 
   if diagonals_format == 'matrix':
+    diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
     if m1 and m2 and m1 != m2:
@@ -683,6 +689,8 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                       conjugate_rhs, partial_pivoting,
                                       perturb_singular, name):
   """Helper function used after the input has been cast to compact form."""
+  diagonals = ops.convert_to_tensor(diagonals, name='diagonals')
+  rhs = ops.convert_to_tensor(rhs, dtype_hint=diagonals.dtype, name='rhs')
   diags_rank, rhs_rank = diagonals.shape.rank, rhs.shape.rank
 
   # If we know the rank of the diagonal tensor, do some static checking.
