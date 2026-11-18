@@ -523,6 +523,68 @@ TEST_F(TilingSpaceTest, VariadicAllGatherGetsPerOutputDimensions) {
   )"));
 }
 
+TEST_F(TilingSpaceTest, AllGatherTwoShotBoundsRootTileToShardSize) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[2,16] parameter(0)
+      ROOT ag = f32[8,16] all-gather(p0),
+        replica_groups={{0,1,2,3}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    }
+
+    ENTRY e {
+      p0 = f32[2,16] parameter(0)
+      ROOT fusion = f32[8,16] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  constexpr absl::string_view kExpected = R"(
+    Dimensions:
+        0 type: parallel size: 8 dim ID:0
+          hlo: %ag = f32[8,16]{1,0} all-gather(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+        1 type: parallel size: 16 dim ID:1
+          hlo: %ag = f32[8,16]{1,0} all-gather(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+        2 type: replica size: 4 dim ID:2
+          hlo: %ag = f32[8,16]{1,0} all-gather(%p0), replica_groups={{0,1,2,3}}, dimensions={0}, backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1]
+           sizes [ts_0, ts_1]
+           strides [1, 1]
+           upper bounds [2, 16]
+  )";
+  EXPECT_THAT(*tiling_space, MatchString(kExpected));
+
+  mlir::MLIRContext cloned_ctx;
+  std::unique_ptr<TilingSpace> cloned = tiling_space->Clone(&cloned_ctx);
+  EXPECT_THAT(*cloned, MatchString(kExpected));
+}
+
+TEST_F(TilingSpaceTest, AllGatherTwoShotWithNonElementwiseEpilogueIsRejected) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[2,16] parameter(0)
+      ag = f32[8,16] all-gather(p0),
+        replica_groups={{0,1,2,3}}, dimensions={0},
+        backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_TWO_SHOT"}}
+      ROOT transpose = f32[16,8] transpose(ag), dimensions={1,0}
+    }
+
+    ENTRY e {
+      p0 = f32[2,16] parameter(0)
+      ROOT fusion = f32[16,8] fusion(p0), kind=kCustom, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_THAT(TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("could not be located in the tiling space")));
+}
+
 TEST_F(TilingSpaceTest,
        InteriorVariadicAllGatherPropagatesDimensionsFromRoots) {
   HloInstruction* root = ParseAndGetRoot(R"(

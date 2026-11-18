@@ -449,18 +449,17 @@ absl::StatusOr<llvm::SmallVector<RootDims, 2>> BuildRootsForIndexWiseVariadic(
       ++num_grouped_dims;
       const int64_t dim_id = dim->id.value();
       auto it = info.tiles_per_peer_by_dim.find(dim_id);
-      if (dim->replica_dim.has_value() ||
-          it != info.tiles_per_peer_by_dim.end()) {
+      if (dim->peer_dim.has_value() || it != info.tiles_per_peer_by_dim.end()) {
         if (root.peer_dim_id.has_value() ||
-            (dim->replica_dim.has_value() &&
+            (dim->peer_dim.has_value() &&
              it != info.tiles_per_peer_by_dim.end())) {
           return absl::UnimplementedError(absl::StrFormat(
               "Output %d of %s has more than one dimension carrying the peer "
               "index.",
               root_index, hlo.name()));
         }
-        if (dim->replica_dim.has_value()) {
-          root.peer_dim_id = dim->replica_dim->value();
+        if (dim->peer_dim.has_value()) {
+          root.peer_dim_id = dim->peer_dim->dim_id.value();
         } else {
           root.peer_dim_id = dim_id;
           root.tiles_per_peer = it->second;

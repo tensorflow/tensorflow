@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_space.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -72,6 +74,14 @@ bool HasIndexWiseVariadic(const HloFusionAdaptor& fusion) {
                         [](const HloInstructionAdaptor& instr) {
                           return IsIndexWiseVariadic(instr.instruction());
                         });
+}
+
+bool IsTwoShotCollective(const HloInstruction& hlo) {
+  absl::StatusOr<GpuBackendConfig> gpu_config =
+      hlo.backend_config<GpuBackendConfig>();
+  return gpu_config.ok() &&
+         gpu_config->collective_backend_config().kernel_strategy() ==
+             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
 }
 
 }  // namespace
@@ -102,18 +112,19 @@ llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
   mlir::MLIRContext* ctx = tiling_space.mlir_context();
   llvm::SmallVector<TilingSpace::DimensionInfo, 4> dims =
       tiling_space.dimensions();
+  const bool has_per_output_tiles = tiling_space.HasPerOutputTiles();
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
   for (const TilingSpace::DimensionInfo& dim : dims) {
     const int64_t tile_size = *dim.tile_size;
     replacement_map[CreateSymbolExpr(dim.id.value(), dims.size(), ctx)] =
         CreateSymbolicConstant(tile_size, ctx);
-    int64_t scale = 1;
-    if (dim.replica_dim.has_value()) {
-      scale = dims[dim.replica_dim->value()].dimension_size;
-    }
-    // If the tile size is greater than or equal to the dimension size, then
-    // the dimension is trivial and can be replaced with 0.
-    if (dim.dimension_size <= tile_size * scale) {
+    // If the tile size covers the dimension, replace the dimension with 0,
+    // except for a variadic peer-buffer dimension that the scheduler pushes out
+    // of bounds on padded programs.
+    const bool is_variadic_peer_buffer_dim =
+        has_per_output_tiles && dim.peer_dim.has_value() &&
+        dim.peer_dim->mode == TilingSpace::PeerIndexing::kPerPeerBuffer;
+    if (tiling_space.GetNumTiles(dim) == 1 && !is_variadic_peer_buffer_dim) {
       replacement_map[CreateDimExpr(dim.id.value(), ctx)] =
           CreateSymbolicConstant(0, ctx);
     }
@@ -165,8 +176,19 @@ absl::Status TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
     case HloOpcode::kReduce:
       ProcessReduce(hlo);
       break;
+    case HloOpcode::kAllGather:
+      // TODO(b/579307586): Remove collective-specific check once phase-based
+      // collective codegen supersedes `kReplica` tiling.
+      if (IsTwoShotCollective(hlo)) {
+        ABSL_RETURN_IF_ERROR(AddReplicaDimensions(
+            hlo, Cast<HloAllGatherInstruction>(&hlo)->all_gather_dimension(),
+            PeerIndexing::kPerPeerBuffer));
+      }
+      break;
     case HloOpcode::kReduceScatter:
-      ProcessReduceScatter(hlo);
+      ABSL_RETURN_IF_ERROR(AddReplicaDimensions(
+          hlo, Cast<HloReduceScatterInstruction>(&hlo)->scatter_dimension(),
+          PeerIndexing::kStridedWithinShard));
       break;
     case HloOpcode::kScan:
       return ProcessScan(hlo);
@@ -227,29 +249,39 @@ void TilingSpace::ProcessReduce(const HloInstruction& hlo) {
   }
 }
 
-// Adds a `kReplica` dimension for each `reduce-scatter` output and links it to
-// the output's scatter dimension.
-void TilingSpace::ProcessReduceScatter(const HloInstruction& hlo) {
-  const auto* reduce_scatter = Cast<HloReduceScatterInstruction>(&hlo);
-  const int64_t scatter_dim = reduce_scatter->scatter_dimension();
-  const int64_t num_replicas =
-      reduce_scatter->device_list()->num_devices_per_group();
+// Adds a `kReplica` dimension for each output of `hlo` and links it to
+// `peer_dim` (gather dim for two-shot all-gather, scatter dim for
+// reduce-scatter). One-shot all-gathers derive the peer from the output tile
+// offset and need no extra dimension.
+absl::Status TilingSpace::AddReplicaDimensions(const HloInstruction& hlo,
+                                               int64_t peer_dim,
+                                               PeerIndexing mode) {
+  const int64_t num_replicas = Cast<HloCollectiveInstruction>(&hlo)
+                                   ->device_list()
+                                   ->num_devices_per_group();
   if (num_replicas <= 1) {
-    return;
+    return absl::OkStatus();
   }
-  const int64_t num_results = reduce_scatter->operand_count();
+  const int64_t num_results = hlo.operand_count();
   const int64_t total_result_dims = GetResultDimensionOffset(hlo, num_results);
   for (int64_t result_index = 0; result_index < num_results; ++result_index) {
     auto it = hlo_to_dimension_.find(std::make_pair(
-        &hlo, GetResultDimensionOffset(hlo, result_index) + scatter_dim));
+        &hlo, GetResultDimensionOffset(hlo, result_index) + peer_dim));
     if (it == hlo_to_dimension_.end()) {
-      continue;
+      return absl::UnimplementedError(absl::StrCat(
+          "Peer dimension ", peer_dim, " of output ", result_index, " of ",
+          hlo.name(),
+          " could not be located in the tiling space. Only get-tuple-element "
+          "and elementwise instructions are supported between a ",
+          HloOpcodeString(hlo.opcode()), " and the fusion root."));
     }
-    const TiledDimId scatter_dim_id = it->second->id;
+    const TiledDimId peer_dim_id = it->second->id;
     AppendDimension(&hlo, total_result_dims + result_index, num_replicas,
                     DimensionSemantics::kReplica);
-    dimensions_[scatter_dim_id.value()].replica_dim = dimensions_.back().id;
+    dimensions_[peer_dim_id.value()].peer_dim =
+        PeerDimInfo{dimensions_.back().id, mode};
   }
+  return absl::OkStatus();
 }
 
 // Register sequential dimensions and RTVars for a kRaggedDot instruction.
@@ -497,6 +529,13 @@ const TilingSpace::DimensionInfo& TilingSpace::GetDimensionInfo(
       << "Dimension not found for " << hlo.ToString() << " dimension "
       << dim_position;
   return *it->second;
+}
+
+bool TilingSpace::HasPerPeerBuffer(const HloInstruction& hlo,
+                                   int64_t dim_position) const {
+  auto it = hlo_to_dimension_.find(std::make_pair(&hlo, dim_position));
+  return it != hlo_to_dimension_.end() && it->second->peer_dim.has_value() &&
+         it->second->peer_dim->mode == PeerIndexing::kPerPeerBuffer;
 }
 
 std::optional<const TilingSpace::RTVarInfo*> TilingSpace::GetRTVarInfo(
@@ -771,14 +810,18 @@ DimTile TilingSpace::GetDefaultRootDimTile(const DimensionInfo& dim_info,
                                            int64_t dim_size) const {
   SymbolicExpr tile_size =
       CreateSymbolExpr(dim_info.id.value(), num_dimensions(), mlir_context_);
-  if (!dim_info.replica_dim.has_value()) {
+  if (!dim_info.peer_dim.has_value()) {
     return GetDefaultDimTile(dim_info.id, tile_size, dim_size);
   }
   const int64_t num_replicas =
-      dimensions_[dim_info.replica_dim->value()].dimension_size;
+      dimensions_[dim_info.peer_dim->dim_id.value()].dimension_size;
+  if (dim_info.peer_dim->mode == PeerIndexing::kPerPeerBuffer) {
+    return GetDefaultDimTile(dim_info.id, tile_size,
+                             dim_info.dimension_size / num_replicas);
+  }
   SymbolicExpr tile_id = CreateDimExpr(dim_info.id.value(), mlir_context_);
   SymbolicExpr replica_id =
-      CreateDimExpr(dim_info.replica_dim->value(), mlir_context_);
+      CreateDimExpr(dim_info.peer_dim->dim_id.value(), mlir_context_);
   return DimTile{(tile_id * (tile_size * num_replicas) + replica_id * tile_size)
                      .Canonicalize(),
                  tile_size, CreateSymbolicConstant(1, mlir_context_),
@@ -790,8 +833,8 @@ int64_t TilingSpace::GetNumTiles(const DimensionInfo& dim) const {
   CHECK(dim.tile_size.has_value());
   const int64_t step =
       *dim.tile_size *
-      (dim.replica_dim.has_value()
-           ? dimensions_[dim.replica_dim->value()].dimension_size
+      (dim.peer_dim.has_value()
+           ? dimensions_[dim.peer_dim->dim_id.value()].dimension_size
            : 1);
   return llvm::divideCeil(dim.dimension_size, step);
 }
@@ -816,12 +859,18 @@ void TilingSpace::InitSimplificationIndexing() {
   CHECK(range_vars_indexing_.empty());
   CHECK(rt_vars_indexing_.empty());
 
+  const bool has_per_output_tiles = HasPerOutputTiles();
   dim_vars_indexing_.reserve(dimensions_.size());
   range_vars_indexing_.reserve(dimensions_.size());
   for (const DimensionInfo& dim_info : dimensions_) {
     int64_t tile_size = dim_info.tile_size.value();
     CHECK_GT(tile_size, 0);
-    int64_t upper_bound = GetNumTiles(dim_info);
+    const bool is_variadic_peer_buffer_dim =
+        has_per_output_tiles && dim_info.peer_dim.has_value() &&
+        dim_info.peer_dim->mode == PeerIndexing::kPerPeerBuffer;
+    int64_t upper_bound = is_variadic_peer_buffer_dim
+                              ? std::numeric_limits<int32_t>::max()
+                              : GetNumTiles(dim_info);
     dim_vars_indexing_.push_back(IndexingMap::Variable{0, upper_bound - 1});
     // Even though ts_X must already be replaced with constants right now, we
     // initialize their bounds to [tile_size, tile_size] for completeness.

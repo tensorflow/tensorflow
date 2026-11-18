@@ -70,6 +70,19 @@ class TilingSpace {
   TilingSpace& operator=(const TilingSpace&) = delete;
 
   enum class DimensionSemantics { kParallel, kSequential, kReplica };
+  enum class PeerIndexing {
+    // Each peer owns a contiguous shard of the root dimension; the root tile
+    // offset strides across shards (`tid * ts * R + rid * ts`), e.g.
+    // reduce-scatter.
+    kStridedWithinShard,
+    // Each peer owns a separate output buffer; the root tile covers a single
+    // shard (`[0, dim_size / R)`), e.g. two-shot all-gather.
+    kPerPeerBuffer,
+  };
+  struct PeerDimInfo {
+    TiledDimId dim_id;
+    PeerIndexing mode;
+  };
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
     TiledDimId id;
@@ -97,12 +110,9 @@ class TilingSpace {
     // Tile size for the dimension.
     std::optional<int64_t> tile_size;
 
-    // If this dimension is partitioned across peers (e.g. the scatter
-    // dimension of a reduce-scatter), the ID of the associated `kReplica`
-    // dimension. When set, the root tile offset along this dimension is split
-    // into an intra-shard tile index (`id`, with `dimension_size / (tile_size
-    // * R)` tiles) and a peer index (`*replica_dim`, with `R` values).
-    std::optional<TiledDimId> replica_dim;
+    // If this dimension is partitioned across peers, the associated `kReplica`
+    // dimension and how peers index into the root.
+    std::optional<PeerDimInfo> peer_dim;
 
     std::string ToString() const;
   };
@@ -173,8 +183,12 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
+  // Returns true if (`hlo`, `dim_position`) has a linked `kReplica` dimension
+  // with `PeerIndexing::kPerPeerBuffer`.
+  bool HasPerPeerBuffer(const HloInstruction& hlo, int64_t dim_position) const;
+
   // Returns the number of tiles along `dim` after tile sizes have been
-  // assigned. For a dimension associated with a `replica_dim`, this is the
+  // assigned. For a dimension associated with a `peer_dim`, this is the
   // number of intra-peer tiles (`CeilOfRatio(dimension_size, tile_size * R)`).
   int64_t GetNumTiles(const DimensionInfo& dim) const;
 
@@ -272,7 +286,9 @@ class TilingSpace {
 
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
-  void ProcessReduceScatter(const HloInstruction& hlo);
+  // Registers a `kReplica` dimension per output and links it to `peer_dim`.
+  absl::Status AddReplicaDimensions(const HloInstruction& hlo, int64_t peer_dim,
+                                    PeerIndexing mode);
   // Marks the scan dimension as sequential; fails if it cannot be located.
   absl::Status ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
