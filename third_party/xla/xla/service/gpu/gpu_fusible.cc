@@ -1061,7 +1061,7 @@ bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {
 
 bool IsStreamAnnotatedComputation(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kCall &&
-         instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr);
+         instr->has_frontend_attribute(kXlaStreamAnnotationAttr);
 }
 
 std::vector<HloComputation*> GetFusibleComputations(

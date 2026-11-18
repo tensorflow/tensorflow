@@ -55,7 +55,7 @@ ENTRY %entry (a: f32[]) -> (f32[], f32[]) {
 
   const HloInstruction* call_late =
       module->entry_computation()->GetInstructionWithName("call_late");
-  EXPECT_FALSE(call_late->frontend_attributes().map().contains("inlineable"));
+  EXPECT_FALSE(call_late->has_frontend_attribute("inlineable"));
   EXPECT_EQ(call_late->get_frontend_attribute("other_attr"), "keep");
 
   const HloInstruction* call_false =
@@ -100,8 +100,7 @@ ENTRY %entry (a: f32[]) -> (f32[], f32[]) {
 
   const HloInstruction* regular_late_call =
       module->entry_computation()->GetInstructionWithName("regular_late_call");
-  EXPECT_FALSE(
-      regular_late_call->frontend_attributes().map().contains("inlineable"));
+  EXPECT_FALSE(regular_late_call->has_frontend_attribute("inlineable"));
 }
 
 TEST_F(EraseXlaLateFrontendAttributesTest, NoOpWhenNoXlaLate) {

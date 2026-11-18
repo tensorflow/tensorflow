@@ -120,8 +120,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
         instr->opcode() == HloOpcode::kBitcast ||
         instr->opcode() == HloOpcode::kTuple ||
         instr->opcode() == HloOpcode::kCustomCall) {
-      EXPECT_FALSE(
-          instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr))
+      EXPECT_FALSE(instr->has_frontend_attribute(kXlaStreamAnnotationAttr))
           << instr->ToString();
     }
   }
@@ -278,8 +277,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
       continue;
     }
     for (HloInstruction* instr : comp->instructions()) {
-      EXPECT_FALSE(
-          instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr))
+      EXPECT_FALSE(instr->has_frontend_attribute(kXlaStreamAnnotationAttr))
           << "Unexpected annotation on inner instruction: " << instr->name();
     }
   }
@@ -312,8 +310,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
   // The annotation must survive untouched inside the fusion body.
   HloInstruction* negate = FindInstruction(module.get(), "negate");
   ASSERT_NE(negate, nullptr);
-  EXPECT_TRUE(
-      negate->frontend_attributes().map().contains(kXlaStreamAnnotationAttr));
+  EXPECT_TRUE(negate->has_frontend_attribute(kXlaStreamAnnotationAttr));
 }
 
 TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
@@ -344,8 +341,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
   // The annotation inside the async computation body must not be processed.
   HloInstruction* negate = FindInstruction(module.get(), "negate");
   ASSERT_NE(negate, nullptr);
-  EXPECT_TRUE(
-      negate->frontend_attributes().map().contains(kXlaStreamAnnotationAttr));
+  EXPECT_TRUE(negate->has_frontend_attribute(kXlaStreamAnnotationAttr));
 }
 
 TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
@@ -468,8 +464,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
   // The annotation must survive untouched on the compare instruction.
   HloInstruction* compare = FindInstruction(module.get(), "compare");
   ASSERT_NE(compare, nullptr);
-  EXPECT_TRUE(
-      compare->frontend_attributes().map().contains(kXlaStreamAnnotationAttr));
+  EXPECT_TRUE(compare->has_frontend_attribute(kXlaStreamAnnotationAttr));
 }
 
 TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,

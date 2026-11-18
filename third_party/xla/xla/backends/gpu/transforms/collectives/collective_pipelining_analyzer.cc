@@ -216,7 +216,7 @@ class CollectivePipelineAnalyzerVisitor : public DfsHloRewriteVisitor {
 }  // namespace
 
 bool IsTriviallyPipelineable(const HloInstruction& instr) {
-  return instr.frontend_attributes().map().contains(kTriviallyPipelineable);
+  return instr.has_frontend_attribute(kTriviallyPipelineable);
 }
 
 absl::StatusOr<bool> CollectivePipeliningAnalyzer::RunImpl(

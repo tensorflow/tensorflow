@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -115,8 +116,7 @@ bool IsAsyncComputeDoneOp(const HloInstruction& hlo) {
 // Returns the pipeline stream for a P2P instruction recorded in a frontend
 // attribute.
 int64_t GetPipelineStream(const HloInstruction& start) {
-  auto it = start.frontend_attributes().map().find(kSendRecvPipelineAttr);
-  if (it != start.frontend_attributes().map().end() && it->second == "1") {
+  if (start.get_frontend_attribute(kSendRecvPipelineAttr) == "1") {
     return 1;
   }
   return 0;
@@ -187,7 +187,7 @@ bool IsDynamicSliceCopyFusionAsyncOp(const HloInstruction& hlo) {
 
 bool IsCollectivesGroupAsyncStartOp(const HloInstruction& hlo) {
   return HloPredicateIsOp<HloOpcode::kAsyncStart>(&hlo) &&
-         hlo.frontend_attributes().map().contains(kCollectiveGroupMarkerAttr);
+         hlo.has_frontend_attribute(kCollectiveGroupMarkerAttr);
 }
 
 bool IsCollectivesGroupAsyncDoneOp(const HloInstruction& hlo) {
@@ -582,7 +582,7 @@ static bool IsLargeIndependentFill(const HloInstruction& instr) {
     return false;
   }
   // Scheduling groups are placed as a unit by the annotation scheduler.
-  if (instr.frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr)) {
+  if (instr.has_frontend_attribute(kXlaSchedulingGroupIdAttr)) {
     return false;
   }
   if (instr.has_backend_config()) {
@@ -633,7 +633,7 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     // for RecvDone can be eliminated.
     if (debug_options.xla_gpu_enable_pipelined_p2p() &&
         inst->opcode() == HloOpcode::kRecv &&
-        inst->frontend_attributes().map().count(kSendRecvPipelineAttr) > 0) {
+        inst->has_frontend_attribute(kSendRecvPipelineAttr)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceEarly(true);
       VLOG(5) << "Setting force early for instruction: " << inst->ToString();
@@ -687,10 +687,8 @@ static bool IsAnnotatedForGpuAsyncStreamCollectivesP2P(
       GpuGetCanonicalAsyncOp(instr).outer == HloOpcode::kAsyncDone
           ? *instr.operand(0)
           : instr;
-  auto it =
-      start_instr.frontend_attributes().map().find(kCollectiveStreamAttrName);
-  if (it == start_instr.frontend_attributes().map().end()) return false;
-  return it->second == kCollectiveStreamP2P;
+  return start_instr.get_frontend_attribute(kCollectiveStreamAttrName) ==
+         kCollectiveStreamP2P;
 }
 
 GpuResourceType GetCollectiveResource(const HloInstruction& instruction) {
@@ -1069,9 +1067,9 @@ bool IsCustomCollectiveOp(const HloInstruction* instr) {
   if (!HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(instr)) {
     return false;
   }
-  const auto& attrs = instr->frontend_attributes().map();
-  if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
-    return absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation);
+  if (std::optional<std::string> annotation =
+          instr->get_frontend_attribute(kXlaStreamAnnotationAttr)) {
+    return absl::EqualsIgnoreCase(*annotation, kXlaCollectiveStreamAnnotation);
   }
   return false;
 }

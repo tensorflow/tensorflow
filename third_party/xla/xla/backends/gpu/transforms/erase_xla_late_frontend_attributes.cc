@@ -57,9 +57,7 @@ absl::StatusOr<bool> EraseXlaLateFrontendAttributes::RunImpl(
       if (IsShardyManualComputationCall(module, instruction)) {
         continue;
       }
-      auto it = instruction->frontend_attributes().map().find("inlineable");
-      if (it != instruction->frontend_attributes().map().end() &&
-          it->second == "xla_late") {
+      if (instruction->get_frontend_attribute("inlineable") == "xla_late") {
         instruction->erase_frontend_attribute("inlineable");
         changed = true;
       }

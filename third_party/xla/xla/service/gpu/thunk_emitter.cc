@@ -297,8 +297,7 @@ bool IsImplicitAsyncSendRecvStart(const HloInstruction* instr) {
 }
 
 bool HasCollectivesGroupAttribute(const HloInstruction* instr) {
-  return instr->frontend_attributes().map().contains(
-      kCollectiveGroupMarkerAttr);
+  return instr->has_frontend_attribute(kCollectiveGroupMarkerAttr);
 }
 
 // FFI custom-call targets that XLA:GPU itself introduces during lowering

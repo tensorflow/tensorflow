@@ -157,8 +157,7 @@ absl::StatusOr<bool> AssignDomain(HloInstruction& instruction,
 bool IsDomainAssignmentCandidate(const HloInstruction& instruction) {
   return hlo_query::IsCollectiveCommunicationOp(instruction.opcode()) ||
          (instruction.opcode() == HloOpcode::kCall &&
-          instruction.frontend_attributes().map().contains(
-              kCollectiveGroupMarkerAttr));
+          instruction.has_frontend_attribute(kCollectiveGroupMarkerAttr));
 }
 
 }  // namespace

@@ -2345,10 +2345,8 @@ TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepMosaicGpuV2) {
   const HloInstruction* mosaic = entry->GetInstructionWithName("mosaic");
   const HloInstruction* other = entry->GetInstructionWithName("other");
 
-  EXPECT_TRUE(
-      mosaic->frontend_attributes().map().contains("_scheduling_group_id"));
-  EXPECT_FALSE(
-      other->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(mosaic->has_frontend_attribute("_scheduling_group_id"));
+  EXPECT_FALSE(other->has_frontend_attribute("_scheduling_group_id"));
   EXPECT_TRUE(order.ExecutesBefore(ag_start, mosaic));
   EXPECT_TRUE(order.ExecutesBefore(mosaic, ag_done));
 }

@@ -769,9 +769,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction* lhs = instr->mutable_operand(0);
     HloInstruction* rhs = instr->mutable_operand(1);
-    auto attributes = instr->frontend_attributes().map();
-    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
-    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+    gemm_backend_config.set_grad_x(instr->get_frontend_attribute("grad_x") ==
+                                   "true");
+    gemm_backend_config.set_grad_y(instr->get_frontend_attribute("grad_y") ==
+                                   "true");
 
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
@@ -915,9 +916,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     gemm_backend_config.set_beta(0.0);
     *gemm_backend_config.mutable_dot_dimension_numbers() = dot_dims;
 
-    auto attributes = instr->frontend_attributes().map();
-    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
-    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+    gemm_backend_config.set_grad_x(instr->get_frontend_attribute("grad_x") ==
+                                   "true");
+    gemm_backend_config.set_grad_y(instr->get_frontend_attribute("grad_y") ==
+                                   "true");
 
     ABSL_RETURN_IF_ERROR(grouped_gemm_call->set_backend_config(gpu_backend_config));
 

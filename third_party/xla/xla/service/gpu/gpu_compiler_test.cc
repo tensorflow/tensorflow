@@ -4590,9 +4590,7 @@ ENTRY %main (a: f32[]) -> f32[] {
        optimized_module->MakeNonfusionComputations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
-      EXPECT_FALSE(
-          instruction->has_frontend_attributes() &&
-          instruction->frontend_attributes().map().contains("inlineable"));
+      EXPECT_FALSE(instruction->has_frontend_attribute("inlineable"));
     }
   }
 }
@@ -4632,9 +4630,7 @@ ENTRY %main (a: f32[4]) -> f32[4] {
        optimized_module->MakeNonfusionComputations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
-      EXPECT_FALSE(
-          instruction->has_frontend_attributes() &&
-          instruction->frontend_attributes().map().contains("inlineable"));
+      EXPECT_FALSE(instruction->has_frontend_attribute("inlineable"));
     }
   }
 }
@@ -4677,9 +4673,7 @@ ENTRY %main (a: f32[4]) -> f32[4] {
        optimized_module->MakeNonfusionComputations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
-      EXPECT_FALSE(
-          instruction->has_frontend_attributes() &&
-          instruction->frontend_attributes().map().contains("inlineable"));
+      EXPECT_FALSE(instruction->has_frontend_attribute("inlineable"));
     }
   }
 }

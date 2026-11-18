@@ -96,8 +96,7 @@ bool SupportsCollectiveCommunicationDomain(const HloInstruction& instruction) {
   if (HloPredicateIsOp<HloOpcode::kAsyncStart>(&instruction)) {
     return hlo_query::IsCollectiveCommunicationOp(
                instruction.async_wrapped_opcode()) ||
-           instruction.frontend_attributes().map().contains(
-               kCollectiveGroupMarkerAttr);
+           instruction.has_frontend_attribute(kCollectiveGroupMarkerAttr);
   }
   return false;
 }

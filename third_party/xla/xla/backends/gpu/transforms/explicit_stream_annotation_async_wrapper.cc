@@ -56,7 +56,7 @@ void ClearSchedulingAnnotations(HloInstruction* instr) {
 }
 
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
-  if (!instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr)) {
+  if (!instr->has_frontend_attribute(kXlaStreamAnnotationAttr)) {
     return false;
   }
   HloComputation* computation = instr->parent();

@@ -34,8 +34,7 @@ namespace xla::gpu {
 namespace {
 
 bool HasDomainAttribute(const HloInstruction& instruction) {
-  return instruction.frontend_attributes().map().contains(
-      kCollectiveCommunicationDomainAttr);
+  return instruction.has_frontend_attribute(kCollectiveCommunicationDomainAttr);
 }
 
 absl::StatusOr<CollectiveCommunicationDomain> ReadLocalDomain(

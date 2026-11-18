@@ -477,9 +477,8 @@ int64_t GetLeadingDim(const MatrixLayout& layout, int64_t row_dim,
     vector_bias_shape = gemm->operand(vector_bias_index)->shape();
   }
 
-  auto attributes = gemm->frontend_attributes().map();
-  bool grad_x = (attributes["grad_x"] == "true");
-  bool grad_y = (attributes["grad_y"] == "true");
+  bool grad_x = gemm->get_frontend_attribute("grad_x") == "true";
+  bool grad_y = gemm->get_frontend_attribute("grad_y") == "true";
 
   absl::StatusOr<GemmConfig> gemm_config = GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
