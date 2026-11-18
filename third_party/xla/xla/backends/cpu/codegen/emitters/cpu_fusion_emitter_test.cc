@@ -291,6 +291,77 @@ TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(CpuFusionEmitterTest, SortComparatorWeakAndTotalOrder) {
+  constexpr absl::string_view kWeakSortHlo = R"hlo(
+    HloModule sort_weak_module
+    compare {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT, order=WEAK
+    }
+    ENTRY main {
+      p0 = bf16[8] parameter(0)
+      ROOT sorted = bf16[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )hlo";
+  constexpr absl::string_view kExpectedWeakMlir = R"(
+    CHECK:      func.func private @compare_lt(
+    CHECK-DAG:    arith.cmpf ult
+    CHECK-DAG:    arith.cmpf ord
+    CHECK:        arith.andi
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> weak_module,
+                       ParseAndReturnVerifiedModule(kWeakSortHlo));
+  const HloComputation* weak_comparator =
+      weak_module->entry_computation()->root_instruction()->to_apply();
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource weak_mlir,
+      EmitSortComparator(*mlir_context, *weak_comparator, "compare_weak"));
+  EXPECT_THAT(RunFileCheck(weak_mlir.ToString(), kExpectedWeakMlir),
+              absl_testing::IsOkAndHolds(true));
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource weak_llvm,
+                       compiler.Compile(std::move(weak_mlir)));
+  EXPECT_THAT(RunFileCheck(weak_llvm.ToString(),
+                           "CHECK: define zeroext i1 @compare_weak("),
+              absl_testing::IsOkAndHolds(true));
+
+  constexpr absl::string_view kTotalSortHlo = R"hlo(
+    HloModule sort_total_module
+    compare {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT, order=TOTAL
+    }
+    ENTRY main {
+      p0 = bf16[8] parameter(0)
+      ROOT sorted = bf16[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )hlo";
+  constexpr absl::string_view kExpectedTotalMlir = R"(
+    CHECK:      func.func private @compare_lt(
+    CHECK:        arith.bitcast %{{.+}} : bf16 to i16
+    CHECK:        arith.cmpi slt
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> total_module,
+                       ParseAndReturnVerifiedModule(kTotalSortHlo));
+  const HloComputation* total_comparator =
+      total_module->entry_computation()->root_instruction()->to_apply();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource total_mlir,
+      EmitSortComparator(*mlir_context, *total_comparator, "compare_total"));
+  EXPECT_THAT(RunFileCheck(total_mlir.ToString(), kExpectedTotalMlir),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource total_llvm,
+                       compiler.Compile(std::move(total_mlir)));
+  EXPECT_THAT(RunFileCheck(total_llvm.ToString(),
+                           "CHECK: define zeroext i1 @compare_total("),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(CpuFusionEmitterTest, SortComparatorUnsupportedOp) {
   constexpr absl::string_view kSortHlo = R"(
     HloModule sort_module

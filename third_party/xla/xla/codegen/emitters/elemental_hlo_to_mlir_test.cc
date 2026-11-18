@@ -2092,6 +2092,91 @@ TEST_F(ElementalHloToMlirTest, ApplyIndexingPreservesTighterResultRanges) {
   EXPECT_EQ(redundant_results[0], narrow_pid);
 }
 
+TEST_F(ElementalHloToMlirTest, CompareFloatOrders) {
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=LT, order=PARTIAL
+    })hlo",
+                  R"(
+    // CHECK:      @main_cmp(
+    // CHECK:        %[[CMP:.*]] = arith.cmpf olt, %{{.*}}, %{{.*}} : f32
+    // CHECK:        %[[EXT:.*]] = arith.extui %[[CMP]] : i1 to i8
+    // CHECK:        return %[[EXT]] : i8
+  )"),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = bf16[4] parameter(0)
+      p1 = bf16[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=LT, order=WEAK
+    })hlo",
+                  R"(
+    // CHECK:      @main_cmp(
+    // CHECK-DAG:    %[[ULT:.*]] = arith.cmpf ult, %[[LHS:.*]], %[[RHS:.*]] : bf16
+    // CHECK-DAG:    %[[ORD:.*]] = arith.cmpf ord, %[[LHS]], %[[LHS]] : bf16
+    // CHECK:        %[[AND:.*]] = arith.andi %[[ULT]], %[[ORD]] : i1
+    // CHECK:        %[[EXT:.*]] = arith.extui %[[AND]] : i1 to i8
+    // CHECK:        return %[[EXT]] : i8
+  )"),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = bf16[4] parameter(0)
+      p1 = bf16[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=LT, order=TOTAL
+    })hlo",
+                  R"(
+    // CHECK:      @main_cmp(
+    // CHECK-DAG:    %[[ZERO:.*]] = arith.constant 0 : i16
+    // CHECK-DAG:    %[[MAX:.*]] = arith.constant 32767 : i16
+    // CHECK:        %[[LHS_BC:.*]] = arith.bitcast %{{.*}} : bf16 to i16
+    // CHECK:        %[[LHS_NEG:.*]] = arith.cmpi slt, %[[LHS_BC]], %[[ZERO]] : i16
+    // CHECK:        %[[LHS_SUB:.*]] = arith.subi %[[MAX]], %[[LHS_BC]] : i16
+    // CHECK:        %[[LHS_INT:.*]] = arith.select %[[LHS_NEG]], %[[LHS_SUB]], %[[LHS_BC]] : i16
+    // CHECK:        %[[RHS_BC:.*]] = arith.bitcast %{{.*}} : bf16 to i16
+    // CHECK:        %[[RHS_NEG:.*]] = arith.cmpi slt, %[[RHS_BC]], %[[ZERO]] : i16
+    // CHECK:        %[[RHS_SUB:.*]] = arith.subi %[[MAX]], %[[RHS_BC]] : i16
+    // CHECK:        %[[RHS_INT:.*]] = arith.select %[[RHS_NEG]], %[[RHS_SUB]], %[[RHS_BC]] : i16
+    // CHECK:        %[[CMP:.*]] = arith.cmpi slt, %[[LHS_INT]], %[[RHS_INT]] : i16
+    // CHECK:        %[[EXT:.*]] = arith.extui %[[CMP]] : i1 to i8
+    // CHECK:        return %[[EXT]] : i8
+  )"),
+              absl_testing::IsOk());
+}
+
+TEST_F(ElementalHloToMlirTest, CompareFloatFnuzOrders) {
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = f8e4m3fnuz[4] parameter(0)
+      p1 = f8e4m3fnuz[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=LT, order=TOTAL
+    })hlo",
+                  ""),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = f8e4m3fnuz[4] parameter(0)
+      p1 = f8e4m3fnuz[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=LT, order=WEAK
+    })hlo",
+                  "// CHECK: arith.cmpf ult"),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(Run(R"hlo(
+    ENTRY main {
+      p0 = c64[4] parameter(0)
+      p1 = c64[4] parameter(1)
+      ROOT cmp = pred[4] compare(p0, p1), direction=EQ, order=TOTAL
+    })hlo",
+                  ""),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+}
+
 }  // namespace
 }  // namespace emitters
 }  // namespace xla

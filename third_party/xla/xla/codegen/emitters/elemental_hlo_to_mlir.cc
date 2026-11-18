@@ -950,11 +950,39 @@ absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
     const HloInstruction* instr, llvm::ArrayRef<mlir::Type> arg_types,
     ValueRange operands, ImplicitLocOpBuilder& builder) {
   auto* context = builder.getContext();
+  PrimitiveType element_type = instr->operand(0)->shape().element_type();
   auto direction = mhlo::symbolizeComparisonDirection(
       ComparisonDirectionToString(instr->comparison_direction()));
   mhlo::CompareOp::Properties properties;
   properties.comparison_direction =
       mhlo::ComparisonDirectionAttr::get(context, direction.value());
+  if (primitive_util::IsFloatingPointType(element_type)) {
+    switch (instr->comparison_order()) {
+      case ComparisonOrder::kPartial:
+        properties.compare_type =
+            mhlo::ComparisonTypeAttr::get(context, mhlo::ComparisonType::FLOAT);
+        break;
+      case ComparisonOrder::kTotal:
+        if (!primitive_util::HasNegativeZero(element_type)) {
+          return absl::UnimplementedError(absl::StrCat(
+              "TOTAL comparison order requires ComparisonExpander for ",
+              PrimitiveType_Name(element_type)));
+        }
+        properties.compare_type = mhlo::ComparisonTypeAttr::get(
+            context, mhlo::ComparisonType::TOTALORDER);
+        break;
+      case ComparisonOrder::kWeak:
+        properties.compare_type = mhlo::ComparisonTypeAttr::get(
+            context, mhlo::ComparisonType::WEAKORDER);
+        break;
+    }
+  } else if (primitive_util::IsComplexType(element_type) &&
+             instr->comparison_order() != ComparisonOrder::kPartial) {
+    return absl::UnimplementedError(
+        absl::StrCat(ComparisonOrderToString(instr->comparison_order()),
+                     " comparison order is not supported for ",
+                     PrimitiveType_Name(element_type)));
+  }
   auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
   auto i1 = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
       builder.getLoc(), result_types, arg_types,
