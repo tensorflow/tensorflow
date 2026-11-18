@@ -20,11 +20,13 @@ limitations under the License.
 #include <queue>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -329,6 +331,23 @@ std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
     }
     return FusionCanShareBufferHint(operand, fusion, user_index,
                                     device_description_);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<std::pair<HloOperandIndex, ShapeIndex>>>
+GpuAliasInfo::GetNonDefaultInPlaceInputOutputPairs(
+    const HloInstruction* user) const {
+  if (user->IsCustomFusion() &&
+      (IsGpuFusionKind(*user, kPhasedBlockClusterFusionKind) ||
+       IsGpuFusionKind(*user, kThreadBlockSpecializedFusionKind))) {
+    // ThreadBlockSpecializedFusion lowers nested sub-kernels out-of-place
+    // (never via in-place DUS or scatter emitters). Return empty so AliasInfo
+    // does not infer must-aliases from nested dynamic-update-slice sub-kernels,
+    // which would alias buffers across phases or concurrently executing CTAs.
+    // TODO(b/579777515): Allow aliasing in phased block cluster fusions when
+    // possible. Rejecting aliasing can add extra copy operations.
+    return std::vector<std::pair<HloOperandIndex, ShapeIndex>>{};
   }
   return std::nullopt;
 }

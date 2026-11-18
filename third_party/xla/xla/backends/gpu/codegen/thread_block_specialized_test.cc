@@ -2277,5 +2277,56 @@ ENTRY main {
   }
 }
 
+TEST_F(ThreadBlockSpecializedFusionTest,
+       PhasedBlockClusterWithChainedNestedDusDoesNotAliasOutputs) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+phase_0 {
+  p0 = f32[8]{0} parameter(0)
+  slice_0 = f32[1]{0} slice(p0), slice={[0:1]}
+  c1 = f32[1]{0} constant({10.0})
+  update_0 = f32[1]{0} add(slice_0, c1)
+  idx0 = s32[] constant(0)
+  ROOT dus0 = f32[8]{0} dynamic-update-slice(p0, update_0, idx0)
+}
+
+phase_1 {
+  p0 = f32[8]{0} parameter(0)
+  slice_1 = f32[1]{0} slice(p0), slice={[0:1]}
+  c2 = f32[1]{0} constant({20.0})
+  update_1 = f32[1]{0} add(slice_1, c2)
+  idx1 = s32[] constant(1)
+  ROOT dus1 = f32[8]{0} dynamic-update-slice(p0, update_1, idx1)
+}
+
+phased_comp {
+  p0 = f32[8]{0} parameter(0)
+  f0 = f32[8]{0} fusion(p0), kind=kLoop, calls=phase_0
+  f1 = f32[8]{0} fusion(f0), kind=kLoop, calls=phase_1
+  ROOT t = (f32[8]{0}, f32[8]{0}) tuple(f0, f1)
+}
+
+sub_comp {
+  lhs = f32[8]{0} parameter(0)
+  rhs = f32[8]{0} parameter(1)
+  ROOT diff = f32[8]{0} subtract(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  init = f32[8]{0} copy(p0)
+  phased = (f32[8]{0}, f32[8]{0}) fusion(init), kind=kCustom,
+    calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  gte0 = f32[8]{0} get-tuple-element(phased), index=0
+  gte1 = f32[8]{0} get-tuple-element(phased), index=1
+  ROOT diff = f32[8]{0} fusion(gte0, gte1), kind=kLoop, calls=sub_comp
+}
+)hlo";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla::gpu

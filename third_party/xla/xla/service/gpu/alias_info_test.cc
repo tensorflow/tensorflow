@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::IsEmpty;
+
 void ExpectOptionalTrue(std::optional<bool> value) {
   EXPECT_TRUE(value.has_value());
   CHECK(value.has_value());
@@ -1302,6 +1304,120 @@ ENTRY main {
       fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
   EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
       fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+}
+
+TEST_F(AliasInfoTest, PhasedBlockClusterFusionWithNestedDusHasNoInPlacePairs) {
+  const char* const kModuleString = R"(
+HloModule phased_block_cluster_dus
+
+phase_0 {
+  p0 = f32[8]{0} parameter(0)
+  slice_0 = f32[1]{0} slice(p0), slice={[0:1]}
+  idx0 = s32[] constant(0)
+  ROOT dus0 = f32[8]{0} dynamic-update-slice(p0, slice_0, idx0)
+}
+
+phase_1 {
+  p0 = f32[8]{0} parameter(0)
+  slice_1 = f32[1]{0} slice(p0), slice={[0:1]}
+  idx1 = s32[] constant(1)
+  ROOT dus1 = f32[8]{0} dynamic-update-slice(p0, slice_1, idx1)
+}
+
+phased_comp {
+  p0 = f32[8]{0} parameter(0)
+  f0 = f32[8]{0} fusion(p0), kind=kLoop, calls=phase_0
+  f1 = f32[8]{0} fusion(f0), kind=kLoop, calls=phase_1
+  ROOT t = (f32[8]{0}, f32[8]{0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  ROOT fused = (f32[8]{0}, f32[8]{0}) fusion(p0), kind=kCustom,
+      calls=phased_comp,
+      backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  EXPECT_THAT(alias_info()->GetInPlaceInputOutputPairs(fusion), IsEmpty());
+  EXPECT_FALSE(alias_info()->MustAlias(fusion->operand(0), {}, fusion, {0}));
+  EXPECT_FALSE(alias_info()->MustAlias(fusion->operand(0), {}, fusion, {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+}
+
+TEST_F(AliasInfoTest,
+       ThreadBlockSpecializedFusionWithNestedDusHasNoInPlacePairs) {
+  const char* const kModuleString = R"(
+HloModule thread_block_specialized_dus
+
+dus_shared_input {
+  p0 = f32[8]{0} parameter(0)
+  slice_0 = f32[1]{0} slice(p0), slice={[0:1]}
+  idx0 = s32[] constant(0)
+  ROOT dus = f32[8]{0} dynamic-update-slice(p0, slice_0, idx0)
+}
+
+neg_shared_input {
+  p0 = f32[8]{0} parameter(0)
+  ROOT neg = f32[8]{0} negate(p0)
+}
+
+dus_exclusive_input {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[1]{0} parameter(1)
+  idx0 = s32[] constant(0)
+  ROOT dus = f32[8]{0} dynamic-update-slice(p0, p1, idx0)
+}
+
+horizontal_comp {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  p2 = f32[1]{0} parameter(2)
+  f0 = f32[8]{0} fusion(p0), kind=kLoop, calls=dus_shared_input
+  f1 = f32[8]{0} fusion(p0), kind=kLoop, calls=neg_shared_input
+  f2 = f32[8]{0} fusion(p1, p2), kind=kLoop, calls=dus_exclusive_input
+  ROOT t = (f32[8]{0}, f32[8]{0}, f32[8]{0}) tuple(f0, f1, f2)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  p2 = f32[1]{0} parameter(2)
+  ROOT fused = (f32[8]{0}, f32[8]{0}, f32[8]{0}) fusion(p0, p1, p2),
+      kind=kCustom, calls=horizontal_comp,
+      backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  EXPECT_THAT(alias_info()->GetInPlaceInputOutputPairs(fusion), IsEmpty());
+  EXPECT_FALSE(alias_info()->MustAlias(fusion->operand(0), {}, fusion, {0}));
+  EXPECT_FALSE(alias_info()->MustAlias(fusion->operand(0), {}, fusion, {1}));
+  EXPECT_FALSE(alias_info()->MustAlias(fusion->operand(1), {}, fusion, {2}));
+  // p0 is shared across concurrently executing CTAs (f0 and f1).
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  // p1 is used only by f2, whose loop-emitted DUS is elementwise on operand 0,
+  // so optional buffer sharing via MayAlias remains allowed.
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(1), {2}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+  EXPECT_TRUE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(1), {}, fusion, {2}, alias_info()));
 }
 
 }  // namespace

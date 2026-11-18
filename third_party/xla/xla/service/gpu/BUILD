@@ -3295,6 +3295,7 @@ cc_library(
         ":ir_emission_utils",
         "//xla:shape_util",
         "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_operand_index",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
