@@ -26,10 +26,16 @@ class Builder;
 }  // namespace mlir
 
 namespace tflite {
-// Convert the MLIR type to the corresponding TFLite tensor.
+// Convert the MLIR type to the corresponding TFLite tensor. Accepts both the
+// TFLite element types (e.g. `!tfl.string`) and the matching `tf_type` types
+// (e.g. `!tf_type.string`).
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type);
 
 // Convert the scalar type of a TFlite tensor to the corresponding MLIR type.
+// STRING, RESOURCE and VARIANT map to the TFLite element types (`!tfl.string`,
+// `!tfl.resource` and `!tfl.variant`), which requires the TFLite dialect to be
+// loaded. See `ConvertElementTypeToTfType` in tf_convert_type.h for the
+// version that produces the `tf_type` types.
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
 
 // Returns element type from attribute Type 'type_attr'.

@@ -18,7 +18,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tflite {
@@ -120,6 +124,20 @@ absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("unsupported tensor data type", type));
+  }
+}
+
+mlir::Type ConvertElementTypeToTfType(tflite::TensorType type,
+                                      mlir::Builder builder) {
+  switch (type) {
+    case tflite::TensorType_STRING:
+      return mlir::TF::StringType::get(builder.getContext());
+    case tflite::TensorType_RESOURCE:
+      return mlir::TF::ResourceType::get(builder.getContext());
+    case tflite::TensorType_VARIANT:
+      return mlir::TF::VariantType::get(builder.getContext());
+    default:
+      return ConvertElementType(type, builder);
   }
 }
 

@@ -17,12 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_TF_CONVERT_TYPE_H_
 
 #include "absl/status/statusor.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/framework/types.pb.h"
 
-// Conversions between TFLite tensor types and `tensorflow::DataType`. These
-// live apart from `convert_type.h` so that users that do not deal with
-// TensorFlow types do not depend on TensorFlow protos.
+// Conversions between TFLite tensor types and TensorFlow types
+// (`tensorflow::DataType` and the `tf_type` MLIR types). These live apart from
+// `convert_type.h` so that users that do not deal with TensorFlow types do not
+// depend on TensorFlow.
 
 namespace tflite {
 
@@ -32,6 +35,13 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type);
 
 // Converts a TensorFlow scalar type to the corresponding TFLite type.
 absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
+
+// Converts the scalar type of a TFLite tensor to the corresponding MLIR type,
+// like `ConvertElementType` in convert_type.h, except that STRING, RESOURCE and
+// VARIANT map to the `tf_type` types (`!tf_type.string`, `!tf_type.resource`
+// and `!tf_type.variant`), as the TensorFlow Lite importer produces.
+mlir::Type ConvertElementTypeToTfType(tflite::TensorType type,
+                                      mlir::Builder builder);
 
 }  // namespace tflite
 

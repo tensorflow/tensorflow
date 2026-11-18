@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/SmallString.h"
@@ -247,6 +248,94 @@ TEST_F(ExportTest, StoresCustomOptionsAfterFlatbuffer) {
   EXPECT_EQ(absl::string_view(file).substr(op->large_custom_options_offset(),
                                            op->large_custom_options_size()),
             "\x01\x02\x03\x04\x05");
+}
+
+TEST_F(ExportTest, ExportsTflElementTypes) {
+  const std::string file = ExportOrDie(R"mlir(
+    func.func @main(%arg0: tensor<3x!tfl.string>, %arg1: tensor<2xi32>) -> (tensor<2x!tfl.string>, tensor<!tfl.variant<tensor<2xi32>>>) {
+      %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<3x!tfl.string>, tensor<2xi32>) -> tensor<2x!tfl.string>
+      %1 = "tfl.custom"(%arg1) {custom_code = "my_op", custom_option = #tfl<const_bytes : "0x">} : (tensor<2xi32>) -> tensor<!tfl.variant<tensor<2xi32>>>
+      func.return %0, %1 : tensor<2x!tfl.string>, tensor<!tfl.variant<tensor<2xi32>>>
+    }
+  )mlir");
+  const tflite::Model* model = tflite::GetModel(file.data());
+  const tflite::SubGraph* subgraph = model->subgraphs()->Get(0);
+
+  const tflite::Tensor* input =
+      subgraph->tensors()->Get(subgraph->inputs()->Get(0));
+  EXPECT_EQ(input->type(), tflite::TensorType_STRING);
+  const tflite::Tensor* variant =
+      subgraph->tensors()->Get(subgraph->outputs()->Get(1));
+  EXPECT_EQ(variant->type(), tflite::TensorType_VARIANT);
+  ASSERT_NE(variant->variant_tensors(), nullptr);
+  ASSERT_EQ(variant->variant_tensors()->size(), 1);
+  const tflite::VariantSubType* subtype = variant->variant_tensors()->Get(0);
+  EXPECT_EQ(subtype->type(), tflite::TensorType_INT32);
+  EXPECT_TRUE(subtype->has_rank());
+  EXPECT_THAT(
+      std::vector<int32_t>(subtype->shape()->begin(), subtype->shape()->end()),
+      ElementsAre(2));
+}
+
+TEST_F(ExportTest, ExportsDynamicVariantSubtypeDimensionsAsMinusOne) {
+  const std::string file = ExportOrDie(R"mlir(
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<!tfl.variant<tensor<?x3xi32>>> {
+      %0 = "tfl.custom"(%arg0) {custom_code = "my_op", custom_option = #tfl<const_bytes : "0x">} : (tensor<2xi32>) -> tensor<!tfl.variant<tensor<?x3xi32>>>
+      func.return %0 : tensor<!tfl.variant<tensor<?x3xi32>>>
+    }
+  )mlir");
+  const tflite::Model* model = tflite::GetModel(file.data());
+  const tflite::SubGraph* subgraph = model->subgraphs()->Get(0);
+
+  const tflite::Tensor* variant =
+      subgraph->tensors()->Get(subgraph->outputs()->Get(0));
+  ASSERT_NE(variant->variant_tensors(), nullptr);
+  ASSERT_EQ(variant->variant_tensors()->size(), 1);
+  const tflite::VariantSubType* subtype = variant->variant_tensors()->Get(0);
+  EXPECT_THAT(
+      std::vector<int32_t>(subtype->shape()->begin(), subtype->shape()->end()),
+      ElementsAre(-1, 3));
+}
+
+TEST_F(ExportTest, ReportsVariantWithMultipleSubtypes) {
+  OwningOpRef<ModuleOp> module = Parse(R"mlir(
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<!tfl.variant<tensor<2xi32>, tensor<3xf32>>> {
+      %0 = "tfl.custom"(%arg0) {custom_code = "my_op", custom_option = #tfl<const_bytes : "0x">} : (tensor<2xi32>) -> tensor<!tfl.variant<tensor<2xi32>, tensor<3xf32>>>
+      func.return %0 : tensor<!tfl.variant<tensor<2xi32>, tensor<3xf32>>>
+    }
+  )mlir");
+  std::string error;
+  ScopedDiagnosticHandler handler(&context_, [&](Diagnostic& diagnostic) {
+    error = diagnostic.str();
+    return success();
+  });
+  std::string file;
+  EXPECT_FALSE(Export(*module, file).ok());
+  EXPECT_THAT(error, HasSubstr("variant with more than one subtype"));
+}
+
+TEST_F(ExportTest, ReportsStringConstants) {
+  for (absl::string_view value :
+       {R"(dense<["a", "bc"]> : tensor<2x!tfl.string>)",
+        R"(dense<"a"> : tensor<2x!tfl.string>)"}) {
+    OwningOpRef<ModuleOp> module =
+        Parse(absl::StrCat(R"mlir(
+      func.func @main() -> tensor<2x!tfl.string> {
+        %0 = "tfl.pseudo_const"() {value = )mlir",
+                           value, R"mlir(} : () -> tensor<2x!tfl.string>
+        func.return %0 : tensor<2x!tfl.string>
+      }
+    )mlir"));
+    std::string error;
+    ScopedDiagnosticHandler handler(&context_, [&](Diagnostic& diagnostic) {
+      error = diagnostic.str();
+      return success();
+    });
+    std::string file;
+    EXPECT_FALSE(Export(*module, file).ok());
+    EXPECT_THAT(error, HasSubstr("constants of element type !tfl.string are "
+                                 "not supported"));
+  }
 }
 
 TEST_F(ExportTest, ExportsDynamicShapesAsShapeSignatures) {

@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_types.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -223,9 +224,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_FLOAT8_E4M3FN;
   } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
     return tflite::TensorType_FLOAT8_E5M2;
-  } else if (mlir::isa<mlir::TF::StringType>(type)) {
+  } else if (mlir::isa<mlir::TF::StringType, mlir::TFL::StringType>(type)) {
     return tflite::TensorType_STRING;
-  } else if (mlir::isa<mlir::TF::Quint8Type>(type)) {
+  } else if (mlir::isa<mlir::TF::Quint8Type, mlir::TFL::Quint8Type>(type)) {
     return tflite::TensorType_UINT8;
   } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
     auto ftype = complex_type.getElementType();
@@ -278,9 +279,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   } else if (auto blockwise_type =
                  mlir::dyn_cast<mlir::TFL::BlockwiseQuantType>(type)) {
     return GetTFLiteType(blockwise_type.getStorageType());
-  } else if (mlir::isa<mlir::TF::ResourceType>(type)) {
+  } else if (mlir::isa<mlir::TF::ResourceType, mlir::TFL::ResourceType>(type)) {
     return tflite::TensorType_RESOURCE;
-  } else if (mlir::isa<mlir::TF::VariantType>(type)) {
+  } else if (mlir::isa<mlir::TF::VariantType, mlir::TFL::VariantType>(type)) {
     return tflite::TensorType_VARIANT;
   }
   // TFLite export fills FLOAT32 for unknown data types. Returning an error
@@ -482,13 +483,15 @@ static bool AllUsersAreStreamingCasts(Operation* op) {
 static bool IsTFResourceOp(Operation* op) {
   for (const auto& operand : op->getOperands()) {
     auto elementType = getElementTypeOrSelf(operand.getType());
-    if (mlir::isa<mlir::TF::ResourceType>(elementType)) {
+    if (mlir::isa<mlir::TF::ResourceType, mlir::TFL::ResourceType>(
+            elementType)) {
       return true;
     }
   }
   for (const auto& result : op->getResults()) {
     auto elementType = getElementTypeOrSelf(result.getType());
-    if (mlir::isa<mlir::TF::ResourceType>(elementType)) {
+    if (mlir::isa<mlir::TF::ResourceType, mlir::TFL::ResourceType>(
+            elementType)) {
       return true;
     }
   }
@@ -649,7 +652,8 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn)) {
         auto elementType = getElementTypeOrSelf(arg.getType());
-        if (mlir::isa<mlir::TF::VariantType>(elementType)) {
+        if (mlir::isa<mlir::TF::VariantType, mlir::TFL::VariantType>(
+                elementType)) {
           return fn.emitError(
                      "function argument uses variant type. Currently, the "
                      "variant type is not natively supported in TFLite. Please "
@@ -671,7 +675,8 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
         if (mlir::isa<mlir::TFL::ControlType>(result.getType())) continue;
         if (!HasValidTFLiteType(result, inst)) {
           auto elementType = getElementTypeOrSelf(result.getType());
-          if (mlir::isa<mlir::TF::VariantType>(elementType)) {
+          if (mlir::isa<mlir::TF::VariantType, mlir::TFL::VariantType>(
+                  elementType)) {
             return inst.emitError(
                        "operand result uses variant type. Currently, the "
                        "variant type is not natively supported in TFLite. "
@@ -1231,9 +1236,11 @@ class Translator {
   std::optional<BufferOffset<tflite::Tensor>> BuildTensorFromType(
       mlir::Type type, const std::string& name);
 
-  // Builds TF::VariantType from the given element type. Returns std::nullopt if
-  // failure. Returns empty vector if the element type is not TF::VariantType or
-  // there is empty TensorType in the TF::VariantType.
+  // Builds the variant subtypes of a TF or TFLite variant element type.
+  // Returns std::nullopt on failure (more than one subtype, an unsupported
+  // subtype element type, or a `!tfl.variant` subtype dimension outside the
+  // int32 range). Returns an empty vector if the element type is not a variant
+  // type or has no subtypes.
   std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
   BuildTFVariantType(mlir::Type element_type);
 
@@ -1758,6 +1765,24 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 
   auto type = mlir::cast<TensorType>(value.getType());
 
+  // Constants of the TFLite element types are serialized by the default
+  // applier below. Reject unsupported storage here, since errors returned by
+  // the applier don't fail the export in all modes.
+  if (mlir::isa<mlir::TFL::StringType>(type.getElementType()) &&
+      !mlir::isa<mlir::DenseStringElementsAttr>(attr)) {
+    inst->emitError("unsupported storage for a !tfl.string constant");
+    return std::nullopt;
+  }
+  if (mlir::isa<mlir::TFL::Quint8Type>(type.getElementType())) {
+    auto res_attr = mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr);
+    mlir::AsmResourceBlob* blob = res_attr ? GetBlob(res_attr) : nullptr;
+    if (!blob ||
+        blob->getData().size() != static_cast<size_t>(type.getNumElements())) {
+      inst->emitError("unsupported storage for a !tfl.quint8 constant");
+      return std::nullopt;
+    }
+  }
+
   if (can_be_deduplicated) {
     auto& dedup_map = is_streaming_cast ? cast_attribute_to_buffer_map_
                                         : const_attribute_to_buffer_map_;
@@ -1945,6 +1970,55 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                       blob->getData().size()));
                 }
               }
+            }
+
+            // The TFLite element types aren't known to TensorFlow's
+            // conversion below, so serialize their constants directly.
+            if (shaped_type && mlir::isa<mlir::TFL::StringType>(
+                                   shaped_type.getElementType())) {
+              auto string_attr =
+                  mlir::dyn_cast<mlir::DenseStringElementsAttr>(attr);
+              if (!string_attr) {
+                std::string error_message =
+                    "unsupported storage for a !tfl.string constant";
+                inst->emitError(Twine(error_message));
+                return absl::InvalidArgumentError(error_message);
+              }
+              ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
+              for (llvm::StringRef str :
+                   string_attr.getValues<llvm::StringRef>()) {
+                if (!dynamic_buffer.AddString(str.data(), str.size())) {
+                  std::string error_message =
+                      "failed to add string to dynamic buffer";
+                  inst->emitError(Twine(error_message));
+                  return absl::InvalidArgumentError(error_message);
+                }
+              }
+              char* tensor_buffer;
+              int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
+              auto apply_result =
+                  apply(absl::string_view(tensor_buffer, bytes));
+              free(tensor_buffer);
+              return apply_result;
+            }
+            if (shaped_type && mlir::isa<mlir::TFL::Quint8Type>(
+                                   shaped_type.getElementType())) {
+              // quint8 is stored like uint8: one byte per element.
+              if (auto res_attr =
+                      mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+                mlir::AsmResourceBlob* blob = GetBlob(res_attr);
+                if (blob &&
+                    blob->getData().size() ==
+                        static_cast<size_t>(shaped_type.getNumElements())) {
+                  return apply(absl::string_view(
+                      reinterpret_cast<const char*>(blob->getData().data()),
+                      blob->getData().size()));
+                }
+              }
+              std::string error_message =
+                  "unsupported storage for a !tfl.quint8 constant";
+              inst->emitError(Twine(error_message));
+              return absl::InvalidArgumentError(error_message);
             }
 
             // Fallback Path: use TensorFlow's conversion for compatibility.
@@ -2143,30 +2217,49 @@ int Translator::GetOperatorDebugMetadataIndex(Operation* inst) {
 std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
 Translator::BuildTFVariantType(mlir::Type element_type) {
   std::vector<BufferOffset<tflite::VariantSubType>> variant_params;
-  auto variant_type = mlir::dyn_cast<mlir::TF::VariantType>(element_type);
-  if (!variant_type) {
+  llvm::ArrayRef<mlir::TensorType> subtypes;
+  if (auto variant_type = mlir::dyn_cast<mlir::TF::VariantType>(element_type)) {
+    subtypes = variant_type.getSubtypes();
+  } else if (auto tfl_variant_type =
+                 mlir::dyn_cast<mlir::TFL::VariantType>(element_type)) {
+    subtypes = tfl_variant_type.getSubtypes();
+  } else {
     return variant_params;
   }
 
-  // We only support up to one nested type in tf_type.variant_type.
-  if (variant_type.getSubtypes().size() > 1) {
+  // We only support up to one nested type in the variant type.
+  if (subtypes.size() > 1) {
     return std::nullopt;
   }
-  if (variant_type.getSubtypes().empty()) {
+  if (subtypes.empty()) {
     return variant_params;
   }
-  mlir::TensorType tensor_type = variant_type.getSubtypes().front();
-  tflite::TensorType tflite_element_type =
-      GetTFLiteType(tensor_type.getElementType()).value();
+  mlir::TensorType tensor_type = subtypes.front();
+  absl::StatusOr<tflite::TensorType> tflite_element_type =
+      GetTFLiteType(tensor_type.getElementType());
+  if (!tflite_element_type.ok()) {
+    return std::nullopt;
+  }
   std::vector<int32_t> shape;
   if (tensor_type.hasRank()) {
     llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
-    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+    if (mlir::isa<mlir::TFL::VariantType>(element_type)) {
+      // Dynamic dimensions are written as -1.
+      for (int64_t dim : shape_ref) {
+        if (dim > std::numeric_limits<int32_t>::max()) return std::nullopt;
+        shape.push_back(
+            mlir::ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
+      }
+    } else {
+      // Kept as is for the TF variant type so that the TF converter output is
+      // unchanged (a dynamic dimension, kDynamic, truncates to 0 here).
+      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+    }
   }
 
-  variant_params.push_back(
-      tflite::CreateVariantSubType(builder_, builder_.CreateVector(shape),
-                                   tflite_element_type, tensor_type.hasRank()));
+  variant_params.push_back(tflite::CreateVariantSubType(
+      builder_, builder_.CreateVector(shape), *tflite_element_type,
+      tensor_type.hasRank()));
   return variant_params;
 }
 
@@ -2291,6 +2384,8 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
       variant_params = BuildTFVariantType(element_type);
   if (!variant_params.has_value()) {
+    emitError(value.getLoc(), "unsupported variant subtypes in ")
+        << element_type;
     return std::nullopt;
   }
 

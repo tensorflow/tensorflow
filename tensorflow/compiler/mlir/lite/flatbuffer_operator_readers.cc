@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/tf_convert_type.h"
 
 namespace {
 
@@ -274,7 +275,8 @@ static mlir::Attribute BuildPositiveI32Attr(int32_t value,
 
 static mlir::Attribute BuildTypeAttr(tflite::TensorType value,
                                      mlir::Builder builder) {
-  return mlir::TypeAttr::get(ConvertElementType(value, builder));
+  return mlir::TypeAttr::get(
+      tflite::ConvertElementTypeToTfType(value, builder));
 }
 
 static mlir::Attribute BuildTFL_AFAttr(tflite::ActivationFunctionType value,
