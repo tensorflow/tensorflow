@@ -211,6 +211,10 @@ class IfrtProgram {
   // instead of the device assignment in `module`: as the fixed devices for
   // non-portable execution, or as the candidate devices for portable
   // execution.
+  //
+  // Mutates `module`'s `MLIRContext` (which may be shared across programs in a
+  // `SavedModel`) to preload all registered dialects and enable thread-safe
+  // uniquer locking; no new dialects may be loaded into it after `Create`.
   static absl::StatusOr<std::unique_ptr<IfrtProgram>> Create(
       absl::string_view model_name, absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
