@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@xla//xla/tsl:tsl.bzl", "check_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -1146,3 +1147,25 @@ tf_cc_binary(
 exports_files([
     "run_lit.sh",
 ])
+
+# The LiteRT StableHLO legalization / optimization passes used by the v2
+# converter pipeline must not depend on the MHLO dialect or MHLO passes.
+# (tf_legalize_hlo, the HLO->TF legalization used by the v1 converter's
+# prepare_tf and by DarwiNN, intentionally still uses MHLO.)
+check_deps(
+    name = "no_mhlo_check_deps",
+    disallowed_deps = [
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+    ],
+    deps = [
+        ":composite_lowering",
+        ":legalize_einsum_to_dot_general",
+        ":legalize_torch_index_select_to_gather",
+        ":optimize",
+        ":prepare_hlo",
+        ":stablehlo_fold_broadcast",
+        ":tfl_legalize_hlo",
+        ":unfold_splat_constant_pass",
+    ],
+)
