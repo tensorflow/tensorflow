@@ -1249,6 +1249,17 @@ cc_library(
 )
 
 cc_library(
+    name = "approximate_latency_estimator",
+    srcs = ["approximate_latency_estimator.cc"],
+    hdrs = ["approximate_latency_estimator.h"],
+    deps = [
+        ":hlo_schedule_graph",
+        ":latency_estimator",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "async_tracker",
     srcs = ["async_tracker.cc"],
     hdrs = ["async_tracker.h"],
@@ -1331,6 +1342,7 @@ cc_library(
     srcs = ["latency_hiding_scheduler.cc"],
     hdrs = ["latency_hiding_scheduler.h"],
     deps = [
+        ":approximate_latency_estimator",
         ":async_tracker",
         ":buffer_value",
         ":collective_ops_utils",

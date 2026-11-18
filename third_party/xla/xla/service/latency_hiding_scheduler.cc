@@ -332,28 +332,6 @@ int64_t EstimateFragmentationSize(HloModule* module,
 
 }  // namespace
 
-LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
-    const HloGraphNode& from, const HloGraphNode& target) const {
-  if (IsAsyncPair(from, target)) {
-    return kHighLatency;
-  }
-  // Every other instruction we consider synchronous, which means the
-  // latency between each of them is always one unit.
-  return kLowLatency;
-}
-
-// Uses the approximate function for NodeCost based on a flag.
-LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
-    const HloInstruction* instr) const {
-  if (instr->IsLoopFusion()) {
-    return kMediumCost;
-  }
-  if (instr->IsOutputFusion() || instr->opcode() == HloOpcode::kConvolution) {
-    return kHighCost;
-  }
-  return kLowCost;
-}
-
 BufferInfoTracker::BufferInfoTracker(
     const HloModule* module, const HloAliasAnalysis* alias_analysis,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {

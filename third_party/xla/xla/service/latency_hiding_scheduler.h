@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/layout.h"
 #include "xla/map_util.h"
+#include "xla/service/approximate_latency_estimator.h"  // IWYU pragma: export
 #include "xla/service/async_tracker.h"  // IWYU pragma: export
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -70,35 +71,6 @@ inline bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
 }
 
 class ModulePressureState;
-
-// Implementation of LatencyEstimator using an approximate cost model.
-class ApproximateLatencyEstimator : public LatencyEstimator {
- public:
-  explicit ApproximateLatencyEstimator(
-      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
-      : LatencyEstimator(func) {}
-
-  // Returns a latency estimation between two instructions.
-  // Currently this is in abstract units. When the real/accurate cost model is
-  // implemented this will be in cycles.
-  TimeCost GetLatencyBetween(const HloGraphNode& from,
-                             const HloGraphNode& target) const override;
-  // Uses the approximate or cost model function for NodeCost based on a flag.
-  TimeCost NodeCost(const HloInstruction* instr) const override;
-  // ApproximateLatencyEstimator uses abstract units so this returns 1.
-  int CyclesPerMicrosecond() const override { return 1; }
-
- public:
-  static constexpr TimeCost kLowCost = 1.0;
-  static constexpr TimeCost kMediumCost = 1000.0;
-  static constexpr TimeCost kHighCost = 5000.0;
-
- protected:
-  // These values are empirically derived to obtain an overlap of one output
-  // fusion/convolution with 1 async op or 5 loop fusions with an async op.
-  static constexpr TimeCost kLowLatency = 1.0;
-  static constexpr TimeCost kHighLatency = 5000.0;
-};
 
 // Tracks data about HloBuffers like where the first definition is in the
 // original schedule and caches the buffer size (as Target::ShapeSize()) is
