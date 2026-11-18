@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/transpose_folding.h"
+#include "xla/hlo/transforms/simplifiers/transpose_folding.h"
 
 #include <cstdint>
 #include <utility>

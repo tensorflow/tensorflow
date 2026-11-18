@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/while_loop_constant_sinking.h"
+#include "xla/hlo/transforms/simplifiers/while_loop_constant_sinking.h"
 
 #include <cstdint>
 #include <iterator>

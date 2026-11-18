@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_module_dce.h"
+#include "xla/hlo/transforms/simplifiers/hlo_module_dce.h"
 
 #include <deque>
 
@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
-#include "xla/service/while_loop_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/while_loop_simplifier.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"

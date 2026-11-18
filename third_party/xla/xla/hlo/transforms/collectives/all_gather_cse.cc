@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_cse.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
 
 namespace xla {
 namespace {

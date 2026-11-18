@@ -3772,3 +3772,31 @@ cc_library(
         "@tsl//tsl/platform:protobuf",
     ],
 )
+
+xla_test(
+    name = "hlo_cse_test",
+    srcs = ["hlo_cse_test.cc"],
+    backends = ["interpreter"],
+    deps = [
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)

@@ -16,27 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONDITIONAL_TO_SELECT_H_
 #define XLA_SERVICE_CONDITIONAL_TO_SELECT_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass which transforms conditionals to selects in places where conditionals
-// are legal, but not currently supported by the backends (e.g. inside kMap)
-class ConditionalToSelect : public HloModulePass {
- public:
-  ~ConditionalToSelect() override = default;
-  absl::string_view name() const override { return "conditional-to-select"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/simplifiers/conditional_to_select.h"
+#include "xla/hlo/transforms/simplifiers/conditional_to_select.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_CONDITIONAL_TO_SELECT_H_

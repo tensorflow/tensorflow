@@ -706,7 +706,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service:hlo_cse",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest",

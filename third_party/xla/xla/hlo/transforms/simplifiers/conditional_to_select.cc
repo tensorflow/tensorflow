@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/conditional_to_select.h"
+#include "xla/hlo/transforms/simplifiers/conditional_to_select.h"
 
 #include "absl/status/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"

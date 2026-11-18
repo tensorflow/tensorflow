@@ -16,68 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRANSPOSE_FOLDING_H_
 #define XLA_SERVICE_TRANSPOSE_FOLDING_H_
 
-#include <functional>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// HLO pass that folds transpose operators into Dot operators, where the Dot
-// operator is implemented by a GEMM kernel that can transpose its inputs.
-class TransposeFolding : public HloModulePass {
- public:
-  using OperandIndices = std::vector<int64_t>;
-
-  // Returns the set of foldable operands for a given HLO and some candidate
-  // operands.
-  using TransposableConvOperandsFn = std::function<OperandIndices(
-      const HloInstruction&, const OperandIndices&)>;
-
-  using CanFoldTransposeOperand = std::function<absl::StatusOr<bool>(
-      const HloInstruction&, int64_t /*operand_idx*/)>;
-
-  // Helper function to explicitly not fold transposes.
-  static OperandIndices NeverFoldTranspose(const HloInstruction&,
-                                           const OperandIndices&) {
-    return {};
-  }
-
-  // Helper function to always fold transposes.
-  static OperandIndices AlwaysFoldTranspose(const HloInstruction&,
-                                            const OperandIndices& ids) {
-    return ids;
-  }
-
-  // `dot_can_fold_transpose_operand` returns whether the dot operation can fold
-  // in the given transpose operand.
-  //
-  // transposable_conv_operands returns the set of operands it wants to fold if
-  // the instruction argument is implemented as a convolution that supports
-  // transposing its arguments.
-  explicit TransposeFolding(
-      CanFoldTransposeOperand dot_can_fold_transpose_operand =
-          IsRowColumnTransposeDotOperand,
-      TransposableConvOperandsFn transposable_conv_operands =
-          AlwaysFoldTranspose);
-  absl::string_view name() const override { return "transpose-folding"; }
-
-  static absl::StatusOr<bool> IsRowColumnTransposeDotOperand(
-      const HloInstruction& dot, int64_t operand_idx);
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  CanFoldTransposeOperand dot_can_fold_transpose_operand_;
-  TransposableConvOperandsFn transposable_conv_operands_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/simplifiers/transpose_folding.h"
+#include "xla/hlo/transforms/simplifiers/transpose_folding.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_TRANSPOSE_FOLDING_H_

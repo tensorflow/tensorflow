@@ -2597,51 +2597,12 @@ xla_cc_test(
 
 cc_library(
     name = "conditional_simplifier",
-    srcs = ["conditional_simplifier.cc"],
     hdrs = ["conditional_simplifier.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":call_graph",
-        ":call_inliner",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:side_effect_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_registry",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:errors",
+        "//xla/hlo/transforms/simplifiers:conditional_simplifier",
     ],
     alwayslink = True,
-)
-
-xla_cc_test(
-    name = "conditional_simplifier_test",
-    srcs = ["conditional_simplifier_test.cc"],
-    deps = [
-        ":conditional_simplifier",
-        ":hlo_verifier",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-        "@tsl//tsl/platform:status",
-    ],
 )
 
 cc_library(
@@ -2680,13 +2641,13 @@ xla_cc_test(
     srcs = ["conditional_code_motion_test.cc"],
     deps = [
         ":conditional_code_motion",
-        ":hlo_cse",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
@@ -2755,7 +2716,6 @@ cc_library(
     hdrs = ["scan_loop_accumulator_input_unification.h"],
     deps = [
         ":pattern_matcher",
-        ":while_loop_simplifier",
         ":while_loop_unroller",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -2765,6 +2725,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:while_loop_simplifier",
         "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -2808,11 +2769,9 @@ cc_library(
         ":collective_ops_utils",
         ":constant_value",
         ":hlo_creation_utils",
-        ":hlo_cse",
         ":pattern_matcher",
         ":scheduling_annotations_util",
         ":value_range",
-        ":while_loop_constant_sinking",
         ":while_util",
         "//xla:comparison_util",
         "//xla:literal",
@@ -2825,8 +2784,10 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:while_loop_constant_sinking",
         "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
@@ -2866,69 +2827,12 @@ xla_test(
 
 cc_library(
     name = "while_loop_simplifier",
-    srcs = ["while_loop_simplifier.cc"],
     hdrs = ["while_loop_simplifier.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":call_inliner",
-        ":hlo_creation_utils",
-        ":pattern_matcher",
-        ":while_util",
-        "//xla:bit_set",
-        "//xla:comparison_util",
-        "//xla:frontend_attributes",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:union_find",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:while_loop_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_registry",
-        "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/hlo/utils:hlo_query",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "//xla/hlo/transforms/simplifiers:while_loop_simplifier",
     ],
     alwayslink = True,
-)
-
-xla_cc_test(
-    name = "while_loop_simplifier_test",
-    srcs = ["while_loop_simplifier_test.cc"],
-    deps = [
-        ":while_loop_simplifier",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
 )
 
 cc_library(
@@ -3808,23 +3712,10 @@ xla_cc_test(
 
 cc_library(
     name = "hlo_module_dce",
-    srcs = ["hlo_module_dce.cc"],
     hdrs = ["hlo_module_dce.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":while_loop_simplifier",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/analysis:hlo_liveness_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
+        "//xla/hlo/transforms/simplifiers:hlo_module_dce",
     ],
 )
 
@@ -3950,24 +3841,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "hlo_module_dce_test",
-    srcs = ["hlo_module_dce_test.cc"],
-    deps = [
-        ":hlo_module_dce",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
     deps = [
@@ -4003,78 +3876,19 @@ xla_cc_test(
 
 cc_library(
     name = "hlo_cse",
-    srcs = ["hlo_cse.cc"],
     hdrs = ["hlo_cse.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":hlo_cse_constant_key",
-        "//xla:shape_util",
-        "//xla:side_effect_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "hlo_cse_test",
-    srcs = ["hlo_cse_test.cc"],
-    backends = ["interpreter"],
-    deps = [
-        ":hlo_cse",
-        ":pattern_matcher",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
     ],
 )
 
 cc_library(
     name = "hlo_cse_constant_key",
     hdrs = ["hlo_cse_constant_key.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "@com_google_absl//absl/base:core_headers",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_cse_constant_key_test",
-    srcs = ["hlo_cse_constant_key_test.cc"],
-    deps = [
-        ":hlo_cse_constant_key",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/hash:hash_testing",
-        "@com_google_googletest//:gtest_main",
+        "//xla/hlo/transforms/simplifiers:hlo_cse_constant_key",
     ],
 )
 
@@ -4300,50 +4114,10 @@ xla_cc_test(
 
 cc_library(
     name = "transpose_folding",
-    srcs = ["transpose_folding.cc"],
     hdrs = ["transpose_folding.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "transpose_folding_test",
-    srcs = ["transpose_folding_test.cc"],
-    deps = [
-        ":hlo_proto_cc",
-        ":shape_inference",
-        ":transpose_folding",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
+        "//xla/hlo/transforms/simplifiers:transpose_folding",
     ],
 )
 
@@ -4727,7 +4501,6 @@ cc_library(
     srcs = ["while_loop_concat_code_motion.cc"],
     hdrs = ["while_loop_concat_code_motion.h"],
     deps = [
-        ":while_loop_simplifier",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -4737,6 +4510,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:while_loop_simplifier",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4862,89 +4636,20 @@ xla_cc_test(
 
 cc_library(
     name = "while_loop_constant_sinking",
-    srcs = ["while_loop_constant_sinking.cc"],
     hdrs = ["while_loop_constant_sinking.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":while_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_registry",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:statusor",
+        "//xla/hlo/transforms/simplifiers:while_loop_constant_sinking",
     ],
     alwayslink = True,
 )
 
-xla_cc_test(
-    name = "while_loop_constant_sinking_test",
-    srcs = ["while_loop_constant_sinking_test.cc"],
-    deps = [
-        ":while_loop_constant_sinking",
-        "//xla:literal_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 cc_library(
     name = "while_loop_fusible_sinking",
-    srcs = ["while_loop_fusible_sinking.cc"],
     hdrs = ["while_loop_fusible_sinking.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":pattern_matcher",
-        ":while_util",
-        "//xla:comparison_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:while_loop_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_query",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "while_loop_fusible_sinking_test",
-    srcs = ["while_loop_fusible_sinking_test.cc"],
-    deps = [
-        ":hlo_verifier",
-        ":while_loop_fusible_sinking",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
-        "//xla/hlo/utils:hlo_matchers",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "//xla/hlo/transforms/simplifiers:while_loop_fusible_sinking",
     ],
 )
 
@@ -5028,38 +4733,10 @@ xla_cc_test(
 
 cc_library(
     name = "conditional_to_select",
-    srcs = ["conditional_to_select.cc"],
     hdrs = ["conditional_to_select.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":call_graph",
-        ":call_inliner",
-        ":hlo_creation_utils",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:status",
-    ],
-)
-
-xla_cc_test(
-    name = "conditional_to_select_test",
-    srcs = ["conditional_to_select_test.cc"],
-    deps = [
-        ":conditional_to_select",
-        "//xla:literal",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_googletest//:gtest",
+        "//xla/hlo/transforms/simplifiers:conditional_to_select",
     ],
 )
 
@@ -5375,13 +5052,13 @@ xla_test(
     srcs = ["topk_rewriter_test.cc"],
     backends = ["interpreter"],
     deps = [
-        ":hlo_cse",
         ":pattern_matcher",
         ":topk_rewriter",
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
@@ -5606,31 +5283,10 @@ xla_cc_test(
 
 cc_library(
     name = "layout_normalization",
-    srcs = ["layout_normalization.cc"],
     hdrs = ["layout_normalization.h"],
+    tags = if_google(["avoid_dep"]),
     deps = [
-        ":hlo_creation_utils",
-        ":shape_inference",
-        "//xla:literal",
-        "//xla:permutation_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "//xla/hlo/transforms/simplifiers:layout_normalization",
     ],
 )
 
@@ -5704,22 +5360,6 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_cc_test(
-    name = "layout_normalization_test",
-    srcs = [
-        "layout_normalization_test.cc",
-    ],
-    deps = [
-        ":layout_normalization",
-        ":scatter_simplifier",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -6745,7 +6385,6 @@ xla_cc_test(
     deps = [
         ":computation_layout",
         ":cpu_plugin",
-        ":hlo_cse",
         ":hlo_module_config",
         ":hlo_proto_cc",
         ":hlo_verifier",
@@ -6758,6 +6397,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_status_utils",

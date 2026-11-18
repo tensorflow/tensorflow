@@ -24,7 +24,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_cse",
+        "//xla/hlo/transforms/simplifiers:hlo_cse",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
     ],

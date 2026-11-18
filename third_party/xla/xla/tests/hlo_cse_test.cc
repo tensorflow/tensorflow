@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_cse.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
 
 #include <cstdint>
 #include <memory>

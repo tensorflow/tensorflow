@@ -16,62 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_CONSTANT_SINKING_H_
 #define XLA_SERVICE_WHILE_LOOP_CONSTANT_SINKING_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Sinks while loop invariant values that happen to be constants into the while
-// loop body and conditional. This is probably not a win in isolation but may
-// unlock further optimizations like constant folding.
-//
-//   state = (..., const, ...)
-//   while (pred(state)) {
-//     (..., v, ...) = state
-//     use(v)
-//     state = (..., v, ...)
-//   }
-//
-// =>
-//
-//   state = (..., const, ...)
-//   while (pred(state)) {
-//     (..., v, ...) = state
-//     use(const)
-//     state = (..., v, ...)
-//   }
-//
-// Note that it leaves the `v` in place to keep that component of the state
-// tuple trivially loop invariant.  WhileLoopSimplifier will later get rid of
-// `v`.
-//
-class WhileLoopConstantSinking : public HloModulePass {
- public:
-  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false,
-                                    bool sink_only_scalar_constants = false)
-      : sink_broadcast_of_constants_(sink_broadcast_of_constants),
-        sink_only_scalar_constants_(sink_only_scalar_constants) {}
-
-  ~WhileLoopConstantSinking() override = default;
-
-  static constexpr absl::string_view kName = "while-loop-constant-sinking";
-  absl::string_view name() const override { return kName; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  absl::StatusOr<bool> TrySinkingConstantsIntoWhileLoop(
-      HloModule* module, HloInstruction* while_instr);
-
-  const bool sink_broadcast_of_constants_;
-  const bool sink_only_scalar_constants_;
-};
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/simplifiers/while_loop_constant_sinking.h"
+#include "xla/hlo/transforms/simplifiers/while_loop_constant_sinking.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_WHILE_LOOP_CONSTANT_SINKING_H_

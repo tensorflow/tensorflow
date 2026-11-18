@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/conditional_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/conditional_simplifier.h"
 
 #include <cstdint>
 #include <iterator>

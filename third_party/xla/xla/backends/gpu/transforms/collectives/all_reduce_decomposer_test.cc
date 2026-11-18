@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/hlo_cse.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/test.h"
 
