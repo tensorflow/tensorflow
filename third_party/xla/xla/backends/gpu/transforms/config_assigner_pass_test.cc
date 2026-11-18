@@ -79,6 +79,8 @@ namespace {
 
 namespace se = stream_executor;
 
+using ::testing::ElementsAre;
+using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Not;
@@ -988,6 +990,61 @@ TEST_F(AutotunerFlagsTest, FailOnAutotuneCacheMissTakesPrecedence) {
   debug_options.set_xla_fail_on_autotune_cache_miss(false);
   EXPECT_FALSE(
       GetConfigAssignerOptions(debug_options).expect_all_instructions_in_cache);
+}
+
+// Reduction microbenchmarks clear the block-level config of their Triton
+// fusions so that they are re-tuned.
+TEST_F(ConfigAssignerPassTest,
+       TritonFusionWithoutBlockLevelConfigGetsTop1Config) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+max {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT m = f32[] maximum(a, b)
+}
+
+triton_softmax_computation {
+  p0 = f32[128,256]{1,0} parameter(0)
+  c = f32[] constant(-inf)
+  r = f32[128]{0} reduce(p0, c), dimensions={1}, to_apply=max
+  b = f32[128,256]{1,0} broadcast(r), dimensions={0}
+  ROOT s = f32[128,256]{1,0} subtract(p0, b)
+}
+
+ENTRY main {
+  p0 = f32[128,256]{1,0} parameter(0)
+  ROOT triton_softmax = f32[128,256]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_fusion_autotune_top_k_configs(1);
+
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  const se::GpuComputeCapability gpu_version =
+      stream_executor_->GetDeviceDescription().gpu_compute_capability();
+  EXPECT_TRUE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(*fusion));
+
+  ASSERT_OK(RunWithEmitterBackends(module.get(), stream_executor_));
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  ASSERT_TRUE(
+      gpu_config.fusion_backend_config().has_block_level_fusion_config());
+  EXPECT_THAT(gpu_config.fusion_backend_config()
+                  .block_level_fusion_config()
+                  .output_tiles(0)
+                  .sizes(),
+              ElementsAre(Ge(1), 256));
+  EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
+      debug_options,
+      GetEnabledBackendTypes(debug_options, gpu_version))(*fusion));
 }
 
 TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {

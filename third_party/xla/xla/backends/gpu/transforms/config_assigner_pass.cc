@@ -191,18 +191,19 @@ AutotuneDecision ShouldAssignConfigToGemmFusion(
 }
 
 // Generic Triton fusions usually already have a config from the cost model.
-// Autotune them only when top-k > 1, and only with the block-level emitter, the
-// only backend that keeps them as Triton fusions.
+// Autotune them only when top-k > 1 or when their block-level config is
+// missing, and only with the block-level emitter, the only backend that keeps
+// them as Triton fusions.
 AutotuneDecision ShouldAssignConfigToTritonFusion(
     bool enable_fusion_autotuner, bool block_level_emitter_enabled,
-    int top_k_configs) {
+    int top_k_configs, bool has_block_level_fusion_config) {
   if (!enable_fusion_autotuner) {
     return AutotuneDecision::Forbid("Fusion autotuner is disabled");
   }
   if (!block_level_emitter_enabled) {
     return AutotuneDecision::Forbid("Block-level emitter backend is disabled");
   }
-  if (top_k_configs == 1) {
+  if (top_k_configs == 1 && has_block_level_fusion_config) {
     return AutotuneDecision::Forbid(
         "Triton fusions keep the cost model's config when autotuning over a "
         "single config");
@@ -268,7 +269,7 @@ AutotuneDecision ShouldAssignConfigToInstruction(
       return ShouldAssignConfigToTritonFusion(
           enable_fusion_autotuner,
           enabled_backends.contains(autotuner::Backend::BLOCK_LEVEL_EMITTER),
-          top_k_configs);
+          top_k_configs, backend_config.has_block_level_fusion_config());
     }
     // 4. Generic fusions.
     return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
