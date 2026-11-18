@@ -7217,6 +7217,120 @@ ENTRY entry {
               AllOf(op::Convolution(lhs, rhs), op::Shape("f32[128,128,8]")));
 }
 
+TEST_P(SpmdPartitioningTest, SpatialBatchConvolutionWindowDilationAndPadding) {
+  struct TestCase {
+    absl::string_view name;
+    int64_t num_devices;
+    int64_t local_batch;
+    absl::string_view expected_shape;
+    absl::string_view hlo;
+  };
+  static constexpr TestCase kCases[] = {
+      {"unpadded_win_dil_dot_conv_2_way_f32", 2, 2, "f32[2,3,2]", R"hlo(
+HloModule m
+ENTRY e {
+  %lhs = f32[4,3,2] parameter(0), sharding={devices=[2,1,1]<=[2]}
+  %rhs = f32[4,2,2] parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %c = f32[4,3,2] convolution(%lhs, %rhs), dim_labels=0bf_0io->0bf,
+    window={size=4 lhs_dilate=4 rhs_dilate=3}, sharding={devices=[2,1,1]<=[2]}
+})hlo"},
+      {"padded_rev_dot_conv_2_way_bf16", 2, 2, "bf16[2,3,2]", R"hlo(
+HloModule m
+ENTRY e {
+  %lhs = bf16[4,3,2] parameter(0), sharding={devices=[2,1,1]<=[2]}
+  %rhs = bf16[4,2,2] parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %c = bf16[4,3,2] convolution(%lhs, %rhs), dim_labels=0bf_0io->0bf,
+    window={size=4 stride=4 pad=3_3 lhs_dilate=3 rhs_reversal=1}, sharding={devices=[2,1,1]<=[2]}
+})hlo"},
+      {"padded_rev_dot_conv_4_way_unit_f32", 4, 1, "f32[1,3,2]", R"hlo(
+HloModule m
+ENTRY e {
+  %lhs = f32[4,3,2] parameter(0), sharding={devices=[4,1,1]<=[4]}
+  %rhs = f32[4,2,2] parameter(1), sharding={devices=[4,1,1]<=[4]}
+  ROOT %c = f32[4,3,2] convolution(%lhs, %rhs), dim_labels=0bf_0io->0bf,
+    window={size=4 stride=4 pad=3_3 lhs_dilate=3 rhs_reversal=1}, sharding={devices=[4,1,1]<=[4]}
+})hlo"},
+      {"unpadded_win_dil_spatial_2_way_f32", 2, 2, "f32[2,3,2,4]", R"hlo(
+HloModule m
+ENTRY e {
+  %lhs = f32[4,3,2,4] parameter(0), sharding={devices=[2,1,1,1]<=[2]}
+  %rhs = f32[4,2,2,3] parameter(1), sharding={devices=[2,1,1,1]<=[2]}
+  ROOT %c = f32[4,3,2,4] convolution(%lhs, %rhs), dim_labels=0bf1_0io1->0bf1,
+    window={size=4x3 pad=0_0x1_1 lhs_dilate=4x1 rhs_dilate=3x1}, sharding={devices=[2,1,1,1]<=[2]}
+})hlo"},
+      {"padded_rev_spatial_4_way_bf16", 4, 1, "bf16[1,3,2,4]", R"hlo(
+HloModule m
+ENTRY e {
+  %lhs = bf16[4,3,2,4] parameter(0), sharding={devices=[4,1,1,1]<=[4]}
+  %rhs = bf16[4,2,2,3] parameter(1), sharding={devices=[4,1,1,1]<=[4]}
+  ROOT %c = bf16[4,3,2,4] convolution(%lhs, %rhs), dim_labels=0bf1_0io1->0bf1,
+    window={size=4x3 stride=4x1 pad=3_3x1_1 lhs_dilate=3x1 rhs_reversal=1x0}, sharding={devices=[4,1,1,1]<=[4]}
+})hlo"},
+  };
+  auto make_input = [](const Shape& shape,
+                       int64_t offset) -> absl::StatusOr<Literal> {
+    ABSL_ASSIGN_OR_RETURN(Literal f32_lit,
+                     Literal::Make(ShapeUtil::ChangeElementType(shape, F32)));
+    absl::Span<float> data = f32_lit.data<float>();
+    for (int64_t i = 0; i < static_cast<int64_t>(data.size()); ++i) {
+      data[i] = static_cast<float>(((i + offset) % 5) + 1);
+    }
+    return shape.element_type() == F32 ? std::move(f32_lit)
+                                       : f32_lit.Convert(shape.element_type());
+  };
+  for (const TestCase& tc : kCases) {
+    SCOPED_TRACE(tc.name);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                         ParseAndReturnVerifiedModule(tc.hlo));
+    const HloComputation* ref_entry = ref_module->entry_computation();
+    const HloInstruction* p0 = ref_entry->parameter_instruction(0);
+    const HloInstruction* p1 = ref_entry->parameter_instruction(1);
+    ASSERT_OK_AND_ASSIGN(Literal p0_full, make_input(p0->shape(), 0));
+    ASSERT_OK_AND_ASSIGN(Literal p1_full, make_input(p1->shape(), 2));
+    ASSERT_OK_AND_ASSIGN(
+        Literal expected_full,
+        HloEvaluator().Evaluate(*ref_module, {&p0_full, &p1_full}));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(tc.hlo, tc.num_devices));
+    VerifyNoCollectives(module.get());
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    ASSERT_THAT(root,
+                AllOf(op::Shape(tc.expected_shape),
+                      op::Convolution(op::Parameter(0), op::Parameter(1))));
+    const WindowDimension& wd = root->window().dimensions(0);
+    EXPECT_EQ(wd.size(), tc.local_batch);
+    EXPECT_EQ(wd.stride(), std::max<int64_t>(1, tc.local_batch - 1));
+    EXPECT_EQ(wd.base_dilation(), tc.local_batch);
+    EXPECT_EQ(wd.window_dilation(), 1);
+    EXPECT_EQ(wd.padding_low(), 0);
+    EXPECT_EQ(wd.padding_high(), 0);
+    EXPECT_FALSE(wd.window_reversal());
+
+    auto slice_shards = [&](const Literal& full, const HloSharding& s,
+                            std::vector<Literal>& out) -> absl::Status {
+      out.resize(tc.num_devices);
+      return s.EachTile(full.shape().dimensions(),
+                        [&](int64_t d, absl::Span<const int64_t> off,
+                            absl::Span<const int64_t> lim) {
+                          out[d] = full.Slice(off, lim);
+                        });
+    };
+    std::vector<Literal> p0_s, p1_s, exp_s;
+    ASSERT_OK(slice_shards(p0_full, p0->sharding(), p0_s));
+    ASSERT_OK(slice_shards(p1_full, p1->sharding(), p1_s));
+    ASSERT_OK(slice_shards(expected_full,
+                           ref_entry->root_instruction()->sharding(), exp_s));
+    for (int64_t dev = 0; dev < tc.num_devices; ++dev) {
+      SCOPED_TRACE(dev);
+      ASSERT_OK_AND_ASSIGN(
+          Literal actual,
+          HloEvaluator().Evaluate(*module, {&p0_s[dev], &p1_s[dev]}));
+      EXPECT_EQ(actual, exp_s[dev]);
+    }
+  }
+}
+
 TEST_P(SpmdPartitioningTest, DotOutputFeaturePartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
