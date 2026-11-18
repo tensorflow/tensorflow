@@ -3596,6 +3596,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
+        "//xla/tests:xla_test_backend_predicates",
         "@com_google_googletest//:gtest_main",
     ],
 )

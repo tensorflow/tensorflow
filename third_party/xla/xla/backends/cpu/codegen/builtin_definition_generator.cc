@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
+#include "xla/backends/cpu/codegen/builtin_atan2.h"
 #include "xla/backends/cpu/codegen/builtin_fp16.h"
 #include "xla/backends/cpu/codegen/builtin_pow.h"
 
@@ -183,7 +184,8 @@ static Registry CreateRegistry() {
   REGISTER_LIBM_SYMBOL(asin, double (*)(double));
   REGISTER_LIBM_SYMBOL(asinh, double (*)(double));
   REGISTER_LIBM_SYMBOL(atan, double (*)(double));
-  REGISTER_LIBM_SYMBOL(atan2, double (*)(double, double));
+  registry["atan2f"] = SymbolDef(BuiltinAtan2f);
+  registry["atan2"] = SymbolDef(BuiltinAtan2);
   REGISTER_LIBM_SYMBOL(atanh, double (*)(double));
   REGISTER_LIBM_SYMBOL(cbrt, double (*)(double));
   REGISTER_LIBM_SYMBOL(ceil, double (*)(double));

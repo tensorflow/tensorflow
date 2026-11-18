@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -66,6 +67,66 @@ TEST_F(Atan2Test, LargeMagnitudeOperands) {
   Literal x_literal = LiteralUtil::CreateR1<float>(xs);
   // Use parameters rather than constants so the computation isn't
   // constant-folded on the host.
+  auto y = Parameter(&builder, 0, y_literal.shape(), "y");
+  auto x = Parameter(&builder, 1, x_literal.shape(), "x");
+  Atan2(y, x);
+  ComputeAndCompareR1<float>(&builder, expected, {&y_literal, &x_literal},
+                             ErrorSpec(1e-6, 1e-6));
+}
+
+TEST_F(Atan2Test, F64SubnormalOperands) {
+  // Only XLA:CPU flushes subnormal inputs; GPU preserves them, so
+  // atan2(tiny, tiny) is pi/4 there rather than +0.
+  if (!test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "Subnormal flushing is specific to the CPU backend.";
+  }
+  XlaBuilder builder("atan2 with subnormal F64 operands");
+  const double tiny = std::numeric_limits<double>::denorm_min();
+  const double min_normal = std::numeric_limits<double>::min();
+  const std::vector<double> ys = {tiny,     -tiny, tiny,           -tiny,
+                                  2 * tiny, tiny,  min_normal / 2, min_normal};
+  const std::vector<double> xs = {tiny, tiny,     -tiny,      -tiny,
+                                  tiny, 2 * tiny, min_normal, min_normal / 2};
+  // The CPU builtin flushes subnormal inputs to signed zero, so each pair
+  // above reduces to atan2 on signed zeros or on one normal operand: the
+  // results are +/-0, +/-pi, or +pi/2.
+  constexpr double kPi = 3.141592653589793;
+  constexpr double kHalfPi = 1.5707963267948966;
+  const std::vector<double> expected = {0.0, -0.0, kPi, -kPi,
+                                        0.0, 0.0,  0.0, kHalfPi};
+  Literal y_literal = LiteralUtil::CreateR1<double>(ys);
+  Literal x_literal = LiteralUtil::CreateR1<double>(xs);
+  // Parameters ensure the subnormal inputs reach compiled CPU code instead of
+  // being constant-folded on the host.
+  auto y = Parameter(&builder, 0, y_literal.shape(), "y");
+  auto x = Parameter(&builder, 1, x_literal.shape(), "x");
+  Atan2(y, x);
+  ComputeAndCompareR1<double>(&builder, expected, {&y_literal, &x_literal},
+                              ErrorSpec(1e-15, 1e-15));
+}
+
+TEST_F(Atan2Test, F32SubnormalOperands) {
+  // Only XLA:CPU flushes subnormal inputs; GPU preserves them, so
+  // atan2(tiny, tiny) is pi/4 there rather than +0.
+  if (!test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "Subnormal flushing is specific to the CPU backend.";
+  }
+  XlaBuilder builder("atan2 with subnormal F32 operands");
+  const float tiny = std::numeric_limits<float>::denorm_min();
+  const float min_normal = std::numeric_limits<float>::min();
+  const std::vector<float> ys = {tiny,       tiny, min_normal / 2, -tiny,
+                                 min_normal, tiny, 1.0f,           -1.0f};
+  const std::vector<float> xs = {tiny, 1.0f,       -1.0f, -tiny,
+                                 tiny, min_normal, -tiny, tiny};
+  // Flushed to signed zero, each pair above gives +/-0, +/-pi, or +/-pi/2.
+  constexpr float kPi = 3.1415927f;
+  constexpr float kHalfPi = 1.5707964f;
+  const std::vector<float> expected = {0.0f,    0.0f, kPi,     -kPi,
+                                       kHalfPi, 0.0f, kHalfPi, -kHalfPi};
+  Literal y_literal = LiteralUtil::CreateR1<float>(ys);
+  Literal x_literal = LiteralUtil::CreateR1<float>(xs);
+  // Parameters ensure the subnormal inputs reach compiled CPU code instead of
+  // being constant-folded on the host.
   auto y = Parameter(&builder, 0, y_literal.shape(), "y");
   auto x = Parameter(&builder, 1, x_literal.shape(), "x");
   Atan2(y, x);
