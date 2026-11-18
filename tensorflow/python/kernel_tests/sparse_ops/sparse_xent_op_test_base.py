@@ -316,3 +316,73 @@ class SparseXentOpTestBase(test.TestCase):
   def testScalarHandling(self):
     """This method is structured to be easily overridden by a child class."""
     self._testScalarHandling(expected_regex=".*labels must be 1-D.*")
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGradientPrecisionFloat64ZeroSum(self):
+    """Test gradient signal, zero-sum invariant, and extreme gaps (#126636)."""
+    if not test_util.is_xla_enabled():
+      logits = constant_op.constant(
+          [[37.42994775023705, 0.0]], dtype=dtypes.float64
+      )
+      labels = constant_op.constant([0], dtype=dtypes.int32)
+      loss, grad = self._opFwdBwd(labels=labels, logits=logits)
+      loss_val, grad_val = self.evaluate([loss, grad])
+      expected_grad = np.array(
+          [[-5.551115123125776e-17, 5.551115123125776e-17]],
+          dtype=np.float64,
+      )
+      self.assertAllClose(grad_val, expected_grad, rtol=1e-12, atol=1e-25)
+      self.assertNear(float(np.sum(grad_val)), 0.0, err=1e-25)
+      if not config.is_op_determinism_enabled():
+        self.assertAllClose(
+            loss_val,
+            np.array([5.551115123125783e-17], dtype=np.float64),
+            rtol=1e-12,
+            atol=1e-25,
+        )
+
+    if (
+        not config.is_op_determinism_enabled()
+        and not test_util.is_xla_enabled()
+    ):
+      logits_f32 = constant_op.constant(
+          [[20.0, 0.0, 0.0]], dtype=dtypes.float32
+      )
+      labels_f32 = constant_op.constant([0], dtype=dtypes.int64)
+      loss_f32, grad_f32 = self._opFwdBwd(
+          labels=labels_f32, logits=logits_f32
+      )
+      loss_f32_val, grad_f32_val = self.evaluate([loss_f32, grad_f32])
+      self.assertGreater(float(loss_f32_val[0]), 0.0)
+      self.assertLess(float(grad_f32_val[0, 0]), 0.0)
+      self.assertNear(float(np.sum(grad_f32_val[0])), 0.0, err=1e-15)
+
+    # Non-dominant target class where exp(shifted_label) is subnormal or
+    # underflows to 0.0, plus -inf and NaN inputs.
+    far_f32 = constant_op.constant(
+        [[0.0, 90.0], [-100.0, 100.0], [-np.inf, 0.0], [np.nan, 0.0]],
+        dtype=dtypes.float32,
+    )
+    far_labels = constant_op.constant([0, 0, 0, 0], dtype=dtypes.int32)
+    far_loss, far_grad = self._opFwdBwd(labels=far_labels, logits=far_f32)
+    far_loss_val, far_grad_val = self.evaluate([far_loss, far_grad])
+    self.assertAllClose(far_loss_val[:2], [90.0, 200.0])
+    self.assertTrue(np.isposinf(far_loss_val[2]))
+    self.assertTrue(np.isnan(far_loss_val[3]))
+    self.assertAllClose(
+        far_grad_val[:3], [[-1.0, 1.0], [-1.0, 1.0], [-1.0, 1.0]]
+    )
+    self.assertTrue(np.all(np.isnan(far_grad_val[3])))
+
+    far_f64 = constant_op.constant(
+        [[0.0, 720.0], [0.0, 800.0]], dtype=dtypes.float64
+    )
+    far_f64_loss, far_f64_grad = self._opFwdBwd(
+        labels=constant_op.constant([0, 0], dtype=dtypes.int32),
+        logits=far_f64,
+    )
+    far_f64_loss_val, far_f64_grad_val = self.evaluate(
+        [far_f64_loss, far_f64_grad]
+    )
+    self.assertAllClose(far_f64_loss_val, [720.0, 800.0])
+    self.assertAllClose(far_f64_grad_val, [[-1.0, 1.0], [-1.0, 1.0]])
