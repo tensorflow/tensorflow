@@ -497,6 +497,21 @@ bool IsTritonCollectiveKernel(
              CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
 }
 
+bool IsTritonTwoShotAllGather(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kAllGather) {
+    absl::StatusOr<GpuBackendConfig> gpu_config =
+        instr.backend_config<GpuBackendConfig>();
+    return gpu_config.ok() &&
+           gpu_config->collective_backend_config().kernel_strategy() ==
+               CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT;
+  }
+  return instr.IsCustomFusion() &&
+         absl::c_any_of(instr.fused_instructions_computation()->instructions(),
+                        [](const HloInstruction* fused) {
+                          return IsTritonTwoShotAllGather(*fused);
+                        });
+}
+
 absl::StatusOr<absl::flat_hash_set<HloOpcode>> OpcodesForTritonCollectives(
     const DebugOptions& debug_options) {
   absl::flat_hash_set<HloOpcode> instructions_to_annotate;
