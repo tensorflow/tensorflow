@@ -2416,9 +2416,6 @@ LogicalResult ReduceIndexOp::verify() {
            << "-bit unsigned indices";
   }
 
-  if (is_arg_max_or_min && in_shape.size() < 2) {
-    return emitOpError("Not Implemented: Only input rank > 1 is supported.");
-  }
   for (int64_t i = 0; i < in_ty.getRank(); ++i) {
     const int64_t expected_output_size = (i == axis) ? 1 : in_shape[i];
     if (out_shape[i] != expected_output_size) {

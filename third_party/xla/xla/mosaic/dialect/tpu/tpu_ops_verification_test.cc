@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
@@ -2336,6 +2337,17 @@ TEST_F(TpuOpsVerificationTest, ReduceIndexOpVerificationWorks) {
   Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
   auto reduce_index = Create<ReduceIndexOp>(
       /*output=*/VectorType::get({1, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_OK(VerifyOp(reduce_index));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOp1DVerificationWorks) {
+  Value input = ConstantF32Vector(/*shape=*/{200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({1}, builder().getI32Type()),
       /*input=*/input,
       /*axis=*/builder().getI32IntegerAttr(0),
       /*kind=*/

@@ -18,7 +18,7 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.xla_version.
-#define JAX_XLA_VERSION_NUMBER 88  // CPU log and log1p precision
+#define JAX_XLA_VERSION_NUMBER 89  // 1D inputs to tpu.reduce_index
 
 // TODO(phawkins): Remove JAX_IFRT_VERSION_NUMBER once JAX no longer references
 // it.
