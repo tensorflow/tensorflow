@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <queue>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/emitters/loop.h"
+#include "llvm/ADT/SetVector.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
@@ -40,52 +41,80 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 namespace {
 
-// Tracks the ordered stages and O(1) stage membership of a candidate
-// multi-phase fusion chain under construction.
-struct ChainState {
-  std::vector<HloInstruction*> stages;
-  absl::flat_hash_set<const HloInstruction*> stage_set;
+// Maximum total kernel arguments (deduplicated outer operands + intermediate
+// and final stage outputs) to bound compile time and stay well within PTX's
+// parameter space limit.
+constexpr int64_t kMaxKernelArgs = 256;
+
+// Tracks the stages, deduplicated external operands, and root-tuple output
+// count (both intermediate phase buffers and final outputs) of a candidate
+// multi-phase fusion DAG under construction.
+struct PhaseDag {
+  llvm::SetVector<HloInstruction*> stages;
+  llvm::SetVector<HloInstruction*> outer_operands;
+  int64_t total_outputs = 0;
 };
 
-// Returns true if `instr` is a single-array 1D `kLoop` fusion (or unfused op
-// that `FusionWrapper` would wrap as one) without side effects, aliasing, or
-// control dependencies whose grid fits in one cluster.
+// Whether `shape` is an array or a non-empty flat tuple of arrays.
+bool HasValidStageOutputShape(const Shape& shape) {
+  return shape.IsArray() ||
+         (shape.IsTuple() && !shape.tuple_shapes().empty() &&
+          absl::c_all_of(shape.tuple_shapes(),
+                         [](const Shape& sub) { return sub.IsArray(); }));
+}
+
+// Unwraps a `get-tuple-element` projection to its tuple producer, or returns
+// `instr` unchanged.
+HloInstruction* MaybeUnwrapGetTupleElement(HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kGetTupleElement
+             ? instr->mutable_operand(0)
+             : instr;
+}
+
+// Returns the stage producing `operand`, looking through `get-tuple-element`
+// ops, if needed. Returns nullptr if no such stage exists in `stages`.
+HloInstruction* FindProducerStage(
+    HloInstruction* operand, const llvm::SetVector<HloInstruction*>& stages) {
+  HloInstruction* prod = MaybeUnwrapGetTupleElement(operand);
+  return stages.contains(prod) ? prod : nullptr;
+}
+
+// Whether `instr` is a native MLIR fusion (`kLoop`, `kReduction`,
+// `kTranspose`, `kConcatenate`, or an unfused op that `FusionWrapper` would
+// wrap as one) without side effects, aliasing, or control dependencies whose
+// grid fits in one cluster.
 bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
                      const se::DeviceDescription& device_info) {
-  if (!instr->shape().IsArray() || instr->IsDead() || instr->HasSideEffect() ||
-      instr->HasControlDependencies()) {
+  if (!HasValidStageOutputShape(instr->shape()) || instr->IsDead() ||
+      instr->HasSideEffect() || instr->HasControlDependencies()) {
     return false;
   }
   if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
-    if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop ||
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom ||
         !fusion->output_to_operand_aliasing().empty()) {
       return false;
     }
   } else if (!instr->IsFusible() ||
-             !fusion_wrapper.MustWrapInstruction(*instr) ||
-             fusion_wrapper.ChooseFusionKind(*instr, *instr) !=
-                 HloInstruction::FusionKind::kLoop) {
+             !fusion_wrapper.MustWrapInstruction(*instr)) {
     return false;
   }
 
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*instr, device_info);
-  if (analysis.emitter_fusion_kind() !=
-      HloFusionAnalysis::EmitterFusionKind::kLoop) {
-    return false;
-  }
   PreBufferAssignmentFusionInfo fusion_info(analysis);
   if (fusion_info.GetCopyFusion().has_value() ||
       (IsDynamicUpdateSliceFusion(analysis.fusion_spec()) &&
@@ -93,124 +122,257 @@ bool IsEligibleStage(const HloInstruction* instr, FusionWrapper& fusion_wrapper,
     return false;
   }
 
-  bool unroll_small_inputs =
+  bool unroll_small_fusions =
       device_info.cuda_compute_capability().IsAtLeastHopper();
-  LaunchDimensions dims =
-      LoopFusion(analysis, unroll_small_inputs).launch_dimensions();
-  const se::BlockDim& blocks = dims.block_counts();
-  const se::ThreadDim& threads = dims.thread_counts_per_block();
-  return blocks.x > 0 &&
-         blocks.x <= ThreadBlockSpecializedFusion::kMaxBlocksPerCluster &&
-         blocks.y == 1 && blocks.z == 1 && threads.y == 1 && threads.z == 1;
+  std::unique_ptr<MlirKernelEmitter> emitter =
+      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+          analysis, /*unroll_small_fusions=*/unroll_small_fusions);
+  if (emitter == nullptr) {
+    return false;
+  }
+  LaunchDimensions dims = emitter->launch_dimensions();
+  if (dims.num_blocks() == 0 ||
+      dims.num_blocks() > ThreadBlockSpecializedFusion::kMaxBlocksPerCluster) {
+    return false;
+  }
+  // Sub-kernels with `num_threads < max_threads` that emit CTA barriers
+  // (`bar.sync 0, T_i`) or full-warp shuffles require a warp-multiple thread
+  // count; `LoopFusion` and `ConcatenateFusion` use neither.
+  if (dims.num_threads_per_block() % WarpSize(device_info) != 0 &&
+      analysis.emitter_fusion_kind() !=
+          HloFusionAnalysis::EmitterFusionKind::kLoop &&
+      analysis.emitter_fusion_kind() !=
+          HloFusionAnalysis::EmitterFusionKind::kConcatenate) {
+    return false;
+  }
+  return true;
 }
 
-// Appends `candidate` as the next phase of `chain` if it is a live eligible
-// stage and introduces neither skip-phase edges nor cycles.
-bool TryAppendConsumer(
+// Adds `candidate` to `dag` if it is a new eligible stage that keeps the fused
+// kernel within `kMaxKernelArgs` and introduces no external dataflow cycles
+// once `dag` is collapsed into a single fusion.
+bool TryAddStage(
     HloInstruction* candidate,
     const absl::flat_hash_map<int, HloInstruction*>& eligible_stages,
-    const HloReachabilityMap& reachability, ChainState& chain) {
+    const HloReachabilityMap& reachability, PhaseDag& dag) {
   if (!eligible_stages.contains(candidate->unique_id()) ||
-      chain.stage_set.contains(candidate)) {
+      dag.stages.contains(candidate)) {
     return false;
   }
 
-  const HloInstruction* prev = chain.stages.back();
-  for (const HloInstruction* op : candidate->operands()) {
-    if (op == prev) {
-      continue;
+  // Every stage's outputs (including intermediate phase buffers) become
+  // elements of the outer fusion's root tuple and thus separate PTX `.entry`
+  // parameters; exit early on wide multi-output stages before scanning operands
+  // and users.
+  const int64_t new_outputs =
+      dag.total_outputs + ShapeUtil::GetLeafCount(candidate->shape());
+  if (new_outputs > kMaxKernelArgs) {
+    return false;
+  }
+
+  int64_t internalized_operands = 0;
+  if (candidate->shape().IsTuple()) {
+    for (HloInstruction* user : candidate->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          dag.outer_operands.contains(user)) {
+        ++internalized_operands;
+      }
     }
-    // Reject skip-phase dependencies (`candidate` reading `stages[0..k-2]`) and
-    // indirect paths (`stages[j] -> ... -> op -> candidate`) that would form a
-    // cycle once `stages` is collapsed into a single fusion instruction.
-    if (chain.stage_set.contains(op) ||
-        absl::c_any_of(chain.stages, [&](const HloInstruction* stage) {
-          return reachability.IsReachable(stage, op);
+  } else if (dag.outer_operands.contains(candidate)) {
+    internalized_operands = 1;
+  }
+
+  llvm::SmallSetVector<HloInstruction*, 8> added_outer_operands;
+  for (HloInstruction* operand : candidate->operands()) {
+    if (FindProducerStage(operand, dag.stages) == nullptr &&
+        !dag.outer_operands.contains(operand)) {
+      added_outer_operands.insert(operand);
+    }
+  }
+  const int64_t new_outer_operand_count =
+      static_cast<int64_t>(dag.outer_operands.size()) - internalized_operands +
+      static_cast<int64_t>(added_outer_operands.size());
+  if (new_outer_operand_count + new_outputs > kMaxKernelArgs) {
+    return false;
+  }
+
+  // Reject indirect paths through external instructions
+  // (`stage -> ... -> operand -> candidate` or
+  // `candidate -> ... -> operand -> stage`).
+  for (HloInstruction* operand : added_outer_operands) {
+    if (absl::c_any_of(dag.stages, [&](const HloInstruction* stage) {
+          return reachability.IsReachable(stage, operand);
         })) {
       return false;
     }
   }
+  for (HloInstruction* operand : dag.outer_operands) {
+    if (MaybeUnwrapGetTupleElement(operand) != candidate &&
+        reachability.IsReachable(candidate, operand)) {
+      return false;
+    }
+  }
 
-  chain.stages.push_back(candidate);
-  chain.stage_set.insert(candidate);
+  if (candidate->shape().IsTuple()) {
+    for (HloInstruction* user : candidate->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement) {
+        dag.outer_operands.remove(user);
+      }
+    }
+  } else {
+    dag.outer_operands.remove(candidate);
+  }
+  dag.outer_operands.insert(added_outer_operands.begin(),
+                            added_outer_operands.end());
+  dag.stages.insert(candidate);
+  dag.total_outputs = new_outputs;
   return true;
 }
 
-// Wraps `chain` into a `__phased_block_cluster` custom fusion, rewires external
-// uses via `get-tuple-element`, and removes the original stage instructions.
-absl::Status CreateMultiPhaseFusion(HloModule* module, HloComputation* comp,
-                                    absl::Span<HloInstruction* const> chain) {
+// Greedily grows a connected DAG of eligible stages around `seed` in both
+// directions (producers and consumers) via BFS.
+PhaseDag BuildPhaseDag(
+    HloInstruction* seed,
+    const absl::flat_hash_map<int, HloInstruction*>& eligible_stages,
+    const HloReachabilityMap& reachability) {
+  PhaseDag dag;
+  std::queue<HloInstruction*> worklist;
+  auto try_add_stage_and_enqueue = [&](HloInstruction* candidate) {
+    if (TryAddStage(candidate, eligible_stages, reachability, dag)) {
+      worklist.push(candidate);
+    }
+  };
+
+  try_add_stage_and_enqueue(seed);
+  while (!worklist.empty()) {
+    HloInstruction* stage = worklist.front();
+    worklist.pop();
+
+    for (HloInstruction* operand : stage->operands()) {
+      try_add_stage_and_enqueue(MaybeUnwrapGetTupleElement(operand));
+    }
+
+    if (stage->shape().IsTuple()) {
+      for (HloInstruction* user : stage->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement) {
+          for (HloInstruction* gte_user : user->users()) {
+            try_add_stage_and_enqueue(gte_user);
+          }
+        }
+      }
+    } else {
+      for (HloInstruction* user : stage->users()) {
+        try_add_stage_and_enqueue(user);
+      }
+    }
+  }
+  return dag;
+}
+
+// Wraps `sorted_stages` (ordered topologically) into a `__phased_block_cluster`
+// custom fusion, rewires external uses via `get-tuple-element`, and removes the
+// original stage instructions.
+absl::Status CreateMultiPhaseFusion(
+    HloModule* module, HloComputation* comp,
+    const std::vector<HloInstruction*>& sorted_stages, const PhaseDag& dag,
+    FusionWrapper& fusion_wrapper) {
   HloComputation::Builder builder("phased_block_cluster_computation");
   std::vector<HloInstruction*> outer_operands;
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> param_map;
-  for (size_t i = 0; i < chain.size(); ++i) {
-    for (HloInstruction* op : chain[i]->operands()) {
-      if (i > 0 && op == chain[i - 1]) {
+  for (HloInstruction* stage : sorted_stages) {
+    for (HloInstruction* operand : stage->operands()) {
+      // Skip operands that have a producer stage inside the dag.
+      if (FindProducerStage(operand, dag.stages) != nullptr) {
         continue;
       }
-      auto [it, inserted] = param_map.try_emplace(op, nullptr);
+      auto [it, inserted] = param_map.try_emplace(operand, nullptr);
       if (inserted) {
         int64_t param_idx = static_cast<int64_t>(outer_operands.size());
         it->second = builder.AddInstruction(HloInstruction::CreateParameter(
-            param_idx, op->shape(), absl::StrCat("param_", param_idx)));
-        outer_operands.push_back(op);
+            param_idx, operand->shape(), absl::StrCat("param_", param_idx)));
+        outer_operands.push_back(operand);
       }
     }
   }
 
-  std::vector<HloInstruction*> nested_fusions;
-  nested_fusions.reserve(chain.size());
-  for (size_t i = 0; i < chain.size(); ++i) {
-    HloInstruction* stage = chain[i];
-    auto map_operand = [&](HloInstruction* op) -> HloInstruction* {
-      return (i > 0 && op == chain[i - 1]) ? nested_fusions[i - 1]
-                                           : param_map.at(op);
+  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
+      stage_outputs;
+  stage_outputs.reserve(sorted_stages.size());
+  std::vector<int64_t> stage_output_offsets(sorted_stages.size(), 0);
+  std::vector<HloInstruction*> tuple_elements;
+  tuple_elements.reserve(dag.total_outputs);
+  for (size_t i = 0; i < sorted_stages.size(); ++i) {
+    HloInstruction* stage = sorted_stages[i];
+    auto map_operand = [&](HloInstruction* operand) -> HloInstruction* {
+      if (const HloInstruction* prod = FindProducerStage(operand, dag.stages)) {
+        const std::vector<HloInstruction*>& outputs = stage_outputs.at(prod);
+        return operand == prod ? outputs[0] : outputs[operand->tuple_index()];
+      }
+      return param_map.at(operand);
     };
 
-    HloComputation* stage_comp = nullptr;
-    std::vector<HloInstruction*> stage_operands;
+    HloInstruction* nested_fusion = nullptr;
     if (auto* fusion_stage = DynCast<HloFusionInstruction>(stage)) {
+      std::vector<HloInstruction*> stage_operands;
       stage_operands.reserve(fusion_stage->operand_count());
-      for (HloInstruction* op : fusion_stage->operands()) {
-        stage_operands.push_back(map_operand(op));
+      for (HloInstruction* operand : fusion_stage->operands()) {
+        stage_operands.push_back(map_operand(operand));
       }
-      stage_comp = module->AddEmbeddedComputation(
-          fusion_stage->fused_instructions_computation()->Clone());
+      nested_fusion = builder.AddInstruction(fusion_stage->CloneWithNewOperands(
+          fusion_stage->shape(), stage_operands, /*suffix=*/""));
     } else {
       HloComputation::Builder stage_builder(
           absl::StrCat(stage->name(), "_computation"));
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>
           inner_param_map;
+      std::vector<HloInstruction*> stage_operands;
       std::vector<HloInstruction*> inner_operands;
       inner_operands.reserve(stage->operand_count());
-      for (HloInstruction* op : stage->operands()) {
-        auto [it, inserted] = inner_param_map.try_emplace(op, nullptr);
+      for (HloInstruction* operand : stage->operands()) {
+        HloInstruction* mapped_operand = map_operand(operand);
+        auto [it, inserted] =
+            inner_param_map.try_emplace(mapped_operand, nullptr);
         if (inserted) {
           int64_t param_idx = static_cast<int64_t>(stage_operands.size());
           it->second =
               stage_builder.AddInstruction(HloInstruction::CreateParameter(
-                  param_idx, op->shape(), absl::StrCat("param_", param_idx)));
-          stage_operands.push_back(map_operand(op));
+                  param_idx, mapped_operand->shape(),
+                  absl::StrCat("param_", param_idx)));
+          stage_operands.push_back(mapped_operand);
         }
         inner_operands.push_back(it->second);
       }
       stage_builder.AddInstruction(
           stage->CloneWithNewOperands(stage->shape(), inner_operands));
-      stage_comp = module->AddEmbeddedComputation(stage_builder.Build());
+      HloComputation* stage_comp =
+          module->AddEmbeddedComputation(stage_builder.Build());
       stage_comp->SetExecutionThread(comp->execution_thread());
+      // `ChooseFusionKind` takes `(producer, consumer)`; pass `*stage` for both
+      // when wrapping a standalone instruction, matching `FusionWrapperBase`.
+      nested_fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+          stage->shape(), fusion_wrapper.ChooseFusionKind(*stage, *stage),
+          stage_operands, stage_comp));
     }
 
-    nested_fusions.push_back(
-        builder.AddInstruction(HloInstruction::CreateFusion(
-            stage->shape(), HloInstruction::FusionKind::kLoop, stage_operands,
-            stage_comp)));
+    stage_output_offsets[i] = static_cast<int64_t>(tuple_elements.size());
+    std::vector<HloInstruction*>& outputs = stage_outputs[stage];
+    if (stage->shape().IsTuple()) {
+      for (int64_t k = 0; k < stage->shape().tuple_shapes_size(); ++k) {
+        outputs.push_back(builder.AddInstruction(
+            HloInstruction::CreateGetTupleElement(nested_fusion, k)));
+      }
+    } else {
+      outputs.push_back(nested_fusion);
+    }
+    tuple_elements.insert(tuple_elements.end(), outputs.begin(), outputs.end());
   }
 
-  // Preserve all intermediate and final phase outputs in `ROOT tuple(...)` for
-  // compatibility with bufferization, because phases exchange data via DRAM
+  // Preserve all intermediate and final phase outputs as flat arrays in
+  // `ROOT tuple(...)` for compatibility with bufferization and
+  // `ThreadBlockSpecializedFusion`, because phases exchange data via DRAM
   // buffers.
   HloInstruction* root_tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple(nested_fusions));
+      builder.AddInstruction(HloInstruction::CreateTuple(tuple_elements));
   HloComputation* outer_comp =
       module->AddEmbeddedComputation(builder.Build(root_tuple));
   outer_comp->SetExecutionThread(comp->execution_thread());
@@ -225,14 +387,40 @@ absl::Status CreateMultiPhaseFusion(HloModule* module, HloComputation* comp,
       kPhasedBlockClusterFusionKind);
   ABSL_RETURN_IF_ERROR(outer_fusion->set_backend_config(gpu_config));
 
-  // Rewire external uses and remove fused stages from the tail backward so each
-  // stage's in-chain consumer is already detached when checking `user_count()`.
-  for (int64_t i = static_cast<int64_t>(chain.size()) - 1; i >= 0; --i) {
-    HloInstruction* stage = chain[i];
-    if (stage->user_count() > 0 || comp->root_instruction() == stage) {
+  // Rewire external uses and remove fused stages in reverse topological order
+  // so each stage's internal consumers are already detached when checking
+  // `user_count()`.
+  for (int64_t i = static_cast<int64_t>(sorted_stages.size()) - 1; i >= 0;
+       --i) {
+    HloInstruction* stage = sorted_stages[i];
+    int64_t output_idx = stage_output_offsets[i];
+    if (stage->shape().IsTuple()) {
+      for (HloInstruction* user : std::vector<HloInstruction*>(
+               stage->users().begin(), stage->users().end())) {
+        if (user->opcode() != HloOpcode::kGetTupleElement) {
+          continue;
+        }
+        user->set_tuple_index(output_idx + user->tuple_index());
+        ABSL_RETURN_IF_ERROR(
+            stage->ReplaceUseWithDifferentShape(user, outer_fusion));
+      }
+      if (stage->user_count() > 0 || comp->root_instruction() == stage) {
+        int64_t num_outputs = stage->shape().tuple_shapes().size();
+        std::vector<HloInstruction*> new_gtes;
+        new_gtes.reserve(num_outputs);
+        for (int64_t k = 0; k < num_outputs; ++k) {
+          new_gtes.push_back(
+              comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  outer_fusion, output_idx + k)));
+        }
+        HloInstruction* new_tuple =
+            comp->AddInstruction(HloInstruction::CreateTuple(new_gtes));
+        ABSL_RETURN_IF_ERROR(stage->ReplaceAllUsesWith(new_tuple));
+      }
+    } else if (stage->user_count() > 0 || comp->root_instruction() == stage) {
       HloInstruction* gte =
           comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-              stage->shape(), outer_fusion, i));
+              stage->shape(), outer_fusion, output_idx));
       ABSL_RETURN_IF_ERROR(stage->ReplaceAllUsesWith(gte));
     }
     ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(stage));
@@ -264,37 +452,35 @@ absl::StatusOr<bool> MultiPhaseFusion::RunImpl(
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(comp);
 
-    for (int head_id : candidate_ids) {
-      auto head_it = eligible_stages.find(head_id);
-      if (head_it == eligible_stages.end()) {
+    for (int seed_id : candidate_ids) {
+      auto seed_it = eligible_stages.find(seed_id);
+      if (seed_it == eligible_stages.end()) {
         continue;
       }
-      HloInstruction* head = head_it->second;
 
-      ChainState chain{/*stages=*/{head}, /*stage_set=*/{head}};
-
-      bool extended = true;
-      while (extended) {
-        extended = false;
-        for (HloInstruction* user : chain.stages.back()->users()) {
-          if (TryAppendConsumer(user, eligible_stages, *reachability, chain)) {
-            extended = true;
-            break;
-          }
-        }
-      }
-
-      if (chain.stages.size() < 2) {
+      PhaseDag dag =
+          BuildPhaseDag(seed_it->second, eligible_stages, *reachability);
+      if (dag.stages.size() < 2) {
         continue;
       }
-      for (HloInstruction* stage : chain.stages) {
+      // Sort stages topologically to create a nested fusion.
+      std::vector<HloInstruction*> sorted_stages(dag.stages.begin(),
+                                                 dag.stages.end());
+      absl::c_stable_sort(
+          sorted_stages, [&](const HloInstruction* a, const HloInstruction* b) {
+            return reachability->GetIndex(a) < reachability->GetIndex(b);
+          });
+      for (HloInstruction* stage : sorted_stages) {
         eligible_stages.erase(stage->unique_id());
       }
-      ABSL_RETURN_IF_ERROR(CreateMultiPhaseFusion(module, comp, chain.stages));
+      ABSL_RETURN_IF_ERROR(CreateMultiPhaseFusion(module, comp, sorted_stages, dag,
+                                             fusion_wrapper));
       changed = true;
       if (eligible_stages.size() < 2) {
         break;
       }
+      // TODO(tjoerg): Update `reachability` incrementally instead of rebuilding
+      // it from scratch after every formed fusion.
       reachability = HloReachabilityMap::Build(comp);
     }
   }

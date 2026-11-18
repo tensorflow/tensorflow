@@ -2130,5 +2130,152 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TransposeThenMultiOutputReductionThenLoopInCluster) {
+  // Exercises `@global_smem` reuse across sequential `kInput` phases, partial
+  // CTA `bar.sync` (`128` transpose threads inside a `256`-thread cluster), 3D
+  // `blockIdx.z` virtualization (`2` disjoint reduction groups), and tuple
+  // unpacking across phases.
+  constexpr absl::string_view kHlo = R"hlo(
+add_f32 { ROOT sum = f32[] add(f32[] parameter(0), f32[] parameter(1)) }
+max_f32 { ROOT mx = f32[] maximum(f32[] parameter(0), f32[] parameter(1)) }
+
+phase_0_comp {
+  ROOT tr = f32[64,64]{1,0} transpose(f32[64,64]{1,0} parameter(0)), dimensions={1,0}
+}
+
+phase_1_comp {
+  p0 = f32[64,64]{1,0} parameter(0)
+  z = f32[] constant(0.0)
+  ninf = f32[] constant(-inf)
+  r0 = f32[64]{0} reduce(p0, z), dimensions={1}, to_apply=add_f32
+  r1 = f32[64]{0} reduce(p0, ninf), dimensions={1}, to_apply=max_f32
+  ROOT t = (f32[64]{0}, f32[64]{0}) tuple(r0, r1)
+}
+
+phase_2_comp {
+  diff = f32[64]{0} subtract(f32[64]{0} parameter(0), f32[64]{0} parameter(1))
+  col0 = f32[64,1]{1,0} slice(f32[64,64]{1,0} parameter(2)), slice={[0:64], [0:1]}
+  ROOT out = f32[64]{0} add(f32[64]{0} reshape(col0), diff)
+}
+
+phased_comp {
+  p0 = f32[64,64]{1,0} parameter(0)
+  phase_0 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=phase_0_comp
+  phase_1 = (f32[64]{0}, f32[64]{0}) fusion(phase_0), kind=kInput, calls=phase_1_comp
+  gte0 = f32[64]{0} get-tuple-element(phase_1), index=0
+  gte1 = f32[64]{0} get-tuple-element(phase_1), index=1
+  phase_2 = f32[64]{0} fusion(gte0, gte1, phase_0), kind=kLoop, calls=phase_2_comp
+  ROOT t = (f32[64,64]{1,0}, f32[64]{0}, f32[64]{0}, f32[64]{0}) tuple(phase_0, gte0, gte1, phase_2)
+}
+
+ENTRY main {
+  ROOT fusion = (f32[64,64]{1,0}, f32[64]{0}, f32[64]{0}, f32[64]{0}) fusion(f32[64,64]{1,0} parameter(0)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       ReductionFollowedBySubWarpConcatenatePhases) {
+  // `phase_0` runs with `32` threads, while `phase_1` and `phase_2`
+  // (`ConcatenateFusion`) run with `8` threads (`<` warp size `32`) guarded by
+  // `tid < 8` and synchronized via `bar.sync 1`.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add_s32 { ROOT sum = s32[] add(s32[] parameter(0), s32[] parameter(1)) }
+
+phase_0_comp {
+  ROOT red = s32[8]{0} reduce(s32[8,32]{1,0} parameter(0), s32[] constant(0)),
+    dimensions={1}, to_apply=add_s32
+}
+
+phase_1_comp {
+  ROOT cat = s32[9]{0} concatenate(s32[1]{0} parameter(0), s32[8]{0} parameter(1)),
+    dimensions={0}
+}
+
+phase_2_comp {
+  sl = s32[8]{0} slice(s32[9]{0} parameter(1)), slice={[0:8]}
+  sum = s32[8]{0} add(sl, s32[8]{0} parameter(2))
+  ROOT cat = s32[9]{0} concatenate(s32[1]{0} parameter(0), sum), dimensions={0}
+}
+
+phased_comp {
+  p0 = s32[8,32]{1,0} parameter(0)
+  p1 = s32[1]{0} parameter(1)
+  phase_0 = s32[8]{0} fusion(p0), kind=kInput, calls=phase_0_comp
+  phase_1 = s32[9]{0} fusion(p1, phase_0), kind=kInput, calls=phase_1_comp
+  phase_2 = s32[9]{0} fusion(p1, phase_1, phase_0), kind=kInput,
+    calls=phase_2_comp
+  ROOT t = (s32[8]{0}, s32[9]{0}, s32[9]{0}) tuple(phase_0, phase_1, phase_2)
+}
+
+ENTRY main {
+  ROOT fusion = (s32[8]{0}, s32[9]{0}, s32[9]{0}) fusion(
+    s32[8,32]{1,0} parameter(0), s32[1]{0} parameter(1)),
+    kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest, DiamondPhasedDagInCluster) {
+  // 4-phase diamond (`phase_0` -> `phase_1` [1 block] and `phase_2` [4 blocks]
+  // -> `phase_3` [1 block] combining both branches).
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add_f32 { ROOT sum = f32[] add(f32[] parameter(0), f32[] parameter(1)) }
+
+phase_0_comp { ROOT exp = f32[512]{0} exponential(f32[512]{0} parameter(0)) }
+phase_1_comp {
+  ROOT red = f32[16]{0} reduce(
+    f32[16,32]{1,0} reshape(f32[512]{0} parameter(0)), f32[] constant(0.0)),
+    dimensions={1}, to_apply=add_f32
+}
+phase_2_comp {
+  rev = f32[512]{0} reverse(f32[512]{0} parameter(0)), dimensions={0}
+  ROOT neg = f32[512]{0} negate(rev)
+}
+phase_3_comp {
+  head = f32[16]{0} slice(f32[512]{0} parameter(1)), slice={[0:16]}
+  ROOT sum = f32[16]{0} add(f32[16]{0} parameter(0), head)
+}
+
+phased_comp {
+  p0 = f32[512]{0} parameter(0)
+  phase_0 = f32[512]{0} fusion(p0), kind=kLoop, calls=phase_0_comp
+  phase_1 = f32[16]{0} fusion(phase_0), kind=kInput, calls=phase_1_comp
+  phase_2 = f32[512]{0} fusion(phase_0), kind=kLoop, calls=phase_2_comp
+  phase_3 = f32[16]{0} fusion(phase_1, phase_2), kind=kLoop, calls=phase_3_comp
+  ROOT t = (f32[512]{0}, f32[16]{0}, f32[512]{0}, f32[16]{0})
+    tuple(phase_0, phase_1, phase_2, phase_3)
+}
+
+ENTRY main {
+  ROOT fusion = (f32[512]{0}, f32[16]{0}, f32[512]{0}, f32[16]{0})
+    fusion(f32[512]{0} parameter(0)), kind=kCustom, calls=phased_comp,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       EmitMlirModule(kHlo));
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu
