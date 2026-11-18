@@ -162,7 +162,7 @@ class FakeHttpRequest : public CurlHttpRequest {
     return header != response_headers_.end() ? header->second : "";
   }
 
-  virtual uint64_t GetResponseCode() const override { return response_code_; }
+  uint64_t GetResponseCode() const override { return response_code_; }
 
   void SetTimeouts(uint32_t connection, uint32_t inactivity,
                    uint32_t total) override {
@@ -198,7 +198,7 @@ class FakeHttpRequestFactory : public HttpRequest::Factory {
   FakeHttpRequestFactory(const std::vector<HttpRequest*>* requests)
       : requests_(requests) {}
 
-  ~FakeHttpRequestFactory() {
+  ~FakeHttpRequestFactory() override {
     EXPECT_EQ(current_index_, requests_->size())
         << "Not all expected requests were made.";
   }
