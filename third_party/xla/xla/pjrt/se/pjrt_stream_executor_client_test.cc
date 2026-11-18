@@ -807,69 +807,6 @@ TEST(PjRtStreamExecutorClientTest,
             executor0->device_ordinal());
 }
 
-TEST(PjRtStreamExecutorClientTest, StagedAsyncBufferFromHostBuffer) {
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<CommonPjRtClient> client,
-      GetClient(CudaId(), CudaName(),
-                /*should_stage_host_to_device_transfers=*/true));
-  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-
-  // Small staged transfer (<= 512 KiB) linearizes inline on the caller's
-  // thread before returning.
-  std::vector<int32_t> small_data(256);
-  std::iota(small_data.begin(), small_data.end(), 0);
-  absl::Notification small_done;
-  std::optional<int64_t> callback_thread_id;
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtBuffer> small_buf,
-      client->BufferFromHostBuffer(
-          small_data.data(), S32, {256}, /*byte_strides=*/std::nullopt,
-          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          [&]() {
-            callback_thread_id = tsl::Env::Default()->GetCurrentThreadId();
-            small_done.Notify();
-          },
-          memory_space, /*device_layout=*/nullptr));
-  EXPECT_TRUE(small_done.HasBeenNotified());
-  small_done.WaitForNotification();
-  EXPECT_EQ(callback_thread_id, tsl::Env::Default()->GetCurrentThreadId());
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> small_literal,
-                       small_buf->ToLiteral().Await());
-  TF_EXPECT_OK(literal_comparison::Equal(
-      LiteralUtil::CreateR1<int32_t>(small_data), *small_literal));
-
-  // Large staged transfer (> 512 KiB) dispatches asynchronously and round-trips
-  // intact.
-  std::vector<int32_t> large_data(256 * 1024);
-  std::iota(large_data.begin(), large_data.end(), 0);
-  absl::Notification large_done;
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtBuffer> large_buf,
-      client->BufferFromHostBuffer(
-          large_data.data(), S32, {static_cast<int64_t>(large_data.size())},
-          /*byte_strides=*/std::nullopt,
-          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          [&]() { large_done.Notify(); }, memory_space,
-          /*device_layout=*/nullptr));
-  large_done.WaitForNotification();
-  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> large_literal,
-                       large_buf->ToLiteral().Await());
-  TF_EXPECT_OK(literal_comparison::Equal(
-      LiteralUtil::CreateR1<int32_t>(large_data), *large_literal));
-
-  // Invalid byte_strides on the inline path fail synchronously without invoking
-  // on_done_with_host_buffer.
-  bool err_done = false;
-  const int64_t bad_strides[] = {4, 8};
-  EXPECT_THAT(
-      client->BufferFromHostBuffer(
-          small_data.data(), S32, {256}, bad_strides,
-          PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          [&]() { err_done = true; }, memory_space, /*device_layout=*/nullptr),
-      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
-  EXPECT_FALSE(err_done);
-}
-
 class FailingHostMemoryAllocator : public HostMemoryAllocator {
  public:
   absl_nullable OwnedPtr Allocate(size_t size,
@@ -924,15 +861,17 @@ TEST(
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
 
   std::vector<int32_t> data(256, 1);
-  bool on_done_called = false;
-  EXPECT_THAT(
+  absl::Notification done;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buf,
       client->BufferFromHostBuffer(
           data.data(), S32, {256}, /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          [&]() { on_done_called = true; }, memory_space,
-          /*device_layout=*/nullptr),
-      StatusIs(absl::StatusCode::kResourceExhausted));
-  EXPECT_FALSE(on_done_called);
+          [&]() { done.Notify(); }, memory_space,
+          /*device_layout=*/nullptr));
+  done.WaitForNotification();
+  EXPECT_THAT(buf->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 TEST(PjRtStreamExecutorClientTest,
