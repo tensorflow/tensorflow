@@ -1,0 +1,18 @@
+// RUN: hlo-translate -hlo-to-mlir %s | FileCheck %s
+
+// A dot-general imports as a stablehlo.dot_general that keeps its metadata
+// operands, sparsity_config and block_scaling_config.
+
+HloModule main, entry_computation_layout={(bf16[64,64]{1,0}, bf16[256,64]{1,0}, f8e8m0fnu[64,2]{1,0}, u8[64,16]{1,0})->bf16[64,64]{1,0}}
+
+// CHECK-LABEL: func.func @main
+// CHECK:       stablehlo.dot_general %arg0, %arg1, [%arg2, %arg3]
+// CHECK-SAME:  block_scaling_config = #stablehlo.block_scaling_config<lhs = <scale_idx = 2, block_sizes = [1, 32]>>
+// CHECK-SAME:  sparsity_config = #stablehlo.sparsity_config<lhs = <num_non_zero = 1, block_size = 4, dimension = 1, stride = 1, idx = 3>>
+ENTRY %main (lhs: bf16[64,64], rhs: bf16[256,64], lhs_scale: f8e8m0fnu[64,2], lhs_indices: u8[64,16]) -> bf16[64,64] {
+  %lhs = bf16[64,64]{1,0} parameter(0)
+  %rhs = bf16[256,64]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[64,2]{1,0} parameter(2)
+  %lhs_indices = u8[64,16]{1,0} parameter(3)
+  ROOT %dot-general = bf16[64,64]{1,0} dot-general(%lhs, %rhs, %lhs_scale, %lhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity_config={lhs={sparsity=1x4 dimension=1 stride=1 idx=3}}, block_scaling_config={lhs={scale_idx=2 block_sizes=1x32}}
+}

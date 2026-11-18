@@ -27,6 +27,7 @@ lit_test_suite(
         [
             # go/keep-sorted start
             "chlo.mlir",
+            "dot_general_import.hlo",
             "emit_mhlo.hlo",
             "emit_proto.mlir",
             "import_async_collectives.hlo",

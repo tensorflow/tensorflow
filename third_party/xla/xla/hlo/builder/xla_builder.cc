@@ -2286,7 +2286,11 @@ absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
   }
   std::vector<XlaOp> operands = {lhs, rhs};
   operands.insert(operands.end(), ext_operands.begin(), ext_operands.end());
-  return AddInstruction(std::move(instr), HloOpcode::kDot, operands);
+  // Sparse and block scaled dots are kDotGeneral; kDot stays binary.
+  return AddInstruction(
+      std::move(instr),
+      ext_operands.empty() ? HloOpcode::kDot : HloOpcode::kDotGeneral,
+      operands);
 }
 
 XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,

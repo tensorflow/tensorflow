@@ -30,7 +30,7 @@ include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 def LiftDotGeneralWithBiasSameShape : Pat<
   (StableHLO_AddOp:$res
     (StableHLO_DotGeneralOp
-        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     $bias),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_fn">
     (ArgumentList $lhs, $rhs, $bias),
@@ -87,7 +87,7 @@ def LiftConvWithBias : Pat<
 def LiftDotGeneralWithBias : Pat<
   (StableHLO_AddOp:$res
     (StableHLO_DotGeneralOp
-        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     (StableHLO_BroadcastInDimOp $bias, $dims)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_fn">
     (ArgumentList $lhs, $rhs, $bias),
@@ -123,7 +123,7 @@ def LiftConvWithBiasDynamic : Pat<
 
 def LiftDotGeneralWithBiasDynamic : Pat<
   (StableHLO_AddOp:$res
-    (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+    (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     (StableHLO_DynamicBroadcastInDimOp
       $bias,
       (Shape_ShapeOfOp $dot_general_1), $_, $_, $_)),
@@ -164,7 +164,7 @@ def LiftConvWithRelu : Pat<
 def LiftDotGeneralWithRelu : Pat<
   (StableHLO_MaxOp:$res
     (StableHLO_DotGeneralOp
-        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     (StableHLO_ConstantOp $cst)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_relu_fn">
     (ArgumentList $lhs, $rhs),
@@ -202,7 +202,7 @@ def LiftConvWithReluDynamic : Pat<
 
 def LiftDotGeneralWithReluDynamic : Pat<
   (StableHLO_MaxOp:$res
-    (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+    (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     (StableHLO_DynamicBroadcastInDimOp
       (StableHLO_ConstantOp $cst),
       (Shape_ShapeOfOp $dot_general_1), $_, $_, $_)),
@@ -242,7 +242,7 @@ def LiftDotGeneralWithRelu6 : Pat<
   (StableHLO_ClampOp:$res
     (StableHLO_ConstantOp $cst_0),
     (StableHLO_DotGeneralOp
-        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+        $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
     (StableHLO_ConstantOp $cst_1)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_relu6_fn">
     (ArgumentList $lhs, $rhs),
@@ -261,7 +261,7 @@ def LiftDotGeneralWithBiasSameShapeAndRelu : Pat<
   (StableHLO_MaxOp:$res
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
-          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       $bias),
     (StableHLO_ConstantOp $cst)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_and_relu_fn">
@@ -327,7 +327,7 @@ def LiftDotGeneralWithBiasAndRelu : Pat<
   (StableHLO_MaxOp:$res
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
-          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu_fn">
@@ -371,7 +371,7 @@ def LiftConvWithBiasAndReluDynamic : Pat<
 def LiftDotGeneralWithBiasAndReluDynamic : Pat<
   (StableHLO_MaxOp:$res
     (StableHLO_AddOp:$add_0
-      (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+      (StableHLO_DotGeneralOp:$dot_general_0 $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       (StableHLO_DynamicBroadcastInDimOp
         $bias,
         (Shape_ShapeOfOp $dot_general_1), $_, $_, $_)),
@@ -393,7 +393,7 @@ def LiftDotGeneralWithBiasSameShapeAndRelu6 : Pat<
     (StableHLO_ConstantOp $cst_0),
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
-          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       $bias),
     (StableHLO_ConstantOp $cst_1)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_and_relu6_fn">
@@ -434,7 +434,7 @@ def LiftDotGeneralWithBiasAndRelu6 : Pat<
     (StableHLO_ConstantOp $cst_0),
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
-          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst_1)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu6_fn">
@@ -477,7 +477,7 @@ def LiftDotGeneralWithBiasAndRelu6Dynamic : Pat<
     (StableHLO_ConstantOp $cst_0),
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp:$dot_general_0
-          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm),
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config, $algorithm, $_, IsNullAttr:$block_scaling_config, IsNullAttr:$sparsity_config),
       (StableHLO_DynamicBroadcastInDimOp
         $bias,
         (Shape_ShapeOfOp $dot_general_1), $_, $_, $_)),
