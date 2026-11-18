@@ -34,7 +34,13 @@ class ScatterNdOpModel : public SingleOpModel {
     indices_ = AddInput(indices);
     updates_ = AddInput(updates);
     shape_ = AddInput(shape);
-    output_ = AddOutput(updates.type);
+    // The output shares the quantization parameters of the updates.
+    output_ = AddOutput({updates.type,
+                         {},
+                         updates.min,
+                         updates.max,
+                         updates.scale,
+                         updates.zero_point});
     SetBuiltinOp(BuiltinOperator_SCATTER_ND, BuiltinOptions_ScatterNdOptions,
                  CreateScatterNdOptions(builder_).Union());
     BuildInterpreter(
@@ -266,6 +272,57 @@ TEST(ScatterNdOpTest, Int32IndicesInt8Updates) {
                                 /*1, 0*/ 6,  7,  8,  9,  10,
                                 /*1, 1*/ 0,  0,  0,  0,  0,
                                 /*1, 2*/ 16, 17, 18, 19, 20}));
+}
+
+TEST(ScatterNdOpTest, QuantizedInt8UnwrittenElementsAreZeroPoint) {
+  // Scale 1/255 with zero point -128 represents [0, 1].
+  ScatterNdOpModel m({TensorType_INT32, {2, 1}},
+                     {TensorType_INT8, {2, 4}, 0, 0, 1.0f / 255, -128},
+                     {TensorType_INT32, {2}});
+  m.SetIndices<int32_t>({1, 3});
+  m.SetUpdates<int8_t>({-64, -64, -64, -64, 127, 127, 127, 127});
+  m.SetShape<int32_t>({4, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 4}));
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({/*0*/ -128, -128, -128, -128,
+                                /*1*/ -64, -64, -64, -64,
+                                /*2*/ -128, -128, -128, -128,
+                                /*3*/ 127, 127, 127, 127}));
+}
+
+TEST(ScatterNdOpTest, QuantizedUint8UnwrittenElementsAreZeroPoint) {
+  ScatterNdOpModel m({TensorType_INT32, {2, 1}},
+                     {TensorType_UINT8, {2, 4}, 0, 0, 0.5f, 100},
+                     {TensorType_INT32, {2}});
+  m.SetIndices<int32_t>({1, 3});
+  m.SetUpdates<uint8_t>({0, 50, 100, 150, 200, 250, 255, 1});
+  m.SetShape<int32_t>({4, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 4}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({/*0*/ 100, 100, 100, 100,
+                                /*1*/ 0, 50, 100, 150,
+                                /*2*/ 100, 100, 100, 100,
+                                /*3*/ 200, 250, 255, 1}));
+}
+
+TEST(ScatterNdOpTest, QuantizedInt8OverlappedIndicesSummed) {
+  ScatterNdOpModel m({TensorType_INT32, {3, 1}},
+                     {TensorType_INT8, {3, 2}, 0, 0, 0.5f, -128},
+                     {TensorType_INT32, {2}});
+  m.SetIndices<int32_t>({2, 0, 2});
+  // With zero point -128, -118 is 10 steps above zero and -108 is 20.
+  m.SetUpdates<int8_t>({/*0*/ -118, -108, /*1*/ -128, 127, /*2*/ -108, -128});
+  m.SetShape<int32_t>({3, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({/*0*/ -128, 127,
+                                                       /*1*/ -128, -128,
+                                                       /*2*/ -98, -108}));
 }
 
 TEST(ScatterNdOpTest, Int32IndicesInt32Updates) {
