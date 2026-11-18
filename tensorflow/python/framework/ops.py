@@ -24,6 +24,7 @@ import sys
 import threading
 import types
 from typing import cast, TypeVar, Any, AnyStr, NoReturn, Optional, Pattern, Union, ContextManager
+import warnings
 
 from absl import app
 import numpy as np
@@ -5912,12 +5913,15 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
           # Eager mode has always accepted these names and callers rely on
           # them (e.g. Keras metric names such as "Recall@1"), so warn
           # instead of raising.
-          logging.warning(
-              "'%s' is not a valid scope name and may be rejected in a "
+          # `warnings.warn` reports once per call site and points at the
+          # caller's `with` statement, which matters because scopes are often
+          # entered in hot loops.
+          warnings.warn(
+              f"'{name}' is not a valid scope name and may be rejected in a "
               "future version of TensorFlow. A scope name should match the "
-              "following pattern: %s",
-              name,
-              _VALID_EAGER_SCOPE_NAME_REGEX.pattern,
+              f"following pattern: {_VALID_EAGER_SCOPE_NAME_REGEX.pattern}",
+              UserWarning,
+              stacklevel=2,
           )
 
       if not name:

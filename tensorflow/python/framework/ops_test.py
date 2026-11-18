@@ -2797,9 +2797,15 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     if context.executing_eagerly():
       # Other characters only warn in eager mode, so existing names such as
       # Keras metric names keep working.
-      with self.assertLogs(level="WARNING"):
+      with self.assertWarnsRegex(
+          UserWarning, "not a valid scope name"
+      ) as warning_context:
         with ops.name_scope_v2("recall/Recall@1") as scope_name:
           self.assertEqual("recall/Recall@1/", scope_name)
+      # The warning is attributed to the caller, not to ops.py.
+      self.assertEqual(
+          os.path.basename(warning_context.filename), "ops_test.py"
+      )
     else:
       with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("invalid@scope"):
