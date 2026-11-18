@@ -2104,36 +2104,6 @@ class ArrayMethodsTest(test.TestCase):
     _test(np.array(42.0), (1, 2))
     _test(np.arange(6).reshape(2, 3), (1, 2), axis=0)
 
-    # A scalar shift broadcast over several axes, and a sequence of shifts
-    # broadcast over a single axis. NumPy broadcasts `shift` against `axis`,
-    # so unequal lengths are valid as long as one of them has length one.
-    _test(a, 1, axis=(0, 1))
-    _test(a, (1,), axis=(0, 1))
-    _test(a, (1, 2), axis=0)
-    _test(a, [1, 2, 3], axis=-1)
-
-    # Repeating an axis accumulates the shifts, as in NumPy.
-    _test(a, (1, 2), axis=(0, 0))
-
-    # Without an axis the flattened array is rolled, and a sequence of shifts
-    # is summed first (`np.roll(a, (1, 2)) == np.roll(a, 3)`).
-    _test(a, (1, 2))
-    _test(a, [1, -2])
-    _test(a, (0, 0))
-    _test(a, ())
-    _test(a, np.array([1, 2]))
-    _test(a, np.array([]))
-    # Scalar shift types that NumPy coerces to integers, including 0-d arrays.
-    _test(a, np.int64(2))
-    _test(a, 2.0)
-    _test(a, (2.7, -1.9))
-    _test(a, True)
-    _test(a, True, axis=0)
-    _test(a, np.bool_(True), axis=0)
-    _test(a, 1.9, axis=0)
-    _test(np.array(42.0), (1, 2))
-    _test(np.arange(6).reshape(2, 3), (1, 2), axis=0)
-
     # Empty and scalar arrays, including rolls on the empty dimension itself
     # (exercising the max(dim_size, 1) safeguard).
     _test(np.empty((0, 3, 4)), 1, axis=0)
@@ -2141,6 +2111,22 @@ class ArrayMethodsTest(test.TestCase):
     _test(np.empty((3, 4, 0)), 1, axis=1)
     _test(np.empty((3, 4, 0)), 1, axis=2)
     _test(np.array(42.0), 1)
+
+    # A 0-D Tensor is a valid scalar shift, and a 1-D Tensor is summed when no
+    # axis is given. Both are exercised in eager mode here and in graph mode
+    # below, since `axis=None` has to sum the shifts in-graph to stay usable
+    # with a symbolic `shift`.
+    self.assertAllEqual(
+        np.roll(a, 2), np_array_ops.roll(a, constant_op.constant(2))
+    )
+    self.assertAllEqual(
+        np.roll(a, 3), np_array_ops.roll(a, constant_op.constant([1, 2]))
+    )
+    # An empty sequence sums to zero, i.e. the input is returned unchanged.
+    self.assertAllEqual(
+        np.roll(a, 0),
+        np_array_ops.roll(a, constant_op.constant([], dtype=dtypes.int32)),
+    )
 
     # Out-of-bounds axes raise, checked by the backend kernel.
     for shift, invalid_axis in [
@@ -2187,6 +2173,16 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(
         np.roll(a, (1, 2)),
         f(a, (1, 2), None),
+    )
+    # `axis=None` with a symbolic 1-D `shift` sums the shifts in-graph instead
+    # of converting them to Python ints, which would fail while tracing.
+    self.assertAllEqual(
+        np.roll(a, 3),
+        f(a, constant_op.constant([1, 2]), None),
+    )
+    self.assertAllEqual(
+        np.roll(a, 2),
+        f(a, constant_op.constant(2), None),
     )
     with self.assertRaisesRegex(ValueError, 'scalars or 1D sequences'):
       np_array_ops.roll(a, [[1, 2]])

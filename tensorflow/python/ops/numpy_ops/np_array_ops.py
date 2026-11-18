@@ -2031,8 +2031,16 @@ def _roll_as_sequence(value, name):
 
 def _roll_total_shift(shift):
   """Sums a scalar or sequence of shifts, matching `np.roll(axis=None)`."""
-  if isinstance(shift, core_tf_types.Tensor) and shift.shape.rank == 0:
-    return shift
+  if isinstance(shift, core_tf_types.Tensor):
+    if shift.shape.rank == 0:
+      return shift
+    if shift.shape.rank == 1:
+      # Summed in-graph so that a symbolic `shift` works too.
+      return math_ops.reduce_sum(shift)
+    raise ValueError(
+        "'shift' should be a scalar or 1D sequence, got a Tensor of rank "
+        f'{shift.shape.rank}.'
+    )
   return builtins.sum(_roll_as_sequence(shift, 'shift'))
 
 
