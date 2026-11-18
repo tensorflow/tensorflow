@@ -354,7 +354,7 @@ absl::Status KernelRegistrationExtension::RegisterImpl(
     return absl::InvalidArgumentError("Kernel name pointer cannot be null");
   }
   const absl::string_view name(spec->name.ptr, spec->name.len);
-  const bool use_pdl = args->uses_pdl != 0;
+  const bool use_pdl = state->pdl_enabled && (args->uses_pdl != 0);
   if (const XLA_FFI_Kernel* cached = args->cached_kernel;
       cached != nullptr &&
       state->registry->Contains(state->executor->device_ordinal(), cached) &&
@@ -376,8 +376,8 @@ XLA_FFI_Error* KernelRegistrationExtension::Register(
 
 KernelRegistrationExtension::KernelRegistrationExtension(
     FfiKernelRegistry* absl_nonnull registry,
-    stream_executor::StreamExecutor* absl_nonnull executor)
-    : state_{registry, executor} {
+    stream_executor::StreamExecutor* absl_nonnull executor, bool pdl_enabled)
+    : state_{registry, executor, pdl_enabled} {
   static constexpr XLA_FFI_KernelRegistryApi kRegistrationApi = {
       /*register_kernel=*/&KernelRegistrationExtension::Register,
       /*launch_kernel=*/nullptr,

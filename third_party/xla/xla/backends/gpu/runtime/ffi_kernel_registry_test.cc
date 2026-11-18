@@ -98,7 +98,8 @@ class FfiKernelRegistryTest : public ::testing::Test {
                                                  const void* data, size_t size,
                                                  ffi::SourceFormat format,
                                                  bool uses_pdl) {
-    KernelRegistrationExtension extension(registry_.get(), executor_);
+    KernelRegistrationExtension extension(registry_.get(), executor_,
+                                          /*pdl_enabled=*/true);
     return ffi::InitializeKernelRegistry(/*api=*/nullptr, &extension.raw())
         .Register(name, data, size, format, uses_pdl);
   }
@@ -262,7 +263,8 @@ TEST(FfiKernelRegistryHelpersTest, ConvertFfiLaunchDimsValidatesDims) {
 // Prepare and Initialize may only register kernels; Execute may only launch
 // them.
 TEST_F(FfiKernelRegistryTest, ExtensionOnlyExposesCallbacksForItsStage) {
-  KernelRegistrationExtension registration(registry_.get(), executor_);
+  KernelRegistrationExtension registration(registry_.get(), executor_,
+                                           /*pdl_enabled=*/true);
   EXPECT_NE(registration.raw().api->register_kernel, nullptr);
   EXPECT_EQ(registration.raw().api->launch_kernel, nullptr);
 
@@ -286,6 +288,15 @@ TEST_F(FfiKernelRegistryTest, UsesPdlIsFixedAtRegistration) {
                        FindDeviceKernel(no_pdl_kernel, device));
   EXPECT_TRUE(se_pdl->use_pdl());
   EXPECT_FALSE(se_no_pdl->use_pdl());
+
+  KernelRegistrationExtension pdl_disabled_ext(registry_.get(), executor_,
+                                               /*pdl_enabled=*/false);
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Kernel* gated_kernel,
+      ffi::InitializeKernelRegistry(/*api=*/nullptr, &pdl_disabled_ext.raw())
+          .Register("AddI32", fatbin_.data(), fatbin_.size(),
+                    ffi::SourceFormat::kCubin, /*uses_pdl=*/true, pdl_kernel));
+  EXPECT_EQ(gated_kernel, no_pdl_kernel);
 }
 
 class FakeKernel : public stream_executor::Kernel {
@@ -320,8 +331,8 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   constexpr char kBytesA[] = "cubin_bytes_a";
   constexpr char kBytesB[] = "cubin_bytes_b";
   static_assert(sizeof(kBytesA) == sizeof(kBytesB));
-  KernelRegistrationExtension ext0(&registry, &e0);
-  KernelRegistrationExtension ext1(&registry, &e1);
+  KernelRegistrationExtension ext0(&registry, &e0, /*pdl_enabled=*/true);
+  KernelRegistrationExtension ext1(&registry, &e1, /*pdl_enabled=*/true);
   auto reg = [](const KernelRegistrationExtension& ext, absl::string_view name,
                 const char* bytes, bool uses_pdl,
                 const XLA_FFI_Kernel* cached) {
@@ -370,7 +381,8 @@ TEST(FfiKernelRegistryCachedTest, PerDeviceCacheSkipsOrChecksBytesOnFallback) {
   EXPECT_CALL(e0, LoadKernel).Times(1).WillOnce([] {
     return std::make_unique<FakeKernel>();
   });
-  KernelRegistrationExtension other_ext(&other_registry, &e0);
+  KernelRegistrationExtension other_ext(&other_registry, &e0,
+                                        /*pdl_enabled=*/true);
   ASSERT_OK_AND_ASSIGN(
       const XLA_FFI_Kernel* other_kernel,
       reg(other_ext, "k", kBytesA, /*uses_pdl=*/true, kernel_a));

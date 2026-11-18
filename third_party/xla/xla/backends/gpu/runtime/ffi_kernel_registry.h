@@ -91,7 +91,7 @@ class KernelRegistrationExtension {
  public:
   KernelRegistrationExtension(
       FfiKernelRegistry* absl_nonnull registry,
-      stream_executor::StreamExecutor* absl_nonnull executor);
+      stream_executor::StreamExecutor* absl_nonnull executor, bool pdl_enabled);
 
   KernelRegistrationExtension(const KernelRegistrationExtension&) = delete;
   KernelRegistrationExtension& operator=(const KernelRegistrationExtension&) =
@@ -107,6 +107,7 @@ class KernelRegistrationExtension {
   struct State {
     FfiKernelRegistry* registry;
     stream_executor::StreamExecutor* executor;
+    bool pdl_enabled;
   };
   State state_;
   XLA_FFI_KernelRegistry_Extension extension_;
