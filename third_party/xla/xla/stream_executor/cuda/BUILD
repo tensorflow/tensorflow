@@ -1269,6 +1269,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -1282,6 +1283,7 @@ xla_test(
     deps = [
         ":cuda_device_allocator",
         ":cuda_platform",
+        ":cuda_status",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
@@ -1294,6 +1296,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",

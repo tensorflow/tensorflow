@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/debug_options_flags.h"
 #include "xla/future.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -154,6 +156,91 @@ absl::StatusOr<CapturedGraphInfo> CaptureCollectiveGraph(
     }
   }
   return info;
+}
+
+// Register a large buffer from the normal allocator and verify the transfer.
+TEST(NcclCommunicatorTest, LargeBufferRegistration) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires two GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1]) ||
+      !executors[1]->CanEnablePeerAccessTo(executors[0])) {
+    GTEST_SKIP() << "Test requires peer access between GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<GpuCommunicator>> comms,
+      CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true));
+
+  constexpr uint64_t kGiB = uint64_t{1} << 30;
+  constexpr uint64_t kSize = 6 * kGiB;
+  constexpr uint32_t kPattern = 0x5a17c3e9;
+  for (se::StreamExecutor* executor : executors) {
+    int64_t free_memory = 0;
+    int64_t total_memory = 0;
+    ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+    if (free_memory < static_cast<int64_t>(kSize + kGiB / 2)) {
+      GTEST_SKIP() << "Need 6.5 GiB of free GPU memory on each GPU, found "
+                   << free_memory << " on GPU " << executor->device_ordinal();
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocator>> allocators,
+      CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> send_alloc,
+                       allocators[0]->Allocate(kSize));
+  se::DeviceAddressBase send_addr(send_alloc->address().opaque(), kSize);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> recv_alloc,
+                       allocators[1]->Allocate(kSize));
+  se::DeviceAddressBase recv_addr(recv_alloc->address().opaque(), kSize);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream0,
+                       executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream1,
+                       executors[1]->CreateStream());
+
+  for (uint64_t chunk = 0; chunk < kSize / kGiB; ++chunk) {
+    se::DeviceAddressBase part(
+        static_cast<char*>(send_addr.opaque()) + chunk * kGiB, kGiB);
+    ASSERT_OK(stream0->Memset32(&part, kPattern + chunk, kGiB));
+  }
+  ASSERT_OK(stream1->MemZero(&recv_addr, kSize));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RegisteredMemory> send_registration,
+                       comms[0]->CreateRegisteredMemory(send_addr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RegisteredMemory> recv_registration,
+                       comms[1]->CreateRegisteredMemory(recv_addr));
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+  std::vector<const GpuCommunicator*> group_comms = {comms[0].get(),
+                                                     comms[1].get()};
+  ASSERT_OK(collectives->GroupLaunch(group_comms, [&]() -> absl::Status {
+    GpuCollectives::Executor executor0(stream0.get());
+    GpuCollectives::Executor executor1(stream1.get());
+    ABSL_RETURN_IF_ERROR(comms[0]->LaunchSend(
+        send_addr, U32, kSize / sizeof(uint32_t), RankId(1), executor0));
+    return comms[1]->LaunchRecv(recv_addr, U32, kSize / sizeof(uint32_t),
+                                RankId(0), executor1);
+  }));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  for (uint64_t chunk = 0; chunk < kSize / kGiB; ++chunk) {
+    for (uint64_t offset :
+         {chunk * kGiB, (chunk + 1) * kGiB - sizeof(uint32_t)}) {
+      SCOPED_TRACE(offset);
+      uint32_t actual = 0;
+      se::DeviceAddressBase word(
+          static_cast<char*>(recv_addr.opaque()) + offset, sizeof(actual));
+      ASSERT_OK(stream1->Memcpy(&actual, word, sizeof(actual)));
+      ASSERT_OK(stream1->BlockHostUntilDone());
+      EXPECT_EQ(actual, kPattern + chunk);
+    }
+  }
 }
 
 // Test checks that there are no deadlocks when NCCL API is used concurrently
