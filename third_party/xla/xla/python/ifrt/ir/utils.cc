@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -309,6 +310,44 @@ ClonedAtomProgramModule CloneOutlinedAtomProgramModule(
   return ClonedAtomProgramModule{
       cloned_module, cloned_main,
       MakeOutlinedCalleeSymbolRef(cloned_module, cloned_main)};
+}
+
+bool IsTrueOrUnitAttr(mlir::Attribute attr) {
+  if (attr == nullptr) {
+    return false;
+  }
+  if (auto bool_attr = llvm::dyn_cast<mlir::BoolAttr>(attr);
+      bool_attr != nullptr) {
+    return bool_attr.getValue();
+  }
+  return llvm::isa<mlir::UnitAttr>(attr);
+}
+
+bool HasDonatedOrAliasedDictAttr(mlir::DictionaryAttr dict) {
+  if (dict == nullptr) {
+    return false;
+  }
+  return dict.get(kAliasingOutputAttrName) != nullptr ||
+         IsTrueOrUnitAttr(dict.get(kBufferDonationAttrName)) ||
+         IsTrueOrUnitAttr(dict.get(kIfrtDonatedArgAttrName));
+}
+
+bool IsTokenArrayType(mlir::Type type) {
+  if (type == nullptr) {
+    return false;
+  }
+  auto array_type = llvm::dyn_cast<IfrtArrayType>(type);
+  return array_type != nullptr &&
+         llvm::isa<IfrtTokenType>(array_type.getShape().getElementType());
+}
+
+std::optional<unsigned> GetArrayInputIndex(mlir::OperandRange inputs,
+                                           unsigned operand_num) {
+  if (inputs.empty() || operand_num < inputs.getBeginOperandIndex() ||
+      operand_num >= inputs.getBeginOperandIndex() + inputs.size()) {
+    return std::nullopt;
+  }
+  return operand_num - inputs.getBeginOperandIndex();
 }
 
 bool IsReshard(IfrtArrayType from, IfrtArrayType to) {

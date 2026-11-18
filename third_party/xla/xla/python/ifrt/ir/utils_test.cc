@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/utils.h"
 
+#include <optional>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -34,8 +36,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -361,6 +366,115 @@ module @root {
             mlir::SymbolTable::Visibility::Private);
   EXPECT_EQ(cloned.callee_ref,
             MakeOutlinedCalleeSymbolRef(cloned.module, cloned.main_func));
+}
+
+TEST(UtilsTest, IsTrueOrUnitAttr) {
+  mlir::MLIRContext context;
+  mlir::OpBuilder builder(&context);
+  EXPECT_FALSE(IsTrueOrUnitAttr(mlir::Attribute()));
+  EXPECT_TRUE(IsTrueOrUnitAttr(builder.getUnitAttr()));
+  EXPECT_TRUE(IsTrueOrUnitAttr(builder.getBoolAttr(true)));
+  EXPECT_FALSE(IsTrueOrUnitAttr(builder.getBoolAttr(false)));
+  EXPECT_FALSE(IsTrueOrUnitAttr(builder.getI32IntegerAttr(1)));
+  EXPECT_FALSE(IsTrueOrUnitAttr(builder.getStringAttr("true")));
+}
+
+TEST(UtilsTest, HasDonatedOrAliasedDictAttr) {
+  mlir::MLIRContext context;
+  mlir::OpBuilder builder(&context);
+  auto make_dict = [&](llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+    return builder.getDictionaryAttr(attrs);
+  };
+
+  EXPECT_FALSE(HasDonatedOrAliasedDictAttr(mlir::DictionaryAttr()));
+  EXPECT_FALSE(HasDonatedOrAliasedDictAttr(make_dict({})));
+  EXPECT_FALSE(HasDonatedOrAliasedDictAttr(
+      make_dict({builder.getNamedAttr("other", builder.getUnitAttr())})));
+  EXPECT_FALSE(HasDonatedOrAliasedDictAttr(make_dict({builder.getNamedAttr(
+      kBufferDonationAttrName, builder.getBoolAttr(false))})));
+  EXPECT_TRUE(HasDonatedOrAliasedDictAttr(make_dict({builder.getNamedAttr(
+      kBufferDonationAttrName, builder.getBoolAttr(true))})));
+  EXPECT_TRUE(HasDonatedOrAliasedDictAttr(make_dict(
+      {builder.getNamedAttr(kBufferDonationAttrName, builder.getUnitAttr())})));
+  EXPECT_TRUE(HasDonatedOrAliasedDictAttr(make_dict({builder.getNamedAttr(
+      kAliasingOutputAttrName, builder.getI32IntegerAttr(0))})));
+  EXPECT_TRUE(HasDonatedOrAliasedDictAttr(make_dict(
+      {builder.getNamedAttr(kIfrtDonatedArgAttrName, builder.getUnitAttr())})));
+  EXPECT_FALSE(HasDonatedOrAliasedDictAttr(make_dict({builder.getNamedAttr(
+      kIfrtDonatedArgAttrName, builder.getBoolAttr(false))})));
+  EXPECT_TRUE(HasDonatedOrAliasedDictAttr(make_dict({builder.getNamedAttr(
+      kIfrtDonatedArgAttrName, builder.getBoolAttr(true))})));
+}
+
+TEST(UtilsTest, IsTokenArrayType) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+!arr_f32 = !ifrt.array<tensor<2xf32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!arr_tok = !ifrt.array<tensor<!ifrt.token>, #ifrt.sharding_param< to [0] on 1>, [0]>
+module {
+  func.func @main(%a: !arr_f32, %t: !arr_tok) attributes {ifrt.function} {
+    return
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  mlir::func::FuncOp main_func = GetMainFunction(*module);
+
+  EXPECT_FALSE(IsTokenArrayType(mlir::Type()));
+  EXPECT_FALSE(IsTokenArrayType(mlir::IntegerType::get(&context, 32)));
+  EXPECT_FALSE(IsTokenArrayType(IfrtTokenType::get(&context)));
+  EXPECT_FALSE(IsTokenArrayType(IfrtControlType::get(&context)));
+  EXPECT_FALSE(IsTokenArrayType(
+      mlir::RankedTensorType::get({}, IfrtTokenType::get(&context))));
+  EXPECT_FALSE(IsTokenArrayType(main_func.getArgument(0).getType()));
+  EXPECT_TRUE(IsTokenArrayType(main_func.getArgument(1).getType()));
+}
+
+TEST(UtilsTest, GetArrayInputIndex) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  const char* kModuleStr = R"mlir(
+!arr = !ifrt.array<tensor<2xf32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+module {
+  func.func private @zero_in() {
+    return
+  }
+  func.func private @two_in(%x: tensor<2xf32>, %y: tensor<2xf32>) {
+    return
+  }
+  func.func @main(%a: !arr, %b: !arr) attributes {ifrt.function} {
+    %ctrl0 = ifrt.Call @zero_in() on devices [0] : () -> ()
+    %ctrl1 = ifrt.Call @zero_in() after %ctrl0 on devices [0] : () -> ()
+    %ctrl2 = ifrt.Call @two_in(%a, %b) after %ctrl1 on devices [0] : (!arr, !arr) -> ()
+    return
+  }
+}
+)mlir";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       support::ParseMlirModuleString(kModuleStr, context));
+  mlir::func::FuncOp main_func = GetMainFunction(*module);
+  llvm::SmallVector<CallOp> calls;
+  for (CallOp call_op : main_func.getOps<CallOp>()) {
+    calls.push_back(call_op);
+  }
+  ASSERT_EQ(calls.size(), 3u);
+
+  // Empty inputs range with a control input at operand index 0.
+  EXPECT_EQ(GetArrayInputIndex(calls[1].getInputs(), 0), std::nullopt);
+
+  // Two array inputs at operand indices 0 and 1, control input at index 2.
+  mlir::OperandRange two_inputs = calls[2].getInputs();
+  EXPECT_EQ(GetArrayInputIndex(two_inputs, 0), 0u);
+  EXPECT_EQ(GetArrayInputIndex(two_inputs, 1), 1u);
+  EXPECT_EQ(GetArrayInputIndex(two_inputs, 2), std::nullopt);
+
+  // Sub-range starting at operand index 1 rejects operand index 0.
+  mlir::OperandRange shifted_inputs = two_inputs.drop_front(1);
+  EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 0), std::nullopt);
+  EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 1), 0u);
+  EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 2), std::nullopt);
 }
 
 }  // namespace
