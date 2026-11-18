@@ -878,6 +878,48 @@ cc_library(
 )
 
 cc_library(
+    name = "cudnn_gemm_dimensions",
+    srcs = ["cudnn_gemm_dimensions.cc"],
+    hdrs = ["cudnn_gemm_dimensions.h"],
+    deps = [
+        ":cudnn_fusion_utils",
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:shape_tracker",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:matmul_indexing_utils",
+        "//xla/service/gpu:cudnn_support_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "cudnn_gemm_dimensions_test",
+    srcs = ["cudnn_gemm_dimensions_test.cc"],
+    deps = [
+        ":cudnn_fusion_utils",
+        ":cudnn_gemm_dimensions",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_query",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "conv_fusion_rewriter",
     srcs = ["conv_fusion_rewriter.cc"],
     hdrs = ["conv_fusion_rewriter.h"],

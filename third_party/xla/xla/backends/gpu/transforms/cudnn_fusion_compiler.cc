@@ -186,14 +186,6 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
   }
 }
 
-// Extracts dimensions and strides from HLO tensors in the format expected by
-// cuDNN.
-struct CudnnTensorLayout {
-  std::vector<int64_t> sizes;
-  std::vector<int64_t> strides;
-  std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
-};
-
 std::vector<int64_t> Strides(const Shape& shape) {
   std::vector<int64_t> result;
   result.resize(shape.dimensions_size());

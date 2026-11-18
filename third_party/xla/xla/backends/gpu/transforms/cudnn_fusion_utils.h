@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_FUSION_UTILS_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_FUSION_UTILS_H_
 
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,6 +31,15 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// Sizes, strides and optional slices of a tensor in the format expected by
+// cuDNN.
+struct CudnnTensorLayout {
+  std::vector<int64_t> sizes;
+  std::vector<int64_t> strides;
+  // [start, limit) ranges of every dimension. Only set if the tensor is sliced.
+  std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
+};
 
 // Returns whether cuDNN supports convert between src_type and dst_type
 // on the given GPU device / compute capability.
