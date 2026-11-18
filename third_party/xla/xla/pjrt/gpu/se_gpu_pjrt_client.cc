@@ -1400,10 +1400,11 @@ BuildLocalDeviceStates(
   // no options are given. StreamOptions' own defaults are 1).
   std::optional<LocalDeviceState::StreamOptions> stream_options;
   if (compute_stream_priority.has_value()) {
-    stream_options.emplace();
-    stream_options->priority = *compute_stream_priority;
-    stream_options->num_device_to_host_streams = 4;
-    stream_options->num_device_to_device_streams = 4;
+    stream_options = LocalDeviceState::StreamOptions{
+        .priority = *compute_stream_priority,
+        .num_device_to_host_streams = 4,
+        .num_device_to_device_streams = 4,
+    };
   }
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
