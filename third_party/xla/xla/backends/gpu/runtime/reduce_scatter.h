@@ -71,10 +71,10 @@ absl::StatusOr<ReduceScatterInfo> BuildReduceScatterInfo(
 //               (kScratchBuffer, index 1 + k)
 //   [3N]        signal flags   (kScratchBuffer, index 0)
 //   [3N + 1]    runtime rank   (kRuntimeRank)
-// `scratch_memory_type` is used for all scratch buffers.
+// `symmetric_memory_type` is used for all symmetric scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateReduceScatterKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type);
+    SymmetricMemoryType symmetric_memory_type);
 
 }  // namespace xla::gpu
 

@@ -111,10 +111,10 @@ mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
 mlir::LogicalResult RewriteReduceScatter(xla::xtile::ReduceScatterOp op,
                                          mlir::PatternRewriter& rewriter);
 
-// Returns the symmetric memory type for the scratch buffers of the collective
-// kernel emitted for `instr` (a collective or a collective fusion), or an error
-// if the collective is cross-host and cross-host symmetric memory collectives
-// are not supported on `gpu_topology`.
+// Returns the symmetric memory type for the scratch or symmetric IO buffers of
+// the collective kernel emitted for `instr` (a collective or a collective
+// fusion), or an error if the collective is cross-host and cross-host symmetric
+// memory collectives are not supported on `gpu_topology`.
 absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
     const GpuTopology& gpu_topology, const HloInstruction& instr,
     const DeviceAssignment* device_assignment = nullptr);

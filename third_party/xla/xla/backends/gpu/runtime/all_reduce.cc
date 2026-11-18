@@ -256,7 +256,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
     const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type,
+    SymmetricMemoryType symmetric_memory_type,
     const DeviceAssignment* device_assignment) {
   ABSL_ASSIGN_OR_RETURN(
       const AllReduceInfo all_reduce_info,
@@ -291,11 +291,11 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
               static_cast<uint32_t>(all_reduce_info.all_reduce_strategy)},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false,  // Signal buffers
-        scratch_memory_type,
+        symmetric_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
        {remote_size, /*requires_multimem=*/false,  // Remote buffers
-        scratch_memory_type,
+        symmetric_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/true}}};
   return kernel_spec;

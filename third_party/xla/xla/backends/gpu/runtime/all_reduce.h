@@ -85,12 +85,12 @@ se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
 int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Creates a CollectiveKernelSpec for a given all-reduce instruction.
-// `scratch_memory_type` is used for both scratch buffers.
+// `symmetric_memory_type` is used for both symmetric scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
     const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
     const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type,
-    const DeviceAssignment* device_assignment = nullptr);
+    SymmetricMemoryType symmetric_memory_type,
+    const DeviceAssignment* device_assignment);
 
 // Constructs an AllReduceInfo object for the given all-reduce instruction.
 // Returns an error status if the all-reduce kernel is not supported.

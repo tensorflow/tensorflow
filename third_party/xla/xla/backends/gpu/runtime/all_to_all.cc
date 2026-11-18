@@ -195,7 +195,7 @@ absl::StatusOr<AllToAllInfo> BuildAllToAllInfo(
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllToAllKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type) {
+    SymmetricMemoryType symmetric_memory_type) {
   int64_t group_size = instr->GetModule()->config().replica_count();
   if (!instr->replica_groups().empty() &&
       instr->replica_groups()[0].replica_ids_size() > 0) {
@@ -229,10 +229,10 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllToAllKernelSpec(
            {KernelArgType::kRuntimeRank}},
           /* .sync_count_increment= */ is_one_shot ? 1u : 2u},
       /* .scratch_buffers= */
-      {{signal_size, /*requires_multimem=*/false, scratch_memory_type,
+      {{signal_size, /*requires_multimem=*/false, symmetric_memory_type,
         /*should_memzero=*/true,
         /*should_double_buffer=*/true},
-       {remote_size, /*requires_multimem=*/false, scratch_memory_type,
+       {remote_size, /*requires_multimem=*/false, symmetric_memory_type,
         /*should_memzero=*/false,
         /*should_double_buffer=*/is_one_shot}}};
   return kernel_spec;
