@@ -1991,9 +1991,7 @@ int TransposePlan::ChooseParallelizationStrategy(
     }
 
     int kMinBytesPerThread =
-        chunk_contiguity_ != ChunkContiguity::kNone
-            ? 1
-            : (inner_kernel_is_memcpy() ? (1 << 20) : (1 << 26));
+        chunk_contiguity_ != ChunkContiguity::kNone ? 1 : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
     int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);

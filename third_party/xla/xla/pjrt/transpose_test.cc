@@ -2078,6 +2078,79 @@ TEST(TransposeTest, Sub64MiBContiguousChunking) {
   EXPECT_EQ(actual_delinearized, input);
 }
 
+TEST(TransposeTest, MemcpyParallelizationThreshold) {
+  // Verify that inner_kernel_is_memcpy() plans use the 64 MiB (1 << 26)
+  // per-thread threshold when ChunkContiguity::kNone, while still honoring
+  // num_threads when contiguous chunking is requested.
+  const std::vector<int64_t> perm_1d = {0};
+  {
+    // 16 MiB 1-D contiguous copy: below the 64 MiB threshold -> 1 thread.
+    const std::vector<int64_t> dims = {4 * 1024 * 1024};
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = sizeof(int32_t);
+    options.dims = dims;
+    options.permutation = perm_1d;
+    options.num_threads = 8;
+    options.chunk_contiguity = TransposePlan::ChunkContiguity::kNone;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> plan,
+                         TransposePlan::Create(options));
+    EXPECT_TRUE(plan->inner_kernel_is_memcpy());
+    EXPECT_EQ(plan->Parallelism(), 1);
+  }
+  {
+    // 64 MiB 1-D contiguous copy: exact threshold boundary -> 1 thread.
+    const std::vector<int64_t> dims = {16 * 1024 * 1024};
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = sizeof(int32_t);
+    options.dims = dims;
+    options.permutation = perm_1d;
+    options.num_threads = 8;
+    options.chunk_contiguity = TransposePlan::ChunkContiguity::kNone;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> plan,
+                         TransposePlan::Create(options));
+    EXPECT_TRUE(plan->inner_kernel_is_memcpy());
+    EXPECT_EQ(plan->Parallelism(), 1);
+  }
+  {
+    // 128 MiB 1-D contiguous copy: above 64 MiB threshold -> 2 threads.
+    const std::vector<int64_t> dims = {32 * 1024 * 1024};
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = sizeof(int32_t);
+    options.dims = dims;
+    options.permutation = perm_1d;
+    options.num_threads = 8;
+    options.chunk_contiguity = TransposePlan::ChunkContiguity::kNone;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> plan,
+                         TransposePlan::Create(options));
+    EXPECT_TRUE(plan->inner_kernel_is_memcpy());
+    EXPECT_EQ(plan->Parallelism(), 2);
+  }
+  {
+    // 16 MiB 2-D tiled identity memcpy: kNone clamps to 1 thread, while
+    // kOutput still honors num_threads = 8 for chunked pipelined transfers.
+    const std::vector<int64_t> dims = {2048, 2048};
+    const std::vector<int64_t> perm_2d = {0, 1};
+    const std::vector<int64_t> tiling = {8, 128};
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = sizeof(int32_t);
+    options.dims = dims;
+    options.permutation = perm_2d;
+    options.output_tiling = TransposePlan::Tiling{tiling};
+    options.num_threads = 8;
+    options.chunk_contiguity = TransposePlan::ChunkContiguity::kNone;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> unchunked_plan,
+                         TransposePlan::Create(options));
+    EXPECT_TRUE(unchunked_plan->inner_kernel_is_memcpy());
+    EXPECT_EQ(unchunked_plan->Parallelism(), 1);
+
+    options.chunk_contiguity = TransposePlan::ChunkContiguity::kOutput;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> chunked_plan,
+                         TransposePlan::Create(options));
+    EXPECT_TRUE(chunked_plan->inner_kernel_is_memcpy());
+    EXPECT_EQ(chunked_plan->Parallelism(), 8);
+  }
+}
+
 TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
   struct SelectionCase {
     std::vector<int64_t> dims;
