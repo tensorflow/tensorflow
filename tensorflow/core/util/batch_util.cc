@@ -37,6 +37,13 @@ absl::Status ValidateInput(const Tensor& parent, const Tensor& element,
                            int64_t index) {
   DCHECK_NE(parent.dim_size(0), 0);
   DCHECK_GE(index, 0);
+  if (element.dtype() != parent.dtype()) {
+    return absl::InternalError(absl::StrCat(
+        "ValidateInput Cannot perform copy: element and parent have different "
+        "dtypes. Element dtype: ",
+        DataTypeString(element.dtype()),
+        ", parent dtype: ", DataTypeString(parent.dtype())));
+  }
   if (element.NumElements() != (parent.NumElements() / parent.dim_size(0))) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);

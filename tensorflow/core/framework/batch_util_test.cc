@@ -45,6 +45,30 @@ TEST(MaybeMoveSliceToElementTest, ZeroElementSlice) {
   EXPECT_EQ(error::OK, status.code());
 }
 
+TEST(CopyElementToSliceTest, DifferentDtypes) {
+  Tensor element(DT_INT64, {4});
+  Tensor parent(DT_INT8, {2, 4});
+
+  auto status = batch_util::CopyElementToSlice(element, &parent, 1);
+  EXPECT_EQ(error::INTERNAL, status.code());
+}
+
+TEST(CopySliceToElementTest, DifferentDtypes) {
+  Tensor parent(DT_INT8, {2, 4});
+  Tensor element(DT_INT64, {4});
+
+  auto status = batch_util::CopySliceToElement(parent, &element, 1);
+  EXPECT_EQ(error::INTERNAL, status.code());
+}
+
+TEST(MaybeMoveSliceToElementTest, DifferentDtypes) {
+  Tensor parent(DT_INT64, {2, 4});
+  Tensor element(DT_INT8, {4});
+
+  auto status = batch_util::MaybeMoveSliceToElement(&parent, &element, 1);
+  EXPECT_EQ(error::INTERNAL, status.code());
+}
+
 TEST(CopyContiguousSlicesTest, CompatibleShape) {
   Tensor src(DT_FLOAT, {7, 1, 2});
   Tensor dst(DT_FLOAT, {9, 2, 1});
