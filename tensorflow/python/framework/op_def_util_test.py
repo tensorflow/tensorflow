@@ -107,13 +107,20 @@ class OpDefUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("f: 8", 8.0),
       ("b: True", True),
       ("type: DT_INT32", dtypes.int32),
-      ("shape { dim: [{size: 3}, {size: 4}] }",
-       tensor_shape.TensorShape([3, 4])),
+      (
+          "shape { dim: [{size: 3}, {size: 4}] }",
+          tensor_shape.TensorShape([3, 4]),
+      ),
       ("list { }", []),
       ("list { s: [] }", []),
       ("list { s: ['a', 'b', 'c'] }", ["a", "b", "c"]),
       ("list { i: [1, 2, 3] }", [1, 2, 3]),
       ("list { f: [2.0, 4.0] }", [2.0, 4.0]),
+      ("list { type: [DT_INT32, DT_BOOL] }", [dtypes.int32, dtypes.bool]),
+      (
+          "list { shape: [{ dim: [{size: 3}] }] }",
+          [tensor_shape.TensorShape([3])],
+      ),
   ])  # pyformat: disable
   def testAttrValueToPyObject(self, pbtxt, expected):
     proto = attr_value_pb2.AttrValue()
@@ -135,6 +142,26 @@ class OpDefUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     proto = attr_value_pb2.AttrValue()
     text_format.Parse(pbtxt, proto)
     with self.assertRaises((TypeError, ValueError)):
+      _op_def_util.SerializedAttrValueToPyObject(proto.SerializeToString())
+
+  def testAttrValueToPyObjectInvalidListType(self):
+    proto = attr_value_pb2.AttrValue()
+    proto.list.type.extend([types_pb2.DT_INT32, 9999])
+    with self.assertRaisesRegex(TypeError, "Cannot convert"):
+      _op_def_util.SerializedAttrValueToPyObject(proto.SerializeToString())
+
+  def testAttrValueToPyObjectInvalidListShape(self):
+    proto = attr_value_pb2.AttrValue()
+    text_format.Parse(
+        "list { shape: [{ dim: [{size: 3}] }, { dim: [{size: -5}] }] }", proto
+    )
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      _op_def_util.SerializedAttrValueToPyObject(proto.SerializeToString())
+
+  def testAttrValueToPyObjectInvalidListString(self):
+    proto = attr_value_pb2.AttrValue()
+    proto.list.s.extend([b"ok", b"\xff"])
+    with self.assertRaisesRegex(UnicodeDecodeError, "can't decode byte"):
       _op_def_util.SerializedAttrValueToPyObject(proto.SerializeToString())
 
 

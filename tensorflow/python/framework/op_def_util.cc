@@ -271,7 +271,9 @@ Safe_PyObjectPtr AttrValueListToPyObject(AttrValue::ListValue list) {
   if (list.s_size()) {
     Safe_PyObjectPtr result(PyList_New(list.s_size()));
     for (int i = 0; i < list.s_size(); ++i) {
-      PyList_SET_ITEM(result.get(), i, PY_STRING_FROMSTRING(list.s(i).c_str()));
+      Safe_PyObjectPtr item(PY_STRING_FROMSTRING(list.s(i).c_str()));
+      if (!item) return nullptr;
+      PyList_SET_ITEM(result.get(), i, item.release());
     }
     return result;
   } else if (list.i_size()) {
@@ -296,16 +298,16 @@ Safe_PyObjectPtr AttrValueListToPyObject(AttrValue::ListValue list) {
     Safe_PyObjectPtr result(PyList_New(list.type_size()));
     for (int i = 0; i < list.type_size(); ++i) {
       Safe_PyObjectPtr item(DataTypeToPyObject(list.type(i)));
-      Py_INCREF(item.get());
-      PyList_SET_ITEM(result.get(), i, item.get());
+      if (!item) return nullptr;
+      PyList_SET_ITEM(result.get(), i, item.release());
     }
     return result;
   } else if (list.shape_size()) {
     Safe_PyObjectPtr result(PyList_New(list.shape_size()));
     for (int i = 0; i < list.shape_size(); ++i) {
       Safe_PyObjectPtr item(TensorShapeProtoToPyObject(list.shape(i)));
-      Py_INCREF(item.get());
-      PyList_SET_ITEM(result.get(), i, item.get());
+      if (!item) return nullptr;
+      PyList_SET_ITEM(result.get(), i, item.release());
     }
     return result;
   } else if (list.tensor_size() || list.func_size()) {
