@@ -1852,6 +1852,14 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfHostOffload(
   }
 
   const Buffer& output_buffer = buffers_.at(candidate_item->buffers_output[0]);
+  // Conservatively skip buffers with indirect uses (e.g. through an
+  // async-start): only direct users are rewired to the copy back to device.
+  if (output_buffer.has_indirect_uses) {
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " has indirect uses; cannot offload to host.";
+    return {};
+  }
+
   if (!candidate_item->placed || candidate_item == in_progress_item_ ||
       output_buffer.live_out) {
     VLOG(2) << "  " << candidate_instruction->name()

@@ -1532,6 +1532,121 @@ ENTRY MyModule {
               op::Tanh(res_10_matcher));
 }
 
+// res_3 is only used by an already placed async-start, so host offload must
+// skip it instead of crashing.
+TEST_F(OffloadingRematerializationTest, SkipOffloadWhenOnlyUserIsAsyncStart) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule MyModule, is_scheduled=true, entry_computation_layout={(f32[1024]{0}, f32[1024]{0})->f32[1024]{0}}
+
+async_computation {
+  param_0 = f32[1024]{0} parameter(0)
+  ROOT negate = f32[1024]{0} negate(param_0)
+}
+
+ENTRY MyModule {
+  param_0 = f32[1024]{0} parameter(0)
+  param_1 = f32[1024]{0} parameter(1)
+  res_3 = f32[1024]{0} add(param_0, param_1)
+  async-start = ((f32[1024]{0}), f32[1024]{0}, s32[]) async-start(res_3), calls=async_computation
+  res_4 = f32[1024]{0} tanh(param_0)
+  res_5 = f32[1024]{0} tanh(res_4)
+  res_6 = f32[1024]{0} tanh(res_5)
+  res_7 = f32[1024]{0} add(res_6, res_6)
+  res_8 = f32[1024]{0} add(res_7, res_5)
+  res_9 = f32[1024]{0} add(res_8, res_4)
+  async-done = f32[1024]{0} async-done(async-start)
+  ROOT res_10 = f32[1024]{0} add(res_9, async-done)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  SetCopyToHostSpeed(4.0 * 1024);
+  SetCopyFromHostSpeed(4.0 * 1024);
+  SetFlopsPerSecond(2 * 1024);
+  SetTranscendentalsPerSecond(2 * 1024);
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_TRUE(module->has_schedule());
+
+  // res_3 is skipped (it gets no copy-start user); res_4 is offloaded instead.
+  HloInstruction* res_3 = FindInstruction(module.get(), "res_3");
+  EXPECT_THAT(res_3->users(), ElementsAre(op::AsyncStart()));
+  auto res_4_rematted_matcher = op::AsyncCopy(
+      xla::Layout::kDefaultMemorySpace, kHostMemorySpaceColor,
+      op::AsyncCopy(kHostMemorySpaceColor, xla::Layout::kDefaultMemorySpace,
+                    op::Tanh(op::Parameter())));
+  auto res_9_matcher = op::Add(op::Add(), res_4_rematted_matcher);
+
+  const auto instruction_sequence =
+      module->schedule().sequence(module->entry_computation());
+  EXPECT_THAT(instruction_sequence.instructions().back(),
+              op::Add(res_9_matcher, op::AsyncDone(op::AsyncStart(res_3))));
+}
+
+// res_3 also has a direct user after the placed async-start, so the copy back
+// could be placed, but the async-done would still read the original buffer.
+TEST_F(OffloadingRematerializationTest,
+       SkipOffloadWhenAsyncStartIsPlacedBeforeDirectUser) {
+  constexpr absl::string_view hlo_string = R"hlo(
+HloModule MyModule, is_scheduled=true, entry_computation_layout={(f32[1024]{0}, f32[1024]{0})->f32[1024]{0}}
+
+async_computation {
+  param_0 = f32[1024]{0} parameter(0)
+  ROOT negate = f32[1024]{0} negate(param_0)
+}
+
+ENTRY MyModule {
+  param_0 = f32[1024]{0} parameter(0)
+  param_1 = f32[1024]{0} parameter(1)
+  res_3 = f32[1024]{0} add(param_0, param_1)
+  async-start = ((f32[1024]{0}), f32[1024]{0}, s32[]) async-start(res_3), calls=async_computation
+  res_4 = f32[1024]{0} tanh(param_0)
+  res_5 = f32[1024]{0} tanh(res_4)
+  res_6 = f32[1024]{0} tanh(res_5)
+  res_7 = f32[1024]{0} add(res_6, res_6)
+  res_8 = f32[1024]{0} add(res_7, res_5)
+  res_9 = f32[1024]{0} add(res_8, res_4)
+  async-done = f32[1024]{0} async-done(async-start)
+  res_10 = f32[1024]{0} add(res_9, async-done)
+  ROOT res_11 = f32[1024]{0} add(res_10, res_3)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  SetCopyToHostSpeed(4.0 * 1024);
+  SetCopyFromHostSpeed(4.0 * 1024);
+  SetFlopsPerSecond(2 * 1024);
+  SetTranscendentalsPerSecond(2 * 1024);
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_TRUE(module->has_schedule());
+
+  // res_3 is skipped (it gets no copy-start user); res_4 is offloaded instead.
+  HloInstruction* res_3 = FindInstruction(module.get(), "res_3");
+  EXPECT_THAT(res_3->users(),
+              UnorderedElementsAre(op::AsyncStart(), op::Add()));
+  auto res_4_rematted_matcher = op::AsyncCopy(
+      xla::Layout::kDefaultMemorySpace, kHostMemorySpaceColor,
+      op::AsyncCopy(kHostMemorySpaceColor, xla::Layout::kDefaultMemorySpace,
+                    op::Tanh(op::Parameter())));
+  auto res_9_matcher = op::Add(op::Add(), res_4_rematted_matcher);
+
+  const auto instruction_sequence =
+      module->schedule().sequence(module->entry_computation());
+  EXPECT_THAT(
+      instruction_sequence.instructions().back(),
+      op::Add(op::Add(res_9_matcher, op::AsyncDone(op::AsyncStart(res_3))),
+              res_3));
+}
+
 class IndirectUseTest : public RecomputeAndCompressHloRematerializationTest,
                         public ::testing::WithParamInterface<bool> {};
 
