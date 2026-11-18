@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/topk_rewriter.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 
 namespace m = ::xla::match;

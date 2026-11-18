@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_REMOVER_H_
 #define XLA_SERVICE_SHARDING_REMOVER_H_
 
-#include <memory>
-#include <vector>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Remove Sharding custom-call instruction by assigning its users to
-// to its operand. This is helpful when partition_count == 1.
-class ShardingRemover : public HloModulePass {
- public:
-  absl::string_view name() const override { return "sharding-remover"; }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/sharding_remover.h"
+#include "xla/hlo/transforms/sharding_remover.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_SHARDING_REMOVER_H_

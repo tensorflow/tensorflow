@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/multi_output_fusion.h"
+#include "xla/hlo/transforms/multi_output_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 

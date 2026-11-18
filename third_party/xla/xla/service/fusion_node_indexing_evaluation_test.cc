@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

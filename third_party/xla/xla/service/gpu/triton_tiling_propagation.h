@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 
 namespace xla {
 namespace gpu {

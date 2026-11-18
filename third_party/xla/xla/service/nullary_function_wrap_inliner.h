@@ -16,30 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_NULLARY_FUNCTION_WRAP_INLINER_H_
 #define XLA_SERVICE_NULLARY_FUNCTION_WRAP_INLINER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Inlines call instructions that take a single token operand and nothing else
-// (used to wrap nullary instructions for program order preservation) and
-// attaches a control dependency from the token operand to the inlined
-// instructions.
-class NullaryFunctionWrapInliner : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "nullary-function-wrap-inliner";
-  }
-
- protected:
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/nullary_function_wrap_inliner.h"
+#include "xla/hlo/transforms/nullary_function_wrap_inliner.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_NULLARY_FUNCTION_WRAP_INLINER_H_

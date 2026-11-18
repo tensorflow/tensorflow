@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_registry.h"
-#include "xla/service/call_inliner.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/service/spmd/shardy/constants.h"
 
 namespace xla::sdy {

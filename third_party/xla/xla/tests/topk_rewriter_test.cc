@@ -1,0 +1,1396 @@
+/* Copyright 2020 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/hlo/transforms/topk_rewriter.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/transforms/simplifiers/hlo_cse.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
+
+namespace m = ::xla::match;
+
+namespace xla {
+namespace {
+
+namespace op = xla::testing::opcode_matchers;
+
+class TopkRewriterTest : public HloInterpreterReferenceMixin<HloTestBase> {};
+
+std::string getComparator() {
+  return R"(
+%compare {
+  %p.1.lhs.8 = s32[] parameter(2)
+  %p.1.rhs.9 = s32[] parameter(3)
+  %p.0.lhs.6 = f32[] parameter(0)
+  %bitcast-convert.11 = s32[] bitcast-convert(%p.0.lhs.6)
+  %constant.15 = s32[] constant(0)
+  %compare.16 = pred[] compare(%bitcast-convert.11, %constant.15), direction=LT
+  %constant.10 = u32[] constant(2147483647)
+  %bitcast-convert.12 = u32[] bitcast-convert(%p.0.lhs.6)
+  %subtract.13 = u32[] subtract(%constant.10, %bitcast-convert.12)
+  %bitcast-convert.14 = s32[] bitcast-convert(%subtract.13)
+  %select.17 = s32[] select(%compare.16, %bitcast-convert.14,
+                            %bitcast-convert.11)
+  %p.0.rhs.7 = f32[] parameter(1)
+  %bitcast-convert.19 = s32[] bitcast-convert(%p.0.rhs.7)
+  %constant.23 = s32[] constant(0)
+  %compare.24 = pred[] compare(%bitcast-convert.19, %constant.23), direction=LT
+  %constant.18 = u32[] constant(2147483647)
+  %bitcast-convert.20 = u32[] bitcast-convert(%p.0.rhs.7)
+  %subtract.21 = u32[] subtract(%constant.18, %bitcast-convert.20)
+  %bitcast-convert.22 = s32[] bitcast-convert(%subtract.21)
+  %select.25 = s32[] select(%compare.24, %bitcast-convert.22,
+                            %bitcast-convert.19)
+  ROOT %compare.26 = pred[] compare(%select.17, %select.25), direction=GT
+})";
+}
+
+std::string getConvertMaxComparator() {
+  return R"(
+%compare {
+  %p.1.lhs.6 = s32[] parameter(2)
+  %p.1.rhs.7 = s32[] parameter(3)
+  %p.0.lhs.4 = f32[] parameter(0)
+  %bitcast-convert = s32[] bitcast-convert(f32[] %p.0.lhs.4)
+  %constant = s32[] constant(0)
+  %compare = pred[] compare(s32[] %bitcast-convert, s32[] %constant), direction=LT
+  %constant.1 = s32[] constant(2147483647)
+  %convert = u32[] convert(s32[] %constant.1)
+  %bitcast-convert.1 = u32[] bitcast-convert(f32[] %p.0.lhs.4)
+  %subtract = u32[] subtract(u32[] %convert, u32[] %bitcast-convert.1)
+  %bitcast-convert.2 = s32[] bitcast-convert(u32[] %subtract)
+  %select = s32[] select(pred[] %compare, s32[] %bitcast-convert.2, s32[] %bitcast-convert)
+  %p.0.rhs.5 = f32[] parameter(1)
+  %bitcast-convert.3 = s32[] bitcast-convert(f32[] %p.0.rhs.5)
+  %compare.1 = pred[] compare(s32[] %bitcast-convert.3, s32[] %constant), direction=LT
+  %bitcast-convert.4 = u32[] bitcast-convert(f32[] %p.0.rhs.5)
+  %subtract.1 = u32[] subtract(u32[] %convert, u32[] %bitcast-convert.4)
+  %bitcast-convert.5 = s32[] bitcast-convert(u32[] %subtract.1)
+  %select.1 = s32[] select(pred[] %compare.1, s32[] %bitcast-convert.5, s32[] %bitcast-convert.3)
+  ROOT %compare.2 = pred[] compare(s32[] %select, s32[] %select.1), direction=GT
+})";
+}
+
+std::string getComparatorNoIota() {
+  return R"(
+%compare {
+  %p.0.lhs.6 = f32[] parameter(0)
+  %bitcast-convert.11 = s32[] bitcast-convert(%p.0.lhs.6)
+  %constant.15 = s32[] constant(0)
+  %compare.16 = pred[] compare(%bitcast-convert.11, %constant.15), direction=LT
+  %constant.10 = u32[] constant(2147483647)
+  %bitcast-convert.12 = u32[] bitcast-convert(%p.0.lhs.6)
+  %subtract.13 = u32[] subtract(%constant.10, %bitcast-convert.12)
+  %bitcast-convert.14 = s32[] bitcast-convert(%subtract.13)
+  %select.17 = s32[] select(%compare.16, %bitcast-convert.14,
+                            %bitcast-convert.11)
+  %p.0.rhs.7 = f32[] parameter(1)
+  %bitcast-convert.19 = s32[] bitcast-convert(%p.0.rhs.7)
+  %constant.23 = s32[] constant(0)
+  %compare.24 = pred[] compare(%bitcast-convert.19, %constant.23), direction=LT
+  %constant.18 = u32[] constant(2147483647)
+  %bitcast-convert.20 = u32[] bitcast-convert(%p.0.rhs.7)
+  %subtract.21 = u32[] subtract(%constant.18, %bitcast-convert.20)
+  %bitcast-convert.22 = s32[] bitcast-convert(%subtract.21)
+  %select.25 = s32[] select(%compare.24, %bitcast-convert.22,
+                            %bitcast-convert.19)
+  ROOT %compare.26 = pred[] compare(%select.17, %select.25), direction=GT
+})";
+}
+
+std::string getCompareComparator() {
+  return R"(
+  %compare {
+  %Arg_0.100 = f32[] parameter(0)
+  %Arg_1.101 = f32[] parameter(1)
+  %Arg_2.102 = s32[] parameter(2)
+  %Arg_3.103  = s32[] parameter(3)
+  ROOT %compare.56364 = pred[] compare(f32[] %Arg_0.100, f32[] %Arg_1.101), direction=GT, order=TOTAL
+})";
+}
+
+std::string getStableComparator() {
+  return R"(
+  %compare {
+    %p.1.lhs.40628 = s32[] parameter(2)
+    %p.1.rhs.40629 = s32[] parameter(3)
+    %constant.40630 = pred[] constant(true)
+    %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
+    %p.0.lhs.40626 = f32[] parameter(0)
+    %p.0.rhs.40627 = f32[] parameter(1)
+    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, order=TOTAL
+    ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
+  })";
+}
+
+bool IsStableSort(const HloInstruction* inst) {
+  auto* sort = DynCast<HloSortInstruction>(inst);
+  return sort != nullptr && sort->is_stable();
+}
+
+bool IsUnstableSort(const HloInstruction* inst) {
+  auto* sort = DynCast<HloSortInstruction>(inst);
+  return sort != nullptr && !sort->is_stable();
+}
+
+TEST_F(TopkRewriterTest, Rewrite) {
+  for (std::string comparator :
+       {getComparator(), getCompareComparator(), getStableComparator()}) {
+    const std::string hlo_string = R"(
+HloModule module
+)" + comparator + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,5] slice(%get-tuple-element.30), slice={[0:8], [0:5]}
+  ROOT %tuple.32 = (f32[8,5], s32[8,5]) tuple(%slice.29, %slice.31)
+})";
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0)->operand(0);
+    EXPECT_THAT(cc->custom_call_target(), "TopK");
+  }
+}
+
+TEST_F(TopkRewriterTest, RewriteWithBroadcast) {
+  for (std::string comparator :
+       {getComparator(), getCompareComparator(), getStableComparator()}) {
+    const std::string hlo_string = R"(
+HloModule module
+)" + comparator + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[1234567]{0} iota(), iota_dimension=0
+  %broadcast.5 = s32[8,1234567]{1,0} broadcast(iota.4), dimensions={1}
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %broadcast.5),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,5] slice(%get-tuple-element.30), slice={[0:8], [0:5]}
+  ROOT %tuple.32 = (f32[8,5], s32[8,5]) tuple(%slice.29, %slice.31)
+})";
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0)->operand(0);
+    EXPECT_THAT(cc->custom_call_target(), "TopK");
+  }
+}
+
+TEST_F(TopkRewriterTest, RewriteWithConvertMaxComparator) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getConvertMaxComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,5] slice(%get-tuple-element.30), slice={[0:8], [0:5]}
+  ROOT %tuple.32 = (f32[8,5], s32[8,5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, RewriteUnbatched) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[1234567] parameter(0)
+  %iota.4 = s32[1234567] iota(), iota_dimension=0
+  %sort.27 = (f32[1234567], s32[1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5] slice(%get-tuple-element.28), slice={[0:5]}
+  %get-tuple-element.30 = s32[1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5] slice(%get-tuple-element.30), slice={[0:5]}
+  ROOT %tuple.32 = (f32[5], s32[5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, RewriteTranspose) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[1234567,8] parameter(0)
+  %iota.4 = s32[1234567,8] iota(), iota_dimension=0
+  %sort.27 = (f32[1234567,8], s32[1234567,8]) sort(%arg_tuple.1, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234567,8] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5,8] slice(%get-tuple-element.28), slice={[0:5], [0:8]}
+  %get-tuple-element.30 = s32[1234567,8] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5,8] slice(%get-tuple-element.30), slice={[0:5], [0:8]}
+  ROOT %tuple.32 = (f32[5,8], s32[5,8]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  LOG(INFO) << module->entry_computation()->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 0)),
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
+  const HloInstruction* cc = module->entry_computation()
+                                 ->root_instruction()
+                                 ->operand(0)
+                                 ->operand(0)
+                                 ->operand(0);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, RewriteReshape) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[3,8,1234567] parameter(0)
+  %iota.4 = s32[3,8,1234567] iota(), iota_dimension=2
+  %sort.27 = (f32[3,8,1234567], s32[3,8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={2}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[3, 8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[3,8,5] slice(%get-tuple-element.28), slice={[0:3], [0:8], [0:5]}
+  %get-tuple-element.30 = s32[3,8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[3,8,5] slice(%get-tuple-element.30), slice={[0:3], [0:8], [0:5]}
+  ROOT %tuple.32 = (f32[3,8,5], s32[3,8,5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  const HloInstruction* cc = module->entry_computation()
+                                 ->root_instruction()
+                                 ->operand(0)
+                                 ->operand(0)
+                                 ->operand(0);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, RewriteNoIota) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparatorNoIota() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %sort.27 = f32[8,1234567] sort(%arg_tuple.1), dimensions={1}, is_stable=true, to_apply=%compare
+  ROOT %slice.29 = f32[8,5] slice(%sort.27), slice={[0:8], [0:5]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, RoundTripNoIota) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparatorNoIota() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %sort.27 = f32[8,1234567] sort(%arg_tuple.1), dimensions={1}, is_stable=true, to_apply=%compare, metadata={op_type="x" op_name="y"}
+  ROOT %slice.29 = f32[8,5] slice(%sort.27), slice={[0:8], [0:5]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    auto root = module->entry_computation()->root_instruction();
+    ASSERT_THAT(root, GmockMatch(m::GetTupleElement(
+                          m::CustomCall(m::Parameter(0)), 0)));
+    CHECK_EQ(root->metadata().op_type(), "x");
+    CHECK_EQ(root->metadata().op_name(), "y");
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  auto root = module->entry_computation()->root_instruction();
+  HloInstruction* sort;
+  EXPECT_THAT(
+      root, GmockMatch(m::Slice(
+                m::Sort(&sort, m::Parameter(0)).WithPredicate(IsStableSort))));
+  CHECK_EQ(root->metadata().op_type(), "x");
+  CHECK_EQ(root->metadata().op_name(), "y");
+  CHECK_EQ(sort->metadata().op_type(), "x");
+  CHECK_EQ(sort->metadata().op_name(), "y");
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
+TEST_F(TopkRewriterTest, RoundTripOnlyIota) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[1234567]{0} iota(), iota_dimension=0
+  %broadcast.5 = s32[8,1234567]{1,0} broadcast(iota.4), dimensions={1}
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %broadcast.5),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  ROOT %slice.29 = s32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1)));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Slice(m::GetTupleElement(
+          m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort),
+          1))));
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
+class TopkRewriterStabilityTest : public TopkRewriterTest,
+                                  public ::testing::WithParamInterface<bool> {};
+
+TEST_P(TopkRewriterStabilityTest, RoundTrip) {
+  bool is_stable = GetParam();
+  std::string is_stable_str = is_stable ? "true" : "false";
+
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,8192] parameter(0)
+  %iota.4 = s32[8,8192] iota(), iota_dimension=1
+  %sort.27 = (f32[8,8192], s32[8,8192]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=)" +
+                                 is_stable_str + R"(, to_apply=%compare
+  %get-tuple-element.28 = f32[8,8192] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,2000] slice(%get-tuple-element.28), slice={[0:8], [0:2000]}
+  %get-tuple-element.30 = s32[8,8192] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,2000] slice(%get-tuple-element.30), slice={[0:8], [0:2000]}
+  ROOT %tuple.32 = (f32[8,2000], s32[8,2000]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    ASSERT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0),
+                    m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0)->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+    if (!is_stable) {
+      EXPECT_EQ(cc->raw_backend_config_string(),
+                "{is_stable = false, order = \"TOTAL\"}");
+    }
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota())
+          .WithPredicate(is_stable ? IsStableSort : IsUnstableSort);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::GetTupleElement(sort_matcher, 0)),
+                          m::Slice(m::GetTupleElement(sort_matcher, 1)))));
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
+INSTANTIATE_TEST_SUITE_P(TopkRewriterStability, TopkRewriterStabilityTest,
+                         ::testing::Bool());
+
+// Equivalent to RoundTripNoIota, but the comparator requires indices.
+TEST_F(TopkRewriterTest, RoundTripValueOnly) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  ROOT %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    ASSERT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::GetTupleElement(sort_matcher, 0))));
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
+TEST_F(TopkRewriterTest, SanityCheckOutput) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getCompareComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[1234] parameter(0)
+  %iota.4 = s32[1234] iota(), iota_dimension=0
+  %sort.27 = (f32[1234], s32[1234]) sort(%arg_tuple.1, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5] slice(%get-tuple-element.28), slice={[0:5]}
+  %get-tuple-element.30 = s32[1234] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5] slice(%get-tuple-element.30), slice={[0:5]}
+  ROOT %tuple.32 = (f32[5], s32[5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto source_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  auto topk_module = source_module->Clone();
+  EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
+                return true;
+              }).Run(topk_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  auto decomposed_module = topk_module->Clone();
+  EXPECT_THAT(TopkDecomposer().Run(decomposed_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  const size_t source_size = 1234;
+  std::vector<float> source(source_size);
+  std::iota(source.begin(), source.end(), 80000);
+  auto input = LiteralUtil::CreateR1<float>(source);
+  std::vector<float> top_k({81233, 81232, 81231, 81230, 81229});
+  // Ensure all 3 modules produce the same output on the same input.
+  auto check_result = [&](std::unique_ptr<HloModule> module) {
+    ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&input}));
+    LiteralTestUtil::ExpectR1Equal<float>(top_k, result.DecomposeTuple()[0]);
+  };
+  check_result(std::move(source_module));
+  check_result(std::move(decomposed_module));
+}
+
+TEST_F(TopkRewriterTest, Equivalent) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getCompareComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[1234] parameter(0)
+  %iota.4 = s32[1234] iota(), iota_dimension=0
+  %sort.27 = (f32[1234], s32[1234]) sort(%arg_tuple.1, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5] slice(%get-tuple-element.28), slice={[0:5]}
+  %get-tuple-element.30 = s32[1234] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5] slice(%get-tuple-element.30), slice={[0:5]}
+  ROOT %tuple.32 = (f32[5], s32[5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto source_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  auto round_trip = [](HloModule* module) {
+    EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
+                  return true;
+                }).Run(module),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopkDecomposer().Run(module), absl_testing::IsOkAndHolds(true));
+  };
+  EXPECT_TRUE(
+      RunAndCompare(std::move(source_module), std::nullopt, round_trip));
+}
+
+TEST_F(TopkRewriterTest, DecomposerStability) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getCompareComparator() + R"(
+ENTRY cluster {
+  %constant.1 = f32[] constant(42)
+  %broadcast.2= f32[1234] broadcast(f32[] %constant.1), dimensions={}
+  %iota.4 = s32[1234] iota(), iota_dimension=0
+  %sort.27 = (f32[1234], s32[1234]) sort(%broadcast.2, %iota.4),
+    dimensions={0}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[1234] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[5] slice(%get-tuple-element.28), slice={[0:5]}
+  %get-tuple-element.30 = s32[1234] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[5] slice(%get-tuple-element.30), slice={[0:5]}
+  ROOT %tuple.32 = (f32[5], s32[5]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto source_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  auto round_trip = [](HloModule* module) {
+    EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
+                  return true;
+                }).Run(module),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopkDecomposer().Run(module), absl_testing::IsOkAndHolds(true));
+  };
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(source_module), std::nullopt,
+                                       round_trip));
+}
+
+TEST_F(TopkRewriterTest, TopKDecomposition) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+ENTRY TopK {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher = op::Sort(op::Parameter(0), op::Iota());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Slice(op::GetTupleElement(sort_matcher, 0)),
+                        op::Slice(op::GetTupleElement(sort_matcher, 1))));
+
+  // Check that we also match the topk rewriter, effectively roundtripping.
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(TopkRewriterTest, TopKWithSingleTupleUser) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule topk
+ENTRY main {
+  x = f32[7] parameter(0)
+  top = (f32[3], s32[3]) topk(x), k=3, largest=true
+  ROOT result = ((f32[3], s32[3])) tuple(top)
+})"));
+  ASSERT_OK_AND_ASSIGN(bool changed, TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Tuple(op::Slice(), op::Slice())));
+}
+
+TEST_F(TopkRewriterTest, TopKDecompositionPacked) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+ENTRY TopK {
+  x = bf16[10,10]{0,1} parameter(0)
+  ROOT topk = (bf16[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+
+  // Check that the decomposition generated a single-operand unstable sort of
+  // type S32.
+  int sort_count = 0;
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kSort) {
+      sort_count++;
+      EXPECT_EQ(inst->operand_count(), 1);
+      EXPECT_EQ(inst->operand(0)->shape().element_type(), S32);
+      EXPECT_FALSE(Cast<HloSortInstruction>(inst)->is_stable());
+    }
+  }
+  EXPECT_EQ(sort_count, 1);
+}
+
+TEST_F(TopkRewriterTest, TopKIsNotIncorrectlyCSEd) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+c2 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, order=TOTAL
+}
+
+c4 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, order=TOTAL
+}
+
+ENTRY TopK {
+  p = f32[10,50] parameter(0)
+  cc1 = (f32[10,5], s32[10,5]) custom-call(p), custom_call_target="TopK", called_computations={c2}
+  gte1 = f32[10,5] get-tuple-element(cc1), index=0
+  gte2 = s32[10,5] get-tuple-element(cc1), index=1
+  cc2 = (f32[10,5], s32[10,5]) custom-call(p), custom_call_target="TopK", called_computations={c4}
+  gte3 = f32[10,5] get-tuple-element(cc2), index=0
+  gte4 = s32[10,5] get-tuple-element(cc2), index=1
+  gte44 = f32[10,5] convert(gte4)
+  ROOT result = f32[10,5] add(gte1, gte44)
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool cse_changed,
+                       HloCSE(/*is_layout_sensitive=*/false).Run(module.get()));
+  EXPECT_FALSE(cse_changed);
+  ASSERT_OK_AND_ASSIGN(bool dce_changed, HloDCE().Run(module.get()));
+  EXPECT_TRUE(dce_changed);
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+}
+
+TEST_F(TopkRewriterTest, TopKDecompositionUnstable) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+ENTRY TopK {
+  x = f32[8,2048]{0,1} parameter(0)
+  ROOT topk = (f32[8,24]{0,1}, s32[8,24]{0,1}) topk(x), k=24, largest=true, is_stable=false
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsUnstableSort);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::GetTupleElement(sort_matcher, 0)),
+                          m::Slice(m::GetTupleElement(sort_matcher, 1)))));
+}
+
+TEST_F(TopkRewriterTest, TopKCustomCallDecompositionUnstable) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getCompareComparator() + R"(
+ENTRY cluster {
+  %arg = f32[8,2048] parameter(0)
+  ROOT %cc = (f32[8,24], s32[8,24]) custom-call(%arg), custom_call_target="TopK", called_computations={%compare}, backend_config="{is_stable = false}"
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                       TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsUnstableSort);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Slice(m::GetTupleElement(sort_matcher, 0)),
+                          m::Slice(m::GetTupleElement(sort_matcher, 1)))));
+}
+
+TEST_F(TopkRewriterTest, TopKCustomCallUnstableConfig) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,2048] parameter(0)
+  %iota.4 = s32[8,2048] iota(), iota_dimension=1
+  %sort.27 = (f32[8,2048], s32[8,2048]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=false, to_apply=%compare
+  %get-tuple-element.28 = f32[8,2048] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,24] slice(%get-tuple-element.28), slice={[0:8], [0:24]}
+  %get-tuple-element.30 = s32[8,2048] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,24] slice(%get-tuple-element.30), slice={[0:8], [0:24]}
+  ROOT %tuple.32 = (f32[8,24], s32[8,24]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+  EXPECT_EQ(cc->raw_backend_config_string(),
+            "{is_stable = false, order = \"TOTAL\"}");
+}
+
+TEST_F(TopkRewriterTest, TopKCustomCallPartialOrderConfig) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %Arg_0.100 = f32[] parameter(0)
+  %Arg_1.101 = f32[] parameter(1)
+  %Arg_2.102 = s32[] parameter(2)
+  %Arg_3.103 = s32[] parameter(3)
+  ROOT %compare.56364 = pred[] compare(f32[] %Arg_0.100, f32[] %Arg_1.101), direction=GT, order=PARTIAL
+}
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,2048] parameter(0)
+  %iota.4 = s32[8,2048] iota(), iota_dimension=1
+  %sort.27 = (f32[8,2048], s32[8,2048]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,2048] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,24] slice(%get-tuple-element.28), slice={[0:8], [0:24]}
+  %get-tuple-element.30 = s32[8,2048] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,24] slice(%get-tuple-element.30), slice={[0:8], [0:24]}
+  ROOT %tuple.32 = (f32[8,24], s32[8,24]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* cc =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+  EXPECT_EQ(cc->raw_backend_config_string(),
+            "{is_stable = true, order = \"PARTIAL\"}");
+}
+
+TEST_F(TopkRewriterTest, RewriteNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,1] slice(%get-tuple-element.28), slice={[0:8], [4:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,1] slice(%get-tuple-element.30), slice={[0:8], [4:5]}
+  ROOT %tuple.32 = (f32[8,1], s32[8,1]) tuple(%slice.29, %slice.31)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = module->entry_computation()
+                                 ->root_instruction()
+                                 ->operand(0)
+                                 ->operand(0)
+                                 ->operand(0);
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteStridedNonZeroStartSlice) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(%p0, %p1), direction=GT
+}
+ENTRY cluster {
+  %arg.1 = f32[8,1234567] parameter(0)
+  %sort.2 = f32[8,1234567] sort(%arg.1), dimensions={1}, is_stable=true, to_apply=%compare
+  ROOT %slice.3 = f32[8,4] slice(%sort.2), slice={[0:8:1], [2:10:2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(TopkRewriterTest, NoRewriteWeakOrder) {
+  const std::string weak_compare_comparator = R"(
+%compare {
+  %Arg_0.100 = f32[] parameter(0)
+  %Arg_1.101 = f32[] parameter(1)
+  %Arg_2.102 = s32[] parameter(2)
+  %Arg_3.103 = s32[] parameter(3)
+  ROOT %compare.56364 = pred[] compare(f32[] %Arg_0.100, f32[] %Arg_1.101), direction=GT, order=WEAK
+})";
+  const std::string weak_stable_comparator = R"(
+%compare {
+  %p.1.lhs.40628 = s32[] parameter(2)
+  %p.1.rhs.40629 = s32[] parameter(3)
+  %constant.40630 = pred[] constant(true)
+  %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
+  %p.0.lhs.40626 = f32[] parameter(0)
+  %p.0.rhs.40627 = f32[] parameter(1)
+  %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, order=WEAK
+  ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
+})";
+  for (const std::string& comparator :
+       {weak_compare_comparator, weak_stable_comparator}) {
+    const std::string hlo_string = R"(
+HloModule module
+)" + comparator + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+  %get-tuple-element.30 = s32[8,1234567] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,5] slice(%get-tuple-element.30), slice={[0:8], [0:5]}
+  ROOT %tuple.32 = (f32[8,5], s32[8,5]) tuple(%slice.29, %slice.31)
+})";
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
+TEST_F(TopkRewriterTest, RewriteWithBatchedBroadcastIota) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[4,8,256] parameter(0)
+  %iota.1 = s32[8,256] iota(), iota_dimension=1
+  %bcast.4 = s32[4,8,256] broadcast(%iota.1), dimensions={1,2}
+  %sort.27 = (f32[4,8,256], s32[4,8,256]) sort(%arg_tuple.1, %bcast.4),
+    dimensions={2}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[4,8,256] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[4,8,5] slice(%get-tuple-element.28), slice={[0:4], [0:8], [0:5]}
+  %get-tuple-element.30 = s32[4,8,256] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[4,8,5] slice(%get-tuple-element.30), slice={[0:4], [0:8], [0:5]}
+  ROOT %tuple.32 = (f32[4,8,5], s32[4,8,5]) tuple(%slice.29, %slice.31)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_THAT(cc->custom_call_target(), "TopK");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteWrongIotaDimension) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,256] parameter(0)
+  %iota.4 = s32[8,256] iota(), iota_dimension=0
+  %sort.27 = (f32[8,256], s32[8,256]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=false, to_apply=%compare
+  %get-tuple-element.28 = f32[8,256] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+  %get-tuple-element.30 = s32[8,256] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[8,5] slice(%get-tuple-element.30), slice={[0:8], [0:5]}
+  ROOT %tuple.32 = (f32[8,5], s32[8,5]) tuple(%slice.29, %slice.31)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(TopkRewriterTest, NoRewriteWrongBroadcastIotaDimension) {
+  const std::string hlo_1d_bcast = absl::StrCat(R"(
+HloModule module
+)",
+                                                getComparator(), R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[256,256] parameter(0)
+  %iota.1 = s32[256] iota(), iota_dimension=0
+  %bcast.4 = s32[256,256] broadcast(%iota.1), dimensions={0}
+  %sort.27 = (f32[256,256], s32[256,256]) sort(%arg_tuple.1, %bcast.4),
+    dimensions={1}, is_stable=false, to_apply=%compare
+  %get-tuple-element.28 = f32[256,256] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[256,5] slice(%get-tuple-element.28), slice={[0:256], [0:5]}
+  %get-tuple-element.30 = s32[256,256] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[256,5] slice(%get-tuple-element.30), slice={[0:256], [0:5]}
+  ROOT %tuple.32 = (f32[256,5], s32[256,5]) tuple(%slice.29, %slice.31)
+})");
+  const std::string hlo_2d_bcast = absl::StrCat(R"(
+HloModule module
+)",
+                                                getComparator(), R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[4,8,256] parameter(0)
+  %iota.1 = s32[8,256] iota(), iota_dimension=0
+  %bcast.4 = s32[4,8,256] broadcast(%iota.1), dimensions={1,2}
+  %sort.27 = (f32[4,8,256], s32[4,8,256]) sort(%arg_tuple.1, %bcast.4),
+    dimensions={2}, is_stable=false, to_apply=%compare
+  %get-tuple-element.28 = f32[4,8,256] get-tuple-element(%sort.27), index=0
+  %slice.29 = f32[4,8,5] slice(%get-tuple-element.28), slice={[0:4], [0:8], [0:5]}
+  %get-tuple-element.30 = s32[4,8,256] get-tuple-element(%sort.27), index=1
+  %slice.31 = s32[4,8,5] slice(%get-tuple-element.30), slice={[0:4], [0:8], [0:5]}
+  ROOT %tuple.32 = (f32[4,8,5], s32[4,8,5]) tuple(%slice.29, %slice.31)
+})");
+  for (const std::string& hlo_string : {hlo_1d_bcast, hlo_2d_bcast}) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
+TEST_F(TopkRewriterTest, RewriteStableSortExpandedComparator) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p.0.lhs = f32[] parameter(0)
+  %p.0.rhs = f32[] parameter(1)
+  %p.1.lhs = s32[] parameter(2)
+  %p.1.rhs = s32[] parameter(3)
+  %gt.01 = pred[] compare(%p.0.lhs, %p.0.rhs), direction=GT, order=TOTAL
+  %gt.10 = pred[] compare(%p.0.rhs, %p.0.lhs), direction=GT, order=TOTAL
+  %same = pred[] compare(%gt.01, %gt.10), direction=EQ
+  %tie_breaker = pred[] compare(%p.1.lhs, %p.1.rhs), direction=LT
+  ROOT %select = pred[] select(%same, %tie_breaker, %gt.01)
+}
+ENTRY cluster {
+  %arg = f32[3,8,1024] parameter(0)
+  %iota = s32[3,8,1024] iota(), iota_dimension=2
+  %sort = (f32[3,8,1024], s32[3,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=false, to_apply=%compare
+  %gte.0 = f32[3,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[3,8,5] slice(%gte.0), slice={[0:3], [0:8], [0:5]}
+  %gte.1 = s32[3,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[3,8,5] slice(%gte.1), slice={[0:3], [0:8], [0:5]}
+  ROOT %tuple = (f32[3,8,5], s32[3,8,5]) tuple(%slice.0, %slice.1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_EQ(cc->custom_call_target(), "TopK");
+  EXPECT_EQ(cc->raw_backend_config_string(),
+            "{is_stable = true, order = \"TOTAL\"}");
+}
+
+TEST_F(TopkRewriterTest, NoRewriteInvalidStableSortExpandedComparator) {
+  const std::string hlo_string = R"(
+HloModule module
+%compare {
+  %p.0.lhs = f32[] parameter(0)
+  %p.0.rhs = f32[] parameter(1)
+  %p.1.lhs = s32[] parameter(2)
+  %p.1.rhs = s32[] parameter(3)
+  %gt.01 = pred[] compare(%p.0.lhs, %p.0.rhs), direction=GT, order=TOTAL
+  %false_const = pred[] constant(false)
+  %not_gt = pred[] compare(%gt.01, %false_const), direction=EQ
+  %tie_breaker = pred[] compare(%p.1.lhs, %p.1.rhs), direction=LT
+  ROOT %select = pred[] select(%not_gt, %tie_breaker, %gt.01)
+}
+ENTRY cluster {
+  %arg = f32[3,8,1024] parameter(0)
+  %iota = s32[3,8,1024] iota(), iota_dimension=2
+  %sort = (f32[3,8,1024], s32[3,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=false, to_apply=%compare
+  %gte.0 = f32[3,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[3,8,5] slice(%gte.0), slice={[0:3], [0:8], [0:5]}
+  %gte.1 = s32[3,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[3,8,5] slice(%gte.1), slice={[0:3], [0:8], [0:5]}
+  ROOT %tuple = (f32[3,8,5], s32[3,8,5]) tuple(%slice.0, %slice.1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(TopkRewriterTest, Rewrite3DShardedSortClearsIncompatibleSharding) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[4,8,1024] parameter(0), sharding={devices=[2,1,1]0,1}
+  %iota = s32[4,8,1024] iota(), iota_dimension=2, sharding={devices=[2,1,1]0,1}
+  %sort = (f32[4,8,1024], s32[4,8,1024]) sort(%arg, %iota),
+    dimensions={2}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[2,1,1]0,1}, {devices=[2,1,1]0,1}}
+  %gte.0 = f32[4,8,1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[4,8,5] slice(%gte.0), slice={[0:4], [0:8], [0:5]}
+  %gte.1 = s32[4,8,1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[4,8,5] slice(%gte.1), slice={[0:4], [0:8], [0:5]}
+  ROOT %tuple = (f32[4,8,5], s32[4,8,5]) tuple(%slice.0, %slice.1)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  ASSERT_OK(verifier().Run(module.get()).status());
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Reshape(m::Parameter(0))), 0)),
+                  m::Reshape(m::GetTupleElement(
+                      m::CustomCall(m::Reshape(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_FALSE(cc->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite2DSortDim0TiledShardingClearsSharding) {
+  const std::string hlo_string = absl::StrCat(R"(
+HloModule module_2d_tiled
+)",
+                                              getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={devices=[1,2]0,1}
+  %iota = s32[1024,8] iota(), iota_dimension=0, sharding={devices=[1,2]0,1}
+  %sort = (f32[1024,8], s32[1024,8]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[1,2]0,1}, {devices=[1,2]0,1}}
+  %gte.0 = f32[1024,8] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5,8] slice(%gte.0), slice={[0:5], [0:8]}
+  %gte.1 = s32[1024,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5,8] slice(%gte.1), slice={[0:5], [0:8]}
+  ROOT %tuple = (f32[5,8], s32[5,8]) tuple(%slice.0, %slice.1)
+})");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  EXPECT_TRUE(changed);
+  ASSERT_OK(verifier().Run(module.get()).status());
+  const HloInstruction* cc = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(&cc, m::Transpose(m::Parameter(0))), 0)),
+                  m::Transpose(m::GetTupleElement(
+                      m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc, nullptr);
+  EXPECT_FALSE(cc->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite1DShardedSortPreservesSharding) {
+  // 1D sorts (has_batch == false, sort_dim == 0) do not reshape or transpose,
+  // so valid 1D tiled shardings are preserved on topk (for 2-operand sort) and
+  // value_gte (for 1-operand sort).
+  const std::string hlo_1d_sharded = absl::StrCat(R"(
+HloModule module_1d
+)",
+                                                  getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024] parameter(0), sharding={devices=[2]0,1}
+  %iota = s32[1024] iota(), iota_dimension=0, sharding={devices=[2]0,1}
+  %sort = (f32[1024], s32[1024]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  %gte.0 = f32[1024] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5] slice(%gte.0), slice={[0:5]}
+  %gte.1 = s32[1024] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5] slice(%gte.1), slice={[0:5]}
+  ROOT %tuple = (f32[5], s32[5]) tuple(%slice.0, %slice.1)
+})");
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_1d,
+                       ParseAndReturnVerifiedModule(hlo_1d_sharded));
+  ASSERT_OK_AND_ASSIGN(bool changed_1d, rewriter.Run(module_1d.get()));
+  ASSERT_OK(HloDCE().Run(module_1d.get()).status());
+  EXPECT_TRUE(changed_1d);
+  ASSERT_OK(verifier().Run(module_1d.get()).status());
+  const HloInstruction* cc_1d = nullptr;
+  EXPECT_THAT(module_1d->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  m::GetTupleElement(m::CustomCall(&cc_1d, m::Parameter(0)), 0),
+                  m::GetTupleElement(m::CustomCall(m::Parameter(0)), 1))));
+  ASSERT_NE(cc_1d, nullptr);
+  EXPECT_TRUE(cc_1d->has_sharding());
+}
+
+TEST_F(TopkRewriterTest, Rewrite2DSortDim0ManualShardingPreservesSharding) {
+  // Manual sharding on a 2D sort_dim == 0 sort is preserved on topk, whereas
+  // tiled sharding is cleared because topk transposes the dimensions.
+  const std::string hlo_2d_manual = absl::StrCat(R"(
+HloModule module_manual
+)",
+                                                 getComparator(), R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={manual}
+  %iota = s32[1024,8] iota(), iota_dimension=0, sharding={manual}
+  %sort = (f32[1024,8], s32[1024,8]) sort(%arg, %iota),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={{manual}, {manual}}
+  %gte.0 = f32[1024,8] get-tuple-element(%sort), index=0
+  %slice.0 = f32[5,8] slice(%gte.0), slice={[0:5], [0:8]}
+  %gte.1 = s32[1024,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[5,8] slice(%gte.1), slice={[0:5], [0:8]}
+  ROOT %tuple = (f32[5,8], s32[5,8]) tuple(%slice.0, %slice.1)
+})");
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_manual,
+                       ParseAndReturnVerifiedModule(hlo_2d_manual));
+  ASSERT_OK_AND_ASSIGN(bool changed_manual, rewriter.Run(module_manual.get()));
+  ASSERT_OK(HloDCE().Run(module_manual.get()).status());
+  EXPECT_TRUE(changed_manual);
+  ASSERT_OK(verifier().Run(module_manual.get()).status());
+  const HloInstruction* cc_manual = nullptr;
+  EXPECT_THAT(
+      module_manual->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Transpose(m::GetTupleElement(
+              m::CustomCall(&cc_manual, m::Transpose(m::Parameter(0))), 0)),
+          m::Transpose(m::GetTupleElement(
+              m::CustomCall(m::Transpose(m::Parameter(0))), 1)))));
+  ASSERT_NE(cc_manual, nullptr);
+  ASSERT_TRUE(cc_manual->has_sharding());
+  EXPECT_TRUE(cc_manual->sharding().IsManual());
+}
+
+TEST_F(TopkRewriterTest,
+       Rewrite3DShardedSort1OperandClearsIncompatibleSharding) {
+  for (absl::string_view hlo_body : {
+           R"(
+ENTRY cluster {
+  %arg = f32[4,8,1024] parameter(0), sharding={devices=[2,1,1]0,1}
+  %sort = f32[4,8,1024] sort(%arg),
+    dimensions={2}, is_stable=true, to_apply=%compare,
+    sharding={devices=[2,1,1]0,1}
+  ROOT %slice = f32[4,8,5] slice(%sort), slice={[0:4], [0:8], [0:5]}
+})",
+           R"(
+ENTRY cluster {
+  %arg = f32[1024,4,8] parameter(0), sharding={devices=[1,2,1]0,1}
+  %sort = f32[1024,4,8] sort(%arg),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={devices=[1,2,1]0,1}
+  ROOT %slice = f32[5,4,8] slice(%sort), slice={[0:5], [0:4], [0:8]}
+})",
+           R"(
+ENTRY cluster {
+  %arg = f32[1024,8] parameter(0), sharding={devices=[1,2]0,1}
+  %sort = f32[1024,8] sort(%arg),
+    dimensions={0}, is_stable=true, to_apply=%compare,
+    sharding={devices=[1,2]0,1}
+  ROOT %slice = f32[5,8] slice(%sort), slice={[0:5], [0:8]}
+})",
+       }) {
+    const std::string hlo_string =
+        absl::StrCat("HloModule module\n", getComparatorNoIota(), hlo_body);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK(HloDCE().Run(module.get()).status());
+    EXPECT_TRUE(changed);
+    ASSERT_OK(verifier().Run(module.get()).status());
+    for (const HloInstruction* inst :
+         module->entry_computation()->instructions()) {
+      if (inst->opcode() != HloOpcode::kParameter) {
+        EXPECT_FALSE(inst->has_sharding()) << inst->ToString();
+      }
+    }
+  }
+}
+
+}  // namespace
+}  // namespace xla

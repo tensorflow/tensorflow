@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
-#include "xla/service/async_custom_call_utils.h"
+#include "xla/hlo/transforms/async_custom_call_utils.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

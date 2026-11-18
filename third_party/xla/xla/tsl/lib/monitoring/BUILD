@@ -48,6 +48,7 @@ package(
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//xla/hlo/experimental:__subpackages__",
+        "//xla/hlo/transforms:__subpackages__",
         "//tensorflow/core/lib/monitoring:__subpackages__",
         "//xla/service:__subpackages__",
         "//xla/tsl/framework:__subpackages__",

@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
-#include "xla/service/instruction_fusion.h"
 
 namespace xla {
 namespace cpu {

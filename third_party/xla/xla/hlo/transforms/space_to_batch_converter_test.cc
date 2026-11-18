@@ -1,0 +1,1074 @@
+/* Copyright 2018 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/hlo/transforms/space_to_batch_converter.h"
+
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/utils/hlo_matchers.h"
+
+namespace xla {
+namespace {
+
+using ::absl_testing::IsOkAndHolds;
+using SpaceToBatchConverterTest = HloHardwareIndependentTestBase;
+namespace op = testing::opcode_matchers;
+
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1) {
+  std::string hlo_string = R"(
+
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  ROOT %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+  dim_labels=b01f_01io->b01f
+}
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
+  // Verify that the transform has increased the batch size.
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 1);
+}
+
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1ConvXpose) {
+  std::string hlo_string = R"(
+
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+  dim_labels=b01f_01io->b01f
+  ROOT tr = bf16[1,256,256,32] transpose(%convolution), dimensions={0,2,1,3}
+}
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  // This should be the original root transpose - which we handle transparently.
+  EXPECT_THAT(previous_reshape->operand(0), op::Select());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+}
+
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
+  std::string hlo_string = R"(
+  HloModule module
+  adder (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+    lhs = bf16[] parameter(0)
+    rhs = bf16[] parameter(1)
+    ROOT add = bf16[] add(lhs, rhs)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[1,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+    %constant = bf16[3] constant({1.0, 2.0, 3.0})
+    %tuple = (bf16[1,256,256,32], bf16[3])tuple(%convolution, %constant)
+    ROOT %gte = bf16[1,256,256,32] get-tuple-element(%tuple), index=0
+    %gte2 = bf16[3]get-tuple-element(%tuple), index=1
+    %init = bf16[] constant(1.0)
+    %reduce-window = bf16[3] reduce-window(bf16[3] %gte2, bf16[] %init),
+      window={size=1}, to_apply=%adder
+  }
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  // Test that a reduce window consumer with different rank won't freeze the
+  // compiler.
+  ASSERT_TRUE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
+  std::string hlo_string = R"(
+  HloModule module
+  ENTRY computation {
+    %p0 = bf16[2,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    ROOT %convolution = bf16[2,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  }
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 1});
+  ASSERT_FALSE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  ENTRY comp {
+    %reduce-window = bf16[1,76,76,64]{3,2,1,0} parameter(0)
+    %convert.13 = bf16[3,3,64,64]{3,2,1,0} parameter(1)
+    %convolution.1 = bf16[64,76,76,1]{0,2,1,3} convolution(
+      %reduce-window, %convert.13), window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_01io->f01b
+     ROOT custom-call.5079 = bf16[64,152,152,1]{0,2,1,3} custom-call(%convolution.1),
+     custom_call_target="ResizeNearest"
+  }
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 1});
+  ASSERT_FALSE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
+  std::string hlo_string = R"(
+  HloModule module
+  ENTRY computation {
+    %p0 = bf16[1,224,224,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[7,7,3,64]{3,2,1,0} parameter(1)
+
+    ROOT %convolution.3 = bf16[1,112,112,64]{3,2,1,0} convolution(%p0, %p1),
+      window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 4});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
+
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest, Batch1WithBaseDilation) {
+  std::string hlo_string = R"(
+
+  HloModule module
+ENTRY computation {
+  %p2 = bf16[1,28,28,128]{3,0,2,1} parameter(0)
+  %p3 = bf16[1,1,512,128]{3,2,1,0} parameter(1)
+  ROOT %c = bf16[1,56,56,512]{3,0,2,1} convolution(%p2, %p3),
+    window={size=1x1 pad=0_1x0_1 lhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=b01f_01oi->b01f
+}
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  auto previous_reshape = reshape->operand(0);
+  EXPECT_THAT(previous_reshape, op::Reshape());
+  EXPECT_THAT(previous_reshape->operand(0)->operand(1), op::Convolution());
+  const int64_t batch_dim = previous_reshape->operand(0)
+                                ->operand(1)
+                                ->convolution_dimension_numbers()
+                                .output_batch_dimension();
+
+  EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest, BaseDilationEqualToLowPad) {
+  const std::string hlo_string = R"(
+HloModule module
+
+ENTRY computation {
+  p0 = f32[1,1,128] parameter(0)
+  p1 = f32[1,1,6] parameter(1)
+  ROOT conv = f32[1,1,384] convolution(p0, p1),
+    window={size=6 pad=3_4 lhs_dilate=3}, dim_labels=bf0_oi0->bf0
+}
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = f32[8,51,1]{{.*}} convolution({{.*}}), window={size=6 pad=0_1 lhs_dilate=3}, dim_labels=fb0_oi0->b0f
+// CHECK:         %[[RESHAPE:.*]] = f32[1,408,1]{{.*}} reshape(
+// CHECK:         %[[SLICE:.*]] = f32[1,384,1]{{.*}} slice(%[[RESHAPE]]), slice={[0:1], [0:384], [0:1]}
+// CHECK:         ROOT {{.*}} = f32[1,1,384]{{.*}} transpose(%[[SLICE]]), dimensions={0,2,1}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnConvBaseDilationEqualToLowPad) {
+  const std::string hlo_string = R"(
+HloModule module
+
+ENTRY computation {
+  p0 = f32[1,1,63] parameter(0)
+  k0 = f32[1,1,3] parameter(1)
+  conv0 = f32[1,1,63] convolution(p0, k0),
+    window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  k1 = f32[1,1,26] parameter(2)
+  ROOT conv1 = f32[1,1,167] convolution(conv0, k1),
+    window={size=26 pad=3_2 lhs_dilate=3}, dim_labels=bf0_oi0->bf0
+}
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV0:.*]] = f32[8,9,1]{{.*}} convolution({{.*}}), window={size=3}, dim_labels=fb0_oi0->b0f
+// CHECK:         %[[CONV1:.*]] = f32[8,27,1]{{.*}} convolution({{.*}}), window={size=26 lhs_dilate=3}, dim_labels=b0f_oi0->b0f
+// CHECK:         %[[RESHAPE:.*]] = f32[1,216,1]{{.*}} reshape(
+// CHECK:         %[[SLICE:.*]] = f32[1,167,1]{{.*}} slice(%[[RESHAPE]]), slice={[0:1], [0:167], [0:1]}
+// CHECK:         ROOT {{.*}} = f32[1,1,167]{{.*}} transpose(%[[SLICE]]), dimensions={0,2,1}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  ENTRY computation {
+    %p0 = bf16[1,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+    %p2 = bf16[32,32] parameter(2)
+    ROOT %dot.5010 = bf16[1,256,256,32] dot(%convolution, %p2),
+      lhs_contracting_dims={3},
+      rhs_contracting_dims={0}
+  }
+
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  // Test that we do not start space-to-batch on conv->dot chains.
+  ASSERT_TRUE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+              op::Reduce());
+  auto new_reduce = root->operand(0)->operand(0)->operand(0)->operand(0);
+  // Make sure we propagated on the reduce with the larger batch size.
+  EXPECT_EQ(new_reduce->shape().dimensions(1),
+            // batch*number_of_splits
+            7 * 8);
+}
+
+TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+%minmax_func.2717 {
+  %lhs_value.2718 = f32[] parameter(0)
+  %rhs_value.2720 = f32[] parameter(2)
+  %compare.2722 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=GE
+  %select.2723 = f32[] select(pred[] %compare.2722, f32[] %lhs_value.2718, f32[] %rhs_value.2720)
+  %compare.2725 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=EQ
+  %lhs_index.2719 = f32[] parameter(1)
+  %rhs_index.2721 = f32[] parameter(3)
+  %minimum.2726 = f32[] minimum(f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2724 = f32[] select(pred[] %compare.2722, f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2727 = f32[] select(pred[] %compare.2725, f32[] %minimum.2726, f32[] %select.2724)
+  ROOT %tuple.4 = (f32[], f32[]) tuple(f32[] %select.2723, f32[] %select.2727)
+ }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    %constant.6 = f32[] constant(1)
+    ROOT %reduce.36 = (f32[7,160,400]{2,1,0}, f32[7,160,400]{2,1,0}) reduce(%c, %c,
+    %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+}
+
+TEST_F(SpaceToBatchConverterTest, ReduceDegenerateDim) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_42.4982  {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = f32[2,1,84,84,3]{4,3,2,1,0}  parameter(0)
+    %p1 = f32[3,3,3,3,32]{4,3,2,1,0} parameter(1)
+    %constant.10559 = f32[] constant(0)
+    %convolution.98 = f32[2,1,84,84,32]{4,3,2,1,0} convolution(%p0, %p1),
+      window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+
+    ROOT %reduce.2606 = f32[2,84,84]{2,1,0} reduce(f32[2,1,84,84,32]{4,3,2,1,0}
+      %convolution.98, f32[] %constant.10559), dimensions={1,4}, to_apply=%region_42.4982
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnReduce) {
+  std::string hlo_string = R"(
+HloModule xla_computation_unknown.14
+
+region_0.134 {
+  Arg_0.135 = f32[] parameter(0)
+  Arg_1.136 = f32[] parameter(1)
+  ROOT add.137 = f32[] add(Arg_0.135, Arg_1.136)
+}
+
+ENTRY main.140 {
+  p0 = bf16[1,512,32,128]{3,2,1,0} parameter(0)
+  p1 = f32[3,3,128,128]{3,2,1,0} parameter(1)
+  %convolution.755 = f32[1,512,32,128]{3,2,1,0}
+    convolution(p0, p1),
+    window={size=3x3 pad=1_1x1_1 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
+  %constant.19458 = f32[] constant(0)
+  ROOT %reduce.1354 = f32[128]{0} reduce(%convolution.755, %constant.19458),
+    dimensions={0,1,2}, to_apply=%region_0.134
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationIntoCalledComputation) {
+  const std::string hlo_string = R"(
+HloModule module
+
+called_computation {
+  called_p0 = bf16[1,256,256,32] parameter(0)
+  ROOT identity = bf16[1,256,256,32] copy(called_p0)
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  conv = bf16[1,256,256,32] convolution(entry_p0, entry_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+  ROOT call = bf16[1,256,256,32] call(conv), to_apply=called_computation
+}
+
+// CHECK-LABEL: %called_computation
+// CHECK:         ROOT %identity = bf16[1,256,256,32]{{.*}} copy(%called_p0)
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         %[[B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+// CHECK:         ROOT %call = bf16[1,256,256,32]{{.*}} call(%[[B2S]]), to_apply=%called_computation
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationOutOfCalledComputation) {
+  const std::string hlo_string = R"(
+HloModule module
+
+callee {
+  callee_p0 = bf16[1,258,258,32] parameter(0)
+  callee_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(callee_p0, callee_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_bias = bf16[1,256,256,32] parameter(2)
+  call = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=callee
+  ROOT add = bf16[1,256,256,32] add(call, entry_bias)
+}
+
+// CHECK-LABEL: %callee
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %call = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%callee
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call, %entry_bias)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationThroughCallInstruction) {
+  const std::string hlo_string = R"(
+HloModule module
+
+callee {
+  callee_p0 = bf16[1,256,256,32] parameter(0)
+  ROOT identity = bf16[1,256,256,32] copy(callee_p0)
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_bias = bf16[1,256,256,32] parameter(2)
+  conv = bf16[1,256,256,32] convolution(entry_p0, entry_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+  call = bf16[1,256,256,32] call(conv), to_apply=callee
+  ROOT add = bf16[1,256,256,32] add(call, entry_bias)
+}
+
+// CHECK-LABEL: %callee
+// CHECK:         ROOT %identity = bf16[1,256,256,32]{{.*}} copy(%callee_p0)
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         %[[B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+// CHECK:         %call = bf16[1,256,256,32]{{.*}} call(%[[B2S]]), to_apply=%callee
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call, %entry_bias)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, TransformCalledComputationCalledOnce) {
+  const std::string hlo_string = R"(
+HloModule module
+
+foo {
+  foo_p0 = bf16[1,258,258,32] parameter(0)
+  foo_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(foo_p0, foo_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT call = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=foo
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         ROOT %call = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%foo
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, TransformCalledComputationCalledTwice) {
+  const std::string hlo_string = R"(
+HloModule module
+
+foo {
+  foo_p0 = bf16[1,258,258,32] parameter(0)
+  foo_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(foo_p0, foo_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_p2 = bf16[1,258,258,32] parameter(2)
+  call1 = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=foo
+  call2 = bf16[1,256,256,32] call(entry_p2, entry_p1), to_apply=foo
+  ROOT add = bf16[1,256,256,32] add(call1, call2)
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %call1 = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%foo
+// CHECK:         %call2 = bf16[1,256,256,32]{{.*}} call(%entry_p2, %entry_p1), to_apply=%foo
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call1, %call2)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       DoesNotBlockConvWhenUnpropagatableOpIsBehindReshape) {
+  const std::string hlo_string = R"(
+HloModule module
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}256]{{.*}} convolution(
+// CHECK:         %[[B2S:.*]] = bf16[1,56,56,256]{{.*}} transpose(
+// CHECK:         %flat = bf16[1,3136,256]{{.*}} reshape(%[[B2S]])
+// CHECK:         %proj = bf16[1,3136,256]{{.*}} dot(%flat, %w_dot)
+// CHECK:         ROOT %custom = bf16[1,3136,256]{{.*}} custom-call(%proj)
+ENTRY computation {
+  p0 = bf16[1,58,58,256] parameter(0)
+  p1 = bf16[3,3,1,256] parameter(1)
+  w_dot = bf16[256,256] parameter(2)
+  conv = bf16[1,56,56,256] convolution(p0, p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f, feature_group_count=256
+  gelu_mul = bf16[1,56,56,256] multiply(conv, conv)
+  flat = bf16[1,3136,256] reshape(gelu_mul)
+  proj = bf16[1,3136,256] dot(flat, w_dot), lhs_contracting_dims={2},
+    rhs_contracting_dims={0}
+  ROOT custom = bf16[1,3136,256] custom-call(proj),
+    custom_call_target="SomeUnpropagatableTarget"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      /*enable_propagations_on_base_dilations=*/true,
+      /*enable_propagations_on_window_dilations=*/true,
+      /*enable_propagations_on_trivial_window_dilations=*/true,
+      /*disable_starting_on_small_chains=*/true,
+      /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       BlocksConvWhenDimensionSplittingReshapeFeedsUnpropagatableOp) {
+  const std::string hlo_string = R"(
+HloModule module
+
+ENTRY computation {
+  p0 = bf16[3,258,32] parameter(0)
+  p1 = bf16[3,1,32] parameter(1)
+  conv = bf16[3,256,32] convolution(p0, p1), window={size=3},
+    dim_labels=b0f_0io->b0f, feature_group_count=32
+  heads = bf16[3,256,4,8] reshape(conv)
+  bcast = bf16[3,256,4,2,8] broadcast(heads), dimensions={0,1,2,4}
+  gqa = bf16[3,256,8,8] reshape(bcast)
+  ROOT attn = bf16[3,256,8,8] custom-call(gqa),
+    custom_call_target="InvertDiagBlocksLowerTriangular"
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      /*enable_propagations_on_base_dilations=*/true,
+      /*enable_propagations_on_window_dilations=*/true,
+      /*enable_propagations_on_trivial_window_dilations=*/true,
+      /*disable_starting_on_small_chains=*/true,
+      /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       BaseDilatedConvWithLowPadEqualToBaseDilation) {
+  const std::string hlo_string = R"(
+HloModule module
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = f32[1,8,15,1]{{.*}} convolution(
+// CHECK-SAME:      window={size=1x2 pad=0_0x0_2 lhs_dilate=1x3 rhs_dilate=1x3
+// CHECK:         %[[RESHAPE:.*]] = f32[1,1,120,1]{{.*}} reshape(
+// CHECK:         %[[SLICE:.*]] = f32[1,1,100,1]{{.*}} slice(%[[RESHAPE]])
+ENTRY computation {
+  p0 = f32[1,1,33,1] parameter(0)
+  p1 = f32[1,2,1,1] parameter(1)
+  ROOT conv = f32[1,1,100,1] convolution(p0, p1),
+    window={size=1x2 pad=0_0x3_3 lhs_dilate=1x3 rhs_dilate=1x3
+            rhs_reversal=1x1},
+    dim_labels=b01f_01oi->b01f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      /*enable_propagations_on_base_dilations=*/true,
+      /*enable_propagations_on_window_dilations=*/true,
+      /*enable_propagations_on_trivial_window_dilations=*/true,
+      /*disable_starting_on_small_chains=*/true,
+      /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// The convolutions this pass builds take only lhs and rhs, so a block scaled
+// convolution must not be space-to-batched: its scale operand would be dropped.
+TEST_F(SpaceToBatchConverterTest, DoNotStartOnBlockScaledConv) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %p2 = f8e8m0fnu[1,258,258,2] parameter(2)
+  ROOT %convolution = bf16[1,256,256,32] convolution(%p0, %p1, %p2),
+    window={size=3x3}, dim_labels=b01f_01io->b01f,
+    block_scaling_config={lhs={scale_idx=2}}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(false));
+}
+
+// A block scaled backprop filter convolution fed by a space-to-batched
+// convolution must not be rewritten either; it goes through the batch-to-space
+// fallback and keeps its scale operand.
+TEST_F(SpaceToBatchConverterTest, DoNotPropagateIntoBlockScaledBackpropConv) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,256,256,32] parameter(2)
+  %p3 = f8e8m0fnu[1,256,256,32] parameter(3)
+  ROOT %backprop_filter = bf16[32,1,1,32] convolution(%convolution, %p2, %p3),
+    window={size=256x256}, dim_labels=f01b_i01o->b01f,
+    block_scaling_config={lhs={scale_idx=2}}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_OK(converter.Run(module.get()).status());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->operand_count(), 3);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kParameter);
+  EXPECT_TRUE(root->block_scaling_config().has_lhs());
+}
+
+// Every window position along the split dimension of the backprop filter conv
+// reads high padding and there is no low padding. Used to crash on an empty
+// chunk list.
+TEST_F(SpaceToBatchConverterTest, BackpropFilterConvWithOnlyHighPaddedWindows) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = f32[1,56,756,2] parameter(0)
+  %p1 = f32[1,16,192,4] parameter(1)
+  %p2 = f32[3,3,4,4] parameter(2)
+  %grad = f32[1,14,190,4] convolution(%p1, %p2), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  ROOT %backprop_filter = f32[5,5,2,4] convolution(%p0, %grad),
+    window={size=14x190 pad=0_1x0_5 rhs_dilate=4x4}, dim_labels=f01b_i01o->01bf
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root,
+              op::Reshape(op::Convolution(op::Concatenate(), op::Reshape())));
+  // One chunk of original activations and four high padding slices.
+  EXPECT_EQ(root->operand(0)->operand(0)->operand_count(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       SkipsSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,128,256] parameter(2)
+  ROOT %backprop_filter = bf16[32,3,3,256] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoLargeBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,128] parameter(0)
+  %p1 = bf16[1,1,128,128] parameter(1)
+  %convolution = bf16[1,256,256,128] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,128,128] parameter(2)
+  ROOT %backprop_filter = bf16[128,3,3,128] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoUnstridedSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,256,256,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,1,1,32] convolution(%convolution, %p2),
+    window={size=256x256}, dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoHighPaddedSmallBatchBackpropConvWhenMaxBatchSizeSet) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,64,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,3,9,32] convolution(%convolution, %p2),
+    window={size=128x64 pad=1_0x0_5 rhs_dilate=2x4 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       SkipsBackpropConvAtExactMaxBatchSizeAndFeatureBoundary) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[7,256,256,127] parameter(0)
+  %p1 = bf16[1,1,127,127] parameter(1)
+  %convolution = bf16[7,256,256,127] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[7,128,128,256] parameter(2)
+  ROOT %backprop_filter = bf16[127,3,3,256] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       SkipsBackpropConvWithAsymmetricSpatialViability) {
+  // Spatial dimension 0 has `lhs_spatial = 256 >= 128` and `rhs_spatial = 128
+  // >= 128` (`> batch = 1`), while spatial dimension 1 has `lhs_spatial = 48 <
+  // 128` and `rhs_spatial = 24`. Because dimension 0 is viable as the minor
+  // spatial dimension and fills the RHS lane tile (`(O, KW)`), propagation is
+  // skipped when `disable_backprop_filter_propagation_max_batch_size = 127`
+  // (whereas with `0` it propagates to 5D).
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,48,1] parameter(0)
+  %p1 = bf16[1,1,1,1] parameter(1)
+  %convolution = bf16[1,256,48,1] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,128,24,32] parameter(2)
+  ROOT %backprop_filter = bf16[1,3,3,32] convolution(%convolution, %p2),
+    window={size=128x24 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> baseline_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchController baseline_ctrl{true, true, true, true, 7};
+  EXPECT_THAT(SpaceToBatchConverter(baseline_ctrl).Run(baseline_module.get()),
+              IsOkAndHolds(true));
+  ASSERT_THAT(baseline_module->entry_computation()->root_instruction(),
+              op::Reshape(op::Convolution()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->shape().dimensions().size(), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoAsymmetricBackpropConvWhenDim0RhsSmallerThanLaneTile) {
+  // Spatial dimension 1 has `lhs_spatial = 48 < 128` (inviable as minor), while
+  // spatial dimension 0 has `lhs_spatial = 128 >= 128` but `rhs_spatial = 64 <
+  // 128`, which would leave `rhs` in `{3, 2, 1, 0}` (`(KH, O)`). Propagation
+  // must continue rather than stranding the 2D convolution.
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,128,48,1] parameter(0)
+  %p1 = bf16[1,1,1,1] parameter(1)
+  %convolution = bf16[1,128,48,1] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,64,24,32] parameter(2)
+  ROOT %backprop_filter = bf16[1,3,3,32] convolution(%convolution, %p2),
+    window={size=64x24 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 5);
+}
+
+TEST_F(SpaceToBatchConverterTest,
+       PropagatesIntoLargeFilterOrIntegralBackpropConv) {
+  // Output spatial area `11 * 11 = 121 > 64` exceeds the spatial-minor VMEM
+  // filter cap, so space-to-batch propagation proceeds.
+  std::string large_filter_hlo = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,256,256,32] parameter(0)
+  %p1 = bf16[1,1,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,124,124,32] parameter(2)
+  ROOT %backprop_filter = bf16[32,11,11,32] convolution(%convolution, %p2),
+    window={size=124x124 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> large_filter_module,
+                       ParseAndReturnVerifiedModule(large_filter_hlo));
+  SpaceToBatchController ctrl{true, true, true, true, 7};
+  ctrl.disable_backprop_filter_propagation_max_batch_size = 127;
+  SpaceToBatchConverter converter(ctrl);
+  EXPECT_THAT(converter.Run(large_filter_module.get()), IsOkAndHolds(true));
+  const HloInstruction* lf_root =
+      large_filter_module->entry_computation()->root_instruction();
+  ASSERT_THAT(lf_root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(lf_root->operand(0)->shape().dimensions().size(), 5);
+
+  // Integral `s8 -> s32` convolutions are not handled by
+  // `SpatialMinorMosaicEmitter`, so space-to-batch propagation proceeds.
+  std::string integral_hlo = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = s8[1,256,256,32] parameter(0)
+  %p1 = s8[1,1,32,32] parameter(1)
+  %convolution = s8[1,256,256,32] convolution(%p0, %p1), window={size=1x1},
+    dim_labels=b01f_01io->b01f
+  %p2 = s8[1,128,128,32] parameter(2)
+  ROOT %backprop_filter = s32[32,3,3,32] convolution(%convolution, %p2),
+    window={size=128x128 pad=1_0x1_0 rhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=f01b_i01o->b01f
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> integral_module,
+                       ParseAndReturnVerifiedModule(integral_hlo));
+  EXPECT_THAT(converter.Run(integral_module.get()), IsOkAndHolds(true));
+  const HloInstruction* int_root =
+      integral_module->entry_computation()->root_instruction();
+  ASSERT_THAT(int_root, op::Reshape(op::Convolution()));
+  EXPECT_EQ(int_root->operand(0)->shape().dimensions().size(), 5);
+}
+}  // namespace
+}  // namespace xla

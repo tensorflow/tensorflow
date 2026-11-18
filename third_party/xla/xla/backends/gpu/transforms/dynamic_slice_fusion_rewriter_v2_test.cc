@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/copy_insertion.h"
+#include "xla/hlo/transforms/copy_insertion.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/platform_util.h"

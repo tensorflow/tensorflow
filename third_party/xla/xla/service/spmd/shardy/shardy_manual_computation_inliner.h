@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/call_inliner.h"
+#include "xla/hlo/transforms/call_inliner.h"
 
 namespace xla::sdy {
 

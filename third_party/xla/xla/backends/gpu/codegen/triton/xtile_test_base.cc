@@ -45,11 +45,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 

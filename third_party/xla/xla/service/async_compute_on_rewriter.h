@@ -16,59 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASYNC_COMPUTE_ON_REWRITER_H_
 #define XLA_SERVICE_ASYNC_COMPUTE_ON_REWRITER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-class AsyncComputeOnHelper {
- public:
-  virtual ~AsyncComputeOnHelper() = default;
-  virtual absl::Status AddBackendSpecializations(
-      HloInstruction* custom_call_start, HloInstruction* async_start) {
-    return absl::OkStatus();
-  }
-};
-
-// Rewrites compute-on-start and compute-on-done custom calls into async
-// instructions.
-class AsyncComputeOnRewriter : public HloModulePass {
- public:
-  explicit AsyncComputeOnRewriter(
-      bool use_legacy_collectives = false,
-      AsyncComputeOnHelper* compute_on_helper = nullptr)
-      : use_legacy_collectives_(use_legacy_collectives),
-        compute_on_helper_(compute_on_helper) {}
-
-  absl::string_view name() const override {
-    return "async-compute-on-rewriter";
-  }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> RunImpl(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  absl::StatusOr<bool> ProcessComputeOn(
-      HloComputation* computation, HloInstruction* start_call,
-      HloInstruction* done_call,
-      absl::Span<const hlo_instruction_utils::async::AsyncTraceStep>
-          forward_path,
-      bool use_legacy_collectives);
-
- private:
-  bool use_legacy_collectives_;
-  AsyncComputeOnHelper* compute_on_helper_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/async_compute_on_rewriter.h"
+#include "xla/hlo/transforms/async_compute_on_rewriter.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_ASYNC_COMPUTE_ON_REWRITER_H_

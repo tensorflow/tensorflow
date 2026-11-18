@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/transforms/layout_assignment.h"
 #include "xla/layout.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/layout_assignment.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

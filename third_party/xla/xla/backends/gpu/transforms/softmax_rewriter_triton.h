@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/transforms/instruction_fusion.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace tsl::thread {

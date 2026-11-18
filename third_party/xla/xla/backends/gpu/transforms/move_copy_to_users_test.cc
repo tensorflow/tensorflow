@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/layout_assignment.h"
+#include "xla/hlo/transforms/layout_assignment.h"
 
 namespace xla {
 namespace {

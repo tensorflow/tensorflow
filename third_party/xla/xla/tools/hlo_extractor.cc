@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/call_inliner.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/call_inliner.h"
 #include "xla/tsl/platform/errors.h"
 
 #ifndef _WIN32

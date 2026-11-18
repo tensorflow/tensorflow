@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/service/copy_insertion.h"
+#include "xla/hlo/transforms/copy_insertion.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"

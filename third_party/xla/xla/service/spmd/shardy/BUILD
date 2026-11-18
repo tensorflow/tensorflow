@@ -148,7 +148,7 @@ cc_library(
         ":constants",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_registry",
-        "//xla/service:call_inliner",
+        "//xla/hlo/transforms:call_inliner",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
