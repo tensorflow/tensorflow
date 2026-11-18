@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -80,6 +81,35 @@ TEST_P(ShardingSpecSerDesTest, RejectZeroOrNegativeNumShards) {
   EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("requires at least 1 shard")));
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectOutOfRangeOrTupleShardingOnDeserialize) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  xla::OpSharding* op_sharding = proto.mutable_xla_op_sharding();
+  op_sharding->set_type(xla::OpSharding::OTHER);
+  op_sharding->add_tile_assignment_dimensions(num_shards());
+  for (int i = 0; i < num_shards() - 1; ++i) {
+    op_sharding->add_tile_assignment_devices(i);
+  }
+  op_sharding->add_tile_assignment_devices(num_shards());
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must be in [0,")));
+
+  op_sharding->Clear();
+  op_sharding->set_type(xla::OpSharding::TUPLE);
+  *op_sharding->add_tuple_shardings() = xla::HloSharding::Replicate().ToProto();
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

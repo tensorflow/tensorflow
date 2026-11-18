@@ -34,7 +34,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
@@ -93,14 +95,32 @@ absl::StatusOr<std::unique_ptr<HloShardingSpec>> HloShardingSpec::CreateIfValid(
     return absl::InvalidArgumentError(absl::StrFormat(
         "HloShardingSpec requires at least 1 shard, but got %d", num_shards));
   }
-  if (!xla_hlo_sharding.IsReplicated() && !xla_hlo_sharding.IsUnreduced() &&
-      xla_hlo_sharding.IsTiled() &&
-      num_shards != xla_hlo_sharding.num_devices()) {
+  if (xla_hlo_sharding.IsTuple()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not match: "
-        "%d vs. %d; sharding=%s",
-        num_shards, xla_hlo_sharding.num_devices(),
+        "HloShardingSpec does not support tuple sharding: sharding=%s",
         xla_hlo_sharding.ToString()));
+  }
+  if (xla_hlo_sharding.IsTiled()) {
+    if (num_shards != xla_hlo_sharding.num_devices()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
+          "match: %d vs. %d; sharding=%s",
+          num_shards, xla_hlo_sharding.num_devices(),
+          xla_hlo_sharding.ToString()));
+    }
+    // `NamedSharding` (`Mesh::Validate`) and `IotaTileAssignment` already
+    // guarantee a permutation of `[0, num_devices)`, so only HloShardingV1
+    // can contain sparse IDs >= `num_shards`.
+    if (!xla_hlo_sharding.UseNamedShardingLeaf() &&
+        !xla_hlo_sharding.tile_assignment().iota().has_value()) {
+      for (int64_t device : xla_hlo_sharding.tile_assignment().array()) {
+        if (device < 0 || device >= num_shards) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "`xla_hlo_sharding` device %d must be in [0, %d); sharding=%s",
+              device, num_shards, xla_hlo_sharding.ToString()));
+        }
+      }
+    }
   }
   return std::unique_ptr<HloShardingSpec>(
       new HloShardingSpec(num_shards, std::move(xla_hlo_sharding)));
@@ -261,6 +281,12 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
                         "sharding=%s",
                         xla_hlo_sharding_.ToString()));
   }
+  if (xla_hlo_sharding_.IsUnknown()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Unknown sharding does not support IndexDomains: "
+                        "sharding=%s",
+                        xla_hlo_sharding_.ToString()));
+  }
   if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
@@ -319,6 +345,11 @@ HloShardingSpec::UniqueIndexDomains(const Shape& shape) const {
   if (xla_hlo_sharding_.IsUnreduced()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Unreduced sharding does not support UniqueIndexDomains: sharding=%s",
+        xla_hlo_sharding_.ToString()));
+  }
+  if (xla_hlo_sharding_.IsUnknown()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Unknown sharding does not support UniqueIndexDomains: sharding=%s",
         xla_hlo_sharding_.ToString()));
   }
   if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
@@ -409,6 +440,12 @@ HloShardingSpec::ShardToUniqueIndexDomainIndex() const {
   if (xla_hlo_sharding_.IsUnreduced()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Unreduced sharding does not support "
+                        "ShardToUniqueIndexDomainIndex: sharding=%s",
+                        xla_hlo_sharding_.ToString()));
+  }
+  if (xla_hlo_sharding_.IsUnknown()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Unknown sharding does not support "
                         "ShardToUniqueIndexDomainIndex: sharding=%s",
                         xla_hlo_sharding_.ToString()));
   }

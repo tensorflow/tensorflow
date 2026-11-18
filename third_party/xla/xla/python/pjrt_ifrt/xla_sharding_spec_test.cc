@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
@@ -40,6 +42,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -73,9 +76,40 @@ TEST_F(HloShardingSpecTest, CreateWithInvalidNumShards) {
                "requires at least 1 shard");
 
   const xla::HloSharding xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/5, xla_hlo_sharding),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("`num_shards` and `xla_hlo_sharding`'s `num_devices` "
+                         "does not match")));
   EXPECT_DEATH(
       HloShardingSpec::Create(/*num_shards=*/5, xla_hlo_sharding),
       "`num_shards` and `xla_hlo_sharding`'s `num_devices` does not match");
+}
+
+TEST_F(HloShardingSpecTest, CreateIfValidRejectsInvalidHloSharding) {
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::Tile(xla::Array<int64_t>({2}, {1, 0}))),
+              IsOk());
+
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::Tile(xla::Array<int64_t>({2}, {0, 2}))),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("device 2 must be in [0, 2)")));
+
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2,
+                  xla::HloSharding::FlatTuple({xla::HloSharding::Manual(),
+                                               xla::HloSharding::Manual()})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(
+                  /*num_shards=*/2, xla::HloSharding::FlatTuple(
+                                        {xla::HloSharding::Replicate(),
+                                         xla::HloSharding::IotaTile({2})})),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support tuple sharding")));
 }
 
 TEST_F(HloShardingSpecTest, IsFullyReplicated) {
@@ -580,6 +614,30 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithManual) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Manual sharding does not support IndexDomains")));
+}
+
+TEST_F(HloShardingSpecTest, IndexDomainsWithUnknownFails) {
+  int num_shards = 6;
+  std::shared_ptr<const HloShardingSpec> spec =
+      HloShardingSpec::Create(num_shards, xla::HloSharding::Unknown());
+
+  Shape shape({10, 20});
+  EXPECT_THAT(spec->IndexDomains(shape),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown sharding does not support "
+                                 "IndexDomains")));
+  EXPECT_THAT(spec->Disassemble(shape),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown sharding does not support "
+                                 "IndexDomains")));
+  EXPECT_THAT(spec->UniqueIndexDomains(shape),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown sharding does not support "
+                                 "UniqueIndexDomains")));
+  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unknown sharding does not support "
+                                 "ShardToUniqueIndexDomainIndex")));
 }
 
 TEST_F(HloShardingSpecTest, DisassembleWithManual) {
