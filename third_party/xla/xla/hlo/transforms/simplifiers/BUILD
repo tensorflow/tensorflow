@@ -1816,6 +1816,7 @@ cc_library(
     hdrs = ["reduce_window_resizer.h"],
     deps = [
         ":reduce_window_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
