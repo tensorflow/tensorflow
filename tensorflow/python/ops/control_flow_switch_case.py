@@ -14,6 +14,8 @@
 # ==============================================================================
 """Switch case for Control Flow Operations."""
 
+import numbers
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -70,12 +72,14 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
                       f"Received {key_fn_pair}.")
     key, branch_fn = key_fn_pair
 
-    if not isinstance(key, int):
+    if not isinstance(key, numbers.Integral):
       raise TypeError("key must be a Python `int`, got {}".format(type(key)))
 
     if not callable(branch_fn):
       raise TypeError("fn for key {} must be callable.".format(key))
 
+  # Normalize NumPy integer keys to Python ints.
+  branch_fns = [(int(key), fn) for key, fn in branch_fns]
   keys = [p[0] for p in branch_fns]
   if min(keys) < 0 or max(keys) >= len(keys) or len(set(keys)) != len(keys):
     raise ValueError(
