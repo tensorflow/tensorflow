@@ -15,18 +15,26 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_build_stamp.h"
 
+#include <atomic>
 #include <cstdint>
 #include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler_variant.h"
 #include "xla/pjrt/proto/pjrt_build_stamp.pb.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -37,11 +45,21 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
+
+// Platform IDs and compiler variants are opaque to the registry, so arbitrary
+// values are used.
+constexpr PjRtPlatformId kPlatformA = 1;
+constexpr PjRtCompilerVariant kVariantA{12345};
+
+// The global registry is append-only, so the one test that uses it registers a
+// platform ID that no other test uses.
+constexpr PjRtPlatformId kGlobalPlatform = 0xB5000001;
 
 absl::StatusOr<PjRtBuildStamp> FromTextProto(absl::string_view text_proto) {
   return PjRtBuildStamp::FromProto(
@@ -64,6 +82,14 @@ bool IsLowercaseHex128(absl::string_view s) {
     }
   }
   return true;
+}
+
+PjRtBuildStampRegistry::Factory FactoryWithSourceHash(std::string source_hash) {
+  return [source_hash = std::move(source_hash)]() {
+    PjRtBuildStampProto proto;
+    proto.set_source_hash(source_hash);
+    return PjRtBuildStamp::FromProto(std::move(proto));
+  };
 }
 
 TEST(PjRtCompatibilityVersionProtoTest, MatchesProtoFieldCount) {
@@ -867,6 +893,261 @@ TEST(ValidateAttributeTest, RejectsEmptyKey) {
       ValidateAttribute("", ParseTextProtoOrDie(R"pb(bool_value: true)pb")),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Attribute key must not be empty")));
+}
+
+TEST(PjRtBuildStampRegistryTest, MemoizesStamp) {
+  const PjRtBuildStampProto proto = ParseTextProtoOrDie(R"pb(
+    source_hash: "hash1"
+    components { kind: "k" name: "n" owner: "o" hash: "comp_hash" }
+    compatibility_versions { name: "v" major_version: 1 }
+  )pb");
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp expected,
+                       PjRtBuildStamp::FromProto(proto));
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  std::atomic<int> factory_calls = 0;
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, LinkedCompilerVariantId(),
+      [&]() -> absl::StatusOr<PjRtBuildStamp> {
+        factory_calls.fetch_add(1, std::memory_order_relaxed);
+        return PjRtBuildStamp::FromProto(proto);
+      }));
+
+  constexpr int kNumThreads = 8;
+  std::vector<absl::StatusOr<const PjRtBuildStamp*>> results(kNumThreads);
+  {
+    std::vector<std::thread> threads;
+    threads.reserve(kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      threads.emplace_back([&registry, &results, i] {
+        results[i] = registry.GetBuildStamp(kPlatformA);
+      });
+    }
+    for (std::thread& thread : threads) {
+      thread.join();
+    }
+  }
+
+  EXPECT_EQ(factory_calls.load(std::memory_order_relaxed), 1);
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull first, results[0]);
+  EXPECT_THAT(first->ToProto(), EqualsProto(expected.ToProto()));
+  EXPECT_EQ(first->full_source_hash(), expected.full_source_hash());
+  // Every thread has the same memoized stamp.
+  EXPECT_THAT(results, Each(IsOkAndHolds(first)));
+}
+
+TEST(PjRtBuildStampRegistryTest, RetriesFailedFactoryAndMemoizesSuccess) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  int factory_calls = 0;
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, LinkedCompilerVariantId(),
+      [&]() -> absl::StatusOr<PjRtBuildStamp> {
+        if (++factory_calls == 1) {
+          return absl::UnavailableError("transient");
+        }
+        PjRtBuildStampProto proto;
+        proto.set_source_hash("hash_after_retry");
+        return PjRtBuildStamp::FromProto(std::move(proto));
+      }));
+
+  EXPECT_THAT(registry.GetBuildStamp(kPlatformA),
+              StatusIs(absl::StatusCode::kUnavailable, HasSubstr("transient")));
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(stamp->source_hash(), "hash_after_retry");
+  EXPECT_THAT(registry.GetBuildStamp(kPlatformA), IsOkAndHolds(stamp));
+  EXPECT_EQ(factory_calls, 2);
+}
+
+TEST(PjRtBuildStampRegistryTest, FactoryMayLookUpAndRegisterOtherKeys) {
+  constexpr PjRtPlatformId kPlatformB = 2;
+  constexpr PjRtPlatformId kPlatformC = 3;
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformB, LinkedCompilerVariantId(), FactoryWithSourceHash("b")));
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, LinkedCompilerVariantId(),
+      [&registry]() -> absl::StatusOr<PjRtBuildStamp> {
+        ABSL_ASSIGN_OR_RETURN(const PjRtBuildStamp* other,
+                         registry.GetBuildStamp(kPlatformB));
+        ABSL_RETURN_IF_ERROR(registry.RegisterBuildStampFactory(
+            kPlatformC, LinkedCompilerVariantId(), FactoryWithSourceHash("c")));
+        PjRtBuildStampProto proto;
+        proto.set_source_hash(absl::StrCat("a_after_", other->source_hash()));
+        return PjRtBuildStamp::FromProto(std::move(proto));
+      }));
+
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp_a,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(stamp_a->source_hash(), "a_after_b");
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp_c,
+                       registry.GetBuildStamp(kPlatformC));
+  EXPECT_EQ(stamp_c->source_hash(), "c");
+}
+
+TEST(PjRtBuildStampRegistryTest, DefaultsToLinkedVariantWithoutPicker) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  ASSERT_OK(
+      registry.RegisterBuildStampFactory(kPlatformA, LinkedCompilerVariantId(),
+                                         FactoryWithSourceHash("linked_hash")));
+
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(stamp->source_hash(), "linked_hash");
+}
+
+TEST(PjRtBuildStampRegistryTest, ResolvesActiveVariantThroughPicker) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  const PjRtCompilerVariant remote_variant =
+      CompilerVariantFromName("remote_variant");
+  ASSERT_OK(
+      registry.RegisterBuildStampFactory(kPlatformA, LinkedCompilerVariantId(),
+                                         FactoryWithSourceHash("linked_hash")));
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, remote_variant, FactoryWithSourceHash("remote_hash")));
+
+  std::string active_variant = "remote_variant";
+  variant_pickers.RegisterVariantPicker(
+      kPlatformA, [&active_variant]() -> absl::StatusOr<std::string> {
+        return active_variant;
+      });
+
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull picked_stamp,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(picked_stamp->source_hash(), "remote_hash");
+
+  active_variant = "";
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull linked_stamp,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(linked_stamp->source_hash(), "linked_hash");
+}
+
+TEST(PjRtBuildStampRegistryTest, PropagatesVariantPickerError) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  ASSERT_OK(
+      registry.RegisterBuildStampFactory(kPlatformA, LinkedCompilerVariantId(),
+                                         FactoryWithSourceHash("linked_hash")));
+  variant_pickers.RegisterVariantPicker(
+      kPlatformA, []() -> absl::StatusOr<std::string> {
+        return absl::FailedPreconditionError("variant not linked in");
+      });
+
+  EXPECT_THAT(registry.GetBuildStamp(kPlatformA),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("variant not linked in")));
+}
+
+TEST(PjRtBuildStampRegistryTest, KeysByPlatformAndVariant) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, CompilerVariantFromName("variant_a"),
+      FactoryWithSourceHash("a_a")));
+  ASSERT_OK(registry.RegisterBuildStampFactory(
+      kPlatformA, CompilerVariantFromName("variant_b"),
+      FactoryWithSourceHash("a_b")));
+
+  std::string active_variant = "variant_a";
+  variant_pickers.RegisterVariantPicker(
+      kPlatformA, [&active_variant]() -> absl::StatusOr<std::string> {
+        return active_variant;
+      });
+
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp_a,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(stamp_a->source_hash(), "a_a");
+
+  active_variant = "variant_b";
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull stamp_b,
+                       registry.GetBuildStamp(kPlatformA));
+  EXPECT_EQ(stamp_b->source_hash(), "a_b");
+}
+
+TEST(PjRtBuildStampRegistryTest, LookupOfUnregisteredKeyFails) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  EXPECT_THAT(registry.GetBuildStamp(kPlatformA),
+              StatusIs(absl::StatusCode::kNotFound,
+                       HasSubstr("No registered build stamp factory")));
+}
+
+TEST(PjRtBuildStampRegistryTest, NullFactoryFails) {
+  PjRtBuildStampRegistry registry;
+  EXPECT_THAT(
+      registry.RegisterBuildStampFactory(kPlatformA, kVariantA, nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(PjRtBuildStampRegistryTest, DuplicateRegistrationFails) {
+  PjRtBuildStampRegistry registry;
+  ASSERT_OK(registry.RegisterBuildStampFactory(kPlatformA, kVariantA,
+                                               FactoryWithSourceHash("h1")));
+  EXPECT_THAT(registry.RegisterBuildStampFactory(kPlatformA, kVariantA,
+                                                 FactoryWithSourceHash("h2")),
+              StatusIs(absl::StatusCode::kAlreadyExists));
+}
+
+TEST(PjRtBuildStampFreeFunctionsTest, RegisterAndLookup) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  const PjRtCompilerVariant remote_variant =
+      CompilerVariantFromName("remote_variant");
+  RegisterBuildStampFactory(kPlatformA, LinkedCompilerVariantId(),
+                            FactoryWithSourceHash("linked_hash"), registry);
+  RegisterBuildStampFactory(kPlatformA, remote_variant,
+                            FactoryWithSourceHash("remote_hash"), registry);
+  std::string active_variant = "remote_variant";
+  variant_pickers.RegisterVariantPicker(
+      kPlatformA, [&active_variant]() -> absl::StatusOr<std::string> {
+        return active_variant;
+      });
+
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull active_stamp,
+                       GetCompilerBuildStamp(kPlatformA, registry));
+  EXPECT_EQ(active_stamp->source_hash(), "remote_hash");
+  EXPECT_THAT(GetCompilerFullSourceHash(kPlatformA, registry),
+              IsOkAndHolds(active_stamp->full_source_hash()));
+
+  active_variant = "";
+  ASSERT_OK_AND_ASSIGN(const PjRtBuildStamp* absl_nonnull linked_stamp,
+                       GetCompilerBuildStamp(kPlatformA, registry));
+  EXPECT_EQ(linked_stamp->source_hash(), "linked_hash");
+}
+
+TEST(PjRtBuildStampFreeFunctionsTest, LookupOfUnregisteredKeyFails) {
+  PjRtCompilerVariantPickerRegistry variant_pickers;
+  PjRtBuildStampRegistry registry(variant_pickers);
+  EXPECT_THAT(GetCompilerBuildStamp(kPlatformA, registry),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(GetCompilerFullSourceHash(kPlatformA, registry),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(PjRtBuildStampFreeFunctionsDeathTest, DuplicateRegistrationCrashes) {
+  PjRtBuildStampRegistry registry;
+  RegisterBuildStampFactory(kPlatformA, kVariantA, FactoryWithSourceHash("h1"),
+                            registry);
+  EXPECT_DEATH(RegisterBuildStampFactory(kPlatformA, kVariantA,
+                                         FactoryWithSourceHash("h2"), registry),
+               "already registered");
+}
+
+TEST(PjRtBuildStampFreeFunctionsTest, DefaultToGlobalRegistry) {
+  RegisterBuildStampFactory(kGlobalPlatform, LinkedCompilerVariantId(),
+                            FactoryWithSourceHash("global_hash"));
+
+  ASSERT_OK_AND_ASSIGN(
+      const PjRtBuildStamp* absl_nonnull stamp,
+      PjRtBuildStampRegistry::Global().GetBuildStamp(kGlobalPlatform));
+  EXPECT_EQ(stamp->source_hash(), "global_hash");
+  EXPECT_THAT(GetCompilerBuildStamp(kGlobalPlatform), IsOkAndHolds(stamp));
+  EXPECT_THAT(GetCompilerFullSourceHash(kGlobalPlatform),
+              IsOkAndHolds(stamp->full_source_hash()));
 }
 
 }  // namespace
