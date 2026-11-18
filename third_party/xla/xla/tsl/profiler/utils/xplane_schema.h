@@ -414,11 +414,13 @@ enum StatType {
   // low-level (LLO) instruction tracing
   kEstimatedFlops,
   kEstimatedBytesAccessed,
+  // Program name (distinct from kHloModule, e.g., for host runtime events).
+  kProgramName,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kEstimatedBytesAccessed,
+  kLastStatType = kProgramName,
   // LINT.ThenChange(:stat_type_enum)
 };
 

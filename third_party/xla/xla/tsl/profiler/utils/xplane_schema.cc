@@ -294,6 +294,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"hlo_module", kHloModule},
        {"unique_hlo_op_id", kUniqueHloOpId},
        {"program_id", kProgramId},
+       {"program_name", kProgramName},
        {"equation", kEquation},
        {"is_eager", kIsEager},
        {"is_func", kIsFunc},
