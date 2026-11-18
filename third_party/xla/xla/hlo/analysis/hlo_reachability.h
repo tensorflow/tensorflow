@@ -177,6 +177,19 @@ class HloReachabilityMap {
   void Replace(const HloInstruction* original,
                const HloInstruction* replacement);
 
+  // Number of 64 bit words per instruction reachability bitvector.
+  size_t words_per_bitset() const { return words_per_bitset_; }
+
+  // Unions `source`'s reachability bitvector into `dst` (sized to
+  // `words_per_bitset()`), returning true if any bit in `dst` changed.
+  bool OrReachabilityInto(Index source, absl::Span<uint64_t> dst) const {
+    DCHECK_GE(source, 0);
+    DCHECK_LT((static_cast<size_t>(source) + 1) * words_per_bitset_,
+              total_words_);
+    DCHECK_EQ(dst.size(), words_per_bitset_);
+    return BitSet(dst.data(), dst.size()).OrUpdate(BitSetFromIndex(source));
+  }
+
  private:
   // A BitSet is a view over a contiguous region of member that holds a bitset
   // as an array of words.

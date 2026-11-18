@@ -6419,7 +6419,7 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
-  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   HloComputation* branch_0 = module->GetComputationWithName("branch_0");
   HloComputation* branch_1 = module->GetComputationWithName("branch_1");
@@ -6476,7 +6476,7 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
-  ASSERT_THAT(copy_insertion.Run(module.get()), ::absl_testing::IsOk());
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   EXPECT_EQ(CountCopies(*module), 0);
 
@@ -6533,6 +6533,82 @@ ENTRY main {
   ASSERT_NE(outer_fusion_comp, nullptr);
   EXPECT_EQ(CountCopies(*outer_fusion_comp), 0);
   EXPECT_GT(CountCopies(*module->entry_computation()), 0);
+}
+
+TEST_F(CopyInsertionTest, RegionAnalysisElidesCopyWithManyUnorderedReaders) {
+  absl::string_view hlo_string = R"hlo(
+HloModule RegionAnalysisManyUnorderedReaders
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  upd = f32[1] parameter(1)
+  idx = s32[] parameter(2)
+  src = f32[16] add(p0, p0)
+  r0 = f32[16] negate(src)
+  r1 = f32[16] negate(src)
+  r2 = f32[16] negate(src)
+  r3 = f32[16] negate(src)
+  r4 = f32[16] negate(src)
+  r5 = f32[16] negate(src)
+  r6 = f32[16] negate(src)
+  r7 = f32[16] negate(src)
+  anchor = f32[1] slice(r0), slice={[0:1]}
+  upd_anchored = f32[1] add(upd, anchor)
+  dus = f32[16] dynamic-update-slice(src, upd_anchored, idx)
+  ROOT out = (f32[16], f32[16], f32[16], f32[16], f32[16],
+              f32[16], f32[16], f32[16], f32[16])
+      tuple(dus, r0, r1, r2, r3, r4, r5, r6, r7)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  EXPECT_EQ(CountCopies(*module), 0);
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* dus = entry->GetInstructionWithName("dus");
+  ASSERT_NE(dus, nullptr);
+  std::unique_ptr<HloReachabilityMap> reachability =
+      HloReachabilityMap::Build(entry);
+  for (int i = 0; i < 8; ++i) {
+    const HloInstruction* reader =
+        entry->GetInstructionWithName(absl::StrCat("r", i));
+    ASSERT_NE(reader, nullptr);
+    EXPECT_TRUE(reachability->IsReachable(reader, dus)) << reader->name();
+  }
+}
+
+TEST_F(CopyInsertionTest,
+       RegionAnalysisPreservesCopyWhenPostUpdateReadInterferes) {
+  absl::string_view hlo_string = R"hlo(
+HloModule RegionAnalysisPostUpdateReadInterferes
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  upd = f32[1] parameter(1)
+  idx = s32[] parameter(2)
+  src = f32[16] add(p0, p0)
+  r0 = f32[16] negate(src)
+  r1 = f32[16] negate(src)
+  r2 = f32[16] negate(src)
+  r3 = f32[16] negate(src)
+  anchor = f32[1] slice(r0), slice={[0:1]}
+  upd_anchored = f32[1] add(upd, anchor)
+  dus = f32[16] dynamic-update-slice(src, upd_anchored, idx)
+  post_read = f32[16] add(src, dus)
+  ROOT out = (f32[16], f32[16], f32[16], f32[16], f32[16], f32[16])
+      tuple(dus, post_read, r0, r1, r2, r3)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 TEST_F(CopyInsertionTest,
@@ -6613,6 +6689,125 @@ ENTRY main {
   ASSERT_NE(branch_zero, nullptr);
   EXPECT_EQ(CountCopies(*branch_passthrough), 0);
   EXPECT_EQ(CountCopies(*branch_zero), 0);
+}
+
+TEST_F(CopyInsertionTest, RegionAnalysisHandlesHighFanoutConstantConditional) {
+  constexpr int kNumOutputs = 1024;
+  std::string types;
+  std::string zero_elems;
+  std::string true_ops;
+  std::string true_elems;
+  for (int i = 0; i < kNumOutputs; ++i) {
+    if (i > 0) {
+      absl::StrAppend(&types, ", ");
+      absl::StrAppend(&zero_elems, ", ");
+      absl::StrAppend(&true_elems, ", ");
+    }
+    absl::StrAppend(&types, "f32[]");
+    absl::StrAppend(&zero_elems, "z");
+    absl::StrAppend(&true_ops, "  k_", i, " = f32[] constant(", i + 1, ")\n");
+    absl::StrAppend(&true_ops, "  val_", i, " = f32[] add(x, k_", i, ")\n");
+    absl::StrAppend(&true_elems, "val_", i);
+  }
+  const std::string hlo_string = absl::StrCat(
+      "HloModule high_fanout_constant_conditional\n\n"
+      "false_branch {\n"
+      "  p = () parameter(0)\n"
+      "  z = f32[] constant(0)\n"
+      "  ROOT t = (",
+      types, ") tuple(", zero_elems,
+      ")\n}\n\n"
+      "true_branch {\n"
+      "  x = f32[] parameter(0)\n",
+      true_ops, "  ROOT t = (", types, ") tuple(", true_elems,
+      ")\n}\n\n"
+      "ENTRY main {\n"
+      "  branch_idx = s32[] parameter(0)\n"
+      "  x = f32[] parameter(1)\n"
+      "  empty = () tuple()\n"
+      "  ROOT out = (",
+      types,
+      ") conditional(branch_idx, empty, x), "
+      "branch_computations={false_branch, true_branch}\n"
+      "}\n");
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  const HloComputation* false_branch =
+      module->GetComputationWithName("false_branch");
+  const HloComputation* true_branch =
+      module->GetComputationWithName("true_branch");
+  ASSERT_NE(false_branch, nullptr);
+  ASSERT_NE(true_branch, nullptr);
+  EXPECT_EQ(CountCopies(*false_branch), kNumOutputs);
+  EXPECT_EQ(CountCopies(*true_branch), 0);
+}
+
+TEST_F(CopyInsertionTest,
+       RegionAnalysisDoesNotIntroduceControlDependencyCycleThroughDagEdge) {
+  absl::string_view hlo_string = R"hlo(
+HloModule no_control_dep_cycle
+
+id_false {
+  x = s32[] parameter(0)
+  cf = s32[] constant(9)
+  cf2 = s32[] constant(8)
+  ROOT out = (s32[], s32[]) tuple(cf, cf2)
+}
+
+branch_true {
+  bp = (s32[], s32[]) parameter(0)
+  d_val = s32[] get-tuple-element(bp), index=0
+  sh1 = s32[] get-tuple-element(bp), index=1
+  sa = s32[] custom-call(sh1, d_val), custom_call_target="InPlace",
+      output_to_operand_aliasing={{}: (0, {})},
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  sb = s32[] negate(sh1),
+      frontend_attributes={xla_disjoint_read_write_regions="true"}
+  d3 = s32[] add(d_val, sb)
+  ROOT out = (s32[], s32[]) tuple(sa, d3)
+}
+
+make_d0 {
+  x = s32[] parameter(0)
+  ROOT d0 = s32[] copy(x)
+}
+
+ENTRY main {
+  p0 = s32[] parameter(0)
+  p_false = s32[] parameter(1)
+  idx_outer = s32[] parameter(2)
+  d_call = s32[] call(p0), to_apply=make_d0
+  bt_in = (s32[], s32[]) tuple(d_call, p0)
+  mc = (s32[], s32[]) conditional(idx_outer, bt_in, p_false),
+      branch_computations={branch_true, id_false}
+  ROOT final = ((s32[], s32[])) tuple(mc)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  // Verify every computation remains a DAG across both data and control edges.
+  for (const HloComputation* comp : module->computations()) {
+    std::vector<HloInstruction*> postorder = comp->MakeInstructionPostOrder();
+    ASSERT_EQ(postorder.size(), comp->instruction_count());
+    for (const HloInstruction* instr : postorder) {
+      auto instr_it = absl::c_find(postorder, instr);
+      for (const HloInstruction* op : instr->operands()) {
+        EXPECT_LT(absl::c_find(postorder, op), instr_it);
+      }
+      for (const HloInstruction* pred : instr->control_predecessors()) {
+        EXPECT_LT(absl::c_find(postorder, pred), instr_it);
+      }
+    }
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
