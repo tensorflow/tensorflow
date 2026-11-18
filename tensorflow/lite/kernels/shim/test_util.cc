@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/test_util.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <vector>
