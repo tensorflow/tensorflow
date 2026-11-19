@@ -88,8 +88,7 @@ if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
   # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
   # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
   # VMs.
-  pyenv install -s "3.11"
-  if [[ $? -eq 0 ]]; then
+  if pyenv install -s "3.11"; then
     pyenv local "3.11"
     export CLOUDSDK_PYTHON=$(pyenv which python3.11)
   else
