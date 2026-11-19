@@ -553,6 +553,7 @@ cc_library(
         ":tf_tensor_internal",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
@@ -583,6 +584,7 @@ tf_cuda_library(
         ":tf_datatype",
         ":tf_status",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base:core_headers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs

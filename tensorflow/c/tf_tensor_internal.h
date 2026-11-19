@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -52,7 +53,7 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
         deallocator_arg_(deallocator_arg),
         owns_memory_(owns_memory) {}
 
-  ~TF_ManagedBuffer() override {
+  ABSL_ATTRIBUTE_NO_SANITIZE_CFI ~TF_ManagedBuffer() override {
     (*deallocator_)(data(), len_, deallocator_arg_);
   }
 
