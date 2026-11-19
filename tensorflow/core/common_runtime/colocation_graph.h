@@ -256,7 +256,7 @@ class ColocationGraph {
                                  const std::vector<Device*>** possible_devices);
 
   // Returns debugging info for the node referred to by 'node_root'.
-  std::string DebugInfo(const int node_root) const;
+  std::string DebugInfo(int node_root) const;
 
   std::string DebugString() const;
 
