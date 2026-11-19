@@ -1007,6 +1007,10 @@ def _SqueezeGrad(op: ops.Operation, grad):
 def _TransposeGrad(op: ops.Operation, grad):
   """Returns unshuffle(grad)."""
   p = op.inputs[1]
+  p_static = tensor_util.constant_value(p)
+  if p_static is None or not (p_static >= 0).all():
+    rank = array_ops.size(p, out_type=p.dtype)
+    p = array_ops.where_v2(p < 0, p + rank, p)
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
 
 
@@ -1014,6 +1018,10 @@ def _TransposeGrad(op: ops.Operation, grad):
 def _ConjugateTransposeGrad(op: ops.Operation, grad):
   """Returns conj(unshuffle(grad))."""
   p = op.inputs[1]
+  p_static = tensor_util.constant_value(p)
+  if p_static is None or not (p_static >= 0).all():
+    rank = array_ops.size(p, out_type=p.dtype)
+    p = array_ops.where_v2(p < 0, p + rank, p)
   return [
       array_ops.transpose(
           grad, array_ops.invert_permutation(p), conjugate=True
