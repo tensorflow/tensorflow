@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
+#include "xla/python/ifrt/ir/ifrt_ir_custom_options.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -81,7 +82,8 @@ struct IfrtIRProgram : RTTIExtends<IfrtIRProgram, Program> {
   // map. If set to true, all executables will have their status filled if
   // `options.fill_status` is set. Otherwise, only leaf executables will have
   // their status filled.
-  static constexpr absl::string_view kFillAllStatuses = "fill_all_statuses";
+  static constexpr absl::string_view kFillAllStatuses =
+      kIfrtIrCustomOptionFillAllStatuses;
 
   static char ID;  // NOLINT
 

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/custom_options_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_client.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -839,6 +841,17 @@ TEST(PjRtExecutableImplTest, EmptyOutputsBundleSliceSizesCompileOptionsSerDes) {
     EXPECT_THAT(deserialized_options->outputs_bundle_slice_sizes,
                 Optional(IsEmpty()));
   }
+}
+
+TEST(PjRtExecutableImplTest, InternalCustomOptionsRegistered) {
+  EXPECT_EQ(PjRtCompatibleLoadedExecutable::kCallLocation, "call_location");
+  EXPECT_EQ(PjRtCompatibleLoadedExecutable::kUseOutputArena,
+            "use_output_arena");
+  EXPECT_TRUE(IsIfrtInternalCustomOption(
+      PjRtCompatibleLoadedExecutable::kCallLocation));
+  EXPECT_TRUE(IsIfrtInternalCustomOption(
+      PjRtCompatibleLoadedExecutable::kUseOutputArena));
+  EXPECT_FALSE(IsIfrtInternalCustomOption("non_internal_option"));
 }
 }  // namespace
 }  // namespace ifrt

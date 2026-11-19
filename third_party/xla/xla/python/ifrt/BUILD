@@ -301,6 +301,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "custom_options_util",
+    srcs = ["custom_options_util.cc"],
+    hdrs = ["custom_options_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":attribute_map",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "custom_options_util_test",
+    size = "small",
+    srcs = ["custom_options_util_test.cc"],
+    deps = [
+        ":attribute_map",
+        ":custom_options_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_proto_library(
     name = "execute_options_proto",
     srcs = ["execute_options.proto"],

@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client_impl_util.h"
+#include "xla/python/ifrt/custom_options_util.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
@@ -445,17 +446,17 @@ std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
 }
 
 // Converts IFRT custom options to XLA custom options forwarded to the runtime.
-// Options consumed by the PjRt-IFRT layer itself are not forwarded.
+// Options consumed by IFRT layers themselves are not forwarded.
 xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
   xla::CustomOptions::Map custom_options;
-  custom_options.reserve(attribute_map.size());
   attribute_map.ForEach([&](const std::string& name,
                             const AttributeMap::Value& value) {
+    if (IsIfrtInternalCustomOption(name)) {
+      return;
+    }
     std::visit([&](const auto& v) { custom_options.insert({name, v.value}); },
                value);
   });
-  custom_options.erase("use_output_arena");
-  custom_options.erase(PjRtCompatibleLoadedExecutable::kCallLocation);
   return custom_options;
 }
 
@@ -1201,8 +1202,8 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.execution_stream_id = options.execution_stream_id;
   opts.use_output_arena = false;
   if (options.custom_options.has_value()) {
-    if (auto use_output_arena =
-            options.custom_options->Get<bool>("use_output_arena");
+    if (auto use_output_arena = options.custom_options->Get<bool>(
+            std::string(PjRtCompatibleLoadedExecutable::kUseOutputArena));
         use_output_arena.ok()) {
       opts.use_output_arena = *use_output_arena;
     }

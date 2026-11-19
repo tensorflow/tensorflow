@@ -356,6 +356,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:custom_options_util",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:serdes_test_util",
@@ -574,6 +575,7 @@ cc_library(
         ":gpu_xla_executable_abi_version_serdes",
         ":pjrt_attribute_map_util",
         ":pjrt_buffer_hash_util",
+        ":pjrt_custom_options",
         ":pjrt_dtype",
         ":pjrt_layout",
         ":pjrt_layout_serdes",
@@ -623,6 +625,7 @@ cc_library(
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:buffer_hash_util",
         "//xla/python/ifrt:client_impl_util",
+        "//xla/python/ifrt:custom_options_util",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
         "//xla/python/ifrt:sharding_serdes",
@@ -750,6 +753,18 @@ xla_cc_test(
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/tsl/platform:test_main",
     ],
+)
+
+cc_library(
+    name = "pjrt_custom_options",
+    srcs = ["pjrt_custom_options.cc"],
+    hdrs = ["pjrt_custom_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/python/ifrt:custom_options_util",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+    alwayslink = True,
 )
 
 cc_library(

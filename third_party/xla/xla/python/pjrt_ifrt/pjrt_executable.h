@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_custom_options.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -80,7 +81,12 @@ class PjRtCompatibleLoadedExecutable
     : public RTTIExtends<PjRtCompatibleLoadedExecutable, LoadedExecutable> {
  public:
   // Key for the call location attribute in the custom_options attribute map.
-  static constexpr absl::string_view kCallLocation = "call_location";
+  static constexpr absl::string_view kCallLocation =
+      kPjRtCustomOptionCallLocation;
+
+  // Key for the use_output_arena attribute in the custom_options attribute map.
+  static constexpr absl::string_view kUseOutputArena =
+      kPjRtCustomOptionUseOutputArena;
 
   // APIs that allow direct access to `xla::PjRtLoadedExecutable` for PjRt-only
   // operations.

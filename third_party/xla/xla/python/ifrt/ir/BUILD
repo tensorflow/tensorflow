@@ -213,6 +213,19 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_ir_custom_options",
+    srcs = ["ifrt_ir_custom_options.cc"],
+    hdrs = ["ifrt_ir_custom_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":users"]),
+    deps = [
+        "//xla/python/ifrt:custom_options_util",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "ifrt_ir_program",
     srcs = ["ifrt_ir_program.cc"],
     hdrs = ["ifrt_ir_program.h"],
@@ -220,6 +233,7 @@ cc_library(
     visibility = internal_visibility([":users"]),
     deps = [
         ":ifrt_ir_compile_options_proto_cc",
+        ":ifrt_ir_custom_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/python/ifrt",
@@ -269,6 +283,7 @@ xla_cc_test(
         "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:custom_options_util",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",

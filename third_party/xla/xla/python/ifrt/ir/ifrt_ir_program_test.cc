@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/custom_options_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
@@ -384,6 +385,12 @@ module @ifrt_mod {
   ASSERT_OK_AND_ASSIGN(uint64_t fp1, FingerprintModuleOp(*module1));
   ASSERT_OK_AND_ASSIGN(uint64_t fp2, FingerprintModuleOp(*module2));
   EXPECT_EQ(fp1, fp2);
+}
+
+TEST(IfrtIRProgramTest, InternalCustomOptionsRegistered) {
+  EXPECT_EQ(IfrtIRProgram::kFillAllStatuses, "fill_all_statuses");
+  EXPECT_TRUE(IsIfrtInternalCustomOption(IfrtIRProgram::kFillAllStatuses));
+  EXPECT_FALSE(IsIfrtInternalCustomOption("non_internal_option"));
 }
 
 }  // namespace
