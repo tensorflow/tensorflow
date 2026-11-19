@@ -15,7 +15,7 @@
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -216,6 +216,38 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],
+)
+
+# The StableHLO -> TFLite (use_v2) converter must not pull in TensorFlow (the TF
+# dialect and core libraries, the TF quantizer, MHLO, TSL file I/O). check_deps
+# only matches the exact labels listed below.
+check_deps(
+    name = "mlir_bytecode_to_tflite_check_deps",
+    disallowed_deps = [
+        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tools/optimize:quantization_utils",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:stablehlo_extension_passes",
+        "@xla//xla/tsl/lib/io:buffered_file",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/types:Dialect",
+    ],
+    deps = [":mlir_bytecode_to_tflite"],
 )
 
 cc_library(
