@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/local_service.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
@@ -51,9 +52,12 @@ namespace xla {
 class LocalExecutable {
  public:
   // Low-level constructor; LocalClient::Compile() is the usual way to create
-  // executables.
+  // executables. `snapshot_hlo` is the HLO to put into HLO snapshots of this
+  // executable. If it is null, the snapshots contain the executable's own
+  // HloModule.
   LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  ExecutableBuildOptions build_options);
+                  ExecutableBuildOptions build_options,
+                  std::shared_ptr<const HloProto> snapshot_hlo = nullptr);
 
   // Run the compiled computation with the given arguments and options and
   // return the result.
@@ -136,6 +140,9 @@ class LocalExecutable {
 
   // Compiled computation.
   std::unique_ptr<Executable> executable_;
+
+  // HLO for HLO snapshots, e.g. the HLO before optimizations. May be null.
+  std::shared_ptr<const HloProto> snapshot_hlo_;
 
   // Execution backend.
   Backend* backend_ = nullptr;

@@ -24,9 +24,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -35,10 +38,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TestExecutable : public Executable {
+class TestExecutable : public HloModuleExecutable {
  public:
   explicit TestExecutable(std::shared_ptr<HloModule> module)
-      : Executable{std::move(module)} {}
+      : HloModuleExecutable{std::move(module)} {}
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -78,6 +81,54 @@ TEST_F(ExecutableTest, HloProtoGetterIsThreadCompatible) {
       pool.Schedule([&] { executable.hlo_proto()->SerializeAsString(); });
     }
   }
+}
+
+TEST_F(ExecutableTest, DumpingHloSnapshotsFollowsDebugOptions) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(DumpingHloSnapshots(TestExecutable(module)));
+  EXPECT_FALSE(DumpingHloSnapshots(TestExecutable(nullptr)));
+
+  module->mutable_config().mutable_debug_options().set_xla_dump_hlo_snapshots(
+      true);
+  EXPECT_TRUE(DumpingHloSnapshots(TestExecutable(module)));
+}
+
+TEST_F(ExecutableTest, MakeHloProtoForSnapshotUsesModuleAndBufferAssignment) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule module
+
+    ENTRY main {
+      ROOT c = s32[] constant(1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  TestExecutable executable(module);
+
+  HloProto hlo_proto = MakeHloProtoForSnapshot(executable);
+  EXPECT_EQ(hlo_proto.hlo_module().name(), "module");
+  EXPECT_FALSE(hlo_proto.has_buffer_assignment());
+
+  auto proto_with_buffer_assignment = std::make_unique<HloProto>();
+  proto_with_buffer_assignment->mutable_buffer_assignment()
+      ->add_buffer_allocations()
+      ->set_index(42);
+  executable.set_hlo_proto(std::move(proto_with_buffer_assignment));
+
+  hlo_proto = MakeHloProtoForSnapshot(executable);
+  EXPECT_EQ(hlo_proto.hlo_module().name(), "module");
+  ASSERT_EQ(hlo_proto.buffer_assignment().buffer_allocations_size(), 1);
+  EXPECT_EQ(hlo_proto.buffer_assignment().buffer_allocations(0).index(), 42);
 }
 
 }  // namespace
