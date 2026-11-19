@@ -3154,38 +3154,9 @@ cc_library(
     ],
 )
 
-genrule(
-    name = "viewer_server_h",
-    srcs = ["fusion_explorer/viewer_server.py"],
-    outs = ["viewer_server.h"],
-    cmd = "echo 'const char* kPythonServerCode = R\"python(' > $@ && cat $< >> $@ && echo ')python\";' >> $@",
-    compatible_with = get_compatible_with_portable(),
-)
-
-genrule(
-    name = "viewer_html_h",
-    srcs = ["fusion_explorer/viewer.html"],
-    outs = ["viewer_html.h"],
-    cmd = "echo 'inline const char* kViewerHtmlCode = R\"html(' > $@ && cat $< >> $@ && echo ')html\";' >> $@",
-    compatible_with = get_compatible_with_portable(),
-)
-
-genrule(
-    name = "simple_viewer_html_h",
-    srcs = ["fusion_explorer/simple_viewer.html"],
-    outs = ["simple_viewer_html.h"],
-    cmd = "echo 'inline const char* kSimpleViewerHtmlCode = R\"html(' > $@ && cat $< >> $@ && echo ')html\";' >> $@",
-    compatible_with = get_compatible_with_portable(),
-)
-
 cc_library(
     name = "hlo_graph_dumper",
-    srcs = [
-        "hlo_graph_dumper.cc",
-        ":simple_viewer_html_h",
-        ":viewer_html_h",
-        ":viewer_server_h",
-    ],
+    srcs = ["hlo_graph_dumper.cc"],
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
         ":pattern_matcher",
@@ -3199,13 +3170,12 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:dnn",
+        "//xla/tools/fusion_explorer:fusion_explorer_embed",
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/lib/io:zip_writer",
         "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/lib/io:zlib_outputbuffer",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
