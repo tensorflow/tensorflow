@@ -68,11 +68,12 @@ GetHostTargetMachineOptions(absl::string_view platform_name) {
         "-ptwrite,-push2pop2,-raoint,-rdpru,-sgx,-sha512,-shstk,-sm3,-sm4,-"
         "sse4a,-tbm,-uintr,-usermsr,-waitpkg,-widekl,-xop,-zu"};
   }
-  if (platform_name == "oberon_b200" || platform_name == "oberon_b300") {
+  if (platform_name == "oberon_b200" || platform_name == "oberon_b300" ||
+      platform_name == "velorum_r200") {
     return cpu::TargetMachineOptions{
         "aarch64-unknown-linux-gnu", "neoverse-n1",
         "+aes,+crc,+fp-armv8,+lse,+neon,+sha2,+sha3,+sm4,+sve-aes,+sve-sha3,+"
-        "sve-sm4,-rand,-sve,-sve2"};
+        "sve-sm4,-rand,-sme,-sme2,-sve,-sve2"};
   }
   return std::nullopt;
 }

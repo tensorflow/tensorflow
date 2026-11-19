@@ -42,6 +42,7 @@ namespace xla {
 namespace {
 
 using ::absl_testing::StatusIs;
+using ::testing::IsSupersetOf;
 using ::testing::Optional;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
@@ -188,6 +189,25 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB300) {
                                 "aarch64-unknown-linux-gnu")));
 }
 
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformVelorumR200) {
+  ASSERT_OK_AND_ASSIGN(GpuTopology topology,
+                       GetGpuTopologyForPlatform("velorum_r200", 1, 2, 4));
+  EXPECT_EQ(topology.platform_version(), "velorum_r200");
+  EXPECT_EQ(topology.num_partitions(), 1);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
+  EXPECT_THAT(
+      topology.host_target_machine_options(),
+      Optional(Property(&cpu::TargetMachineOptions::cpu, "neoverse-n1")));
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::disabled_features,
+                                IsSupersetOf({"sme", "sme2"}))));
+}
+
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformInvalid) {
   EXPECT_THAT(GetGpuTopologyForPlatform("invalid_gpu", 1, 1, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -224,6 +244,17 @@ TEST(GpuTopologyTest, ParseGpuTopologyShorthand) {
   EXPECT_EQ(with_platform_2d.num_devices_per_host(), 4);
   EXPECT_TRUE(with_platform_2d.has_gpu_target_config());
   EXPECT_THAT(with_platform_2d.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology vr200_2d,
+                       ParseGpuTopology("velorum_r200:2x4"));
+  EXPECT_EQ(vr200_2d.platform_version(), "velorum_r200");
+  EXPECT_EQ(vr200_2d.num_partitions(), 1);
+  EXPECT_EQ(vr200_2d.num_hosts_per_partition(), 2);
+  EXPECT_EQ(vr200_2d.num_devices_per_host(), 4);
+  EXPECT_TRUE(vr200_2d.has_gpu_target_config());
+  EXPECT_THAT(vr200_2d.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
                                 "aarch64-unknown-linux-gnu")));
 }
@@ -325,6 +356,9 @@ TEST(GpuTopologyTest, GetGpuTopologyForSliceSpec) {
   EXPECT_EQ(vr200_mnnvl.num_partitions(), 1);
   EXPECT_EQ(vr200_mnnvl.num_hosts_per_partition(), 2);
   EXPECT_EQ(vr200_mnnvl.num_devices_per_host(), 4);
+  EXPECT_THAT(vr200_mnnvl.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
 
   EXPECT_THAT(GetGpuTopologyForSliceSpec("h100", "4x2"),
               StatusIs(absl::StatusCode::kInvalidArgument));
