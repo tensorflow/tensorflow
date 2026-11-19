@@ -59,8 +59,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 
 namespace mlir {
 namespace TFL {
@@ -250,9 +250,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
-      quant_type = quantfork::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
-          expressed, is_signed);
+      quant_type =
+          TFL::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.getAxis(), mins,
+                                    maxs, narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type =
             mlir::TFL::DownCastScale(quant_type, mins, maxs, op->getLoc());
@@ -277,8 +277,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       }
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
-          quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
-                                          narrow_range, expressed, is_signed);
+          TFL::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
+                                    narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type =
             mlir::TFL::DownCastScale(quant_type, rmin, rmax, op->getLoc());
