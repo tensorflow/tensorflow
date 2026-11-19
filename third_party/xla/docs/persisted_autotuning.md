@@ -10,10 +10,21 @@ normally. Autotuning caches are still useful if we make a few changes: the
 fusions that are present in the cache will use the cache, and the other ones
 will be autotuned normally.
 
+Note: The flags on this page replace the following deprecated flags, which
+still work but will be removed in the future:
+
+| Deprecated flag                                   | Replacement                         |
+| ------------------------------------------------- | ----------------------------------- |
+| `--xla_gpu_per_fusion_autotune_cache_dir`         | `--xla_autotune_cache_dir`          |
+| `--xla_gpu_experimental_autotune_cache_mode`      | `--xla_autotune_cache_mode`         |
+| `--xla_gpu_dump_autotune_results_to`              | `--xla_dump_autotune_cache_to`      |
+| `--xla_gpu_load_autotune_results_from`            | `--xla_load_autotune_cache_from`    |
+| `--xla_gpu_require_complete_aot_autotune_results` | `--xla_fail_on_autotune_cache_miss` |
+
 ## Recommended: Cache directory
 
 ```
---xla_gpu_per_fusion_autotune_cache_dir=your/directory
+--xla_autotune_cache_dir=your/directory
 ```
 
 Use and maintain a per-fusion autotune cache in the given directory. There will
@@ -45,8 +56,8 @@ caching method described below.
 The autotuning results can be dumped/loaded using these parameters:
 
 ```
---xla_gpu_dump_autotune_results_to=
---xla_gpu_load_autotune_results_from=
+--xla_dump_autotune_cache_to=
+--xla_load_autotune_cache_from=
 ```
 
 If we specify a .txt or .textproto file, then the cache will be dumped in
@@ -69,7 +80,7 @@ For now let's assume that the test in question always uses the same GPU type.
     specifying these parameters to the test command:
 
     ```
-    --test_env=XLA_FLAGS=--xla_gpu_dump_autotune_results_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
+    --test_env=XLA_FLAGS=--xla_dump_autotune_cache_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
     --test_sharding_strategy=disabled
     ```
 
@@ -83,7 +94,7 @@ For now let's assume that the test in question always uses the same GPU type.
 
     ```
     data = ["test_autotune_cache.textproto"],
-    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
+    env = {"XLA_FLAGS": "--xla_load_autotune_cache_from=" +
                         "$(execpath test_autotune_cache.textproto)"},
     ```
 

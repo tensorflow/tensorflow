@@ -1075,7 +1075,7 @@ xla_test(
     backends = ["gpu"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
-    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
+    env = {"XLA_FLAGS": "--xla_load_autotune_cache_from=" +
                         "$(execpath test_autotune_cache.textproto)"},
     deps = [
         ":simple_optimization_test",
@@ -1086,7 +1086,7 @@ xla_test(
 # This shows that tests can load an autotune cache using the TEST_WORKSPACE prefix.
 #
 # This also works from the command line, by specifying this arguments:
-# --test_env=XLA_FLAGS=--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/my/package/autotune_results_test.textproto.
+# --test_env=XLA_FLAGS=--xla_load_autotune_cache_from=TEST_WORKSPACE/my/package/autotune_results_test.textproto.
 #
 # If the GPU used for running the test is different from the one in the cache, then the cache will
 # be loaded, but not used.
@@ -1096,7 +1096,7 @@ xla_test(
     backends = ["gpu"],
     # Data dependency must be declared for the cache.
     data = ["test_autotune_cache.textproto"],
-    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
+    env = {"XLA_FLAGS": "--xla_load_autotune_cache_from=TEST_WORKSPACE/" +
                         package_name() +
                         "/test_autotune_cache.textproto"},
     deps = [
@@ -1108,13 +1108,13 @@ xla_test(
 # This shows that tests can dump an autotune cache into their output directory.
 #
 # This also works from the command line, by specifying these arguments:
-# --test_env=XLA_FLAGS=--xla_gpu_dump_autotune_results_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
+# --test_env=XLA_FLAGS=--xla_dump_autotune_cache_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
 # --test_sharding_strategy=disabled
 xla_test(
     name = "dump_autotune_results_to_test_outputs_test",
     srcs = [],
     backends = ["gpu"],
-    env = {"XLA_FLAGS": "--xla_gpu_dump_autotune_results_to=" +
+    env = {"XLA_FLAGS": "--xla_dump_autotune_cache_to=" +
                         "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
     # Sharding must be disabled to correctly dump the autotune cache for all test.
     shard_count = 1,

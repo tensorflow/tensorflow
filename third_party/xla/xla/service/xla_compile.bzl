@@ -140,7 +140,7 @@ def xla_aot_compile_gpu(
         flags = []
         if autotune_results:
             srcs.append(autotune_results)
-            flags.append("--xla_gpu_load_autotune_results_from=$(location " + autotune_results + ")")
+            flags.append("--xla_load_autotune_cache_from=$(location " + autotune_results + ")")
         if xla_flags:
             flags.append(xla_flags)
         if flags:

@@ -32,7 +32,7 @@ calculation results.
 *   **Persisting & Caching Autotuning Decisions**: Run autotuning once and save
     the choices to a persistent cache (see
     [persisted autotuning](./persisted_autotuning)). Using the flag
-    **`--xla_gpu_require_complete_aot_autotune_results`** enforces that XLA
+    **`--xla_fail_on_autotune_cache_miss`** enforces that XLA
     strictly reuses cached decisions and immediately fails compilation with a
     `NotFound` error if an entry is missing, completely avoiding live hardware
     benchmarking.
@@ -88,7 +88,7 @@ Enforcing determinism on GPU involves notable trade-offs:
     *   If an HLO graph contains instructions without any deterministic
         implementation, enabling `--xla_gpu_exclude_nondeterministic_ops` causes
         compilation to halt with an error.
-    *   When using `--xla_gpu_require_complete_aot_autotune_results`,
+    *   When using `--xla_fail_on_autotune_cache_miss`,
         compilation will fail immediately with a `NotFound` error if any
         instruction lacks an entry in the pre-populated autotune cache.
 *   **Disabled Optimizations & Emitters**:
