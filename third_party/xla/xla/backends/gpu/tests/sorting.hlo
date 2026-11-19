@@ -192,3 +192,56 @@ ENTRY main {
 // CHECK-COUNT-62: call i8 @compare_lt
 // CHECK-NOT:      call i8 @compare_lt
 // CHECK:          ret void
+
+// -----
+
+// The first two sort fusions are identical and share one kernel. The third one
+// has another iota dimension and gets its own.
+// CHECK-COUNT-2: define {{ptx_kernel|amdgpu_kernel}} void
+// CHECK-NOT:     define {{ptx_kernel|amdgpu_kernel}} void
+
+HloModule SortKernelReuse, is_scheduled=true
+
+compare {
+  p.0.lhs = s32[] parameter(0)
+  p.0.rhs = s32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  lt_key = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  eq_key = pred[] compare(p.0.lhs, p.0.rhs), direction=EQ
+  lt_idx = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
+  ROOT res = pred[] select(eq_key, lt_idx, lt_key)
+}
+
+sort_fusion.0 {
+  p0 = s32[4,64]{1,0} parameter(0)
+  iota = s32[4,64]{1,0} iota(), iota_dimension=1
+  ROOT sort = (s32[4,64]{1,0}, s32[4,64]{1,0}) sort(p0, iota),
+      dimensions={1}, to_apply=compare
+}
+
+sort_fusion.1 {
+  p0 = s32[4,64]{1,0} parameter(0)
+  iota = s32[4,64]{1,0} iota(), iota_dimension=1
+  ROOT sort = (s32[4,64]{1,0}, s32[4,64]{1,0}) sort(p0, iota),
+      dimensions={1}, to_apply=compare
+}
+
+sort_fusion.2 {
+  p0 = s32[4,64]{1,0} parameter(0)
+  iota = s32[4,64]{1,0} iota(), iota_dimension=0
+  ROOT sort = (s32[4,64]{1,0}, s32[4,64]{1,0}) sort(p0, iota),
+      dimensions={1}, to_apply=compare
+}
+
+ENTRY main {
+  p0 = s32[4,64]{1,0} parameter(0)
+  p1 = s32[4,64]{1,0} parameter(1)
+  p2 = s32[4,64]{1,0} parameter(2)
+  f0 = (s32[4,64]{1,0}, s32[4,64]{1,0}) fusion(p0), kind=kCustom, calls=sort_fusion.0
+  f1 = (s32[4,64]{1,0}, s32[4,64]{1,0}) fusion(p1), kind=kCustom, calls=sort_fusion.1
+  f2 = (s32[4,64]{1,0}, s32[4,64]{1,0}) fusion(p2), kind=kCustom, calls=sort_fusion.2
+  ROOT t = ((s32[4,64]{1,0}, s32[4,64]{1,0}),
+            (s32[4,64]{1,0}, s32[4,64]{1,0}),
+            (s32[4,64]{1,0}, s32[4,64]{1,0})) tuple(f0, f1, f2)
+}

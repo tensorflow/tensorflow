@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -82,6 +83,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/shaped_slice.h"
@@ -218,19 +220,6 @@ struct BitonicSortKernelSpec {
 
   bool is_tiled() const {
     return kind == Kind::kIntraTileMerge || kind == Kind::kIntraTileSort;
-  }
-
-  friend bool operator==(const BitonicSortKernelSpec& lhs,
-                         const BitonicSortKernelSpec& rhs) {
-    return lhs.kind == rhs.kind &&
-           lhs.xor_mask_or_num_stages == rhs.xor_mask_or_num_stages &&
-           lhs.block_size == rhs.block_size;
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const BitonicSortKernelSpec& s) {
-    return H::combine(std::move(h), s.kind, s.xor_mask_or_num_stages,
-                      s.block_size);
   }
 
   std::string ToString() const {
@@ -1002,76 +991,98 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
                        ir_emitter_context->buffer_assignment(),
                        GetDefaultBufferAlignment(), hlo_with_buffers));
 
-  struct CompiledSortKernel {
-    GpuKernelSpec spec;
-    std::shared_ptr<const std::vector<uint8_t>> cubin;
-  };
-  absl::flat_hash_map<std::pair<BitonicSortKernelSpec, bool>,
-                      Future<CompiledSortKernel>>
-      compiled_kernels;
   bool use_pdl = IsPdlEnabled(
       sort->GetModule()->config().debug_options(),
       ir_emitter_context->gpu_device_info().gpu_compute_capability());
   int devices_in_process =
       ir_emitter_context->gpu_topology().num_devices_per_process();
 
+  // The sort prints its operands as shapes only, so say which of them are
+  // iotas and along which dimension, e.g. "_,iota1" for sort(p0, iota).
+  std::string iota_operands = absl::StrJoin(
+      sort->operands(), ",",
+      [](std::string* out, const HloInstruction* operand) {
+        if (const auto* iota = DynCast<HloIotaInstruction>(operand)) {
+          absl::StrAppend(out, "iota", iota->iota_dimension());
+        } else {
+          absl::StrAppend(out, "_");
+        }
+      });
+  // Everything about this sort that its kernels depend on. All constants are
+  // printed, because the comparator may differ only in a constant. Original
+  // values are debug info and differ between otherwise equal sorts. The shapes
+  // of the fusion inputs are left out: the kernels only touch the output
+  // buffers, the inputs are copied there beforehand.
+  std::string sort_fingerprint = absl::StrCat(
+      "BitonicSort(", emitters::GetArgumentFingerprint(kernel_arguments.args()),
+      ")",
+      sort->ToString(HloPrintOptions::Fingerprint()
+                         .set_print_only_essential_constants(false)
+                         .set_print_large_constants(true)
+                         .set_print_original_value(false)),
+      use_pdl ? ",pdl," : ",");
+
   auto get_or_compile_kernel =
       [&](const BitonicSortKernelSpec& kernel_spec,
-          bool emit_iota) -> Future<CompiledSortKernel> {
-    std::pair<BitonicSortKernelSpec, bool> cache_key{kernel_spec, emit_iota};
-    if (auto it = compiled_kernels.find(cache_key);
-        it != compiled_kernels.end()) {
-      VLOG(2) << op_name << " reuses previously compiled kernel";
-      return it->second;
-    }
-
+          bool emit_iota) -> Future<KernelReuseCache::Kernel> {
     LaunchDimensions launch_dimensions = kernel_spec.is_tiled()
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    std::string sanitized_kernel_name =
-        ir_emitter_context->GetSanitizedUniqueName(op_name);
-
-    BorrowedMlirContext borrowed_context =
-        ir_emitter_context->BorrowMlirContext();
-    MLIRContext* mlir_context = borrowed_context->get();
-    mlir_context->appendDialectRegistry(
-        MlirKernelEmitter::GetDialectRegistry());
-    mlir_context->loadAllAvailableDialects();
-
-    ABSL_ASSIGN_OR_RETURN(
-        mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-        CreateBitonicSortMlirModule(
-            *mlir_context, sort, hlo_with_buffers,
-            &ir_emitter_context->buffer_assignment(), sanitized_kernel_name,
-            kernel_spec, launch_dimensions,
-            kernel_spec.is_tiled() ? num_iterations_in_sort_dim
-                                   : standard_num_iterations_in_sort_dim,
-            tile_size, kBitonicSortUnrollFactor, emit_iota));
-
-    // KernelCompiler::CompileToTargetBinary inserts a PDL wait at the kernel
-    // entry when PDL is enabled for this module and device, so launch with PDL
-    // in that case.
-    GpuKernelSpec spec(std::move(sanitized_kernel_name), launch_dimensions,
-                       kernel_arguments, std::nullopt, use_pdl);
-    MlirKernelDefinition kernel_def(
-        spec, MlirKernelSource(nullptr, std::move(mlir_module)));
+    // Sorts anywhere in the module share a kernel when the sort, the kernel
+    // step, the iota handling, the launch dimensions and the buffer properties
+    // of the arguments all match. Only kernels that write the iotas look at
+    // the iota operands, so the other steps can be shared more widely.
     std::string fingerprint = absl::StrCat(
-        sort->ToString(HloPrintOptions::Fingerprint()), kernel_spec.ToString());
-    Future<CompiledSortKernel> compiled_future =
-        ir_emitter_context->kernel_compiler()
-            ->CompileToTargetBinary(std::move(kernel_def), fingerprint,
-                                    std::move(borrowed_context),
-                                    *sort->GetModule(), /*unroll_factor=*/0)
-            .Map([spec = std::move(spec)](
-                     std::vector<uint8_t> cubin) mutable -> CompiledSortKernel {
-              return CompiledSortKernel{
-                  std::move(spec),
-                  std::make_shared<const std::vector<uint8_t>>(
-                      std::move(cubin)),
-              };
-            });
-    compiled_kernels.emplace(std::move(cache_key), compiled_future);
-    return compiled_future;
+        sort_fingerprint, kernel_spec.ToString(),
+        emit_iota ? absl::StrCat(",iota[", iota_operands, "],") : ",",
+        launch_dimensions.ToString());
+    auto compile = [&]() -> Future<KernelReuseCache::Entry> {
+      std::string sanitized_kernel_name =
+          ir_emitter_context->GetSanitizedUniqueName(op_name);
+
+      BorrowedMlirContext borrowed_context =
+          ir_emitter_context->BorrowMlirContext();
+      MLIRContext* mlir_context = borrowed_context->get();
+      mlir_context->appendDialectRegistry(
+          MlirKernelEmitter::GetDialectRegistry());
+      mlir_context->loadAllAvailableDialects();
+
+      ABSL_ASSIGN_OR_RETURN(
+          mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+          CreateBitonicSortMlirModule(
+              *mlir_context, sort, hlo_with_buffers,
+              &ir_emitter_context->buffer_assignment(), sanitized_kernel_name,
+              kernel_spec, launch_dimensions,
+              kernel_spec.is_tiled() ? num_iterations_in_sort_dim
+                                     : standard_num_iterations_in_sort_dim,
+              tile_size, kBitonicSortUnrollFactor, emit_iota));
+
+      // KernelCompiler::CompileToTargetBinary inserts a PDL wait at the kernel
+      // entry when PDL is enabled for this module and device, so launch with
+      // PDL in that case.
+      GpuKernelSpec spec(std::move(sanitized_kernel_name), launch_dimensions,
+                         kernel_arguments, std::nullopt, use_pdl);
+      MlirKernelDefinition kernel_def(
+          spec, MlirKernelSource(nullptr, std::move(mlir_module)));
+      return ir_emitter_context->kernel_compiler()
+          ->CompileToTargetBinary(std::move(kernel_def), fingerprint,
+                                  std::move(borrowed_context),
+                                  *sort->GetModule(), /*unroll_factor=*/0)
+          .Map([spec = std::move(spec)](std::vector<uint8_t> cubin) mutable {
+            KernelReuseCache::Entry entry{
+                std::string{spec.name()}, spec.launch_dimensions(),
+                /*shmem_bytes=*/0,
+                std::make_shared<const std::vector<uint8_t>>(std::move(cubin))};
+            entry.use_pdl = spec.use_pdl();
+            return entry;
+          });
+    };
+    auto [kernel, cached] = ir_emitter_context->kernel_cache().GetWithStatus(
+        fingerprint, kernel_arguments, compile);
+    if (cached) {
+      VLOG(2) << op_name << " reuses previously compiled kernel";
+    }
+    return kernel;
   };
 
   std::vector<tsl::Future<std::unique_ptr<Thunk>>> thunks;
@@ -1085,16 +1096,20 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
         hlo_with_buffers, ir_emitter_context->GetNextThunkId());
 
     return get_or_compile_kernel(kernel_spec, current_emit_iota)
-        .Map([thunk_info = std::move(thunk_info),
-              devices_in_process](const CompiledSortKernel& compiled) mutable
+        .Map([thunk_info = std::move(thunk_info), devices_in_process,
+              use_pdl](const KernelReuseCache::Kernel& compiled) mutable
                  -> absl::StatusOr<std::unique_ptr<Thunk>> {
-          ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                           kernel::CreateSharedCubinCustomKernel(
-                               compiled.spec, compiled.cubin));
+          // A kernel loaded from the kernel cache file comes back without the
+          // PDL flag, so take it from this sort.
+          GpuKernelSpec spec(
+              compiled.spec.name(), compiled.spec.launch_dimensions(),
+              compiled.spec.kernel_arguments(), std::nullopt, use_pdl);
+          ABSL_ASSIGN_OR_RETURN(
+              CustomKernel custom_kernel,
+              kernel::CreateSharedCubinCustomKernel(spec, compiled.binary));
           return std::make_unique<CustomKernelThunk>(
               std::move(thunk_info), std::move(custom_kernel),
-              compiled.spec.kernel_arguments(), devices_in_process,
-              compiled.spec.use_pdl());
+              spec.kernel_arguments(), devices_in_process, spec.use_pdl());
         });
   };
 
