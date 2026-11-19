@@ -331,17 +331,32 @@ def IfrtCallDedupPass :
   let description = [{
 Processes `ifrt.Call` ops in IFRT functions in program order to:
 1. Redirect uses of duplicate non-donated, non-aliased input block arguments
-   (with matching callee argument types and normalized argument attributes)
-   inside the callee `func.func` to the first matching block argument. If the
-   callee (or its enclosing outlined `ModuleOp`) is non-private or has other
-   symbol uses (e.g., another `ifrt.Call` or a `func.call`), it is cloned as a
-   private symbol before mutating its arguments.
+   (with matching callee argument types and normalized argument attributes on
+   both callee and call op) inside the callee `func.func` to the first matching
+   block argument. If the callee's root symbol (a top-level `func.func` or
+   enclosing outlined `ModuleOp`) is non-private or has other root-scope symbol
+   uses (e.g., another `ifrt.Call` or a top-level `func.call`), it is cloned
+   into a private copy before mutating its arguments, and calls with the same
+   callee and duplicate-argument pattern share the cached clone. For outlined
+   callees with internal symbol references inside the enclosing `ModuleOp` (such
+   as recursive calls), the unmutated body is split into a private helper in
+   place (avoiding an extra module clone for sole-caller private modules) or in
+   the cloned module (when shared or non-private).
 2. Redirect caller uses of duplicate `ifrt.Call` outputs (returning the same
    SSA value in the callee with identical `!ifrt.array` types and normalized
-   result attributes) to the first matching output, excluding outputs aliased
-   to a call input or donated/aliased to a downstream consumer.
+   result attributes on both callee and call op) to the first matching output,
+   excluding outputs aliased to a call input or donated/aliased to a downstream
+   consumer.
 
-Dead arguments and results are left to be erased by `IfrtDcePass`.
+Private non-IFRT original root symbols that become unused after calls are
+redirected to specialized clones are erased (transitively) at pass exit. Dead
+arguments and results are left to be erased by `IfrtDcePass`.
+
+The pass fails with an op error if root-scope symbol uses cannot be determined
+(e.g., an unregistered region-bearing op in the root module), or if a callee
+with used duplicate arguments cannot be prepared for mutation (e.g., nested
+more than one `ModuleOp` deep or inside an outlined `ModuleOp` with an
+unregistered region-bearing op).
   }];
 }
 

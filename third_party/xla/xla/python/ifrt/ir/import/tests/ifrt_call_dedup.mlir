@@ -493,7 +493,7 @@ module @public_callee_and_public_outlined_module_cloned_as_private {
 // CHECK-LABEL: module @outlined_callee_used_by_internal_func_call_is_specialized
 module @outlined_callee_used_by_internal_func_call_is_specialized {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @[[CLONED_MOD:outlined_mod_.+]]::@main(%arg0, %arg0) on devices [0, 1]
+    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @outlined_mod::@main(%arg0, %arg0) on devices [0, 1]
     %0, %ctrl_0 = ifrt.Call @outlined_mod::@main(%arg0, %arg0) on devices [0, 1]
         : (!array, !array) -> !array
     // CHECK: return %[[OUT]]
@@ -502,8 +502,15 @@ module @outlined_callee_used_by_internal_func_call_is_specialized {
 
   // CHECK-LABEL: module @outlined_mod <sym_visibility = "private">
   // CHECK: func.func @main(
-  // CHECK-NEXT: %[[ORIG_ADD:.*]] = stablehlo.add %arg0, %arg1 : tensor<4x8xf32>
-  // CHECK-NEXT: return %[[ORIG_ADD]]
+  // CHECK-NEXT: %[[SPEC_ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+  // CHECK-NEXT: return %[[SPEC_ADD]]
+  // CHECK: func.func private @[[UNMUTATED_HELPER:main_.+]](
+  // CHECK-NEXT: %[[INNER_ORIG_ADD:.*]] = stablehlo.add %arg0, %arg1 : tensor<4x8xf32>
+  // CHECK-NEXT: return %[[INNER_ORIG_ADD]]
+  // CHECK: func.func private @helper(
+  // CHECK-NEXT: %[[HELPER_CALL:.*]] = call @[[UNMUTATED_HELPER]](%arg0, %arg1)
+  // CHECK-NEXT: return %[[HELPER_CALL]]
+  // CHECK-NOT: module @outlined_mod_
   module @outlined_mod <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>)
         -> tensor<4x8xf32> {
@@ -518,18 +525,6 @@ module @outlined_callee_used_by_internal_func_call_is_specialized {
       return %0 : tensor<4x8xf32>
     }
   }
-
-  // CHECK-LABEL: module @outlined_mod_
-  // CHECK-SAME: <sym_visibility = "private">
-  // CHECK: func.func @main(
-  // CHECK-NEXT: %[[SPEC_ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
-  // CHECK-NEXT: return %[[SPEC_ADD]]
-  // CHECK: func.func private @[[UNMUTATED_HELPER:main_.+]](
-  // CHECK-NEXT: %[[INNER_ORIG_ADD:.*]] = stablehlo.add %arg0, %arg1 : tensor<4x8xf32>
-  // CHECK-NEXT: return %[[INNER_ORIG_ADD]]
-  // CHECK: func.func private @helper(
-  // CHECK-NEXT: %[[HELPER_CALL:.*]] = call @[[UNMUTATED_HELPER]](%arg0, %arg1)
-  // CHECK-NEXT: return %[[HELPER_CALL]]
 }
 
 // -----
@@ -695,7 +690,7 @@ module @unused_duplicate_argument_avoids_cloning {
 
 module @deeply_nested_callee_emits_error {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // expected-error @+1 {{'ifrt.Call' op cannot clone callee @outer::@inner::@main because only top-level functions and functions nested one module deep are supported}}
+    // expected-error @+1 {{'ifrt.Call' op cannot resolve callee @outer::@inner::@main because only top-level functions and functions nested one module deep are supported}}
     %0, %ctrl_0 = ifrt.Call @outer::@inner::@main(%arg0, %arg0)
         on devices [0, 1] : (!array, !array) -> !array
     return %0 : !array
@@ -712,3 +707,36 @@ module @deeply_nested_callee_emits_error {
   }
 }
 
+// -----
+
+!array = !ifrt.array<tensor<4x8xf32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @all_calls_redirected_to_cloned_variant_erases_unused_original
+module @all_calls_redirected_to_cloned_variant_erases_unused_original {
+  func.func @main(%arg0: !array, %arg1: !array)
+      -> (!array, !array) attributes {ifrt.function} {
+    // Both calls to private @shared_f pass identical duplicate operands: the
+    // first call clones @shared_f while @shared_f is still shared, the second
+    // redirects to that clone, and `EraseUnusedTrackedRootSymbols()` erases
+    // the now unused @shared_f.
+    // CHECK: %[[OUT0:.*]], %{{.*}} = ifrt.Call @[[CLONED:shared_f_.+]](%arg0, %arg0) on devices [0, 1]
+    %0, %ctrl_0 = ifrt.Call @shared_f(%arg0, %arg0) on devices [0, 1]
+        : (!array, !array) -> !array
+    // CHECK: %[[OUT1:.*]], %{{.*}} = ifrt.Call @[[CLONED]](%arg1, %arg1) on devices [0, 1]
+    %1, %ctrl_1 = ifrt.Call @shared_f(%arg1, %arg1) on devices [0, 1]
+        : (!array, !array) -> !array
+    // CHECK: return %[[OUT0]], %[[OUT1]]
+    return %0, %1 : !array, !array
+  }
+
+  // CHECK-NOT: func.func private @shared_f(
+  // CHECK-LABEL: func.func private @shared_f_
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+  // CHECK-NEXT: return %[[ADD]]
+  func.func private @shared_f(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>)
+      -> tensor<4x8xf32> {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<4x8xf32>
+    return %0 : tensor<4x8xf32>
+  }
+}
