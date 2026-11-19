@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/compiler/mlir/lite:build_def.bzl",
@@ -50,5 +51,24 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
+    ],
+)
+
+# Fork of //third_party/tensorflow/compiler/mlir/tools/optimize:quantization_utils
+# for the TFLite converter.
+cc_library(
+    name = "quantization_utils",
+    srcs = ["quantization_utils.cc"],
+    hdrs = ["quantization_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/log:check"],
+)
+
+tf_cc_test(
+    name = "quantization_utils_test",
+    srcs = ["quantization_utils_test.cc"],
+    deps = [
+        ":quantization_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )

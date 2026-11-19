@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
-#include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/quantization_utils.h"
 
 namespace mlir {
 
@@ -672,7 +672,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
                      std::back_inserter(scales_inv),
                      [](float scale) { return 1.0 / scale; });
 
-      tflite_migration::optimize::utils::SymmetricPerChannelQuantizeValues(
+      TFL::SymmetricPerChannelQuantizeValues(
           real_values.data(), scales_inv, dimension,
           uniform_type.getQuantizedDimension(), &quantized_values);
     } else {
@@ -692,9 +692,8 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     return Quantize(real_value, tensor_type);
   } else if (width == 16) {
     if (const auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
-      const auto quantized_values =
-          tflite_migration::optimize::utils::SymmetricQuantizeFloatsToInt16(
-              real_values.data(), real_values.size(), uniform_type.getScale());
+      const auto quantized_values = TFL::SymmetricQuantizeFloatsToInt16(
+          real_values.data(), real_values.size(), uniform_type.getScale());
       std::transform(quantized_values.begin(), quantized_values.end(),
                      std::back_inserter(quantized_attr),
                      [&](int16_t value) -> APInt {
@@ -713,9 +712,8 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     } else {
       return {};
     }
-    const auto quantized_bias =
-        tflite_migration::optimize::utils::SymmetricBiasQuantize<std::int32_t>(
-            real_values.data(), real_values.size(), scales);
+    const auto quantized_bias = TFL::SymmetricBiasQuantize<std::int32_t>(
+        real_values.data(), real_values.size(), scales);
     std::transform(quantized_bias.begin(), quantized_bias.end(),
                    std::back_inserter(quantized_attr),
                    [&](int32_t value) -> APInt {
