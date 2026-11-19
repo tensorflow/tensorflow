@@ -305,9 +305,11 @@ bool HloOrdering::UsesBeforeValueDefinition(
         // Treat CollectivePermuteDone as a special case as it shares the buffer
         // from its operand (CollectivePermuteStart).
         if (use_is_always_before_def_in_same_instr &&
-            use.instruction->opcode() == HloOpcode::kCollectivePermuteDone &&
-            use.instruction->operand(0) == value.instruction()) {
-          return true;
+            use.instruction->opcode() == HloOpcode::kCollectivePermuteDone) {
+          if (dataflow.UnwrapPassthrough(use.instruction->operand(0)) ==
+              value.instruction()) {
+            return true;
+          }
         }
         break;
       case HloOrdering::ExecutionConstraint::kUnordered:
@@ -400,8 +402,10 @@ bool HloOrdering::UsesBeforeValueDefinition(
           // is returned by as part of the result of the conditional, it
           // is possible for the branch definition to flow backward through a
           // surrounding loop and then back into the conditional parameter.
-          if (!dataflow.ValueIsDefinedAt(
-                  use.instruction->operand(use.operand_number), {})) {
+          const HloInstruction* conditional_operand =
+              dataflow.UnwrapPassthrough(
+                  use.instruction->operand(use.operand_number));
+          if (!dataflow.ValueIsDefinedAt(conditional_operand, {})) {
             for (auto value_use : value.GetUses()) {
               VLOG(4) << "def have use:" << value_use << "\n";
               if (value_use.instruction ==

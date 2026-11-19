@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
+#include <optional>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -27,9 +28,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -865,6 +869,71 @@ ENTRY %main {
             HloOrdering::ExecutionConstraint::kIsSame);
   EXPECT_EQ(ordering.GetExecutionConstraint(async_done, dus),
             HloOrdering::ExecutionConstraint::kIsSame);
+}
+
+// Verifies that UsesBeforeValueDefinition unwraps passthroughs for
+// `collective-permute-done` uses and conditional branch operands.
+TEST_F(HloOrderingTest, UsesBeforeValueDefinitionUnwrapsPassthroughs) {
+  constexpr absl::string_view hlo = R"(
+HloModule UsesBeforeValueDefinitionUnwrapsPassthroughs
+
+%true_branch {
+  %tb_param = f32[8] parameter(0)
+  %tb_neg = f32[8] negate(%tb_param)
+  ROOT %tb_root = f32[8] custom-call(%tb_neg), custom_call_target="passthrough"
+}
+
+%false_branch {
+  %fb_param = f32[8] parameter(0)
+  ROOT %fb_exp = f32[8] exponential(%fb_param)
+}
+
+ENTRY %main {
+  %p0 = f32[8] parameter(0)
+  %cond_pred = pred[] parameter(1)
+  %p1 = f32[8] parameter(2)
+  %cp_start = (f32[8], f32[8]) collective-permute-start(%p0),
+      source_target_pairs={{0,0}}
+  %m_cp = (f32[8], f32[8]) custom-call(%cp_start),
+      custom_call_target="Sharding"
+  %cp_done = f32[8] collective-permute-done(%m_cp)
+  %m_cond = f32[8] custom-call(%p1), custom_call_target="passthrough"
+  %cond = f32[8] conditional(%cond_pred, %m_cond, %m_cond),
+      true_computation=%true_branch, false_computation=%false_branch
+  ROOT %out = (f32[8], f32[8]) tuple(%cp_done, %cond)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  auto is_passthrough = [](const HloInstruction* inst) {
+    return inst->IsCustomCall("passthrough") || inst->IsCustomCall("Sharding");
+  };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow,
+      HloDataflowAnalysis::Run(
+          *module, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/std::nullopt,
+          /*propagate_through_control_flow=*/true, is_passthrough));
+
+  DependencyHloOrdering ordering(module.get());
+  HloInstruction* cp_start = FindInstruction(module.get(), "cp_start");
+  HloInstruction* cp_done = FindInstruction(module.get(), "cp_done");
+  HloUse cp_done_use{cp_done, 0, {1}};
+  const HloValue& cp_dest_value = dataflow->GetValueDefinedAt(cp_start, {1});
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
+      {&cp_done_use}, cp_dest_value, *dataflow, &alias_info_,
+      /*use_is_always_before_def_in_same_instr=*/true));
+
+  HloInstruction* cond = FindInstruction(module.get(), "cond");
+  HloInstruction* tb_neg = FindInstruction(module.get(), "tb_neg");
+  HloInstruction* fb_exp = FindInstruction(module.get(), "fb_exp");
+  HloUse cond_true_use{cond, 1};
+  HloUse cond_false_use{cond, 2};
+  HloUse fb_use{fb_exp, 0};
+  const HloValue& tb_value = dataflow->GetValueDefinedAt(tb_neg);
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
+      {&cond_true_use, &cond_false_use, &fb_use}, tb_value, *dataflow,
+      &alias_info_));
 }
 }  // namespace
 }  // namespace xla

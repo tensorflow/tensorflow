@@ -56,6 +56,26 @@ namespace xla {
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
+  // Predicate identifying single operand custom call instructions whose output
+  // shape equals their operand shape (including array or tuple shapes) and
+  // which forward their operand values transparently without defining new
+  // HloValues or recording HloUses (except when they are computation roots).
+  // For example, backends may insert no op custom calls to attach memory space
+  // coloring hints or other metadata that are extracted and removed before
+  // buffer assignment.
+  //
+  // REQUIRES: Every instruction accepted by this predicate satisfies:
+  // * `inst->opcode() == HloOpcode::kCustomCall`
+  // * `inst->operand_count() == 1`
+  // * `ShapeUtil::Equal(inst->shape(), inst->operand(0)->shape())`
+  // * `inst->called_computations().empty()`
+  // * `Cast<HloCustomCallInstruction>(inst)` has empty
+  //   `output_to_operand_aliasing()`
+  // * `!inst->parent()->IsAsyncComputation()` (the wrapped root defines the
+  //   async op's output, so a passthrough root would make that output the same
+  //   value as its input, which async dataflow does not model)
+  using PassthroughPredicate = std::function<bool(const HloInstruction*)>;
+
   // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -84,7 +104,14 @@ class HloDataflowAnalysis {
   //     the per instruction work between them. Every other value computes its
   //     uses on the first GetUses, one value at a time, which is quadratic in
   //     the width of a tuple. Set it when the uses of many values are read
-  //     before the module is mutated.
+  //     before the module is mutated. When `is_passthrough` matches at least
+  //     one instruction in the module, uses are always precomputed for all
+  //     values so lazy GetUses calls remain consistent; otherwise
+  //     `precompute_uses` still applies.
+  //
+  //   is_passthrough : Optional predicate identifying instructions (outside
+  //     async computations) treated as transparent passthroughs; see
+  //     PassthroughPredicate.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
@@ -92,7 +119,19 @@ class HloDataflowAnalysis {
       bool propagate_through_calls = true,
       std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses =
           std::nullopt,
-      bool propagate_through_control_flow = true);
+      bool propagate_through_control_flow = true,
+      PassthroughPredicate is_passthrough = nullptr);
+
+  // Returns true if `instruction` is configured as a transparent passthrough in
+  // this analysis.
+  //
+  // REQUIRES: `instruction` is not null.
+  bool IsPassthrough(const HloInstruction* instruction) const;
+
+  // If `inst` is a configured passthrough instruction, walks `operand(0)` past
+  // any passthroughs and returns the first non passthrough instruction;
+  // otherwise returns `inst` unchanged (including nullptr).
+  const HloInstruction* UnwrapPassthrough(const HloInstruction* inst) const;
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -238,7 +277,7 @@ class HloDataflowAnalysis {
                       bool propagate_through_control_flow = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
-  absl::Status RunImpl();
+  absl::Status RunImpl(const PassthroughPredicate& is_passthrough);
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -267,7 +306,8 @@ class HloDataflowAnalysis {
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
   // then propagated throughout the HLO graph by calling Propagate.
-  absl::Status InitializeInstructionValueSets();
+  absl::Status InitializeInstructionValueSets(
+      const PassthroughPredicate& is_passthrough);
 
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).
@@ -351,6 +391,9 @@ class HloDataflowAnalysis {
   const bool bitcast_defines_value_;
   bool propagate_through_calls_ = true;
   bool propagate_through_control_flow_ = true;
+  // Validated instructions matching the `is_passthrough` predicate passed to
+  // `Run`, populated once during `InitializeInstructionValueSets`.
+  absl::flat_hash_set<const HloInstruction*> passthrough_instructions_;
 
   std::unique_ptr<CallGraph> call_graph_;
 

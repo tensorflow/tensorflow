@@ -471,7 +471,8 @@ std::string HloAliasAnalysis::ToString() const {
 
 /* static */
 absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
-    const HloModule* module, const AliasInfo* alias_info) {
+    const HloModule* module, const AliasInfo* alias_info,
+    HloDataflowAnalysis::PassthroughPredicate is_passthrough) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -482,7 +483,8 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
       HloDataflowAnalysis::Run(
           *module, /*ssa_form=*/true, /*bitcast_defines_value=*/false,
           /*execution_threads=*/{}, /*propagate_through_calls=*/true,
-          /*precompute_uses=*/[](const HloValue&) { return true; }));
+          /*precompute_uses=*/[](const HloValue&) { return true; },
+          /*propagate_through_control_flow=*/true, std::move(is_passthrough)));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ =

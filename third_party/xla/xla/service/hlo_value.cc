@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -162,6 +163,13 @@ constexpr int64_t kMinOperandCountForTable = 32;
 // so the views handed out below stay valid while later requests add entries.
 class HloValue::UseCache {
  public:
+  explicit UseCache(std::function<bool(const HloInstruction*)> is_passthrough)
+      : is_passthrough_(std::move(is_passthrough)) {}
+
+  bool IsPassthrough(const HloInstruction* user) const {
+    return is_passthrough_ != nullptr && is_passthrough_(user);
+  }
+
   // Returns the users of tuple shaped `instruction`, in users() order, that
   // MayUseOperandValue says may use a value nested inside its output, plus
   // every computation root (roots count as uses of everything they return).
@@ -173,7 +181,8 @@ class HloValue::UseCache {
       // ones, so any nested index stands for all of them.
       const ShapeIndex nested_index({0});
       for (HloInstruction* const user : instruction->users()) {
-        if (MayUseOperandValue(nested_index, user) || user->IsRoot()) {
+        if ((!IsPassthrough(user) && MayUseOperandValue(nested_index, user)) ||
+            user->IsRoot()) {
           it->second.push_back(user);
         }
       }
@@ -198,6 +207,7 @@ class HloValue::UseCache {
   }
 
  private:
+  std::function<bool(const HloInstruction*)> is_passthrough_;
   absl::node_hash_map<const HloInstruction*,
                       absl::InlinedVector<HloInstruction*, 2>>
       nested_value_users_;
@@ -207,8 +217,10 @@ class HloValue::UseCache {
       operand_numbers_;
 };
 
-/* static */ void HloValue::PrecomputeUses(absl::Span<HloValue* const> values) {
-  UseCache use_cache;
+/* static */ void HloValue::PrecomputeUses(
+    absl::Span<HloValue* const> values,
+    std::function<bool(const HloInstruction*)> is_passthrough) {
+  UseCache use_cache(std::move(is_passthrough));
   for (HloValue* value : values) {
     DCHECK(value->uses_ == nullptr) << value->ToShortString();
     value->uses_ = std::make_unique<Uses>(value->ComputeUses(&use_cache));
@@ -260,7 +272,9 @@ HloValue::Uses HloValue::ComputeUses(UseCache* use_cache) const {
       }
       // Root instructions of computations are considered to be uses whether
       // or not the root instruction itself actually uses the value.
-      if (!MayUseOperandValue(position.index, user) &&
+      const bool is_passthrough_user =
+          use_cache != nullptr && use_cache->IsPassthrough(user);
+      if ((is_passthrough_user || !MayUseOperandValue(position.index, user)) &&
           !(user->IsRoot() && root_positions.contains(user))) {
         return;
       }

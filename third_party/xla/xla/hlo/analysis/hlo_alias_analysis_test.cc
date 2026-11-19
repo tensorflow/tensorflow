@@ -1738,5 +1738,56 @@ ENTRY main {
   EXPECT_GE(buffer_end_time(sflag1_buf), done_time);
 }
 
+// Verifies that HloAliasAnalysis::Run unifies HloBuffers across a while loop
+// init, while body root, and in place dynamic-update-slice when wrapped in
+// passthrough custom calls.
+TEST_F(HloAliasAnalysisTest,
+       PassthroughPredicateUnifiesBuffersAcrossInPlaceAndWhile) {
+  absl::string_view hlo_string = R"(
+HloModule PassthroughAlias
+
+body {
+  p = f32[8] parameter(0)
+  next = f32[8] add(p, p)
+  ROOT m_body = f32[8] custom-call(next), custom_call_target="passthrough"
+}
+
+cond {
+  p = f32[8] parameter(0)
+  ROOT c = pred[] constant(false)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  u = f32[2] parameter(1)
+  z = s32[] constant(0)
+  m_in = f32[8] custom-call(p0), custom_call_target="passthrough"
+  w = f32[8] while(m_in), condition=cond, body=body
+  m_dus = f32[8] custom-call(w), custom_call_target="passthrough"
+  ROOT dus = f32[8] dynamic-update-slice(m_dus, u, z)
+}
+)";
+  // Note: the "passthrough" custom_call_target name is not intrinsically
+  // special; it is only used here so the test predicate below can identify
+  // which custom calls to treat as passthroughs.
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloAliasAnalysis> analysis,
+      HloAliasAnalysis::Run(module_.get(), &alias_info_,
+                            [](const HloInstruction* inst) {
+                              return inst->IsCustomCall("passthrough");
+                            }));
+
+  const HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  const HloInstruction* next = FindInstruction(module_.get(), "next");
+  const HloInstruction* w = FindInstruction(module_.get(), "w");
+  const HloInstruction* dus = FindInstruction(module_.get(), "dus");
+  EXPECT_EQ(&analysis->GetUniqueBufferAt(p0),
+            &analysis->GetUniqueBufferAt(next));
+  EXPECT_EQ(&analysis->GetUniqueBufferAt(p0), &analysis->GetUniqueBufferAt(w));
+  EXPECT_EQ(&analysis->GetUniqueBufferAt(p0),
+            &analysis->GetUniqueBufferAt(dus));
+}
+
 }  // namespace
 }  // namespace xla
