@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -1248,6 +1249,74 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionAvoidsCycles) {
   SCOPED_TRACE(module->ToString());
   EXPECT_EQ(1, CountMultiOutputFusions(module.get()));
 }
+
+struct SiblingConnectivityCase {
+  absl::string_view entry;
+  bool expect_changed;
+};
+
+class SiblingConnectivityTest
+    : public MultiOutputFusionTest,
+      public testing::WithParamInterface<SiblingConnectivityCase> {};
+
+// Siblings that are connected through another instruction must stay apart,
+// because fusing them would create a cycle. Both cases end with two fusions.
+TEST_P(SiblingConnectivityTest, ConnectedSiblingsAreNotFused) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        absl::StrCat(R"(
+    HloModule test_module
+
+    fused_div {
+      p0.1 = f32[6400]{0} parameter(0)
+      const.1 = f32[] constant(2)
+      broadcast = f32[6400]{0} broadcast(const.1), dimensions={}
+      ROOT div = f32[6400]{0} divide(p0.1, broadcast)
+    }
+
+    fused_mul {
+      p0.2 = f32[6400]{0} parameter(0)
+      ROOT mul = f32[6400]{0} multiply(p0.2, p0.2)
+    }
+
+    fused_add {
+      p0.3 = f32[6400]{0} parameter(0)
+      p1.3 = f32[6400]{0} parameter(1)
+      ROOT add = f32[6400]{0} add(p0.3, p1.3)
+    }
+  )",
+                                                     GetParam().entry)));
+  EXPECT_THAT(mof_.Run(module.get()), IsOkAndHolds(GetParam().expect_changed));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_EQ(absl::c_count_if(module->entry_computation()->instructions(),
+                             HloPredicateIsOp<HloOpcode::kFusion>),
+            2);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Cases, SiblingConnectivityTest,
+    testing::Values(
+        // `first` and `last` share `p0`, but `last` also depends on `first`.
+        SiblingConnectivityCase{R"(
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      first = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_mul
+      barrier = f32[6400]{0} custom-call(first), custom_call_target="barrier"
+      last = f32[6400]{0} fusion(p0, barrier), kind=kLoop, calls=fused_add
+      ROOT root = (f32[6400]{0}) tuple(last)
+    })",
+                                /*expect_changed=*/false},
+        // `other` is connected to neither `first` nor `last` and fuses with
+        // `first`. That connects it to `last`, which must then be left alone.
+        SiblingConnectivityCase{R"(
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      other = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_div
+      first = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_mul
+      barrier = f32[6400]{0} custom-call(first), custom_call_target="barrier"
+      last = f32[6400]{0} fusion(p0, barrier), kind=kLoop, calls=fused_add
+      ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(other, last)
+    })",
+                                /*expect_changed=*/true}));
 
 TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(

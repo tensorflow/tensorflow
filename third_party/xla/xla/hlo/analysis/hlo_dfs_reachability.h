@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,7 +31,7 @@ namespace xla {
 //
 // When the class is created, the instructions are ordered in a defs-before-uses
 // topological order.
-// The reachability query runs a DFS from the destination node (going up through
+// IsReachable runs a DFS from the destination node (going up through
 // operands / control predecessors), and stops when the instruction's index in
 // the defs-before-uses list is before the source node. As the reachability is
 // tested for nodes that are close to each other, this optimization works well,
@@ -48,6 +50,17 @@ class HloDfsReachability {
   // Returns true iff either `a` is reachable from `b` or `b` is reachable from
   // `a`.
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
+  // Returns the `candidates` that are connected to `a`, i.e. the ones for which
+  // IsConnected(a, candidate) is true. Walks the graph once up and once down
+  // from `a` instead of running one search per candidate.
+  //
+  // The walk down follows users, so unlike IsReachable this needs IsPresent()
+  // to hold for every instruction of the computation, not only for `a` and
+  // `candidates`. Call it on a map that was built after the last change to the
+  // computation.
+  absl::flat_hash_set<const HloInstruction*> FindConnected(
+      const HloInstruction* a,
+      absl::Span<const HloInstruction* const> candidates) const;
   static std::unique_ptr<HloDfsReachability> Build(
       const HloComputation* computation);
   // Updates the internal data structure when instruction `previous` was
