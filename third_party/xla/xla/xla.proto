@@ -714,10 +714,13 @@ message DebugOptions {
   // in the CollectivesRegistry.
   optional string xla_gpu_collectives_implementation = 468;
 
-  // With COLLECTIVES in `xla_gpu_enable_command_buffer` and the SKIP_TEMP or
-  // SKIP_PROFILED update mode, keeps buffers of collectives that may be
-  // recorded into command buffers out of output allocations, so the
-  // collectives are not re-recorded on every execution. Costs temp memory.
+  // Keeps buffers of collectives that may be recorded into command buffers out
+  // of output allocations, so the collectives are not re-recorded on every
+  // execution. Costs temp memory.
+  // When not set, it is enabled automatically if COLLECTIVES is in
+  // `xla_gpu_enable_command_buffer` and the update mode is SKIP_TEMP or
+  // SKIP_PROFILED, and disabled otherwise. An explicit value always takes
+  // priority in every configuration.
   optional bool xla_gpu_command_buffer_keep_collectives_out_of_outputs = 572;
 
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =

@@ -412,6 +412,28 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
 
+TEST(DumpTest, GetNonDefaultDebugOptionsKeepsExplicitValueOfUnsetDefault) {
+  DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
+  // The flag is unset by default, which means automatic.
+  ASSERT_FALSE(
+      default_options
+          .has_xla_gpu_command_buffer_keep_collectives_out_of_outputs());
+  EXPECT_THAT(GetNonDefaultDebugOptions(default_options),
+              testing::Not(testing::HasSubstr(
+                  "xla_gpu_command_buffer_keep_collectives_out_of_outputs")));
+
+  // An explicit `false` equals the value of the unset default but must still
+  // be dumped, so that replaying the dump does not re-enable the automatic
+  // behavior.
+  DebugOptions explicit_false = default_options;
+  explicit_false.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(
+      false);
+  EXPECT_THAT(
+      GetNonDefaultDebugOptions(explicit_false),
+      testing::HasSubstr(
+          "xla_gpu_command_buffer_keep_collectives_out_of_outputs: false"));
+}
+
 TEST(DumpTest, GetNonDefaultDebugOptions) {
   DebugOptions options = GetDebugOptionsFromFlags();
   DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();

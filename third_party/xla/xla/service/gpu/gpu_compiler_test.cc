@@ -1996,15 +1996,22 @@ ENTRY main {
 
   auto all_reduce_maybe_live_out =
       [&](DebugOptions::CommandBufferUpdateMode update_mode,
-          bool keep_collectives_out_of_outputs) -> absl::StatusOr<bool> {
+          std::optional<bool> keep_collectives_out_of_outputs)
+      -> absl::StatusOr<bool> {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(kHloText));
     DebugOptions& debug_options =
         module->mutable_config().mutable_debug_options();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
-    debug_options.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(
-        keep_collectives_out_of_outputs);
+    if (keep_collectives_out_of_outputs.has_value()) {
+      debug_options.set_xla_gpu_command_buffer_keep_collectives_out_of_outputs(
+          *keep_collectives_out_of_outputs);
+    } else {
+      EXPECT_FALSE(
+          debug_options
+              .has_xla_gpu_command_buffer_keep_collectives_out_of_outputs());
+    }
 
     Compiler::CompileOptions compile_options;
     compile_options.gpu_topology = GetSingleDeviceGpuTopology(
@@ -2030,10 +2037,20 @@ ENTRY main {
     return slice.allocation()->maybe_live_out();
   };
 
+  // Unset: automatic, enabled only with SKIP_TEMP or SKIP_PROFILED.
+  EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::ALWAYS_UPDATE,
+                                        /*keep_collectives_out_of_outputs=*/
+                                        std::nullopt),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::SKIP_TEMP,
+                                        /*keep_collectives_out_of_outputs=*/
+                                        std::nullopt),
+              absl_testing::IsOkAndHolds(false));
+  // An explicit value always takes priority.
   EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::ALWAYS_UPDATE,
                                         /*keep_collectives_out_of_outputs=*/
                                         true),
-              absl_testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(all_reduce_maybe_live_out(DebugOptions::SKIP_TEMP,
                                         /*keep_collectives_out_of_outputs=*/
                                         false),

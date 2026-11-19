@@ -126,6 +126,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
         "//xla/service:collective_ops_utils",
+        "//xla/service:decision",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",

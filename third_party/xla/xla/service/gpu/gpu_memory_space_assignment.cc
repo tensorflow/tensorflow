@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_buffer.h"
@@ -428,21 +429,40 @@ bool IsCommandBufferCollectiveValue(const HloAliasAnalysis& alias_analysis,
   });
 }
 
+Decision ShouldKeepCollectivesOutOfOutputs(const DebugOptions& option) {
+  // An explicit value of the flag always takes priority.
+  if (option.has_xla_gpu_command_buffer_keep_collectives_out_of_outputs()) {
+    return option.xla_gpu_command_buffer_keep_collectives_out_of_outputs()
+               ? Decision::Allow()
+               : Decision::Forbid(
+                     "xla_gpu_command_buffer_keep_collectives_out_of_outputs "
+                     "is explicitly disabled");
+  }
+  // Otherwise enable it automatically when collectives are recorded into
+  // command buffers and only the VA remapping modes keep the temp allocation
+  // at a stable address.
+  const DebugOptions::CommandBufferUpdateMode update_mode =
+      option.xla_gpu_command_buffer_update_mode();
+  if (update_mode != DebugOptions::SKIP_TEMP &&
+      update_mode != DebugOptions::SKIP_PROFILED) {
+    return Decision::Forbid(
+        "command buffer update mode is not SKIP_TEMP or SKIP_PROFILED");
+  }
+  if (!absl::c_linear_search(option.xla_gpu_enable_command_buffer(),
+                             DebugOptions::COLLECTIVES)) {
+    return Decision::Forbid("COLLECTIVES is not enabled in command buffers");
+  }
+  return Decision::Allow();
+}
+
 }  // namespace
 
 std::optional<BufferAssigner::MustNotLiveOut> CreateMustNotLiveOut(
     const DebugOptions& option) {
-  // Only the VA remapping modes keep the temp allocation at a stable address.
-  const DebugOptions::CommandBufferUpdateMode update_mode =
-      option.xla_gpu_command_buffer_update_mode();
   // TODO(magaonka-amd): Account for ragged all-to-all, which the command
   // buffer conversion pass records as COLLECTIVES_KERNEL when it uses the
   // symmetric memory kernel.
-  if (!option.xla_gpu_command_buffer_keep_collectives_out_of_outputs() ||
-      (update_mode != DebugOptions::SKIP_TEMP &&
-       update_mode != DebugOptions::SKIP_PROFILED) ||
-      !absl::c_linear_search(option.xla_gpu_enable_command_buffer(),
-                             DebugOptions::COLLECTIVES)) {
+  if (ShouldKeepCollectivesOutOfOutputs(option).IsForbidden()) {
     return std::nullopt;
   }
   return [enabled = GetEnabledCollectiveOpTypes(option)](

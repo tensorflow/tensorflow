@@ -92,8 +92,10 @@ BufferAssigner::Colorer CreateColorer(const DebugOptions& option);
 // Buffer assignment runs before the command buffer conversion pass decides what
 // is recorded, so this also matches collectives that end up outside a command
 // buffer (for example below `xla_gpu_graph_min_graph_size`). Costs temp memory.
-// nullopt unless `xla_gpu_command_buffer_keep_collectives_out_of_outputs` is
-// set and COLLECTIVES is enabled with SKIP_TEMP or SKIP_PROFILED.
+// An explicit value of `xla_gpu_command_buffer_keep_collectives_out_of_outputs`
+// always takes priority. When it is not set, this is enabled only if
+// COLLECTIVES is in `xla_gpu_enable_command_buffer` and the update mode is
+// SKIP_TEMP or SKIP_PROFILED. nullopt when disabled.
 std::optional<BufferAssigner::MustNotLiveOut> CreateMustNotLiveOut(
     const DebugOptions& option);
 
