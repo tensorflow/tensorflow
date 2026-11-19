@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -74,6 +75,9 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 static std::array<bool, 2> use_bf16_params{true, false};
 
@@ -7637,6 +7641,158 @@ TEST_F(HloEvaluatorTest,
   EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(23));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateStaticInfiniteWhileLoopExceedsIterationLimit) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule infinite_while
+
+    %while_condition {
+      %param = (s32[], f32[4]) parameter(0)
+      %lhs = s32[] constant(1)
+      %rhs = s32[] constant(10)
+      ROOT %result = pred[] compare(%lhs, %rhs), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], f32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      ROOT %loop_result = (s32[], f32[4]) tuple(%gte.0, %next_buf)
+    }
+
+    ENTRY main {
+      %init.0 = s32[] constant(1)
+      %init.1 = f32[4] constant({1, 2, 3, 4})
+      %while_init = (s32[], f32[4]) tuple(%init.0, %init.1)
+      ROOT %while = (s32[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  EXPECT_THAT(evaluator.Evaluate(*hlo_module, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeded loop iteration limit")));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateNoopInfiniteWhileLoopExceedsIterationLimit) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule noop_infinite_while
+
+    %while_condition {
+      %param = (pred[], f32[4]) parameter(0)
+      ROOT %cond = pred[] get-tuple-element(%param), index=0
+    }
+
+    %while_body {
+      %param = (pred[], f32[4]) parameter(0)
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      %keep_going = pred[] constant(true)
+      ROOT %loop_result = (pred[], f32[4]) tuple(%keep_going, %next_buf)
+    }
+
+    ENTRY main {
+      %init.0 = pred[] constant(true)
+      %init.1 = f32[4] constant({1, 2, 3, 4})
+      %while_init = (pred[], f32[4]) tuple(%init.0, %init.1)
+      ROOT %while = (pred[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  EXPECT_THAT(evaluator.Evaluate(*hlo_module, {}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("exceeded loop iteration limit")));
+}
+
+TEST_F(HloEvaluatorTest,
+       EvaluatePartiallyKnownNoopInfiniteWhileLoopFailsPrecondition) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule partial_noop_infinite_while
+
+    %while_condition {
+      %param = (pred[], f32[4]) parameter(0)
+      ROOT %cond = pred[] get-tuple-element(%param), index=0
+    }
+
+    %while_body {
+      %param = (pred[], f32[4]) parameter(0)
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      %keep_going = pred[] constant(true)
+      ROOT %loop_result = (pred[], f32[4]) tuple(%keep_going, %next_buf)
+    }
+
+    ENTRY main {
+      %param.0 = f32[4] parameter(0)
+      %init.0 = pred[] constant(true)
+      %while_init = (pred[], f32[4]) tuple(%init.0, %param.0)
+      %while = (pred[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %cond_out = pred[] get-tuple-element(%while), index=0
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_THAT(
+      evaluator_.Evaluate(hlo_module->entry_computation()->root_instruction(),
+                          /*precomputed_analyses=*/{},
+                          /*recursively_evaluate_nonconstant_operands=*/true),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("depends on infeed or")));
+}
+
+TEST_F(HloEvaluatorTest,
+       EvaluateU64WhileInductionVarExceedingIterationLimitAboveInt64Max) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule while_induction_var_u64_above_int64_max
+
+    %while_condition {
+      %param = (u64[], f32[4]) parameter(0)
+      %gte.0 = u64[] get-tuple-element(%param), index=0
+      %loop_bound = u64[] constant(9223372036854775807)
+      ROOT %result = pred[] compare(%gte.0, %loop_bound), direction=LT
+    }
+
+    %while_body {
+      %param = (u64[], f32[4]) parameter(0)
+      %gte.0 = u64[] get-tuple-element(%param), index=0
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %step = u64[] constant(4)
+      %next_indvar = u64[] add(%gte.0, %step)
+      %next_buf = f32[4] add(%gte.1, %gte.1)
+      ROOT %loop_result = (u64[], f32[4]) tuple(%next_indvar, %next_buf)
+    }
+
+    ENTRY main {
+      %init.0 = u64[] constant(9223372036854775802)
+      %init.1 = f32[4] constant({1, 2, 3, 4})
+      %while_init = (u64[], f32[4]) tuple(%init.0, %init.1)
+      %while = (u64[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+      ROOT %indvar = u64[] get-tuple-element(%while), index=0
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  HloEvaluator folded_evaluator(/*max_loop_iterations=*/0);
+  ASSERT_OK_AND_ASSIGN(Literal folded_result,
+                       folded_evaluator.Evaluate(
+                           root, /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+  HloEvaluator executed_evaluator(/*max_loop_iterations=*/10);
+  ASSERT_OK_AND_ASSIGN(Literal executed_result,
+                       executed_evaluator.Evaluate(
+                           root, /*precomputed_analyses=*/{},
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+  const Literal expected =
+      LiteralUtil::CreateR0<uint64_t>((uint64_t{1} << 63) + 2);
+  EXPECT_EQ(folded_result, expected);
+  EXPECT_EQ(executed_result, expected);
+}
+
 class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
@@ -8382,6 +8538,73 @@ TEST_F(PatternMatchParseWhileLoopTest, CopiedLoopCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->induction_var_init_value, 0);
   EXPECT_EQ(parsed_while_loop->static_while_loop->step_size, 1);
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
+}
+
+TEST_F(PatternMatchParseWhileLoopTest, ConstantComparisonReturnsNullopt) {
+  for (absl::string_view direction : {"LT", "GT"}) {
+    std::string hlo_text = absl::StrFormat(R"hlo(
+      HloModule constant_cond
+
+      %%while_condition {
+        %%param = (s32[], f32[4]) parameter(0)
+        %%lhs = s32[] constant(1)
+        %%rhs = s32[] constant(10)
+        ROOT %%result = pred[] compare(%%lhs, %%rhs), direction=%s
+      }
+
+      %%while_body {
+        %%param = (s32[], f32[4]) parameter(0)
+        %%gte.0 = s32[] get-tuple-element(%%param), index=0
+        %%gte.1 = f32[4] get-tuple-element(%%param), index=1
+        %%next = f32[4] add(%%gte.1, %%gte.1)
+        ROOT %%loop_result = (s32[], f32[4]) tuple(%%gte.0, %%next)
+      }
+
+      ENTRY main {
+        %%init.0 = s32[] constant(0)
+        %%init.1 = f32[4] parameter(0)
+        %%while_init = (s32[], f32[4]) tuple(%%init.0, %%init.1)
+        ROOT %%while = (s32[], f32[4]) while(%%while_init), condition=%%while_condition, body=%%while_body
+      }
+    )hlo",
+                                           direction);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    const HloInstruction* while_op =
+        hlo_module->entry_computation()->root_instruction();
+    EXPECT_FALSE(PatternMatchParseWhileLoop(while_op).has_value());
+  }
+}
+
+TEST_F(PatternMatchParseWhileLoopTest, InfiniteBooleanCondReturnsNullopt) {
+  constexpr absl::string_view kHloModule = R"hlo(
+    HloModule infinite_boolean_cond
+
+    %while_condition {
+      %param = (pred[], f32[4]) parameter(0)
+      ROOT %cond = pred[] get-tuple-element(%param), index=0
+    }
+
+    %while_body {
+      %param = (pred[], f32[4]) parameter(0)
+      %gte.1 = f32[4] get-tuple-element(%param), index=1
+      %next = f32[4] add(%gte.1, %gte.1)
+      %keep_going = pred[] constant(true)
+      ROOT %loop_result = (pred[], f32[4]) tuple(%keep_going, %next)
+    }
+
+    ENTRY main {
+      %init.0 = pred[] constant(true)
+      %init.1 = f32[4] parameter(0)
+      %while_init = (pred[], f32[4]) tuple(%init.0, %init.1)
+      ROOT %while = (pred[], f32[4]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  const HloInstruction* while_op =
+      hlo_module->entry_computation()->root_instruction();
+  EXPECT_FALSE(PatternMatchParseWhileLoop(while_op).has_value());
 }
 
 TEST_F(HloEvaluatorTest, DotTraced) {

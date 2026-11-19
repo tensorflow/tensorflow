@@ -539,7 +539,8 @@ std::optional<bool> PatternMatchLoopCondVarOverride(
 // dynamic.
 std::optional<DynamicOrStaticInteger> EvaluateWhileLoopParamInitValue(
     const HloInstruction* param_instruction, int64_t tuple_index) {
-  if (param_instruction->opcode() != HloOpcode::kTuple) {
+  if (param_instruction->opcode() != HloOpcode::kTuple || tuple_index < 0 ||
+      tuple_index >= param_instruction->operand_count()) {
     return std::nullopt;
   }
   const HloInstruction* element_instruction =
@@ -586,22 +587,12 @@ std::optional<ParsedWhileLoop> HandleNoopLoopCondition(
     }
     std::optional<bool> updated_loop_cond_var = PatternMatchLoopCondVarOverride(
         while_body->root_instruction(), loop_cond_var_index);
-    if (updated_loop_cond_var.has_value()) {
-      if (!*updated_loop_cond_var) {
-        return ParsedWhileLoop{
-            ParsedStaticWhileLoop{/*trip_count=*/1,
-                                  /*induction_var_index=*/loop_cond_var_index,
-                                  /*induction_var_init_value=*/0,
-                                  /*step_size=*/1,
-                                  /*loop_bound=*/1}};
-      }
-
-      // This is an infinite loop and we set trip_count to -1.
+    if (updated_loop_cond_var.has_value() && !*updated_loop_cond_var) {
       return ParsedWhileLoop{
-          ParsedStaticWhileLoop{/*trip_count=*/-1,
+          ParsedStaticWhileLoop{/*trip_count=*/1,
                                 /*induction_var_index=*/loop_cond_var_index,
                                 /*induction_var_init_value=*/0,
-                                /*step_size=*/0,
+                                /*step_size=*/1,
                                 /*loop_bound=*/1}};
     }
   }
@@ -625,29 +616,6 @@ int64_t ComputeTripCountFromComparison(int64_t init, int64_t bound,
     trip_count += 1;
   }
   return trip_count;
-}
-
-std::optional<ParsedWhileLoop> HandleStaticLoopComparison(
-    int64_t lhs, int64_t rhs, Comparison::Direction comparison_direction) {
-  if ((comparison_direction == Comparison::Direction::kLt && lhs < rhs) ||
-      (comparison_direction == Comparison::Direction::kLe && lhs <= rhs) ||
-      (comparison_direction == Comparison::Direction::kGt && lhs > rhs) ||
-      (comparison_direction == Comparison::Direction::kGe && lhs >= rhs) ||
-      (comparison_direction == Comparison::Direction::kEq && lhs == rhs) ||
-      (comparison_direction == Comparison::Direction::kNe && lhs != rhs)) {
-    // This is an infinite loop and we set trip_count to -1.
-    // There is no induction variable.
-    return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/-1,
-                                                 /*induction_var_index=*/-1,
-                                                 /*induction_var_init_value=*/0,
-                                                 /*step_size=*/0,
-                                                 /*loop_bound=*/1}};
-  }
-  return ParsedWhileLoop{ParsedStaticWhileLoop{/*trip_count=*/0,
-                                               /*induction_var_index=*/-1,
-                                               /*induction_var_init_value=*/0,
-                                               /*step_size=*/0,
-                                               /*loop_bound=*/0}};
 }
 
 std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
@@ -705,14 +673,10 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   CHECK(!loop_comparison.lhs.value->is_dynamic() ||
         !loop_comparison.rhs.value->is_dynamic());
 
+  // If neither operand is dynamic, there is no loop induction variable.
   if (!loop_comparison.lhs.value->is_dynamic() &&
       !loop_comparison.rhs.value->is_dynamic()) {
-    int64_t lhs_value = *loop_comparison.lhs.value->static_value;
-    int64_t rhs_value = *loop_comparison.rhs.value->static_value;
-    Comparison::Direction comparison_direction =
-        loop_comparison.comparison_direction;
-    return HandleStaticLoopComparison(lhs_value, rhs_value,
-                                      comparison_direction);
+    return std::nullopt;
   }
   std::optional<DynamicOrStaticInteger> induction_var_init;
   std::optional<DynamicOrStaticInteger> induction_var_update;
@@ -3901,10 +3865,16 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
         "Cannot evaluate a while loop's induction variable since the loop "
         "does not match a known loop pattern or the loop is not static.");
   }
-  int64_t induction_var_value =
-      parsed_while_loop->static_while_loop->induction_var_init_value +
-      parsed_while_loop->static_while_loop->trip_count *
-          parsed_while_loop->static_while_loop->step_size;
+  CHECK_GE(parsed_while_loop->static_while_loop->trip_count, 0);
+  CHECK_GE(parsed_while_loop->static_while_loop->induction_var_index, 0);
+  CHECK_LT(parsed_while_loop->static_while_loop->induction_var_index,
+           ShapeUtil::TupleElementCount(while_hlo->shape()));
+  int64_t induction_var_value = static_cast<int64_t>(
+      static_cast<uint64_t>(
+          parsed_while_loop->static_while_loop->induction_var_init_value) +
+      static_cast<uint64_t>(parsed_while_loop->static_while_loop->trip_count) *
+          static_cast<uint64_t>(
+              parsed_while_loop->static_while_loop->step_size));
   Shape result_shape = while_hlo->shape().tuple_shapes(
       parsed_while_loop->static_while_loop->induction_var_index);
   ABSL_ASSIGN_OR_RETURN(
@@ -3946,6 +3916,7 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
             visitor_shape_index_[0]) {
       return MakeEvalErrorDueToParamOrInfeed(*while_hlo);
     }
+    CHECK_GE(parsed_while_loop->static_while_loop->trip_count, 0);
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
     int64_t induction_var_value = static_cast<int64_t>(
