@@ -164,6 +164,24 @@ TEST_F(ConvertToCooTensorOpTest, RaggedRowSplitsNotStartingAtZeroFails) {
   ExpectInvalidArgument("row_splits starting with 0");
 }
 
+// Regression test for b/512810821: more values than the row_splits describe
+// must be rejected rather than reading past the end of row_splits.
+TEST_F(ConvertToCooTensorOpTest, RaggedValuesExceedRowSplitsFails) {
+  MakeOp(/*sample_count=*/1, "mean");
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 1});
+  AddInputFromArray<int32_t>(TensorShape({50}), std::vector<int32_t>(50, 0));
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  ExpectInvalidArgument("row_splits ending with the values elements number");
+}
+
+TEST_F(ConvertToCooTensorOpTest, RaggedUnsortedRowSplitsFails) {
+  MakeOp(/*sample_count=*/3, "mean");
+  AddInputFromArray<int32_t>(TensorShape({4}), {0, 2, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 6});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  ExpectInvalidArgument("ragged row_splits must be sorted in ascending");
+}
+
 class ConvertToListOfSparseCoreCooTensorsOpTest : public OpsTestBase {
  protected:
   void MakeOp(int sample_count, const std::string& combiner) {
@@ -401,6 +419,22 @@ TEST(ComputeRowIdsBeforePaddingTest, RaggedRowSplitsEndMismatchFails) {
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr(
                   "row_splits ending with the values elements number"));
+}
+
+TEST(ComputeRowIdsBeforePaddingTest, RaggedRowSplitExceedingValuesFails) {
+  // The middle split (3) points past the 2 values, so filling row 0 would
+  // write past the end of row_ids. row_ids has an extra sentinel slot so that
+  // such an out-of-bounds write is detected even without ASan: the
+  // descending row 1 would otherwise report the same error message.
+  Tensor row_splits = test::AsTensor<int32_t>({0, 3, 2});
+  std::vector<int32_t> row_ids(3, -1);
+  absl::Status status = ComputeRowIdsBeforePadding(
+      row_splits, /*total_id_count=*/2, /*sample_count=*/2, row_ids.data());
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+  EXPECT_THAT(
+      status.message(),
+      ::testing::HasSubstr("ragged row_splits must be sorted in ascending"));
+  EXPECT_THAT(row_ids, ::testing::ElementsAre(-1, -1, -1));
 }
 
 }  // namespace
