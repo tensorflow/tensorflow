@@ -901,13 +901,6 @@ HloRunnerLegacy::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
   return &hlo_runner_executable->executable()->module();
 }
 
-absl::StatusOr<const HloProto* absl_nonnull>
-HloRunnerLegacy::HloProtoFromWrapped(const OpaqueExecutable* wrapped) const {
-  ABSL_ASSIGN_OR_RETURN(const HloRunnerLegacyExecutable* const hlo_runner_executable,
-                   HloRunnerLegacyExecutable::TryUnwrap(*this, wrapped));
-  return hlo_runner_executable->executable()->hlo_proto();
-}
-
 absl::StatusOr<DeviceAssignment> HloRunnerLegacy::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return backend().computation_placer()->AssignDevices(num_replicas,

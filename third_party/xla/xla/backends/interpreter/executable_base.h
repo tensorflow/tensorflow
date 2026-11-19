@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -38,7 +39,7 @@ namespace interpreter {
 
 // Responsible for running a HLO graph through the HloEvaluator and output
 // buffer allocation. Refer to interpreter/README.md for more.
-class InterpreterExecutableBase : public Executable {
+class InterpreterExecutableBase : public HloModuleExecutable {
  public:
   explicit InterpreterExecutableBase(std::unique_ptr<HloModule> hlo_module);
 

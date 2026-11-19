@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -51,11 +52,11 @@ using ::testing::Not;
 using ::testing::Return;
 using ::testing::SizeIs;
 
-class CountingDestructorExecutable : public Executable {
+class CountingDestructorExecutable : public HloModuleExecutable {
  public:
   explicit CountingDestructorExecutable(
       std::atomic<int>* destroy_count = nullptr)
-      : Executable(nullptr), destroy_count_(destroy_count) {}
+      : HloModuleExecutable(nullptr), destroy_count_(destroy_count) {}
   ~CountingDestructorExecutable() override {
     if (destroy_count_ != nullptr) {
       absl::SleepFor(absl::Milliseconds(10));

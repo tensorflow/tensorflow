@@ -24,7 +24,9 @@ limitations under the License.
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -51,6 +53,21 @@ HloProto MakeHloProto(const HloModule& module, HloProtoOptions options) {
 void MakeHloProto(const HloModule& module, HloProto* proto,
                   HloProtoOptions options) {
   module.ToProto(proto->mutable_hlo_module(), options);
+}
+
+void StripPayloadFromLiteralProto(HloProto& proto) {
+  auto* module = proto.mutable_hlo_module();
+  for (auto& computation : *module->mutable_computations()) {
+    for (auto& instruction : *computation.mutable_instructions()) {
+      // Keep the literal shape so memory usage of the HLO module can still be
+      // estimated, but drop the literal data.
+      if (instruction.has_literal()) {
+        LiteralProto literal;
+        *literal.mutable_shape() = instruction.literal().shape();
+        *instruction.mutable_literal() = std::move(literal);
+      }
+    }
+  }
 }
 
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
