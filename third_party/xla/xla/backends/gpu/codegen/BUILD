@@ -204,6 +204,7 @@ cc_library(
         "//xla/service/gpu:target_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -216,6 +217,23 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_emitter_test",
+    srcs = ["fusion_emitter_test.cc"],
+    deps = [
+        ":fusion_emitter",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 

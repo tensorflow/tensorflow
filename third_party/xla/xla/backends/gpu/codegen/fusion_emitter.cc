@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -132,6 +133,29 @@ absl::Status AnnotateKernelLaunchDimensions(
 
   llvm::Triple target_triple = llvm::Triple(llvm_module->getTargetTriple());
 
+  if (launch_dims.cluster_dims().has_value()) {
+    const se::ClusterDim& cluster = *launch_dims.cluster_dims();
+    TF_RET_CHECK(target_triple.isNVPTX())
+        << "Kernel '" << kernel->getName().str()
+        << "' specifies cluster dimensions on non-NVPTX target '"
+        << target_triple.str() << "'.";
+    TF_RET_CHECK(device_info.cuda_compute_capability().IsAtLeastHopper())
+        << "Kernel '" << kernel->getName().str()
+        << "' specifies cluster dimensions on pre-Hopper CUDA compute "
+        << "capability " << device_info.cuda_compute_capability().ToString()
+        << ".";
+    TF_RET_CHECK(cluster.x > 0 && cluster.y > 0 && cluster.z > 0)
+        << "Kernel '" << kernel->getName().str()
+        << "' has non-positive cluster dimensions: " << cluster.ToString();
+    TF_RET_CHECK(block_count.x % cluster.x == 0 &&
+                 block_count.y % cluster.y == 0 &&
+                 block_count.z % cluster.z == 0)
+        << "Kernel '" << kernel->getName().str() << "' block counts ("
+        << block_count.ToString()
+        << ") must be divisible by cluster dimensions (" << cluster.ToString()
+        << ").";
+  }
+
   if (target_triple.isNVPTX()) {
     // Our launch bounds are exact, so we can specify them as
     // reqntid[xyz] rather than maxntid[xyz].
@@ -140,8 +164,12 @@ absl::Status AnnotateKernelLaunchDimensions(
                      launch_dims.thread_counts_per_block().y, ",",
                      launch_dims.thread_counts_per_block().z);
     kernel->addFnAttr("nvvm.reqntid", attr);
-    // Maybe we want to set "reqnctapercluster" here, but not sure if needed or
-    // if LLVM supports that yet. Let's do that later when needed.
+    if (launch_dims.cluster_dims().has_value()) {
+      const se::ClusterDim& cluster = *launch_dims.cluster_dims();
+      kernel->addFnAttr(
+          "nvvm.cluster_dim",
+          absl::StrCat(cluster.x, ",", cluster.y, ",", cluster.z));
+    }
   } else if (target_triple.getArch() == llvm::Triple::amdgpu) {
     kernel->addFnAttr("amdgpu-flat-work-group-size",
                       absl::StrJoin({launch_dims.num_threads_per_block(),
