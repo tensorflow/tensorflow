@@ -375,7 +375,7 @@ absl::Status ClearShardingAttributes(
     HloModule* module, int64_t num_devices,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto has_unreduced_axes = [](const HloInstruction* hlo) -> bool {
-    return hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes);
+    return hlo->has_frontend_attribute(sdy::kHasUnreducedAxes);
   };
   const bool keep_shardings_after_spmd =
       module->config().debug_options().xla_keep_shardings_after_spmd();
@@ -6552,7 +6552,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (hlo->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     local_reduce->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 
@@ -7312,7 +7312,7 @@ absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
     phlo = b_.AddInstruction(hlo->CloneWithNewOperands(
         pshape, {lhs.hlo(), rhs.hlo(), group_sizes.hlo()}));
   }
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (hlo->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 
@@ -7743,7 +7743,7 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     HloComputation* reduction, bool per_dim_ar) {
   // Skip adding AR if the operand has unreduced axes in its sharding,
   // represented by the frontend attribute.
-  if (operand->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (operand->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     return operand;
   }
 

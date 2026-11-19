@@ -743,7 +743,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     auto filtered = b->AddInstruction(HloInstruction::CreateTernary(
         pgather->shape(), HloOpcode::kSelect, broadcast_filter,
         CreateZero(pgather->shape(), b), pgather));
-    if (gather->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    if (gather->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
       filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
     }
     // All-reduce along trivially sliced dimensions.
@@ -1179,7 +1179,7 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
   HloInstruction* filtered = b->AddInstruction(HloInstruction::CreateTernary(
       pgather->shape(), HloOpcode::kSelect, broadcast_filter,
       CreateZero(pgather->shape(), b), pgather));
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (hlo->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     filtered->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 

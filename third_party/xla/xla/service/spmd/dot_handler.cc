@@ -161,7 +161,7 @@ class CreateShardedDotFunctor final
     HloInstruction* sharded_dot = b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, dot_->dot_dimension_numbers(),
         dot_->precision_config()));
-    if (dot_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    if (dot_->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
       sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
     }
     return sharded_dot;
@@ -225,7 +225,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
   Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
       pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (hlo->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
   }
 
@@ -1959,10 +1959,9 @@ absl::StatusOr<HloInstruction*> PartitionBaseCaseBeforePartialMatch(
            partitioned_hlo_maybe_mx.hlo()->opcode() == HloOpcode::kBitcast ||
            partitioned_hlo_maybe_mx.hlo()->opcode() == HloOpcode::kTranspose;
   };
-  const auto& attrs = original_hlo->frontend_attributes().map();
   bool should_skip_windowed_einsum =
-      attrs.contains(kXlaCollectiveMatmulAttr) &&
-      attrs.at(kXlaCollectiveMatmulAttr) == kXlaCollectiveMatmulNone;
+      original_hlo->get_frontend_attribute(kXlaCollectiveMatmulAttr) ==
+      kXlaCollectiveMatmulNone;
   if (!should_skip_windowed_einsum &&
       options.disable_ag_rewrite_for_multiple_consumers) {
     auto lhs_operand =
