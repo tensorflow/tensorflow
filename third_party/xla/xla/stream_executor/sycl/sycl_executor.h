@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
@@ -48,6 +49,9 @@ class SyclExecutor : public gpu::GpuExecutor {
 
   // Returns the DNN support implementation for SYCL.
   dnn::DnnSupport* AsDnn() override;
+
+  // Returns the FFT support implementation for SYCL.
+  fft::FftSupport* AsFft() override;
 
   // Loads a kernel from the given KernelLoaderSpec, which contains the SPIR-V
   // binary and kernel metadata.
@@ -242,6 +246,7 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::Mutex mu_;
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<fft::FftSupport> fft_ ABSL_GUARDED_BY(mu_);
   absl::Status InitBlas();
 };
 

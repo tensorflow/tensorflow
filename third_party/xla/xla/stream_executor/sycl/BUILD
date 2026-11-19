@@ -107,6 +107,7 @@ cc_library(
         ":sycl_platform",
         ":sycl_blas_lt_plugin",
         ":sycl_dnn",
+        ":sycl_fft",
     ]),
     alwayslink = 1,
 )
@@ -302,6 +303,7 @@ sycl_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:fft",
         "//xla/stream_executor:generic_memory_allocation",
         "//xla/stream_executor:generic_memory_allocator",
         "//xla/stream_executor:kernel",
@@ -728,6 +730,35 @@ sycl_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = True,
+)
+
+sycl_library(
+    name = "sycl_fft",
+    srcs = ["sycl_fft.cc"],
+    hdrs = ["sycl_fft.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onemkl_util_headers",
+        ":sycl_platform_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:fft",
+        "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_helpers_header",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
 )

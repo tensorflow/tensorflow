@@ -37,5 +37,38 @@ TEST_F(FftTextTest, Fft) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+TEST_F(FftTextTest, FftNonPowerOfTwoLength) {
+  absl::string_view hlo_string = R"(
+  HloModule fft
+
+  ENTRY main {
+    input = c64[3,20]{1,0} parameter(0)
+    ROOT fft = c64[3,20]{1,0} fft(input), fft_type=FFT, fft_length={20}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(FftTextTest, Rfft) {
+  absl::string_view hlo_string = R"(
+  HloModule rfft
+
+  ENTRY main {
+    input = f32[3,20]{1,0} parameter(0)
+    ROOT fft = c64[3,11]{1,0} fft(input), fft_type=RFFT, fft_length={20}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(FftTextTest, Rfft2D) {
+  absl::string_view hlo_string = R"(
+  HloModule rfft2d
+
+  ENTRY main {
+    input = f32[4,8]{1,0} parameter(0)
+    ROOT fft = c64[4,5]{1,0} fft(input), fft_type=RFFT, fft_length={4,8}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
 }  // namespace
 }  // namespace xla

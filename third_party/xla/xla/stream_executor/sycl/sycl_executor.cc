@@ -403,6 +403,24 @@ dnn::DnnSupport* SyclExecutor::AsDnn() {
   return dnn_.get();
 }
 
+fft::FftSupport* SyclExecutor::AsFft() {
+  absl::MutexLock lock(mu_);
+  if (fft_ != nullptr) {
+    return fft_.get();
+  }
+  PluginRegistry* registry = PluginRegistry::Instance();
+  absl::StatusOr<PluginRegistry::FftFactory> status =
+      registry->GetFactory<PluginRegistry::FftFactory>(
+          stream_executor::sycl::kSyclPlatformId);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to retrieve FFT factory: "
+               << status.status().message();
+    return nullptr;
+  }
+  fft_.reset(status.value()(this));
+  return fft_.get();
+}
+
 SyclExecutor::~SyclExecutor() {
   for (auto& it : in_memory_modules_) {
     UnloadLevelZeroModule(sycl_context_.get(), it.second);
