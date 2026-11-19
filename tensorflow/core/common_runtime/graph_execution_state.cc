@@ -65,8 +65,8 @@ limitations under the License.
 namespace tensorflow {
 
 bool ProtoMemoryOptimizationsEnabled() {
-  bool val = false;
-  (void)ReadBoolFromEnvVar("TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS", false, &val);
+  bool val = true;
+  (void)ReadBoolFromEnvVar("TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS", true, &val);
   return val;
 }
 
@@ -116,21 +116,28 @@ GraphExecutionState::~GraphExecutionState() {
   VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
+  const bool keep_original_graph_def =
+      options.session_options->config.graph_options().place_pruned_graph() ||
+      options.session_options->config.experimental()
+          .disable_optimize_for_static_graph();
+
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
   if (ProtoMemoryOptimizationsEnabled() &&
       LibraryContainsAllFunctions(options.flib_def, graph_def)) {
     flib_def = std::make_unique<FunctionLibraryDefinition>(*options.flib_def);
+  } else if (ProtoMemoryOptimizationsEnabled() && !keep_original_graph_def) {
+    FunctionDefLibraryStackTraces library_traces =
+        FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
+            graph_def.library(), graph_def.debug_info());
+    flib_def = std::make_unique<FunctionLibraryDefinition>(
+        OpRegistry::Global(), std::move(*graph_def.mutable_library()),
+        library_traces);
   } else {
     flib_def = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                            graph_def);
   }
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
-
-  const bool keep_original_graph_def =
-      options.session_options->config.graph_options().place_pruned_graph() ||
-      options.session_options->config.experimental()
-          .disable_optimize_for_static_graph();
 
   if (keep_original_graph_def) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
@@ -151,7 +158,13 @@ GraphExecutionState::~GraphExecutionState() {
   } else {
     auto ret = absl::WrapUnique(
         new GraphExecutionState(nullptr, std::move(flib_def), options));
-    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
+    std::unique_ptr<Graph> base_graph;
+    if (ProtoMemoryOptimizationsEnabled()) {
+      base_graph = std::make_unique<Graph>(*ret->flib_def_);
+      graph_def.clear_library();
+    } else {
+      base_graph = std::make_unique<Graph>(OpRegistry::Global());
+    }
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph({}, std::move(graph_def), base_graph.get()));
     TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph),
@@ -829,7 +842,7 @@ absl::Status GraphExecutionState::OptimizeGraph(
     }
 
     // Convert Graph to GraphDef and add it to the GrapplerItem.
-    graph.ToGraphDef(&item.graph);
+    graph.ToGraphDef(&item.graph, /*include_flib_def=*/flib_def == nullptr);
     // TODO(b/114748242): Add a unit test to test this bug fix.
     if (flib_def) {
       *item.graph.mutable_library() = flib_def->ToProto();
@@ -862,9 +875,13 @@ absl::Status GraphExecutionState::OptimizeGraph(
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const std::string& func_name = fdef.signature().name();
 
-      if ((*optimized_flib)->Contains(func_name)) {
-        VLOG(3) << "Replace function: name=" << func_name;
-        TF_RETURN_IF_ERROR((*optimized_flib)->ReplaceFunction(func_name, fdef));
+      if (const FunctionDef* existing = (*optimized_flib)->Find(func_name)) {
+        if (!ProtoMemoryOptimizationsEnabled() ||
+            !FunctionDefsEqual(*existing, fdef)) {
+          VLOG(3) << "Replace function: name=" << func_name;
+          TF_RETURN_IF_ERROR(
+              (*optimized_flib)->ReplaceFunction(func_name, fdef));
+        }
       } else {
         VLOG(3) << "Add new function: name=" << func_name;
         TF_RETURN_IF_ERROR((*optimized_flib)->AddFunctionDef(fdef));
@@ -875,6 +892,11 @@ absl::Status GraphExecutionState::OptimizeGraph(
     // Convert the optimized GraphDef back to a Graph.
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
+    if (ProtoMemoryOptimizationsEnabled()) {
+      new_graph.clear_library();
+      TF_RETURN_IF_ERROR(
+          (*optimized_graph)->mutable_flib_def()->AddLibrary(**optimized_flib));
+    }
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(new_graph),
                                               optimized_graph->get()));
     // The graph conversion sets the requested device names but not the
