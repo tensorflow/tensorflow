@@ -107,12 +107,39 @@ struct ExtractOutsideCompilation
   void runOnOperation() override;
 };
 
+// Clone any constants this op uses but that have been omitted
+// from Get{Static,All}ExternalOperands.
+SmallVector<Operation*, 4> CloneConstantOperands(
+    Operation* op, llvm::DenseSet<Value>& provided_values) {
+  SmallVector<Operation*, 4> constants;
+  for (OpOperand& o : op->getOpOperands()) {
+    if (provided_values.contains(o.get())) continue;
+    Operation* src = o.get().getDefiningOp();
+    if (src && llvm::isa<mlir::TF::ConstOp>(src) &&
+        !tensorflow::TypeValidForXLA(o.get().getType())) {
+      Operation* cnst = src->clone();
+      op->setOperand(o.getOperandNumber(), cnst->getResult(0));
+      constants.push_back(cnst);
+    }
+  }
+  return constants;
+}
+
 // Build a function containing `ops` with `inputs` and `outputs` using
 // `builder`.  The `ops` are cloned and modified to use the function arguments
 // as inputs.
 FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
                      llvm::ArrayRef<Value> inputs,
                      llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+  // Collect all Values explicitly passed to the function, or produced
+  // by one of its operations.
+  llvm::DenseSet<Value> provided_values(inputs.begin(), inputs.end());
+  for (Operation* op : ops) {
+    for (Value v : op->getResults()) {
+      provided_values.insert(v);
+    }
+  }
+
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(inputs.size());
   for (Value v : inputs) operand_types.emplace_back(v.getType());
@@ -132,8 +159,13 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
   IRMapping mapping;
   mapping.map(inputs, outlined_func.getArguments());
   builder->setInsertionPoint(outlined_func_block, outlined_func_block->begin());
+
   for (Operation* op : ops) {
-    builder->clone(*op, mapping);
+    Operation* clone = op->clone(mapping);
+    for (auto cnst : CloneConstantOperands(clone, provided_values)) {
+      builder->insert(cnst);
+    }
+    builder->insert(clone);
   }
 
   // Set the returned values to use cloned ops results using mapping.
@@ -779,6 +811,15 @@ Operation* CreateHostOps(ArrayRef<Operation*> clustered_ops,
                          std::string args_communication_key,
                          std::string retvals_communication_key,
                          SmallVector<Operation*, 4>& host_ops) {
+  llvm::DenseSet<Value> provided_values(external_operands.begin(),
+                                        external_operands.end());
+  for (Operation* op : clustered_ops) {
+    for (Value v : op->getResults()) {
+      provided_values.insert(v);
+    }
+  }
+
+  Block* block = host_insertion_point->getBlock();
   builder.setInsertionPoint(host_insertion_point);
   llvm::SmallVector<Type, 4> host_operand_types;
   for (const auto& operand : external_operands)
@@ -791,6 +832,12 @@ Operation* CreateHostOps(ArrayRef<Operation*> clustered_ops,
   if (!external_operands.empty()) host_ops.push_back(recv_at_host);
   Operation* after_op = recv_at_host;
   for (Operation* cluster_op : clustered_ops) {
+    for (auto cnst : CloneConstantOperands(cluster_op, provided_values)) {
+      block->getOperations().insert(after_op->getNextNode()->getIterator(),
+                                    cnst);
+      host_ops.push_back(cnst);
+      after_op = cnst;
+    }
     cluster_op->moveAfter(after_op);
     cluster_op->removeAttr(StringAttr::get(op.getContext(), kDeviceAttr));
     after_op = cluster_op;
@@ -798,6 +845,7 @@ Operation* CreateHostOps(ArrayRef<Operation*> clustered_ops,
   }
 
   if (!external_outputs.empty()) {
+    builder.setInsertionPointAfter(after_op);
     Operation* send_from_host = CreateSendFromHostOp(
         builder, op.getLoc(), external_outputs, compilation_key, device_ordinal,
         device_type_attr, retvals_communication_key);
