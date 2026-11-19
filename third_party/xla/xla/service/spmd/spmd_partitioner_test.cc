@@ -4434,9 +4434,10 @@ ENTRY entry {
   // Verify that the parameter got the attribute.
   auto param0 = module->entry_computation()->parameter_instruction(0);
   ASSERT_NE(param0, nullptr);
-  EXPECT_TRUE(
-      param0->frontend_attributes().map().contains("original_sharding"));
-  EXPECT_THAT(param0->frontend_attributes().map().at("original_sharding"),
+  std::optional<std::string> original_sharding =
+      param0->get_frontend_attribute("original_sharding");
+  ASSERT_TRUE(original_sharding.has_value());
+  EXPECT_THAT(*original_sharding,
               ::testing::AnyOf(::testing::HasSubstr("devices=[4]<=[4]"),
                                ::testing::HasSubstr("axis_0"),
                                ::testing::HasSubstr("devices=[4]0,1,2,3")));
@@ -7076,8 +7077,7 @@ ENTRY entry {
 
   auto zero = AllOf(op::Parameter(0), op::Shape("s32[]"));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->frontend_attributes().map().at("_xla_other_attribute"),
-            "xyz");
+  EXPECT_EQ(root->get_frontend_attribute("_xla_other_attribute"), "xyz");
   EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
 }
 
@@ -22251,9 +22251,7 @@ ENTRY entry {
   auto attr = ag->get_frontend_attribute(kSpmdGeneratedAttr);
   ASSERT_TRUE(attr.has_value());
   EXPECT_EQ(attr.value(), "true");
-  auto it = ag->frontend_attributes().map().find("test_attr");
-  ASSERT_NE(it, ag->frontend_attributes().map().end());
-  EXPECT_EQ(it->second, "hello");
+  EXPECT_EQ(ag->get_frontend_attribute("test_attr"), "hello");
 }
 
 TEST_F(SpmdPartitioningV3Test, NamedUnreducedParamGrouped) {

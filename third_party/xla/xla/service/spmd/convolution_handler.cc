@@ -522,7 +522,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
           new_window));
 
   HloInstruction* result = conv;
-  if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (!conv->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     result = lhs.state().partitioner->AllReduceAlongShardingDims(
         b, conv, rhs.sharding(), lhs.state().next_channel_id, all_reduce_dims,
         collective_ops_creator,
@@ -761,7 +761,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
                                                  lhs.base_shape(), lhs.state()),
                                   rhs, b, new_window));
   HloInstruction* result = conv;
-  if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+  if (!conv->has_frontend_attribute(sdy::kHasUnreducedAxes)) {
     result = lhs.state().partitioner->AllReduceAlongShardingDims(
         b, conv, lhs.sharding(), lhs.state().next_channel_id, all_reduce_dims,
         lhs.state().collective_ops_creator,

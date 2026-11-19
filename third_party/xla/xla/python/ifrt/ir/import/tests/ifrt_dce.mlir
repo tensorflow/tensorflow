@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-dce -split-input-file | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-dce -split-input-file -verify-diagnostics | FileCheck %s
 
 #sharding = #ifrt.sharding_param<2x2 to [0] on 4>
 !array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
@@ -448,6 +448,65 @@ module @shared_callee_one_dead_one_live {
 
 // -----
 
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @shared_callee_both_live_not_cloned
+module @shared_callee_both_live_not_cloned {
+  func.func @main(%arg0: !array0) -> (!array0, !array0)
+      attributes {ifrt.function} {
+    // CHECK: %[[OUT0:.*]], %{{.*}} = ifrt.Call @shared_live(%arg0) on devices [0, 1, 2, 3] : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
+    // CHECK-NEXT: %[[OUT1:.*]], %{{.*}} = ifrt.Call @shared_live(%arg0) on devices [0, 1, 2, 3] : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
+    // CHECK-NEXT: return %[[OUT0]], %[[OUT1]]
+    %0, %ctrl_0 = ifrt.Call @shared_live(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %1, %ctrl_1 = ifrt.Call @shared_live(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    return %0, %1 : !array0, !array0
+  }
+
+  // CHECK: func.func private @shared_live(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT: return %[[ADD]]
+  // CHECK-NOT: func.func private @shared_live_
+  func.func private @shared_live(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    %dead = stablehlo.multiply %arg0, %arg0 : tensor<4x8xf32>
+    return %0 : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @shared_side_effecting_callee_unused_output_cloned
+module @shared_side_effecting_callee_unused_output_cloned {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // CHECK: %[[LIVE:.*]], %{{.*}} = ifrt.Call @shared_se(%arg0) on devices [0, 1, 2, 3] : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
+    // CHECK-NEXT: %{{.*}} = ifrt.Call @[[CLONED_SE:shared_se_.+]](%arg0) on devices [0, 1, 2, 3] : (!ifrt.array<{{.*}}>) -> ()
+    // CHECK-NEXT: return %[[LIVE]]
+    %0, %ctrl_0 = ifrt.Call @shared_se(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %1, %ctrl_1 = ifrt.Call @shared_se(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    return %0 : !array0
+  }
+
+  // CHECK: func.func private @shared_se(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK: func.func private @[[CLONED_SE]](%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT: stablehlo.custom_call @SideEffect(%arg0) {has_side_effect = true}
+  // CHECK-NEXT: return
+  func.func private @shared_se(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %0 = stablehlo.custom_call @SideEffect(%arg0) {has_side_effect = true}
+        : (tensor<4x8xf32>) -> tensor<4x8xf32>
+    return %0 : tensor<4x8xf32>
+  }
+}
+
+// -----
+
 !array_d0 = !ifrt.array<tensor<2x2xi32>,
                         #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
 !array_d1 = !ifrt.array<tensor<2x2xi32>,
@@ -820,4 +879,229 @@ module @full_elimination_forwards_and_deduplicates_control_inputs {
     %1 = stablehlo.add %0, %arg2 : tensor<2x4xi32>
     return %1 : tensor<2x4xi32>
   }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @unreachable_func_call_erased_enables_helper_dce
+module @unreachable_func_call_erased_enables_helper_dce {
+  func.func @main(%arg0: !array0, %arg1: !array0) -> (!array0, !array0)
+      attributes {ifrt.function} {
+    // Place `@caller` before `@dead_helper` and `@live_helper` to verify that
+    // upfront region simplification drops unreachable `func.call` refs before
+    // the reverse DCE walk visits independent calls (erasing `@dead_helper`
+    // and mutating `@live_helper` in place without cloning).
+    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @caller(%arg0) on devices [0, 1, 2, 3]
+    // CHECK-NOT: ifrt.Call @dead_helper
+    // CHECK: %[[LIVE:.*]], %{{.*}} = ifrt.Call @live_helper(%arg0) on devices [0, 1, 2, 3]
+    // CHECK-NEXT: return %[[OUT]], %[[LIVE]]
+    %0, %ctrl_0 = ifrt.Call @caller(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %1, %ctrl_1 = ifrt.Call @dead_helper(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %2, %ctrl_2 = ifrt.Call @live_helper(%arg0, %arg1) on devices [0, 1, 2, 3]
+        : (!array0, !array0) -> !array0
+    return %0, %2 : !array0, !array0
+  }
+
+  // CHECK-NOT: func.func private @dead_helper
+  func.func private @dead_helper(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK: func.func private @live_helper(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NOT: func.func private @live_helper_
+  func.func private @live_helper(%arg0: tensor<4x8xf32>,
+                                 %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK: func.func private @caller(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.func private @caller(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  ^dead:
+    %0 = func.call @dead_helper(%arg0) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+    %1 = func.call @live_helper(%0, %arg0)
+        : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+    return %1 : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @deferred_dead_callee_cleanup_order_independent
+module @deferred_dead_callee_cleanup_order_independent {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // Dead `ifrt.Call`s appear after `%0` and the dead transfer/remap ops so
+    // the reverse walk erases the calls before their remaining `SymbolRefAttr`
+    // uses are dropped (via `simplifyRegions`, filtered `res_attrs`, and erased
+    // `ifrt.Reshard` / `ifrt.RemapArrays` ops). End-of-pass
+    // `EraseUnusedTrackedRootSymbols()` still erases all three callees.
+    // CHECK-NOT: ifrt.Reshard
+    // CHECK-NOT: ifrt.RemapArrays
+    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @caller(%arg0) on devices [0, 1, 2, 3]
+    // CHECK-NOT: test.ref
+    // CHECK-NOT: ifrt.Call @dead_body_ref
+    // CHECK-NOT: ifrt.Call @dead_attr_ref
+    // CHECK-NOT: ifrt.Call @dead_transfer_ref
+    // CHECK-NEXT: return %[[OUT]]
+    %dead_rs, %ctrl_rs = ifrt.Reshard(%arg0) {test.ref = @dead_transfer_ref}
+        : (!array0) -> !array0
+    %dead_rm, %ctrl_rm = ifrt.RemapArrays(%arg0)
+        mappings = [#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:4:1] to [0:4:1]>]>]
+        {test.ref = @dead_transfer_ref}
+        : (!array0) -> !array0
+    %0:2, %ctrl_0 = ifrt.Call @caller(%arg0) on devices [0, 1, 2, 3]
+        <res_attrs = [{}, {test.ref = @dead_attr_ref}]>
+        : (!array0) -> (!array0, !array0)
+    %1, %ctrl_1 = ifrt.Call @dead_body_ref(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %2, %ctrl_2 = ifrt.Call @dead_attr_ref(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    %3, %ctrl_3 = ifrt.Call @dead_transfer_ref(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    return %0#0 : !array0
+  }
+
+  // CHECK-NOT: func.func private @dead_body_ref
+  func.func private @dead_body_ref(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK-NOT: func.func private @dead_attr_ref
+  func.func private @dead_attr_ref(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK-NOT: func.func private @dead_transfer_ref
+  func.func private @dead_transfer_ref(%arg0: tensor<4x8xf32>)
+      -> tensor<4x8xf32> {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK: func.func private @caller(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.func private @caller(%arg0: tensor<4x8xf32>)
+      -> (tensor<4x8xf32>, tensor<4x8xf32>) {
+    %dead = stablehlo.add %arg0, %arg0 {test.ref = @dead_body_ref}
+        : tensor<4x8xf32>
+    return %arg0, %dead : tensor<4x8xf32>, tensor<4x8xf32>
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @single_use_recursive_outlined_splits_in_place
+module @single_use_recursive_outlined_splits_in_place {
+  func.func @main(%arg0: !array0, %arg1: !array0) -> !array0
+      attributes {ifrt.function} {
+    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @rec_mod::@main(%arg0) on devices [0, 1, 2, 3]
+    // CHECK-NEXT: return %[[OUT]]
+    %0, %ctrl_0 = ifrt.Call @rec_mod::@main(%arg0, %arg1) on devices [0, 1, 2, 3]
+        : (!array0, !array0) -> !array0
+    return %0 : !array0
+  }
+
+  // CHECK: module @rec_mod <sym_visibility = "private">
+  // CHECK: func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT: %[[REC:.*]] = call @[[HELPER:main_.+]](%arg0, %arg0)
+  // CHECK-NEXT: return %[[REC]]
+  // CHECK: func.func private @[[HELPER]](%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NOT: module @rec_mod_
+  module @rec_mod <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>)
+        -> tensor<4x8xf32> {
+      %0 = func.call @main(%arg0, %arg0)
+          : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+      return %0 : tensor<4x8xf32>
+    }
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @public_single_use_callee_cloned_before_signature_change
+module @public_single_use_callee_cloned_before_signature_change {
+  func.func @main(%arg0: !array0, %arg1: !array0) -> !array0
+      attributes {ifrt.function} {
+    // CHECK: %[[OUT:.*]], %{{.*}} = ifrt.Call @[[CLONED:pub_callee_.+]](%arg0) on devices [0, 1, 2, 3] : (!ifrt.array<{{.*}}>) -> !ifrt.array<{{.*}}>
+    // CHECK-NEXT: return %[[OUT]]
+    %0:2, %ctrl_0 = ifrt.Call @pub_callee(%arg0, %arg1) on devices [0, 1, 2, 3]
+        : (!array0, !array0) -> (!array0, !array0)
+    return %0#0 : !array0
+  }
+
+  // CHECK: func.func @pub_callee(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>) -> (tensor<4x8xf32>, tensor<4x8xf32>)
+  // CHECK: func.func private @[[CLONED]](%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.func @pub_callee(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>)
+      -> (tensor<4x8xf32>, tensor<4x8xf32>) {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    %1 = stablehlo.add %arg1, %arg1 : tensor<4x8xf32>
+    return %0, %1 : tensor<4x8xf32>, tensor<4x8xf32>
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// CHECK-LABEL: module @transitive_erasure_preserves_private_ifrt_functions
+module @transitive_erasure_preserves_private_ifrt_functions {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // CHECK-NOT: ifrt.Call @dead_callee
+    // CHECK: return %arg0
+    %0, %ctrl_0 = ifrt.Call @dead_callee(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    return %arg0 : !array0
+  }
+
+  // CHECK-NOT: func.func private @dead_callee
+  func.func private @dead_callee(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+      attributes {test.ref = @priv_ifrt, test.ref2 = @priv_reshard} {
+    return %arg0 : tensor<4x8xf32>
+  }
+
+  // CHECK: func.func private @priv_ifrt
+  // CHECK-SAME: attributes {ifrt.function}
+  func.func private @priv_ifrt(%arg0: !array0) -> !array0
+      attributes {ifrt.function} {
+    return %arg0 : !array0
+  }
+
+  // CHECK: func.func private @priv_reshard
+  // CHECK-SAME: attributes {ifrt.reshard_function}
+  func.func private @priv_reshard(%arg0: !array0) -> !array0
+      attributes {ifrt.reshard_function} {
+    return %arg0 : !array0
+  }
+}
+
+// -----
+
+#sharding = #ifrt.sharding_param<2x2 to [0] on 4>
+!array0 = !ifrt.array<tensor<4x8xf32>, #sharding, [0, 1, 2, 3]>
+
+// `signalPassFailure()` suppresses printing the failing module to stdout.
+// CHECK-NOT: module @external_declaration_fails
+module @external_declaration_fails {
+  func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
+    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @ext_decl}}
+    %0, %ctrl_0 = ifrt.Call @ext_decl(%arg0) on devices [0, 1, 2, 3]
+        : (!array0) -> !array0
+    return %0 : !array0
+  }
+
+  func.func private @ext_decl(tensor<4x8xf32>) -> tensor<4x8xf32>
 }
