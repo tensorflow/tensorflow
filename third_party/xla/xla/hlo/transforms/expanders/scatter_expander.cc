@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/scatter_expander.h"
+#include "xla/hlo/transforms/expanders/scatter_expander.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -43,11 +43,11 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/pass/hlo_pass_registry.h"
+#include "xla/hlo/transforms/expanders/scatter_utils.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/scatter_utils.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

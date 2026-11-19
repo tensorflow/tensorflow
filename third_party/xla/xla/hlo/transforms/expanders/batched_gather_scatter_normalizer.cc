@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/batched_gather_scatter_normalizer.h"
+#include "xla/hlo/transforms/expanders/batched_gather_scatter_normalizer.h"
 
 #include <cstdint>
 #include <iterator>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/map_inliner.h"
+#include "xla/hlo/transforms/expanders/map_inliner.h"
 
 #include <cstdint>
 #include <vector>

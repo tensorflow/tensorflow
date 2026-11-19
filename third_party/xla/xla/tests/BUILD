@@ -3914,3 +3914,71 @@ xla_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+xla_test(
+    name = "batchnorm_expander_test",
+    size = "small",
+    srcs = ["batchnorm_expander_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/transforms/expanders:batchnorm_expander",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+    ],
+)
+
+xla_test(
+    name = "map_inliner_test",
+    srcs = ["map_inliner_test.cc"],
+    backends = ["interpreter"],
+    deps = [
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/transforms/expanders:map_inliner",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "triangular_solve_expander_test",
+    size = "medium",
+    srcs = ["triangular_solve_expander_test.cc"],
+    backends = ["cpu"],
+    shard_count = 12,
+    deps = [
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:reference_util",
+        "//xla/hlo/transforms/expanders:triangular_solve_expander",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+    ],
+)

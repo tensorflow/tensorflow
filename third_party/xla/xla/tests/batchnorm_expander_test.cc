@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/batchnorm_expander.h"
+#include "xla/hlo/transforms/expanders/batchnorm_expander.h"
 
 #include <cstdint>
 #include <memory>

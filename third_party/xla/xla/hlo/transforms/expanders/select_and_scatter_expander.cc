@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/select_and_scatter_expander.h"
+#include "xla/hlo/transforms/expanders/select_and_scatter_expander.h"
 
 #include <cstdint>
 #include <memory>

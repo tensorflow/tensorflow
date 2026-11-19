@@ -1896,240 +1896,46 @@ xla_cc_test(
 
 cc_library(
     name = "batchnorm_expander",
-    srcs = ["batchnorm_expander.cc"],
     hdrs = ["batchnorm_expander.h"],
-    deps = [
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:batchnorm_expander"],
 )
 
 cc_library(
     name = "gather_expander",
-    srcs = ["gather_expander.cc"],
     hdrs = ["gather_expander.h"],
-    deps = [
-        ":gather_scatter_utils",
-        ":hlo_creation_utils",
-        ":while_util",
-        "//xla:literal_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_context",
-        "//xla/hlo/pass:hlo_pass_options",
-        "//xla/hlo/pass:hlo_pass_registry",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:gather_expander"],
     alwayslink = True,
 )
 
 cc_library(
     name = "scatter_utils",
-    srcs = ["scatter_utils.cc"],
     hdrs = ["scatter_utils.h"],
-    deps = [
-        ":hlo_creation_utils",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:call_inliner",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:scatter_utils"],
 )
 
 cc_library(
     name = "scatter_expander",
-    srcs = ["scatter_expander.cc"],
     hdrs = ["scatter_expander.h"],
-    deps = [
-        ":gather_scatter_utils",
-        ":hlo_creation_utils",
-        ":scatter_utils",
-        ":while_util",
-        "//xla:comparison_util",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_context",
-        "//xla/hlo/pass:hlo_pass_options",
-        "//xla/hlo/pass:hlo_pass_registry",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:scatter_expander"],
     alwayslink = True,
 )
 
 cc_library(
     name = "scan_expander",
-    srcs = ["scan_expander.cc"],
     hdrs = ["scan_expander.h"],
-    deps = [
-        "//xla:comparison_util",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:call_inliner",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "scan_expander_test",
-    srcs = ["scan_expander_test.cc"],
-    deps = [
-        ":hlo_module_config",
-        ":scan_expander",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_cc_test(
-    name = "scatter_expander_test",
-    srcs = ["scatter_expander_test.cc"],
-    deps = [
-        ":scatter_expander",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:scan_expander"],
 )
 
 cc_library(
     name = "triangular_solve_expander",
-    srcs = ["triangular_solve_expander.cc"],
     hdrs = ["triangular_solve_expander.h"],
-    deps = [
-        ":hlo_creation_utils",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/hlo/builder/lib:constants",
-        "//xla/hlo/builder/lib:math",
-        "//xla/hlo/builder/lib:matrix",
-        "//xla/hlo/builder/lib:slicing",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_test(
-    name = "triangular_solve_expander_test",
-    size = "medium",
-    srcs = ["triangular_solve_expander_test.cc"],
-    backends = ["cpu"],
-    shard_count = 12,
-    deps = [
-        ":triangular_solve_expander",
-        "//xla:array2d",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:reference_util",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_test(
-    name = "batchnorm_expander_test",
-    size = "small",
-    srcs = ["batchnorm_expander_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
-    deps = [
-        ":batchnorm_expander",
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:triangular_solve_expander"],
 )
 
 xla_test(
@@ -2192,22 +1998,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
-    ],
-)
-
-xla_cc_test(
-    name = "gather_expander_test",
-    srcs = ["gather_expander_test.cc"],
-    deps = [
-        ":gather_expander",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_query",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3666,24 +3456,9 @@ cc_library(
 
 cc_library(
     name = "map_inliner",
-    srcs = ["map_inliner.cc"],
     hdrs = ["map_inliner.h"],
-    deps = [
-        "//xla/hlo/ir:dfs_hlo_visitor_with_default",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_query",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:statusor",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:map_inliner"],
 )
 
 cc_library(
@@ -3696,28 +3471,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@tsl//tsl/platform:env",
-    ],
-)
-
-xla_test(
-    name = "map_inliner_test",
-    srcs = ["map_inliner_test.cc"],
-    backends = ["interpreter"],
-    deps = [
-        ":map_inliner",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -4199,75 +3952,16 @@ cc_library(
 
 cc_library(
     name = "scatter_simplifier",
-    srcs = ["scatter_simplifier.cc"],
     hdrs = ["scatter_simplifier.h"],
-    deps = [
-        ":gather_scatter_utils",
-        ":hlo_creation_utils",
-        "//xla:permutation_util",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:call_inliner",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "scatter_simplifier_test",
-    srcs = ["scatter_simplifier_test.cc"],
-    deps = [
-        ":scatter_simplifier",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:literal_test_util",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:scatter_simplifier"],
 )
 
 cc_library(
     name = "select_and_scatter_expander",
-    srcs = ["select_and_scatter_expander.cc"],
     hdrs = ["select_and_scatter_expander.h"],
-    deps = [
-        "//xla:comparison_util",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:call_inliner",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "select_and_scatter_expander_test",
-    srcs = ["select_and_scatter_expander_test.cc"],
-    deps = [
-        ":select_and_scatter_expander",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:select_and_scatter_expander"],
 )
 
 cc_library(
@@ -4302,22 +3996,9 @@ cc_library(
 
 cc_library(
     name = "batched_gather_scatter_normalizer",
-    srcs = ["batched_gather_scatter_normalizer.cc"],
     hdrs = ["batched_gather_scatter_normalizer.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms/expanders:op_expander_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/hlo/transforms/expanders:batched_gather_scatter_normalizer"],
 )
 
 cc_library(
@@ -4328,19 +4009,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "batched_gather_scatter_normalizer_test",
-    srcs = ["batched_gather_scatter_normalizer_test.cc"],
-    deps = [
-        ":batched_gather_scatter_normalizer",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
     ],
 )
 

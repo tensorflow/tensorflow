@@ -391,7 +391,7 @@ cc_library(
         "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
-        "//xla/service:scatter_simplifier",
+        "//xla/hlo/transforms/expanders:scatter_simplifier",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",

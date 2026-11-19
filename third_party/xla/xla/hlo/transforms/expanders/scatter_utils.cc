@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/scatter_utils.h"
+#include "xla/hlo/transforms/expanders/scatter_utils.h"
 
 #include <cstdint>
 #include <memory>
