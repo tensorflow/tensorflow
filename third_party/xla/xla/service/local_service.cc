@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service_utils.h"
 #include "xla/service/platform_util.h"
@@ -76,7 +77,8 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
 LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
-    const ExecutableBuildOptions& build_options) {
+    const ExecutableBuildOptions& build_options,
+    std::vector<std::unique_ptr<HloProto>>* snapshot_hlos) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options,
@@ -102,24 +104,36 @@ LocalService::CompileExecutables(
       {build_options.key_value_store(), build_options.process_index(),
        build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
+    std::unique_ptr<HloProto> snapshot_hlo;
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         BuildExecutable(computation.proto(), std::move(module_config),
                         execute_backend_.get(), executor, compile_options,
-                        build_options.run_backend_only()));
+                        build_options.run_backend_only(),
+                        snapshot_hlos != nullptr ? &snapshot_hlo : nullptr));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
+    if (snapshot_hlos != nullptr) {
+      snapshot_hlos->clear();
+      snapshot_hlos->push_back(std::move(snapshot_hlo));
+    }
     return executables;
-  } else {
-    // BuildExecutables uses the executors length to determine the number of
-    // cores per module, but otherwise only uses the first executor.
-    std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
-                                               executor);
-    return BuildExecutables(
-        /*module_proto=*/&computation.proto(), std::move(module_config),
-        execute_backend_.get(), {executors}, compile_options,
-        build_options.run_backend_only());
   }
+  // BuildExecutables uses the executors length to determine the number of
+  // cores per module, but otherwise only uses the first executor.
+  std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
+                                             executor);
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      BuildExecutables(
+          /*module_proto=*/&computation.proto(), std::move(module_config),
+          execute_backend_.get(), {executors}, compile_options,
+          build_options.run_backend_only()));
+  if (snapshot_hlos != nullptr) {
+    snapshot_hlos->clear();
+    snapshot_hlos->resize(executables.size());
+  }
+  return executables;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>

@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -35,11 +37,20 @@ class CompilationCache {
  public:
   CompilationCache() = default;
 
-  ExecutionHandle Insert(std::unique_ptr<Executable> executable);
+  // Inserts `executable`. `snapshot_hlo` is an optional snapshot of the HLO
+  // before optimizations that is used when dumping HLO snapshots (see
+  // `Service::BuildExecutable`).
+  ExecutionHandle Insert(std::unique_ptr<Executable> executable,
+                         std::unique_ptr<HloProto> snapshot_hlo = nullptr);
 
   // Lookup the Executable for the specified handle in the cache. Return a
   // shared_ptr to the Executable if it exists in the cache.
   absl::StatusOr<std::shared_ptr<Executable>> LookUp(
+      const ExecutionHandle& handle) const;
+
+  // Returns the HLO snapshot that was inserted together with the executable
+  // for the specified handle, or nullptr if there is none.
+  absl::StatusOr<std::shared_ptr<const HloProto>> LookUpSnapshotHlo(
       const ExecutionHandle& handle) const;
 
  protected:
@@ -47,8 +58,12 @@ class CompilationCache {
 
   using CacheKey = int64_t;
 
-  absl::flat_hash_map<CacheKey, std::shared_ptr<Executable>> cache_
-      ABSL_GUARDED_BY(mutex_);
+  struct Entry {
+    std::shared_ptr<Executable> executable;
+    std::shared_ptr<const HloProto> snapshot_hlo;
+  };
+
+  absl::flat_hash_map<CacheKey, Entry> cache_ ABSL_GUARDED_BY(mutex_);
 
  private:
   CompilationCache(const CompilationCache&) = delete;
