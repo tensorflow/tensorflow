@@ -488,17 +488,15 @@ absl::Status GrpcServer::AddMasterEagerContextToEagerService(
 
 absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   mutex_lock l(mu_);
-  server_def_ = server_def;
-  WorkerCacheInterface* worker_cache;
-  WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
+  WorkerCacheInterface* worker_cache = nullptr;
+  WorkerCacheFactoryOptions worker_cache_factory_options(server_def);
   TF_RETURN_IF_ERROR(
       WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
   if (worker_cache == nullptr) {
     return absl::InvalidArgumentError(
         "Failed to build worker cache with the provided server def.");
   }
-  // Transfer ownership of worker_cache to worker_env_.session_mgr.
-  worker_env_.session_mgr->ResetDefaultWorkerCache(worker_cache);
+  std::unique_ptr<WorkerCacheInterface> new_worker_cache(worker_cache);
 
   std::string default_worker_name;
   std::string unused;
@@ -506,6 +504,7 @@ absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
                                         &default_worker_name, &unused)) {
     return absl::InternalError("Could not parse worker name.");
   }
+  server_def_ = server_def;
   worker_env_.collective_executor_mgr = CreateProdRpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
       MaybeCreateNcclCommunicator(server_def_.default_session_config()),
@@ -514,6 +513,9 @@ absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
+
+  // Transfer ownership of worker_cache to worker_env_.session_mgr.
+  worker_env_.session_mgr->ResetDefaultWorkerCache(new_worker_cache.release());
   return absl::OkStatus();
 }
 

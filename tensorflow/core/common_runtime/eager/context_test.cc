@@ -48,6 +48,18 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tsl/platform/refcount.h"
 
+#if !defined(IS_MOBILE_PLATFORM)
+#include "absl/cleanup/cleanup.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/master_env.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/distributed_runtime/test_utils.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
+#endif  // !IS_MOBILE_PLATFORM
+
 namespace tensorflow {
 namespace {
 
@@ -487,6 +499,177 @@ TEST_F(EagerContextTest, ReleaseOnTfThread) {
 
   EXPECT_NE(rendezvous_destructor_thread_id, tf_thread_id);
 }
+
+#if !defined(IS_MOBILE_PLATFORM)
+class AliveTestWorker : public TestWorkerInterface {
+ public:
+  explicit AliveTestWorker(absl::Status status) : status_(std::move(status)) {}
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
+                      GetStatusResponse* response, bool fail_fast,
+                      StatusCallback done) override {
+    done(status_);
+  }
+
+ private:
+  absl::Status status_;
+};
+
+class ReleaseCountingWorkerCache : public TestWorkerCache {
+ public:
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {
+    ++release_count_;
+    last_released_target_ = target;
+    last_released_worker_ = worker;
+  }
+
+  int release_count() const { return release_count_; }
+  const std::string& last_released_target() const {
+    return last_released_target_;
+  }
+  WorkerInterface* last_released_worker() const {
+    return last_released_worker_;
+  }
+
+ private:
+  int release_count_ = 0;
+  std::string last_released_target_;
+  WorkerInterface* last_released_worker_ = nullptr;
+};
+
+class FakeServer : public ServerInterface {
+ public:
+  explicit FakeServer(WorkerCacheInterface* worker_cache,
+                      DeviceMgr* local_device_mgr) {
+    master_env_.worker_cache = worker_cache;
+    worker_env_.device_mgr = local_device_mgr;
+  }
+
+  void InstallSessionMgr(std::unique_ptr<SessionMgr> session_mgr) {
+    session_mgr_ = std::move(session_mgr);
+    worker_env_.session_mgr = session_mgr_.get();
+  }
+
+  absl::Status Start() override { return absl::OkStatus(); }
+  absl::Status Stop() override { return absl::OkStatus(); }
+  absl::Status Join() override { return absl::OkStatus(); }
+  const std::string target() const override { return "grpc://localhost:0"; }
+  WorkerEnv* worker_env() override { return &worker_env_; }
+  MasterEnv* master_env() override { return &master_env_; }
+  absl::Status UpdateServerDef(const ServerDef& server_def) override {
+    return absl::OkStatus();
+  }
+  absl::Status AddMasterEagerContextToEagerService(
+      uint64_t context_id, EagerContext* context) override {
+    return absl::OkStatus();
+  }
+  absl::Status SetCoordinationServiceAgentInstance(
+      tsl::CoordinationServiceAgent* agent) override {
+    return absl::OkStatus();
+  }
+  absl::Status StopCoordinationService() override { return absl::OkStatus(); }
+
+ private:
+  WorkerEnv worker_env_;
+  MasterEnv master_env_;
+  std::unique_ptr<SessionMgr> session_mgr_;  // Destroyed first.
+};
+
+TEST_F(EagerContextTest, CheckRemoteAliveWithoutServer) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  EagerContextDistributedManager distributed_mgr(context());
+  bool is_alive = true;
+  absl::Status s = distributed_mgr.CheckRemoteAlive(
+      "/job:worker/replica:0/task:0", &is_alive);
+  EXPECT_EQ(s.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_FALSE(is_alive);
+}
+
+TEST_F(EagerContextTest, CheckRemoteAliveUsesSessionMgrCache) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  const std::string task = "/job:worker/replica:0/task:0";
+  AliveTestWorker alive_worker(absl::OkStatus());
+  TestWorkerCache stale_cache;  // Has no workers; must not be used.
+  auto server = std::make_unique<FakeServer>(/*worker_cache=*/nullptr,
+                                             context()->local_device_mgr());
+  FakeServer* raw_server = server.get();
+  TF_ASSERT_OK(context()->StoreCollectiveOpsServer(
+      std::move(server), context()->local_device_mgr(),
+      /*rpc_collective_executor_mgr=*/nullptr));
+  auto teardown = absl::MakeCleanup([this, raw_server] {
+    context_.reset();
+    delete raw_server;
+  });
+  EagerContextDistributedManager distributed_mgr(context());
+
+  bool is_alive = true;
+  EXPECT_EQ(distributed_mgr.CheckRemoteAlive(task, &is_alive).code(),
+            absl::StatusCode::kFailedPrecondition);
+  EXPECT_FALSE(is_alive);
+
+  auto* updated = new ReleaseCountingWorkerCache;
+  updated->AddWorker(task, &alive_worker);
+  auto session_mgr = std::make_unique<SessionMgr>(
+      raw_server->worker_env(), "/job:localhost/replica:0/task:0",
+      std::make_unique<ReleaseCountingWorkerCache>(),
+      /*worker_cache_factory=*/nullptr,
+      /*coordination_handler=*/nullptr);
+  session_mgr->ResetDefaultWorkerCache(updated);
+  raw_server->InstallSessionMgr(std::move(session_mgr));
+  raw_server->master_env()->worker_cache = &stale_cache;
+
+  TF_ASSERT_OK(distributed_mgr.CheckRemoteAlive(task, &is_alive));
+  EXPECT_TRUE(is_alive);
+  EXPECT_EQ(updated->release_count(), 1);
+  EXPECT_EQ(updated->last_released_worker(), &alive_worker);
+}
+
+TEST_F(EagerContextTest, CheckRemoteAliveReleasesWorker) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  ReleaseCountingWorkerCache worker_cache;
+  AliveTestWorker alive_worker(absl::OkStatus());
+  AliveTestWorker dead_worker(absl::UnavailableError("worker down"));
+  const std::string alive_task = "/job:worker/replica:0/task:0";
+  const std::string dead_task = "/job:worker/replica:0/task:1";
+  worker_cache.AddWorker(alive_task, &alive_worker);
+  worker_cache.AddWorker(dead_task, &dead_worker);
+
+  auto server = std::make_unique<FakeServer>(&worker_cache,
+                                             context()->local_device_mgr());
+  FakeServer* raw_server = server.get();
+  TF_ASSERT_OK(context()->StoreCollectiveOpsServer(
+      std::move(server), context()->local_device_mgr(),
+      /*rpc_collective_executor_mgr=*/nullptr));
+  // EagerContext::~EagerContext releases server_ without deleting it because
+  // GrpcServer does not support clean shutdown; destroy context_ first and then
+  // delete FakeServer on all exit paths so leak checks stay clean.
+  auto teardown = absl::MakeCleanup([this, raw_server] {
+    context_.reset();
+    delete raw_server;
+  });
+
+  EagerContextDistributedManager distributed_mgr(context());
+  bool is_alive = false;
+  TF_ASSERT_OK(distributed_mgr.CheckRemoteAlive(alive_task, &is_alive));
+  EXPECT_TRUE(is_alive);
+  EXPECT_EQ(worker_cache.release_count(), 1);
+  EXPECT_EQ(worker_cache.last_released_target(), alive_task);
+  EXPECT_EQ(worker_cache.last_released_worker(), &alive_worker);
+
+  TF_ASSERT_OK(distributed_mgr.CheckRemoteAlive(dead_task, &is_alive));
+  EXPECT_FALSE(is_alive);
+  EXPECT_EQ(worker_cache.release_count(), 2);
+  EXPECT_EQ(worker_cache.last_released_target(), dead_task);
+  EXPECT_EQ(worker_cache.last_released_worker(), &dead_worker);
+
+  is_alive = true;
+  absl::Status unknown = distributed_mgr.CheckRemoteAlive(
+      "/job:worker/replica:0/task:9", &is_alive);
+  EXPECT_EQ(unknown.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_FALSE(is_alive);
+  EXPECT_EQ(worker_cache.release_count(), 2);
+}
+#endif  // !IS_MOBILE_PLATFORM
 
 }  // namespace
 }  // namespace tensorflow
