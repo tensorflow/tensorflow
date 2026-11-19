@@ -222,6 +222,11 @@ absl::Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
                                                   params.output_scales,
                                                   params.output_zero_points));
     if (shape_inference::InferenceContext::Rank(params.output_scales) > 0) {
+      if (shape_inference::InferenceContext::Rank(params.rhs_scales) == 0) {
+        return absl::InvalidArgumentError(
+            "If rhs is per-tensor quantized, output must be also per-tensor "
+            "quantized.");
+      }
       DimensionHandle scales_merged;
       TF_RETURN_IF_ERROR(context->Merge(context->Dim(params.rhs_scales, 0),
                                         context->Dim(params.output_scales, 0),

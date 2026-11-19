@@ -181,6 +181,10 @@ TEST(UniformQuantizedOpsTest,
   // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
 
   INFER_OK(op, "[2,3,40,50];[6,3,4,5];[];[];[6];[6];[6];[6]", "[2,6,37,46]");
+
+  // Per-tensor rhs with per-channel output is rejected, as the kernel does.
+  INFER_ERROR("If rhs is per-tensor quantized", op,
+              "[2,3,40,50];[6,3,4,5];[];[];[];[];[6];[6]");
 }
 
 TEST(UniformQuantizedOpsTest,
