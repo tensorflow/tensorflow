@@ -798,11 +798,9 @@ MovableAllReduceContext IsAllReduceMovable(
     to_visit.pop();
     for (HloInstruction* user : instruction->users()) {
       switch (user->opcode()) {
-        case HloOpcode::kConvert:
-          to_visit.push(user);
-          break;
-
         case HloOpcode::kBitcast:
+        case HloOpcode::kBroadcast:
+        case HloOpcode::kConvert:
         case HloOpcode::kReshape:
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kTranspose:
@@ -823,14 +821,23 @@ MovableAllReduceContext IsAllReduceMovable(
             if (!operand_1_match && !operand_2_match) {
               return false;
             }
+            HloInstruction* predicate = user->mutable_operand(0);
+            if (!is_value_replicated_within_replica_group(*predicate, {})) {
+              return false;
+            }
 
             if (!is_reduce_scatter) {
               return true;
             }
-            // For reduce-scatter, check that the predicate is effectively
-            // scalar.
-            HloInstruction* predicate = user->mutable_operand(0);
-            return GetEffectiveScalar(predicate) != nullptr;
+            // For reduce-scatter, ChangeAccumulatorShapesInLoopBodies rewrites
+            // only direct select users of the reduce-scatter feeding add ops
+            // and broadcasts GetEffectiveScalar(predicate) to the unscattered
+            // accumulation shape.
+            return instruction == all_reduce &&
+                   GetEffectiveScalar(predicate) != nullptr &&
+                   absl::c_all_of(user->users(), [](const HloInstruction* u) {
+                     return u->opcode() == HloOpcode::kAdd;
+                   });
           }();
           if (is_select_ok) {
             to_visit.push(user);
@@ -886,7 +893,9 @@ MovableAllReduceContext IsAllReduceMovable(
                        "and preserves the math of the hoisted all-reduce.";
             is_all_reduce_movable = false;
           } else if (unwrapped_other_is_all_reduce && other_is_broadcast &&
-                     unwrapped_other_is_scalar) {
+                     unwrapped_other_is_scalar &&
+                     is_value_replicated_within_replica_group(*other_operand,
+                                                              {})) {
             // Gradient (non-scalar) side of the same pattern. The other
             // operand is a broadcasted scalar all-reduce acting as a
             // per-iteration scaling factor; it is pinned in the body by
@@ -902,10 +911,6 @@ MovableAllReduceContext IsAllReduceMovable(
           } else {
             is_all_reduce_movable = false;
           }
-          break;
-        }
-        case HloOpcode::kBroadcast: {
-          to_visit.push(user);
           break;
         }
         case HloOpcode::kAdd: {
