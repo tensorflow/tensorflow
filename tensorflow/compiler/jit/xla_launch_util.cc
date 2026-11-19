@@ -640,24 +640,6 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   return out;
 }
 
-namespace {
-const PjRtTensorBuffer* GetPjRtTensorBuffer(const Tensor* tensor) {
-  const TensorBuffer* buf = DMAHelper::buffer(tensor);
-  if (buf == nullptr) {
-    return nullptr;
-  }
-  if (const auto* pjrt_buf = dynamic_cast<const PjRtTensorBuffer*>(buf)) {
-    return pjrt_buf;
-  }
-  const TensorBuffer* root_buf = const_cast<TensorBuffer*>(buf)->root_buffer();
-  if (root_buf != buf && root_buf != nullptr &&
-      root_buf->data() == buf->data() && root_buf->size() == buf->size()) {
-    return dynamic_cast<const PjRtTensorBuffer*>(root_buf);
-  }
-  return nullptr;
-}
-}  // namespace
-
 // TODO(b/289002708) Create a unit test to cover use_pjrt_tensor_buffer=true.
 absl::Status PreparePjRtExecutableArguments(
     int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
@@ -695,8 +677,10 @@ absl::Status PreparePjRtExecutableArguments(
             "If use_pjrt_tensor_buffer is set, the input tensor should not "
             "contain an AsyncValueTensor.");
       }
-      const PjRtTensorBuffer* pjrt_tensor_buffer = GetPjRtTensorBuffer(tensor);
-      if (pjrt_tensor_buffer != nullptr &&
+      const PjRtTensorBufferUtil::LookupResult pjrt_lookup =
+          PjRtTensorBufferUtil::FindPjRtTensorBuffer(tensor);
+      const PjRtTensorBuffer* pjrt_tensor_buffer = pjrt_lookup.buffer;
+      if (pjrt_tensor_buffer != nullptr && pjrt_lookup.is_full_buffer &&
           pjrt_tensor_buffer->pjrt_buffer()->device() == pjrt_device &&
           (pjrt_client->platform_id() != xla::CpuId() ||
            pjrt_tensor_buffer->pjrt_buffer()->dimensions().size() ==

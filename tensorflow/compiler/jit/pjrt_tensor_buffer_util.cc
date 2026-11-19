@@ -35,6 +35,30 @@ static size_t GetTensorSize(const TensorShape& shape, const DataType dtype) {
   return shape.num_elements() * DataTypeSize(dtype);
 }
 
+PjRtTensorBufferUtil::LookupResult PjRtTensorBufferUtil::FindPjRtTensorBuffer(
+    const Tensor* tensor) {
+  if (tensor == nullptr) {
+    return {};
+  }
+  const TensorBuffer* buf = DMAHelper::buffer(tensor);
+  if (buf == nullptr) {
+    return {};
+  }
+  if (const auto* pjrt_buf = dynamic_cast<const PjRtTensorBuffer*>(buf)) {
+    return {.buffer = pjrt_buf, .is_full_buffer = true};
+  }
+  const TensorBuffer* root_buf = const_cast<TensorBuffer*>(buf)->root_buffer();
+  if (root_buf != buf && root_buf != nullptr) {
+    if (const auto* pjrt_buf =
+            dynamic_cast<const PjRtTensorBuffer*>(root_buf)) {
+      const bool is_full =
+          root_buf->data() == buf->data() && root_buf->size() == buf->size();
+      return {.buffer = pjrt_buf, .is_full_buffer = is_full};
+    }
+  }
+  return {};
+}
+
 absl::StatusOr<Tensor> MakeTensorFromPjRtBuffer(
     const DataType dtype, const TensorShape& shape,
     std::unique_ptr<xla::PjRtBuffer> pjrt_buffer) {

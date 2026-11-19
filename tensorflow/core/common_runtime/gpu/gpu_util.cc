@@ -328,22 +328,6 @@ bool NeedStaging(const Tensor* tensor) {
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-const PjRtTensorBuffer* GetPjRtTensorBuffer(const Tensor* tensor) {
-  const TensorBuffer* buf = DMAHelper::buffer(tensor);
-  if (buf == nullptr) {
-    return nullptr;
-  }
-  if (const auto* pjrt_buf = dynamic_cast<const PjRtTensorBuffer*>(buf)) {
-    return pjrt_buf;
-  }
-  const TensorBuffer* root_buf = const_cast<TensorBuffer*>(buf)->root_buffer();
-  if (root_buf != buf && root_buf != nullptr &&
-      root_buf->data() == buf->data() && root_buf->size() == buf->size()) {
-    return dynamic_cast<const PjRtTensorBuffer*>(root_buf);
-  }
-  return nullptr;
-}
-
 bool CanCopyPjRtBufferDirectly(const xla::PjRtBuffer& pjrt_buffer) {
   if (pjrt_buffer.has_dynamic_dimensions()) {
     return false;
@@ -398,9 +382,10 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  const PjRtTensorBuffer* pjrt_tensor_buffer = GetPjRtTensorBuffer(gpu_tensor);
-  if (pjrt_tensor_buffer != nullptr) {
-    xla::PjRtBuffer* pjrt_buffer = pjrt_tensor_buffer->pjrt_buffer();
+  const PjRtTensorBufferUtil::LookupResult pjrt_lookup =
+      PjRtTensorBufferUtil::FindPjRtTensorBuffer(gpu_tensor);
+  if (pjrt_lookup.buffer != nullptr) {
+    xla::PjRtBuffer* pjrt_buffer = pjrt_lookup.buffer->pjrt_buffer();
     if (CanCopyPjRtBufferDirectly(*pjrt_buffer)) {
       // Synchronize `send_device_to_host_stream` with the PjRt buffer's
       // definition event on the GPU without blocking the host on GPU compute
@@ -429,7 +414,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
           return;
         }
       }
-    } else {
+    } else if (pjrt_lookup.is_full_buffer) {
       VLOG(1) << "CopyGPUTensorToCPU using PjRtTensorBuffer::ToLiteral";
       std::unique_ptr<xla::MutableBorrowingLiteral> literal;
       if (pjrt_buffer->has_dynamic_dimensions()) {

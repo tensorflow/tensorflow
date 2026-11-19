@@ -29,7 +29,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
+#include <cstdint>
+#include <optional>
+
 #include "absl/base/prefetch.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -86,6 +91,74 @@ struct MemCpyFunctor<ResourceHandle> {
     return false;
   }
 };
+
+bool IsFullDimensionSlice(const Tensor& input, int dim,
+                          absl::Span<const int64_t> begin,
+                          absl::Span<const int64_t> end,
+                          absl::Span<const int64_t> strides) {
+  return strides[dim] == 1 && begin[dim] == 0 &&
+         end[dim] == input.dim_size(dim);
+}
+
+// Finds the single dimension being prefix-sliced when preceded by at least one
+// leading size-1 dimension (taken in full or shrunk), with unit stride, a
+// non-empty prefix `[0, end[dim])`, and all trailing dimensions taken in full.
+std::optional<int> FindLeadingUnitDimPrefixSlice(
+    const Tensor& input, absl::Span<const int64_t> begin,
+    absl::Span<const int64_t> end, absl::Span<const int64_t> strides) {
+  const int dims = input.dims();
+  int slice_dim = 0;
+  while (slice_dim < dims && input.dim_size(slice_dim) == 1 &&
+         IsFullDimensionSlice(input, slice_dim, begin, end, strides)) {
+    ++slice_dim;
+  }
+  if (slice_dim == 0 || slice_dim >= dims || strides[slice_dim] != 1 ||
+      begin[slice_dim] != 0 || end[slice_dim] <= 0) {
+    return std::nullopt;
+  }
+  for (int dim = slice_dim + 1; dim < dims; ++dim) {
+    if (!IsFullDimensionSlice(input, dim, begin, end, strides)) {
+      return std::nullopt;
+    }
+  }
+  return slice_dim;
+}
+
+// Returns a zero-copy `SubBuffer` view for memcpy-safe types when slicing a
+// non-empty contiguous prefix starting at offset 0 across leading size-1
+// dimensions. Because the slice starts at offset 0, it reuses `input.data()`
+// directly and preserves its alignment.
+template <typename T>
+std::optional<Tensor> TrySliceLeadingUnitDimPrefix(
+    const Tensor& input, absl::Span<const int64_t> begin,
+    absl::Span<const int64_t> end, absl::Span<const int64_t> strides,
+    const TensorShape& final_shape) {
+  if (!DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()) || input.dims() < 2 ||
+      !input.IsAligned() || final_shape.num_elements() <= 0) {
+    return std::nullopt;
+  }
+  std::optional<int> slice_dim =
+      FindLeadingUnitDimPrefixSlice(input, begin, end, strides);
+  if (!slice_dim.has_value()) {
+    return std::nullopt;
+  }
+  TensorShape collapsed_shape;
+  for (int dim = *slice_dim; dim < input.dims(); ++dim) {
+    if (!collapsed_shape.AddDimWithStatus(input.dim_size(dim)).ok()) {
+      return std::nullopt;
+    }
+  }
+  Tensor collapsed;
+  if (!collapsed.CopyFrom(input, collapsed_shape)) {
+    return std::nullopt;
+  }
+  Tensor sliced = collapsed.Slice(0, end[*slice_dim]);
+  Tensor output;
+  if (!output.CopyFrom(sliced, final_shape)) {
+    return std::nullopt;
+  }
+  return output;
+}
 
 }  // namespace
 
@@ -142,6 +215,15 @@ class StridedSliceOp : public OpKernel {
       OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
                   absl::InternalError("Copy failed"));
       context->set_output(0, tmp);
+      return;
+    }
+
+    if (std::optional<Tensor> sliced = TrySliceLeadingUnitDimPrefix<T>(
+            input, begin, end, strides, final_shape);
+        sliced.has_value()) {
+      VLOG(1) << "Strided slice leading unit-dim prefix: "
+              << input.shape().DebugString();
+      context->set_output(0, *sliced);
       return;
     }
 

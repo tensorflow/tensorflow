@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
@@ -512,6 +513,93 @@ TEST_F(PjRtExecutionUtilGpuTest,
   EXPECT_TRUE(owned_args.empty());
   EXPECT_TRUE(non_donatable.contains(0));
   EXPECT_EQ(exec_args[0], root_pjrt_tensor_buffer->pjrt_buffer());
+}
+
+TEST_F(PjRtExecutionUtilGpuTest,
+       PreparePjRtExecutableArgumentsWrapsSlicedPjRtSubBuffer) {
+  Tensor* gpu_tensor = CreateDeviceTensor<int32_t>(
+      TensorShape({4, 3}), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  ASSERT_NE(
+      dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(gpu_tensor)),
+      nullptr);
+
+  Tensor sliced = gpu_tensor->Slice(0, 2);
+  ASSERT_EQ(dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&sliced)),
+            nullptr);
+
+  std::vector<const Tensor*> inputs = {&sliced};
+  std::vector<int> input_mapping = {0};
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
+                          pjrt_client_->LookupAddressableDevice(
+                              xla::LocalDeviceId(device_->parsed_name().id)));
+
+  std::vector<xla::PjRtBuffer*> exec_args;
+  std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_args;
+  absl::flat_hash_set<int> non_donatable;
+  TF_ASSERT_OK(PreparePjRtExecutableArguments(
+      /*num_missing_prefix_ctx_inputs=*/0, input_mapping, inputs,
+      /*variable_snapshots=*/{}, pjrt_client_, pjrt_device,
+      /*use_pjrt_tensor_buffer=*/true, &exec_args, &owned_args,
+      &non_donatable));
+
+  ASSERT_EQ(exec_args.size(), 1);
+  EXPECT_EQ(owned_args.size(), 1);
+  EXPECT_TRUE(non_donatable.contains(0));
+  std::shared_ptr<xla::Literal> literal = *exec_args[0]->ToLiteralSync();
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      *literal, xla::LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}})));
+}
+
+TEST_F(PjRtExecutionUtilGpuTest,
+       StridedSliceZeroCopiesPjRtBufferAndCopiesSlicedBytesToCPU) {
+  TF_ASSERT_OK(NodeDefBuilder("strided_slice", "StridedSlice")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("T", DT_FLOAT)
+                   .Attr("Index", DT_INT32)
+                   .Attr("begin_mask", 0b101)
+                   .Attr("end_mask", 0b101)
+                   .Device("/job:localhost/replica:0/task:0/device:GPU:0")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  std::vector<float> host_values(1 * 6 * 5);
+  for (int i = 0; i < static_cast<int>(host_values.size()); ++i) {
+    host_values[i] = static_cast<float>(i + 1);
+  }
+  Tensor* gpu_input =
+      CreateDeviceTensor<float>(TensorShape({1, 6, 5}), host_values);
+  Tensor* begin = CreateHostTensor<int32_t>(TensorShape({3}), {0, 0, 0});
+  Tensor* end = CreateHostTensor<int32_t>(TensorShape({3}), {1, 2, 5});
+  Tensor* strides = CreateHostTensor<int32_t>(TensorShape({3}), {1, 1, 1});
+  inputs_.push_back({nullptr, gpu_input});
+  inputs_.push_back({nullptr, begin});
+  inputs_.push_back({nullptr, end});
+  inputs_.push_back({nullptr, strides});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Access the raw GPU output tensor directly before OpsTestBase::GetOutput()
+  // copies it into host-accessible managed memory.
+  Tensor* gpu_sliced = context_->mutable_output(0);
+  ASSERT_EQ(gpu_sliced->shape(), TensorShape({1, 2, 5}));
+  EXPECT_EQ(gpu_sliced->data(), gpu_input->data());
+  PjRtTensorBufferUtil::LookupResult lookup =
+      PjRtTensorBufferUtil::FindPjRtTensorBuffer(gpu_sliced);
+  EXPECT_NE(lookup.buffer, nullptr);
+  EXPECT_FALSE(lookup.is_full_buffer);
+
+  Tensor cpu_output(cpu_allocator(), DT_FLOAT, TensorShape({1, 2, 5}));
+  DeviceContext* default_context =
+      device_->tensorflow_accelerator_device_info()->default_context;
+  TF_ASSERT_OK(default_context->CopyDeviceTensorToCPUSync(
+      gpu_sliced, "strided_slice_d2h", device_, &cpu_output));
+  for (int i = 0; i < 2 * 5; ++i) {
+    EXPECT_FLOAT_EQ(cpu_output.flat<float>()(i), static_cast<float>(i + 1))
+        << "at index " << i;
+  }
 }
 
 }  // namespace
