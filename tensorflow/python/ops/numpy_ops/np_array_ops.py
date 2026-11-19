@@ -43,6 +43,9 @@ from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_export
 
+# The installed NumPy version does not change while the process runs.
+_NP_2_0_OR_LATER = np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0'
+
 
 newaxis = np.newaxis
 tf_export.tf_export('experimental.numpy.newaxis', v1=[]).export_constant(
@@ -2124,7 +2127,7 @@ def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstrin
   x = asarray(x)
 
   # Numpy 2.x and later uses the same definition of sign.
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+  if _NP_2_0_OR_LATER:
     return math_ops.sign(x)
 
   dtype = x.dtype.as_numpy_dtype

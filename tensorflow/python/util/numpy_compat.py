@@ -17,6 +17,11 @@
 
 import numpy as np
 
+# The installed NumPy version does not change while the process runs, so
+# check it once here instead of parsing `np.__version__` on every call.
+_NP_2_0_OR_LATER = np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0'
+_NP_2_1_OR_LATER = np.lib.NumpyVersion(np.__version__) >= '2.1.0.rc0'
+
 
 def np_array(values, dtype=None, copy=True, order='K'):
   """Creates a NumPy array containing input values.
@@ -73,7 +78,7 @@ def np_asarray(values, dtype=None, order=None, copy=None):
   Returns:
     A NumPy array with the specified data type.
   """
-  if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+  if _NP_2_0_OR_LATER:
     if dtype is not None and np.issubdtype(dtype, np.number):
       return np.asarray(values, order=order, copy=copy).astype(dtype, copy=copy)
     else:
@@ -104,7 +109,7 @@ def np_where(condition, x=None, y=None):
     elsewhere. Or the indices of the elements that are non-zero.
   """
   if x is None and y is None:
-    if np.lib.NumpyVersion(np.__version__) >= '2.1.0.rc0':
+    if _NP_2_1_OR_LATER:
       return np.atleast_1d(np.asarray(condition)).nonzero()
     return np.where(condition)
   return np.where(condition, x, y)
@@ -136,7 +141,7 @@ def np_reshape(a, /, shape=None, *, newshape=None, order='C', copy=None):
   """
   if shape is None:
     shape = newshape
-  if np.lib.NumpyVersion(np.__version__) >= '2.1.0.rc0':
+  if _NP_2_1_OR_LATER:
     if shape is None and newshape is None:
       return np.asarray(a, order=order, copy=copy)
     return np.reshape(a, shape, order=order, copy=copy)
