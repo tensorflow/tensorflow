@@ -185,6 +185,136 @@ index 8e9c5dfc..214f04ab 100644
      ConversionState conversionState;
      conversionState.replicaCount = replicaCount;
      conversionState.partitionCount = partitionCount;
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index f9ca45f3..3e950fc6 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -419,16 +419,19 @@ bool isOnFullVersion(Operation* op, const bool enableFullVersion) {
+ }
+ 
+ // A wrapper that iterates over all dimensions in a tensor mapping and calls
+-// the generalized distributeAxesAcrossFactors utility for each.
++// the generalized distributeAxesAcrossFactors utility for batching factors.
+ void redistributeAxes(TensorFactorShardings& tfs, TensorMappingAttr mapping,
+-                      ArrayRef<int64_t> factorSizes, MeshAttr mesh,
++                      OpShardingRuleAttr shardingRule, MeshAttr mesh,
+                       ArrayRef<AxisRefAttr> allAxes) {
+   SmallVector<FactorSharding> flattenedShardings;
+   SmallVector<int64_t> flattenedFactorSizes;
+   SmallVector<int64_t> factorIndices;
+ 
+-  // Flatten factors from all dimensions.
++  // Flatten batching factors from all dimensions. Once a dimension encounters a
++  // non batching factor, later factors in that dimension cannot be sharded
++  // without introducing a strided view.
+   for (auto [dimIdx, dimMapping] : llvm::enumerate(mapping.getDimMappings())) {
++    bool skip = false;
+     for (int64_t fIdx : dimMapping.getFactorIndices()) {
+       auto it = tfs.factorIndexToSharding.find(fIdx);
+       if (it == tfs.factorIndexToSharding.end()) {
+@@ -439,12 +442,18 @@ void redistributeAxes(TensorFactorShardings& tfs, TensorMappingAttr mapping,
+         continue;
+       }
+       FactorSharding& fs = it->second;
++      fs.axisRefs.clear();
++      fs.overflowAxes.clear();
++      if (!shardingRule.isBatchingFactor(fIdx)) {
++        skip = true;
++      }
++      if (skip) {
++        continue;
++      }
+       FactorSharding localFs = fs;
+-      localFs.axisRefs.clear();
+-      localFs.overflowAxes.clear();
+ 
+       flattenedShardings.push_back(localFs);
+-      flattenedFactorSizes.push_back(factorSizes[fIdx]);
++      flattenedFactorSizes.push_back(shardingRule.getFactorSizes()[fIdx]);
+       factorIndices.push_back(fIdx);
+     }
+   }
+@@ -489,44 +498,57 @@ AxesPerFactor processReshapeWithOverflowAxes(
+   // Redistribute axes on both sides independently.
+   redistributeAxes(shardingProjection.getMutableOperand(0),
+                    shardingRule.getOperandMapping(0),
+-                   shardingRule.getFactorSizes(), mesh, allAxes);
++                   /*shardingRule=*/shardingRule, mesh, allAxes);
+   redistributeAxes(shardingProjection.getMutableResult(0),
+                    shardingRule.getResultMapping(0),
+-                   shardingRule.getFactorSizes(), mesh, allAxes);
++                   /*shardingRule=*/shardingRule, mesh, allAxes);
+ 
+   // Synchronize projection factors.
+-  TensorShardingAttr inBuilt =
+-      shardingProjection.getOperand(0).createTensorShardingAttr(
+-          ctx, shardingRule.getOperandMapping(0), shardingRule.getFactorSizes(),
+-          meshOp.getName(), mesh);
+-  TensorShardingAttr outBuilt =
+-      shardingProjection.getResult(0).createTensorShardingAttr(
+-          ctx, shardingRule.getResultMapping(0), shardingRule.getFactorSizes(),
+-          meshOp.getName(), mesh);
+-  ShardingProjection legalProj =
+-      ShardingProjection::build({inBuilt}, {outBuilt}, shardingRule, mesh);
+-
+-  // Find common axes supported by the sharding projection.
++  auto createInSharding = [&]() {
++    return shardingProjection.getOperand(0).createTensorShardingAttr(
++        ctx, shardingRule.getOperandMapping(0), shardingRule.getFactorSizes(),
++        meshOp.getName(), mesh);
++  };
++  auto createOutSharding = [&]() {
++    return shardingProjection.getResult(0).createTensorShardingAttr(
++        ctx, shardingRule.getResultMapping(0), shardingRule.getFactorSizes(),
++        meshOp.getName(), mesh);
++  };
++  ShardingProjection legalProj = ShardingProjection::build(
++      {createInSharding()}, {createOutSharding()}, shardingRule, mesh);
++
++  // Find common axes supported by the sharding projection on batching factors.
+   AxesPerFactor commonAxes =
+       legalProj.getGreatestCommonPrefixAxes(shardingRule.getNumFactors());
+   for (int64_t f = 0; f < shardingRule.getNumFactors(); ++f) {
++    if (!shardingRule.isBatchingFactor(f)) {
++      commonAxes[f].clear();
++    }
+     shardingProjection.updateSharding(f, commonAxes[f], {});
+   }
+ 
++  TensorShardingAttr newInSharding = createInSharding();
++  TensorShardingAttr resSharding = createOutSharding();
++
++  // Enforce sharding consistency for reshape op, which is an invariant
++  // expected by resolve permutation factors.
++  if (!isShardingEquivalentAcrossReshapes(
++          newInSharding, op.getOperand().getType(), resSharding, op.getType(),
++          op, /*allowNonDivisible=*/true)) {
++    for (int64_t f = 0; f < shardingRule.getNumFactors(); ++f) {
++      commonAxes[f].clear();
++      shardingProjection.updateSharding(f, {}, {});
++    }
++    newInSharding = createInSharding();
++    resSharding = createOutSharding();
++  }
++
+   // Calculate update bits and use it to insert reshards.
+   UpdateTensorShardings finalUpdate(shardingRule.getNumOperands(),
+                                     shardingRule.getNumResults());
+-  if (!isEquivalent(
+-          getSharding(op.getOperand()),
+-          shardingProjection.getOperand(0).createTensorShardingAttr(
+-              ctx, shardingRule.getOperandMapping(0),
+-              shardingRule.getFactorSizes(), meshOp.getName(), mesh))) {
++  if (!isEquivalent(getSharding(op.getOperand()), newInSharding)) {
+     finalUpdate.updateOperands.set(0);
+   }
+-  TensorShardingAttr resSharding =
+-      shardingProjection.getResult(0).createTensorShardingAttr(
+-          ctx, shardingRule.getResultMapping(0), shardingRule.getFactorSizes(),
+-          meshOp.getName(), mesh);
+   if (!isEquivalent(resSharding, outShardings[0])) {
+     finalUpdate.updateResults.set(0);
+   }
 diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_manual_computation_locations.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_manual_computation_locations.mlir
 new file mode 100644
 index 00000000..e0d3d26f
@@ -297,6 +427,56 @@ index 00000000..e0d3d26f
 +  // CHECK-NEXT: return %[[TANH]] : tensor<2x8xf32>
 +  return %0 : tensor<16x8xf32>
 +}
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_non_equiv_divisible_test.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_non_equiv_divisible_test.mlir
+new file mode 100644
+index 00000000..fc6f8537
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_reshape_non_equiv_divisible_test.mlir
+@@ -0,0 +1,44 @@
++// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=true
++// RUN: %S/run_sdy_interpreter_test.sh %s %t --enable_halo_exchange=false
++
++//--- part1.mlir
++
++sdy.mesh @mesh_xy = <["x"=2, "y"=2]>
++
++func.func @parallel_reshape_non_equiv_divisible(
++  %arg0: tensor<3x8x40xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{}, {"y"}, {"x"}]>})
++  -> (tensor<2x480xi32> {sdy.sharding = #sdy.sharding<@mesh_xy, [{}, {}]>}) {
++  %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[#sdy.sharding<@mesh_xy, [{}, {}]>]>} : (tensor<3x8x40xi32>) -> tensor<2x480xi32>
++  return %0 : tensor<2x480xi32>
++}
++
++func.func @sequential_reshape_non_equiv_divisible(%arg0: tensor<3x8x40xi32>) -> tensor<2x480xi32> {
++  %0 = stablehlo.reshape %arg0 : (tensor<3x8x40xi32>) -> tensor<2x480xi32>
++  return %0 : tensor<2x480xi32>
++}
++
++//--- part2.mlir
++
++func.func @main() {
++  %iota_1d = stablehlo.iota dim = 0 : tensor<960xi32>
++  %c42 = stablehlo.constant dense<42> : tensor<960xi32>
++  %sum_1d = stablehlo.add %iota_1d, %c42 : tensor<960xi32>
++  %input = stablehlo.reshape %sum_1d : (tensor<960xi32>) -> tensor<3x8x40xi32>
++  %seq = func.call @sequential_reshape_non_equiv_divisible(%input) : (tensor<3x8x40xi32>) -> tensor<2x480xi32>
++
++  %t0 = stablehlo.slice %input [0:3, 0:4, 0:20] : (tensor<3x8x40xi32>) -> tensor<3x4x20xi32>
++  %t1 = stablehlo.slice %input [0:3, 4:8, 0:20] : (tensor<3x8x40xi32>) -> tensor<3x4x20xi32>
++  %t2 = stablehlo.slice %input [0:3, 0:4, 20:40] : (tensor<3x8x40xi32>) -> tensor<3x4x20xi32>
++  %t3 = stablehlo.slice %input [0:3, 4:8, 20:40] : (tensor<3x8x40xi32>) -> tensor<3x4x20xi32>
++
++  %res:4 = "interpreter.run_parallel"(%t0, %t1, %t2, %t3) {
++    programs = [[@parallel_reshape_non_equiv_divisible, @parallel_reshape_non_equiv_divisible, @parallel_reshape_non_equiv_divisible, @parallel_reshape_non_equiv_divisible]]
++  } : (tensor<3x4x20xi32>, tensor<3x4x20xi32>, tensor<3x4x20xi32>, tensor<3x4x20xi32>) -> (tensor<2x480xi32>, tensor<2x480xi32>, tensor<2x480xi32>, tensor<2x480xi32>)
++
++  "check.expect_eq"(%res#0, %seq) : (tensor<2x480xi32>, tensor<2x480xi32>) -> ()
++  "check.expect_eq"(%res#1, %seq) : (tensor<2x480xi32>, tensor<2x480xi32>) -> ()
++  "check.expect_eq"(%res#2, %seq) : (tensor<2x480xi32>, tensor<2x480xi32>) -> ()
++  "check.expect_eq"(%res#3, %seq) : (tensor<2x480xi32>, tensor<2x480xi32>) -> ()
++
++  return
++}
 diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_sort.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_sort.mlir
 new file mode 100644
 index 00000000..3790f448
@@ -389,6 +569,57 @@ index 00000000..3790f448
 +  check.expect_eq %seq_2d, %par_2d : tensor<4x4x4xi32>
 +
 +  return
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
+index 05671673..cceb57f5 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape.mlir
+@@ -465,7 +465,7 @@ func.func @reshape_no_overflow_axes(
+ func.func @reshape_to_scalar_with_overflow(
+     %arg0: tensor<1x1x1xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>})
+     -> (tensor<f32> {sdy.sharding = #sdy.sharding<@mesh, []>}) {
+-  // CHECK:      %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {"x":(2)2}]> : tensor<1x1x1xf32>
++  // CHECK:      %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {}]> : tensor<1x1x1xf32>
+   // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, []>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([ij, k, l])->([]) {i=3, j=2, k=1, l=1}>} : (tensor<1x1x1xf32>) -> tensor<f32>
+   // CHECK-NEXT: return %[[RESHAPE]] : tensor<f32>
+   %0 = stablehlo.reshape %arg0 {
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape_non_equiv_divisible_test.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape_non_equiv_divisible_test.mlir
+new file mode 100644
+index 00000000..357fbd21
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/reshape_non_equiv_divisible_test.mlir
+@@ -0,0 +1,32 @@
++// RUN: sdy_opt %s -sdy-insert-explicit-reshards='enable-full-version=true' | FileCheck %s
++
++sdy.mesh @mesh = <["x"=4, "y"=2]>
++
++// CHECK-LABEL: func @reshape_overflow_axes_non_equivalent_factors
++// CHECK-SAME:      (%[[ARG0:.*]]: tensor<3x32x160xf32>
++func.func @reshape_overflow_axes_non_equivalent_factors(
++    %arg0: tensor<3x32x160xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {"x"}]>})
++    -> (tensor<2x7680xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) {
++  // CHECK:      %[[RESHARD:.*]] = sdy.reshard %[[ARG0]] <@mesh, [{}, {}, {}]> : tensor<3x32x160xf32>
++  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<3x32x160xf32>) -> tensor<2x7680xf32>
++  // CHECK-NEXT: return %[[RESHAPE]] : tensor<2x7680xf32>
++  %0 = stablehlo.reshape %arg0 {
++    sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>
++  } : (tensor<3x32x160xf32>) -> tensor<2x7680xf32>
++  return %0 : tensor<2x7680xf32>
++}
++
++// CHECK-LABEL: func @reshape_overflow_axes_preserves_trailing_batching_factor
++// CHECK-SAME:      (%[[ARG0:.*]]: tensor<2x15x32xf32>
++func.func @reshape_overflow_axes_preserves_trailing_batching_factor(
++    %arg0: tensor<2x15x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x", "y"}, {}]>})
++    -> (tensor<3x10x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}]>}) {
++  // CHECK:      %[[RESHARD_IN:.*]] = sdy.reshard %[[ARG0]] <@mesh, [{}, {}, {"x", "y"}]> : tensor<2x15x32xf32>
++  // CHECK-NEXT: %[[RESHAPE:.*]] = stablehlo.reshape %[[RESHARD_IN]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {"x", "y"}]>]>} : (tensor<2x15x32xf32>) -> tensor<3x10x32xf32>
++  // CHECK-NEXT: %[[RESHARD_OUT:.*]] = sdy.reshard %[[RESHAPE]] <@mesh, [{}, {}, {}]> : tensor<3x10x32xf32>
++  // CHECK-NEXT: return %[[RESHARD_OUT]] : tensor<3x10x32xf32>
++  %0 = stablehlo.reshape %arg0 {
++    sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}]>]>
++  } : (tensor<2x15x32xf32>) -> tensor<3x10x32xf32>
++  return %0 : tensor<3x10x32xf32>
 +}
 diff --git a/shardy/dialect/sdy/transforms/import/explicit_gather_scatter_batching.cc b/shardy/dialect/sdy/transforms/import/explicit_gather_scatter_batching.cc
 index 98e1855a..ba8e8415 100644
