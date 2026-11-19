@@ -329,18 +329,34 @@ def IfrtDcePass : Pass<"ifrt-dce", "mlir::ModuleOp"> {
                 "program regions, and erases dead "
                 "Call/Reshard/CopyArrays/BitcastArrays/RemapArrays ops.";
   let description = [{
-Walks IFRT functions in reverse order to:
-1. Erase unused outputs (or the entire op when all array outputs are unused,
-   forwarding `control_inputs` to `control_output` users) from
+Simplifies distinct defined atom-program callees referenced by `ifrt.Call` ops
+in place upfront via region simplification, then walks IFRT functions in reverse
+order to:
+1. Erase unused outputs (or the entire op when all array outputs are unused and
+   `control_inputs` can be forwarded to `control_output` users) from
    `IfrtPairwiseArrayOpInterface` ops (`ifrt.Reshard`, `ifrt.CopyArrays`,
    `ifrt.BitcastArrays`) and from `ifrt.RemapArrays` ops (pruning unused
    `ifrt.RemapArrays` inputs as a result of erasing unused outputs and
    remapping `mappings` indices).
 2. Erase unused `ifrt.Call` results and corresponding callee `func.return`
-   operands, simplify callee regions, erase unused callee block arguments and
-   `ifrt.Call` inputs (remapping `io_aliases`, `donated_input_indices`,
-   `arg_attrs`, and `res_attrs`), and erase dead empty `ifrt.Call` ops along
-   with unused private callees.
+   operands, simplify callee regions, update or remove `tf.aliasing_output`
+   argument attributes on the callee, and erase unused callee block arguments
+   and `ifrt.Call` inputs (remapping `io_aliases`, `donated_input_indices`,
+   `arg_attrs`, and `res_attrs`). Before changing a callee's signature,
+   non-private callees or callees with other root-scope symbol uses are cloned
+   into private copies, and outlined callees with internal symbol references
+   inside the enclosing `ModuleOp` split the unmutated copy into a private
+   helper. Dead `ifrt.Call` ops whose callees are single-block and side-effect
+   free and whose `control_inputs` can be forwarded are erased along with newly
+   unused private non-IFRT root symbols (transitively), with an end-of-pass
+   sweep catching tracked symbols whose remaining references are dropped after
+   a call is erased or redirected.
+
+The pass fails with an op error if root-scope symbol uses cannot be determined
+(e.g., an unregistered region-bearing op in the root module), if any `ifrt.Call`
+in an IFRT function cannot resolve a defined callee nested at most one
+`ModuleOp` deep (including external declarations), or if internal symbol uses
+cannot be determined inside a mutated outlined `ModuleOp`.
   }];
 }
 
