@@ -497,5 +497,46 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoFusedEigenSizedDotHoisting) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(SmallWhileLoopHoistingPassTest, PreservesControlDependencies) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule preserves_control_deps
+
+    while_body {
+      s = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT next = s32[] add(s, c1)
+    }
+
+    while_condition {
+      s = s32[] parameter(0)
+      limit = s32[] constant(3)
+      ROOT lt = pred[] compare(s, limit), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      pred_op = s32[] negate(p0)
+      inner = s32[] while(p0), condition=while_condition, body=while_body,
+          control-predecessors={pred_op}
+      succ_op = s32[] add(p0, c1), control-predecessors={inner}
+      ROOT out = (s32[], s32[], s32[]) tuple(pred_op, inner, succ_op)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* call_instr = FindInstruction(m.get(), HloOpcode::kCall);
+  const HloInstruction* pred_op = FindInstruction(m.get(), "pred_op");
+  const HloInstruction* succ_op = FindInstruction(m.get(), "succ_op");
+  ASSERT_NE(call_instr, nullptr);
+  ASSERT_EQ(call_instr->control_predecessors().size(), 1);
+  EXPECT_EQ(call_instr->control_predecessors()[0], pred_op);
+  ASSERT_EQ(succ_op->control_predecessors().size(), 1);
+  EXPECT_EQ(succ_op->control_predecessors()[0], call_instr);
+}
+
 }  // namespace
 }  // namespace xla

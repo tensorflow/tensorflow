@@ -77,8 +77,7 @@ void ExpectFusionOperandIsCopyOf(const HloModule& module,
 class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
  public:
   CopyInsertion CreateCopyInsertion() const {
-    return CopyInsertion(&alias_info_,
-                         /*use_region_based_live_range_analysis=*/0);
+    return CopyInsertion(&alias_info_);
   }
 
  private:
@@ -173,8 +172,14 @@ ENTRY main {
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
-  EXPECT_EQ(CountCopies(*module), 1);
-  ExpectFusionOperandIsCopyOf(*module, "fusion", "negate");
+  EXPECT_EQ(CountCopies(*module), 0);
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(add, nullptr);
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->operand(0), FindInstruction(module.get(), "negate"));
+  ASSERT_EQ(fusion->control_predecessors().size(), 1);
+  EXPECT_EQ(fusion->control_predecessors()[0], add);
 }
 
 TEST_F(GpuCopyInsertionTest, ReshapedFusedDynamicUpdateSliceCopy) {

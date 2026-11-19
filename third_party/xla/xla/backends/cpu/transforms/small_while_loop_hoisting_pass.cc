@@ -206,8 +206,9 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
             module->AddEmbeddedComputation(builder.Build())));
     call_instruction->add_frontend_attribute("xla_cpu_small_call", "true");
 
+    ABSL_RETURN_IF_ERROR(call_instruction->CopyAllControlDepsFrom(while_instr));
+    ABSL_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
     ABSL_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
-    ABSL_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
     ABSL_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
     changed = true;

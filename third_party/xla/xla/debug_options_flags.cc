@@ -266,7 +266,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
 
   opts.set_xla_cpu_parallel_codegen_split_count(32);
-  opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_scheduler_type(DebugOptions::CPU_SCHEDULER_TYPE_DEFAULT);
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa("");
@@ -426,7 +425,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
 
-  opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_cublas_fallback(true);
   opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
@@ -1772,12 +1770,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         debug_options->xla_cpu_parallel_codegen_split_count(),
         "Split LLVM module into at most this many parts before codegen to "
         "enable parallel compilation for the CPU backend."));
-    flag_list->push_back(tsl::Flag(
-        "xla_cpu_copy_insertion_use_region_analysis",
-        bool_setter_for(
-            &DebugOptions::set_xla_cpu_copy_insertion_use_region_analysis),
-        debug_options->xla_cpu_copy_insertion_use_region_analysis(),
-        "Use region based analysis in copy insertion pass."));
+    flag_list->push_back(tsl::Flag("xla_cpu_copy_insertion_use_region_analysis",
+                                   noop_flag_setter<bool>, false,
+                                   "[Deprecated, do not use]."));
     flag_list->push_back(tsl::Flag(
         "xla_cpu_enable_concurrency_optimized_scheduler",
         setter_for_xla_cpu_enable_concurrency_optimized_scheduler,
@@ -2998,13 +2993,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         "be recorded into command buffers out of output allocations, so the "
         "collectives are not re-recorded on every execution. Costs temp "
         "memory."));
-    flag_list->push_back(tsl::Flag(
-        "xla_gpu_copy_insertion_use_region_analysis",
-        bool_setter_for(
-            &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),
-        debug_options->xla_gpu_copy_insertion_use_region_analysis(),
-        "If true, use the new fine-grain region-based live range interference"
-        " analysis in the copy insertion optimization pass."));
+    flag_list->push_back(tsl::Flag("xla_gpu_copy_insertion_use_region_analysis",
+                                   noop_flag_setter<bool>, false,
+                                   "[Deprecated, do not use]."));
     flag_list->push_back(tsl::Flag(
         "xla_gpu_collect_cost_model_stats",
         bool_setter_for(&DebugOptions::set_xla_gpu_collect_cost_model_stats),

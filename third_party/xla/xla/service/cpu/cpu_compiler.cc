@@ -1054,14 +1054,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
-  // If enabled we'll use more precise region based analysis for copy removal.
-  if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
-    pipeline.AddPass<CopyInsertion>(
-        &alias_info,
-        /*use_region_based_live_range_analysis=*/-1);
-  } else {
-    pipeline.AddPass<CopyInsertion>(&alias_info);
-  }
+  pipeline.AddPass<CopyInsertion>(&alias_info);
 
   // The hoisting of small while loops is only useful in the context of the
   // thunk runtime.

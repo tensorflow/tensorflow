@@ -43,11 +43,6 @@ namespace xla {
 // buffers without paying the cost of a mutable HloAliasAnalysis.
 class CopyRemover {
  public:
-  struct ElideOptions {
-    bool use_region_analysis = false;
-    bool insert_post_scheduling_control_dependencies = false;
-  };
-
   // `view_color` is the layout memory space color of address stand in values
   // that alias operand 0 without owning storage (dus_view_color). Readers of a
   // view count as uses of the viewed value at the reader's position.
@@ -61,7 +56,8 @@ class CopyRemover {
 
   // Updates internal value lists and returns true if eliminating `copy`
   // introduces no live range interference.
-  bool TryElideCopy(const HloInstruction* copy, const ElideOptions& options,
+  bool TryElideCopy(const HloInstruction* copy,
+                    bool insert_post_scheduling_control_dependencies = false,
                     const std::function<bool(const HloInstruction* copy)>&
                         should_skip_removal = nullptr);
 

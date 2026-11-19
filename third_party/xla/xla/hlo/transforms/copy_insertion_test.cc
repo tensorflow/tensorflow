@@ -78,11 +78,6 @@ class CopyInsertionTestPeer {
     return copy_insertion.AddCopiesToResolveInterference(
         module, /*execution_threads=*/{});
   }
-  static absl::Status OrderPredecessorReadersBeforeInPlaceCopies(
-      CopyInsertion& copy_insertion, HloModule* module) {
-    return copy_insertion.OrderPredecessorReadersBeforeInPlaceCopies(
-        module, /*execution_threads=*/{});
-  }
 };
 
 namespace {
@@ -1069,11 +1064,13 @@ ENTRY %WhileEntry () -> f32[8] {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
 
-  // In %Body, %v1 is read by both %out1 and %out2, creating a dependency
-  // hazard. Because index 1 is neither async nor disjoint in-place, copy
-  // insertion correctly retains copies inside the while loop body.
-  auto* body = module->GetComputationWithName("Body");
-  EXPECT_EQ(CountCopies(*body), 1);
+  // In %Body, %v1 is read by both %out1 and %out2. Copy insertion orders %out2
+  // before %out1 via a control dependency so %out1 can overwrite %v1 in place
+  // without a copy.
+  HloComputation* body = module->GetComputationWithName("Body");
+  EXPECT_EQ(CountCopies(*body), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "out1")->control_predecessors(),
+              ::testing::ElementsAre(FindInstruction(module.get(), "out2")));
 }
 
 TEST_F(WhileCopyInsertionTest, DisableWhileLoopCopiesAsyncPipelinedTupleIndex) {
@@ -1546,22 +1543,26 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
 
   InsertCopies(module_.get());
 
-  EXPECT_EQ(CountCopies(*body), 1);
-  EXPECT_EQ(CountControlEdges(*body), 0);
+  EXPECT_EQ(CountCopies(*body), 0);
+  EXPECT_EQ(CountControlEdges(*body), 1);
 
   EXPECT_THAT(
       body->root_instruction(),
       op::Tuple(op::Add(), op::Add(op::GetTupleElement(), op::Broadcast())));
 
-  auto add = body->root_instruction()->operand(0);
-  auto bcast = body->root_instruction()->operand(1)->operand(1);
+  HloInstruction* add = body->root_instruction()->mutable_operand(0);
+  HloInstruction* bcast =
+      body->root_instruction()->mutable_operand(1)->mutable_operand(1);
   ASSERT_EQ(add->opcode(), HloOpcode::kAdd);
   ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
 
-  EXPECT_THAT(while_hlo->while_body()->root_instruction(),
-              op::Tuple(op::Add(op::Copy(), op::Constant()),
-                        op::Add(op::GetTupleElement(),
-                                op::Broadcast(op::Convert(op::Copy())))));
+  EXPECT_THAT(
+      while_hlo->while_body()->root_instruction(),
+      op::Tuple(op::Add(op::GetTupleElement(), op::Constant()),
+                op::Add(op::GetTupleElement(),
+                        op::Broadcast(op::Convert(op::GetTupleElement())))));
+  EXPECT_THAT(add->control_predecessors(),
+              ::testing::ElementsAre(bcast->operand(0)));
 
   // Both init indices need copies as they are constants.
   EXPECT_THAT(while_hlo->operand(0),
@@ -2002,18 +2003,19 @@ TEST_F(CopyInsertionTest, SwizzlingWhile) {
 
   InsertCopies(module.get());
 
-  EXPECT_EQ(CountCopies(*module), 6);
+  EXPECT_EQ(CountCopies(*module), 5);
 
-  // The loop state elements should be copied at the parameter and at the root
-  // with a control edge in between (see DeepCopyAndAddControlEdges). This is
-  // technically one more copy than is strictly necessary, but in order to have
-  // only three copies the copies of different loop state elements must be
-  // ordered with a control edge.
-  EXPECT_EQ(CountCopies(*body), 4);
+  // Swapping two loop state elements in place needs three copies inside the
+  // body, with a control edge ordering the temporary save of element 1 before
+  // overwriting element 1 with element 0.
+  EXPECT_EQ(CountCopies(*body), 3);
   EXPECT_EQ(CountControlEdges(*body), 2);
 
   EXPECT_THAT(body->root_instruction(),
-              op::Tuple(op::Copy(op::Copy()), op::Copy(op::Copy())));
+              op::Tuple(op::Copy(op::Copy()), op::Copy(op::GetTupleElement())));
+  EXPECT_THAT(
+      body->root_instruction()->operand(1)->control_predecessors(),
+      ::testing::ElementsAre(body->root_instruction()->operand(0)->operand(0)));
 
   EXPECT_EQ(CountCopies(*module->entry_computation()), 2);
   EXPECT_THAT(xla_while->operand(0), op::Tuple(op::Copy(), op::Copy()));
@@ -2097,7 +2099,10 @@ TEST_F(CopyInsertionTest, CrossingParameters) {
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
   InsertCopies(module.get());
 
-  EXPECT_EQ(CountCopies(*module), 4);
+  // Swapping two aliased parameters needs three copies (one temporary save plus
+  // the two output writes ordered by a control dependency).
+  EXPECT_EQ(CountCopies(*module), 3);
+  EXPECT_EQ(CountControlEdges(*module->entry_computation()), 2);
 }
 
 TEST_F(CopyInsertionTest, ParametersAliasing) {
@@ -2327,16 +2332,20 @@ TEST_F(CopyInsertionTest, SwizzlingWhileWithOneOp) {
 
   InsertCopies(module.get());
 
-  EXPECT_EQ(CountCopies(*module), 6);
+  EXPECT_EQ(CountCopies(*module), 4);
 
-  // The loop state elements should be copied at the parameter and at the root
-  // with a control edge in between (see DeepCopyAndAddControlEdges).
-  EXPECT_EQ(CountCopies(*body), 4);
-  EXPECT_EQ(CountControlEdges(*body), 2);
-
+  // Negating element 1 into a separate buffer frees element 1 to receive the
+  // copy of element 0 directly once ordered after the temporary save of element
+  // 0 and the negate.
+  EXPECT_EQ(CountCopies(*body), 2);
+  EXPECT_THAT(body->root_instruction(),
+              op::Tuple(op::Copy(op::Negate(op::GetTupleElement())),
+                        op::Copy(op::GetTupleElement())));
+  EXPECT_THAT(body->root_instruction()->operand(0)->control_predecessors(),
+              ::testing::ElementsAre(body->root_instruction()->operand(1)));
   EXPECT_THAT(
-      body->root_instruction(),
-      op::Tuple(op::Copy(op::Negate(op::Copy())), op::Copy(op::Copy())));
+      body->root_instruction()->operand(1)->control_predecessors(),
+      ::testing::ElementsAre(body->root_instruction()->operand(0)->operand(0)));
 
   EXPECT_EQ(CountCopies(*module->entry_computation()), 2);
   EXPECT_THAT(xla_while->operand(0), op::Tuple(op::Copy(), op::Copy()));
@@ -3349,7 +3358,10 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_EQ(CountCopies(*module), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "dynamic-update-slice.5")
+                  ->control_predecessors(),
+              ::testing::ElementsAre(FindInstruction(module.get(), "add")));
 }
 
 TEST_F(CopyInsertionTest, DynamicUpdateSliceParameterShareCopy) {
@@ -3626,15 +3638,8 @@ ENTRY main {
               op::Scatter(op::Copy(op::Iota()), op::Fusion(), op::Iota()));
 }
 
-TEST_F(CopyInsertionTest, InPlaceCopyIsOrderedAfterPredecessorReaders) {
-  // `g` reads the scatter operand and is a predecessor of the scatter, so it
-  // must execute before the scatter anyway. Ordering it before the copy that
-  // is added for the scatter operand lets copy removal prove that the copy is
-  // redundant even when other in-place copies of the same buffer are present,
-  // e.g. for chains of gather-then-scatter updates of a loop-carried table.
-  // `n` also reads the operand but is not a predecessor of the scatter, so it
-  // must not be ordered before the copy.
-  absl::string_view hlo_string = R"(
+TEST_F(CopyInsertionTest, ChainedInPlaceGatherScatterUpdatesElideAllCopies) {
+  absl::string_view hlo_string = R"hlo(
 HloModule Module
 
 assign {
@@ -3642,43 +3647,63 @@ assign {
   ROOT rhs = f32[] parameter(1)
 }
 
+cond {
+  s = (s32[], f32[8,4], s32[2,1], f32[2,4]) parameter(0)
+  i = s32[] get-tuple-element(s), index=0
+  limit = s32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+body {
+  s = (s32[], f32[8,4], s32[2,1], f32[2,4]) parameter(0)
+  i = s32[] get-tuple-element(s), index=0
+  t0 = f32[8,4] get-tuple-element(s), index=1
+  idx = s32[2,1] get-tuple-element(s), index=2
+  upd = f32[2,4] get-tuple-element(s), index=3
+  one = s32[] constant(1)
+  i_next = s32[] add(i, one)
+  g0 = f32[2,4] gather(t0, idx), offset_dims={1}, collapsed_slice_dims={0},
+      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
+  upd0 = f32[2,4] add(g0, upd)
+  t1 = f32[8,4] scatter(t0, idx, upd0), update_window_dims={1},
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, to_apply=assign
+  g1 = f32[2,4] gather(t1, idx), offset_dims={1}, collapsed_slice_dims={0},
+      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
+  upd1 = f32[2,4] add(g1, upd)
+  t2 = f32[8,4] scatter(t1, idx, upd1), update_window_dims={1},
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, to_apply=assign
+  g2 = f32[2,4] gather(t2, idx), offset_dims={1}, collapsed_slice_dims={0},
+      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
+  upd2 = f32[2,4] add(g2, upd)
+  t3 = f32[8,4] scatter(t2, idx, upd2), update_window_dims={1},
+      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, to_apply=assign
+  ROOT out = (s32[], f32[8,4], s32[2,1], f32[2,4]) tuple(i_next, t3, idx, upd)
+}
+
 ENTRY main {
   t = f32[8,4] parameter(0)
   idx = s32[2,1] parameter(1)
   upd = f32[2,4] parameter(2)
-  g = f32[2,4] gather(t, idx), offset_dims={1}, collapsed_slice_dims={0},
-      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
-  new_rows = f32[2,4] add(g, upd)
-  n = f32[8,4] negate(t)
-  t_next = f32[8,4] scatter(t, idx, new_rows), update_window_dims={1},
-      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, to_apply=assign
-  ROOT out = (f32[8,4], f32[8,4]) tuple(t_next, n)
+  zero = s32[] constant(0)
+  init = (s32[], f32[8,4], s32[2,1], f32[2,4]) tuple(zero, t, idx, upd)
+  ROOT loop = (s32[], f32[8,4], s32[2,1], f32[2,4]) while(init),
+      condition=cond, body=body
 }
-)";
+)hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_);
-  copy_insertion.set_order_predecessor_readers_before_in_place_copies(true);
-  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
-      copy_insertion, module.get()));
-  ASSERT_OK(CopyInsertionTestPeer::OrderPredecessorReadersBeforeInPlaceCopies(
-      copy_insertion, module.get()));
-
-  HloComputation* entry = module->entry_computation();
-  const HloInstruction* scatter = entry->GetInstructionWithName("t_next");
-  ASSERT_THAT(scatter, op::Scatter(op::Copy(op::Parameter(0)), op::Parameter(1),
-                                   op::Add()));
-  EXPECT_THAT(scatter->operand(0)->control_predecessors(),
-              UnorderedElementsAre(entry->GetInstructionWithName("g")));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("body")), 0);
 }
 
 TEST_F(CopyInsertionTest, ReaderStaysOrderedBeforeInPlaceOpAfterCopyRemoval) {
-  // `reader` reaches the in-place `t_next` only through `tup`, which
+  // `reader` reaches the in place `t_next` only through `tup`, which
   // TupleSimplifier removes before copy removal. `t_next` overwrites `t` in
-  // place, so either the copy of `t` is kept, or `reader` must still be
-  // ordered before `t_next`.
-  absl::string_view hlo_string = R"(
+  // place, so `reader` must stay ordered before `t_next`.
+  absl::string_view hlo_string = R"hlo(
 HloModule Module
 
 ENTRY main {
@@ -3694,139 +3719,18 @@ ENTRY main {
   t_next = f32[16,128] dynamic-update-slice(t, upd, idx_gte, c0)
   ROOT out = (f32[16,128], f32[16,128]) tuple(t_next, out_reader)
 }
-)";
+)hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(&alias_info_);
-  copy_insertion.set_order_predecessor_readers_before_in_place_copies(true);
-  ASSERT_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   HloComputation* entry = module->entry_computation();
   const HloInstruction* reader = entry->GetInstructionWithName("reader");
   const HloInstruction* t_next = entry->GetInstructionWithName("t_next");
-  EXPECT_TRUE(t_next->operand(0)->opcode() == HloOpcode::kCopy ||
-              HloReachabilityMap::Build(entry)->IsReachable(reader, t_next))
+  EXPECT_EQ(CountCopies(*entry), 0);
+  EXPECT_TRUE(HloReachabilityMap::Build(entry)->IsReachable(reader, t_next))
       << module->ToString();
-}
-
-TEST_F(CopyInsertionTest, AsyncStartIsNotOrderedBeforeInPlaceCopy) {
-  // `start` reads `t` until `done`, so ordering `start` before the copy added
-  // for the in-place `t_next` would not order the read.
-  absl::string_view hlo_string = R"(
-HloModule Module
-
-async_comp {
-  p = f32[16,128] parameter(0)
-  ROOT n = f32[16,128] negate(p)
-}
-
-ENTRY main {
-  p0 = f32[16,128] parameter(0)
-  idx = s32[] parameter(1)
-  c0 = s32[] constant(0)
-  t = f32[16,128] add(p0, p0)
-  start = ((f32[16,128]), f32[16,128], s32[]) async-start(t), calls=async_comp
-  done = f32[16,128] async-done(start)
-  upd = f32[1,128] slice(done), slice={[0:1], [0:128]}
-  ROOT t_next = f32[16,128] dynamic-update-slice(t, upd, idx, c0)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_);
-  copy_insertion.set_order_predecessor_readers_before_in_place_copies(true);
-  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
-      copy_insertion, module.get()));
-  ASSERT_OK(CopyInsertionTestPeer::OrderPredecessorReadersBeforeInPlaceCopies(
-      copy_insertion, module.get()));
-
-  const HloInstruction* t_next =
-      module->entry_computation()->GetInstructionWithName("t_next");
-  ASSERT_THAT(t_next, op::DynamicUpdateSlice(op::Copy(op::Add()), op::Slice(),
-                                             op::Parameter(1), op::Constant()));
-  EXPECT_THAT(t_next->operand(0)->control_predecessors(), IsEmpty());
-}
-
-TEST_F(CopyInsertionTest, InPlaceCopiesOfSharedOperandAreNotChained) {
-  // Both scatters update their own copy of `b`. The copy added for the second
-  // scatter must not be ordered after the copy added for the first one: the
-  // copies are not removable either way, so the edge would only constrain the
-  // schedule.
-  absl::string_view hlo_string = R"(
-HloModule Module
-
-assign {
-  lhs = f32[] parameter(0)
-  ROOT rhs = f32[] parameter(1)
-}
-
-ENTRY main {
-  zero = f32[] constant(0)
-  b = f32[8,4] broadcast(zero), dimensions={}
-  idx = s32[2,1] parameter(0)
-  upd = f32[2,4] parameter(1)
-  t0 = f32[8,4] scatter(b, idx, upd), update_window_dims={1},
-      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, to_apply=assign
-  g = f32[2,4] gather(t0, idx), offset_dims={1}, collapsed_slice_dims={0},
-      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
-  t1 = f32[8,4] scatter(b, idx, g), update_window_dims={1},
-      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, to_apply=assign
-  ROOT out = (f32[8,4], f32[8,4]) tuple(t0, t1)
-}
-)";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_);
-  copy_insertion.set_order_predecessor_readers_before_in_place_copies(true);
-  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
-      copy_insertion, module.get()));
-  ASSERT_OK(CopyInsertionTestPeer::OrderPredecessorReadersBeforeInPlaceCopies(
-      copy_insertion, module.get()));
-
-  HloComputation* entry = module->entry_computation();
-  for (absl::string_view name : {"t0", "t1"}) {
-    const HloInstruction* scatter = entry->GetInstructionWithName(name);
-    ASSERT_THAT(scatter, op::Scatter(op::Copy(op::Broadcast()),
-                                     op::Parameter(0), ::testing::_))
-        << name;
-    EXPECT_THAT(scatter->operand(0)->control_predecessors(), IsEmpty()) << name;
-  }
-}
-
-TEST_F(CopyInsertionTest, InPlaceCopyIsNotOrderedAfterReadersByDefault) {
-  absl::string_view hlo_string = R"(
-HloModule Module
-
-assign {
-  lhs = f32[] parameter(0)
-  ROOT rhs = f32[] parameter(1)
-}
-
-ENTRY main {
-  t = f32[8,4] parameter(0)
-  idx = s32[2,1] parameter(1)
-  upd = f32[2,4] parameter(2)
-  g = f32[2,4] gather(t, idx), offset_dims={1}, collapsed_slice_dims={0},
-      start_index_map={0}, index_vector_dim=1, slice_sizes={1,4}
-  new_rows = f32[2,4] add(g, upd)
-  ROOT t_next = f32[8,4] scatter(t, idx, new_rows), update_window_dims={1},
-      inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, to_apply=assign
-}
-)";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_);
-  ASSERT_OK(CopyInsertionTestPeer::AddCopiesToResolveInterference(
-      copy_insertion, module.get()));
-
-  const HloInstruction* scatter =
-      module->entry_computation()->GetInstructionWithName("t_next");
-  ASSERT_THAT(scatter, op::Scatter(op::Copy(op::Parameter(0)), op::Parameter(1),
-                                   op::Add()));
-  EXPECT_THAT(scatter->operand(0)->control_predecessors(), IsEmpty());
 }
 
 TEST_F(CopyInsertionTest, VariadicScatterSharedOperand) {
@@ -3864,8 +3768,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()));
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
   VLOG(2) << module->ToString();
@@ -3937,17 +3840,9 @@ ENTRY TestComputation {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  // An extra copy must be kept inside the loop due to uses in the conditional.
-  // A fifth copy is inserted because sharing between a use at a conditional
-  // and a def escaping one of its branches is now rejected whenever the def
-  // escapes, rather than depending on the order in which the uses happen to
-  // be examined. The previous count of 4 relied on that order dependence,
-  // which also caused copy elision to vary with branch order. The extra copy
-  // should not occur in practice: the CPU and GPU pipelines run
-  // ConditionalCanonicalizer before copy insertion, which makes every
-  // conditional operand a value-defining tuple, so the escape-based rejection
-  // cannot trigger there.
-  EXPECT_EQ(CountCopies(*module), 5);
+  // Three copies materialize the read only entry parameter tuple elements at
+  // loop init, plus one copy inside the loop for uses in the conditional.
+  EXPECT_EQ(CountCopies(*module), 4);
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy1) {
@@ -3988,8 +3883,7 @@ ENTRY TestComputation {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
   // The copy.1 must be kept due to modification in the other branch.
@@ -4041,8 +3935,7 @@ ENTRY TestComputation {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   // The copy.1 must be kept due to modification in the other branch.
   auto conditional18 = FindInstruction(module.get(), "conditional.18");
@@ -4090,8 +3983,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2],
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
   // The copy.1 must be kept b/c aliasing of parameter and root is not allowed.
@@ -4139,8 +4031,7 @@ ENTRY TestComputation {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString() << "\n";
 
@@ -4184,8 +4075,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
 
@@ -4246,8 +4136,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
 
@@ -4303,8 +4192,7 @@ ENTRY entry {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");
   EXPECT_THAT(while_1, op::While(op::Tuple(op::Copy())));
@@ -4367,7 +4255,6 @@ ENTRY entry {
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(absl::Substitute(kHloTemplate, order)));
     CopyInsertion copy_insertion(&alias_info_,
-                                 /*use_region_based_live_range_analysis=*/-1,
                                  /*should_skip_removal=*/nullptr, view_color);
     ABSL_RETURN_IF_ERROR(copy_insertion.RemoveUnnecessaryCopies(module.get()));
     const HloInstruction* root =
@@ -4409,7 +4296,6 @@ ENTRY entry {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnVerifiedModule(kHlo));
     CopyInsertion copy_insertion(&alias_info_,
-                                 /*use_region_based_live_range_analysis=*/-1,
                                  /*should_skip_removal=*/nullptr, view_color);
     ASSERT_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
     const HloInstruction* dus = module->entry_computation()->root_instruction();
@@ -4546,8 +4432,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 2);
 }
@@ -4660,8 +4545,7 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
   HloInstruction* reverse = FindInstruction(module.get(), "reverse");
@@ -4681,8 +4565,7 @@ ROOT %arg_tuple.1 = (f32[], f32[]) parameter(0),
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
 }
@@ -4703,8 +4586,7 @@ ENTRY test {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 1);
   EXPECT_EQ(CountControlEdges(*module), 2);
@@ -4753,8 +4635,7 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
   EXPECT_EQ(CountCopies(*module), 0);
@@ -4796,8 +4677,7 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
   EXPECT_EQ(CountCopies(*module), 1);
@@ -4833,8 +4713,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
 }
 
@@ -4864,8 +4743,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_GE(CountCopies(*module), 1);
 }
@@ -4897,8 +4775,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_GE(CountCopies(*module), 1);
 }
@@ -4930,8 +4807,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_GE(CountCopies(*module), 1);
 }
@@ -4978,8 +4854,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
 
@@ -5045,8 +4920,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
 
@@ -5089,8 +4963,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
 
@@ -5202,8 +5075,7 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
   EXPECT_EQ(CountCopies(*module), 0);
@@ -5245,8 +5117,7 @@ ENTRY main_spmd {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5306,8 +5177,7 @@ ENTRY main_spmd {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5374,8 +5244,7 @@ ENTRY main_spmd {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5473,8 +5342,7 @@ ENTRY main_spmd {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5573,8 +5441,7 @@ ENTRY main_spmd {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
 
@@ -5621,8 +5488,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5671,8 +5537,7 @@ ENTRY main {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5737,8 +5602,7 @@ ENTRY main {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5808,8 +5672,7 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5889,8 +5752,7 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -5971,8 +5833,7 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                        ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -6090,8 +5951,7 @@ ENTRY entry {
   };
   HloMemoryScheduler scheduler(&alias_info_, size_fn);
   ASSERT_OK(scheduler.Run(module.get()).status());
-  CopyInsertion copy_insertion(
-      &alias_info_, /*use_region_based_live_range_analysis=*/1000000);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_OK(copy_insertion.Run(module.get()).status());
   LOG(ERROR) << "HLO MODULE AFTER INSERT COPIES:\n" << module->ToString();
 
@@ -6174,8 +6034,7 @@ ENTRY entry {
   };
   HloMemoryScheduler scheduler(&alias_info_, size_fn);
   ASSERT_OK(scheduler.Run(module.get()).status());
-  CopyInsertion copy_insertion(
-      &alias_info_, /*use_region_based_live_range_analysis=*/1000000);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_OK(copy_insertion.Run(module.get()).status());
   LOG(ERROR) << "HLO MODULE AFTER INSERT COPIES:\n" << module->ToString();
 
@@ -6265,13 +6124,12 @@ ENTRY main {
 // A two-branch conditional where one branch is a passthrough (identity) and
 // the other does an in-place update. Copy elision should be independent of
 // which position the passthrough branch occupies.
-class CopyInsertionCondOrderTest
-    : public CopyInsertionTest,
-      public ::testing::WithParamInterface<std::tuple<bool, int64_t>> {};
+class CopyInsertionCondOrderTest : public CopyInsertionTest,
+                                   public ::testing::WithParamInterface<bool> {
+};
 
 TEST_P(CopyInsertionCondOrderTest, PassthroughPositionIrrelevant) {
-  const bool passthrough_first = std::get<0>(GetParam());
-  const int64_t region_limit = std::get<1>(GetParam());
+  const bool passthrough_first = GetParam();
 
   // Passthrough branch in position 0.
   constexpr absl::string_view kPassthroughFirst = R"(
@@ -6333,7 +6191,7 @@ ENTRY main {
       std::string(passthrough_first ? kPassthroughFirst : kPassthroughSecond);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo));
-  CopyInsertion copy_insertion(&alias_info_, region_limit);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 0);
 }
@@ -6417,8 +6275,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   HloComputation* branch_0 = module->GetComputationWithName("branch_0");
@@ -6474,8 +6331,7 @@ ENTRY main {
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   EXPECT_EQ(CountCopies(*module), 0);
@@ -6562,8 +6418,7 @@ ENTRY main {
 )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   EXPECT_EQ(CountCopies(*module), 0);
@@ -6604,8 +6459,7 @@ ENTRY main {
 )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   EXPECT_EQ(CountCopies(*module), 1);
@@ -6677,8 +6531,7 @@ ENTRY main {
 )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   const HloComputation* branch_passthrough =
@@ -6733,8 +6586,7 @@ TEST_F(CopyInsertionTest, RegionAnalysisHandlesHighFanoutConstantConditional) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   const HloComputation* false_branch =
@@ -6745,6 +6597,37 @@ TEST_F(CopyInsertionTest, RegionAnalysisHandlesHighFanoutConstantConditional) {
   ASSERT_NE(true_branch, nullptr);
   EXPECT_EQ(CountCopies(*false_branch), kNumOutputs);
   EXPECT_EQ(CountCopies(*true_branch), 0);
+}
+
+TEST_F(CopyInsertionTest, MultiOutputInPlaceCustomCallKeepsDistinctBuffers) {
+  absl::string_view hlo_string = R"hlo(
+HloModule multi_output_in_place
+
+fused_zero {
+  c0 = f32[] constant(0)
+  ROOT b = f32[1,2] broadcast(c0), dimensions={}
+}
+
+ENTRY main {
+  p0 = f32[1,2] parameter(0)
+  p1 = f32[1,2] parameter(1)
+  zeros = f32[1,2] fusion(), kind=kLoop, calls=fused_zero
+  ROOT call = (f32[1,2], f32[1,2]) custom-call(p0, p1, zeros, zeros),
+      custom_call_target="MultiInPlace",
+      output_to_operand_aliasing={{0}: (2, {}), {1}: (3, {})}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  const HloInstruction* call = module->entry_computation()->root_instruction();
+  EXPECT_NE(&alias_analysis->GetUniqueBufferAt(call, {0}),
+            &alias_analysis->GetUniqueBufferAt(call, {1}));
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 TEST_F(CopyInsertionTest,
@@ -6790,8 +6673,7 @@ ENTRY main {
 )hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(&alias_info_,
-                               /*use_region_based_live_range_analysis=*/-1);
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_THAT(copy_insertion.Run(module.get()), absl_testing::IsOk());
 
   // Verify every computation remains a DAG across both data and control edges.
@@ -6811,9 +6693,7 @@ ENTRY main {
 }
 
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
-                         ::testing::Combine(::testing::Bool(),
-                                            ::testing::Values(int64_t{0},
-                                                              int64_t{-1})));
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace xla

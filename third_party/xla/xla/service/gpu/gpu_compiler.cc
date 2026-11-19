@@ -2482,14 +2482,7 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
                                             const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
-  constexpr int64_t kRegionBasedLiveRangeAnalysisLimit = -1;
-  const int64_t kUseRegionBasedLiveRangeAnalysis =
-      module->config()
-              .debug_options()
-              .xla_gpu_copy_insertion_use_region_analysis()
-          ? kRegionBasedLiveRangeAnalysisLimit
-          : 0;
-  CopyInsertion copy_insertion(alias_info, kUseRegionBasedLiveRangeAnalysis);
+  CopyInsertion copy_insertion(alias_info);
   ABSL_RETURN_IF_ERROR(copy_insertion.RemoveUnnecessaryCopies(module));
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module).status());
 

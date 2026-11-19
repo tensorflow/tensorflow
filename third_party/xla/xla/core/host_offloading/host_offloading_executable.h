@@ -44,7 +44,6 @@ namespace xla {
 // Sets up host-offloading-specific options in HLO module config.
 inline void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
   auto& debug_options = config.mutable_debug_options();
-  debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
   // TODO(b/374556751): Megascale custom calls do not have correct data
   // dependencies and can be scheduled in wrong order.
   debug_options.set_xla_cpu_scheduler_type(

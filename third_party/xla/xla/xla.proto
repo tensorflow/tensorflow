@@ -260,8 +260,9 @@ message DebugOptions {
   // The number of seconds to wait before terminating a collective.
   optional int32 xla_cpu_collective_timeout_seconds = 438;
 
-  // Use region analysis in copy insertion pass.
-  optional bool xla_cpu_copy_insertion_use_region_analysis = 337;
+  // DEPRECATED: region analysis is always used in copy insertion.
+  optional bool xla_cpu_copy_insertion_use_region_analysis = 337
+      [deprecated = true];
 
   // Sets how often we verify the emitted modules. Higher "levels mean
   // more frequent verification. Currently supported: 0, 1.
@@ -730,7 +731,9 @@ message DebugOptions {
   // See CommandBufferUpdateMode for details.
   optional CommandBufferUpdateMode xla_gpu_command_buffer_update_mode = 469;
 
-  optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
+  // DEPRECATED: region analysis is always used in copy insertion.
+  optional bool xla_gpu_copy_insertion_use_region_analysis = 236
+      [deprecated = true];
 
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results

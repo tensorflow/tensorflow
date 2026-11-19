@@ -192,7 +192,7 @@ class RelativeLocationAnalysis {
 
         for (const InstructionEntry& entry1 : *pair.instrs1) {
           auto [order, intercept] = CompareEntries(entry1, entry2, can_modify);
-          if (order == kUnordered) {
+          if (order == kUnordered && entry1.first != entry2.first) {
             unordered_ops.push_back(entry1.first);
             unordered_intercept |= intercept;
           } else {
@@ -265,9 +265,23 @@ class RelativeLocationAnalysis {
     HloInstruction* use = entry1.first;
     HloInstruction* instr2 = entry2.first;
     RuntimeOrder order = ComputeRuntimeOrdering(instr2, use);
-    if (order == kSameInstr &&
-        entry1.second.is_definition != entry2.second.is_definition) {
-      order = entry1.second.is_definition ? kBeforeStart : kAfterEnd;
+    if (order == kSameInstr) {
+      // Distinct values defined by the same multi output instruction (such as a
+      // fusion, custom call, reduce, scatter, sort, or while) are produced at
+      // the same time and cannot share a buffer. Conditional results and branch
+      // parameters are excluded because a branch can forward one buffer into
+      // multiple tuple slots.
+      if (entry1.second.is_definition && entry2.second.is_definition &&
+          instr2->opcode() != HloOpcode::kConditional &&
+          (instr2->opcode() != HloOpcode::kParameter ||
+           instr2->parent()
+               ->caller_instructions(HloOpcode::kConditional)
+               .empty())) {
+        return {kUnordered, true};
+      }
+      if (entry1.second.is_definition != entry2.second.is_definition) {
+        order = entry1.second.is_definition ? kBeforeStart : kAfterEnd;
+      }
     }
     const HloOpcode op2 = instr2->opcode();
     const bool forced_intercept =
@@ -282,26 +296,14 @@ class RelativeLocationAnalysis {
         use == use->parent()->root_instruction()) {
       return {order, true};
     }
-    if (use->parent() == def->parent()) {
-      // Writes inside a while body do not intercept an outer def/use chain.
-      if ((def->opcode() == HloOpcode::kWhile &&
-           instr2->parent() == def->while_body() && order == kBeforeStart) ||
-          (use->opcode() == HloOpcode::kWhile &&
-           instr2->parent() == use->while_body() &&
-           ComputeRuntimeOrdering(def, instr2) == kBeforeStart)) {
-        return {order, false};
-      }
-      // When one conditional branch returns `tuple(exp, exp)` (shareable) and
-      // another returns a tuple producing op (for example a fusion returning
-      // `tuple(abs, negate)`), its distinct outputs must not share a buffer.
-      // Because `InstructionInfo` does not track the tuple output index, treat
-      // outputs of a tuple producing op in a conditional branch as interfering.
-      if (def == instr2 && def->shape().IsTuple() &&
-          !def->parent()
-               ->caller_instructions(HloOpcode::kConditional)
-               .empty()) {
-        return {order, true};
-      }
+    // Writes inside a while body do not intercept an outer def/use chain.
+    if (use->parent() == def->parent() &&
+        ((def->opcode() == HloOpcode::kWhile &&
+          instr2->parent() == def->while_body() && order == kBeforeStart) ||
+         (use->opcode() == HloOpcode::kWhile &&
+          instr2->parent() == use->while_body() &&
+          ComputeRuntimeOrdering(def, instr2) == kBeforeStart))) {
+      return {order, false};
     }
     if (!forced_intercept && (order == kBeforeStart || order == kUnordered)) {
       RuntimeOrder def_order = ComputeRuntimeOrdering(instr2, def);
@@ -672,7 +674,8 @@ absl::Status CopyRemover::Verify() const {
 }
 
 bool CopyRemover::TryElideCopy(
-    const HloInstruction* copy, const ElideOptions& options,
+    const HloInstruction* copy,
+    bool insert_post_scheduling_control_dependencies,
     const std::function<bool(const HloInstruction* copy)>&
         should_skip_removal) {
   VLOG(2) << "Trying to remove " << copy->name();
@@ -721,15 +724,14 @@ bool CopyRemover::TryElideCopy(
                        ValueNode* before2, ValueNode* after2,
                        bool dest_spliced_into_src) {
     if (all_before(before1, after1) && all_before(before2, after2)) {
-      if (options.insert_post_scheduling_control_dependencies) {
+      if (insert_post_scheduling_control_dependencies) {
         add_control_deps(before1, after1);
         add_control_deps(before2, after2);
       }
       return true;
     }
-    if (!options.use_region_analysis ||
-        copy->operand(0)->opcode() == HloOpcode::kBroadcast) {
-      VLOG(2) << copy->name() << " live ranges are not strictly ordered.";
+    if (copy->operand(0)->opcode() == HloOpcode::kBroadcast) {
+      VLOG(2) << copy->name() << " copies a broadcast and is not ordered.";
       return false;
     }
     if (ValuesInterfere(src, dest, dest_spliced_into_src)) {

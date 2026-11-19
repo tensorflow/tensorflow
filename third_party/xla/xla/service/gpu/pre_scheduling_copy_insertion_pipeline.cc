@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -42,8 +41,6 @@ namespace gpu {
 HloPassPipeline PreSchedulingCopyInsertionPipeline(
     const HloModuleConfig& config, const GpuAliasInfo* alias_info,
     const se::DeviceDescription& device_description) {
-  const DebugOptions& debug_options = config.debug_options();
-
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -70,13 +67,7 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
   }
   pipeline.AddPass<LoopScheduleLinearizer>(alias_info);
 
-  if (debug_options.xla_gpu_copy_insertion_use_region_analysis()) {
-    constexpr int64_t kNoRegionBasedLiveRangeAnalysisLimit = -1;
-    pipeline.AddPass<CopyInsertion>(alias_info,
-                                    kNoRegionBasedLiveRangeAnalysisLimit);
-  } else {
-    pipeline.AddPass<CopyInsertion>(alias_info);
-  }
+  pipeline.AddPass<CopyInsertion>(alias_info);
 
   pipeline.AddPass<ConstantFillCopyRewriter>();
   pipeline.AddPass<CopyFusion>(device_description);
