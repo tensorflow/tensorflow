@@ -64,6 +64,7 @@ cc_library(
     srcs = [
         "drop_vector_unit_dims_pass.cc",
         "hoist_alloca.cc",
+        "interchange_reduction_loop.cc",
         "legalize_narrow_float_storage.cc",
         "lower_memref_bitcast.cc",
         "lower_vector_contract.cc",
@@ -104,12 +105,14 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorInterfaces",
         "@llvm-project//mlir:VectorTransforms",
+        "@llvm-project//mlir:ViewLikeInterface",
         "@stablehlo//:stablehlo_ops",
     ],
 )

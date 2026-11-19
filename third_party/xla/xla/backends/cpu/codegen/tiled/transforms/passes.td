@@ -152,3 +152,14 @@ def LowerVectorContractPass
   ];
 }
 
+def InterchangeReductionLoopPass
+    : Pass<"xtile-cpu-interchange-reduction-loop", "mlir::func::FuncOp"> {
+  let summary = "Interchanges parallel outer and reduction inner loops for contiguous minor-dim streaming.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::memref::MemRefDialect",
+    "::mlir::scf::SCFDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+

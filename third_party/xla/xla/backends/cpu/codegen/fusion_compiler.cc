@@ -357,6 +357,8 @@ void AddVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
   pm.addPass(cpu::createUnrollVectorsPass());
   // Get rid of unit dimensions.
   pm.addPass(cpu::createDropVectorUnitDimsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      cpu::createInterchangeReductionLoopPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(true)));
   pm.addPass(mlir::createCanonicalizerPass());
