@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/async_tracker.h"
+#include "xla/hlo/transforms/hlo_scheduling/async_tracker.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/latency_estimator.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_estimator.h"
 #include "xla/util.h"
 
 namespace xla {

@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/approximate_latency_estimator.h"
+#include "xla/hlo/transforms/hlo_scheduling/approximate_latency_estimator.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_schedule_graph.h"
-#include "xla/service/latency_estimator.h"
+#include "xla/hlo/transforms/hlo_scheduling/hlo_schedule_graph.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_estimator.h"
 
 namespace xla {
 

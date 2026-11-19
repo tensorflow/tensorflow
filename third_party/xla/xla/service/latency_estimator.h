@@ -16,71 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LATENCY_ESTIMATOR_H_
 #define XLA_SERVICE_LATENCY_ESTIMATOR_H_
 
-#include <functional>
-#include <optional>
-
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-
-namespace xla {
-
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectiveBroadcast,
-                    // kCollectivePermute, or kReduceScatter
-};
-
-CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
-
-using GetCanonicalAsyncOpFunc =
-    std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
-
-// Defined in hlo_schedule_graph.h.
-class HloGraphNode;
-
-// Class used to estimate latency between instructions and cost of HLOs.
-class LatencyEstimator {
- public:
-  using TimeCost = double;
-  // Uses the approximate or cost model function for GetLatencyBetween based on
-  // a flag.
-  virtual TimeCost GetLatencyBetween(const HloGraphNode& from,
-                                     const HloGraphNode& target) const = 0;
-  // Uses the approximate or cost model function for NodeCost based on a flag.
-  virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
-  // Returns the core frequency used in latency estimation.
-  virtual int CyclesPerMicrosecond() const = 0;
-
-  // Returns the latency cycles of the instruction if it is specified in the
-  // frontend attributes. Otherwise, returns std::nullopt.
-  std::optional<TimeCost> GetLatencyFromMetadata(
-      const HloInstruction& instruction) const;
-
-  virtual ~LatencyEstimator() = default;
-
-  CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
-    return get_canonical_async_op_(hlo);
-  }
-  // Returns true if `from` is an async start and `target` is its matching
-  // async done kind (same canonical inner opcode).
-  bool IsAsyncPair(const HloInstruction& from,
-                   const HloInstruction& target) const;
-  // Returns true if `from` -> `target` is a Send -> SendDone or
-  // Recv -> RecvDone pair.
-  bool IsP2pPair(const HloInstruction& from,
-                 const HloInstruction& target) const;
-  // HloGraphNode overloads of the above. Defined in hlo_schedule_graph.cc,
-  // which owns the HloGraphNode definition.
-  bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
-  bool IsP2pPair(const HloGraphNode& from, const HloGraphNode& target) const;
-  explicit LatencyEstimator(
-      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
-      : get_canonical_async_op_(func) {}
-
- private:
-  GetCanonicalAsyncOpFunc get_canonical_async_op_;
-};
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/transforms/hlo_scheduling/latency_estimator.h"
+#include "xla/hlo/transforms/hlo_scheduling/latency_estimator.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_LATENCY_ESTIMATOR_H_
