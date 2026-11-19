@@ -170,6 +170,27 @@ xla_test(
 )
 
 xla_test(
+    name = "locality_domain_compute_test",
+    srcs = ["locality_domain_compute_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:side_effect_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "command_buffer_test",
     srcs = ["command_buffer_test.cc"],
     backends = ["gpu"],

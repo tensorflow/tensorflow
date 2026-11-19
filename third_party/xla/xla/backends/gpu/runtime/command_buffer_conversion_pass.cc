@@ -393,6 +393,9 @@ static bool IsConvertible(
 // operation. This requires that all nested thunks are convertible.
 static bool IsConvertible(const AsyncStartThunk& async_start_thunk,
                           const CommandBufferConfig& config) {
+  if (async_start_thunk.execution_stream_id().is_locality_domain()) {
+    return false;
+  }
   return ThunkSequenceIsConvertible(async_start_thunk.thunks(), config);
 }
 

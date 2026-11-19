@@ -72,6 +72,8 @@ const char kXlaCollectiveStreamAnnotation[] = "collective";
 const char kCollectiveCommunicationDomainAttr[] =
     "collective_communication_domain";
 
+const char kXlaLocalityDomainStreamAnnotationPrefix[] = "locality_domain:";
+
 const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
 
 const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";

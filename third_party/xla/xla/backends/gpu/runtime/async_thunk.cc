@@ -40,6 +40,31 @@ limitations under the License.
 
 namespace xla::gpu {
 
+namespace {
+
+bool IsCommunicationThunk(const Thunk* thunk) {
+  if (thunk->IsCollective()) {
+    return true;
+  }
+  switch (thunk->kind()) {
+    case Thunk::kCollectiveKernel:
+    case Thunk::kCollectiveMetadata:
+    case Thunk::kHostRecv:
+    case Thunk::kHostRecvDone:
+    case Thunk::kHostSend:
+    case Thunk::kHostSendDone:
+      return true;
+    case Thunk::kAsyncStart:
+      return static_cast<const AsyncStartThunk*>(thunk)
+          ->execution_stream_id()
+          .is_communication();
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // AsyncStartThunk
 //===----------------------------------------------------------------------===//
@@ -71,6 +96,18 @@ std::string AsyncStartThunk::ToString(int indent) const {
 }
 
 absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
+  if (execution_stream_id_.is_locality_domain()) {
+    ABSL_RETURN_IF_ERROR(
+        executor_.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
+          if (IsCommunicationThunk(thunk)) {
+            return InvalidArgument(
+                "Locality-domain async start contains unsupported "
+                "communication thunk: %s",
+                Thunk::KindToString(thunk->kind()));
+          }
+          return absl::OkStatus();
+        }));
+  }
   return executor_.Prepare(params);
 }
 

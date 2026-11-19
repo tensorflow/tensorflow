@@ -432,5 +432,14 @@ TEST_F(CommandBufferAsyncConversionTest, DuplicateOutstandingStart) {
   }
 }
 
+TEST_F(CommandBufferAsyncConversionTest, KeepsLocalityDomainRegionUncaptured) {
+  ThunkSequence thunks;
+  auto* start = Start(thunks, /*convertible=*/true, LocalityDomainStreamId(0));
+  Done(thunks, start);
+  ASSERT_OK_AND_ASSIGN(bool changed, Convert(thunks));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
+}
+
 }  // namespace
 }  // namespace xla::gpu

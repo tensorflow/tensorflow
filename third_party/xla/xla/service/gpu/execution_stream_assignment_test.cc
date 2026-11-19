@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/execution_stream_assignment.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/transforms/collectives/collective_domain.h"
@@ -34,6 +37,120 @@ namespace xla::gpu {
 namespace {
 
 class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {};
+
+std::string AnnotatedCallStartModule(absl::string_view annotation,
+                                     bool communication_scope = false) {
+  return absl::StrCat(R"(
+    HloModule m
+
+    leaf {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      start = ((f32[2]), f32[2]) call-start(p0), to_apply=leaf,
+        frontend_attributes={_xla_stream_annotation=")",
+                      annotation, "\"",
+                      communication_scope ? R"(, _collectives_group="")" : "",
+                      R"(}
+      ROOT done = f32[2] call-done(start)
+    }
+  )");
+}
+
+struct LocalityDomainAnnotationTestCase {
+  const char* name;
+  const char* annotation;
+  uint64_t expected_domain_id;
+};
+
+class ValidLocalityDomainAnnotationTest
+    : public ExecutionStreamAssignmentTest,
+      public ::testing::WithParamInterface<LocalityDomainAnnotationTestCase> {};
+
+TEST_P(ValidLocalityDomainAnnotationTest, AssignsLocalityDomainStream) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           AnnotatedCallStartModule(GetParam().annotation)));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(
+          LocalityDomainStreamId(GetParam().expected_domain_id))));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LocalityDomainIds, ValidLocalityDomainAnnotationTest,
+    ::testing::ValuesIn<LocalityDomainAnnotationTestCase>({
+        {"Zero", "locality_domain:0", 0},
+        {"LeadingZero", "locality_domain:01", 1},
+    }),
+    [](const ::testing::TestParamInfo<LocalityDomainAnnotationTestCase>& info) {
+      return info.param.name;
+    });
+
+struct MalformedLocalityDomainAnnotationTestCase {
+  const char* name;
+  const char* annotation;
+  const char* message_regex;
+};
+
+class MalformedLocalityDomainAnnotationTest
+    : public ExecutionStreamAssignmentTest,
+      public ::testing::WithParamInterface<
+          MalformedLocalityDomainAnnotationTestCase> {};
+
+TEST_P(MalformedLocalityDomainAnnotationTest, DiesWithCheckMessage) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           AnnotatedCallStartModule(GetParam().annotation)));
+
+  EXPECT_DEATH(ExecutionStreamAssignment(module.get()),
+               GetParam().message_regex);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InvalidSyntax, MalformedLocalityDomainAnnotationTest,
+    ::testing::ValuesIn<MalformedLocalityDomainAnnotationTestCase>({
+        {"MissingColon", "locality_domain",
+         "Invalid locality-domain stream annotation: expected"},
+        {"EmptySuffix", "locality_domain:",
+         "Invalid locality-domain stream annotation: expected"},
+        {"NegativeSign", "locality_domain:-1",
+         "domain id must be an unsigned decimal integer"},
+        {"PositiveSign", "locality_domain:+1",
+         "domain id must be an unsigned decimal integer"},
+        {"LeadingWhitespace", "locality_domain: 1",
+         "domain id must be an unsigned decimal integer"},
+        {"TrailingWhitespace", "locality_domain:1 ",
+         "domain id must be an unsigned decimal integer"},
+        {"Alphabetic", "locality_domain:abc",
+         "domain id must be an unsigned decimal integer"},
+        {"Decimal", "locality_domain:1.0",
+         "domain id must be an unsigned decimal integer"},
+        {"TrailingJunk", "locality_domain:1x",
+         "domain id must be an unsigned decimal integer"},
+        {"Uint64Overflow", "locality_domain:18446744073709551616",
+         "domain id is out of range"},
+    }),
+    [](const ::testing::TestParamInfo<
+        MalformedLocalityDomainAnnotationTestCase>& info) {
+      return info.param.name;
+    });
+
+TEST_F(ExecutionStreamAssignmentTest,
+       LocalityDomainAnnotationRejectsCommunicationScope) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(AnnotatedCallStartModule(
+                           "locality_domain:0",
+                           /*communication_scope=*/true)));
+
+  EXPECT_DEATH(ExecutionStreamAssignment(module.get()),
+               "cannot be assigned to a communication execution scope");
+}
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   const char* kModuleStr = R"(
@@ -383,6 +500,53 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
   EXPECT_THAT(assignment.GetExecutionStreamId(
                   FindInstruction(module.get(), "call-done")),
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       LocalityDomainDoesNotConsumeRoundRobinStream) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    leaf0 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+    leaf1 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+    leaf2 {
+      p0 = f32[2] parameter(0)
+      ROOT add = f32[2] add(p0, p0)
+    }
+
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      start0 = ((f32[2]), f32[2]) call-start(p0), to_apply=leaf0
+      done0 = f32[2] call-done(start0)
+      locality = ((f32[2]), f32[2]) call-start(done0), to_apply=leaf1,
+        frontend_attributes={_xla_stream_annotation="locality_domain:7"}
+      locality_done = f32[2] call-done(locality)
+      start1 = ((f32[2]), f32[2]) call-start(locality_done), to_apply=leaf2
+      ROOT done1 = f32[2] call-done(start1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "locality")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(LocalityDomainStreamId(7))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {

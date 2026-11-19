@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <variant>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
@@ -175,6 +177,11 @@ void AbslStringify(Sink& sink, const ExecutionStreamId& id) {
     absl::Format(&sink, "%v", id.locality_domain_id());
   }
 }
+
+// Parses a "locality_domain:<id>" stream annotation. Returns InvalidArgument
+// unless <id> is a non-empty unsigned decimal integer that fits in uint64_t.
+absl::StatusOr<LocalityDomainStreamId> ParseLocalityDomainStreamAnnotation(
+    absl::string_view annotation);
 
 // Number of async compute execution streams.
 inline constexpr int kDefaultNumComputeStreams = 4;

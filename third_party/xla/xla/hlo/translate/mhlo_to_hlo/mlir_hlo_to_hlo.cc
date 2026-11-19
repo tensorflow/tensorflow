@@ -112,6 +112,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -957,7 +958,6 @@ static xla::ResultAccuracy Convert_result_accuracy(
   return result_accuracy;
 }
 
-
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
 // have frontend attributes.
@@ -1039,7 +1039,6 @@ static bool SomeOptionalShardingsAreSet(
                         return sharding.has_value();
                       });
 }
-
 
 // Creates a tuple sharding with the given shardings if at least one is present.
 //
@@ -5795,6 +5794,15 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   if (num_results > 1) {
     BuildGetTupleElementsForTupleResults(call_op, call_result, builder,
                                          value_map);
+    // Stream annotations describe the call boundary and are rejected on any
+    // other instruction.
+    for (mlir::Value result : call_op.getResults()) {
+      xla::HloInstructionProto* get_tuple_element =
+          xla::internal::XlaBuilderFriend::GetInstruction(value_map[result]);
+      auto* attrs =
+          get_tuple_element->mutable_frontend_attributes()->mutable_map();
+      attrs->erase(xla::kXlaStreamAnnotationAttr);
+    }
   } else if (num_results == 1) {
     value_map[call_op.getResult(0)] = call_result;
   }

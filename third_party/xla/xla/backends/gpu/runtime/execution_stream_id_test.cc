@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 TEST(ComputationStreamIdTest, AbslStringify) {
   ComputationStreamId id(42);
@@ -141,6 +148,39 @@ TEST(ExecutionStreamIdTest, EqualityWithMemcpy) {
             ExecutionStreamId(ComputationStreamId(0)));
   EXPECT_NE(ExecutionStreamId(kMemcpyD2HStreamId),
             ExecutionStreamId(CommunicationStreamId(0)));
+}
+
+TEST(ParseLocalityDomainStreamAnnotationTest, ParsesDomainId) {
+  EXPECT_THAT(ParseLocalityDomainStreamAnnotation("locality_domain:0"),
+              IsOkAndHolds(LocalityDomainStreamId(0)));
+  EXPECT_THAT(ParseLocalityDomainStreamAnnotation("locality_domain:01"),
+              IsOkAndHolds(LocalityDomainStreamId(1)));
+  EXPECT_THAT(ParseLocalityDomainStreamAnnotation(
+                  "locality_domain:18446744073709551615"),
+              IsOkAndHolds(LocalityDomainStreamId(18446744073709551615ull)));
+}
+
+TEST(ParseLocalityDomainStreamAnnotationTest, RejectsMalformedAnnotations) {
+  struct Case {
+    const char* annotation;
+    const char* message;
+  };
+  for (const Case& c : {
+           Case{"locality_domain", "expected \"locality_domain:<d>\""},
+           Case{"locality_domain:", "expected \"locality_domain:<d>\""},
+           Case{"1", "expected \"locality_domain:<d>\""},
+           Case{"locality_domain:-1", "unsigned decimal integer"},
+           Case{"locality_domain:+1", "unsigned decimal integer"},
+           Case{"locality_domain: 1", "unsigned decimal integer"},
+           Case{"locality_domain:abc", "unsigned decimal integer"},
+           Case{"locality_domain:1x", "unsigned decimal integer"},
+           Case{"locality_domain:18446744073709551616", "out of range"},
+       }) {
+    SCOPED_TRACE(c.annotation);
+    EXPECT_THAT(
+        ParseLocalityDomainStreamAnnotation(c.annotation),
+        StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr(c.message)));
+  }
 }
 
 }  // namespace

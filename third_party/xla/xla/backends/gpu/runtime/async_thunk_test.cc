@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -64,6 +65,9 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 class RecordingThunk : public Thunk {
  public:
@@ -346,6 +350,7 @@ TEST(AsyncThunkTest, LocalityDomainStreamSelection) {
   ThunkSequence nested = ThunkSequence::Of<RecordingThunk>(&executed_stream);
   AsyncStartThunk start(std::move(info), LocalityDomainStreamId(3),
                         std::move(nested), /*devices_per_host=*/1);
+  AsyncDoneThunk done(Thunk::ThunkInfo(), start.async_execution());
 
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({}, 0, &allocator);
@@ -357,7 +362,34 @@ TEST(AsyncThunkTest, LocalityDomainStreamSelection) {
   Thunk::ExecuteParams params = thunk_params.ExecuteParams();
 
   ASSERT_OK(start.ExecuteOnStream(params));
+  ASSERT_OK(done.ExecuteOnStream(params));
   EXPECT_EQ(executed_stream, locality_stream.get());
+}
+
+TEST(AsyncThunkTest, LocalityDomainPrepareRejectsCommunicationThunks) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  TestThunkParams thunk_params(executor, &allocations);
+  Thunk::PrepareParams params = thunk_params.PrepareParams();
+
+  se::Stream* executed_stream = nullptr;
+  AsyncStartThunk compute_only(
+      Thunk::ThunkInfo(), LocalityDomainStreamId(0),
+      ThunkSequence::Of<RecordingThunk>(&executed_stream),
+      /*devices_per_host=*/1);
+  ASSERT_OK(compute_only.Prepare(params));
+
+  ThunkSequence nested;
+  nested.push_back(std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), CommunicationStreamId(0), ThunkSequence{},
+      /*devices_per_host=*/1));
+  AsyncStartThunk with_communication(Thunk::ThunkInfo(),
+                                     LocalityDomainStreamId(0),
+                                     std::move(nested), /*devices_per_host=*/1);
+  EXPECT_THAT(with_communication.Prepare(params),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("unsupported communication thunk")));
 }
 
 TEST(AsyncThunkTest,

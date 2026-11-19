@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -272,6 +273,17 @@ std::optional<ExecutionStreamId> FindAssignedStreamId(
           instr->get_frontend_attribute(kXlaStreamAnnotationAttr);
       annotation.has_value() &&
       !absl::EqualsIgnoreCase(*annotation, kXlaCollectiveStreamAnnotation)) {
+    if (absl::StartsWith(*annotation, "locality_domain")) {
+      CHECK(kind == ExecutionScopeKind::kCompute)
+          << "Locality-domain stream annotation cannot be assigned to a "
+          << kind << " execution scope: " << instr->name();
+      // ExplicitStreamAnnotationAsyncWrapper rejects malformed annotations
+      // with an error status before stream assignment runs.
+      absl::StatusOr<LocalityDomainStreamId> domain_id =
+          ParseLocalityDomainStreamAnnotation(*annotation);
+      CHECK_OK(domain_id.status());
+      return ExecutionStreamId(*domain_id);
+    }
     int32_t assigned_stream_id;
     CHECK(absl::SimpleAtoi(*annotation, &assigned_stream_id));  // Crash OK
     switch (kind) {

@@ -79,6 +79,7 @@ extern const char kXlaBufferPlacementParam[];
 // XLA frontend attribute for stream annotation.
 extern const char kXlaStreamAnnotationAttr[];
 extern const char kXlaCollectiveStreamAnnotation[];
+extern const char kXlaLocalityDomainStreamAnnotationPrefix[];
 
 // XLA frontend attribute for selecting a collective communication domain.
 extern const char kCollectiveCommunicationDomainAttr[];

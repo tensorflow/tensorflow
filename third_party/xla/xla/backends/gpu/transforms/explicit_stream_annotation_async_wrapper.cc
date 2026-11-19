@@ -17,11 +17,17 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
@@ -49,6 +55,92 @@ static bool IsNestedInFusionComputation(const HloComputation* computation) {
   return false;
 }
 
+bool IsLocalityAnnotation(absl::string_view annotation) {
+  return absl::StartsWith(annotation, "locality_domain");
+}
+
+bool HasStreamAnnotation(const HloInstruction* instr,
+                         absl::string_view annotation) {
+  auto it = instr->frontend_attributes().map().find(kXlaStreamAnnotationAttr);
+  return it != instr->frontend_attributes().map().end() &&
+         it->second == annotation;
+}
+
+bool IsMatchingLocalityAsyncPair(const HloInstruction* instr,
+                                 absl::string_view annotation) {
+  if (instr->opcode() == HloOpcode::kAsyncStart) {
+    for (const HloInstruction* user : instr->users()) {
+      if (user->opcode() == HloOpcode::kAsyncDone &&
+          user->operand(0) == instr && HasStreamAnnotation(user, annotation)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return instr->opcode() == HloOpcode::kAsyncDone &&
+         instr->operand(0)->opcode() == HloOpcode::kAsyncStart &&
+         HasStreamAnnotation(instr->operand(0), annotation);
+}
+
+bool IsCollectiveOrSendRecv(const HloInstruction* instr) {
+  return IsNonFusionCollective(instr) ||
+         instr->has_frontend_attribute(kCollectiveGroupMarkerAttr) ||
+         HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kSendDone,
+                          HloOpcode::kRecv, HloOpcode::kRecvDone>(instr);
+}
+
+absl::Status ValidateLocalityComputation(
+    const HloComputation* computation,
+    absl::flat_hash_set<const HloComputation*>& visited) {
+  if (!visited.insert(computation).second) {
+    return absl::OkStatus();
+  }
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (IsCollectiveOrSendRecv(instr)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream call contains unsupported communication "
+          "instruction: ",
+          instr->name()));
+    }
+    if (auto it =
+            instr->frontend_attributes().map().find(kXlaStreamAnnotationAttr);
+        it != instr->frontend_attributes().map().end()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream call contains nested stream annotation \"",
+          it->second, "\" on instruction ", instr->name()));
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(ValidateLocalityComputation(called, visited));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RejectNestedLocalityAnnotations(
+    const HloComputation* computation, absl::string_view enclosing_annotation,
+    absl::flat_hash_set<const HloComputation*>& visited) {
+  if (!visited.insert(computation).second) {
+    return absl::OkStatus();
+  }
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (auto it =
+            instr->frontend_attributes().map().find(kXlaStreamAnnotationAttr);
+        it != instr->frontend_attributes().map().end() &&
+        IsLocalityAnnotation(it->second)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Locality-domain stream annotation \"", it->second,
+                       "\" on instruction ", instr->name(),
+                       " is nested inside a call with stream annotation \"",
+                       enclosing_annotation, "\""));
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(RejectNestedLocalityAnnotations(
+          called, enclosing_annotation, visited));
+    }
+  }
+  return absl::OkStatus();
+}
+
 void ClearSchedulingAnnotations(HloInstruction* instr) {
   // These attributes are only valid on the async pairs.
   instr->erase_frontend_attribute(kXlaSchedulingGroupIdAttr);
@@ -56,9 +148,22 @@ void ClearSchedulingAnnotations(HloInstruction* instr) {
 }
 
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
-  if (!instr->has_frontend_attribute(kXlaStreamAnnotationAttr)) {
+  auto annotation_it =
+      instr->frontend_attributes().map().find(kXlaStreamAnnotationAttr);
+  if (annotation_it == instr->frontend_attributes().map().end()) {
     return false;
   }
+  absl::string_view annotation = annotation_it->second;
+  bool is_locality_annotation = IsLocalityAnnotation(annotation);
+  if (is_locality_annotation) {
+    ABSL_RETURN_IF_ERROR(ParseLocalityDomainStreamAnnotation(annotation).status());
+    if (instr->has_frontend_attribute(kCollectiveGroupMarkerAttr)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream annotation cannot be combined with ",
+          kCollectiveGroupMarkerAttr, ": ", instr->name()));
+    }
+  }
+
   HloComputation* computation = instr->parent();
 
   // Instructions inside a fusion or async computation body — or in any
@@ -70,8 +175,53 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
     return false;
   }
 
-  // Already async or a collective start/done — nothing to do.
-  if (instr->IsAsynchronous() || IsNonFusionCollective(instr) ||
+  // A previous invocation may already have wrapped a valid locality call.
+  // Accept the annotated call-start/call-done pair without trying to wrap it
+  // again. Other annotated async operations are not valid locality regions.
+  if (instr->IsAsynchronous()) {
+    if (is_locality_annotation) {
+      const auto* async = DynCast<HloAsyncInstruction>(instr);
+      if (async == nullptr ||
+          !async->async_wrapped_computation()
+               ->CanExpandIntoSingleInstruction() ||
+          async->async_wrapped_opcode() != HloOpcode::kCall ||
+          !IsMatchingLocalityAsyncPair(instr, annotation)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Locality-domain stream annotation requires a call-start/"
+            "call-done pair; got ",
+            HloOpcodeString(instr->opcode()), " on ", instr->name()));
+      }
+      if (instr->opcode() == HloOpcode::kAsyncStart) {
+        absl::flat_hash_set<const HloComputation*> visited;
+        ABSL_RETURN_IF_ERROR(ValidateLocalityComputation(
+            async->async_wrapped_instruction()->called_computations()[0],
+            visited));
+      }
+    }
+    return false;
+  }
+
+  if (is_locality_annotation) {
+    if (instr->opcode() != HloOpcode::kCall) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream annotation requires an existing kCall; got ",
+          HloOpcodeString(instr->opcode()), " on ", instr->name()));
+    }
+    auto inlineable_it = instr->frontend_attributes().map().find("inlineable");
+    if (inlineable_it == instr->frontend_attributes().map().end() ||
+        inlineable_it->second != "false") {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream annotation requires a non-inlineable kCall "
+          "with inlineable=\"false\": ",
+          instr->name()));
+    }
+    absl::flat_hash_set<const HloComputation*> visited;
+    ABSL_RETURN_IF_ERROR(
+        ValidateLocalityComputation(instr->called_computations()[0], visited));
+  }
+
+  // Collective start/done and copy start/done — nothing to do.
+  if (IsNonFusionCollective(instr) ||
       instr->opcode() == HloOpcode::kCopyStart ||
       instr->opcode() == HloOpcode::kCopyDone) {
     return false;
@@ -96,6 +246,14 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   }
 
   auto original_attributes = instr->frontend_attributes();
+
+  // The cleanup below would silently drop a nested locality placement.
+  if (!is_locality_annotation) {
+    absl::flat_hash_set<const HloComputation*> visited;
+    ABSL_RETURN_IF_ERROR(RejectNestedLocalityAnnotations(
+        instr->called_computations()[0],
+        original_attributes.map().at(kXlaStreamAnnotationAttr), visited));
+  }
 
   // These annotations are only legal on the async instructions and
   // can cause issues if the annotations remain on the inner operations,
@@ -126,6 +284,28 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
 absl::StatusOr<bool> ExplicitStreamAnnotationAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Locality annotations are errors, rather than ignored annotations, when
+  // embedded in computations that cannot be independently asynchronized.
+  for (HloComputation* computation : module->computations()) {
+    if (!computation->IsFusionComputation() &&
+        !computation->IsAsyncComputation() &&
+        !IsNestedInFusionComputation(computation)) {
+      continue;
+    }
+    for (HloInstruction* instr : computation->instructions()) {
+      auto it =
+          instr->frontend_attributes().map().find(kXlaStreamAnnotationAttr);
+      if (it == instr->frontend_attributes().map().end() ||
+          !IsLocalityAnnotation(it->second)) {
+        continue;
+      }
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Locality-domain stream annotation is not allowed inside an async "
+          "or fusion computation: ",
+          instr->name()));
+    }
+  }
+
   bool changed = false;
   // Iterate in reverse post-order (callers before callees) so that when a kCall
   // is asynchronized and ClearSchedulingAnnotations is applied to its called

@@ -16,10 +16,14 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/explicit_stream_annotation_async_wrapper.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,6 +40,9 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using ExplicitStreamAnnotationAsyncWrapperTest = HloHardwareIndependentTestBase;
 
@@ -533,6 +540,472 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
             HloInstruction::kParallelExecutionThread);
   EXPECT_EQ(async_start->async_wrapped_computation()->execution_thread(),
             HloInstruction::kParallelExecutionThread);
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainCallIsWrappedAndPreservesAttributes) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4]{0:S(3)} parameter(0)
+    ROOT negate = f32[4]{0:S(3)} negate(p0)
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(3)} parameter(0)
+    ROOT call = f32[4]{0:S(3)} call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:3",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_TRUE(mutated);
+  for (absl::string_view name : {"call-start", "call-done"}) {
+    const auto& attrs =
+        FindInstruction(module.get(), name)->frontend_attributes().map();
+    EXPECT_EQ(attrs.at(kXlaStreamAnnotationAttr), "locality_domain:3");
+    EXPECT_EQ(attrs.at("inlineable"), "false");
+  }
+  EXPECT_EQ(FindInstruction(module.get(), "call-done")
+                ->shape()
+                .layout()
+                .memory_space(),
+            3);
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainWrappingIsIdempotent) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:1",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  ASSERT_OK_AND_ASSIGN(bool first_mutated, wrapper_pass.Run(module.get()));
+  ASSERT_TRUE(first_mutated);
+  ASSERT_OK_AND_ASSIGN(bool second_mutated, wrapper_pass.Run(module.get()));
+  EXPECT_FALSE(second_mutated);
+  EXPECT_NE(FindInstruction(module.get(), "call-start"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "call-done"), nullptr);
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainTupleCallWithGteConsumersIsWrapped) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    add = f32[4] add(p0, p0)
+    multiply = f32[4] multiply(p0, p0)
+    ROOT tuple = (f32[4], f32[4]) tuple(add, multiply)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    call = (f32[4], f32[4]) call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",inlineable="false"}
+    gte0 = f32[4] get-tuple-element(call), index=0
+    gte1 = f32[4] get-tuple-element(call), index=1
+    ROOT result = (f32[4], f32[4]) tuple(gte0, gte1)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  int num_async_starts = 0;
+  int num_async_dones = 0;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAsyncStart) {
+      ++num_async_starts;
+    } else if (instr->opcode() == HloOpcode::kAsyncDone) {
+      ++num_async_dones;
+    }
+  }
+  EXPECT_EQ(num_async_starts, 1);
+  EXPECT_EQ(num_async_dones, 1);
+
+  const HloInstruction* done = FindInstruction(module.get(), "call-done");
+  ASSERT_NE(done, nullptr);
+  for (const HloInstruction* async : {done->operand(0), done}) {
+    EXPECT_EQ(async->frontend_attributes().map().at(kXlaStreamAnnotationAttr),
+              "locality_domain:0");
+  }
+  for (absl::string_view name : {"gte0", "gte1"}) {
+    const HloInstruction* gte = FindInstruction(module.get(), name);
+    ASSERT_NE(gte, nullptr);
+    EXPECT_EQ(gte->operand(0), done);
+  }
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRequiresExistingCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0),
+      frontend_attributes={_xla_stream_annotation="locality_domain:1"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("requires an existing kCall")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRequiresNonInlineableCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:1"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("non-inlineable kCall")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsTransitiveCollective) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT sum = f32[] add(x, y)
+  }
+  collective {
+    p0 = f32[4] parameter(0)
+    ROOT ar = f32[4] all-reduce(p0), to_apply=add, replica_groups={}
+  }
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT inner = f32[4] call(p0), to_apply=collective
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:1",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("unsupported communication instruction")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsNestedStreamAnnotation) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0),
+      frontend_attributes={_xla_stream_annotation="2"}
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:1",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("nested stream annotation")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsSendRecv) {
+  const absl::string_view hlo_string = R"(
+  HloModule m, num_partitions=2
+
+  body {
+    p0 = f32[4] parameter(0)
+    after_all = token[] after-all()
+    send = (f32[4], u32[], token[]) send(p0, after_all), channel_id=1
+    ROOT done = token[] send-done(send), channel_id=1
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = token[] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:1",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("unsupported communication instruction")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainInsideFusionReturnsStatus) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  fused {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0),
+      frontend_attributes={_xla_stream_annotation="locality_domain:1"}
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT fusion = f32[4] fusion(p0), kind=kLoop, calls=fused
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(
+      wrapper_pass.Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("not allowed inside an async or fusion computation")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainInsideAsyncReturnsStatus) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  async_body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0),
+      frontend_attributes={_xla_stream_annotation="locality_domain:1"}
+  }
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    start = ((f32[4]), f32[4]) async-start(p0), calls=async_body
+    ROOT done = f32[4] async-done(start)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(
+      wrapper_pass.Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("not allowed inside an async or fusion computation")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsMalformedAnnotation) {
+  struct Case {
+    const char* annotation;
+    const char* message;
+  };
+  for (const Case& c : {
+           Case{"locality_domain", "expected \"locality_domain:<d>\""},
+           Case{"locality_domain:", "expected \"locality_domain:<d>\""},
+           Case{"locality_domain:abc", "unsigned decimal integer"},
+           Case{"locality_domain:18446744073709551616", "out of range"},
+       }) {
+    SCOPED_TRACE(c.annotation);
+    const std::string hlo_string = absl::StrCat(
+        R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation=")",
+        c.annotation, R"(",inlineable="false"}
+  })");
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+    ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+    EXPECT_THAT(
+        wrapper_pass.Run(module.get()),
+        StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr(c.message)));
+  }
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainNestedInStreamAnnotationIsRejected) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  inner_body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  outer_body {
+    p0 = f32[4] parameter(0)
+    ROOT inner = f32[4] call(p0), to_apply=inner_body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",inlineable="false"}
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT outer = f32[4] call(p0), to_apply=outer_body,
+      frontend_attributes={_xla_stream_annotation="1",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(
+      wrapper_pass.Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("is nested inside a call with stream annotation \"1\"")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsCollectivesGroup) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",inlineable="false",_collectives_group=""}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(
+      wrapper_pass.Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("cannot be combined with _collectives_group")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainPreWrappedRejectsCollectivesGroup) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  async_wrapped {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    start = ((f32[4]), f32[4]) async-start(p0), async_execution_thread="parallel",
+      calls=async_wrapped,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",_collectives_group=""}
+    ROOT done = f32[4] async-done(start),
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",_collectives_group=""}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(
+      wrapper_pass.Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("cannot be combined with _collectives_group")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainPreWrappedRejectsCollectiveInBody) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT sum = f32[] add(x, y)
+  }
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT ar = f32[4] all-reduce(p0), to_apply=add, replica_groups={}
+  }
+
+  async_wrapped {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    start = ((f32[4]), f32[4]) async-start(p0), async_execution_thread="parallel",
+      calls=async_wrapped,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0"}
+    ROOT done = f32[4] async-done(start),
+      frontend_attributes={_xla_stream_annotation="locality_domain:0"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("unsupported communication instruction")));
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       LocalityDomainRejectsNestedCollectivesGroup) {
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  leaf {
+    p0 = f32[4] parameter(0)
+    ROOT negate = f32[4] negate(p0)
+  }
+
+  body {
+    p0 = f32[4] parameter(0)
+    ROOT group_call = f32[4] call(p0), to_apply=leaf,
+      frontend_attributes={_collectives_group="",inlineable="false"}
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    ROOT call = f32[4] call(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="locality_domain:0",inlineable="false"}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  EXPECT_THAT(wrapper_pass.Run(module.get()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("unsupported communication instruction")));
 }
 
 }  // namespace
