@@ -34,30 +34,91 @@ namespace HWY_NAMESPACE {
 
 namespace hn = hwy::HWY_NAMESPACE;
 
-void Pack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
-               uint8_t* HWY_RESTRICT out) {
-  const hn::ScalableTag<uint8_t> d8;
-  const size_t lanes = hn::Lanes(d8);
-  const auto mask_4 = hn::Set(d8, 0x0F);
-  const size_t vector_stride = 2 * lanes;
-  const size_t vector_inputs = (count / vector_stride) * vector_stride;
-
-  for (size_t i = 0; i < vector_inputs; i += vector_stride) {
-    hn::Vec<decltype(d8)> v0, v1;
-    hn::LoadInterleaved2(d8, in + i, v0, v1);
-    auto packed =
-        hn::Or(hn::And(v0, mask_4), hn::ShiftLeft<4>(hn::And(v1, mask_4)));
-    hn::StoreU(packed, d8, out + i / 2);
-  }
-
-  constexpr uint8_t mask = 0x0F;
-  const size_t aligned_inputs = count / 2;
-  for (size_t i = vector_inputs / 2; i < aligned_inputs; ++i) {
-    out[i] = (in[2 * i] & mask) | ((in[2 * i + 1] & mask) << 4);
+// Packs pairs of 4-bit values one byte at a time. Used for HWY_SCALAR and for
+// tails on targets without native masking.
+HWY_INLINE void Pack4Scalar(const uint8_t* HWY_RESTRICT in, size_t count,
+                            uint8_t* HWY_RESTRICT out) {
+  for (size_t i = 0; i < count / 2; ++i) {
+    out[i] = (in[2 * i] & 0x0F) | ((in[2 * i + 1] & 0x0F) << 4);
   }
   if (count % 2 != 0) {
-    out[aligned_inputs] = in[2 * aligned_inputs] & mask;
+    out[count / 2] = in[count - 1] & 0x0F;
   }
+}
+
+// Masks each input byte to 4 bits, combines each adjacent byte pair [0x0L,
+// 0x0H] into (H << 4) | L within a uint16_t lane without LoadInterleaved2, and
+// compacts the packed bytes via ConcatEven/ConcatOdd.
+template <class D8>
+HWY_INLINE void Pack4Vector(D8 d8, const uint8_t* HWY_RESTRICT in, size_t count,
+                            uint8_t* HWY_RESTRICT out) {
+  if constexpr (hn::MaxLanes(d8) == 1) {
+    Pack4Scalar(in, count, out);
+  } else {
+    const size_t lanes = hn::Lanes(d8);
+    const size_t vector_stride = 2 * lanes;
+    const hn::Half<D8> d8_half;
+    const hn::Repartition<uint16_t, D8> du16;
+    const auto mask_4 = hn::Set(d8, uint8_t{0x0F});
+
+    const auto merge_pairs = [&](const auto v) HWY_ATTR {
+      const auto masked = hn::And(v, mask_4);
+      if constexpr (HWY_TARGET <= HWY_SSSE3) {
+        // On x86, a single pmaddubsw computes L + 16 * H and zeroes the upper
+        // byte, so the compiler also drops the masking in ConcatEven.
+        const hn::Repartition<int16_t, D8> di16;
+        const auto mul_1_16 =
+            hn::Dup128VecFromValues(hn::RebindToSigned<D8>(), 1, 16, 1, 16, 1,
+                                    16, 1, 16, 1, 16, 1, 16, 1, 16, 1, 16);
+        return hn::BitCast(du16,
+                           hn::SatWidenMulPairwiseAdd(di16, masked, mul_1_16));
+      } else if constexpr (HWY_IS_BIG_ENDIAN) {
+        const auto w = hn::BitCast(du16, masked);
+        return hn::Or(hn::ShiftRight<8>(w), hn::ShiftLeft<4>(w));
+      } else {
+        const auto w = hn::BitCast(du16, masked);
+        return hn::Or(w, hn::ShiftRight<4>(w));
+      }
+    };
+    const auto pack_pair = [&](const auto v0, const auto v1) HWY_ATTR {
+      const auto b0 = hn::BitCast(d8, merge_pairs(v0));
+      const auto b1 = hn::BitCast(d8, merge_pairs(v1));
+      // Unqualified for ADL so HWY_SCALAR (where ConcatEven/ConcatOdd are not
+      // declared) skips lookup in this discarded if-constexpr branch.
+      if constexpr (HWY_IS_BIG_ENDIAN) {
+        return ConcatOdd(d8, b1, b0);
+      } else {
+        return ConcatEven(d8, b1, b0);
+      }
+    };
+
+    size_t remaining = count;
+    for (; remaining >= vector_stride;
+         in += vector_stride, out += lanes, remaining -= vector_stride) {
+      hn::StoreU(pack_pair(hn::LoadU(d8, in), hn::LoadU(d8, in + lanes)), d8,
+                 out);
+    }
+    if constexpr (HWY_NATIVE_MASK) {
+      if (remaining > lanes) {
+        const auto packed = pack_pair(
+            hn::LoadU(d8, in), hn::LoadN(d8, in + lanes, remaining - lanes));
+        hn::StoreN(packed, d8, out, (remaining + 1) / 2);
+      } else if (remaining > 0) {
+        const auto v = hn::LoadN(d8, in, remaining);
+        hn::StoreN(hn::TruncateTo(d8_half, merge_pairs(v)), d8_half, out,
+                   (remaining + 1) / 2);
+      }
+    } else {
+      // Without native masking, LoadN and StoreN typically branch on the
+      // count, which is slower than finishing with scalar code.
+      Pack4Scalar(in, remaining, out);
+    }
+  }
+}
+
+void Pack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
+               uint8_t* HWY_RESTRICT out) {
+  Pack4Vector(hn::ScalableTag<uint8_t>(), in, count, out);
 }
 
 void Pack2Impl(const uint8_t* HWY_RESTRICT in, size_t count,
@@ -124,31 +185,64 @@ void Pack1Impl(const uint8_t* HWY_RESTRICT in, size_t count,
   }
 }
 
-void Unpack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
-                 uint8_t* HWY_RESTRICT out) {
-  const hn::ScalableTag<uint8_t> d8;
-  const size_t lanes = hn::Lanes(d8);
-  const auto mask_4 = hn::Set(d8, 0x0F);
-  const size_t vector_stride = 2 * lanes;
-  const size_t vector_outputs = (count / vector_stride) * vector_stride;
-
-  for (size_t i = 0; i < vector_outputs; i += vector_stride) {
-    auto packed = hn::LoadU(d8, in + i / 2);
-    auto low = hn::And(packed, mask_4);
-    auto high = hn::And(hn::ShiftRight<4>(packed), mask_4);
-    hn::StoreInterleaved2(low, high, d8, out + i);
-  }
-
-  constexpr uint8_t mask = 0x0F;
-  const size_t aligned_outputs = count / 2;
-  for (size_t i = vector_outputs / 2; i < aligned_outputs; ++i) {
+// Unpacks bytes into pairs of 4-bit values one byte at a time. Used for
+// HWY_SCALAR and for tails on targets without native masking.
+HWY_INLINE void Unpack4Scalar(const uint8_t* HWY_RESTRICT in, size_t count,
+                              uint8_t* HWY_RESTRICT out) {
+  for (size_t i = 0; i < count / 2; ++i) {
     const uint8_t byte = in[i];
-    out[2 * i] = byte & mask;
-    out[2 * i + 1] = (byte >> 4) & mask;
+    out[2 * i] = byte & 0x0F;
+    out[2 * i + 1] = (byte >> 4) & 0x0F;
   }
   if (count % 2 != 0) {
-    out[2 * aligned_outputs] = in[aligned_outputs] & mask;
+    out[count - 1] = in[count / 2] & 0x0F;
   }
+}
+
+// Zero-extends each packed byte (0xHL) to a uint16_t lane and expands the low
+// and high nibbles into adjacent bytes [0x0L, 0x0H] without StoreInterleaved2.
+template <class D8>
+HWY_INLINE void Unpack4Vector(D8 d8, const uint8_t* HWY_RESTRICT in,
+                              size_t count, uint8_t* HWY_RESTRICT out) {
+  if constexpr (hn::MaxLanes(d8) == 1) {
+    Unpack4Scalar(in, count, out);
+  } else {
+    const size_t lanes = hn::Lanes(d8);
+    const hn::Half<D8> d8_half;
+    const hn::Repartition<uint16_t, D8> du16;
+    const auto mask_0f0f = hn::Set(du16, uint16_t{0x0F0F});
+    const auto unpack_half = [&](const auto v_packed) HWY_ATTR {
+      const auto wide = hn::PromoteTo(du16, v_packed);
+      if constexpr (HWY_IS_BIG_ENDIAN) {
+        return hn::BitCast(
+            d8, hn::And(hn::Or(hn::ShiftLeft<8>(wide), hn::ShiftRight<4>(wide)),
+                        mask_0f0f));
+      } else {
+        return hn::BitCast(
+            d8, hn::And(hn::Or(wide, hn::ShiftLeft<4>(wide)), mask_0f0f));
+      }
+    };
+
+    size_t remaining = count;
+    for (; remaining >= lanes;
+         in += lanes / 2, out += lanes, remaining -= lanes) {
+      hn::StoreU(unpack_half(hn::LoadU(d8_half, in)), d8, out);
+    }
+    if constexpr (HWY_NATIVE_MASK) {
+      if (remaining > 0) {
+        hn::StoreN(unpack_half(hn::LoadN(d8_half, in, (remaining + 1) / 2)), d8,
+                   out, remaining);
+      }
+    } else {
+      // As in Pack4Vector.
+      Unpack4Scalar(in, remaining, out);
+    }
+  }
+}
+
+void Unpack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
+                 uint8_t* HWY_RESTRICT out) {
+  Unpack4Vector(hn::ScalableTag<uint8_t>(), in, count, out);
 }
 
 void Unpack2Impl(const uint8_t* HWY_RESTRICT in, size_t count,

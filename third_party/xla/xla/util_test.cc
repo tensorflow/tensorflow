@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/util.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <list>
+#include <random>
 #include <set>
 #include <string>
 #include <utility>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "hwy/targets.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tsl/platform/logging.h"
@@ -45,6 +48,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::Each;
 using ::testing::ElementsAre;
 
 TEST(UtilTest, Product) {
@@ -596,9 +600,12 @@ class PackUnpackIntNTest : public testing::TestWithParam<int> {};
 
 TEST_P(PackUnpackIntNTest, RoundTrip) {
   const int bitwidth = GetParam();
-  for (int size : {0,   1,   2,   3,    5,    7,    8,    15,   16,   31,
-                   32,  63,  64,  65,   127,  128,  129,  255,  256,  257,
-                   511, 512, 513, 1023, 1024, 1025, 2048, 4096, 8192, 10000}) {
+  std::vector<int> sizes = {255,  256,  257,  511,  512,  513,  1023,
+                            1024, 1025, 2048, 4096, 8192, 10000};
+  for (int size = 0; size <= 145; ++size) {
+    sizes.push_back(size);
+  }
+  for (int size : sizes) {
     std::vector<char> input(size);
 
     for (int i = 0; i < input.size(); ++i) {
@@ -618,7 +625,11 @@ TEST_P(PackUnpackIntNTest, RoundTrip) {
 
 TEST_P(PackUnpackIntNTest, RoundTripWithDirtyHighBits) {
   const int bitwidth = GetParam();
-  for (int size : {1, 7, 15, 33, 64, 127, 128, 256, 1024, 4096}) {
+  std::vector<int> sizes = {256, 1024, 4096};
+  for (int size = 1; size <= 145; ++size) {
+    sizes.push_back(size);
+  }
+  for (int size : sizes) {
     std::vector<char> input(size);
     std::vector<char> expected(size);
 
@@ -637,6 +648,155 @@ TEST_P(PackUnpackIntNTest, RoundTripWithDirtyHighBits) {
           << "Bitwidth: " << bitwidth << " Size: " << size << " i: " << i;
     }
   }
+}
+
+// Checks every compiled Highway target that the CPU supports against a scalar
+// reference, not just the target that dynamic dispatch would pick.
+TEST_P(PackUnpackIntNTest, MatchesReferenceOnAllTargets) {
+  const int bitwidth = GetParam();
+  const int elements_per_byte = 8 / bitwidth;
+  constexpr char kGuard = 0x5A;
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    hwy::SetSupportedTargetsForTest(target);
+    SCOPED_TRACE(hwy::TargetName(target));
+    for (int size :
+         {0,   1,   2,   3,   7,   15,  16,  17,  24,  31,   32,  33,
+          47,  48,  49,  63,  64,  65,  79,  80,  95,  96,   111, 112,
+          127, 128, 129, 143, 144, 145, 255, 257, 511, 1000, 4099}) {
+      SCOPED_TRACE(size);
+      std::vector<char> input(size);
+      std::vector<char> expected_unpacked(size);
+      std::vector<char> expected_packed(
+          CeilOfRatio<int64_t>(size, elements_per_byte), 0);
+      for (int i = 0; i < size; ++i) {
+        const int value = (i * 7 + i / 16) & LsbMask<uint8_t>(bitwidth);
+        expected_unpacked[i] = static_cast<char>(value);
+        // Packing must ignore the bits above `bitwidth`.
+        input[i] = static_cast<char>(value | ((i * 29) << bitwidth));
+        expected_packed[i / elements_per_byte] |=
+            static_cast<char>(value << (bitwidth * (i % elements_per_byte)));
+      }
+
+      // The trailing guard byte detects writes past the end of the output.
+      std::vector<char> packed(expected_packed.size() + 1, kGuard);
+      PackIntN(bitwidth, input,
+               absl::MakeSpan(packed).first(expected_packed.size()));
+      EXPECT_EQ(packed.back(), kGuard);
+      packed.pop_back();
+      EXPECT_EQ(packed, expected_packed);
+
+      std::vector<char> unpacked(size + 1, kGuard);
+      UnpackIntN(bitwidth, expected_packed,
+                 absl::MakeSpan(unpacked).first(size));
+      EXPECT_EQ(unpacked.back(), kGuard);
+      unpacked.pop_back();
+      EXPECT_EQ(unpacked, expected_unpacked);
+    }
+  }
+  hwy::SetSupportedTargetsForTest(0);
+}
+
+TEST_P(PackUnpackIntNTest, RandomizedRoundTripOnAllTargets) {
+  const int bitwidth = GetParam();
+  const int elements_per_byte = 8 / bitwidth;
+  const uint8_t value_mask = LsbMask<uint8_t>(bitwidth);
+  constexpr char kGuard = 0x5A;
+  constexpr int kNumTrials = 300;
+  constexpr size_t kMaxOffset = 64;
+
+  std::mt19937_64 rng(0x5EED1234ULL + static_cast<uint64_t>(bitwidth));
+  std::uniform_int_distribution<int> byte_dist(0, 255);
+  std::uniform_int_distribution<size_t> offset_dist(0, kMaxOffset - 1);
+  // Short lengths mostly exercise the tails; longer ones run the main loops.
+  std::uniform_int_distribution<int> tiny_len_dist(0, 150);
+  std::uniform_int_distribution<int> medium_len_dist(151, 1200);
+  std::uniform_int_distribution<int> large_len_dist(1201, 16384);
+
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    hwy::SetSupportedTargetsForTest(target);
+    SCOPED_TRACE(hwy::TargetName(target));
+    for (int trial = 0; trial < kNumTrials; ++trial) {
+      int size = 0;
+      if (trial % 3 == 0) {
+        size = tiny_len_dist(rng);
+      } else if (trial % 3 == 1) {
+        size = medium_len_dist(rng);
+      } else {
+        size = large_len_dist(rng);
+      }
+      const size_t in_offset = offset_dist(rng);
+      const size_t packed_offset = offset_dist(rng);
+      const size_t unpacked_offset = offset_dist(rng);
+      SCOPED_TRACE(testing::Message()
+                   << "trial=" << trial << " size=" << size << " offsets=("
+                   << in_offset << "," << packed_offset << ","
+                   << unpacked_offset << ")");
+
+      const size_t packed_size = CeilOfRatio<int64_t>(size, elements_per_byte);
+
+      // Random raw bytes (including dirty high bits) at an unaligned offset.
+      std::vector<char> input_buf(in_offset + size + kMaxOffset, kGuard);
+      std::vector<char> expected_unpacked(size);
+      std::vector<char> expected_packed(packed_size, 0);
+      for (int i = 0; i < size; ++i) {
+        const uint8_t raw = static_cast<uint8_t>(byte_dist(rng));
+        const uint8_t value = raw & value_mask;
+        input_buf[in_offset + i] = static_cast<char>(raw);
+        expected_unpacked[i] = static_cast<char>(value);
+        expected_packed[i / elements_per_byte] |=
+            static_cast<char>(value << (bitwidth * (i % elements_per_byte)));
+      }
+
+      // Pack into an unaligned buffer surrounded by guard bytes.
+      std::vector<char> packed_buf(packed_offset + packed_size + kMaxOffset,
+                                   kGuard);
+      absl::Span<char> packed_span =
+          absl::MakeSpan(packed_buf).subspan(packed_offset, packed_size);
+      PackIntN(bitwidth,
+               absl::MakeConstSpan(input_buf).subspan(in_offset, size),
+               packed_span);
+      EXPECT_THAT(absl::MakeConstSpan(packed_buf).first(packed_offset),
+                  Each(kGuard));
+      EXPECT_THAT(
+          absl::MakeConstSpan(packed_buf).subspan(packed_offset + packed_size),
+          Each(kGuard));
+      EXPECT_EQ(absl::MakeConstSpan(packed_span),
+                absl::MakeConstSpan(expected_packed));
+
+      // Unpack the packed bytes back into an unaligned guarded buffer.
+      std::vector<char> unpacked_buf(unpacked_offset + size + kMaxOffset,
+                                     kGuard);
+      absl::Span<char> unpacked_span =
+          absl::MakeSpan(unpacked_buf).subspan(unpacked_offset, size);
+      UnpackIntN(bitwidth, packed_span, unpacked_span);
+      EXPECT_THAT(absl::MakeConstSpan(unpacked_buf).first(unpacked_offset),
+                  Each(kGuard));
+      EXPECT_THAT(
+          absl::MakeConstSpan(unpacked_buf).subspan(unpacked_offset + size),
+          Each(kGuard));
+      EXPECT_EQ(absl::MakeConstSpan(unpacked_span),
+                absl::MakeConstSpan(expected_unpacked));
+
+      // If the last packed byte has unused high bits, verify UnpackIntN
+      // ignores garbage in those bits and does not write past `size`.
+      const int rem = size % elements_per_byte;
+      if (rem != 0) {
+        const uint8_t dirty_tail = static_cast<uint8_t>(byte_dist(rng))
+                                   << (bitwidth * rem);
+        packed_span.back() |= static_cast<char>(dirty_tail);
+        std::fill(unpacked_buf.begin(), unpacked_buf.end(), kGuard);
+        UnpackIntN(bitwidth, packed_span, unpacked_span);
+        EXPECT_THAT(absl::MakeConstSpan(unpacked_buf).first(unpacked_offset),
+                    Each(kGuard));
+        EXPECT_THAT(
+            absl::MakeConstSpan(unpacked_buf).subspan(unpacked_offset + size),
+            Each(kGuard));
+        EXPECT_EQ(absl::MakeConstSpan(unpacked_span),
+                  absl::MakeConstSpan(expected_unpacked));
+      }
+    }
+  }
+  hwy::SetSupportedTargetsForTest(0);
 }
 
 INSTANTIATE_TEST_SUITE_P(PackUnpackIntNTest, PackUnpackIntNTest,
@@ -723,6 +883,13 @@ BENCHMARK(BM_PackIntN)
     ->ArgPair(2, 100000000)
     ->ArgPair(2, 500000000)
     ->ArgPair(2, 1000000000)
+    ->ArgPair(4, 37)
+    ->ArgPair(4, 64)
+    ->ArgPair(4, 100)
+    ->ArgPair(4, 128)
+    ->ArgPair(4, 131)
+    ->ArgPair(4, 256)
+    ->ArgPair(4, 1024)
     ->ArgPair(4, 10000)
     ->ArgPair(4, 10000000)
     ->ArgPair(4, 100000000)
@@ -755,6 +922,13 @@ BENCHMARK(BM_UnpackIntN)
     ->ArgPair(2, 100000000)
     ->ArgPair(2, 500000000)
     ->ArgPair(2, 1000000000)
+    ->ArgPair(4, 37)
+    ->ArgPair(4, 64)
+    ->ArgPair(4, 100)
+    ->ArgPair(4, 128)
+    ->ArgPair(4, 131)
+    ->ArgPair(4, 256)
+    ->ArgPair(4, 1024)
     ->ArgPair(4, 10000)
     ->ArgPair(4, 10000000)
     ->ArgPair(4, 100000000)
