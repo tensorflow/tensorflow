@@ -276,6 +276,30 @@ IfrtServingExecutable::Create(
           compilation_env_or_overrides, tf_to_hlo_compiler,
           persistent_compilation_cache, use_undonatable_buffer_converter,
           assigned_device_ids));
+  return Create(program_id, std::move(program), std::move(client), thread_pool,
+                ifrt_loaded_variable_registry, ifrt_restore,
+                checkpoint_loader_queue, ifrt_serving_core_selector,
+                h2d_transfer_executor_factory, use_output_arena,
+                use_undonatable_buffer_converter);
+}
+
+absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
+IfrtServingExecutable::Create(
+    int64_t program_id, std::shared_ptr<IfrtProgram> program,
+    std::shared_ptr<xla::ifrt::Client> client,
+    tsl::thread::ThreadPool* thread_pool,
+    IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+    const IfrtRestoreTensorRegistry* ifrt_restore,
+    tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
+    IfrtServingCoreSelector* ifrt_serving_core_selector,
+    H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+    bool use_output_arena, bool use_undonatable_buffer_converter) {
+  if (h2d_transfer_executor_factory == nullptr) {
+    return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
+  }
+  if (program == nullptr) {
+    return absl::InvalidArgumentError("IfrtProgram is null.");
+  }
   return absl::WrapUnique(new IfrtServingExecutable(
       program_id, std::move(program), std::move(client), thread_pool,
       ifrt_loaded_variable_registry, ifrt_restore, checkpoint_loader_queue,

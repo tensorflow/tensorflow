@@ -407,6 +407,7 @@ cc_library(
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
         ":ifrt_persistent_compilation_cache",
+        ":ifrt_program",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         ":sharding_utils",
@@ -417,7 +418,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -427,6 +430,7 @@ cc_library(
         "@xla//xla/python/ifrt",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -587,6 +591,7 @@ cc_library(
     deps = [
         ":ifrt_loaded_variable_registry",
         ":ifrt_persistent_compilation_cache",
+        ":ifrt_program",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         ":ifrt_serving_executable",

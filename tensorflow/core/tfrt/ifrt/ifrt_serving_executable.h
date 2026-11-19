@@ -82,6 +82,7 @@ namespace ifrt_serving {
 // shapes, loads the call site's variables on it and runs it.
 class IfrtServingExecutable {
  public:
+  // Creates an executable over a program of its own, built from `module`.
   // TODO(b/514902739): Remove the default value of `use_output_arena`.
   static absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> Create(
       int64_t program_id, absl::string_view model_name,
@@ -104,6 +105,21 @@ class IfrtServingExecutable {
       bool use_output_arena = false,
       bool use_undonatable_buffer_converter = false,
       absl::Span<const int> assigned_device_ids = {});
+
+  // Creates an executable over an existing `program`, which may be shared with
+  // the executables of other call sites of the same TPU program. Each
+  // executable binds the variables of its own call site.
+  static absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> Create(
+      int64_t program_id, std::shared_ptr<IfrtProgram> program,
+      std::shared_ptr<xla::ifrt::Client> client,
+      tsl::thread::ThreadPool* thread_pool,
+      IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      const IfrtRestoreTensorRegistry* ifrt_restore,
+      tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
+      IfrtServingCoreSelector* ifrt_serving_core_selector,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+      bool use_output_arena = false,
+      bool use_undonatable_buffer_converter = false);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -133,8 +149,11 @@ class IfrtServingExecutable {
   void Freeze();
 
   // Returns the number of input shape sets compiled (or failed to compile) so
-  // far.
+  // far by this executable's program.
   int num_executables() const { return program_->num_compiled(); }
+
+  // The program this executable runs.
+  const std::shared_ptr<IfrtProgram>& program() const { return program_; }
 
  private:
   friend class IfrtBackendCompilerTest;
