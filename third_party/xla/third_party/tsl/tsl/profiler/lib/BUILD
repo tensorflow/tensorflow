@@ -345,9 +345,9 @@ tsl_cc_test(
         "//tsl/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
         "@xla//xla/tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -428,9 +428,9 @@ tsl_cc_test(
     deps = [
         ":scoped_annotation",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
         "@xla//xla/tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:test_main",
         "@xla//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     ],
