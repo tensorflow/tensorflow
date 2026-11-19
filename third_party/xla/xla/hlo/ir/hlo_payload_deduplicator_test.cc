@@ -80,5 +80,20 @@ TEST(HloPayloadDeduplicatorTest, TakePayloadsMovesMemory) {
   EXPECT_EQ(payloads2.size(), 0);
 }
 
+TEST(HloPayloadDeduplicatorTest, GetPayloadAndSize) {
+  HloPayloadDeduplicator deduplicator(10);
+  EXPECT_EQ(deduplicator.size(), 0);
+
+  deduplicator.Deduplicate("config1");
+  deduplicator.Deduplicate("config2");
+
+  EXPECT_EQ(deduplicator.size(), 2);
+  EXPECT_EQ(deduplicator.GetPayload(10), "config1");
+  EXPECT_EQ(deduplicator.GetPayload(11), "config2");
+  // Out of bounds checks.
+  EXPECT_EQ(deduplicator.GetPayload(9), "");
+  EXPECT_EQ(deduplicator.GetPayload(12), "");
+}
+
 }  // namespace
 }  // namespace xla
