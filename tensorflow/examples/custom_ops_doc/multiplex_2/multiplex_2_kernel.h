@@ -59,20 +59,20 @@ class MultiplexDenseOp : public OpKernel {
     // Note that ::tensorflow::TensorShapeUtils has some useful functions
     // for checking shapes.
     OP_REQUIRES(ctx, a_values_tensor.shape() == b_values_tensor.shape(),
-                ::tensorflow::errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "a and b must have the same shape. "
                     "a shape: ",
                     a_values_tensor.shape().DebugString(),
-                    " b shape: ", b_values_tensor.shape().DebugString()));
+                    " b shape: ", b_values_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, a_values_tensor.shape() == cond_tensor.shape(),
-                ::tensorflow::errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "a and cond must have the same shape. "
                     "a shape: ",
                     a_values_tensor.shape().DebugString(),
-                    " cond shape: ", cond_tensor.shape().DebugString()));
-    OP_REQUIRES(ctx, a_values_tensor.NumElements() > 0,
-                ::tensorflow::errors::InvalidArgument(
-                    "Inputs must have at least one element."));
+                    " cond shape: ", cond_tensor.shape().DebugString())));
+    OP_REQUIRES(
+        ctx, a_values_tensor.NumElements() > 0,
+        absl::InvalidArgumentError("Inputs must have at least one element."));
 
     const auto a_values = a_values_tensor.flat<T>();
     const auto b_values = b_values_tensor.flat<T>();
