@@ -228,6 +228,48 @@ TEST_P(XlaShardingSerDesTest, RejectTupleShardingOnDeserialize) {
                HasSubstr("does not support tuple sharding")));
 }
 
+TEST_P(XlaShardingSerDesTest,
+       RejectUnknownAndShardGroupShardingsOnDeserialize) {
+  HloShardingProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+  *proto.mutable_xla_op_sharding() = xla::HloSharding::Unknown().ToProto();
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloSharding");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support unknown sharding")));
+
+  xla::OpSharding* negative_shard_group_op = proto.mutable_xla_op_sharding();
+  negative_shard_group_op->Clear();
+  negative_shard_group_op->set_type(xla::OpSharding::REPLICATED);
+  negative_shard_group_op->set_is_shard_group(true);
+  negative_shard_group_op->set_shard_group_id(-1);
+  negative_shard_group_op->set_shard_group_type(xla::OpSharding::AS);
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+
+  xla::HloSharding shard_group = xla::HloSharding::Replicate();
+  shard_group.SetShardGroup(xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  *proto.mutable_xla_op_sharding() = shard_group.ToProto();
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+}
+
 TEST_P(XlaShardingSerDesTest, RejectInvalidIotaTransposePerm) {
   DeviceListRef device_list = GetDevices({0, 1});
   xla::HloSharding xla_hlo_sharding =

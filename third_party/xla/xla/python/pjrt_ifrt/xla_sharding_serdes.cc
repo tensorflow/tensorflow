@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_serdes_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -39,20 +40,8 @@ namespace ifrt {
 
 namespace {
 
-bool ContainsNamedSharding(const xla::OpSharding& op_sharding) {
-  if (op_sharding.has_named_sharding()) {
-    return true;
-  }
-  for (const xla::OpSharding& element : op_sharding.tuple_shardings()) {
-    if (ContainsNamedSharding(element)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Serialization/deserialization for `HloSharding`.
-class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
+class HloShardingSerDes : public RTTIExtends<HloShardingSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::HloSharding";
@@ -117,7 +106,7 @@ class HloShardingSerDes : public RTTIExtends<HloSharding, SerDes> {
           "HloSharding with XLA HloShardingV3 format is not supported for "
           "deserialization");
     }
-    ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+    ABSL_ASSIGN_OR_RETURN(xla::HloSharding xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloSharding> sharding,
                      HloSharding::CreateIfValid(std::move(devices), memory_kind,

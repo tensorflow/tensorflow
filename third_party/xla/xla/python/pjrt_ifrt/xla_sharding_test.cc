@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -146,13 +147,48 @@ TEST_P(HloShardingTest, IsFullyReplicated) {
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
   }
-  {
-    // Unknown HloSharding is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::Unknown();
-    std::shared_ptr<const HloSharding> sharding =
-        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
-    EXPECT_FALSE(sharding->IsFullyReplicated());
-  }
+}
+
+TEST_P(HloShardingTest, CreateRejectsUnsupportedHloShardingKinds) {
+  DeviceListRef device_list = GetDevices({0, 1});
+  EXPECT_THAT(
+      HloSharding::CreateIfValid(
+          device_list, MemoryKind(),
+          xla::HloSharding::FlatTuple({xla::HloSharding::Replicate()})),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("does not support tuple sharding")));
+  EXPECT_THAT(
+      HloSharding::CreateIfValid(device_list, MemoryKind(),
+                                 xla::HloSharding::Unknown()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("does not support unknown sharding")));
+  xla::HloSharding shard_group = xla::HloSharding::Replicate();
+  shard_group.SetShardGroup(xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(
+      HloSharding::CreateIfValid(device_list, MemoryKind(), shard_group),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding negative_shard_as = xla::HloSharding::Replicate();
+  negative_shard_as.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/-1));
+  EXPECT_THAT(
+      HloSharding::CreateIfValid(device_list, MemoryKind(), negative_shard_as),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding v3_with_shard_group =
+      xla::HloSharding::ToV3Sharding(xla::HloSharding::Replicate());
+  v3_with_shard_group.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(HloSharding::CreateIfValid(device_list, MemoryKind(),
+                                         v3_with_shard_group),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("does not support shard-group sharding")));
+  EXPECT_DEATH((void)HloSharding::Create(device_list, MemoryKind(),
+                                         xla::HloSharding::Unknown()),
+               "does not support unknown sharding");
 }
 
 TEST_P(HloShardingTest, GetShardShape) {

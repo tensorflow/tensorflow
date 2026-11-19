@@ -26,9 +26,10 @@ limitations under the License.
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_serdes_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 #include "xla/python/pjrt_ifrt/xla_sharding_spec.pb.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -54,6 +55,11 @@ class HloShardingSpecSerDes
     }
 
     const HloShardingSpec& sharding_spec = cast<HloShardingSpec>(serializable);
+    if (sharding_spec.xla_hlo_sharding().UseNamedShardingLeaf()) {
+      return absl::InvalidArgumentError(
+          "HloShardingSpec with XLA HloShardingV3 format is not supported for "
+          "serialization");
+    }
     HloShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     *proto.mutable_xla_op_sharding() =
@@ -77,7 +83,12 @@ class HloShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for HloShardingSpec deserialization"));
     }
-    ABSL_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
+    if (ContainsNamedSharding(proto.xla_op_sharding())) {
+      return absl::InvalidArgumentError(
+          "HloShardingSpec with XLA HloShardingV3 format is not supported for "
+          "deserialization");
+    }
+    ABSL_ASSIGN_OR_RETURN(xla::HloSharding xla_hlo_sharding,
                      xla::HloSharding::FromProto(proto.xla_op_sharding()));
 
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloShardingSpec> spec,

@@ -110,6 +110,40 @@ TEST_F(HloShardingSpecTest, CreateIfValidRejectsInvalidHloSharding) {
                                          xla::HloSharding::IotaTile({2})})),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("does not support tuple sharding")));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/2,
+                                             xla::HloSharding::Unknown()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support unknown sharding")));
+  xla::HloSharding shard_group = xla::HloSharding::Replicate();
+  shard_group.SetShardGroup(xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(HloShardingSpec::CreateIfValid(/*num_shards=*/2, shard_group),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding negative_shard_as = xla::HloSharding::Replicate();
+  negative_shard_as.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/-1));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, negative_shard_as),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding negative_shard_like = xla::HloSharding::Replicate();
+  negative_shard_like.SetShardGroup(
+      xla::HloSharding::ShardLike(/*shard_group_id=*/-1));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, negative_shard_like),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+  xla::HloSharding v3_with_shard_group =
+      xla::HloSharding::ToV3Sharding(xla::HloSharding::Replicate());
+  v3_with_shard_group.SetShardGroup(
+      xla::HloSharding::ShardAs(/*shard_group_id=*/0));
+  EXPECT_THAT(
+      HloShardingSpec::CreateIfValid(/*num_shards=*/2, v3_with_shard_group),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("does not support shard-group sharding")));
+  EXPECT_DEATH((void)HloShardingSpec::Create(/*num_shards=*/2,
+                                             xla::HloSharding::Unknown()),
+               "does not support unknown sharding");
 }
 
 TEST_F(HloShardingSpecTest, IsFullyReplicated) {
@@ -173,13 +207,6 @@ TEST_F(HloShardingSpecTest, IsFullyReplicated) {
   {
     // Manual HloSharding is not fully replicated.
     auto xla_hlo_sharding = xla::HloSharding::Manual();
-    std::shared_ptr<const HloShardingSpec> spec =
-        HloShardingSpec::Create(num_shards, xla_hlo_sharding);
-    EXPECT_FALSE(spec->IsFullyReplicated());
-  }
-  {
-    // Unknown HloSharding is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::Unknown();
     std::shared_ptr<const HloShardingSpec> spec =
         HloShardingSpec::Create(num_shards, xla_hlo_sharding);
     EXPECT_FALSE(spec->IsFullyReplicated());
@@ -555,6 +582,19 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithSubgroupMaximalSlowPath) {
       ElementsAreArray(TEST_HloShardingSpecIndexDomainsSlowPath(*spec, shape)));
 }
 
+TEST_F(HloShardingSpecTest,
+       IndexDomainsWithSubgroupRejectsMismatchingShapeRank) {
+  std::shared_ptr<const HloShardingSpec> spec = HloShardingSpec::Create(
+      /*num_shards=*/6,
+      xla::HloSharding::Subgroup(xla::TileAssignment({2, 1, 3}),
+                                 {xla::OpSharding::MAXIMAL}));
+  EXPECT_THAT(
+      spec->IndexDomains(Shape({10})),
+      StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("shape must have 2 dimensions, but has 1 dimensions")));
+}
+
 TEST_F(HloShardingSpecTest, DisassembleWithSubgroupMaximalSlowPath) {
   int num_shards = 6;
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
@@ -614,30 +654,6 @@ TEST_F(HloShardingSpecTest, IndexDomainsWithManual) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Manual sharding does not support IndexDomains")));
-}
-
-TEST_F(HloShardingSpecTest, IndexDomainsWithUnknownFails) {
-  int num_shards = 6;
-  std::shared_ptr<const HloShardingSpec> spec =
-      HloShardingSpec::Create(num_shards, xla::HloSharding::Unknown());
-
-  Shape shape({10, 20});
-  EXPECT_THAT(spec->IndexDomains(shape),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown sharding does not support "
-                                 "IndexDomains")));
-  EXPECT_THAT(spec->Disassemble(shape),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown sharding does not support "
-                                 "IndexDomains")));
-  EXPECT_THAT(spec->UniqueIndexDomains(shape),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown sharding does not support "
-                                 "UniqueIndexDomains")));
-  EXPECT_THAT(spec->ShardToUniqueIndexDomainIndex(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown sharding does not support "
-                                 "ShardToUniqueIndexDomainIndex")));
 }
 
 TEST_F(HloShardingSpecTest, DisassembleWithManual) {

@@ -104,12 +104,23 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "xla_sharding_serdes_util",
+    hdrs = ["xla_sharding_serdes_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+    ],
+)
+
+cc_library(
     name = "xla_sharding_serdes",
     srcs = ["xla_sharding_serdes.cc"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":xla_ifrt",
         ":xla_sharding_proto_cc",
+        ":xla_sharding_serdes_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/python/ifrt",
@@ -132,12 +143,13 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":xla_ifrt",
+        ":xla_sharding_serdes_util",
         ":xla_sharding_spec_proto_cc",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/python/ifrt:rtti",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_version",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -405,6 +417,7 @@ xla_cc_test(
         "//xla/python/ifrt:tuple_impl_test_lib",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
