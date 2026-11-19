@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -1185,6 +1186,111 @@ TfLiteStatus InterpreterBuilder::ApplySubgraphSpecializations(
       }
     } else {
       target = interpreter->subgraph(source_index);
+    }
+
+    const int num_tensors = static_cast<int>(target->tensors_size());
+
+    // Constant contents first: an entry may also change the tensor's dims
+    // (taken from `tensor_dims`), which resizing a read-only tensor cannot do.
+    for (const auto& [tensor_index, bytes] : spec.constant_overrides) {
+      if (tensor_index < 0 || tensor_index >= num_tensors) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Subgraph specialization tensor index %d is out "
+                             "of range for subgraph %d.\n",
+                             tensor_index, source_index);
+        return kTfLiteError;
+      }
+      TfLiteTensor* tensor = target->tensor(tensor_index);
+      // A constant stored in an external buffer has no data yet and is not
+      // read-only at this point; it is only known by its external buffer id.
+      const bool is_external_constant =
+          target->tensor_external_buffer_ids_.count(tensor_index) > 0;
+      if ((tensor->allocation_type != kTfLiteMmapRo && !is_external_constant) ||
+          tensor->is_variable || tensor->sparsity != nullptr ||
+          tensor->type == kTfLiteString || tensor->type == kTfLiteResource ||
+          tensor->type == kTfLiteVariant) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Subgraph specialization cannot override tensor "
+                             "%d of subgraph %d: not a dense constant.\n",
+                             tensor_index, source_index);
+        return kTfLiteError;
+      }
+      std::vector<int> dims;
+      if (tensor->dims != nullptr) {
+        dims.assign(tensor->dims->data,
+                    tensor->dims->data + tensor->dims->size);
+      }
+      for (const auto& [dims_index, new_dims] : spec.tensor_dims) {
+        if (dims_index == tensor_index) dims = new_dims;
+      }
+      // The copy is owned by the subgraph. The padding matches what
+      // SetTensorParametersReadOnly reserves for its own aligned copies.
+      constexpr size_t kExtraAllocationBytes = 16;
+      std::unique_ptr<char, Subgraph::FreeDeleter> buffer(
+          static_cast<char*>(malloc(bytes.size() + kExtraAllocationBytes)));
+      if (buffer == nullptr) return kTfLiteError;
+      if (!bytes.empty()) {
+        memcpy(buffer.get(), bytes.data(), bytes.size());
+      }
+      memset(buffer.get() + bytes.size(), 0, kExtraAllocationBytes);
+      const char* data = buffer.get();
+      target->aligned_ro_buffers_.push_back(std::move(buffer));
+      if (target->SetTensorParametersReadOnly(
+              tensor_index, tensor->type, tensor->name, dims,
+              TfLiteQuantizationClone(tensor->quantization), data,
+              bytes.size()) != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Subgraph specialization failed to override "
+                             "constant tensor %d of subgraph %d.\n",
+                             tensor_index, source_index);
+        return kTfLiteError;
+      }
+      // SetTensorParametersReadOnly keeps the previous size when the type and
+      // dims are unchanged, which can be larger than the new buffer (e.g. a
+      // padded model buffer).
+      tensor->bytes = bytes.size();
+      // The tensor no longer aliases the model buffer, so delegates must not
+      // share it with other tensors that do, and its contents must not be
+      // loaded from the external buffer later.
+      target->tensor_buffer_identifiers_.erase(tensor_index);
+      target->tensor_external_buffer_ids_.erase(tensor_index);
+    }
+
+    for (const auto& [tensor_index, dims] : spec.tensor_dims) {
+      if (tensor_index < 0 || tensor_index >= num_tensors) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Subgraph specialization tensor index %d is out "
+                             "of range for subgraph %d.\n",
+                             tensor_index, source_index);
+        return kTfLiteError;
+      }
+      const TfLiteTensor* tensor = target->tensor(tensor_index);
+      // A constant whose contents were not overridden above, including one
+      // that is still to be loaded from an external buffer of a fixed size.
+      if (tensor->allocation_type == kTfLiteMmapRo ||
+          target->tensor_external_buffer_ids_.count(tensor_index) > 0) {
+        if (!EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(),
+                                         dims.data())) {
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                               "Subgraph specialization cannot reshape "
+                               "constant tensor %d of subgraph %d without new "
+                               "contents.\n",
+                               tensor_index, source_index);
+          return kTfLiteError;
+        }
+        continue;
+      }
+      // Despite its name, ResizeInputTensor only records the new dims of this
+      // one tensor; it does not propagate them. Propagation is what the
+      // kernels' Prepare does, and `tensor_dims` exists for the case where that
+      // pass does not run, so every listed tensor is set individually.
+      if (target->ResizeInputTensor(tensor_index, dims) != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Subgraph specialization failed to resize tensor "
+                             "%d of subgraph %d.\n",
+                             tensor_index, source_index);
+        return kTfLiteError;
+      }
     }
 
     const std::vector<int>& input_tensors = target->inputs();

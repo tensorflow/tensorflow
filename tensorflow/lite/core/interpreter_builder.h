@@ -25,6 +25,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_INTERPRETER_BUILDER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -164,6 +165,23 @@ class InterpreterBuilder {
     /// Pairs of (position in the subgraph's `inputs()` list, new dims).
     /// Inputs that are not listed keep their shape.
     std::vector<std::pair<int, std::vector<int>>> input_dims;
+    /// Pairs of (tensor index within the subgraph, new dims) for tensors other
+    /// than the inputs above, typically every intermediate and output tensor
+    /// whose shape follows from the new input shapes. Optional: without it the
+    /// shapes are propagated by the kernels' `Prepare`. That pass does not run
+    /// for a delegate that sets
+    /// `kTfLiteDelegateFlagsHintFullyDelegatedToSingleDelegate`, which then
+    /// sees the shapes stored in the model; listing them here makes the
+    /// subgraph static for such a delegate too. A constant tensor may only be
+    /// listed together with an entry in `constant_overrides`.
+    std::vector<std::pair<int, std::vector<int>>> tensor_dims;
+    /// Pairs of (tensor index within the subgraph, new contents) for dense
+    /// constant tensors whose value depends on the specialized shape (e.g. the
+    /// shape operand of a RESHAPE). The bytes are copied into a buffer owned by
+    /// the subgraph; the tensor stays read-only and constant for delegates, and
+    /// other subgraphs that share the model buffer are unaffected. The contents
+    /// must cover the tensor's dims (those in `tensor_dims` if listed there).
+    std::vector<std::pair<int, std::vector<uint8_t>>> constant_overrides;
   };
 
   /// Registers subgraph specializations to apply in `operator()`. Replaces
