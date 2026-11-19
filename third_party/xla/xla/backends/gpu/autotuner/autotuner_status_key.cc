@@ -13,6 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/autotuner_status_key.h"
+#include "xla/backends/gpu/autotuner/autotuner_status_key.h"
 
 namespace xla::gpu {}  // namespace xla::gpu

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/autotune_cache_key.h"
+#include "xla/backends/gpu/autotuner/autotune_cache_key.h"
 
 #include <cmath>
 #include <string>

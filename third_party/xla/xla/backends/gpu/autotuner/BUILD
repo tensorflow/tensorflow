@@ -2,6 +2,11 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -15,6 +20,13 @@ package(
         "//xla/service/gpu:__subpackages__",
     ],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
 )
 
 cc_library(
@@ -536,6 +548,7 @@ cc_library(
     srcs = ["gpu_profiler.cc"],
     hdrs = ["gpu_profiler.h"],
     deps = [
+        ":redzone_buffers",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -553,7 +566,6 @@ cc_library(
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:stream_executor_util",
-        "//xla/service/gpu/autotuning:redzone_buffers",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
@@ -902,14 +914,14 @@ cc_library(
     srcs = ["legacy_cache.cc"],
     hdrs = ["legacy_cache.h"],
     deps = [
+        ":autotune_cache_key",
+        ":autotuner_cache",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/autotuning:autotune_cache_key",
-        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
         "//xla/tsl/protobuf:dnn_proto_cc",
@@ -929,6 +941,7 @@ cc_library(
     hdrs = ["fission_backend.h"],
     deps = [
         ":gpu_codegen_backend",
+        ":gpu_default_backend_policy",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_proto_cc",
@@ -950,7 +963,6 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:mlir_context_pool",
-        "//xla/service/gpu/autotuning:gpu_default_backend_policy",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tools:hlo_decomposer_lib",
@@ -1276,4 +1288,228 @@ xla_test(
     ]) + if_rocm_is_configured([
         ":factory_rocm",
     ]),
+)
+
+cc_library(
+    name = "autotuner_status_key",
+    srcs = ["autotuner_status_key.cc"],
+    hdrs = ["autotuner_status_key.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "autotune_cache_key",
+    srcs = ["autotune_cache_key.cc"],
+    hdrs = ["autotune_cache_key.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_cc_test(
+    name = "autotune_cache_key_test",
+    srcs = ["autotune_cache_key_test.cc"],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
+    deps = [
+        ":autotune_cache_key",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:semantic_version",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "autotuner_cache",
+    srcs = ["autotuner_cache.cc"],
+    hdrs = ["autotuner_cache.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [":friends"],
+    deps = [
+        ":autotune_cache_key",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_proto_cc",
+        "//xla/service:dump",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:sha256",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:base64",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "redzone_buffers",
+    srcs = ["redzone_buffers.cc"],
+    hdrs = ["redzone_buffers.h"],
+    deps = [
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:redzone_allocator",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_test(
+    name = "redzone_buffers_test",
+    srcs = ["redzone_buffers_test.cc"],
+    backends = ["gpu"],
+    use_legacy_runtime = True,
+    deps = [
+        ":redzone_buffers",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests/restricted:hlo_test_base_legacy",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_autotuning_proto",
+    srcs = ["gpu_autotuning.proto"],
+    deps = [
+        "//xla:autotuning_proto",
+        "//xla:xla_data_proto",
+        "//xla/service:hlo_proto",
+        "//xla/service/gpu:backend_configs",
+    ],
+)
+
+xla_cc_test(
+    name = "autotuner_cache_test",
+    srcs = ["autotuner_cache_test.cc"],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
+    tags = ["gpu"],
+    deps = [
+        ":autotune_cache_key",
+        ":autotuner_cache",
+        "//xla:autotune_results_proto_cc",
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:dump",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/host:host_platform",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tests/restricted:hlo_test_base_legacy",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "gpu_default_backend_policy",
+    srcs = ["gpu_default_backend_policy.cc"],
+    hdrs = ["gpu_default_backend_policy.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/codegen/tiling:tiling_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:gpu_fusible",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_default_backend_policy_test",
+    srcs = ["gpu_default_backend_policy_test.cc"],
+    deps = [
+        ":gpu_default_backend_policy",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

@@ -28,10 +28,10 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/autotuner/autotune_cache_key.h"
+#include "xla/backends/gpu/autotuner/autotuner_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/autotuning/autotune_cache_key.h"
-#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 

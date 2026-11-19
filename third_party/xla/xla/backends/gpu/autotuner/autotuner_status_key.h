@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_STATUS_KEY_H_
-#define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_STATUS_KEY_H_
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_
 
 #include "absl/strings/string_view.h"
 
@@ -29,4 +29,4 @@ inline constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_STATUS_KEY_H_
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_AUTOTUNER_STATUS_KEY_H_

@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/gpu/autotuner/autotune_cache_key.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 

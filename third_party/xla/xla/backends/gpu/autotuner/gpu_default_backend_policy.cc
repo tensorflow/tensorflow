@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/gpu_default_backend_policy.h"
+#include "xla/backends/gpu/autotuner/gpu_default_backend_policy.h"
 
 #include <cstdint>
 #include <optional>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/autotuning/autotuner_cache.h"
+#include "xla/backends/gpu/autotuner/autotuner_cache.h"
 
 #include <algorithm>
 #include <array>
@@ -38,8 +38,8 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/autotuner/autotune_cache_key.h"
 #include "xla/service/dump.h"
-#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
