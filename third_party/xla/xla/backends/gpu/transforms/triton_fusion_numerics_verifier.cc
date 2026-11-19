@@ -83,6 +83,12 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
       gpu_config.fusion_backend_config();
   if (backend_config.kind() == kTritonFusionKind ||
       backend_config.kind() == kTritonNestedGemmFusionKind) {
+    // The reference module is built by extracting the fused computation and
+    // re-fusing it, which leaves a bare kRaggedDot that no other emitter
+    // supports. Ragged-dot fusions therefore cannot be cross-checked here.
+    if (IsRaggedDotTritonFusion(*fusion)) {
+      return nullptr;
+    }
     return fusion;
   }
   return nullptr;

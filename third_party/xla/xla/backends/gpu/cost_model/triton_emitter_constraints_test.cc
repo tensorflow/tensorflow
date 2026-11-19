@@ -183,6 +183,66 @@ ENTRY entry_computation {
               StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
 }
 
+TEST_F(VerifyTritonConstraintsTest, RaggedDotOperandSizeConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  lhs = bf16[128,512] parameter(0)
+  rhs = bf16[4,512,128] parameter(1)
+  gs = s32[4] parameter(2)
+  ROOT rd = bf16[128,128] ragged-dot(lhs, rhs, gs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+
+ENTRY entry_computation {
+  lhs = bf16[128,512] parameter(0)
+  rhs = bf16[4,512,128] parameter(1)
+  gs = s32[4] parameter(2)
+  ROOT fusion = bf16[128,128] fusion(lhs, rhs, gs),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  // Tile sizes are [M, N] for the output, then the sequential [G, K].
+  EXPECT_OK(CheckTiling(module.get(), {64, 64, 1, 128}));
+  // Having any tile larger than 256 is not allowed for ragged-dots either.
+  EXPECT_THAT(CheckTiling(module.get(), {64, 64, 1, 512}),
+              StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, RaggedDotGroupSizesAreNotMmaOperands) {
+  // The group_sizes operand is read from its buffer rather than as an MMA
+  // operand, so a group count above the MMA dimension limit is fine.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  lhs = bf16[1024,512] parameter(0)
+  rhs = bf16[512,512,128] parameter(1)
+  gs = s32[512] parameter(2)
+  ROOT rd = bf16[1024,128] ragged-dot(lhs, rhs, gs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+
+ENTRY entry_computation {
+  lhs = bf16[1024,512] parameter(0)
+  rhs = bf16[512,512,128] parameter(1)
+  gs = s32[512] parameter(2)
+  ROOT fusion = bf16[1024,128] fusion(lhs, rhs, gs),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {64, 64, 1, 128}));
+}
+
 TEST_F(VerifyTritonConstraintsTest, TransposeSharedMemoryConstraintIsEnforced) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"hlo(

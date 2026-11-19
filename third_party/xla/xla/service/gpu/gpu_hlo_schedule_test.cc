@@ -2351,6 +2351,71 @@ TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepMosaicGpuV2) {
   EXPECT_TRUE(order.ExecutesBefore(mosaic, ag_done));
 }
 
+TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepRaggedDotTritonFusion) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule m
+
+  ragged_dot_computation {
+    lhs = bf16[64,9] parameter(0)
+    rhs = bf16[2,9,8] parameter(1)
+    gs = s64[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  }
+
+  exp_computation {
+    p = bf16[64,9] parameter(0)
+    ROOT e = bf16[64,9] exponential(p)
+  }
+
+  ENTRY main {
+    p0 = bf16[2,2048,4,128] parameter(0)
+    lhs = bf16[64,9] parameter(1)
+    rhs = bf16[2,9,8] parameter(2)
+    gs = s64[2] parameter(3)
+
+    ag-start = (bf16[2,2048,4,128], bf16[2,16384,4,128]) all-gather-start(p0),
+      dimensions={1},
+      frontend_attributes={_scheduling_group_id="0"}
+    ag-done = bf16[2,16384,4,128] all-gather-done(ag-start),
+      frontend_attributes={_scheduling_group_id="0"}
+
+    ragged = bf16[64,8] fusion(lhs, rhs, gs), kind=kCustom,
+      calls=ragged_dot_computation,
+      frontend_attributes={_scheduling_group_id="0"},
+      backend_config={"fusion_backend_config":{"kind":"__triton"}}
+    generic = bf16[64,9] fusion(lhs), kind=kCustom, calls=exp_computation,
+      frontend_attributes={_scheduling_group_id="0"},
+      backend_config={"fusion_backend_config":{"kind":"__triton"}}
+
+    ROOT result = (bf16[2,16384,4,128], bf16[64,8], bf16[64,9])
+      tuple(ag-done, ragged, generic)
+  })";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* ag_start = entry->GetInstructionWithName("ag-start");
+  const HloInstruction* ag_done = entry->GetInstructionWithName("ag-done");
+  const HloInstruction* ragged = entry->GetInstructionWithName("ragged");
+  const HloInstruction* generic = entry->GetInstructionWithName("generic");
+
+  // A ragged-dot XTile fusion is a matmul and keeps its annotation, like a
+  // Triton GEMM fusion. Other generic Triton fusions do not.
+  EXPECT_TRUE(
+      ragged->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      generic->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(order.ExecutesBefore(ag_start, ragged));
+  EXPECT_TRUE(order.ExecutesBefore(ragged, ag_done));
+}
+
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,
                          GpuHloScheduleParameterizedTest,
                          ::testing::Combine(::testing::Bool(),

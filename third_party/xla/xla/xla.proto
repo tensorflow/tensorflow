@@ -1224,6 +1224,11 @@ message DebugOptions {
   optional bool
       xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops = 566;
 
+  // If true, lower supported kRaggedDot ops not handled by cuDNN or hipBLASLt
+  // through the experimental Triton (XTile) backend instead of expanding them
+  // to dense dots.
+  optional bool xla_gpu_experimental_triton_ragged_dot = 587;
+
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
   // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
@@ -2095,7 +2100,7 @@ message DebugOptions {
   // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
   optional bool xla_gpu_experimental_enable_raft_u64_radix = 584;
 
-  // Next id: 587
+  // Next id: 588
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

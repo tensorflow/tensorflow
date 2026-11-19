@@ -177,9 +177,15 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return false;
   }
 
-  if (hero->opcode() == HloOpcode::kConvolution ||
-      hero->opcode() == HloOpcode::kRaggedDot) {
+  if (hero->opcode() == HloOpcode::kConvolution) {
     return true;
+  }
+
+  if (hero->opcode() == HloOpcode::kRaggedDot) {
+    // A ragged-dot hero is not enough: it may also sit inside a Triton/XTile
+    // fusion emitted by GemmRewriter, which cuDNN cannot compile. Only fusions
+    // built by RaggedDotFusionRewriter are supported.
+    return IsCudnnFusion(instr);
   }
 
   if (hero->opcode() == HloOpcode::kScaledDot) {

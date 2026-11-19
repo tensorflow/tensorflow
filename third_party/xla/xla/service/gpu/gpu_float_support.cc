@@ -44,8 +44,10 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
       // We accept any scaled dot, because there is a rewrite pass that will
       // lower it to a dot + multiply for unsupported types.
       return true;
-    // Handled by Triton GEMM or cuBLAS.
-    case HloOpcode::kDot: {
+    // Handled by Triton GEMM or cuBLAS; ragged dots additionally by the Triton
+    // XTile emitter, gpuBLASLt grouped matmul or cuDNN.
+    case HloOpcode::kDot:
+    case HloOpcode::kRaggedDot: {
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
       const PrimitiveType result_type = hlo.shape().element_type();

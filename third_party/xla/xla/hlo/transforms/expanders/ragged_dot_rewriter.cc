@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -51,33 +51,12 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 namespace se = ::stream_executor;
-
-bool SupportsCudnnRaggedDotWgrad(
-    const se::GpuComputeCapability& gpu_compute_capability,
-    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version) {
-  const se::CudaComputeCapability* cuda_cc =
-      gpu_compute_capability.cuda_compute_capability();
-  // RaggedDotRewriter is the only pass that expands ragged-dot into a dense
-  // dot, and downstream cuDNN fusion passes have no fallback if plan creation
-  // fails. cuDNN moe_grouped_matmul_bwd uses a TMA-based cuBLASLt grouped GEMM
-  // kernel. That kernel requires CUDA SM90 through SM119, cuDNN 9.24 or newer,
-  // and cuBLASLt 13.5 from CUDA Toolkit 13.3 or newer.
-  //
-  // The major < kBlackwell_12 check excludes consumer-grade Blackwell GPUs with
-  // SM120 and SM121.
-  // Datacenter Blackwell and Rubin GPUs use major version 10 and satisfy
-  // major < kBlackwell_12.
-  return cuda_cc != nullptr &&
-         cuda_cc->major >= se::CudaComputeCapability::kHopper &&
-         cuda_cc->major < se::CudaComputeCapability::kBlackwell_12 &&
-         cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion &&
-         toolkit_version >= kMinCudaToolkitVersionForRaggedDotWgradFusion;
-}
 
 namespace {
 
@@ -443,129 +422,39 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
                                    ragged_dot->precision_config());
 }
 
-bool IsFP16Operation(const HloInstruction* ragged_dot) {
-  return (ragged_dot->shape().element_type() == F16) &&
-         (ragged_dot->operand(0)->shape().element_type() == F16) &&
-         (ragged_dot->operand(1)->shape().element_type() == F16);
-}
-
-bool IsBF16Operation(const HloInstruction* ragged_dot) {
-  return (ragged_dot->shape().element_type() == BF16) &&
-         (ragged_dot->operand(0)->shape().element_type() == BF16) &&
-         (ragged_dot->operand(1)->shape().element_type() == BF16);
-}
-
-bool CanBeHandledByCuDNNFusion(
-    const HloInstruction* instruction,
-    const se::GpuComputeCapability& gpu_compute_capability,
-    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version) {
-  const HloRaggedDotInstruction* ragged_dot =
-      DynCast<HloRaggedDotInstruction>(instruction);
-  const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
-  const DotDimensionNumbers& dnums = ragged_dims.dot_dimension_numbers();
-  // RaggedDotFusionRewriter / RaggedDotDimensionAdapter only support
-  // unbatched dots with exactly one contracting dimension per operand, a 2D
-  // lhs and 1D group sizes. The rhs rank depends on the ragged mode (checked
-  // below).
-  if (!dnums.lhs_batch_dimensions().empty() ||
-      !dnums.rhs_batch_dimensions().empty() ||
-      dnums.lhs_contracting_dimensions().size() != 1 ||
-      dnums.rhs_contracting_dimensions().size() != 1 ||
-      ragged_dot->operand_count() != 3 ||
-      ragged_dot->operand(0)->shape().dimensions().size() != 2 ||
-      ragged_dot->operand(2)->shape().dimensions().size() != 1 ||
-      ragged_dot->operand(0)->shape().element_type() !=
-          ragged_dot->shape().element_type() ||
-      ragged_dot->operand(1)->shape().element_type() !=
-          ragged_dot->shape().element_type() ||
-      ragged_dims.lhs_ragged_dimensions().size() != 1 ||
-      (ragged_dot->shape().element_type() != F16 &&
-       ragged_dot->shape().element_type() != BF16)) {
-    return false;
-  }
-  const int64_t rhs_rank = ragged_dot->operand(1)->shape().dimensions().size();
-  int lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
-  RaggedDotMode mode =
-      GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
-  if (mode == RaggedDotMode::kRaggedContracting) {
-    // Wgrad: 2D rhs.
-    return rhs_rank == 2 &&
-           SupportsCudnnRaggedDotWgrad(gpu_compute_capability, cudnn_version,
-                                       toolkit_version);
-  }
-  // Ragged non-contracting: 3D rhs (group dim + 2 matrix dims).
-  return mode == RaggedDotMode::kRaggedNonContracting && rhs_rank == 3;
-}
-
-bool CanBeHandledByGpublasltGroupGemm(
-    const se::GpuComputeCapability& gpu_compute_capability,
-    const HloInstruction* instruction) {
-  // Currently only Hipblaslt supports GroupGemm.
-  // The current status of Hipblaslt support for GroupGemm is as follows:
-  // For MI300 targets (gfx942) : datatype supported FP16 and BF16
-  // For MI350/355 targets (gfx950) : datatype supported FP16 only
-
-  if (const auto* rocm_cc = gpu_compute_capability.rocm_compute_capability()) {
-    const std::string& gfx_version = rocm_cc->gfx_version();
-    VLOG(2) << "RaggedDotRewriter running on ROCm device: " << gfx_version;
-
-    if (gfx_version == "gfx942" &&
-        (IsFP16Operation(instruction) || IsBF16Operation(instruction))) {
-      return true;
-    }
-
-    if (gfx_version == "gfx950" && IsFP16Operation(instruction)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 }  // namespace
 
 absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  const bool has_grouped_gemm =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
-      module->config().debug_options().xla_gpu_enable_cublaslt();
-  const se::CudaComputeCapability* cuda_cc =
-      gpu_compute_capability_.cuda_compute_capability();
-  const bool ragged_dot_fusion_enabled =
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_fusion() &&
-      !module->config()
-           .debug_options()
-           .xla_gpu_experimental_disable_binary_libraries() &&
-      cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
-      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
-
-  // Gather all Ragged Dot operations that need to be expanded into regular
-  // dots. Ragged-dots that can be lowered through Gpublaslt GroupGemm or
-  // cuDNN fusion are left as-is for those later passes to handle.
+  // Gather the ragged-dots that no backend claims; see SelectRaggedDotBackends
+  // for the priority order.  The ones left behind are rewritten later by
+  // GemmRewriter or RaggedDotFusionRewriter.
+  const DebugOptions& debug_options = module->config().debug_options();
   std::vector<HloRaggedDotInstruction*> ragged_dots;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        if (ragged_dot_fusion_enabled &&
-            CanBeHandledByCuDNNFusion(instruction, gpu_compute_capability_,
-                                      cudnn_version_, toolkit_version_) &&
-            is_supported_by_cudnn_fusion_ != nullptr) {
-          Decision decision = is_supported_by_cudnn_fusion_(instruction);
-          if (decision.IsAllowed()) {
-            continue;
-          }
-          VLOG(3) << "Expanding " << instruction->name()
-                  << " instead of using cuDNN fusion: " << decision.Explain();
+      if (instruction->opcode() != HloOpcode::kRaggedDot) {
+        continue;
+      }
+      absl::InlinedVector<gpu::RaggedDotBackend, 3> backends =
+          gpu::SelectRaggedDotBackends(*instruction, gpu_compute_capability_,
+                                       cudnn_version_, toolkit_version_,
+                                       debug_options);
+      if (!backends.empty() &&
+          backends.front() == gpu::RaggedDotBackend::kCuDnn) {
+        Decision decision =
+            is_supported_by_cudnn_fusion_ == nullptr
+                ? Decision::Forbid("no cuDNN ragged-dot support callback")
+                : is_supported_by_cudnn_fusion_(instruction);
+        if (!decision.IsAllowed()) {
+          VLOG(3) << "Not using cuDNN fusion for " << instruction->name()
+                  << ": " << decision.Explain();
+          backends.erase(backends.begin());
         }
-        if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
-                                    gpu_compute_capability_, instruction)) {
-          continue;
-        }
+      }
+      if (backends.empty()) {
         ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
       }
     }

@@ -32,22 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-inline const stream_executor::dnn::VersionInfo
-    kMinCudnnVersionForRaggedDotFusion(9, 22);
-
-// The ragged-dot wgrad path for kRaggedContracting lowers to cuDNN
-// moe_grouped_matmul_bwd, which requires cuDNN 9.24 or newer, cuBLASLt 13.5 or
-// newer from CUDA Toolkit 13.3, and compute capability SM90 through SM119.
-inline const stream_executor::dnn::VersionInfo
-    kMinCudnnVersionForRaggedDotWgradFusion(9, 24);
-inline constexpr stream_executor::SemanticVersion
-    kMinCudaToolkitVersionForRaggedDotWgradFusion{13, 3, 0};
-
-bool SupportsCudnnRaggedDotWgrad(
-    const stream_executor::GpuComputeCapability& gpu_compute_capability,
-    stream_executor::dnn::VersionInfo cudnn_version,
-    stream_executor::SemanticVersion toolkit_version);
-
 // RaggedDotRewriter converts ragged dots to general dots through expansion.
 class RaggedDotRewriter : public HloModulePass {
  public:

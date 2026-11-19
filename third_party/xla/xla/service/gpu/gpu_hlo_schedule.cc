@@ -601,7 +601,10 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
       return true;
     }
     if (hlo->opcode() == HloOpcode::kFusion) {
-      return IsGpuFusionKind(*hlo, kTritonGemmFusionKind);
+      // Ragged-dot XTile fusions carry the generic Triton fusion kind, but are
+      // matmuls like the Triton GEMM fusions.
+      return IsGpuFusionKind(*hlo, kTritonGemmFusionKind) ||
+             IsRaggedDotTritonFusion(*hlo);
     }
     return false;
   };

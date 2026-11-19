@@ -137,6 +137,44 @@ absl::string_view kTritonGemmFusionHlo = R"hlo(
       backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
   })hlo";
 
+absl::string_view kRaggedDotCudnnFusionHlo = R"hlo(
+  fusion1 {
+    p0 = bf16[64,9] parameter(0)
+    p1 = bf16[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(p0, p1, p2),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  }
+
+  ENTRY e {
+    p0 = bf16[64,9] parameter(0)
+    p1 = bf16[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT _ = bf16[64,8] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+  })hlo";
+
+// Same ragged-dot hero, but emitted by GemmRewriter for the Triton XTile
+// backend: cuDNN must not claim it.
+absl::string_view kRaggedDotTritonFusionHlo = R"hlo(
+  fusion1 {
+    p0 = bf16[64,9] parameter(0)
+    p1 = bf16[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(p0, p1, p2),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  }
+
+  ENTRY e {
+    p0 = bf16[64,9] parameter(0)
+    p1 = bf16[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT _ = bf16[64,8] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+      backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+  })hlo";
+
 absl::string_view kLoopDotFusionHlo = R"hlo(
   wrapped_dot_computation {
     p0 = f32[4,4] parameter(0)
@@ -447,6 +485,21 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromScaledDotGemmFusionIsEmpty) {
   EXPECT_THAT(backend.GetSupportedConfigs(
                   *hlo_module->entry_computation()->root_instruction()),
               IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(CudnnBackendTest, SupportsRaggedDotCudnnFusion) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kRaggedDotCudnnFusionHlo));
+  EXPECT_TRUE(backend_->IsSupported(
+      *hlo_module->entry_computation()->root_instruction()));
+}
+
+TEST_F(CudnnBackendTest, DoesNotSupportRaggedDotTritonFusion) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kRaggedDotTritonFusionHlo));
+  HloInstruction& fusion = *hlo_module->entry_computation()->root_instruction();
+  EXPECT_FALSE(backend_->IsSupported(fusion));
+  EXPECT_THAT(backend_->GetSupportedConfigs(fusion), IsOkAndHolds(IsEmpty()));
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {

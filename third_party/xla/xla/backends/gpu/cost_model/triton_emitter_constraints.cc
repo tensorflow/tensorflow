@@ -124,23 +124,32 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
   // TODO(b/393299275): There is also a lower bound limit for Triton on what
   // is accepted for dimension size (both contracting and free).
   for (const TiledHloInstruction* inst : all_instructions) {
-    if (inst->hlo()->opcode() == HloOpcode::kDot ||
-        inst->hlo()->opcode() == HloOpcode::kScaledDot) {
-      for (const TiledHloInstruction* operand : inst->operands()) {
-        auto op_tile_sizes_or = operand->tile().GetStaticTileSizes();
-        if (!op_tile_sizes_or.ok()) {
-          return Decision(op_tile_sizes_or.status());
-        }
-        llvm::SmallVector<int64_t> op_tile_sizes = std::move(*op_tile_sizes_or);
+    const HloOpcode opcode = inst->hlo()->opcode();
+    if (opcode != HloOpcode::kDot && opcode != HloOpcode::kScaledDot &&
+        opcode != HloOpcode::kRaggedDot) {
+      continue;
+    }
+    // Only the lhs and the rhs of a ragged-dot are MMA operands.  The
+    // group_sizes operand is read from its buffer rather than as a tile (see
+    // ResolveBufferArgument in the xtile fusion emitter), and its tile may
+    // span all of the groups, so the MMA limit does not apply to it.
+    const int64_t num_mma_operands =
+        opcode == HloOpcode::kRaggedDot ? 2 : inst->operands().size();
+    for (int64_t i = 0; i < num_mma_operands; ++i) {
+      const TiledHloInstruction* operand = inst->operand(i);
+      auto op_tile_sizes_or = operand->tile().GetStaticTileSizes();
+      if (!op_tile_sizes_or.ok()) {
+        return Decision(op_tile_sizes_or.status());
+      }
+      llvm::SmallVector<int64_t> op_tile_sizes = std::move(*op_tile_sizes_or);
 
-        for (int64_t size : op_tile_sizes) {
-          if (size > kMaxMMADimSize) {
-            return Decision::Forbid(absl::StrCat(
-                "Dot operand instruction ", operand->hlo()->name(),
-                " has a tile size of ", size,
-                ", which exceeds the maximum MMA dimension size of ",
-                kMaxMMADimSize, "."));
-          }
+      for (int64_t size : op_tile_sizes) {
+        if (size > kMaxMMADimSize) {
+          return Decision::Forbid(
+              absl::StrCat("Dot operand instruction ", operand->hlo()->name(),
+                           " has a tile size of ", size,
+                           ", which exceeds the maximum MMA dimension size of ",
+                           kMaxMMADimSize, "."));
         }
       }
     }
@@ -254,12 +263,15 @@ Decision VerifySubsetOfTritonConstraints(
     const TilingSpace& tiling_space, const se::DeviceDescription& device_info) {
   auto dimensions = tiling_space.dimensions();
 
-  // Hardware MMA limits for Dot / ScaledDot instructions.
+  // Hardware MMA limits for Dot / ScaledDot / RaggedDot instructions.
   // TODO(b/393299275): There is also a lower bound limit for Triton on what
   // is accepted for dimension size (both contracting and free).
   for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
+    // A ragged-dot's group dimension is always tiled at 1, so no dimension
+    // needs to be excluded here.
     if (dim.hlo != nullptr && (dim.hlo->opcode() == HloOpcode::kDot ||
-                               dim.hlo->opcode() == HloOpcode::kScaledDot)) {
+                               dim.hlo->opcode() == HloOpcode::kScaledDot ||
+                               dim.hlo->opcode() == HloOpcode::kRaggedDot)) {
       if (padded_tile_sizes[idx] > kMaxMMADimSize) {
         return Decision::Forbid(absl::StrCat(
             "Tile size ", padded_tile_sizes[idx], " for dimension ", idx,

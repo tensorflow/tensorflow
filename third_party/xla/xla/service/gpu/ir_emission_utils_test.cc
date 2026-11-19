@@ -33,6 +33,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
@@ -1034,6 +1037,203 @@ TEST_F(IrEmissionUtilsTest,
               absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(IsCublasSupportedMatMul(*root, false, /*is_normalized=*/false),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotRequiresAmpereOnCuda) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = bf16[64,9] parameter(0)
+    p1 = bf16[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(p0, p1, p2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1},
+        lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Volta(), *root));
+  EXPECT_TRUE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+  EXPECT_TRUE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx942")), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotFp8RequiresHopperOnCuda) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f8e4m3fn[64,9] parameter(0)
+    p1 = f8e4m3fn[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = f8e4m3fn[64,8] ragged-dot(p0, p1, p2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1},
+        lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+  EXPECT_TRUE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Hopper(), *root));
+  // The OCP FP8 formats need gfx950 or later on ROCm.
+  EXPECT_FALSE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx942")), *root));
+  EXPECT_TRUE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx950")), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotNanooFp8IsRocmOnly) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f8e4m3fnuz[64,9] parameter(0)
+    p1 = f8e4m3fnuz[2,9,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = f8e4m3fnuz[64,8] ragged-dot(p0, p1, p2),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1},
+        lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Hopper(), *root));
+  EXPECT_TRUE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx942")), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotRequiresSingleContractingDim) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = bf16[64,3,3] parameter(0)
+    p1 = bf16[2,3,3,8] parameter(1)
+    p2 = s64[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(p0, p1, p2),
+        lhs_contracting_dims={1,2}, rhs_contracting_dims={1,2},
+        lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotRequiresMatchingOperandTypes) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = f32[64,16] parameter(0)
+    rhs = f16[2,16,8] parameter(1)
+    gs = s32[2] parameter(2)
+    ROOT rd = f32[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotAllowsMixedFp8OperandTypes) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = f8e5m2[64,16] parameter(0)
+    rhs = f8e4m3fn[2,16,8] parameter(1)
+    gs = s32[2] parameter(2)
+    ROOT rd = f32[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Hopper(), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotRequiresSignedGroupSizes) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = bf16[64,16] parameter(0)
+    rhs = bf16[2,16,8] parameter(1)
+    gs = u32[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotAllowsSignedGroupSizes) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = bf16[64,16] parameter(0)
+    rhs = bf16[2,16,8] parameter(1)
+    gs = s32[2] parameter(2)
+    ROOT rd = bf16[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotFp64IsCudaOnly) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = f64[64,16] parameter(0)
+    rhs = f64[2,16,8] parameter(1)
+    gs = s32[2] parameter(2)
+    ROOT rd = f64[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
+  EXPECT_FALSE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx942")), *root));
+  EXPECT_FALSE(IsTritonSupportedRaggedDot(
+      se::GpuComputeCapability(se::RocmComputeCapability("gfx950")), *root));
+}
+
+TEST_F(IrEmissionUtilsTest, TritonRaggedDotFp64RequiresFp64Result) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    lhs = f64[64,16] parameter(0)
+    rhs = f64[2,16,8] parameter(1)
+    gs = s32[2] parameter(2)
+    ROOT rd = f32[64,8] ragged-dot(lhs, rhs, gs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(
+      IsTritonSupportedRaggedDot(se::CudaComputeCapability::Ampere(), *root));
 }
 
 }  // namespace gpu

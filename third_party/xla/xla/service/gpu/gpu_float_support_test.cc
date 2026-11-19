@@ -728,6 +728,26 @@ TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, MixedPrecisionRaggedDotIsNotNormalized) {
+  auto cc = se::CudaComputeCapability::Hopper();
+  constexpr absl::string_view kHloModule = R"(
+    HloModule MixedPrecisionRaggedDot
+
+    ENTRY main {
+      lhs = bf16[64,9] parameter(0)
+      rhs = bf16[2,9,8] parameter(1)
+      gs = s64[2] parameter(2)
+      ROOT rd = f32[64,8] ragged-dot(lhs, rhs, gs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1},
+          lhs_ragged_dims={0}, rhs_group_dims={0}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
+}
+
 TEST_F(FloatSupportTest, AllToAllSplitDimensionS4IsNormalized) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule m

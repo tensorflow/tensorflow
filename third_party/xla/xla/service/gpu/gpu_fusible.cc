@@ -1014,12 +1014,18 @@ std::vector<const HloInstruction*> GetFusionRoots(
 bool IsGenericTritonFusion(const HloInstruction& instr) {
   // Note that we don't accept kTritonNestedGemmFusionKind here as they should
   // not be fused with anything else.
-  return instr.opcode() == HloOpcode::kFusion &&
-         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         instr.backend_config<GpuBackendConfig>().ok() &&
-         instr.backend_config<GpuBackendConfig>()
-                 ->fusion_backend_config()
-                 .kind() == kTritonFusionKind;
+  if (instr.opcode() != HloOpcode::kFusion ||
+      instr.fusion_kind() != HloInstruction::FusionKind::kCustom ||
+      !instr.backend_config<GpuBackendConfig>().ok() ||
+      instr.backend_config<GpuBackendConfig>()
+              ->fusion_backend_config()
+              .kind() != kTritonFusionKind) {
+    return false;
+  }
+  // Ragged-dot XTile fusions are built by GemmRewriter with a fixed shape: the
+  // emitter resolves the ragged-dot operands to buffer arguments of the
+  // fusion, so they must not be fused with anything else either.
+  return !IsRaggedDotTritonFusion(instr);
 }
 
 bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {
