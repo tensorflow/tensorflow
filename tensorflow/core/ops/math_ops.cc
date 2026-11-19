@@ -1029,11 +1029,7 @@ absl::Status ArgOpShape(shape_inference::InferenceContext* c) {
   }
 
   int64_t dimension_val;
-  if (dim_t->dtype() == DT_INT32) {
-    dimension_val = dim_t->scalar<int32_t>()();
-  } else {
-    dimension_val = dim_t->scalar<int64_t>()();
-  }
+  TF_RETURN_IF_ERROR(c->GetScalarFromTensor(dim_t, &dimension_val));
 
   int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
   if (axis < 0 || axis >= input_rank) {
