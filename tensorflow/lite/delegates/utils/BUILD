@@ -92,6 +92,7 @@ cc_test(
     name = "simple_opaque_delegate_test",
     srcs = ["simple_opaque_delegate_test.cc"],
     data = [":c_api_test_builtin_op_models"],
+    tags = ["requires-mem:24g"],
     deps = [
         ":simple_opaque_delegate",
         "//tensorflow/lite:builtin_ops",
