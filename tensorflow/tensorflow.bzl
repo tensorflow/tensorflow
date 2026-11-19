@@ -2044,6 +2044,7 @@ def tf_kernel_library(
         copts = None,
         gpu_copts = None,
         is_external = False,
+        allow_exceptions = False,
         compatible_with = None,
         textual_hdrs = None,
         **kwargs):
@@ -2085,6 +2086,8 @@ def tf_kernel_library(
     if not textual_hdrs:
         textual_hdrs = []
     copts = copts + tf_copts(is_external = is_external) + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"])
+    if allow_exceptions:
+        copts = copts + if_not_windows(["-fexceptions"])
 
     # Override EIGEN_STRONG_INLINE to inline when
     # --define=override_eigen_strong_inline=true to avoid long compiling time.
