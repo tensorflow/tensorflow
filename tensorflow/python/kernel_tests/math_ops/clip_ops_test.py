@@ -339,6 +339,44 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  # GlobalNorm tests
+  def testGlobalNorm(self):
+    x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
+    x1 = constant_op.constant([1.0, -2.0])
+    # Global norm of x0 and x1 = sqrt(2^2 + 4^2 + 1^2 + 2^2) = 5
+    # None entries are ignored, and t_list can be a list or a tuple.
+    for t_list in ([x0, x1], (x0, x1), [None, x0, None, x1]):
+      self.assertAllClose(5.0, self.evaluate(clip_ops.global_norm(t_list)))
+
+  def testGlobalNormWithIndexedSlices(self):
+    x0 = constant_op.constant([3.0])
+    x1 = indexed_slices_lib.IndexedSlices(
+        constant_op.constant([[4.0, 12.0]]),
+        constant_op.constant([1]),
+        dense_shape=constant_op.constant([5, 2]))
+    # Only the values of x1 count: sqrt(3^2 + 4^2 + 12^2) = 13
+    self.assertAllClose(13.0, self.evaluate(clip_ops.global_norm([x0, x1])))
+
+  def testGlobalNormOfNoTensorsIsZero(self):
+    for t_list in ([], [None, None]):
+      self.assertAllClose(0.0, self.evaluate(clip_ops.global_norm(t_list)))
+
+  def testGlobalNormKeepsDtype(self):
+    for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float64):
+      with self.subTest(dtype=dtype):
+        x0 = constant_op.constant([3.0], dtype=dtype)
+        x1 = constant_op.constant([4.0], dtype=dtype)
+        norm = clip_ops.global_norm([x0, x1])
+        self.assertEqual(dtype, norm.dtype)
+        self.assertAllClose(
+            5.0, self.evaluate(math_ops.cast(norm, dtypes.float32)))
+
+  def testGlobalNormRaisesForNonSequence(self):
+    x = constant_op.constant([3.0, 4.0])
+    for t_list in (x, "abc", {"x": x}):
+      with self.assertRaisesRegex(TypeError, "should be a sequence"):
+        clip_ops.global_norm(t_list)
+
   # ClipByGlobalNorm tests
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
