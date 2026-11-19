@@ -4062,27 +4062,36 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
 
   def _swap_axis(input_tensor, dim_index, last_index, name=None):
     """Swaps logits's dim_index and last_index."""
-    return array_ops.transpose(
-        input_tensor,
-        array_ops.concat([
-            math_ops.range(dim_index), [last_index],
-            math_ops.range(dim_index + 1, last_index), [dim_index]
-        ], 0),
-        name=name)
+    if is_static:
+      perm = array_ops.concat([
+          math_ops.range(dim_index), [last_index],
+          math_ops.range(dim_index + 1, last_index), [dim_index]
+      ], 0)
+    else:
+      # dim_index may turn out to be last_index at run time, which the concat
+      # above does not handle.
+      perm = math_ops.range(last_index + 1)
+      perm = array_ops.where_v2(
+          math_ops.equal(perm, dim_index), last_index,
+          array_ops.where_v2(math_ops.equal(perm, last_index), dim_index, perm))
+    return array_ops.transpose(input_tensor, perm, name=name)
 
   inputs = ops.convert_to_tensor(inputs)
 
   # We need its original shape for shape inference.
   shape = inputs.get_shape()
-  is_last_dim = (dim == -1) or (dim == shape.ndims - 1)
+  dim_val = dim
+  if isinstance(dim, tensor_lib.Tensor):
+    dim_val = tensor_util.constant_value(dim)
+  # Only take the static path if both the rank and the axis are known.
+  is_static = dim_val is not None and shape.ndims is not None
+  is_last_dim = dim_val is not None and (
+      dim_val == -1 or (is_static and dim_val == shape.ndims - 1))
 
   if is_last_dim:
     return compute_op(inputs, name=name)
 
-  dim_val = dim
-  if isinstance(dim, tensor_lib.Tensor):
-    dim_val = tensor_util.constant_value(dim)
-  if dim_val is not None and not -shape.ndims <= dim_val < shape.ndims:
+  if is_static and not -shape.ndims <= dim_val < shape.ndims:
     raise errors_impl.InvalidArgumentError(
         None, None,
         f"`dim` must be in the range [{-shape.ndims}, {shape.ndims}) where "
@@ -4102,7 +4111,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(inputs)
-  dim_axis = dim % shape.ndims
+  dim_axis = dim % shape.ndims if is_static else dim
   inputs = _swap_axis(inputs, dim_axis, math_ops.subtract(input_rank, 1))
 
   # Do the actual call on its last dimension.

@@ -19,9 +19,11 @@ import unittest
 import numpy as np
 
 from tensorflow.python.eager import backprop as backprop_lib
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -317,6 +319,48 @@ class SoftmaxTest(test.TestCase):
       dim = array_ops.placeholder_with_default(100, shape=[])
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
+
+  @test_util.run_v2_only
+  def testUnknownRank(self):
+    features = np.array(
+        [[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+         [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+         [[5., 4., 3., 2.], [1., 2., 3., 4.]]],
+        dtype=np.float32)
+    for log in (False, True):
+      op = nn_ops.log_softmax if log else nn_ops.softmax
+      for dim in (0, 1, -2):
+        fn = def_function.function(
+            lambda x, op=op, dim=dim: op(x, axis=dim),
+            input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        self.assertAllClose(
+            self._npSoftmax(features, dim=dim, log=log),
+            self.evaluate(fn(features)))
+
+  @test_util.run_v2_only
+  def testTensorAxisInFunction(self):
+    features = np.array(
+        [[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+         [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+         [[5., 4., 3., 2.], [1., 2., 3., 4.]]],
+        dtype=np.float32)
+
+    @def_function.function
+    def softmax_constant_axis(x):
+      return nn_ops.softmax(x, axis=constant_op.constant(0))
+
+    self.assertAllClose(
+        self._npSoftmax(features, dim=0),
+        self.evaluate(softmax_constant_axis(features)))
+
+    @def_function.function
+    def softmax(x, axis):
+      return nn_ops.softmax(x, axis=axis)
+
+    for dim in (0, 1, 2, -1):
+      self.assertAllClose(
+          self._npSoftmax(features, dim=dim),
+          self.evaluate(softmax(features, constant_op.constant(dim))))
 
   def testInvalidAxis(self):
     # Test case for GitHub issue 22793.
