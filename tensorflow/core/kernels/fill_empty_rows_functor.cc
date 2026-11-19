@@ -53,7 +53,8 @@ TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
       typename TTypes<Tindex>::ConstVec reverse_index_map,    \
       typename TTypes<T>::ConstVec grad_values,               \
       typename TTypes<T>::Vec d_values,                       \
-      typename TTypes<T>::Scalar d_default_value);            \
+      typename TTypes<T>::Scalar d_default_value,             \
+      typename AsyncOpKernel::DoneCallback done);             \
   extern template struct FillEmptyRowsGrad<GPUDevice, T, Tindex>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
