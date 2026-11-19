@@ -13,12 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debug_grpc_testlib.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
+#include "tensorflow/core/debug/debug_service.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"

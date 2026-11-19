@@ -22,8 +22,10 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
+#include "tensorflow/core/debug/debug_service.proto.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/event.proto.h"
 
 namespace tensorflow {
 
