@@ -148,6 +148,18 @@ class ArrayCreationTest(test.TestCase):
       self.match_shape(actual, expected, msg)
       self.match_dtype(actual, expected, msg)
 
+    for shape in [(), (2,), (2, 3)]:
+      actual = np_array_ops.empty_like([1, 2], shape=shape)
+      expected = np.empty_like([1, 2], shape=shape)
+      msg = 'shape: {}'.format(shape)
+      self.match_shape(actual, expected, msg)
+      self.match_dtype(actual, expected, msg)
+
+    actual = np_array_ops.empty_like([1, 2], order='K', subok=True)
+    expected = np.empty_like([1, 2], order='K', subok=True)
+    self.match_shape(actual, expected)
+    self.match_dtype(actual, expected)
+
   def testZeros(self):
     for s in self.all_shapes:
       actual = np_array_ops.zeros(s)
@@ -174,6 +186,17 @@ class ArrayCreationTest(test.TestCase):
       msg = 'array: {} type: {}'.format(a, t)
       self.match(actual, expected, msg)
 
+    for shape in [(), (2,), (2, 3)]:
+      self.match(
+          np_array_ops.zeros_like([1, 2], shape=shape),
+          np.zeros_like([1, 2], shape=shape))
+    self.match(
+        np_array_ops.zeros_like([1, 2], dtype=np.float32, shape=(2, 3)),
+        np.zeros_like([1, 2], dtype=np.float32, shape=(2, 3)))
+    self.match(
+        np_array_ops.zeros_like([1, 2], order='K', subok=True),
+        np.zeros_like([1, 2], order='K', subok=True))
+
   def testOnes(self):
     for s in self.all_shapes:
       actual = np_array_ops.ones(s)
@@ -199,6 +222,17 @@ class ArrayCreationTest(test.TestCase):
       expected = np.ones_like(a, t)
       msg = 'array: {} type: {}'.format(a, t)
       self.match(actual, expected, msg)
+
+    for shape in [(), (2,), (2, 3)]:
+      self.match(
+          np_array_ops.ones_like([1, 2], shape=shape),
+          np.ones_like([1, 2], shape=shape))
+    self.match(
+        np_array_ops.ones_like([1, 2], dtype=np.float32, shape=(2, 3)),
+        np.ones_like([1, 2], dtype=np.float32, shape=(2, 3)))
+    self.match(
+        np_array_ops.ones_like([1, 2], order='K', subok=True),
+        np.ones_like([1, 2], order='K', subok=True))
 
   def testEye(self):
     n_max = 3
@@ -301,6 +335,15 @@ class ArrayCreationTest(test.TestCase):
           self.match(
               np_array_ops.full_like(arr, fill_value, dtype=dtype),
               np.full_like(arr, fill_value, dtype=dtype))
+
+    # `shape` overrides the shape of `a`, like NumPy.
+    for shape in [(), (1,), (2, 3)]:
+      self.match(
+          np_array_ops.full_like([[1, 2], [3, 4]], 7, shape=shape),
+          np.full_like([[1, 2], [3, 4]], 7, shape=shape))
+    self.match(
+        np_array_ops.full_like([1, 2], 7, dtype=np.float32, shape=(2, 3)),
+        np.full_like([1, 2], 7, dtype=np.float32, shape=(2, 3)))
 
   def testArray(self):
     ndmins = [0, 1, 2, 5]

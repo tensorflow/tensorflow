@@ -58,8 +58,8 @@ def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.empty_like', v1=[])
 @np_utils.np_doc('empty_like')
-def empty_like(a, dtype=None):
-  return zeros_like(a, dtype)
+def empty_like(a, dtype=None, order='K', subok=True, shape=None):
+  return zeros_like(a, dtype, order, subok, shape)
 
 
 @tf_export.tf_export('experimental.numpy.zeros', v1=[])
@@ -73,10 +73,17 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.zeros_like', v1=[])
 @np_utils.np_doc('zeros_like')
-def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
+def zeros_like(a, dtype=None, order='K', subok=True, shape=None):  # pylint: disable=missing-docstring
+  if order != 'K':
+    raise ValueError('Non-standard orders are not supported.')
+  if not subok:
+    raise ValueError('subok being False is not supported.')
+
   dtype = np_utils.result_type_unary(a, dtype)
 
   dtype = dtypes.as_dtype(dtype)  # Work around b/149877262
+  if shape is not None:
+    return array_ops.zeros(shape, dtype=dtype)
   return array_ops.zeros_like(a, dtype)
 
 
@@ -90,8 +97,15 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
 
 @tf_export.tf_export('experimental.numpy.ones_like', v1=[])
 @np_utils.np_doc('ones_like')
-def ones_like(a, dtype=None):
+def ones_like(a, dtype=None, order='K', subok=True, shape=None):
+  if order != 'K':
+    raise ValueError('Non-standard orders are not supported.')
+  if not subok:
+    raise ValueError('subok being False is not supported.')
+
   dtype = np_utils.result_type_unary(a, dtype)
+  if shape is not None:
+    return array_ops.ones(shape, dtype=dtype)
   return array_ops.ones_like(a, dtype)
 
 
@@ -148,18 +162,18 @@ def full(shape, fill_value, dtype=None):  # pylint: disable=redefined-outer-name
 @tf_export.tf_export('experimental.numpy.full_like', v1=[])
 @np_utils.np_doc_only('full_like')
 def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # pylint: disable=missing-docstring,redefined-outer-name
-  """order, subok and shape arguments mustn't be changed."""
+  """order and subok arguments mustn't be changed; shape may be overridden."""
   if order != 'K':
     raise ValueError('Non-standard orders are not supported.')
   if not subok:
     raise ValueError('subok being False is not supported.')
-  if shape:
-    raise ValueError('Overriding the shape is not supported.')
 
   a = asarray(a)
   dtype = dtype or np_utils.result_type(a)
   fill_value = asarray(fill_value, dtype=dtype)
-  return array_ops.broadcast_to(fill_value, array_ops.shape(a))
+  if shape is None:
+    shape = array_ops.shape(a)
+  return array_ops.broadcast_to(fill_value, shape)
 
 
 def _cast(x, dtype, name=None):
