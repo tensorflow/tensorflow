@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -44,6 +45,15 @@ void FarmhashFingerprint64(TTypes<uint8_t, 2>::ConstTensor input,
                            TTypes<uint8_t, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
   DCHECK_EQ(output.dimension(1), sizeof(uint64_t));
+  if (input.dimension(1) == 0) {
+    // Every row is an empty buffer (possibly backed by a null pointer), so
+    // compute the fingerprint once without indexing into `input`.
+    const uint64_t fingerprint = Fingerprint64("");
+    for (int64_t i = 0; i < output.dimension(0); ++i) {
+      CopyToBuffer(fingerprint, &output(i, 0));
+    }
+    return;
+  }
   for (int64_t i = 0; i < output.dimension(0); ++i) {
     const uint64_t fingerprint =
         Fingerprint64({reinterpret_cast<const char*>(&input(i, 0)),
@@ -91,20 +101,24 @@ class FingerprintOp : public OpKernel {
                                 input.shape()));
 
     const int64_t dim0 = input.shape().dim_size(0);
-    int64_t dim1;
-    if (dim0 == 0) {
-      dim1 = 0;
-    } else {
-      dim1 = input.shape().num_elements() / dim0;
-    }
-
+    // `dim0` may be arbitrarily large for zero-element inputs (e.g. `[N, 0]`),
+    // so validate the output shape instead of CHECK-failing on overflow.
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                {dim0, kFingerprintSize}, &output_shape));
     Tensor* output;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape{dim0, kFingerprintSize}, &output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (dim0 == 0) {
+      return;
+    }
+    const int64_t dim1 = input.shape().num_elements() / dim0;
 
     if (input.dtype() == DT_STRING) {
-      if (dim1 > 1) {
+      // Note that `dim1 == 0` (e.g. shape `[N, 0]`) must also take this path:
+      // the flat input has no elements, so fingerprinting it directly would
+      // leave the `[N, 8]` output uninitialized. Instead, each row is
+      // fingerprinted as an empty buffer, consistent with non-string types.
+      if (dim1 != 1) {
         Tensor temp;
         OP_REQUIRES_OK(context, context->allocate_temp(
                                     DT_UINT8,

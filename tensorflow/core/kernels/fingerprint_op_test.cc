@@ -12,10 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -27,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -63,6 +69,69 @@ class FingerprintOpTest : public OpsTestBase {
 
 TEST_F(FingerprintOpTest, Empty) {
   Tensor tensor(DT_UINT8, {0});
+
+  TF_ASSERT_OK(MakeFingerprintOp(&tensor));
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), (TensorShape{0, 8}));
+  EXPECT_EQ(GetOutput(0)->tensor_data(), "");
+}
+
+// Returns the little-endian byte representation of the fingerprint of an empty
+// buffer, repeated `rows` times.
+std::string EmptyRowsFingerprint(int64_t rows) {
+  const uint64_t fingerprint = Fingerprint64("");
+  std::string row;
+  for (size_t k = 0; k < sizeof(uint64_t); ++k) {
+    row.push_back(static_cast<char>((fingerprint >> (8 * k)) & 0xff));
+  }
+  std::string result;
+  for (int64_t i = 0; i < rows; ++i) {
+    result += row;
+  }
+  return result;
+}
+
+TEST_F(FingerprintOpTest, EmptyRows) {
+  Tensor tensor(DT_FLOAT, {2, 0});
+
+  TF_ASSERT_OK(MakeFingerprintOp(&tensor));
+  TF_ASSERT_OK(RunOpKernel());
+  ASSERT_EQ(GetOutput(0)->shape(), (TensorShape{2, 8}));
+  EXPECT_EQ(GetOutput(0)->tensor_data(), EmptyRowsFingerprint(2));
+}
+
+// Fingerprinting a string tensor with a non-zero leading dimension but no
+// elements must produce a fully initialized output.
+TEST_F(FingerprintOpTest, StringEmptyRows) {
+  for (const TensorShape& shape :
+       {TensorShape{2, 0}, TensorShape{3, 0, 4}, TensorShape{1, 2, 0}}) {
+    SCOPED_TRACE(shape.DebugString());
+    Tensor tensor(DT_STRING, shape);
+
+    TF_ASSERT_OK(MakeFingerprintOp(&tensor));
+    TF_ASSERT_OK(RunOpKernel());
+    const int64_t rows = shape.dim_size(0);
+    ASSERT_EQ(GetOutput(0)->shape(), (TensorShape{rows, 8}));
+    EXPECT_EQ(GetOutput(0)->tensor_data(), EmptyRowsFingerprint(rows));
+  }
+}
+
+// A zero-element input whose leading dimension is too large for the output
+// shape must fail gracefully rather than CHECK-fail.
+TEST_F(FingerprintOpTest, EmptyRowsOutputShapeOverflow) {
+  for (DataType dtype : {DT_FLOAT, DT_STRING}) {
+    SCOPED_TRACE(DataTypeString(dtype));
+    Tensor tensor(dtype, {int64_t{1} << 60, 0});
+
+    TF_ASSERT_OK(MakeFingerprintOp(&tensor));
+    const absl::Status status = RunOpKernel();
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+    EXPECT_NE(status.message().find("overflow"), std::string::npos) << status;
+  }
+}
+
+TEST_F(FingerprintOpTest, StringEmpty) {
+  Tensor tensor(DT_STRING, {0, 3});
 
   TF_ASSERT_OK(MakeFingerprintOp(&tensor));
   TF_ASSERT_OK(RunOpKernel());
