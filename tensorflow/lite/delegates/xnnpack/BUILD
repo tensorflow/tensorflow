@@ -441,10 +441,7 @@ cc_library(
     srcs = ["file_util.cc"],
     hdrs = ["file_util.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":macros",
-        "//tensorflow/lite:minimal_logging",
-    ],
+    deps = [":macros"],
 )
 
 cc_library(

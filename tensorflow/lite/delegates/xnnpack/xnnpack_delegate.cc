@@ -7972,7 +7972,8 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
 }
 
 bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
-  return tflite::xnnpack::InMemoryFileDescriptorAvailable();
+  // In-memory caches only rely on heap allocations.
+  return true;
 }
 
 const char* TfLiteXNNPackDelegateInMemoryFilePath() {

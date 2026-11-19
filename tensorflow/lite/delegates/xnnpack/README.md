@@ -224,8 +224,8 @@ instead of saving it to disk.
 
 You will lose advantages 1 and 4 but can still profit from 2 and 3.
 
-Note: Currently, this is only accessible on systems that have the `memfd_create`
-system call.
+Because the cache isn't memory mapped, `weight_cache_lock_memory` has no effect
+on it.
 
 ```c++
 std::unique_ptr<tflite::Interpreter> interpreter;
