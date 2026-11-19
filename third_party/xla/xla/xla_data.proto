@@ -22,8 +22,6 @@ option cc_enable_arenas = true;
 // Primitive types are the individual values that can be held in rectangular
 // multidimensional arrays. A description of the rectangular multidimensional
 // array dimensions / primitive type is given by Shape, below.
-//
-// LINT.IfChange
 enum PrimitiveType {
   // Invalid primitive type to serve as default.
   PRIMITIVE_TYPE_INVALID = 0;
@@ -164,9 +162,6 @@ enum PrimitiveType {
 
   // Next = 37
 }
-// LINT.ThenChange(
-//   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
-// )
 
 // There are broadly 4 modes that collective communication ops use to describe
 // which sets of devices are participating with a given device in the operation.

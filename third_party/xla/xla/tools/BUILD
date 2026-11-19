@@ -735,15 +735,6 @@ xla_cc_test(
     ],
 )
 
-# This target is used to reproduce miscompiles in OSS outside of TF, and it can
-# not have any dependencies apart from the standard library.
-cc_library(
-    name = "driver",
-    srcs = ["driver.cc"],
-    tags = if_google(["nofixdeps"]),
-    deps = [],
-)
-
 cc_library(
     name = "matmul_perf_table_gen",
     srcs = ["matmul_perf_table_gen.cc"],
