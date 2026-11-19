@@ -17,8 +17,14 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_binary")
-load("//xla/tests:build_defs.bzl", "xla_py_test", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "NVIDIA_GPU_ANY_BACKEND",
+    "xla_py_test",
+    "xla_test",
+)
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config_root.bzl", "tf_exec_properties", "tf_gpu_tests_tags")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -280,11 +286,15 @@ xla_test(
             "multi_gpu",
             "nomsan",
         ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
-        ],
-    },
+    } | if_oss(
+        {
+            NVIDIA_GPU_ANY_BACKEND: [
+                "broken",
+                "no_oss",
+            ],
+        },
+        {},
+    ),
     backends = [
         "cpu",
         "gpu",
@@ -398,15 +408,19 @@ xla_test(
             "nomsan",
             "requires-gpu-sm80-only",
         ],
-        "nvgpu_any": [
+        AMD_GPU_ANY_BACKEND: [
             "broken",
             "no_oss",
         ],
-        "amdgpu_any": [
-            "broken",
-            "no_oss",
-        ],
-    },
+    } | if_oss(
+        {
+            NVIDIA_GPU_ANY_BACKEND: [
+                "broken",
+                "no_oss",
+            ],
+        },
+        {},
+    ),
     backends = [
         "cpu",
         "gpu",

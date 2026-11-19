@@ -30,7 +30,7 @@ load(
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_copts",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "NVIDIA_GPU_ANY_BACKEND", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -3752,7 +3752,7 @@ embeddable_cuda_library(
 xla_test(
     name = "cudart_kernel_registry_test",
     srcs = ["cudart_kernel_registry_test.cc"],
-    backends = ["nvgpu_any"],
+    backends = [NVIDIA_GPU_ANY_BACKEND],
     tags = [
         "cuda-only",
     ],

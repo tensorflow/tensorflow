@@ -12,7 +12,7 @@ load(
 )
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -3455,7 +3455,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     deps = [
         "//xla:error_spec",
@@ -3663,7 +3663,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     tags = ["no_mac"],
     deps = [

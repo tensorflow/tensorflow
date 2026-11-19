@@ -21,9 +21,22 @@ load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
+# Generation-agnostic NVIDIA GPU backend that runs on whatever NVIDIA GPU is
+# available.
+_NVGPU_ANY_BACKEND = "nvgpu_any"
+_NVGPU_ANY_BACKENDS = if_google([], [_NVGPU_ANY_BACKEND])
+
+# Backend to use for tests that need an NVIDIA GPU but don't care about the GPU
+# generation, e.g. `backends = [NVIDIA_GPU_ANY_BACKEND]`.
+NVIDIA_GPU_ANY_BACKEND = if_google("h100", _NVGPU_ANY_BACKEND)
+
+# Generation-agnostic AMD and Intel GPU backends. These are currently the only
+# AMD and Intel backends.
+AMD_GPU_ANY_BACKEND = "amdgpu_any"
+INTEL_GPU_ANY_BACKEND = "intelgpu_any"
+
 # Possible backend values for the GPU family.
-NVIDIA_GPU_BACKENDS = [
-    "nvgpu_any",
+NVIDIA_GPU_BACKENDS = _NVGPU_ANY_BACKENDS + [
     "p100",
     "v100",
     "a100",
@@ -35,8 +48,7 @@ NVIDIA_GPU_BACKENDS = [
 ] + if_google([], ["rtx6000pro"])
 
 # The generic "gpu" backend includes the actual backends in this list.
-NVIDIA_GPU_DEFAULT_BACKENDS = [
-    "nvgpu_any",
+NVIDIA_GPU_DEFAULT_BACKENDS = _NVGPU_ANY_BACKENDS + [
     "a100",
     "h100",
     "b200",
@@ -45,9 +57,9 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "vr_nvl72",
 ] + if_google([], ["rtx6000pro"])
 
-AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
+AMD_GPU_DEFAULT_BACKENDS = [AMD_GPU_ANY_BACKEND]
 
-INTEL_GPU_DEFAULT_BACKENDS = ["intelgpu_any"]
+INTEL_GPU_DEFAULT_BACKENDS = [INTEL_GPU_ANY_BACKEND]
 
 DEFAULT_BACKENDS = ["cpu"] + NVIDIA_GPU_DEFAULT_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS
 
@@ -84,7 +96,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
 
     # Disable backends that don't meet the device requirements.
     sm_requirements = {
-        "nvgpu_any": (0, 0),
+        _NVGPU_ANY_BACKEND: (0, 0),
         "p100": (6, 0),
         "v100": (7, 0),
         "a100": (8, 0),

@@ -5,7 +5,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 
 # Libraries for performance modeling of HLO.
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -162,7 +162,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     deps = [
         ":analytical_latency_estimator",

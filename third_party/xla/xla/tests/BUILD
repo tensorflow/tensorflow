@@ -26,6 +26,7 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/tests:build_defs.bzl",
     "ALL_HARDWARE_BACKENDS",
+    "AMD_GPU_ANY_BACKEND",
     "generate_backend_suites",
     "xla_test",
 )
@@ -2176,7 +2177,7 @@ xla_test(
         # Skip CPU because it still uses TOTAL order for approx_topk.
         "gpu",
     ],
-    disabled_backends = ["amdgpu_any"],
+    disabled_backends = [AMD_GPU_ANY_BACKEND],
     deps = [
         ":hlo_interpreter_reference_mixin",
         ":hlo_test_base",

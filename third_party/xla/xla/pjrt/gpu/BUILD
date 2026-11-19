@@ -19,7 +19,7 @@ load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tools:source_hash.bzl", "source_hash")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable")
@@ -426,7 +426,7 @@ xla_test(
         "--threadmanager_use_executor_impl=false",
     ],
     backend_tags = {
-        "amdgpu_any": ["flaky"],
+        AMD_GPU_ANY_BACKEND: ["flaky"],
     },
     backends = ["gpu"],
     shard_count = 4,
@@ -1185,7 +1185,7 @@ cc_library(
 xla_test(
     name = "gpu_client_stream_error_test",
     srcs = ["gpu_client_stream_error_test.cc"],
-    # TODO(b/570474829): Switch back to "nvgpu_any" once the test passes on H100.
+    # TODO: b/570474829 - Switch to NVIDIA_GPU_ANY_BACKEND once the test passes on H100.
     backends = [
         "v100",
     ],

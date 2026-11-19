@@ -15,7 +15,12 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "INTEL_GPU_ANY_BACKEND",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
@@ -248,8 +253,8 @@ xla_test(
         "gb200",
         "gb300",
         "vr_nvl72",
-        "amdgpu_any",
-        "intelgpu_any",
+        AMD_GPU_ANY_BACKEND,
+        INTEL_GPU_ANY_BACKEND,
     ],
     data = [":all_gpu_specs"],
     tags = [

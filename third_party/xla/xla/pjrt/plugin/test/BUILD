@@ -15,7 +15,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "NVIDIA_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
@@ -45,7 +45,7 @@ xla_cc_test(
 xla_test(
     name = "plugin_registration_test_gpu",
     srcs = ["plugin_registration_test.cc"],
-    backends = ["nvgpu_any"],
+    backends = [NVIDIA_GPU_ANY_BACKEND],
     tags = [
         "gpu",
         "no_oss",

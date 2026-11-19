@@ -16,8 +16,15 @@
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
-load("//xla/tests:build_defs.bzl", "GPU_BACKENDS", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "GPU_BACKENDS",
+    "NVIDIA_GPU_ANY_BACKEND",
+    "xla_test",
+)
 load("//xla/tests/exhaustive:build_defs.bzl", "exhaustive_xla_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -134,12 +141,12 @@ exhaustive_xla_test(
     backend_tags = {
         gpu: ["notsan"]
         for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        if gpu not in [AMD_GPU_ANY_BACKEND] + if_oss([NVIDIA_GPU_ANY_BACKEND])
     },
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        if gpu not in [AMD_GPU_ANY_BACKEND] + if_oss([NVIDIA_GPU_ANY_BACKEND])
     ],
     # Partition goal is to get under ~5 minute execution time without needlessly
     # reserving hardware for each shard.
@@ -200,7 +207,7 @@ xla_test(
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        if gpu not in [AMD_GPU_ANY_BACKEND] + if_oss([NVIDIA_GPU_ANY_BACKEND])
     ],
     shard_count = 50,
     tags = [
@@ -244,12 +251,12 @@ exhaustive_xla_test(
     backend_tags = {
         gpu: ["notsan"]
         for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        if gpu not in [AMD_GPU_ANY_BACKEND] + if_oss([NVIDIA_GPU_ANY_BACKEND])
     },
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        if gpu not in [AMD_GPU_ANY_BACKEND] + if_oss([NVIDIA_GPU_ANY_BACKEND])
     ],
     # Partition goal is to get under ~5 minute execution time without needlessly
     # reserving hardware for each shard.

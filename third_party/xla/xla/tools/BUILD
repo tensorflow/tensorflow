@@ -20,7 +20,7 @@ load(
     "xla_py_proto_library",
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
@@ -992,7 +992,7 @@ xla_test(
     backends = [
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     tags = [
         "gpu",

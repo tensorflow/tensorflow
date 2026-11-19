@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "NVIDIA_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -72,7 +72,7 @@ xla_cc_test(
 xla_test(
     name = "xla_gpu_pjrt_client_test",
     srcs = ["xla_gpu_pjrt_client_test.cc"],
-    backends = ["nvgpu_any"],
+    backends = [NVIDIA_GPU_ANY_BACKEND],
     tags = [
         "gpu",
         "no_oss",

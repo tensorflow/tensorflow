@@ -1,7 +1,7 @@
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_build_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "AMD_GPU_ANY_BACKEND", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
@@ -353,7 +353,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 30,
     tags = ["no_mac"],
@@ -415,7 +415,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     env = {
         "CUBLAS_EMULATE_SINGLE_PRECISION": "1",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
@@ -653,7 +653,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     tags = ["no_mac"],
     deps = [

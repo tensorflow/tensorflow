@@ -7,7 +7,12 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite_for_gpus")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "AMD_GPU_ANY_BACKEND",
+    "NVIDIA_GPU_ANY_BACKEND",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
@@ -464,7 +469,7 @@ xla_test(
         "h100",
         "v100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     deps = [
         ":gpu_pjrt_codegen_test",
@@ -731,9 +736,9 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ] + if_oss([
-        "nvgpu_any",
+        NVIDIA_GPU_ANY_BACKEND,
     ]),
     deps = [
         ":hlo_pjrt_gpu_test_base",
@@ -956,9 +961,9 @@ xla_test(
     backends = [
         "a100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ] + if_oss([
-        "nvgpu_any",
+        NVIDIA_GPU_ANY_BACKEND,
     ]),
     deps = [
         "//xla:error_spec",
@@ -1045,7 +1050,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
-        "amdgpu_any",
+        AMD_GPU_ANY_BACKEND,
     ],
     shard_count = 2,
     deps = [

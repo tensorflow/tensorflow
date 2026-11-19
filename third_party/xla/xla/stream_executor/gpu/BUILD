@@ -27,6 +27,7 @@ load(
 )
 load(
     "//xla/tests:build_defs.bzl",
+    "NVIDIA_GPU_ANY_BACKEND",
     "xla_test",
 )
 load(
@@ -481,7 +482,7 @@ cc_library(
 xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
-    backends = ["nvgpu_any"],
+    backends = [NVIDIA_GPU_ANY_BACKEND],
     tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
