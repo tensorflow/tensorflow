@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -167,6 +168,124 @@ class BlockIndexer {
   ArrayRef<int64_t> param_shape_;
 };
 
+// Checks that a blockwise parameter tensor of shape `param_shape` fits the
+// block grid of a tensor of shape `shape` tiled by `block_shape`: one axis per
+// dimension, each of extent 1 (a broadcast) or the number of blocks.
+LogicalResult VerifyBlockwiseParamShape(ArrayRef<int64_t> shape,
+                                        ArrayRef<int64_t> block_shape,
+                                        ArrayRef<int64_t> param_shape,
+                                        StringRef name, Location loc) {
+  if (param_shape.size() != shape.size()) {
+    return emitError(loc, "blockwise ")
+           << name << " has rank " << param_shape.size()
+           << " but the weight has rank " << shape.size();
+  }
+  for (auto [dim, dim_size] : llvm::enumerate(shape)) {
+    const int64_t num_blocks = dim_size / block_shape[dim];
+    if (param_shape[dim] != 1 && param_shape[dim] != num_blocks) {
+      return emitError(loc, "blockwise ")
+             << name << " dimension " << dim << " is " << param_shape[dim]
+             << ", expected 1 or " << num_blocks << " (the number of blocks)";
+    }
+  }
+  return success();
+}
+
+// Collapses every axis of `zero_point` along which its values do not vary to
+// extent 1, and returns `zero_point` itself if there is none. For example, the
+// -0.5 of a centered int2 grid becomes a single value, and a per row zero point
+// materialized for every block of the row becomes one value per row. A rank 0
+// zero point is expanded to `rank` axes of extent 1, as the quantized type
+// requires.
+//
+// Producers commonly materialize zero points at the full block grid shape. A
+// `block_shape` blockwise quantization (`BlockwiseQuantization.block_shape` in
+// the TFLite schema) broadcasts any axis of extent 1, so the compact form
+// carries the same information while keeping the exported model small.
+//
+// Scales are deliberately left alone: some converter passes (e.g. bias
+// quantization) read the block structure off the scale shape.
+ElementsAttr CompactBroadcastZeroPoint(ElementsAttr zero_point, int64_t rank) {
+  auto type = mlir::dyn_cast<RankedTensorType>(zero_point.getType());
+  if (type == nullptr || !type.hasStaticShape() || type.getNumElements() < 1 ||
+      !mlir::isa<IntegerType, FloatType>(type.getElementType())) {
+    return zero_point;
+  }
+  const Type element_type = type.getElementType();
+  if (type.getRank() == 0) {
+    auto expanded_type =
+        RankedTensorType::get(SmallVector<int64_t>(rank, 1), element_type);
+    if (auto dense = mlir::dyn_cast<DenseElementsAttr>(zero_point)) {
+      return dense.reshape(expanded_type);
+    }
+    if (auto resource = mlir::dyn_cast<DenseResourceElementsAttr>(zero_point)) {
+      return DenseResourceElementsAttr::get(expanded_type,
+                                            resource.getRawHandle());
+    }
+    return zero_point;
+  }
+  if (llvm::all_of(type.getShape(), [](int64_t dim) { return dim == 1; })) {
+    return zero_point;
+  }
+
+  // Compare the raw bytes of the elements, which is exact for every type.
+  // Dense attributes store one element per whole number of bytes, except for
+  // bit packed i1.
+  const unsigned bit_width = element_type.getIntOrFloatBitWidth();
+  ArrayRef<char> raw;
+  if (auto dense = mlir::dyn_cast<DenseElementsAttr>(zero_point)) {
+    if (dense.isSplat()) {
+      return dense.resizeSplat(RankedTensorType::get(
+          SmallVector<int64_t>(type.getRank(), 1), element_type));
+    }
+    if (bit_width == 1) return zero_point;
+    raw = dense.getRawData();
+  } else if (auto resource =
+                 mlir::dyn_cast<DenseResourceElementsAttr>(zero_point)) {
+    AsmResourceBlob* blob = GetResourceBlob(resource);
+    if (blob == nullptr || bit_width % 8 != 0) return zero_point;
+    raw = blob->getData();
+  } else {
+    return zero_point;
+  }
+  const size_t element_bytes = llvm::divideCeil(bit_width, 8);
+  if (raw.size() != type.getNumElements() * element_bytes) return zero_point;
+
+  SmallVector<int64_t> shape(type.getShape());
+  SmallVector<char> data(raw.begin(), raw.end());
+  bool collapsed = false;
+  // `outer` counts the slices before the current axis, and `inner` is the size
+  // in bytes of the slice that one index of the current axis selects.
+  size_t outer = 1;
+  size_t inner = data.size();
+  for (int64_t& dim : shape) {
+    inner /= dim;
+    if (dim > 1) {
+      const size_t stride = dim * inner;
+      bool uniform = true;
+      for (size_t o = 0; o < outer && uniform; ++o) {
+        const char* first = data.data() + o * stride;
+        for (int64_t k = 1; k < dim && uniform; ++k) {
+          uniform = std::memcmp(first, first + k * inner, inner) == 0;
+        }
+      }
+      if (uniform) {
+        for (size_t o = 1; o < outer; ++o) {
+          std::memmove(data.data() + o * inner, data.data() + o * stride,
+                       inner);
+        }
+        data.resize(outer * inner);
+        dim = 1;
+        collapsed = true;
+      }
+    }
+    outer *= dim;
+  }
+  if (!collapsed) return zero_point;
+  return DenseElementsAttr::getFromRawBuffer(
+      RankedTensorType::get(shape, element_type), data);
+}
+
 // Quantizes a constant at compile time using the blockwise parameters of
 // `annotation`, mirroring `tfl.blockwise_dequantize`:
 //
@@ -192,6 +311,19 @@ FailureOr<ElementsAttr> QuantizeBlockwise(ElementsAttr real_values,
              << dim << " (" << dim_size << ") is not a multiple of block_shape["
              << dim << "] (" << block_size << ")";
     }
+  }
+  // `BlockIndexer` reads one axis of each parameter per weight dimension.
+  if (failed(VerifyBlockwiseParamShape(
+          shape, annotation.block_shape,
+          annotation.scale.getShapedType().getShape(), "scale", loc))) {
+    return failure();
+  }
+  if (annotation.zero_point != nullptr &&
+      failed(VerifyBlockwiseParamShape(
+          shape, annotation.block_shape,
+          annotation.zero_point.getShapedType().getShape(), "zero point",
+          loc))) {
+    return failure();
   }
 
   SmallVector<double> values;
@@ -313,6 +445,14 @@ LogicalResult LowerBlockwiseFakeQuant(OpType op, PatternRewriter& rewriter) {
           "blockwise quant.fake_quant has a static scale but a non-constant "
           "input");
     }
+    const int64_t rank = real_values.getShapedType().getRank();
+    // A rank 0 zero point broadcasts a single value; give it the rank of the
+    // grid so that `QuantizeBlockwise` can index it.
+    if (annotation.zero_point != nullptr &&
+        annotation.zero_point.getShapedType().getRank() == 0) {
+      annotation.zero_point =
+          CompactBroadcastZeroPoint(annotation.zero_point, rank);
+    }
     FailureOr<ElementsAttr> quantized_values =
         QuantizeBlockwise(real_values, annotation, op.getLoc());
     if (failed(quantized_values)) return failure();
@@ -323,8 +463,10 @@ LogicalResult LowerBlockwiseFakeQuant(OpType op, PatternRewriter& rewriter) {
       zero_point = rewriter.create<TFL::NoValueOp>(
           op.getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
     } else {
-      zero_point =
-          rewriter.create<TFL::ConstOp>(op.getLoc(), annotation.zero_point);
+      // Compacted only now that `QuantizeBlockwise` validated its shape, so
+      // that a malformed zero point is reported rather than reshaped.
+      zero_point = rewriter.create<TFL::ConstOp>(
+          op.getLoc(), CompactBroadcastZeroPoint(annotation.zero_point, rank));
     }
   }
 
