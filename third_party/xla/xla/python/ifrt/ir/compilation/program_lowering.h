@@ -35,14 +35,27 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+// Controls whether outlined atom programs are eagerly compiled-and-loaded
+// during lowering or compiled without loading for a subsequent
+// `Client::Load` call.
+enum class AtomProgramLoadingMode {
+  kEager,
+  kDeferred,
+};
+
 // Intermediate lowered state of an `IfrtIRProgram` produced after MLIR
 // compilation passes run and atom program compilations have been dispatched.
 struct LoweredIfrtIrProgramState {
   // Name of the lowered IFRT IR module.
   std::string program_name;
-  // Futures for bound and/or compiled-and-loaded atom program executables.
-  absl_nonnull std::shared_ptr<AtomExecutableFutureMap>
+  // Futures for bound and/or compiled-and-loaded atom program executables when
+  // `loading_mode` is `AtomProgramLoadingMode::kEager`; `nullptr` otherwise.
+  absl_nullable std::shared_ptr<AtomExecutableFutureMap>
       atom_executable_future_map;
+  // Futures for compiled-but-unloaded atom programs when `loading_mode` is
+  // `AtomProgramLoadingMode::kDeferred`; `nullptr` otherwise.
+  absl_nullable std::shared_ptr<CompiledAtomProgramFutureMap>
+      compiled_atom_program_future_map;
   // Specifications of the program inputs (`layout` is unpopulated).
   std::vector<ArraySpec> in_specs;
   // Specifications of the program outputs (`layout` is unpopulated).
@@ -61,19 +74,25 @@ struct LoweredIfrtIrProgramState {
 // compilation future continuations off fibers.
 tsl::Executor& GetIfrtIrCompilationExecutor();
 
-// Runs IFRT IR lowering passes, dispatches atom program compilations, and
-// extracts top-level input/output `ArraySpec`s and donatable input indices.
+// Runs IFRT IR lowering passes, dispatches atom program compilations (via
+// `AtomProgramCompiler::CompileXla` and `CompileMpmdReshard` when
+// `loading_mode` is `AtomProgramLoadingMode::kDeferred`, or
+// `CompileAndLoadXla` and `CompileAndLoadMpmdReshard` when `loading_mode` is
+// `AtomProgramLoadingMode::kEager`), and extracts top-level input/output
+// `ArraySpec`s and donatable input indices.
 absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     absl_nonnull std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
     absl_nonnull std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
     Client* absl_nonnull client,
-    absl_nonnull std::shared_ptr<AtomProgramCompiler> atom_program_compiler);
+    absl_nonnull std::shared_ptr<AtomProgramCompiler> atom_program_compiler,
+    AtomProgramLoadingMode loading_mode);
 
-// Populates `layout` on `in_specs` and `out_specs` from loaded atom executables
-// and device defaults.
+// Populates `layout` on `in_specs` and `out_specs` from compiled/loaded atom
+// executables and device defaults.
 absl::Status PopulateIfrtIrProgramLayouts(
     mlir::ModuleOp mlir_module, Client* absl_nonnull client,
     const AtomExecutableMap& atom_program_executables,
+    const CompiledAtomProgramMap* absl_nullable compiled_atom_programs,
     absl::Span<ArraySpec> in_specs, absl::Span<ArraySpec> out_specs,
     const DeviceListRef& device_list);
 

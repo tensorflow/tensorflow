@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -47,34 +48,44 @@ CompiledIfrtIrProgram::Create(
     std::shared_ptr<AtomProgramCompiler> atom_program_compiler) {
   TraceMe traceme("ProgramCompiler::CompileForInterpreter");
 
-  ABSL_ASSIGN_OR_RETURN(
-      LoweredIfrtIrProgramState state,
-      LowerIfrtIrProgram(std::move(ifrt_ir_program),
-                         std::move(ifrt_ir_compile_options), client,
-                         std::move(atom_program_compiler)));
+  ABSL_ASSIGN_OR_RETURN(LoweredIfrtIrProgramState state,
+                   LowerIfrtIrProgram(std::move(ifrt_ir_program),
+                                      std::move(ifrt_ir_compile_options),
+                                      client, std::move(atom_program_compiler),
+                                      AtomProgramLoadingMode::kEager));
+  std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map =
+      std::move(state.atom_executable_future_map);
+  CHECK_NE(atom_executable_future_map, nullptr);
 
   // Perform the rest of the work once all atom programs are successfully
   // compiled since they need information from the compiled executables.
   std::vector<tsl::Future<>> ready_futures;
-  ready_futures.reserve(state.atom_executable_future_map->size());
+  ready_futures.reserve(atom_executable_future_map->size());
   // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
-  for (const auto& [key, exec] : *state.atom_executable_future_map) {
+  for (const auto& [key, exec] : *atom_executable_future_map) {
     ready_futures.push_back(exec.GetReadyFuture());
   }
-  auto create_program = [state = std::move(state), client]() mutable
+  auto create_program = [state = std::move(state),
+                         atom_executable_future_map =
+                             std::move(atom_executable_future_map),
+                         client]() mutable
       -> absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>> {
     auto atom_executable_map = std::make_shared<AtomExecutableMap>();
     // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
-    for (const auto& [key, exec] : *state.atom_executable_future_map) {
+    for (const auto& [key, exec] : *atom_executable_future_map) {
       CHECK(exec.IsReady());
       ABSL_ASSIGN_OR_RETURN(LoadedExecutableRef executable, exec.Await());
+      if (executable == nullptr) {
+        return absl::InternalError(absl::StrCat(
+            "Compiled atom program `", key, "` returned a null executable"));
+      }
       atom_executable_map->insert({key, std::move(executable)});
     }
 
     absl::Status layout_status = PopulateIfrtIrProgramLayouts(
         state.ifrt_ir_program->mlir_module, client, *atom_executable_map,
-        absl::MakeSpan(state.in_specs), absl::MakeSpan(state.out_specs),
-        state.device_list);
+        /*compiled_atom_programs=*/nullptr, absl::MakeSpan(state.in_specs),
+        absl::MakeSpan(state.out_specs), state.device_list);
     if (!layout_status.ok()) {
       for (ArraySpec& spec : state.in_specs) {
         spec.layout = nullptr;

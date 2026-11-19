@@ -63,17 +63,34 @@ createIfrtVerifyBoundExternalLoadedExecutablePass(
 //
 // ifrt.LoadedExecutable @component__method on devices [0, 1]
 // ```
+//
+// If `compiled_atom_program_future_map` is non-null, XLA and MPMD reshard atom
+// programs are compiled without loading via `AtomProgramCompiler::CompileXla`
+// and `AtomProgramCompiler::CompileMpmdReshard` and inserted into
+// `compiled_atom_program_future_map`. Exactly one of
+// `atom_executable_future_map` and `compiled_atom_program_future_map` must be
+// non-null.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options,
-    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+    std::shared_ptr<CompiledAtomProgramFutureMap>
+        compiled_atom_program_future_map);
 
+// Creates `IfrtToDotPass`, reading atom program stats from
+// `atom_executable_future_map`, `bound_executable_map`, and/or
+// `compiled_atom_program_future_map` (exactly one of
+// `atom_executable_future_map` and `compiled_atom_program_future_map` must be
+// non-null).
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
     IfrtToDotPassOptions options,
-    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+    std::shared_ptr<CompiledAtomProgramFutureMap>
+        compiled_atom_program_future_map,
+    std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 // Registers IfrtCompileAtomProgramPass to ifrt-opt.
 void registerIfrtCompileAtomProgramPass(
@@ -106,12 +123,21 @@ struct OutlinedAtomProgramsToCompiledPipelineOptions
 };
 
 // Creates pipeline of all the IFRT IR passes that require compilation-time
-// information (e.g., device assignments).
+// information (e.g., device assignments). If
+// `compiled_atom_program_future_map` is non-null, outlined XLA and MPMD
+// reshard atom programs are compiled without loading via
+// `AtomProgramCompiler::CompileXla` and
+// `AtomProgramCompiler::CompileMpmdReshard` and recorded in
+// `compiled_atom_program_future_map`. Exactly one of
+// `atom_executable_future_map` and `compiled_atom_program_future_map` must be
+// non-null.
 absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
     std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+    std::shared_ptr<CompiledAtomProgramFutureMap>
+        compiled_atom_program_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 // Registers compilation passes and pipelines to ifrt-opt.

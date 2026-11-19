@@ -98,25 +98,47 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
 }
 
 // Looks up the parameter layout for `param_operand_number` of `call_op`'s
-// target executable in `atom_program_executables`.
+// target executable in `atom_program_executables` or `compiled_atom_programs`.
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 GetParameterLayoutFromAtomExecutable(
     const AtomExecutableMap& atom_program_executables,
+    const CompiledAtomProgramMap* absl_nullable compiled_atom_programs,
     mlir::SymbolTableCollection& symbol_table,
     ifrt::CallLoadedExecutableOp& call_op, int param_operand_number) {
   // The parameter is used by a CallLoadedExecutableOp, return the layout
   // from the atom program executable.
   LoadedExecutableOp loaded_executable_op = call_op.getCalleeOp(symbol_table);
   std::string atom_program_name = loaded_executable_op.getSymName().str();
-  auto executable_it = atom_program_executables.find(atom_program_name);
-  if (executable_it != atom_program_executables.end()) {
-    ABSL_ASSIGN_OR_RETURN(
-        std::vector<std::shared_ptr<const xla::PjRtLayout>> executable_layouts,
-        executable_it->second->GetParameterLayouts());
-    return std::move(executable_layouts[param_operand_number]);
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> executable_layouts;
+  if (auto executable_it = atom_program_executables.find(atom_program_name);
+      executable_it != atom_program_executables.end()) {
+    ABSL_ASSIGN_OR_RETURN(executable_layouts,
+                     executable_it->second->GetParameterLayouts());
+  } else if (compiled_atom_programs != nullptr) {
+    auto compiled_it = compiled_atom_programs->find(atom_program_name);
+    if (compiled_it == compiled_atom_programs->end()) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Could not find SPMD executable %s", atom_program_name));
+    }
+    ABSL_ASSIGN_OR_RETURN(executable_layouts,
+                     compiled_it->second->executable->GetParameterLayouts());
+  } else {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Could not find SPMD executable %s", atom_program_name));
   }
-  return absl::FailedPreconditionError(
-      absl::StrFormat("Could not find SPMD executable %s", atom_program_name));
+  if (param_operand_number < 0 ||
+      param_operand_number >= executable_layouts.size()) {
+    return absl::InternalError(absl::StrFormat(
+        "Parameter operand %d out of range for executable %s with %d parameter "
+        "layouts",
+        param_operand_number, atom_program_name, executable_layouts.size()));
+  }
+  if (executable_layouts[param_operand_number] == nullptr) {
+    return absl::InternalError(
+        absl::StrFormat("Parameter %d layout for executable %s is null",
+                        param_operand_number, atom_program_name));
+  }
+  return std::move(executable_layouts[param_operand_number]);
 }
 
 // Returns whether `CopyArraysOp` preserves device layout from `input_type` to
@@ -147,6 +169,7 @@ bool CanPropagateLayoutAcrossCopyArrays(IfrtArrayType input_type,
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetLayoutForValue(
     mlir::Value value, Client* absl_nonnull client,
     const AtomExecutableMap& atom_program_executables,
+    const CompiledAtomProgramMap* absl_nullable compiled_atom_programs,
     absl::Span<const ArraySpec> in_specs,
     mlir::SymbolTableCollection& symbol_table,
     const DeviceListRef& device_list) {
@@ -163,15 +186,35 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetLayoutForValue(
     LoadedExecutableOp loaded_executable_op =
         owner_call_op.getCalleeOp(symbol_table);
     std::string atom_program_name = loaded_executable_op.getSymName().str();
-    auto executable_it = atom_program_executables.find(atom_program_name);
-    if (executable_it != atom_program_executables.end()) {
-      ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<const xla::PjRtLayout>>
-                           executable_layouts,
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> executable_layouts;
+    if (auto executable_it = atom_program_executables.find(atom_program_name);
+        executable_it != atom_program_executables.end()) {
+      ABSL_ASSIGN_OR_RETURN(executable_layouts,
                        executable_it->second->GetOutputLayouts());
-      return executable_layouts[op_result.getResultNumber()];
+    } else if (compiled_atom_programs != nullptr) {
+      auto compiled_it = compiled_atom_programs->find(atom_program_name);
+      if (compiled_it == compiled_atom_programs->end()) {
+        return absl::FailedPreconditionError(absl::StrFormat(
+            "Could not find SPMD executable %s", atom_program_name));
+      }
+      ABSL_ASSIGN_OR_RETURN(executable_layouts,
+                       compiled_it->second->executable->GetOutputLayouts());
+    } else {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Could not find SPMD executable %s", atom_program_name));
     }
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Could not find SPMD executable %s", atom_program_name));
+    const unsigned result_number = op_result.getResultNumber();
+    if (result_number >= executable_layouts.size()) {
+      return absl::InternalError(absl::StrFormat(
+          "Output %u out of range for executable %s with %d output layouts",
+          result_number, atom_program_name, executable_layouts.size()));
+    }
+    if (executable_layouts[result_number] == nullptr) {
+      return absl::InternalError(
+          absl::StrFormat("Output %u layout for executable %s is null",
+                          result_number, atom_program_name));
+    }
+    return std::move(executable_layouts[result_number]);
   }
 
   if (auto copy_arrays =
@@ -183,8 +226,9 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetLayoutForValue(
                                             device_list)) {
       return nullptr;
     }
-    return GetLayoutForValue(input, client, atom_program_executables, in_specs,
-                             symbol_table, device_list);
+    return GetLayoutForValue(input, client, atom_program_executables,
+                             compiled_atom_programs, in_specs, symbol_table,
+                             device_list);
   }
 
   return absl::FailedPreconditionError(absl::StrFormat(
@@ -201,7 +245,8 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     absl_nonnull std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
     absl_nonnull std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
     Client* absl_nonnull client,
-    absl_nonnull std::shared_ptr<AtomProgramCompiler> atom_program_compiler) {
+    absl_nonnull std::shared_ptr<AtomProgramCompiler> atom_program_compiler,
+    AtomProgramLoadingMode loading_mode) {
   std::shared_ptr<IfrtIRCompileOptions> compile_options =
       std::move(ifrt_ir_compile_options);
 
@@ -211,12 +256,26 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
   mlir::ModuleOp mlir_module = ifrt_ir_program->mlir_module;
   std::string program_name = mlir_module.getName().value_or("unknown").str();
 
-  // Add the bound executables to the atom program executable map so that they
-  // can be used by the interpreter.
-  auto atom_executable_future_map = std::make_shared<AtomExecutableFutureMap>();
+  std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map;
+  std::shared_ptr<CompiledAtomProgramFutureMap>
+      compiled_atom_program_future_map;
+  if (loading_mode == AtomProgramLoadingMode::kDeferred) {
+    compiled_atom_program_future_map =
+        std::make_shared<CompiledAtomProgramFutureMap>();
+  } else {
+    atom_executable_future_map = std::make_shared<AtomExecutableFutureMap>();
+  }
+  // Validate bound executables upfront and, in eager mode, seed
+  // `atom_executable_future_map` so they can be used by the interpreter.
   // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
   for (const auto& [key, executable] : compile_options->loaded_exec_binding) {
-    atom_executable_future_map->insert({key, executable});
+    if (executable == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Bound executable `%s` must not be null", key));
+    }
+    if (atom_executable_future_map != nullptr) {
+      atom_executable_future_map->insert({key, executable});
+    }
   }
   // Extract bindings.
   auto bound_executable_map = std::make_shared<AtomExecutableMap>(
@@ -246,7 +305,7 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     ABSL_RETURN_IF_ERROR(createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
         compile_options, atom_executable_future_map,
-        std::move(bound_executable_map)));
+        compiled_atom_program_future_map, std::move(bound_executable_map)));
 
     {
       TraceMe traceme("ProgramCompiler::CompileForInterpreter::RunPasses");
@@ -257,12 +316,13 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
     }
   }
 
-  // If the IfrtIRProgram owns the MLIRContext, we are the exclusive users of
-  // this context (e.g., deserialized program), and we can clone the IFRT IR
-  // module to a new context in order to drop the temporary interned attributes
-  // created while deserializing the StableHLO programs. Notice that cloning the
-  // module is relatively fast and allows us to reduce host memory usage.
-  if (ifrt_ir_program->OwnsMlirContext()) {
+  // Clone the lowered IFRT IR module into a new MLIR context when atom program
+  // loading is deferred (so `LoweredIfrtIrProgramState::ifrt_ir_program` owns
+  // the lowered module independently of the caller's input `MLIRContext`) or
+  // when `ifrt_ir_program` exclusively owns its `MLIRContext` (to drop interned
+  // attributes from deserialized StableHLO programs and reduce host memory).
+  if (loading_mode == AtomProgramLoadingMode::kDeferred ||
+      ifrt_ir_program->OwnsMlirContext()) {
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
     context->enableThreadSafeLocking();
@@ -299,6 +359,8 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
   return LoweredIfrtIrProgramState{
       /*program_name=*/std::move(program_name),
       /*atom_executable_future_map=*/std::move(atom_executable_future_map),
+      /*compiled_atom_program_future_map=*/
+      std::move(compiled_atom_program_future_map),
       /*in_specs=*/std::move(in_specs),
       /*out_specs=*/std::move(out_specs),
       /*donatable_input_indices=*/std::move(donatable_input_indices),
@@ -311,6 +373,7 @@ absl::StatusOr<LoweredIfrtIrProgramState> LowerIfrtIrProgram(
 absl::Status PopulateIfrtIrProgramLayouts(
     mlir::ModuleOp mlir_module, Client* absl_nonnull client,
     const AtomExecutableMap& atom_program_executables,
+    const CompiledAtomProgramMap* absl_nullable compiled_atom_programs,
     absl::Span<ArraySpec> in_specs, absl::Span<ArraySpec> out_specs,
     const DeviceListRef& device_list) {
   TraceMe traceme("PopulateLayouts");
@@ -346,8 +409,8 @@ absl::Status PopulateIfrtIrProgramLayouts(
         auto call_op = llvm::cast<ifrt::CallLoadedExecutableOp>(use.getOwner());
         ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> consumer_layout,
                          GetParameterLayoutFromAtomExecutable(
-                             atom_program_executables, symbol_table, call_op,
-                             use.getOperandNumber()));
+                             atom_program_executables, compiled_atom_programs,
+                             symbol_table, call_op, use.getOperandNumber()));
         if (parameter_layout == nullptr) {
           parameter_layout = std::move(consumer_layout);
           continue;
@@ -376,10 +439,11 @@ absl::Status PopulateIfrtIrProgramLayouts(
   for (mlir::OpOperand& return_operand :
        main_func.front().getTerminator()->getOpOperands()) {
     ArraySpec& out_spec = out_specs[return_operand.getOperandNumber()];
-    ABSL_ASSIGN_OR_RETURN(out_spec.layout,
-                     GetLayoutForValue(return_operand.get(), client,
-                                       atom_program_executables, in_specs,
-                                       symbol_table, device_list));
+    ABSL_ASSIGN_OR_RETURN(
+        out_spec.layout,
+        GetLayoutForValue(return_operand.get(), client,
+                          atom_program_executables, compiled_atom_programs,
+                          in_specs, symbol_table, device_list));
     if (out_spec.layout == nullptr) {
       ABSL_ASSIGN_OR_RETURN(out_spec.layout, BuildDefaultLayout(out_spec, client));
     }

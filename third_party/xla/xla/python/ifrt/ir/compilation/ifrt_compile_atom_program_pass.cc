@@ -17,14 +17,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
@@ -59,6 +62,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
@@ -73,7 +77,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/service/hlo.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/random.h"
 
@@ -91,12 +95,16 @@ class IfrtCompileAtomProgramPass
       std::shared_ptr<
           absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides,
-      std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map)
+      std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+      std::shared_ptr<CompiledAtomProgramFutureMap>
+          compiled_atom_program_future_map)
       : atom_program_compiler_(std::move(compiler)),
         hlo_program_context_(std::make_shared<mlir::MLIRContext>(
             mlir::MLIRContext::Threading::DISABLED)),
         compile_options_overrides_(std::move(compile_options_overrides)),
         atom_executable_future_map_(std::move(atom_executable_future_map)),
+        compiled_atom_program_future_map_(
+            std::move(compiled_atom_program_future_map)),
         user_context_(UserContextScope::current()) {
     hlo_program_context_->enableThreadSafeLocking();
   }
@@ -120,6 +128,14 @@ class IfrtCompileAtomProgramPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IfrtCompileAtomProgramPass);
 
  private:
+  struct AtomProgramCompileResult {
+    std::string name;
+    std::variant<
+        tsl::Future<LoadedExecutableRef>,
+        tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>>
+        executable;
+  };
+
   // Generates a LoadedExecutableOp.
   // Returns the symbol of the generated LoadedExecutableOp.
   absl::StatusOr<mlir::SymbolRefAttr> GenerateLoadedExecutableOp(
@@ -144,7 +160,7 @@ class IfrtCompileAtomProgramPass
                                         XlaCompileOptions* xla_compile_options);
 
   // Compiles an atom XLA program.
-  // Returns a future of a AtomProgramCompileResult for the compiled module.
+  // Returns an `AtomProgramCompileResult` for the compiled module.
   //
   // Note that the method runs `ifrt-compile-xla-preprocessing-pipeline`
   // before dispatching compilation.
@@ -154,7 +170,7 @@ class IfrtCompileAtomProgramPass
           cloned_modules,
       const mlir::SymbolUserMap& symbol_users);
 
-  // Returns a future of a AtomProgramCompileResult for the MPMD reshard module.
+  // Returns an `AtomProgramCompileResult` for the MPMD reshard module.
   absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
       mlir::ModuleOp module_op);
 
@@ -168,6 +184,13 @@ class IfrtCompileAtomProgramPass
 
   // Map from symbol name of LoadedExecutableOp to LoadedExecutable.
   std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map_;
+
+  // Optional map from symbol name of LoadedExecutableOp to compiled atom
+  // program (before loading). When non-null, atom programs are compiled via
+  // `CompileXla` and `CompileMpmdReshard` instead of `CompileAndLoadXla` and
+  // `CompileAndLoadMpmdReshard`.
+  std::shared_ptr<CompiledAtomProgramFutureMap>
+      compiled_atom_program_future_map_;
 
   // User context to use for compilation.
   UserContextRef user_context_;
@@ -249,7 +272,8 @@ std::vector<tsl::RCReference<LoadedHostCallback>> GetAtomProgramCallbacks(
   return filtered_callbacks;
 }
 
-absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
+absl::StatusOr<IfrtCompileAtomProgramPass::AtomProgramCompileResult>
+IfrtCompileAtomProgramPass::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op,
     llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
         cloned_modules,
@@ -298,13 +322,19 @@ absl::StatusOr<AtomProgramCompileResult> IfrtCompileAtomProgramPass::CompileXla(
   AtomProgramCompileResult result;
   result.name =
       absl::StrCat(hlo_program->name(), ".", tsl::random::ThreadLocalNew64());
-  result.executable = atom_program_compiler_->CompileXla(
-      std::move(hlo_program), std::move(compile_options),
-      std::move(filtered_callbacks));
+  if (compiled_atom_program_future_map_ != nullptr) {
+    result.executable = atom_program_compiler_->CompileXla(
+        std::move(hlo_program), std::move(compile_options),
+        std::move(filtered_callbacks));
+  } else {
+    result.executable = atom_program_compiler_->CompileAndLoadXla(
+        std::move(hlo_program), std::move(compile_options),
+        std::move(filtered_callbacks));
+  }
   return result;
 }
 
-absl::StatusOr<AtomProgramCompileResult>
+absl::StatusOr<IfrtCompileAtomProgramPass::AtomProgramCompileResult>
 IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
   auto main_func =
       module_op.lookupSymbol<mlir::func::FuncOp>(kCalleeMainFuncName);
@@ -333,12 +363,19 @@ IfrtCompileAtomProgramPass::CompileMpmdReshard(mlir::ModuleOp module_op) {
   }
   AtomProgramCompileResult result;
   result.name = absl::StrCat("mpmd_reshard.", tsl::random::ThreadLocalNew64());
-  result.executable = atom_program_compiler_->CompileMpmdReshard(
-      std::move(dtypes), std::move(shapes), in_arrays_types, out_arrays_types);
+  if (compiled_atom_program_future_map_ != nullptr) {
+    result.executable = atom_program_compiler_->CompileMpmdReshard(
+        std::move(dtypes), std::move(shapes), std::move(in_arrays_types),
+        std::move(out_arrays_types));
+  } else {
+    result.executable = atom_program_compiler_->CompileAndLoadMpmdReshard(
+        std::move(dtypes), std::move(shapes), std::move(in_arrays_types),
+        std::move(out_arrays_types));
+  }
   return result;
 }
 
-absl::StatusOr<AtomProgramCompileResult>
+absl::StatusOr<IfrtCompileAtomProgramPass::AtomProgramCompileResult>
 IfrtCompileAtomProgramPass::CompileModule(
     CallOp call_op, mlir::ModuleOp module_op,
     llvm::DenseMap<mlir::ModuleOp, mlir::OwningOpRef<mlir::ModuleOp>>&
@@ -434,7 +471,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         // created an op for the CallOp.
         loaded_exec_op_ref = loaded_exec_op_ref_it->second;
       } else {
-        const AtomProgramCompileResult& compile_result =
+        AtomProgramCompileResult& compile_result =
             call_to_compile_results[call_op];
         auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
             call_op.getCalleeOp(symbol_table)->getParentOp());
@@ -452,12 +489,27 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
         // keep the original to get the symbol ref for equal CallOps.
         call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
         // Save the atom program executable to extend its lifetime.
-        CHECK(atom_executable_future_map_
-                  ->try_emplace(compile_result.name,
-                                std::move(compile_result.executable))
-                  .second)
-            << "Failed to insert atom program executable to map. "
-            << "Executable `" << compile_result.name << "` already exists";
+        if (auto* compiled_program = std::get_if<tsl::Future<
+                absl_nonnull std::shared_ptr<const CompiledAtomProgram>>>(
+                &compile_result.executable)) {
+          CHECK(compiled_atom_program_future_map_ != nullptr);
+          CHECK(compiled_atom_program_future_map_
+                    ->try_emplace(compile_result.name,
+                                  std::move(*compiled_program))
+                    .second)
+              << "Failed to insert compiled atom program to map. "
+              << "Executable `" << compile_result.name << "` already exists";
+        } else {
+          auto& loaded_executable = std::get<tsl::Future<LoadedExecutableRef>>(
+              compile_result.executable);
+          CHECK(atom_executable_future_map_ != nullptr);
+          CHECK(atom_executable_future_map_
+                    ->try_emplace(compile_result.name,
+                                  std::move(loaded_executable))
+                    .second)
+              << "Failed to insert atom program executable to map. "
+              << "Executable `" << compile_result.name << "` already exists";
+        }
       }
 
       // Generate CallLoadedExecutableOp.
@@ -514,11 +566,18 @@ createIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+    std::shared_ptr<CompiledAtomProgramFutureMap>
+        compiled_atom_program_future_map) {
   CHECK(compiler != nullptr);
+  CHECK(atom_executable_future_map != nullptr ||
+        compiled_atom_program_future_map != nullptr);
+  CHECK(!(atom_executable_future_map != nullptr &&
+          compiled_atom_program_future_map != nullptr));
   return std::make_unique<IfrtCompileAtomProgramPass>(
       std::move(compiler), std::move(compile_options_overrides),
-      std::move(atom_executable_future_map));
+      std::move(atom_executable_future_map),
+      std::move(compiled_atom_program_future_map));
 }
 
 void registerIfrtCompileAtomProgramPass(
@@ -534,7 +593,8 @@ void registerIfrtCompileAtomProgramPass(
            atom_executable_future_map)]() -> std::unique_ptr<mlir::Pass> {
         return createIfrtCompileAtomProgramPass(
             std::move(compiler), std::move(compile_options_overrides),
-            std::move(atom_executable_future_map));
+            std::move(atom_executable_future_map),
+            /*compiled_atom_program_future_map=*/nullptr);
       });
 }
 

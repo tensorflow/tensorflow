@@ -45,8 +45,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -69,7 +67,7 @@ BasicAtomProgramCompiler::BasicAtomProgramCompiler(
       device_assignments_(device_assignments.begin(), device_assignments.end()),
       strict_memory_reservation_(strict_memory_reservation) {}
 
-tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
+tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileAndLoadXla(
     std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
   // Rewrite device assignment from logical ids to IFRT device ids.
@@ -92,7 +90,7 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
                    GetDeviceListFromXlaCompileOptions(client_, options));
 
   TF_RET_CHECK(!devices->devices().empty())
-      << "CompileXla was called with empty device assignment.";
+      << "CompileAndLoadXla was called with empty device assignment.";
   xla::ifrt::Device* first_device = devices->devices().front();
   absl::string_view platform_name = first_device->PlatformName();
   TF_RET_CHECK(platform_name == "tpu" || platform_name == "cpu" ||
@@ -118,7 +116,25 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
                                   std::move(loaded_host_callbacks)));
 }
 
-tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(
+tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+BasicAtomProgramCompiler::CompileXla(
+    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+  return absl::UnimplementedError(
+      "BasicAtomProgramCompiler does not support CompileXla");
+}
+
+tsl::Future<LoadedExecutableRef>
+BasicAtomProgramCompiler::CompileAndLoadMpmdReshard(
+    std::vector<DType> dtypes, std::vector<Shape> shapes,
+    std::vector<IfrtArrayType> in_array_types,
+    std::vector<IfrtArrayType> out_array_types) {
+  return absl::UnimplementedError(
+      "BasicAtomProgramCompiler does not support MPMD resharding");
+}
+
+tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+BasicAtomProgramCompiler::CompileMpmdReshard(
     std::vector<DType> dtypes, std::vector<Shape> shapes,
     std::vector<IfrtArrayType> in_array_types,
     std::vector<IfrtArrayType> out_array_types) {

@@ -46,15 +46,26 @@ class BasicAtomProgramCompiler final : public AtomProgramCompiler {
       absl::Span<const DeviceId> device_assignments,
       bool strict_memory_reservation);
 
-  tsl::Future<LoadedExecutableRef> CompileXla(
+  tsl::Future<LoadedExecutableRef> CompileAndLoadXla(
       std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks)
       final;
 
-  tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
+  tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+  CompileXla(std::unique_ptr<HloProgram> hlo_program,
+             xla::CompileOptions options,
+             std::vector<tsl::RCReference<LoadedHostCallback>>
+                 loaded_host_callbacks) final;
+
+  tsl::Future<LoadedExecutableRef> CompileAndLoadMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) final;
+
+  tsl::Future<absl_nonnull std::shared_ptr<const CompiledAtomProgram>>
+  CompileMpmdReshard(std::vector<DType> dtypes, std::vector<Shape> shapes,
+                     std::vector<IfrtArrayType> in_array_types,
+                     std::vector<IfrtArrayType> out_array_types) final;
 
  private:
   BasicAtomProgramCompiler(Client* absl_nonnull client,

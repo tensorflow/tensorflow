@@ -74,7 +74,13 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
     std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
+    std::shared_ptr<CompiledAtomProgramFutureMap>
+        compiled_atom_program_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
+  CHECK(atom_executable_future_map != nullptr ||
+        compiled_atom_program_future_map != nullptr);
+  CHECK(!(atom_executable_future_map != nullptr &&
+          compiled_atom_program_future_map != nullptr));
   IfrtToDotPassOptions ifrt_to_dot_pass_options =
       GetIfrtToDotPassOptions(*compile_options);
   pm.addPass(createIfrtVerifyDeviceTypeConsistencyPass(
@@ -85,17 +91,18 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
        /*compile_options=*/compile_options}));
   pm.addPass(createIfrtCompileAtomProgramPass(
       std::move(compiler), compile_options->compile_options_overrides,
-      atom_executable_future_map));
+      atom_executable_future_map, compiled_atom_program_future_map));
   pm.addPass(mlir::createSymbolDCEPass());
 
-  pm.addPass(createIfrtVerifyBoundExternalLoadedExecutablePass(
-      std::move(bound_executable_map)));
+  pm.addPass(
+      createIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
     ABSL_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
-    pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
-                                   atom_executable_future_map));
+    pm.addPass(createIfrtToDotPass(
+        std::move(ifrt_to_dot_pass_options), atom_executable_future_map,
+        compiled_atom_program_future_map, std::move(bound_executable_map)));
   }
   return absl::OkStatus();
 }
@@ -130,6 +137,7 @@ void registerIfrtCompilationPassesAndPipelines(
               options) mutable {
         CHECK_OK(createOutlinedAtomProgramsToCompiledPipeline(
             pm, compiler, options, compile_options, atom_executable_future_map,
+            /*compiled_atom_program_future_map=*/nullptr,
             bound_executable_map));
       });
 }
