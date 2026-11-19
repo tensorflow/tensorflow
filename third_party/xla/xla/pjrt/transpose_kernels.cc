@@ -21,12 +21,15 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
+
 // clang-format off
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "xla/pjrt/transpose_kernels.cc"  // NOLINT(whitespace/line_length)
 // clang-format on
 #include "hwy/foreach_target.h"  // IWYU pragma: keep
 #include "hwy/highway.h"
+#include "hwy/targets.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace xla {
@@ -591,18 +594,146 @@ HWY_FLATTEN void TransposeMacroKernel(const char* HWY_RESTRICT a, int64_t lda,
   }
 }
 
-// `packed` is element_size | (bs << 16). Both are packed into one template
-// argument because HWY_EXPORT_T takes the function as a macro argument, which
-// a comma in `F<a, b>` would split.
+// Prevents LLVM's loop strength reduction from hoisting `bs` separate row base
+// pointers (`a + r * lda`, `b + r * ldb`) across the outer `k` loop of
+// `OpFullTranspose2DHwy`, which exhausts x86-64 integer registers and spills
+// loop state to the stack. Unlike `hwy::PreventElision`, this has no `"memory"`
+// clobber (so loop-invariant stride multiples are still hoisted) and no MSVC
+// global atomic sink (which would contend across threads).
+#if defined(__GNUC__) || defined(__clang__)
+#define XLA_HIDE_POINTER_FROM_OPTIMIZER(ptr) asm("" : "+r"(ptr))
+#else
+#define XLA_HIDE_POINTER_FROM_OPTIMIZER(ptr) ((void)(ptr))
+#endif
+
+// Transposes `op->count` `[op->b_elems, op->a_elems]` tiles from `a + k*op->da`
+// (row stride `op->lda` bytes) to `[op->a_elems, op->b_elems]` in
+// `b + k*op->db` (row stride `op->ldb` bytes), where both `op->a_elems` and
+// `op->b_elems` are exact multiples of `bs`. `packed` is
+// `element_size | (bs << 16)`: both are packed into one template argument
+// because `HWY_EXPORT_T` takes the function as a macro argument, which a comma
+// in `F<a, b>` would split.
 template <int packed>
-HWY_FLATTEN void TransposeMacroKernelPacked(const char* HWY_RESTRICT a,
-                                            int64_t lda, int outer_bs_a,
-                                            char* HWY_RESTRICT b, int64_t ldb,
-                                            int outer_bs_b) {
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
+HWY_FLATTEN
+    void OpFullTranspose2DHwy(const TransposeOp* HWY_RESTRICT op,
+                              const char* HWY_RESTRICT a, char* HWY_RESTRICT b,
+                              char* HWY_RESTRICT /*scratch*/) {
   constexpr size_t element_size = packed & 0xFFFF;
   constexpr int bs = packed >> 16;
   using T = hwy::UnsignedFromSize<element_size>;
-  TransposeMacroKernel<T, bs>(a, lda, outer_bs_a, b, ldb, outer_bs_b);
+  const int64_t count = op->count;
+  const int64_t da = op->da;
+  const int64_t db = op->db;
+  const int64_t lda = op->lda;
+  const int64_t ldb = op->ldb;
+  const int outer_bs_a = op->a_elems / bs;
+  const int outer_bs_b = op->b_elems / bs;
+  if (count <= 0 || outer_bs_a <= 0 || outer_bs_b <= 0) {
+    return;
+  }
+  for (int64_t k = 0;;) {
+    const char* a_k = a;
+    char* b_k = b;
+    XLA_HIDE_POINTER_FROM_OPTIMIZER(a_k);
+    XLA_HIDE_POINTER_FROM_OPTIMIZER(b_k);
+    TransposeMacroKernel<T, bs>(a_k, lda, outer_bs_a, b_k, ldb, outer_bs_b);
+    if (++k == count) {
+      break;
+    }
+    a += da;
+    b += db;
+  }
+}
+
+#undef XLA_HIDE_POINTER_FROM_OPTIMIZER
+
+template <int kBits, class D>
+HWY_INLINE void PackSubbyteLoop(D d8, const uint8_t* HWY_RESTRICT in,
+                                uint8_t* HWY_RESTRICT out, int64_t& i,
+                                int64_t n) {
+  const int64_t lanes = static_cast<int64_t>(hn::Lanes(d8));
+  if constexpr (kBits == 4) {
+    const auto mask = hn::Set(d8, 0x0F);
+    const int64_t stride = 2 * lanes;
+    for (; i + stride <= n; i += stride) {
+      hn::Vec<D> v0, v1;
+      hn::LoadInterleaved2(d8, in + i, v0, v1);
+      auto packed = hn::Or(hn::And(v0, mask), hn::ShiftLeft<4>(v1));
+      hn::StoreU(packed, d8, out + i / 2);
+    }
+  } else if constexpr (kBits == 2) {
+    const auto mask = hn::Set(d8, 0x03);
+    const int64_t stride = 4 * lanes;
+    for (; i + stride <= n; i += stride) {
+      hn::Vec<D> v0, v1, v2, v3;
+      hn::LoadInterleaved4(d8, in + i, v0, v1, v2, v3);
+      auto p01 = hn::Or(hn::And(v0, mask), hn::ShiftLeft<2>(hn::And(v1, mask)));
+      auto p23 =
+          hn::Or(hn::ShiftLeft<4>(hn::And(v2, mask)), hn::ShiftLeft<6>(v3));
+      hn::StoreU(hn::Or(p01, p23), d8, out + i / 4);
+    }
+  } else {
+    static_assert(kBits == 1);
+    if (lanes >= 8 && lanes % 8 == 0) {
+      const auto mask = hn::Set(d8, 0x01);
+      for (; i + lanes <= n; i += lanes) {
+        auto v = hn::LoadU(d8, in + i);
+        auto m = hn::TestBit(v, mask);
+        hn::StoreMaskBits(d8, m, out + i / 8);
+      }
+    }
+  }
+}
+
+// Packs `op->count` rows of `op->lda` 1-byte elements from `a + r*op->da` into
+// `kBits`-bit packed bytes at `b + r*op->db`, taking the low `kBits` bits of
+// each input byte.
+template <int kBits>
+ABSL_ATTRIBUTE_FUNC_ALIGN(64)
+HWY_FLATTEN
+    void OpPackSubbyteHwy(const TransposeOp* HWY_RESTRICT op,
+                          const char* HWY_RESTRICT a, char* HWY_RESTRICT b,
+                          char* HWY_RESTRICT /*scratch*/) {
+  constexpr int kElemsPerByte = 8 / kBits;
+  constexpr uint8_t kMask = (1u << kBits) - 1u;
+  const int64_t rows = op->count;
+  const int64_t da = op->da;
+  const int64_t db = op->db;
+  const int64_t n = op->lda;
+  const int64_t full_bytes = n / kElemsPerByte;
+  const int64_t rem = n % kElemsPerByte;
+  for (int64_t r = 0; r < rows; ++r) {
+    const auto* in = reinterpret_cast<const uint8_t*>(a + r * da);
+    auto* out = reinterpret_cast<uint8_t*>(b + r * db);
+    int64_t i = 0;
+    PackSubbyteLoop<kBits>(hn::ScalableTag<uint8_t>(), in, out, i, n);
+    if (i == n) {
+      continue;
+    }
+#if HWY_MIN_BYTES > 32
+    PackSubbyteLoop<kBits>(hn::FixedTag<uint8_t, 32>(), in, out, i, n);
+#endif
+#if HWY_MIN_BYTES > 16 || HWY_HAVE_SCALABLE
+    PackSubbyteLoop<kBits>(hn::Full128<uint8_t>(), in, out, i, n);
+#endif
+    for (int64_t byte_i = i / kElemsPerByte; byte_i < full_bytes; ++byte_i) {
+      uint8_t byte = 0;
+      for (int j = 0; j < kElemsPerByte; ++j) {
+        byte |= static_cast<uint8_t>((in[byte_i * kElemsPerByte + j] & kMask)
+                                     << (j * kBits));
+      }
+      out[byte_i] = byte;
+    }
+    if (rem != 0) {
+      uint8_t byte = 0;
+      for (int64_t j = 0; j < rem; ++j) {
+        byte |= static_cast<uint8_t>(
+            (in[full_bytes * kElemsPerByte + j] & kMask) << (j * kBits));
+      }
+      out[full_bytes] = byte;
+    }
+  }
 }
 
 }  // namespace HWY_NAMESPACE
@@ -611,15 +742,32 @@ HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
 namespace xla {
+namespace {
+
+// `HWY_DYNAMIC_POINTER_T` reads the dispatch table without initializing
+// Highway's global target cache (`g_chosen_target`). Before the first dispatch
+// in a process (or after `SetSupportedTargetsForTest` / `DeInit`), slot 0 is
+// `hwy::FunctionCache::ChooseAndCall`, which runs CPUID detection on every
+// invocation. Initialize the cache eagerly so callers that save the returned
+// pointer inside a cached `TransposePlan` always store the target function.
+void EnsureHighwayTargetInitialized() {
+  hwy::ChosenTarget& chosen_target = hwy::GetChosenTarget();
+  if (!chosen_target.IsInitialized()) {
+    chosen_target.Update(hwy::SupportedTargets());
+  }
+}
+
+}  // namespace
 
 template <int packed>
-TransposeMacroKernelFn GetTransposeMacroKernelPacked() {
-  HWY_EXPORT_T(Table, TransposeMacroKernelPacked<packed>);
+TransposeOp::Fn GetTransposeMacroKernelOp() {
+  EnsureHighwayTargetInitialized();
+  HWY_EXPORT_T(Table, OpFullTranspose2DHwy<packed>);
   return HWY_DYNAMIC_POINTER_T(Table);
 }
 
 #define EXPLICIT_INSTANTIATION_PACKED(packed) \
-  template TransposeMacroKernelFn GetTransposeMacroKernelPacked<packed>()
+  template TransposeOp::Fn GetTransposeMacroKernelOp<packed>()
 
 #define EXPLICIT_INSTANTIATION_FOR_SIZE(bs)      \
   EXPLICIT_INSTANTIATION_PACKED(1 | (bs << 16)); \
@@ -628,7 +776,6 @@ TransposeMacroKernelFn GetTransposeMacroKernelPacked() {
   EXPLICIT_INSTANTIATION_PACKED(8 | (bs << 16)); \
   EXPLICIT_INSTANTIATION_PACKED(16 | (bs << 16))
 
-EXPLICIT_INSTANTIATION_FOR_SIZE(1);
 EXPLICIT_INSTANTIATION_FOR_SIZE(2);
 EXPLICIT_INSTANTIATION_FOR_SIZE(4);
 EXPLICIT_INSTANTIATION_FOR_SIZE(8);
@@ -638,6 +785,17 @@ EXPLICIT_INSTANTIATION_FOR_SIZE(64);
 
 #undef EXPLICIT_INSTANTIATION_FOR_SIZE
 #undef EXPLICIT_INSTANTIATION_PACKED
+
+template <int kBits>
+TransposeOp::Fn GetPackSubbyteOp() {
+  EnsureHighwayTargetInitialized();
+  HWY_EXPORT_T(Table, OpPackSubbyteHwy<kBits>);
+  return HWY_DYNAMIC_POINTER_T(Table);
+}
+
+template TransposeOp::Fn GetPackSubbyteOp<1>();
+template TransposeOp::Fn GetPackSubbyteOp<2>();
+template TransposeOp::Fn GetPackSubbyteOp<4>();
 
 }  // namespace xla
 #endif
