@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -43,13 +44,14 @@ int64_t GetUniqueId() {
 }  // namespace
 
 ExecutionHandle CompilationCache::Insert(
-    std::unique_ptr<Executable> executable) {
+    std::unique_ptr<Executable> executable,
+    std::unique_ptr<HloProto> snapshot_hlo) {
   absl::MutexLock lock(mutex_);
 
   CacheKey key = GetUniqueId();
   VLOG(2) << "inserting cache key: " << key;
   CHECK_EQ(cache_.count(key), 0);
-  cache_.emplace(key, std::move(executable));
+  cache_.emplace(key, Entry{std::move(executable), std::move(snapshot_hlo)});
 
   ExecutionHandle handle;
   handle.set_handle(key);
@@ -66,9 +68,21 @@ absl::StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
     VLOG(2) << "cache key not found: " << key;
     return InvalidArgumentStrCat("can not find executable with handle ", key);
   }
-  auto& result = cache_.at(key);
-  VLOG(2) << "hit executable: " << result->module().name();
-  return result;
+  const Entry& result = cache_.at(key);
+  VLOG(2) << "hit executable: " << result.executable->module().name();
+  return result.executable;
+}
+
+absl::StatusOr<std::shared_ptr<const HloProto>>
+CompilationCache::LookUpSnapshotHlo(const ExecutionHandle& handle) const {
+  absl::MutexLock lock(mutex_);
+
+  CacheKey key = handle.handle();
+  auto it = cache_.find(key);
+  if (it == cache_.end()) {
+    return InvalidArgumentStrCat("can not find executable with handle ", key);
+  }
+  return it->second.snapshot_hlo;
 }
 
 }  // namespace xla
