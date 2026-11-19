@@ -601,6 +601,28 @@ TEST_F(AutotuneCacheFlagsTest, AutotuneCacheModeTakesPrecedence) {
               absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
+TEST_F(AutotuneCacheFlagsTest, AutotuneCacheDirTakesPrecedence) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::string cache_dir,
+                       MakeEmptyCacheDir("autotune_cache_dir_precedence"));
+  ASSERT_OK_AND_ASSIGN(
+      std::string deprecated_cache_dir,
+      MakeEmptyCacheDir("deprecated_autotune_cache_dir_precedence"));
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(deprecated_cache_dir);
+  debug_options.set_xla_autotune_cache_dir(cache_dir);
+
+  EXPECT_THAT(RunCublasLtConfigAssigner(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(CacheDirContents(cache_dir),
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_THAT(CacheDirContents(deprecated_cache_dir),
+              absl_testing::IsOkAndHolds(IsEmpty()));
+}
+
 TEST_F(ConfigAssignerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kCublasCustomCallHlo));

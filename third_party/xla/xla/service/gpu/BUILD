@@ -2268,6 +2268,24 @@ cc_library(
 )
 
 xla_test(
+    name = "gpu_compiler_load_autotune_cache_test",
+    srcs = ["gpu_compiler_load_autotune_cache_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla:autotune_cache_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:backends_proto_cc",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_test(
     name = "gpu_compiler_test",
     srcs = ["gpu_compiler_test.cc"],
     backend_tags = {

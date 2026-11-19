@@ -2062,6 +2062,13 @@ message DebugOptions {
   // Use xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
   optional string xla_gpu_override_triton_configs_file = 578;
 
+  // The following autotune cache fields replace their deprecated xla_gpu_*
+  // counterparts. They are intentionally left unset by default: readers use a
+  // new field only when it is set and otherwise fall back to the deprecated
+  // one. The defaults move to these fields once the deprecated ones are
+  // removed.
+  // TODO(b/519059655): Set defaults when the xla_gpu_* fields are removed.
+
   // File to write autotune cache results to. It will be a binary file unless
   // the name ends with .txt or .textproto.
   optional string xla_dump_autotune_cache_to = 579;
