@@ -1440,6 +1440,7 @@ cc_test(
     srcs = ["batch_matmul_blockwise_test.cc"],
     deps = [
         ":kernel_util",
+        ":test_delegate_providers_lib",
         ":test_main",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
@@ -1678,6 +1679,7 @@ cc_test(
     srcs = ["dequantize_blockwise_test.cc"],
     deps = [
         ":kernel_util",
+        ":test_delegate_providers_lib",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/core:framework_stable",
@@ -2337,6 +2339,7 @@ cc_test(
     deps = [
         ":kernel_util",
         ":reference_ops",
+        ":test_delegate_providers_lib",
         ":test_main",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/c:common",
@@ -3625,7 +3628,10 @@ tflite_combine_cc_tests(
 # Test the YNNPACK delegate
 tflite_combine_cc_tests(
     name = "combined_all_kernel_with_ynnpack_tests",
-    args = ["--use_ynnpack=true"],
+    args = [
+        "--use_ynnpack=true",
+        "--ynnpack_enable_blockwise_quantization=true",
+    ],
     deps_conditions = [":test_main"],
     shard_count = 50,
     tags = ["nochromiumos_arm"],  # b/436979680

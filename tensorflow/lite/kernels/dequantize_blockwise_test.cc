@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -158,6 +159,13 @@ class BlockwiseDequantizeModel {
   bool Built() const { return interpreter_ != nullptr; }
 
   TfLiteStatus AllocateAndInvoke() {
+    for (auto& one : KernelTestDelegateProviders::Get()->CreateAllDelegates()) {
+      if (TfLiteStatus status =
+              interpreter_->ModifyGraphWithDelegate(std::move(one.delegate));
+          status != kTfLiteOk) {
+        return status;
+      }
+    }
     if (TfLiteStatus status = interpreter_->AllocateTensors();
         status != kTfLiteOk) {
       return status;
