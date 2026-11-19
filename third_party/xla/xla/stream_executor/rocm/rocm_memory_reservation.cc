@@ -30,27 +30,20 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_raw_memory_allocation.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
 namespace stream_executor::gpu {
 
 absl::StatusOr<std::unique_ptr<RocmMemoryReservation>>
-RocmMemoryReservation::Create(StreamExecutor* executor, uint64_t size) {
+RocmMemoryReservation::Create(StreamExecutor* executor, uint64_t size,
+                              const RocmVmmAllocator::Options& options) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  hipDevice_t device;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
-
-  hipMemAllocationProp props = {};
-  props.type = hipMemAllocationTypePinned;
-  props.location.type = hipMemLocationTypeDevice;
-  props.location.id = device;
-  props.requestedHandleTypes = hipMemHandleTypeNone;
-
-  size_t granularity = 0;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
-      &granularity, &props, hipMemAllocationGranularityRecommended)));
+  ABSL_ASSIGN_OR_RETURN(RocmVmmAllocationParams params,
+                   GetRocmVmmAllocationParams(executor, options));
+  size_t granularity = params.granularity;
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
 

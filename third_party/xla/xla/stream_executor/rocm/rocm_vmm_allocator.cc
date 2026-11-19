@@ -31,13 +31,92 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
 namespace stream_executor::gpu {
+
+// Distinguishes "these properties are not supported here", which is worth a
+// retry with a weaker handle type, from a failure the retry cannot fix.
+static bool IsUnsupportedPropertyError(hipError_t result) {
+  return result == hipErrorNotSupported || result == hipErrorInvalidValue ||
+         result == hipErrorOperatingSystem;
+}
+
+absl::StatusOr<RocmVmmAllocationParams> GetRocmVmmAllocationParams(
+    StreamExecutor* executor, const RocmVmmAllocator::Options& options) {
+  RocmVmmAllocationParams params;
+  params.prop.type = hipMemAllocationTypePinned;
+  params.prop.location.type = hipMemLocationTypeDevice;
+  params.prop.location.id = executor->device_ordinal();
+  params.prop.requestedHandleTypes = hipMemHandleTypeNone;
+
+  if (options.enable_posix_fd_handle) {
+    // ROCm before 10.0 cannot export and import these handles correctly. This
+    // is the HIP version, numbered separately: ROCm 10.0 ships HIP 7.15.
+    SemanticVersion hip_version =
+        executor->GetDeviceDescription().runtime_version();
+    if (hip_version >= SemanticVersion{7, 15, 0}) {
+      params.prop.requestedHandleTypes = hipMemHandleTypePosixFileDescriptor;
+    } else {
+      LOG_FIRST_N(WARNING, 1)
+          << "Exportable ROCm VMM handles require ROCm 10.0 or newer; HIP "
+             "runtime is "
+          << hip_version << ". Requesting non-exportable handles.";
+    }
+  }
+
+  auto query_granularity = [&params]() {
+    return ToStatus(
+        hipMemGetAllocationGranularity(&params.granularity, &params.prop,
+                                       hipMemAllocationGranularityRecommended),
+        "hipMemGetAllocationGranularity");
+  };
+
+  absl::Status status = query_granularity();
+  if (!status.ok() &&
+      params.prop.requestedHandleTypes == hipMemHandleTypePosixFileDescriptor) {
+    // runtime_version() describes the userspace runtime only: the driver, the
+    // container or the device may still refuse fd export.
+    LOG_FIRST_N(WARNING, 1)
+        << "Granularity query for exportable ROCm VMM handles failed: "
+        << status << ". Requesting non-exportable handles.";
+    params.prop.requestedHandleTypes = hipMemHandleTypeNone;
+    status = query_granularity();
+  }
+  ABSL_RETURN_IF_ERROR(status);
+  return params;
+}
+
+absl::StatusOr<hipMemGenericAllocationHandle_t> CreateRocmVmmPhysicalAllocation(
+    hipMemAllocationProp prop, uint64_t padded_size) {
+  hipMemGenericAllocationHandle_t handle = nullptr;
+  hipError_t result = hipMemCreate(&handle, padded_size, &prop, 0ULL);
+  if (result == hipSuccess) {
+    return handle;
+  }
+  if (prop.requestedHandleTypes != hipMemHandleTypePosixFileDescriptor ||
+      !IsUnsupportedPropertyError(result)) {
+    return ToStatus(result, "hipMemCreate");
+  }
+
+  // `padded_size` is a multiple of the exportable granularity, hence of the
+  // non-exportable one too; were it not, the retry below reports the error.
+  LOG_FIRST_N(WARNING, 1)
+      << "hipMemCreate with exportable ROCm VMM handles failed: "
+      << ToStatus(result)
+      << ". Retrying with non-exportable handles; collectives sharing this "
+         "memory will not work.";
+  prop.requestedHandleTypes = hipMemHandleTypeNone;
+  ABSL_RETURN_IF_ERROR(ToStatus(hipMemCreate(&handle, padded_size, &prop, 0ULL),
+                           "hipMemCreate"));
+  return handle;
+}
 
 static hipMemAccessDesc GetVmmAccessDescriptor(int device) {
   hipMemAccessDesc descriptor = {};
@@ -51,26 +130,18 @@ static hipMemAccessDesc GetVmmAccessDescriptor(int device) {
 // the padded size, and the allocation handle.
 static absl::StatusOr<
     std::tuple<void*, uint64_t, hipMemGenericAllocationHandle_t>>
-VmmAllocate(StreamExecutor* executor, uint64_t size) {
+VmmAllocate(StreamExecutor* executor, uint64_t size,
+            const RocmVmmAllocator::Options& options) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  hipDevice_t device;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipDeviceGet(&device, executor->device_ordinal())));
-
-  hipMemAllocationProp properties = {};
-  properties.type = hipMemAllocationTypePinned;
-  properties.location.type = hipMemLocationTypeDevice;
-  properties.location.id = device;
-  properties.requestedHandleTypes = hipMemHandleTypeNone;
-  size_t granularity = 0;
-  ABSL_RETURN_IF_ERROR(ToStatus(hipMemGetAllocationGranularity(
-      &granularity, &properties, hipMemAllocationGranularityRecommended)));
+  ABSL_ASSIGN_OR_RETURN(RocmVmmAllocationParams params,
+                   GetRocmVmmAllocationParams(executor, options));
+  size_t granularity = params.granularity;
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
-  hipMemGenericAllocationHandle_t handle;
 
-  ABSL_RETURN_IF_ERROR(
-      ToStatus(hipMemCreate(&handle, padded_size, &properties, 0ULL)));
+  ABSL_ASSIGN_OR_RETURN(hipMemGenericAllocationHandle_t handle,
+                   CreateRocmVmmPhysicalAllocation(params.prop, padded_size));
 
   hipDeviceptr_t ptr = nullptr;
   absl::Status status = ToStatus(
@@ -182,7 +253,11 @@ class RocmVmmMemoryAllocation final : public MemoryAllocation {
 }  // namespace
 
 RocmVmmAllocator::RocmVmmAllocator(StreamExecutor* executor)
-    : executor_(executor) {}
+    : RocmVmmAllocator(executor, Options()) {}
+
+RocmVmmAllocator::RocmVmmAllocator(StreamExecutor* executor,
+                                   const Options& options)
+    : executor_(executor), options_(options) {}
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> RocmVmmAllocator::Allocate(
     uint64_t size) {
@@ -191,7 +266,7 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> RocmVmmAllocator::Allocate(
                                                      nullptr);
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto result, VmmAllocate(executor_, size));
+  ABSL_ASSIGN_OR_RETURN(auto result, VmmAllocate(executor_, size, options_));
   auto [ptr, padded_size, handle] = result;
 
   return std::make_unique<RocmVmmMemoryAllocation>(executor_, ptr, size,

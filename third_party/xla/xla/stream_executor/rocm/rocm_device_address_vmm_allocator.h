@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_vmm_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -45,7 +46,8 @@ namespace stream_executor::gpu {
 // hipExtMallocWithFlags(hipMallocSignalMemory), which is required by
 // hipStreamWriteValue64 on AMD hardware.
 //
-// Use the Create() factories to obtain an instance.
+// Use the Create() factories to obtain an instance. `vmm_options` decides how
+// the underlying VMM allocations are created.
 class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
  public:
   ~RocmDeviceAddressVmmAllocator() override;
@@ -59,7 +61,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       const Platform* platform, absl::Span<const DeviceConfig> devices,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
       std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
-      std::vector<FreeVisitor> free_visitors = {});
+      std::vector<FreeVisitor> free_visitors = {},
+      const RocmVmmAllocator::Options& vmm_options = {});
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
@@ -74,7 +77,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
       std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
-      std::vector<FreeVisitor> free_visitors = {});
+      std::vector<FreeVisitor> free_visitors = {},
+      const RocmVmmAllocator::Options& vmm_options = {});
 
   // Creates an allocator for a single device, with no host allocator:
   // MemorySpace::kHost requests fail.
@@ -88,7 +92,8 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>> Create(
       StreamExecutor* executor, Stream* stream, uint64_t pa_budget = UINT64_MAX,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
-      std::vector<FreeVisitor> free_visitors = {});
+      std::vector<FreeVisitor> free_visitors = {},
+      const RocmVmmAllocator::Options& vmm_options = {});
 
  protected:
   // Allocates signal memory via hipExtMallocWithFlags(hipMallocSignalMemory)
@@ -115,7 +120,12 @@ class RocmDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       const Platform* platform,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
       std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
-      std::vector<FreeVisitor> free_visitors = {});
+      std::vector<FreeVisitor> free_visitors = {},
+      const RocmVmmAllocator::Options& vmm_options = {});
+
+  // Applied to every allocation and reservation, so the two are padded to the
+  // same granularity.
+  RocmVmmAllocator::Options vmm_options_;
 };
 
 }  // namespace stream_executor::gpu

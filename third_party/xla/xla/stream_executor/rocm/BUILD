@@ -1688,6 +1688,45 @@ rocm_library(
     alwayslink = 1,
 )
 
+xla_cc_test(
+    name = "rocm_vmm_exportable_handles_test",
+    srcs = ["rocm_vmm_exportable_handles_test.cc"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":amdhipblaslt_plugin",
+        ":rocm_device_address_vmm_allocator",
+        ":rocm_platform",
+        ":rocm_raw_memory_allocation",
+        ":rocm_status",
+        ":rocm_vmm_allocator",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_space",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
 cc_library(
     name = "rocm_raw_memory_allocation",
     srcs = ["rocm_raw_memory_allocation.cc"],
@@ -1698,6 +1737,7 @@ cc_library(
     ],
     deps = [
         ":rocm_status",
+        ":rocm_vmm_allocator",
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
@@ -1745,6 +1785,7 @@ cc_library(
     deps = [
         ":rocm_raw_memory_allocation",
         ":rocm_status",
+        ":rocm_vmm_allocator",
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
@@ -1805,9 +1846,11 @@ cc_library(
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
@@ -1832,6 +1875,7 @@ cc_library(
         ":rocm_memory_reservation",
         ":rocm_raw_memory_allocation",
         ":rocm_status",
+        ":rocm_vmm_allocator",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_vmm_allocator",
