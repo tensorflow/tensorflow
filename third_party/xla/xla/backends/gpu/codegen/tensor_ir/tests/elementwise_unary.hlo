@@ -74,9 +74,7 @@ test_exp {
 
 // CHECK-LABEL: @test_expm1
 // CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
-// CHECK-DAG: %[[ONE:.*]] = constant dense<1.000000e+00>
-// CHECK-DAG: %[[EXP:.*]] = exp %[[ARG0]]
-// CHECK: %[[OUT:.*]] = sub %[[EXP]], %[[ONE]]
+// CHECK: %[[OUT:.*]] = expm1 %[[ARG0]]
 // CHECK: results %[[OUT]]
 
 test_expm1 {
@@ -112,9 +110,7 @@ test_log {
 
 // CHECK-LABEL: @test_log1p
 // CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
-// CHECK-DAG: %[[ONE:.*]] = constant dense<1.000000e+00>
-// CHECK-DAG: %[[ADD:.*]] = add %[[ARG0]], %[[ONE]]
-// CHECK: %[[OUT:.*]] = log %[[ADD]]
+// CHECK: %[[OUT:.*]] = log1p %[[ARG0]]
 // CHECK: results %[[OUT]]
 
 test_log1p {
