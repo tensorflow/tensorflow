@@ -1894,8 +1894,9 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
     return sort_ops.sort(a, axis)
 
 
-def _argminmax(fn, a, axis=None):
+def _argminmax(fn, a, axis=None, keepdims=False):
   a = np_array_ops.array(a)
+  a_rank = a.shape.rank
   if axis is None:
     # When axis is None numpy flattens the array.
     a_t = array_ops.reshape(a, [-1])
@@ -1915,19 +1916,39 @@ def _argminmax(fn, a, axis=None):
             f'Argument `axis` (received axis={axis}) is out of bounds '
             f'for input of rank {maybe_rank}.'
         )
-  return fn(input=a_t, axis=axis)
+  result = fn(input=a_t, axis=axis)
+  if not keepdims:
+    return result
+  if axis is None:
+    # NumPy keeps every reduced dimension, so the result has the input's rank
+    # with all dimensions of size 1. The rank is only unknown at trace time
+    # for dynamically shaped inputs.
+    if a_rank is None:
+      a_rank = array_ops.rank(a)
+    if isinstance(a_rank, int):
+      # A static rank lets TF infer the reshaped shape directly instead of
+      # materializing a shape tensor.
+      return array_ops.reshape(result, [1] * a_rank)
+    return array_ops.reshape(
+        result, array_ops.ones([a_rank], dtype=dtypes.int32)
+    )
+  if a_rank == 0:
+    # NumPy treats a 0-d input as 1-D only for axis validation, and returns a
+    # 0-d result even with keepdims=True.
+    return result
+  return array_ops.expand_dims(result, axis)
 
 
 @tf_export.tf_export('experimental.numpy.argmax', v1=[])
 @np_utils.np_doc('argmax')
-def argmax(a, axis=None):
-  return _argminmax(math_ops.argmax, a, axis)
+def argmax(a, axis=None, keepdims=False):
+  return _argminmax(math_ops.argmax, a, axis, keepdims)
 
 
 @tf_export.tf_export('experimental.numpy.argmin', v1=[])
 @np_utils.np_doc('argmin')
-def argmin(a, axis=None):
-  return _argminmax(math_ops.argmin, a, axis)
+def argmin(a, axis=None, keepdims=False):
+  return _argminmax(math_ops.argmin, a, axis, keepdims)
 
 
 @tf_export.tf_export('experimental.numpy.append', v1=[])

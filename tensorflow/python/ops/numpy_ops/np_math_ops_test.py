@@ -410,6 +410,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
       arr = fn(d)
       self.match(np_math_ops.argmax(arr), np.argmax(arr))
       self.match(np_math_ops.argmin(arr), np.argmin(arr))
+      self.match(
+          np_math_ops.argmax(arr, keepdims=True), np.argmax(arr, keepdims=True))
+      self.match(
+          np_math_ops.argmin(arr, keepdims=True), np.argmin(arr, keepdims=True))
       if hasattr(arr, 'shape'):
         ndims = len(arr.shape)
       else:
@@ -423,6 +427,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
             np_math_ops.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
         self.match(
             np_math_ops.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
+        self.match(
+            np_math_ops.argmax(arr, axis=axis, keepdims=True),
+            np.argmax(arr, axis=axis, keepdims=True))
+        self.match(
+            np_math_ops.argmin(arr, axis=axis, keepdims=True),
+            np.argmin(arr, axis=axis, keepdims=True))
 
   def testArgMaxArgMinOutOfBoundsAxis(self):
     a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
