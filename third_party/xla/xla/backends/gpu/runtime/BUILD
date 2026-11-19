@@ -6540,6 +6540,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_module_executable",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service:maybe_owning_device_address",
