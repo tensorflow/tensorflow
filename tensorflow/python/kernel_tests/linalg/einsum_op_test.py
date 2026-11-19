@@ -209,6 +209,41 @@ class EinsumOpTest(test.TestCase):
         with self.assertRaises((ValueError, errors.InvalidArgumentError)):
           _ = self.evaluate(gen_linalg_ops.einsum(placeholders, args[0]))
 
+  @test_util.disable_xla('b/131919749')
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidEllipsis(self):
+    r = np.random.RandomState(0)
+    too_many_periods = 'Expected at most one ellipsis'
+    stray_periods = 'Periods found outside of ellipsis'
+    cases = [
+        # multiple ellipses in a subscript.
+        (too_many_periods, '...i...->...', r.randn(2, 3)),
+        (too_many_periods, '...i->......', r.randn(2, 3)),
+        (too_many_periods, '...i...,ij->...', r.randn(3, 2), r.randn(3, 4)),
+        (too_many_periods, 'ij,...j...->...', r.randn(2, 3), r.randn(3, 4)),
+        # number of periods other than zero or three.
+        (too_many_periods, 'i.j->ij', r.randn(2, 3)),
+        (too_many_periods, '..ij->ij', r.randn(2, 3)),
+        (too_many_periods, '....ij->...ij', r.randn(2, 3)),
+        # three periods that do not form a single ellipsis.
+        (stray_periods, '..ij.->ij', r.randn(2, 3)),
+        (stray_periods, '...i->.i..', r.randn(2, 3)),
+    ]
+    for message, equation, *inputs in cases:
+      with self.subTest(equation=equation):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), message
+        ):
+          _ = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
+
+        placeholders = [
+            array_ops.placeholder_with_default(x, shape=None) for x in inputs
+        ]
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), message
+        ):
+          _ = self.evaluate(gen_linalg_ops.einsum(placeholders, equation))
+
   @test_util.run_in_graph_and_eager_modes
   def testPlaceholder(self):
 
