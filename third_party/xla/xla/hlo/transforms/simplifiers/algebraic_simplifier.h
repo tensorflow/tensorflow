@@ -292,6 +292,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
       HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dnums);
 
+  // Swap the operands of dots, if one operand is "parameter-like" (i.e. a
+  // parameter, or a pointwise transformation of a parameter), so the
+  // "parameter-like" operand (e.g. a weight tensor) is placed on the RHS.
+  virtual absl::StatusOr<bool> MoveDotParamToRhs(HloDotInstruction* dot);
+
  private:
   // Returns an operand of a chain of reshapes and copies that is bit-wise
   // identical to first reshape or copy in the chain.
@@ -363,11 +368,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //   LHS [batch dims..., non-contracting dim, contracting dim]
   //   RHS [batch dims..., contracting dim, non-contracting dim].
   absl::StatusOr<bool> RemoveTransposesFromDotOperands(HloDotInstruction* dot);
-
-  // Swap the operands of dots, if one operand is "parameter-like" (i.e. a
-  // parameter, or a pointwise transformation of a parameter), so the
-  // "parameter-like" operand (e.g. a weight tensor) is placed on the RHS.
-  absl::StatusOr<bool> MoveDotParamToRhs(HloDotInstruction* dot);
 
   // Helper method to perform and add reduction on a list of dimensions.
   HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64_t> dims,
