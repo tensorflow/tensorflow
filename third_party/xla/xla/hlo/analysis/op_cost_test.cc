@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cost_modelling/op_cost.h"
+#include "xla/hlo/analysis/op_cost.h"
 
 #include <memory>
 #include <string>
@@ -22,12 +22,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/op_cost_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/map_util.h"
-#include "xla/service/cost_modelling/op_cost_test_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"

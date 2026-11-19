@@ -837,3 +837,51 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
     ],
 )
+
+cc_library(
+    name = "op_cost",
+    srcs = ["op_cost.cc"],
+    hdrs = ["op_cost.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "op_cost_test_utils",
+    testonly = True,
+    hdrs = ["op_cost_test_utils.h"],
+    deps = [
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "op_cost_test",
+    srcs = ["op_cost_test.cc"],
+    deps = [
+        ":op_cost",
+        ":op_cost_test_utils",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

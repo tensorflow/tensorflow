@@ -16,46 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COST_MODELLING_OP_COST_TEST_UTILS_H_
 #define XLA_SERVICE_COST_MODELLING_OP_COST_TEST_UTILS_H_
 
-#include <string>
-
-#include "absl/strings/str_join.h"
-#include "xla/tsl/platform/test.h"
-
-namespace xla {
-
-MATCHER_P2(HasCalculationValue, expected_final_result,
-           expected_final_result_source,
-           absl::StrCat("has value ", expected_final_result, " from source ",
-                        expected_final_result_source)) {
-  if (!arg.HasValue()) {
-    return false;
-  }
-  if (arg.Value() != expected_final_result) {
-    return false;
-  }
-  if (arg.ValueSource() != expected_final_result_source) {
-    return false;
-  }
-
-  return true;
-}
-
-MATCHER(MissingCalculationValue, "is missing a value") {
-  return !arg.HasValue();
-}
-
-MATCHER_P(HasCalculatorMapValues, expected_calculator_values,
-          absl::StrCat("has calculator values [",
-                       absl::StrJoin(expected_calculator_values, ", ",
-                                     [](std::string* out, const auto& pair) {
-                                       absl::StrAppend(out, pair.first, ": ",
-                                                       pair.second.ToString());
-                                     }),
-                       "]")) {
-  return ::testing::Matches(::testing::UnorderedElementsAreArray(
-      expected_calculator_values))(arg.GetCalculatorValueMap());
-}
-
-}  // namespace xla
+// IWYU pragma: private, include "xla/hlo/analysis/op_cost_test_utils.h"
+#include "xla/hlo/analysis/op_cost_test_utils.h"  // IWYU pragma: export // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_COST_MODELLING_OP_COST_TEST_UTILS_H_

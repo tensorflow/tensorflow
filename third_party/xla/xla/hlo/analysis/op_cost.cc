@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cost_modelling/op_cost.h"
+#include "xla/hlo/analysis/op_cost.h"
 
 #include <cstddef>
 #include <cstdint>
