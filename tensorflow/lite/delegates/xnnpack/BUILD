@@ -1422,11 +1422,13 @@ cc_test(
     deps = [
         ":moe_delegate_kernel",
         ":test_main",
+        ":xnnpack_delegate",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "@XNNPACK",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:runtime_cc",
     ],
