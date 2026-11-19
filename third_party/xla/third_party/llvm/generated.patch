@@ -1,312 +1,43 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Decl.h b/clang/include/clang/AST/Decl.h
---- a/clang/include/clang/AST/Decl.h
-+++ b/clang/include/clang/AST/Decl.h
-@@ -3540,8 +3540,6 @@
-   /// \p nullptr if either the attribute or the field doesn't exist.
-   const FieldDecl *findCountedByField() const;
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/KnownFPClass.h b/llvm/include/llvm/Support/KnownFPClass.h
+--- a/llvm/include/llvm/Support/KnownFPClass.h
++++ b/llvm/include/llvm/Support/KnownFPClass.h
+@@ -331,14 +331,6 @@
+   LLVM_ABI static KnownFPClass applyInputDenormalMode(const KnownFPClass &Src,
+                                                       DenormalMode Mode);
  
--  bool isUnusedPrivateField() const;
+-  /// Return the known classes of \p Src after passing through an input that
+-  /// may flush subnormals to zero according to \p Mode. If the input may have
+-  /// NSZ, then +0.0 and -0.0 (along with subnormals flushed to zero) may be
+-  /// treated as a zero of either sign.
+-  LLVM_ABI static KnownFPClass applyInputSemantics(const KnownFPClass &Src,
+-                                                   DenormalMode Mode,
+-                                                   bool MayBeNSZ = true);
 -
- private:
-   void setLazyInClassInitializer(LazyDeclStmtPtr NewInit);
+   /// Return the known classes of \p Src after producing an output that may
+   /// flush subnormals to zero according to \p Mode.
+   LLVM_ABI static KnownFPClass applyOutputDenormalMode(const KnownFPClass &Src,
+diff -ruN --strip-trailing-cr a/llvm/lib/Support/KnownFPClass.cpp b/llvm/lib/Support/KnownFPClass.cpp
+--- a/llvm/lib/Support/KnownFPClass.cpp
++++ b/llvm/lib/Support/KnownFPClass.cpp
+@@ -47,20 +47,6 @@
  
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
---- a/clang/lib/AST/Decl.cpp
-+++ b/clang/lib/AST/Decl.cpp
-@@ -4973,34 +4973,6 @@
- 
-   return dyn_cast<FieldDecl>(CountDecl);
+   llvm_unreachable("covered switch over denormal mode");
  }
 -
--static bool initializationHasSideEffects(const FieldDecl &FD) {
--  const Type *T = FD.getType()->getBaseElementTypeUnsafe();
--  // FIXME: Destruction of ObjC lifetime types has side-effects.
--  if (const CXXRecordDecl *RD = T->getAsCXXRecordDecl())
--    return !RD->isCompleteDefinition() || !RD->hasTrivialDefaultConstructor() ||
--           !RD->hasTrivialDestructor();
--  return false;
--}
+-KnownFPClass KnownFPClass::applyInputSemantics(const KnownFPClass &KnownSrc,
+-                                               DenormalMode Mode,
+-                                               bool MayBeNSZ) {
+-  // We flush denormals first since it may add zeroes to the input classes.
+-  KnownFPClass Known = applyInputDenormalMode(KnownSrc, Mode);
 -
--template <typename AttrType> static bool hasAttribute(QualType T) {
--  if (const TagDecl *TD = T->getAsTagDecl())
--    return TD->hasAttr<AttrType>();
--  if (const TypedefType *TDT = T->getAs<TypedefType>())
--    return TDT->getDecl()->hasAttr<AttrType>();
--  return false;
--}
+-  // NSZ means that a +0.0 or -0.0 input may be treated as a zero of the
+-  // opposite sign.
+-  if (MayBeNSZ && !Known.isKnownNever(fcZero))
+-    Known |= fcZero;
 -
--bool FieldDecl::isUnusedPrivateField() const {
--  if (isImplicit() || !getDeclName() || getAccess() != AS_private ||
--      hasAttr<UnusedAttr>() || getParent()->isDependentContext())
--    return false;
--
--  QualType FieldType = getType();
--  return !hasAttribute<UnusedAttr>(FieldType) &&
--         (hasAttribute<WarnUnusedAttr>(FieldType) ||
--          !initializationHasSideEffects(*this));
+-  return Known;
 -}
  
- //===----------------------------------------------------------------------===//
- // TagDecl Implementation
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
---- a/clang/lib/Sema/SemaDeclCXX.cpp
-+++ b/clang/lib/Sema/SemaDeclCXX.cpp
-@@ -3414,6 +3414,15 @@
-   Diag(Old->getLocation(), diag::note_overridden_virtual_function);
-   return true;
- }
-+
-+static bool InitializationHasSideEffects(const FieldDecl &FD) {
-+  const Type *T = FD.getType()->getBaseElementTypeUnsafe();
-+  // FIXME: Destruction of ObjC lifetime types has side-effects.
-+  if (const CXXRecordDecl *RD = T->getAsCXXRecordDecl())
-+    return !RD->isCompleteDefinition() || !RD->hasTrivialDefaultConstructor() ||
-+           !RD->hasTrivialDestructor();
-+  return false;
-+}
- 
- void Sema::CheckShadowInheritedFields(const SourceLocation &Loc,
-                                       DeclarationName FieldName,
-@@ -3464,6 +3473,29 @@
-     }
-   }
- }
-+
-+template <typename AttrType>
-+inline static bool HasAttribute(const QualType &T) {
-+  if (const TagDecl *TD = T->getAsTagDecl())
-+    return TD->hasAttr<AttrType>();
-+  if (const TypedefType *TDT = T->getAs<TypedefType>())
-+    return TDT->getDecl()->hasAttr<AttrType>();
-+  return false;
-+}
-+
-+static bool IsUnusedPrivateField(const FieldDecl *FD) {
-+  if (FD->getAccess() == AS_private && FD->getDeclName()) {
-+    QualType FieldType = FD->getType();
-+    if (HasAttribute<WarnUnusedAttr>(FieldType))
-+      return true;
-+
-+    return !FD->isImplicit() && !FD->hasAttr<UnusedAttr>() &&
-+           !FD->getParent()->isDependentContext() &&
-+           !HasAttribute<UnusedAttr>(FieldType) &&
-+           !InitializationHasSideEffects(*FD);
-+  }
-+  return false;
-+}
- 
- NamedDecl *
- Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
-@@ -3758,7 +3790,7 @@
-     FieldCollector->Add(FD);
- 
-     if (!Diags.isIgnored(diag::warn_unused_private_field, FD->getLocation()) &&
--        FD->isUnusedPrivateField()) {
-+        IsUnusedPrivateField(FD)) {
-       // Remember all explicit private FieldDecls that have a name, no side
-       // effects and are not part of a dependent type declaration.
-       UnusedPrivateFields.insert(FD);
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
---- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
-+++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
-@@ -1967,11 +1967,6 @@
-   Field->setAccess(D->getAccess());
-   Owner->addDecl(Field);
- 
--  if (!SemaRef.Diags.isIgnored(diag::warn_unused_private_field,
--                               Field->getLocation()) &&
--      Field->isUnusedPrivateField())
--    SemaRef.UnusedPrivateFields.insert(Field);
--
-   return Field;
- }
- 
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/uninitialized.cpp b/clang/test/SemaCXX/uninitialized.cpp
---- a/clang/test/SemaCXX/uninitialized.cpp
-+++ b/clang/test/SemaCXX/uninitialized.cpp
-@@ -593,7 +593,7 @@
-   };
-   void stuff();
-   template <typename T> class FooImpl : public Foo {
--    T val; // expected-warning 2{{private field 'val' is not used}}
-+    T val;
-   public:
-     FooImpl(const T &x) : val(x) {}
-     ~FooImpl() { stuff(); }
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/warn-unused-private-field.cpp b/clang/test/SemaCXX/warn-unused-private-field.cpp
---- a/clang/test/SemaCXX/warn-unused-private-field.cpp
-+++ b/clang/test/SemaCXX/warn-unused-private-field.cpp
-@@ -354,37 +354,3 @@
-   T t2;            // ok
- };
- }
--
--namespace warn_unused_template {
--struct [[gnu::warn_unused]] WarnUnusedType {};
--
--template <typename T>
--struct Outer {
--  class Inner {
--    friend struct Outer<T>;
--    WarnUnusedType field_;
--  };
--
--  WarnUnusedType use(Inner &i) {
--    return i.field_;
--  }
--};
--WarnUnusedType test() {
--  Outer<int> o;
--  Outer<int>::Inner i;
--  return o.use(i);
--}
--
--template <typename T>
--struct Outer2 {
--  class Inner {
--    WarnUnusedType field_; // expected-warning {{private field 'field_' is not used}}
--  };
--};
--void test2() {
--  Outer2<int> o;
--  Outer2<int>::Inner i;
--  (void)o;
--  (void)i;
--}
--} // namespace warn_unused_template
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/scalar_to_vector.gfx11plus.ll b/llvm/test/CodeGen/AMDGPU/scalar_to_vector.gfx11plus.ll
---- a/llvm/test/CodeGen/AMDGPU/scalar_to_vector.gfx11plus.ll
-+++ b/llvm/test/CodeGen/AMDGPU/scalar_to_vector.gfx11plus.ll
-@@ -96,7 +96,7 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B64_:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-REAL16-NEXT:   [[S_ADD_U:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE1]], [[S_MOV_B64_]], implicit-def dead $scc
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !1, !noalias !4, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !1, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[COPY11:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_]]
-   ; GFX11-REAL16-NEXT:   S_BRANCH %bb.3
-   ; GFX11-REAL16-NEXT: {{  $}}
-@@ -109,7 +109,7 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_1:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B64_1:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-REAL16-NEXT:   [[S_ADD_U1:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE2]], [[S_MOV_B64_1]], implicit-def dead $scc
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !7, !noalias !8, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !4, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[COPY14:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1]]
-   ; GFX11-REAL16-NEXT: {{  $}}
-   ; GFX11-REAL16-NEXT: bb.3.join:
-@@ -121,12 +121,12 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_2:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[COPY17:%[0-9]+]]:sreg_32 = COPY [[PHI1]]
-   ; GFX11-REAL16-NEXT:   [[COPY18:%[0-9]+]]:vgpr_32 = COPY [[COPY17]]
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !9, !noalias !10, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !6, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B32_1:%[0-9]+]]:sreg_32 = S_MOV_B32 1023
-   ; GFX11-REAL16-NEXT:   [[V_AND_B32_e64_:%[0-9]+]]:vgpr_32 = V_AND_B32_e64 [[COPY1]](i32), [[S_MOV_B32_1]], implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B32_2:%[0-9]+]]:sreg_32 = S_MOV_B32 2
-   ; GFX11-REAL16-NEXT:   [[V_LSHLREV_B32_e64_:%[0-9]+]]:vgpr_32 = nuw nsw V_LSHLREV_B32_e64 [[S_MOV_B32_2]], [[V_AND_B32_e64_]], implicit $exec
--  ; GFX11-REAL16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !10, !noalias !9, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !7, addrspace 1)
-   ; GFX11-REAL16-NEXT:   S_ENDPGM 0
-   ;
-   ; GFX11-FAKE16-LABEL: name: uniform_phi_lo_d16_hi_f16
-@@ -161,7 +161,7 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B64_:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-FAKE16-NEXT:   [[S_ADD_U:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE1]], [[S_MOV_B64_]], implicit-def dead $scc
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !1, !noalias !4, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !1, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[COPY11:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_USHORT_SADDR]]
-   ; GFX11-FAKE16-NEXT:   S_BRANCH %bb.3
-   ; GFX11-FAKE16-NEXT: {{  $}}
-@@ -174,7 +174,7 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_1:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B64_1:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-FAKE16-NEXT:   [[S_ADD_U1:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE2]], [[S_MOV_B64_1]], implicit-def dead $scc
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR1:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !7, !noalias !8, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR1:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !4, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[COPY14:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_USHORT_SADDR1]]
-   ; GFX11-FAKE16-NEXT: {{  $}}
-   ; GFX11-FAKE16-NEXT: bb.3.join:
-@@ -186,12 +186,12 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_2:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[COPY17:%[0-9]+]]:sreg_32 = COPY [[PHI1]]
-   ; GFX11-FAKE16-NEXT:   [[COPY18:%[0-9]+]]:vgpr_32 = COPY [[COPY17]]
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !9, !noalias !10, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !6, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B32_1:%[0-9]+]]:sreg_32 = S_MOV_B32 1023
-   ; GFX11-FAKE16-NEXT:   [[V_AND_B32_e64_:%[0-9]+]]:vgpr_32 = V_AND_B32_e64 [[COPY1]](i32), [[S_MOV_B32_1]], implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B32_2:%[0-9]+]]:sreg_32 = S_MOV_B32 2
-   ; GFX11-FAKE16-NEXT:   [[V_LSHLREV_B32_e64_:%[0-9]+]]:vgpr_32 = nuw nsw V_LSHLREV_B32_e64 [[S_MOV_B32_2]], [[V_AND_B32_e64_]], implicit $exec
--  ; GFX11-FAKE16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !10, !noalias !9, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !7, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   S_ENDPGM 0
- entry:
-   %cmp = icmp eq i32 %c, 0
-@@ -253,7 +253,7 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B64_:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-REAL16-NEXT:   [[S_ADD_U:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE1]], [[S_MOV_B64_]], implicit-def dead $scc
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !11, !noalias !14, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !9, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[COPY11:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_]]
-   ; GFX11-REAL16-NEXT:   S_BRANCH %bb.3
-   ; GFX11-REAL16-NEXT: {{  $}}
-@@ -266,7 +266,7 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_1:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B64_1:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-REAL16-NEXT:   [[S_ADD_U1:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE2]], [[S_MOV_B64_1]], implicit-def dead $scc
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !17, !noalias !18, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1:%[0-9]+]]:vgpr_16 = GLOBAL_LOAD_SHORT_D16_SADDR_t16 [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !12, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[COPY14:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_SHORT_D16_SADDR_t16_1]]
-   ; GFX11-REAL16-NEXT: {{  $}}
-   ; GFX11-REAL16-NEXT: bb.3.join:
-@@ -278,12 +278,12 @@
-   ; GFX11-REAL16-NEXT:   [[V_MOV_B32_e32_2:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-REAL16-NEXT:   [[COPY17:%[0-9]+]]:sreg_32 = COPY [[PHI1]]
-   ; GFX11-REAL16-NEXT:   [[COPY18:%[0-9]+]]:vgpr_32 = COPY [[COPY17]]
--  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !19, !noalias !20, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !14, addrspace 1)
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B32_1:%[0-9]+]]:sreg_32 = S_MOV_B32 1023
-   ; GFX11-REAL16-NEXT:   [[V_AND_B32_e64_:%[0-9]+]]:vgpr_32 = V_AND_B32_e64 [[COPY1]](i32), [[S_MOV_B32_1]], implicit $exec
-   ; GFX11-REAL16-NEXT:   [[S_MOV_B32_2:%[0-9]+]]:sreg_32 = S_MOV_B32 2
-   ; GFX11-REAL16-NEXT:   [[V_LSHLREV_B32_e64_:%[0-9]+]]:vgpr_32 = nuw nsw V_LSHLREV_B32_e64 [[S_MOV_B32_2]], [[V_AND_B32_e64_]], implicit $exec
--  ; GFX11-REAL16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !20, !noalias !19, addrspace 1)
-+  ; GFX11-REAL16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !15, addrspace 1)
-   ; GFX11-REAL16-NEXT:   S_ENDPGM 0
-   ;
-   ; GFX11-FAKE16-LABEL: name: uniform_phi_lo_d16_hi_i16
-@@ -318,7 +318,7 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B64_:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-FAKE16-NEXT:   [[S_ADD_U:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE1]], [[S_MOV_B64_]], implicit-def dead $scc
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !11, !noalias !14, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE1]], [[V_MOV_B32_e32_]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.pa, !alias.scope !9, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[COPY11:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_USHORT_SADDR]]
-   ; GFX11-FAKE16-NEXT:   S_BRANCH %bb.3
-   ; GFX11-FAKE16-NEXT: {{  $}}
-@@ -331,7 +331,7 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_1:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B64_1:%[0-9]+]]:sreg_64 = S_MOV_B64 12
-   ; GFX11-FAKE16-NEXT:   [[S_ADD_U1:%[0-9]+]]:sreg_64 = nuw S_ADD_U64_PSEUDO [[REG_SEQUENCE2]], [[S_MOV_B64_1]], implicit-def dead $scc
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR1:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !17, !noalias !18, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_USHORT_SADDR1:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_USHORT_SADDR [[REG_SEQUENCE2]], [[V_MOV_B32_e32_1]], 12, 0, implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.qa, !alias.scope !12, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[COPY14:%[0-9]+]]:sreg_32 = COPY [[GLOBAL_LOAD_USHORT_SADDR1]]
-   ; GFX11-FAKE16-NEXT: {{  $}}
-   ; GFX11-FAKE16-NEXT: bb.3.join:
-@@ -343,12 +343,12 @@
-   ; GFX11-FAKE16-NEXT:   [[V_MOV_B32_e32_2:%[0-9]+]]:vgpr_32 = V_MOV_B32_e32 0, implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[COPY17:%[0-9]+]]:sreg_32 = COPY [[PHI1]]
-   ; GFX11-FAKE16-NEXT:   [[COPY18:%[0-9]+]]:vgpr_32 = COPY [[COPY17]]
--  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !19, !noalias !20, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   [[GLOBAL_LOAD_SHORT_D16_HI_SADDR:%[0-9]+]]:vgpr_32 = GLOBAL_LOAD_SHORT_D16_HI_SADDR [[PHI]], [[V_MOV_B32_e32_2]], 2, 0, [[COPY18]], implicit $exec :: ("amdgpu-noclobber" load (s16) from %ir.hip, !alias.scope !14, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B32_1:%[0-9]+]]:sreg_32 = S_MOV_B32 1023
-   ; GFX11-FAKE16-NEXT:   [[V_AND_B32_e64_:%[0-9]+]]:vgpr_32 = V_AND_B32_e64 [[COPY1]](i32), [[S_MOV_B32_1]], implicit $exec
-   ; GFX11-FAKE16-NEXT:   [[S_MOV_B32_2:%[0-9]+]]:sreg_32 = S_MOV_B32 2
-   ; GFX11-FAKE16-NEXT:   [[V_LSHLREV_B32_e64_:%[0-9]+]]:vgpr_32 = nuw nsw V_LSHLREV_B32_e64 [[S_MOV_B32_2]], [[V_AND_B32_e64_]], implicit $exec
--  ; GFX11-FAKE16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !20, !noalias !19, addrspace 1)
-+  ; GFX11-FAKE16-NEXT:   GLOBAL_STORE_DWORD_SADDR [[V_LSHLREV_B32_e64_]], [[GLOBAL_LOAD_SHORT_D16_HI_SADDR]], [[REG_SEQUENCE3]], 0, 0, implicit $exec :: (store (s32) into %ir.o, !alias.scope !15, addrspace 1)
-   ; GFX11-FAKE16-NEXT:   S_ENDPGM 0
- entry:
-   %cmp = icmp eq i32 %c, 0
+ KnownFPClass KnownFPClass::applyOutputDenormalMode(const KnownFPClass &KnownSrc,
+                                                    DenormalMode Mode) {
