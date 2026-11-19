@@ -14,6 +14,8 @@
 # ==============================================================================
 """Gather operations for RaggedTensors."""
 
+import numbers
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -387,7 +389,9 @@ def gather_nd(
   >>> tf.gather_nd(params, [[0, 0, 1], [1, 1, 2]]).numpy()
   array([b'001', b'112'], dtype=object)
   """
-  if not isinstance(batch_dims, int) or batch_dims != 0:
+  if not isinstance(batch_dims, numbers.Integral):
+    raise TypeError('batch_dims must be an integer')
+  if batch_dims != 0:
     raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
   if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
     return array_ops.gather_nd(

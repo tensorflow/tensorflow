@@ -1188,6 +1188,34 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected = bi * 10.
     self.assertEqual(expected, self.evaluate(case_out))
 
+  @parameterized.parameters((np.int32,), (np.int64,), (np.uint8,))
+  def testCase_numpyIntegerKeys(self, dtype):
+    nbranches = 4
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    # Keys given out of order, as NumPy integer scalars, in both accepted
+    # forms of `branch_fns`.
+    keys = [dtype(i) for i in (2, 0, 3, 1)]
+    from_pairs = [(k, make_func(int(k))) for k in keys]
+    from_dict = {k: make_func(int(k)) for k in keys}
+    for branches in (from_pairs, from_dict):
+      for bi in range(nbranches):
+        branch_index = array_ops.placeholder_with_default(bi, [])
+        case_out = control_flow_switch_case.switch_case(
+            branch_index, branches)
+        self.assertEqual(bi * 10., self.evaluate(case_out))
+
+  def testCase_numpyIntegerKeysStillMustBeContiguous(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = {np.int64(i): make_func(i) for i in range(0, 6, 2)}
+    with self.assertRaisesRegex(ValueError, "must form contiguous"):
+      control_flow_switch_case.switch_case(array_ops.constant(0), branches)
+
   @parameterized.parameters((-1,), (1,), (4,), (5,))
   def testCase_gradient_disable_lowering(self, bi):
     self._testCase_gradient(True, bi)
@@ -1386,6 +1414,15 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
     branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
+    with self.assertRaisesRegex(TypeError, "must be a Python `int`"):
+      control_flow_switch_case.switch_case(array_ops.constant(1), branches)
+
+  def testCase_validateNumpyFloatKeys(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = [(np.float32(i), make_func(i)) for i in range(5)]
     with self.assertRaisesRegex(TypeError, "must be a Python `int`"):
       control_flow_switch_case.switch_case(array_ops.constant(1), branches)
 
