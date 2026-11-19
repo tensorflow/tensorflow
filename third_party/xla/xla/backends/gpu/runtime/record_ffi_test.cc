@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -188,6 +189,44 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   EXPECT_EQ(c, expected_update);
 }
 
+template <typename CreateLaunchFn>
+std::unique_ptr<ffi::Ffi> MakeAddI32RecordHandler(
+    CreateLaunchFn create_launch) {
+  return ffi::Ffi::BindRecord()
+      .Ctx<ffi::Extension<ffi::RecordExtension>>()
+      .Arg<ffi::AnyBuffer>()
+      .Arg<ffi::AnyBuffer>()
+      .Arg<ffi::AnyBuffer>()
+      .Arg<ffi::AnyBuffer>()
+      .To([create_launch = std::move(create_launch)](
+              ffi::RecordContext record_ctx, ffi::AnyBuffer input_0,
+              ffi::AnyBuffer input_1, ffi::AnyBuffer buffer_scratch,
+              ffi::AnyBuffer result) -> absl::Status {
+        void* in0 = input_0.untyped_data();
+        void* in1 = input_1.untyped_data();
+        void* scratch = buffer_scratch.untyped_data();
+        void* res = result.untyped_data();
+        size_t size = 8 * sizeof(int32_t);
+        std::vector<ffi::KernelArg> args = {ffi::DevicePointer{scratch},
+                                            ffi::DevicePointer{in1},
+                                            ffi::DevicePointer{res}};
+
+        if (record_ctx.action() == ffi::RecordAction::kCreate) {
+          ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
+                           record_ctx.CreateMemcpyD2D(scratch, in0, size));
+          return create_launch(record_ctx, args, memcpy_d2d);
+        }
+        if (record_ctx.action() == ffi::RecordAction::kUpdate) {
+          auto cmds = record_ctx.commands();
+          TF_RET_CHECK(cmds.size() == 2) << "Expected 2 commands recorded.";
+          ABSL_RETURN_IF_ERROR(
+              record_ctx.UpdateMemcpyD2D(cmds[0], scratch, in0, size));
+          return record_ctx.UpdateLaunch(cmds[1], args);
+        }
+        return absl::OkStatus();
+      });
+}
+
 TEST(RecordFfiTest, KernelLaunchWithCuFunc) {
   ASSERT_OK_AND_ASSIGN(auto platform,
                        stream_executor::PlatformManager::PlatformWithName(
@@ -208,51 +247,17 @@ TEST(RecordFfiTest, KernelLaunchWithCuFunc) {
   }
   ASSERT_OK(func_ptr.status());
 
-  std::unique_ptr<ffi::Ffi> handler =
-      ffi::Ffi::BindRecord()
-          .Ctx<ffi::Extension<ffi::RecordExtension>>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .To([func_ptr = *func_ptr](
-                  ffi::RecordContext record_ctx, ffi::AnyBuffer input_0,
-                  ffi::AnyBuffer input_1, ffi::AnyBuffer buffer_scratch,
-                  ffi::AnyBuffer result) -> absl::Status {
-            void* in0 = input_0.untyped_data();
-            void* in1 = input_1.untyped_data();
-            void* scratch = buffer_scratch.untyped_data();
-            void* res = result.untyped_data();
-            size_t size = 8 * sizeof(int32_t);
-
-            if (record_ctx.action() == ffi::RecordAction::kCreate) {
-              ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
-                               record_ctx.CreateMemcpyD2D(scratch, in0, size));
-              ABSL_RETURN_IF_ERROR(
-                  record_ctx
-                      .CreateLaunch(
-                          "AddI32", func_ptr,
+  std::unique_ptr<ffi::Ffi> handler = MakeAddI32RecordHandler(
+      [func_ptr = *func_ptr](ffi::RecordContext& record_ctx,
+                             const std::vector<ffi::KernelArg>& args,
+                             const XLA_FFI_Command* memcpy_d2d) {
+        return record_ctx
+            .CreateLaunch("AddI32", func_ptr,
                           /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
-                          /*shared_mem_bytes=*/1024,
-                          /*uses_pdl=*/false,
-                          std::vector<ffi::KernelArg>{
-                              ffi::DevicePointer{scratch},
-                              ffi::DevicePointer{in1}, ffi::DevicePointer{res}},
+                          /*shared_mem_bytes=*/1024, /*uses_pdl=*/false, args,
                           /*dependencies=*/{memcpy_d2d})
-                      .status());
-            } else if (record_ctx.action() == ffi::RecordAction::kUpdate) {
-              auto cmds = record_ctx.commands();
-              TF_RET_CHECK(cmds.size() == 2) << "Expected 2 commands recorded.";
-              ABSL_RETURN_IF_ERROR(
-                  record_ctx.UpdateMemcpyD2D(cmds[0], scratch, in0, size));
-              ABSL_RETURN_IF_ERROR(record_ctx.UpdateLaunch(
-                  cmds[1],
-                  std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
-                                              ffi::DevicePointer{in1},
-                                              ffi::DevicePointer{res}}));
-            }
-            return absl::OkStatus();
-          });
+            .status();
+      });
   RunRecordFfiTest(executor, *handler);
 }
 

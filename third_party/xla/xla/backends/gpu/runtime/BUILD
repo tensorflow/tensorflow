@@ -1209,7 +1209,6 @@ xla_test(
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
         "//xla/service:shaped_slice",
         "//xla/service/gpu:buffer_allocations",
@@ -6144,6 +6143,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":ffi_kernel_registry",
         "//xla:util",
         "//xla/ffi",
         "//xla/ffi:ffi_interop",
@@ -6156,16 +6156,12 @@ cc_library(
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:platform_port",
     ],
 )
 

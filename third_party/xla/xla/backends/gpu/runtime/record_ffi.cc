@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/record_ffi.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <deque>
-#include <new>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,15 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/debugging/symbolize.h"
 #include "absl/functional/overload.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_c_api.h"
@@ -49,127 +44,10 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
-#include "tsl/platform/mem.h"
 
 namespace xla::gpu {
 
 namespace {
-
-template <int64_t kAlignment>
-class AlignedMemory {
- public:
-  explicit AlignedMemory(size_t size_bytes)
-      : base_(tsl::port::AlignedMalloc(
-            size_bytes, static_cast<std::align_val_t>(kAlignment))),
-        size_bytes_(size_bytes) {}
-  AlignedMemory(const AlignedMemory&) = delete;
-  AlignedMemory& operator=(const AlignedMemory&) = delete;
-  AlignedMemory& operator=(AlignedMemory&& other) = delete;
-
-  // Move only type.
-  AlignedMemory(AlignedMemory&& other) noexcept
-      : base_(std::exchange(other.base_, nullptr)),
-        size_bytes_(std::exchange(other.size_bytes_, 0)) {}
-
-  ~AlignedMemory() {
-    // Check for nullptr because a moved-from object will have base_ == nullptr.
-    if (base_ != nullptr) {
-      tsl::port::AlignedSizedFree(base_, size_bytes_,
-                                  static_cast<std::align_val_t>(kAlignment));
-    }
-  }
-  void* data() const { return base_; }
-  size_t size_bytes() const { return size_bytes_; }
-
- private:
-  void* base_;
-  size_t size_bytes_;
-};
-
-// Custom implementation of se::KernelArgsPackedArrayBase for XLA:FFI.
-class FfiKernelArgsPacked : public se::KernelArgsPackedArrayBase {
-  static constexpr int64_t kAlignment = 64;
-
- public:
-  explicit FfiKernelArgsPacked(int64_t num_args) {
-    argument_addresses_.reserve(num_args);
-  }
-
-  // Arguments passed by pointer to the kernel.
-  void AddDeviceAddress(void* opaque) {
-    device_ptrs_.push_back(opaque);
-    argument_addresses_.push_back(&device_ptrs_.back());
-  }
-
-  // Arguments passed by value to the kernel.
-  void AddHostAddress(const void* data, int64_t size) {
-    CHECK_GT(size, 0) << "Host value size must be positive.";
-    AlignedMemory<kAlignment> aligned_memory(size);
-    std::memcpy(aligned_memory.data(), data, size);
-    allocated_args_.push_back(std::move(aligned_memory));
-    argument_addresses_.push_back(allocated_args_.back().data());
-  }
-
-  void add_shared_bytes(int64_t bytes) { shared_memory_bytes_ += bytes; }
-
-  absl::Span<const void* const> argument_addresses() const override {
-    return argument_addresses_;
-  }
-
-  size_t number_of_arguments() const override {
-    return argument_addresses_.size() + (shared_memory_bytes_ > 0);
-  }
-
-  size_t number_of_shared_bytes() const override {
-    return shared_memory_bytes_;
-  }
-
- private:
-  // Dequeue to keep addresses stable.
-  std::deque<void*> device_ptrs_;
-  std::vector<AlignedMemory<kAlignment>> allocated_args_;
-  std::vector<const void*> argument_addresses_;
-  int64_t shared_memory_bytes_ = 0;
-};
-
-std::string GetSymbolName(const void* ptr) {
-  char buf[512];
-  if (absl::Symbolize(ptr, buf, sizeof(buf))) {
-    return std::string(buf);
-  }
-  return "unknown";
-}
-
-absl::Status PackArgs(const XLA_FFI_KernelArgs* args,
-                      FfiKernelArgsPacked& packed_args) {
-  if (args == nullptr || (args->num_args > 0 && args->args == nullptr)) {
-    return absl::InvalidArgumentError("Invalid XLA_FFI_KernelArgs struct");
-  }
-  for (int64_t i = 0; i < args->num_args; ++i) {
-    if (args->args[i].type == XLA_FFI_KernelArgType_HostValue) {
-      if (args->args[i].size <= 0) {
-        return absl::InvalidArgumentError(
-            "Host value args should have size > 0.");
-      }
-      packed_args.AddHostAddress(args->args[i].arg_address, args->args[i].size);
-      continue;
-    }
-    if (args->args[i].type == XLA_FFI_KernelArgType_DevicePtr) {
-      if (args->args[i].size != 0) {
-        return absl::InvalidArgumentError(
-            "Device pointer args should have size 0.");
-      }
-      packed_args.AddDeviceAddress(
-          // FFI API is const we need to cast away constness.
-          // NOLINTNEXTLINE
-          const_cast<void*>(args->args[i].arg_address));
-      continue;
-    }
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Unsupported kernel argument type: %d", args->args[i].type));
-  }
-  return absl::OkStatus();
-}
 
 se::CommandBuffer::Command* AsStreamExecutorCommand(
     const XLA_FFI_Command* command) {
@@ -202,10 +80,10 @@ struct FfiLaunchParams {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const FfiLaunchParams& params) {
-  std::string kernel_name =
-      std::visit(absl::Overload{[](se::Kernel* k) { return GetSymbolName(k); },
+  absl::string_view kernel_name =
+      std::visit(absl::Overload{[](se::Kernel* k) { return k->name(); },
                                 [](const se::NativeKernel& nk) {
-                                  return GetSymbolName(nk.device_fn);
+                                  return absl::string_view(nk.name());
                                 }},
                  params.kernel);
   absl::Format(&sink,
@@ -282,13 +160,17 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
   const absl::string_view kernel_name(kernel->function_name.ptr,
                                       kernel->function_name.len);
   void* function = kernel->function;
-  const XLA_FFI_LaunchDims& launch_dims = launch_params->launch_dims;
   const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
   const int32_t use_pdl = launch_params->uses_pdl;
-  const XLA_FFI_KernelArgs* args = launch_params->args;
-  if (args == nullptr) {
-    return xla::ffi::CreateError(
-        absl::InvalidArgumentError("Invalid XLA_FFI_KernelArgs struct"));
+  absl::StatusOr<FfiLaunchDims> dims =
+      ConvertFfiLaunchDims(launch_params->launch_dims);
+  if (!dims.ok()) {
+    return xla::ffi::CreateError(dims.status());
+  }
+  absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArray>> packed_args =
+      PackKernelArgs(launch_params->args, shared_mem_bytes);
+  if (!packed_args.ok()) {
+    return xla::ffi::CreateError(packed_args.status());
   }
 
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
@@ -298,11 +180,6 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
   std::variant<se::Kernel*, se::NativeKernel> kernel_target =
       se::NativeKernel{function, std::string(kernel_name), pdl};
 
-  FfiKernelArgsPacked packed_args(args->num_args);
-  packed_args.add_shared_bytes(shared_mem_bytes);
-  if (absl::Status status = PackArgs(args, packed_args); !status.ok()) {
-    return xla::ffi::CreateError(status);
-  }
   // Map dependencies
   std::vector<const se::CommandBuffer::Command*> deps;
   deps.reserve(num_dependencies + ctx->dependencies.size());
@@ -313,16 +190,9 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
     deps.push_back(AsStreamExecutorCommand(dependencies[i]));
   }
 
-  se::ThreadDim threads(launch_dims.block.x, launch_dims.block.y,
-                        launch_dims.block.z);
-  se::BlockDim blocks(launch_dims.grid.x, launch_dims.grid.y,
-                      launch_dims.grid.z);
-  std::optional<se::ClusterDim> cluster_dims = std::nullopt;
-  if (launch_dims.cluster.x != 0 || launch_dims.cluster.y != 0 ||
-      launch_dims.cluster.z != 0) {
-    cluster_dims = se::ClusterDim(launch_dims.cluster.x, launch_dims.cluster.y,
-                                  launch_dims.cluster.z);
-  }
+  const se::ThreadDim& threads = dims->threads;
+  const se::BlockDim& blocks = dims->blocks;
+  const std::optional<se::ClusterDim>& cluster_dims = dims->cluster;
 
   FfiLaunchParams params{
       /*.launch_dimensions = */ LaunchDimensions(blocks, threads),
@@ -337,15 +207,16 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
       << ", resolved deps size: " << deps.size()
       << ", launch_params: " << params;
 
+  const se::KernelArgsPackedArray& kernel_args = **packed_args;
   auto status_or_cmd = std::visit(
       absl::Overload{
           [&](se::Kernel* k) {
             return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, *k,
-                                            packed_args, deps);
+                                            kernel_args, deps);
           },
           [&](const se::NativeKernel& nk) {
             return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, nk,
-                                            packed_args, deps);
+                                            kernel_args, deps);
           }},
       params.kernel);
 
@@ -374,24 +245,25 @@ XLA_FFI_Error* FfiUpdateLaunch(XLA_FFI_RecordContext* ctx,
     return xla::ffi::CreateError(absl::InternalError(
         "Failed to find cached launch parameters for update"));
   }
-  FfiKernelArgsPacked packed_args(args->num_args);
-  packed_args.add_shared_bytes(params->shared_mem_bytes);
-  if (absl::Status status = PackArgs(args, packed_args); !status.ok()) {
-    return xla::ffi::CreateError(status);
+  absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArray>> packed_args =
+      PackKernelArgs(args, params->shared_mem_bytes);
+  if (!packed_args.ok()) {
+    return xla::ffi::CreateError(packed_args.status());
   }
+  const se::KernelArgsPackedArray& kernel_args = **packed_args;
   absl::Status status = std::visit(
       absl::Overload{
           [&](se::Kernel* k) {
             return cmd_buffer->UpdateLaunch(
                 cmd, params->launch_dimensions.thread_counts_per_block(),
                 params->launch_dimensions.block_counts(), params->cluster_dims,
-                *k, packed_args);
+                *k, kernel_args);
           },
           [&](const se::NativeKernel& nk) {
             return cmd_buffer->UpdateLaunch(
                 cmd, params->launch_dimensions.thread_counts_per_block(),
                 params->launch_dimensions.block_counts(), params->cluster_dims,
-                nk, packed_args);
+                nk, kernel_args);
           }},
       params->kernel);
   if (!status.ok()) {

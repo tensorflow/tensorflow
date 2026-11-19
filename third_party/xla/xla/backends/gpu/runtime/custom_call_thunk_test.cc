@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
@@ -144,8 +143,10 @@ struct TypeRegistry::SerDes<xla::gpu::FailingDeserializableTestState>
 namespace xla::gpu {
 namespace {
 using absl_testing::IsOk;
+using absl_testing::IsOkAndHolds;
 using absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::Pair;
 namespace ffi = ::xla::ffi;
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
@@ -1018,6 +1019,46 @@ struct FfiRecordTestSetup {
 
     return setup;
   }
+
+  absl::StatusOr<std::pair<int32_t, int32_t>> RunRecordCreateAndUpdate(
+      se::StreamExecutor* executor) {
+    ABSL_ASSIGN_OR_RETURN(auto cb, executor->CreateCommandBuffer(
+                                  se::CommandBuffer::Mode::kPrimary));
+    ABSL_ASSIGN_OR_RETURN(
+        const se::CommandBuffer::Command* cmd,
+        thunk->Record(*execute_params, *record_params,
+                      Command::RecordCreate{/*dependencies=*/{}}, cb.get()));
+    if (cmd == nullptr) {
+      return absl::InternalError("RecordCreate returned null command");
+    }
+    ABSL_RETURN_IF_ERROR(cb->Finalize());
+    ABSL_RETURN_IF_ERROR(cb->Submit(stream.get()));
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+    int32_t host_c = 0;
+    ABSL_RETURN_IF_ERROR(
+        stream->Memcpy(&host_c, alloc->result_dev_ptrs[0], sizeof(int32_t)));
+
+    ABSL_RETURN_IF_ERROR(cb->Update());
+    RecordTestAlloc alloc1(executor);
+    ABSL_RETURN_IF_ERROR(AllocateAndCopy(*stream, alloc1, {40, 50}, {0}).status());
+    Thunk::ExecuteParams execute_params_update =
+        Thunk::ExecuteParams::CloneWithNewAllocations(
+            *execute_params, *alloc1.buffer_allocations);
+
+    ABSL_RETURN_IF_ERROR(thunk
+                        ->Record(execute_params_update, *record_params,
+                                 Command::RecordUpdate{cmd}, cb.get())
+                        .status());
+    ABSL_RETURN_IF_ERROR(cb->Finalize());
+    ABSL_RETURN_IF_ERROR(cb->Submit(stream.get()));
+    ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+    int32_t host_update = 0;
+    ABSL_RETURN_IF_ERROR(stream->Memcpy(&host_update, alloc1.result_dev_ptrs[0],
+                                   sizeof(int32_t)));
+    return std::make_pair(host_c, host_update);
+  }
 };
 
 TEST(CustomCallThunkTest, RecordCommandBufferFfiRecord) {
@@ -1039,45 +1080,8 @@ TEST(CustomCallThunkTest, RecordCommandBufferFfiRecord) {
   ASSERT_OK_AND_ASSIGN(
       auto setup, FfiRecordTestSetup::Create(executor, std::move(bundle),
                                              "add_i32_ffi", {10, 20}, {0}));
-
-  ASSERT_OK_AND_ASSIGN(auto cb, executor->CreateCommandBuffer(
-                                    se::CommandBuffer::Mode::kPrimary));
-
-  ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      setup->thunk->Record(*setup->execute_params, *setup->record_params,
-                           Command::RecordCreate{/*dependencies=*/{}},
-                           cb.get()));
-  ASSERT_NE(cmd, nullptr);
-
-  ASSERT_OK(cb->Finalize());
-  ASSERT_OK(cb->Submit(setup->stream.get()));
-  ASSERT_OK(setup->stream->BlockHostUntilDone());
-
-  int32_t host_c = 0;
-  ASSERT_OK(setup->stream->Memcpy(&host_c, setup->alloc->result_dev_ptrs[0],
-                                  sizeof(int32_t)));
-  EXPECT_EQ(host_c, 30);
-
-  ASSERT_OK(cb->Update());
-  RecordTestAlloc alloc1(executor);
-  ASSERT_OK_AND_ASSIGN(auto slices1,
-                       AllocateAndCopy(*setup->stream, alloc1, {40, 50}, {0}));
-
-  Thunk::ExecuteParams execute_params2 =
-      Thunk::ExecuteParams::CloneWithNewAllocations(*setup->execute_params,
-                                                    *alloc1.buffer_allocations);
-
-  ASSERT_OK(setup->thunk->Record(execute_params2, *setup->record_params,
-                                 Command::RecordUpdate{cmd}, cb.get()));
-  ASSERT_OK(cb->Finalize());
-  ASSERT_OK(cb->Submit(setup->stream.get()));
-  ASSERT_OK(setup->stream->BlockHostUntilDone());
-
-  int32_t host_f = 0;
-  ASSERT_OK(setup->stream->Memcpy(&host_f, alloc1.result_dev_ptrs[0],
-                                  sizeof(int32_t)));
-  EXPECT_EQ(host_f, 90);
+  EXPECT_THAT(setup->RunRecordCreateAndUpdate(executor),
+              IsOkAndHolds(Pair(30, 90)));
 }
 
 absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
@@ -1142,44 +1146,8 @@ TEST(CustomCallThunkTest, RecordCommandBufferFfiRecordWithEmptyCommand) {
   ASSERT_OK_AND_ASSIGN(auto setup, FfiRecordTestSetup::Create(
                                        executor, std::move(bundle),
                                        "add_i32_ffi_barrier", {10, 20}, {0}));
-
-  ASSERT_OK_AND_ASSIGN(auto cb, executor->CreateCommandBuffer(
-                                    se::CommandBuffer::Mode::kPrimary));
-
-  ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      setup->thunk->Record(*setup->execute_params, *setup->record_params,
-                           Command::RecordCreate{/*dependencies=*/{}},
-                           cb.get()));
-
-  ASSERT_OK(cb->Finalize());
-  ASSERT_OK(cb->Submit(setup->stream.get()));
-  ASSERT_OK(setup->stream->BlockHostUntilDone());
-
-  int32_t host_c = 0;
-  ASSERT_OK(setup->stream->Memcpy(&host_c, setup->alloc->result_dev_ptrs[0],
-                                  sizeof(int32_t)));
-  EXPECT_EQ(host_c, 30);
-
-  ASSERT_OK(cb->Update());
-  RecordTestAlloc alloc1(executor);
-  ASSERT_OK_AND_ASSIGN(auto slices1,
-                       AllocateAndCopy(*setup->stream, alloc1, {40, 50}, {0}));
-
-  Thunk::ExecuteParams execute_params_update =
-      Thunk::ExecuteParams::CloneWithNewAllocations(*setup->execute_params,
-                                                    *alloc1.buffer_allocations);
-
-  ASSERT_OK(setup->thunk->Record(execute_params_update, *setup->record_params,
-                                 Command::RecordUpdate{cmd}, cb.get()));
-  ASSERT_OK(cb->Finalize());
-  ASSERT_OK(cb->Submit(setup->stream.get()));
-  ASSERT_OK(setup->stream->BlockHostUntilDone());
-
-  int32_t host_update = 0;
-  ASSERT_OK(setup->stream->Memcpy(&host_update, alloc1.result_dev_ptrs[0],
-                                  sizeof(int32_t)));
-  EXPECT_EQ(host_update, 90);
+  EXPECT_THAT(setup->RunRecordCreateAndUpdate(executor),
+              IsOkAndHolds(Pair(30, 90)));
 }
 
 TEST(CustomCallThunkTest, RecordCommandBufferMultipleRecordsInSameBuffer) {
