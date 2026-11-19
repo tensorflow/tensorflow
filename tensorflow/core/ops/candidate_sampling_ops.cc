@@ -50,7 +50,7 @@ absl::Status UnigramCandidateSamplerShapeFn(InferenceContext* c) {
   // Match the largest power-of-two level representable by WeightedPicker.
   constexpr int64_t kMaxUnigramRange = int64_t{1} << 30;
   if (range_max > kMaxUnigramRange) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "range_max must be at most 1073741824 for unigram samplers");
   }
   return CandidateSamplerShapeFn(c);
