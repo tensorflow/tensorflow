@@ -767,6 +767,44 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
   EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
 }
 
+TEST(XplaneutilsTest, MergePlanesWhenSourceEventMetadataHasNoStats) {
+  // Mirrors chunked trace capture: a program's HLO proto is attached to the
+  // event metadata only on the chunk where that program first appears, so a
+  // later chunk describes the same op name carrying no metadata stats.
+  // Merging the two must not trip the copy postcondition.
+  XPlane src_plane, dst_plane;
+  {
+    XPlaneBuilder src(&src_plane);
+    XEventMetadata* metadata = src.GetOrCreateEventMetadata("shared_op");
+    XLineBuilder line = src.GetOrCreateLine(1);
+    line.SetTimestampNs(100);
+    XEventBuilder event = line.AddEvent(*metadata);
+    event.SetOffsetNs(0);
+    event.SetDurationNs(1);
+  }
+  {
+    XPlaneBuilder dst(&dst_plane);
+    XEventMetadata* metadata = dst.GetOrCreateEventMetadata("shared_op");
+    XStatsBuilder<XEventMetadata> stats(metadata, &dst);
+    stats.AddStatValue(*dst.GetOrCreateStatMetadata("hlo_proto"),
+                       "proto_bytes");
+    XLineBuilder line = dst.GetOrCreateLine(2);
+    line.SetTimestampNs(200);
+    XEventBuilder event = line.AddEvent(*metadata);
+    event.SetOffsetNs(0);
+    event.SetDurationNs(1);
+  }
+
+  MergePlanes(src_plane, &dst_plane);
+
+  // The destination's richer metadata is retained; the statless source does
+  // not clear it.
+  const XEventMetadata* merged =
+      XPlaneBuilder(&dst_plane).GetEventMetadata("shared_op");
+  ASSERT_NE(merged, nullptr);
+  EXPECT_EQ(merged->stats_size(), 1);
+}
+
 TEST(XplaneutilsTest, PartiallyGroupedXSpace) {
   XSpace space;
   {
