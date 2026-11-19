@@ -23,11 +23,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "shardy/dialect/sdy/transforms/common/partitioner_stage.h"
 #include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -48,7 +51,11 @@ limitations under the License.
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -60,6 +67,9 @@ namespace {
 using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using ::testing::ValuesIn;
 
 class ShardyXLATestBase : public HloHardwareIndependentTestBase {
  protected:
@@ -2195,7 +2205,172 @@ TEST_P(ShardyXLATest, EighTpuConvertGlobalToLocal) {
                     ShapeUtil::MakeShape(F32, {5, 8, 8}))));
 }
 
+struct ShardyXLADumpTestCase {
+  std::string testName;
+  std::string moduleName;
+  std::string passRe;
+  std::string moduleRe;
+  bool enableDumping;
+  bool expectDump;
+};
+
+class ShardyXLADumpTest
+    : public ShardyXLATestV2Only,
+      public ::testing::WithParamInterface<ShardyXLADumpTestCase> {};
+
+TEST_P(ShardyXLADumpTest, RespectsDumpOptions) {
+  const ShardyXLADumpTestCase& param = GetParam();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory tempDir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string hloString = absl::StrCat("HloModule ", param.moduleName, R"(
+    ENTRY %entry {
+      p0 = f32[6,3] parameter(0)
+      p1 = f32[6,3] parameter(1)
+      copy.p0 = f32[6,3] copy(p0)
+      copy.p1 = f32[6,3] copy(p1)
+      add = f32[6,3] add(copy.p0, copy.p1), sharding={devices=[2,1]<=[2]}
+      ROOT result = f32[6,3] copy(add)
+    })");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hloString));
+  DebugOptions& debugOptions = module->mutable_config().mutable_debug_options();
+  debugOptions.set_xla_enable_dumping(param.enableDumping);
+  debugOptions.set_xla_dump_to(tempDir.path());
+  debugOptions.set_xla_dump_hlo_pass_re(param.passRe);
+  debugOptions.set_xla_dump_hlo_module_re(param.moduleRe);
+
+  runShardyWithStablehloImport(module.get());
+
+  std::string shardyDir = tsl::io::JoinPath(tempDir.path(), "shardy");
+  std::vector<std::string> dumpFiles;
+  ASSERT_THAT(tsl::Env::Default()->GetMatchingPaths(
+                  tsl::io::JoinPath(shardyDir, "*", "*.mlir"), &dumpFiles),
+              IsOk());
+  if (param.expectDump) {
+    EXPECT_THAT(tsl::Env::Default()->IsDirectory(shardyDir), IsOk());
+    EXPECT_THAT(dumpFiles, Not(IsEmpty()));
+  } else {
+    EXPECT_THAT(tsl::Env::Default()->IsDirectory(shardyDir), Not(IsOk()));
+    EXPECT_THAT(dumpFiles, IsEmpty());
+  }
+}
+
+TEST_F(ShardyXLATestV2Only, DumpToSpongeRespectsTestUndeclaredOutputsDir) {
+  std::string savedOutputsDir;
+  bool hadOutputsDir = tsl::io::GetTestUndeclaredOutputsDir(&savedOutputsDir);
+  absl::Cleanup restoreEnv = [&] {
+    if (hadOutputsDir) {
+      tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", savedOutputsDir.c_str(),
+                  /*overwrite=*/true);
+    } else {
+      tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    }
+  };
+
+  constexpr absl::string_view kHloString = R"(
+    HloModule sponge_module
+    ENTRY %entry {
+      p0 = f32[6,3] parameter(0)
+      p1 = f32[6,3] parameter(1)
+      copy.p0 = f32[6,3] copy(p0)
+      copy.p1 = f32[6,3] copy(p1)
+      add = f32[6,3] add(copy.p0, copy.p1), sharding={devices=[2,1]<=[2]}
+      ROOT result = f32[6,3] copy(add)
+    })";
+
+  // 1. Unset TEST_UNDECLARED_OUTPUTS_DIR: should not crash or dump.
+  tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kHloString));
+    DebugOptions& debugOptions =
+        module->mutable_config().mutable_debug_options();
+    debugOptions.set_xla_dump_to("sponge");
+    debugOptions.set_xla_dump_hlo_pass_re(".*shardy.*");
+    runShardyWithStablehloImport(module.get());
+  }
+
+  // 2. Empty TEST_UNDECLARED_OUTPUTS_DIR: should not dump into relative path.
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", "", /*overwrite=*/true);
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kHloString));
+    DebugOptions& debugOptions =
+        module->mutable_config().mutable_debug_options();
+    debugOptions.set_xla_dump_to("sponge");
+    debugOptions.set_xla_dump_hlo_pass_re(".*shardy.*");
+    runShardyWithStablehloImport(module.get());
+  }
+
+  // 3. Valid TEST_UNDECLARED_OUTPUTS_DIR: dumps into that directory.
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory tempDir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", tempDir.path().c_str(),
+              /*overwrite=*/true);
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kHloString));
+    DebugOptions& debugOptions =
+        module->mutable_config().mutable_debug_options();
+    debugOptions.set_xla_dump_to("sponge");
+    debugOptions.set_xla_dump_hlo_pass_re(".*shardy.*");
+    runShardyWithStablehloImport(module.get());
+  }
+  std::string shardyDir = tsl::io::JoinPath(tempDir.path(), "shardy");
+  std::vector<std::string> dumpFiles;
+  ASSERT_THAT(tsl::Env::Default()->GetMatchingPaths(
+                  tsl::io::JoinPath(shardyDir, "*", "*.mlir"), &dumpFiles),
+              IsOk());
+  EXPECT_THAT(tsl::Env::Default()->IsDirectory(shardyDir), IsOk());
+  EXPECT_THAT(dumpFiles, Not(IsEmpty()));
+}
 // NOLINTEND(misc-override-with-different-visibility)
+
+INSTANTIATE_TEST_SUITE_P(
+    ShardyXLADumpTests, ShardyXLADumpTest,
+    ValuesIn<ShardyXLADumpTestCase>({
+        {/*testName=*/"HloModuleRegexMatching",
+         /*moduleName=*/"matching_module",
+         /*passRe=*/".*shardy.*",
+         /*moduleRe=*/"matching_module",
+         /*enableDumping=*/true,
+         /*expectDump=*/true},
+        {/*testName=*/"HloModuleRegexNonMatching",
+         /*moduleName=*/"other_module",
+         /*passRe=*/".*shardy.*",
+         /*moduleRe=*/"matching_module",
+         /*enableDumping=*/true,
+         /*expectDump=*/false},
+        {/*testName=*/"VerboseHloModuleRegexMatching",
+         /*moduleName=*/"matching_module",
+         /*passRe=*/"shardy-verbose",
+         /*moduleRe=*/"matching_module",
+         /*enableDumping=*/true,
+         /*expectDump=*/true},
+        {/*testName=*/"VerboseHloModuleRegexNonMatching",
+         /*moduleName=*/"other_module",
+         /*passRe=*/"shardy-verbose",
+         /*moduleRe=*/"matching_module",
+         /*enableDumping=*/true,
+         /*expectDump=*/false},
+        {/*testName=*/"EmptyModuleRegexDumpsAllModules",
+         /*moduleName=*/"any_module",
+         /*passRe=*/".*shardy.*",
+         /*moduleRe=*/"",
+         /*enableDumping=*/true,
+         /*expectDump=*/true},
+        {/*testName=*/"DisabledWhenXlaEnableDumpingIsFalse",
+         /*moduleName=*/"matching_module",
+         /*passRe=*/".*shardy.*",
+         /*moduleRe=*/"matching_module",
+         /*enableDumping=*/false,
+         /*expectDump=*/false},
+    }),
+    [](const ::testing::TestParamInfo<ShardyXLADumpTestCase>& info) {
+      return info.param.testName;
+    });
 
 INSTANTIATE_TEST_SUITE_P(
     ShardyXLATestInstantiation, ShardyXLATest,
