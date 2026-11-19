@@ -272,7 +272,8 @@ absl::StatusOr<std::unique_ptr<CustomKernelThunk>> CustomKernelThunk::FromProto(
         symbol_resolver) {
   ABSL_ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
-      CustomKernel::FromProto(proto.custom_kernel(), symbol_resolver));
+      CustomKernel::FromProto(proto.custom_kernel(), buffer_allocations,
+                              symbol_resolver));
   std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
   for (const ShapedSliceProto& arg_proto : proto.args()) {

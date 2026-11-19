@@ -1237,11 +1237,20 @@ TEST(ThunkProtoDeserializationTest, CustomKernelThunkRoundTrip) {
         thunk_info {}
         custom_kernel_thunk {
           custom_kernel {
-            name: "test_kernel"
             kernel_spec {
               ptx { data: "PTX" }
               arity: 1
             }
+            spec {
+              name: "test_kernel"
+              launch_dimensions {
+                block_counts { coordinates { x: 1, y: 1, z: 1 } }
+                thread_counts_per_block { coordinates { x: 1, y: 1, z: 1 } }
+              }
+              kernel_arguments {}
+              scratch_bytes: 42
+            }
+            name: "test_kernel"
             block_dims { coordinates { x: 1, y: 1, z: 1 } }
             thread_dims { coordinates { x: 1, y: 1, z: 1 } }
             shared_memory_bytes: 42

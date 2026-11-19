@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -39,8 +41,6 @@ namespace se = ::stream_executor;  // NOLINT
 // export CUTLASS gemm kernels as custom kernels to XLA), so that XLA can only
 // implement generic interfaces, e.g. command buffer implementation for CUDA
 // can automatically add a kernel node to a graph for arbitrary custom kernel.
-//
-// TODO(b/578658607) port to use GpuKernelSpec.
 class CustomKernel {
  public:
   CustomKernel(const GpuKernelSpec& spec, se::KernelLoaderSpec kernel_spec);
@@ -53,14 +53,14 @@ class CustomKernel {
   }
 
   const se::KernelLoaderSpec& kernel_loader_spec() const {
-    return kernel_spec_;
+    return loader_spec_;
   }
 
-  se::BlockDim block_dims() const;
+  const se::BlockDim& block_dims() const;
 
-  se::ThreadDim thread_dims() const;
+  const se::ThreadDim& thread_dims() const;
 
-  std::optional<se::ClusterDim> cluster_dims() const;
+  const std::optional<se::ClusterDim>& cluster_dims() const;
 
   size_t shared_memory_bytes() const;
 
@@ -70,26 +70,13 @@ class CustomKernel {
 
   static absl::StatusOr<CustomKernel> FromProto(
       const CustomKernelProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 
  private:
-  [[deprecated("Provide GpuKernelSpec")]]
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               size_t shared_memory_bytes);
-
-  [[deprecated("Provide GpuKernelSpec")]]
-  CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
-               se::BlockDim block_dims, se::ThreadDim thread_dims,
-               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
-
-  std::string name_;
-  se::KernelLoaderSpec kernel_spec_;
-  se::BlockDim block_dims_;
-  se::ThreadDim thread_dims_;
-  std::optional<se::ClusterDim> cluster_dims_;
-  size_t shared_memory_bytes_;
+  se::KernelLoaderSpec loader_spec_;
+  GpuKernelSpec spec_;
 };
 
 }  // namespace xla::gpu

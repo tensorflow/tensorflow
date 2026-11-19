@@ -55,12 +55,21 @@ TEST(CustomKernelTest, ToProto) {
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
-        name: "kernel_name"
         kernel_spec {
-          in_process_symbol { persistent_name: "persistent_kernel_name" }
-          kernel_name: "kernel_name"
           arity: 42
+          kernel_name: "kernel_name"
+          in_process_symbol { persistent_name: "persistent_kernel_name" }
         }
+        spec {
+          name: "kernel_name"
+          launch_dimensions {
+            block_counts { coordinates { x: 1 y: 2 z: 3 } }
+            thread_counts_per_block { coordinates { x: 4 y: 5 z: 6 } }
+          }
+          kernel_arguments {}
+          scratch_bytes: 7
+        }
+        name: "kernel_name"
         block_dims { coordinates { x: 1 y: 2 z: 3 } }
         thread_dims { coordinates { x: 4 y: 5 z: 6 } }
         shared_memory_bytes: 7
@@ -84,12 +93,22 @@ TEST(CustomKernelTest, ToProtoWithClusterDims) {
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
-        name: "kernel_name"
         kernel_spec {
-          in_process_symbol { persistent_name: "persistent_kernel_name" }
-          kernel_name: "kernel_name_in_spec"
           arity: 42
+          kernel_name: "kernel_name_in_spec"
+          in_process_symbol { persistent_name: "persistent_kernel_name" }
         }
+        spec {
+          name: "kernel_name"
+          launch_dimensions {
+            block_counts { coordinates { x: 1 y: 2 z: 3 } }
+            thread_counts_per_block { coordinates { x: 4 y: 5 z: 6 } }
+            cluster_dims { coordinates { x: 7 y: 8 z: 9 } }
+          }
+          kernel_arguments {}
+          scratch_bytes: 10
+        }
+        name: "kernel_name"
         block_dims { coordinates { x: 1 y: 2 z: 3 } }
         thread_dims { coordinates { x: 4 y: 5 z: 6 } }
         cluster_dim { coordinates { x: 7 y: 8 z: 9 } }
@@ -115,8 +134,9 @@ TEST(CustomKernelTest, FromProto) {
     thread_dims { coordinates { x: 4 y: 5 z: 6 } }
     shared_memory_bytes: 7
   )pb");
-  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                       CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(
+      CustomKernel custom_kernel,
+      CustomKernel::FromProto(proto, {}, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);
@@ -145,8 +165,9 @@ TEST(CustomKernelTest, FromProtoWithClusterDims) {
     cluster_dim { coordinates { x: 7 y: 8 z: 9 } }
     shared_memory_bytes: 10
   )pb");
-  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                       CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(
+      CustomKernel custom_kernel,
+      CustomKernel::FromProto(proto, {}, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);

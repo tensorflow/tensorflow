@@ -188,12 +188,38 @@ TEST(CustomKernelThunkTest, ToProto) {
         thunk_info { profile_annotation: "profile_annotation" thunk_id: 42 }
         custom_kernel_thunk {
           custom_kernel {
-            name: "name"
             kernel_spec {
-              kernel_name: "kernel_name"
               ptx { data: "PTX" }
               arity: 1
+              kernel_name: "kernel_name"
             }
+            spec {
+              name: "name"
+              launch_dimensions {
+                block_counts { coordinates { x: 3, y: 2, z: 1 } }
+                thread_counts_per_block { coordinates { x: 4, y: 5, z: 6 } }
+              }
+              kernel_arguments {
+                args {
+                  shape {
+                    element_type: F32
+                    dimensions: 512
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                    is_dynamic_dimension: false
+                  }
+                  slice { size: 512 }
+                  aliased: true
+                  alignment: 1
+                  written: true
+                  invariant: true
+                }
+              }
+              scratch_bytes: 42
+            }
+            name: "name"
             block_dims { coordinates { x: 3, y: 2, z: 1 } }
             thread_dims { coordinates { x: 4, y: 5, z: 6 } }
             shared_memory_bytes: 42
