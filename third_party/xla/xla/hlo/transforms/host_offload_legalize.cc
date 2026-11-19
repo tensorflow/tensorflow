@@ -721,6 +721,9 @@ absl::Status MoveCopyDown(
               memory_annotations::kMoveToHostCustomCallTarget));
           *update_slice->mutable_shape()->mutable_layout() =
               instruction->shape().layout();
+          // The DUS layout was chosen for the full buffer. Recompute
+          // dimension-dependent attributes (e.g., tiling) for the update shape.
+          pass->UpdateLayout(update_slice->mutable_shape());
           HloInstruction* new_copy =
               update_slice->AddInstruction(HloInstruction::CreateUnary(
                   update_slice->shape(), HloOpcode::kCopy,

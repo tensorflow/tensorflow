@@ -820,6 +820,50 @@ ENTRY main {
             LayoutUtil::MakeLayout({1, 2, 0}, {Tile{{8, 128}}}));
 }
 
+TEST_F(HostOffloadLegalizeTest,
+       MoveCopyOverDynamicUpdateSliceUpdatesUpdateTiling) {
+  absl::string_view hlo_string = R"(
+HloModule host_offload_dus_update_tiling, entry_computation_layout={(f32[10,1,44]{1,2,0:T(8,128)})->f32[10,4,44]{1,2,0:T(8,128)}}
+
+ENTRY main {
+  c0 = s32[]{:T(128)} constant(0)
+  zero = f32[]{:T(128)} constant(0)
+  broadcast = f32[10,103,44]{2,1,0:T(8,128)} broadcast(zero), dimensions={}
+  buffer_host = f32[10,103,44]{2,1,0:T(8,128)} custom-call(broadcast), custom_call_target="MoveToHost"
+  copy = f32[10,103,44]{1,2,0:T(8,128)} copy(buffer_host)
+  update = f32[10,1,44]{1,2,0:T(8,128)} parameter(0)
+  update_host = f32[10,1,44]{1,2,0:T(8,128)} custom-call(update), custom_call_target="MoveToHost"
+  dus = f32[10,103,44]{1,2,0:T(8,128)} dynamic-update-slice(copy, update_host, c0, c0, c0)
+  slice_4 = f32[10,4,44]{1,2,0:T(8,128)} dynamic-slice(dus, c0, c0, c0), dynamic_slice_sizes={10,4,44}
+  ROOT move_to_dev = f32[10,4,44]{1,2,0:T(8,128)} custom-call(slice_4), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHostOffloadLegalize(module.get(), Compact2DTileHostOffloadLegalize()));
+  EXPECT_TRUE(changed);
+
+  // Sinking the copy past the DUS gives the DUS the pre-copy {2,1,0} layout, so
+  // the update is re-laid out on device before its MoveToHost. In {2,1,0}, the
+  // update's 2nd-minor dimension is 1, so it needs a T(1,128) tile instead of
+  // the buffer's T(8,128).
+  HloInstruction* dus = FindInstruction(module.get(), "dus");
+  ASSERT_NE(dus, nullptr);
+  EXPECT_EQ(dus->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{8, 128}}}));
+  const HloInstruction* update_annotation = dus->operand(1);
+  ASSERT_TRUE(update_annotation->IsCustomCall(
+      memory_annotations::kMoveToHostCustomCallTarget));
+  EXPECT_EQ(update_annotation->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{1, 128}}}));
+  const HloInstruction* update_copy = update_annotation->operand(0);
+  ASSERT_EQ(update_copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(update_copy->shape().layout(),
+            LayoutUtil::MakeLayout({2, 1, 0}, {Tile{{1, 128}}}));
+}
+
 }  // namespace
 
 }  // namespace xla
