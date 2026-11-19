@@ -25,7 +25,7 @@ inline int DataTypeId(tensorflow::DataType dt) { return static_cast<int>(dt); }
 // A variant of tensorflow::DataTypeString which uses fixed-width names
 // for floating point data types. This behavior is compatible with that of
 // existing pure Python DType.
-const std::string DataTypeStringCompat(tensorflow::DataType dt) {
+std::string DataTypeStringCompat(tensorflow::DataType dt) {
   switch (dt) {
     case tensorflow::DataType::DT_HALF:
       return "float16";

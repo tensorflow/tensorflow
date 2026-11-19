@@ -196,7 +196,7 @@ void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
   Py_INCREF(dispatch_target);
   Safe_PyObjectPtr owned_target(dispatch_target);
 
-  absl::MutexLock lock(*targets_mu_.get());
+  absl::MutexLock lock(*targets_mu_);
   targets_.emplace_back(std::move(signature_checker), std::move(owned_target));
 }
 
@@ -244,7 +244,7 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
   // CheckCanonicalizedArgs. Do not hold targets_mu_ while calling Python.
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
   {
-    absl::MutexLock lock(*targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_);
     targets_snapshot.reserve(targets_.size());
     for (const auto& target : targets_) {
       PyObject* obj = target.second.get();
@@ -280,7 +280,7 @@ void PythonAPIDispatcher::Unregister(PyObject* func) {
   // DECREF may run arbitrary Python finalization code.
   std::vector<DispatchTargetPair> removed;
   {
-    absl::MutexLock lock(*targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_);
 
     std::vector<DispatchTargetPair> kept;
     kept.reserve(targets_.size());
@@ -304,7 +304,7 @@ std::string PythonAPIDispatcher::DebugString() const {
 
   std::vector<std::pair<PySignatureChecker, Safe_PyObjectPtr>> targets_snapshot;
   {
-    absl::MutexLock lock(*targets_mu_.get());
+    absl::MutexLock lock(*targets_mu_);
     targets_snapshot.reserve(targets_.size());
     for (const auto& target : targets_) {
       PyObject* obj = target.second.get();
@@ -386,7 +386,7 @@ PyInstanceChecker::~PyInstanceChecker() {
 
   std::vector<PyTypeObject*> cached_types;
   {
-    absl::MutexLock lock(*py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_);
     cached_types.reserve(py_class_cache_.size());
     for (const auto& pair : py_class_cache_) {
       cached_types.push_back(pair.first);
@@ -404,7 +404,7 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   auto* type = Py_TYPE(value);
 
   {
-    absl::MutexLock lock(*py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_);
     auto it = py_class_cache_.find(type);
     if (it != py_class_cache_.end()) {
       return it->second;
@@ -428,7 +428,7 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   }
 
   {
-    absl::MutexLock lock(*py_class_cache_mu_.get());
+    absl::MutexLock lock(*py_class_cache_mu_);
 
     auto existing = py_class_cache_.find(type);
     if (existing != py_class_cache_.end()) {
