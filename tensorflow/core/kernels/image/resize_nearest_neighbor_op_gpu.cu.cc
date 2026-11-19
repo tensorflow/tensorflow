@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
-
-#include <stdio.h>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -34,17 +33,17 @@ namespace {
 
 template <typename T>
 __global__ void ResizeNearestNeighborNHWC(
-    const int nthreads, const T* __restrict__ bottom_data, const int in_height,
-    const int in_width, const int channels, const int out_height,
-    const int out_width, const float height_scale, const float width_scale,
-    T* top_data) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int n = index;
-    int c = n % channels;
+    const int64_t nthreads, const T* __restrict__ bottom_data,
+    const int in_height, const int in_width, const int64_t channels,
+    const int out_height, const int out_width, const float height_scale,
+    const float width_scale, T* __restrict__ top_data) {
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
+    int64_t n = index;
+    const int64_t c = n % channels;
     n /= channels;
-    int out_x = n % out_width;
+    const int out_x = static_cast<int>(n % out_width);
     n /= out_width;
-    int out_y = n % out_height;
+    const int out_y = static_cast<int>(n % out_height);
     n /= out_height;
 
     const T* bottom_data_n = bottom_data + n * channels * in_height * in_width;
@@ -58,24 +57,25 @@ __global__ void ResizeNearestNeighborNHWC(
                     floorf((static_cast<float>(out_x) + 0.5f) * width_scale)),
                 in_width - 1),
             0);
-    const int idx = (in_y * in_width + in_x) * channels + c;
+    const int64_t idx =
+        (static_cast<int64_t>(in_y) * in_width + in_x) * channels + c;
     top_data[index] = ldg(bottom_data_n + idx);
   }
 }
 
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborNHWC(
-    const int nthreads, const T* __restrict__ bottom_data, const int in_height,
-    const int in_width, const int channels, const int out_height,
-    const int out_width, const float height_scale, const float width_scale,
-    T* __restrict__ top_data) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int n = index;
-    int c = n % channels;
+    const int64_t nthreads, const T* __restrict__ bottom_data,
+    const int in_height, const int in_width, const int64_t channels,
+    const int out_height, const int out_width, const float height_scale,
+    const float width_scale, T* __restrict__ top_data) {
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
+    int64_t n = index;
+    const int64_t c = n % channels;
     n /= channels;
-    int out_x = n % out_width;
+    const int out_x = static_cast<int>(n % out_width);
     n /= out_width;
-    int out_y = n % out_height;
+    const int out_y = static_cast<int>(n % out_height);
     n /= out_height;
 
     const T* bottom_data_n = bottom_data + n * channels * in_height * in_width;
@@ -87,24 +87,25 @@ __global__ void LegacyResizeNearestNeighborNHWC(
         min((align_corners) ? static_cast<int>(roundf(out_x * width_scale))
                             : static_cast<int>(floorf(out_x * width_scale)),
             in_width - 1);
-    const int idx = (in_y * in_width + in_x) * channels + c;
+    const int64_t idx =
+        (static_cast<int64_t>(in_y) * in_width + in_x) * channels + c;
     top_data[index] = ldg(bottom_data_n + idx);
   }
 }
 
 template <typename T>
 __global__ void ResizeNearestNeighborBackwardNHWC(
-    const int nthreads, const T* __restrict__ top_diff, const int in_height,
-    const int in_width, const int channels, const int out_height,
-    const int out_width, const float height_scale, const float width_scale,
-    T* __restrict__ bottom_diff) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int n = index;
-    int c = n % channels;
+    const int64_t nthreads, const T* __restrict__ top_diff,
+    const int64_t in_height, const int64_t in_width, const int64_t channels,
+    const int out_height, const int out_width, const float height_scale,
+    const float width_scale, T* __restrict__ bottom_diff) {
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
+    int64_t n = index;
+    const int64_t c = n % channels;
     n /= channels;
-    int in_x = n % in_width;
+    const int64_t in_x = n % in_width;
     n /= in_width;
-    int in_y = n % in_height;
+    const int64_t in_y = n % in_height;
     n /= in_height;
 
     T* bottom_diff_n = bottom_diff + n * channels * out_height * out_width;
@@ -118,24 +119,25 @@ __global__ void ResizeNearestNeighborBackwardNHWC(
                     floorf((static_cast<float>(in_x) + 0.5f) * width_scale)),
                 out_width - 1),
             0);
-    const int idx = (out_y * out_width + out_x) * channels + c;
+    const int64_t idx =
+        (static_cast<int64_t>(out_y) * out_width + out_x) * channels + c;
     GpuAtomicAdd(bottom_diff_n + idx, ldg(top_diff + index));
   }
 }
 
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborBackwardNHWC(
-    const int nthreads, const T* __restrict__ top_diff, const int in_height,
-    const int in_width, const int channels, const int out_height,
-    const int out_width, const float height_scale, const float width_scale,
-    T* __restrict__ bottom_diff) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int n = index;
-    int c = n % channels;
+    const int64_t nthreads, const T* __restrict__ top_diff,
+    const int64_t in_height, const int64_t in_width, const int64_t channels,
+    const int out_height, const int out_width, const float height_scale,
+    const float width_scale, T* __restrict__ bottom_diff) {
+  for (int64_t index : GpuGridRangeX<int64_t>(nthreads)) {
+    int64_t n = index;
+    const int64_t c = n % channels;
     n /= channels;
-    int in_x = n % in_width;
+    const int64_t in_x = n % in_width;
     n /= in_width;
-    int in_y = n % in_height;
+    const int64_t in_y = n % in_height;
     n /= in_height;
 
     T* bottom_diff_n = bottom_diff + n * channels * out_height * out_width;
@@ -147,7 +149,8 @@ __global__ void LegacyResizeNearestNeighborBackwardNHWC(
         min((align_corners) ? static_cast<int>(roundf(in_x * width_scale))
                             : static_cast<int>(floorf(in_x * width_scale)),
             out_width - 1);
-    const int idx = (out_y * out_width + out_x) * channels + c;
+    const int64_t idx =
+        (static_cast<int64_t>(out_y) * out_width + out_x) * channels + c;
     GpuAtomicAdd(bottom_diff_n + idx, ldg(top_diff + index));
   }
 }
@@ -162,30 +165,32 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
   bool operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
+    const int64_t output_size = output.size();
+    if (output_size == 0) return true;
+
     const int in_height = input.dimension(1);
     const int in_width = input.dimension(2);
-    const int channels = input.dimension(3);
-
+    const int64_t channels = input.dimension(3);
     const int out_height = output.dimension(1);
     const int out_width = output.dimension(2);
 
-    const int output_size = batch_size * out_height * out_width * channels;
-    if (output_size == 0) return true;
-
-    GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-    void (*kernel)(const int nthreads, const T* __restrict__ bottom_data,
-                   const int in_height, const int in_width, const int channels,
-                   const int out_height, const int out_width,
-                   const float height_scale, const float width_scale,
-                   T* top_data) =
+    auto config = GetGpuLaunchConfig64(output_size, d);
+    if (!config.ok()) return false;
+    void (*kernel)(const int64_t nthreads, const T* __restrict__ bottom_data,
+                   const int in_height, const int in_width,
+                   const int64_t channels, const int out_height,
+                   const int out_width, const float height_scale,
+                   const float width_scale, T* __restrict__ top_data) =
         half_pixel_centers ? ResizeNearestNeighborNHWC<T>
                            : LegacyResizeNearestNeighborNHWC<T, align_corners>;
-    TF_CHECK_OK(
-        GpuLaunchKernel(kernel, config.block_count, config.thread_per_block, 0,
-                        d.stream(), config.virtual_thread_count, input.data(),
-                        in_height, in_width, channels, out_height, out_width,
-                        height_scale, width_scale, output.data()));
+    if (!GpuLaunchKernel(kernel, config->block_count, config->thread_per_block,
+                         0, d.stream(), config->virtual_thread_count,
+                         input.data(), in_height, in_width, channels,
+                         out_height, out_width, height_scale, width_scale,
+                         output.data())
+             .ok()) {
+      return false;
+    }
     return d.ok();
   }
 };
@@ -207,39 +212,46 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
   bool operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
-    const int in_height = input.dimension(1);
-    const int in_width = input.dimension(2);
-    const int channels = input.dimension(3);
+    const int64_t output_size = output.size();
+    if (output_size == 0) return true;
 
+    auto output_config = GetGpuLaunchConfig64(output_size, d);
+    if (!output_config.ok()) return false;
+    if (!GpuLaunchKernel(SetZero<T>, output_config->block_count,
+                         output_config->thread_per_block, 0, d.stream(),
+                         output_size, output.data())
+             .ok()) {
+      return false;
+    }
+    if (!d.ok()) return false;
+
+    const int64_t input_size = input.size();
+    if (input_size == 0) return true;
+
+    const int64_t in_height = input.dimension(1);
+    const int64_t in_width = input.dimension(2);
+    const int64_t channels = input.dimension(3);
     const int out_height = output.dimension(1);
     const int out_width = output.dimension(2);
 
-    const int output_size = batch_size * channels * out_height * out_width;
-
-    GpuLaunchConfig output_config = GetGpuLaunchConfig(output_size, d);
-    TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, output_config.block_count,
-                                output_config.thread_per_block, 0, d.stream(),
-                                output_size, output.data()));
-    if (!d.ok()) return false;
-
-    const int input_size = batch_size * channels * in_height * in_width;
-    if (input_size == 0) return true;
-
-    GpuLaunchConfig input_config = GetGpuLaunchConfig(input_size, d);
-    void (*kernel)(const int nthreads, const T* __restrict__ top_diff,
-                   const int in_height, const int in_width, const int channels,
-                   const int out_height, const int out_width,
-                   const float height_scale, const float width_scale,
-                   T* __restrict__ bottom_diff) =
+    auto input_config = GetGpuLaunchConfig64(input_size, d);
+    if (!input_config.ok()) return false;
+    void (*kernel)(const int64_t nthreads, const T* __restrict__ top_diff,
+                   const int64_t in_height, const int64_t in_width,
+                   const int64_t channels, const int out_height,
+                   const int out_width, const float height_scale,
+                   const float width_scale, T* __restrict__ bottom_diff) =
         half_pixel_centers
             ? ResizeNearestNeighborBackwardNHWC<T>
             : LegacyResizeNearestNeighborBackwardNHWC<T, align_corners>;
-    TF_CHECK_OK(GpuLaunchKernel(
-        kernel, input_config.block_count, input_config.thread_per_block, 0,
-        d.stream(), input_config.virtual_thread_count, input.data(), in_height,
-        in_width, channels, out_height, out_width, height_scale, width_scale,
-        output.data()));
+    if (!GpuLaunchKernel(kernel, input_config->block_count,
+                         input_config->thread_per_block, 0, d.stream(),
+                         input_config->virtual_thread_count, input.data(),
+                         in_height, in_width, channels, out_height, out_width,
+                         height_scale, width_scale, output.data())
+             .ok()) {
+      return false;
+    }
     return d.ok();
   }
 };
