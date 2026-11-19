@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
@@ -68,5 +69,48 @@ cc_library(
         "@llvm-project//mlir:UBDialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "callee_symbol_manager",
+    srcs = ["callee_symbol_manager.cc"],
+    hdrs = ["callee_symbol_manager.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:utils",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "callee_symbol_manager_test",
+    srcs = ["callee_symbol_manager_test.cc"],
+    deps = [
+        ":callee_symbol_manager",
+        "//xla/mlir/utils:error_util",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:ifrt_ir_test_base",
+        "//xla/python/ifrt/ir:utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
