@@ -547,6 +547,11 @@ std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s);
 // module to a set of BufferAllocations.
 class BufferAssignment {
  public:
+  // Default memory space color eligible for multi page buffer assignment when
+  // `HloModuleConfig::page_size_kib() > 0`. Other colors keep a single
+  // combined temporary allocation and do not receive virtual page IDs.
+  static constexpr LogicalBuffer::Color kPagingColor = 0;
+
   // This is a think wrapper around BufferIsolationConfig. Please see the
   // documentation for BufferIsolationConfig for details on how buffer isolation
   // works. hlo_value_compare is the concrete implementation of the HloValue

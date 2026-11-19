@@ -3478,15 +3478,12 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   auto get_heap_algorithm = [&](int64_t alignment, LogicalBuffer::Color color)
       -> std::unique_ptr<HeapAlgorithm<HloValue>> {
     uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
-    if (page_size > 0 && (color == LogicalBuffer::Color(0) ||
-                          color == LogicalBuffer::Color(1))) {
+    if (page_size > 0 && color == BufferAssignment::kPagingColor) {
       // Check that all buffers that are assigned fit in the page size. This is
       // a requirement for multi-page buffer assignment.
       absl::c_for_each(buffers_to_assign_sequentially, [&](const auto& pair) {
         absl::c_for_each(pair.second, [&](const HloValue* hlo_value) {
-          if ((hlo_value->shape().has_layout()
-                   ? hlo_value->shape().layout().memory_space()
-                   : 0) == color &&
+          if (hlo_value->color() == color &&
               !assignment->alias_analysis().ValueLivesOut(*hlo_value)) {
             uint64_t size = assignment->buffer_size_(*hlo_value);
             CHECK_LE(size, page_size)
@@ -3856,7 +3853,8 @@ absl::Status BufferAssigner::AssignBuffersFromHeapSimulator(
        result.heap_results) {
     BufferAllocation* allocation =
         assignment->NewEmptyAllocation(heap_result.heap_size, color);
-    if (assignment->module().config().page_size_kib() > 0) {
+    if (assignment->module().config().page_size_kib() > 0 &&
+        color == BufferAssignment::kPagingColor) {
       allocation->set_page_id(page_index++);
     }
     for (const auto& [value, chunk] : heap_result.chunk_map) {

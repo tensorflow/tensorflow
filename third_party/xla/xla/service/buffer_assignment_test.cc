@@ -7593,6 +7593,79 @@ TEST_F(BufferAssignmentTest, MultiPage) {
               UnorderedElementsAre(Pair(0, 2800), Pair(1, 400)));
 }
 
+TEST_F(BufferAssignmentTest, MultiPageSkipsNonDefaultColors) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule MultiPageSkipsNonDefaultColors, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[150]{0:S(0)} parameter(0)
+  p1 = f32[400]{0:S(0)} parameter(1)
+  hbm_a = f32[150]{0:S(0)} negate(p0)
+  hbm_b = f32[150]{0:S(0)} exponential(p0)
+  vmem_big = f32[400]{0:S(1)} negate(p1)
+  vmem_first = f32[150]{0:S(1)} copy(hbm_a)
+  vmem_second = f32[150]{0:S(1)} copy(hbm_b)
+  vmem_sum = f32[150]{0:S(1)} add(vmem_first, vmem_second)
+  vmem_big_slice = f32[150]{0:S(1)} slice(vmem_big), slice={[0:150]}
+  vmem_out = f32[150]{0:S(1)} add(vmem_sum, vmem_big_slice)
+  vmem_small = f32[4]{0:S(1)} slice(vmem_out), slice={[0:4]}
+  ROOT out = f32[4]{0:S(0)} copy(vmem_small)
+}
+)hlo";
+
+  // 1 KiB pages: `hbm_a` and `hbm_b` (600B each, live together) split across
+  // two Color(0) pages, while `vmem_big` (1600B > 1024B) is in Color(1) and
+  // must neither fail the page size check nor drop custom buffer ordering.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  module->mutable_config().set_page_size_kib(1);
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = BufferAssigner::DefaultColorer();
+  opts.heap_buffer_interval_compare =
+      [](const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& lhs,
+         const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& rhs) {
+        const bool lhs_pri =
+            lhs.buffer->defining_instruction()->name() == "vmem_second";
+        const bool rhs_pri =
+            rhs.buffer->defining_instruction()->name() == "vmem_second";
+        if (lhs_pri != rhs_pri) {
+          return lhs_pri > rhs_pri;
+        }
+        return lhs.buffer->id() < rhs.buffer->id();
+      };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  std::vector<std::pair<int64_t, int64_t>> color0_pages;
+  std::vector<std::pair<int64_t, int64_t>> color1_pages;
+  for (const BufferAllocation& alloc : assignment->Allocations()) {
+    if (!alloc.IsPreallocatedTempBuffer()) {
+      continue;
+    }
+    if (alloc.color() == BufferAssignment::kPagingColor) {
+      color0_pages.push_back({alloc.page_id(), alloc.size()});
+    } else if (alloc.color() == LogicalBuffer::Color(1)) {
+      color1_pages.push_back({alloc.page_id(), alloc.size()});
+    }
+  }
+  EXPECT_THAT(color0_pages, UnorderedElementsAre(Pair(0, 600), Pair(1, 600)));
+  EXPECT_THAT(color1_pages, UnorderedElementsAre(Pair(0, 2800)));
+
+  ASSERT_OK_AND_ASSIGN(
+      BufferAllocation::Slice vmem_second_slice,
+      assignment->GetUniqueTopLevelSlice(
+          module->entry_computation()->GetInstructionWithName("vmem_second")));
+  EXPECT_EQ(vmem_second_slice.offset(), 0);
+}
+
 // Verifies that BufferAssignment builds successfully when using a dependency
 // ordering, which triggers
 // DefaultBufferAllocationsManagerForComputationsWithoutOrdering.
