@@ -34,9 +34,9 @@ class SparseAddOpTest : public OpsTestBase {
   void MakeOp() {
     DataType value_type = tensorflow::DataTypeToEnum<T>::value;
     DataType thresh_type = value_type;
-    if (std::is_same<T, std::complex<float>>::value) {
+    if (std::is_same_v<T, std::complex<float>>) {
       thresh_type = DT_FLOAT;
-    } else if (std::is_same<T, std::complex<double>>::value) {
+    } else if (std::is_same_v<T, std::complex<double>>) {
       thresh_type = DT_DOUBLE;
     }
 
