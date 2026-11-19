@@ -1183,8 +1183,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-    case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SUM:
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SQUARED_DIFFERENCE:

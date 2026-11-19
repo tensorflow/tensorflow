@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -268,7 +270,14 @@ struct SumOp {
   T operator()(const T& a, const T& b) const {
     return AddTensorValuesWithExpectedOverflow<T>(a, b);
   }
-  static constexpr T kNeutralElement = T(0);
+  static constexpr T NeutralElement() {
+    if constexpr (std::is_same_v<T, half>) {
+      return half::sum_identity();
+    } else {
+      return T(0);
+    }
+  }
+  static constexpr T kNeutralElement = NeutralElement();
 };
 
 template <typename T, typename U>
@@ -286,7 +295,18 @@ struct ProdOp {
   T operator()(const T& a, const T& b) const {
     return MulTensorValuesWithExpectedOverflow<T>(a, b);
   }
-  static constexpr T kNeutralElement = T(1);
+  static constexpr T NeutralElement() {
+    if constexpr (std::is_same_v<T, half>) {
+#if TFLITE_ARCH_FLOAT16
+      return half(1.0f);
+#else
+      return half::from_bits(0x3c00);
+#endif
+    } else {
+      return T(1);
+    }
+  }
+  static constexpr T kNeutralElement = NeutralElement();
 };
 
 template <typename T>

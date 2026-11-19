@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -357,6 +358,7 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* absl_nonnull context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_accum));
   switch (op_context.input->type) {
     case kTfLiteFloat32:
+    case kTfLiteFloat16:
       temp_accum->type = kTfLiteFloat32;
       break;
     case kTfLiteInt32:
@@ -962,7 +964,7 @@ TfLiteStatus EvalType(TfLiteContext* absl_nonnull context,
                       op_context.output->params.zero_point);
   }
   if (kernel_type == kReference) {
-    T init_value = 0;
+    T init_value = T(0);
     T (*reducer)(const T current, const T in);
     switch (reduce_type) {
       case kSum:
@@ -990,15 +992,15 @@ TfLiteStatus EvalType(TfLiteContext* absl_nonnull context,
         };
         break;
       case kAny:
-        init_value = false;
+        init_value = static_cast<T>(false);
         reducer = [](const T current, const T in) -> T {
-          return in || current;
+          return static_cast<T>(in || current);
         };
         break;
       case kAll:
-        init_value = true;
+        init_value = static_cast<T>(true);
         reducer = [](const T current, const T in) -> T {
-          return in && current;
+          return static_cast<T>(in && current);
         };
         break;
       default:
@@ -1067,6 +1069,12 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
       return EvalType<float, kernel_type>(context, node, op_context,
                                           reduce_type);
       break;
+    case kTfLiteFloat16:
+      if (reduce_type == kSum) {
+        return EvalType<half, kernel_type>(context, node, op_context,
+                                           reduce_type);
+      }
+      return kTfLiteError;
     case kTfLiteInt32:
       return EvalType<int, kernel_type>(context, node, op_context, reduce_type);
       break;
