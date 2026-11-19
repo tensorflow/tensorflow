@@ -681,9 +681,11 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
 
   {
     DenseFPElementsAttr divisor;
-    auto div_rhs =
-        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::TransposeOp>(
-            div_op.getRhs());
+    // The divisor may be broadcast dynamically (e.g. with a symbolic batch
+    // dim); the div requires it to have the shape of the lhs either way.
+    auto div_rhs = RecursivelyWalkUp<stablehlo::BroadcastInDimOp,
+                                     stablehlo::DynamicBroadcastInDimOp,
+                                     stablehlo::TransposeOp>(div_op.getRhs());
     if (matchPattern(div_rhs, m_Constant(&divisor))) {
       if (!divisor.isSplat()) {
         return failure();
@@ -713,8 +715,10 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
 
   {
     Value divisor =
-        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::ReshapeOp,
-                          stablehlo::TransposeOp>(div_op.getRhs());
+        RecursivelyWalkUp<stablehlo::BroadcastInDimOp,
+                          stablehlo::DynamicBroadcastInDimOp,
+                          stablehlo::ReshapeOp, stablehlo::TransposeOp>(
+            div_op.getRhs());
     auto rw_rhs =
         dyn_cast_or_null<stablehlo::ReduceWindowOp>(divisor.getDefiningOp());
     if (!rw_rhs) {
@@ -751,9 +755,9 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
                                          "Rhs rw init vals is not zero.");
     }
 
-    rw_rhs_input =
-        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::TransposeOp>(
-            rw_rhs_input);
+    rw_rhs_input = RecursivelyWalkUp<stablehlo::BroadcastInDimOp,
+                                     stablehlo::DynamicBroadcastInDimOp,
+                                     stablehlo::TransposeOp>(rw_rhs_input);
     DenseFPElementsAttr rhs_input_data;
     if (!matchPattern(rw_rhs_input, m_Constant(&rhs_input_data)) ||
         !rhs_input_data.isSplat() ||

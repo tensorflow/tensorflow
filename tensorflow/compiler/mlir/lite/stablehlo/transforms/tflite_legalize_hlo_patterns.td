@@ -250,6 +250,17 @@ def : Pat<
   (StableHLO_RemOp $l, $r),
   (TFL_FloorModOp $l, $r)>;
 
+// Elementwise StableHLO binary ops require both operands to have the result
+// shape at runtime, so an operand produced by a `dynamic_broadcast_in_dim`
+// always broadcasts to the shape of the other operand. The broadcast can
+// therefore be left to the implicit broadcasting of the TFL op, as is done for
+// `broadcast_in_dim` below. This keeps the graph of a model exported with
+// symbolic dimensions (e.g. a symbolic batch) the same as with static ones:
+// the constant operand stays visible to the TFL patterns that fold it (into a
+// convolution bias, an activation, etc).
+def IsImplicitBroadcastSupported :
+  Constraint<CPred<"IsImplicitBroadcastSupported($0)">>;
+
 // Binary ops with no attrs.
 foreach pair = [
   [StableHLO_MaxOp, TFL_MaximumOp],
@@ -277,6 +288,32 @@ foreach pair = [
         $broadcast_dimensions)),
     (pair[1] $l, $bcast_operand),
     [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
+
+  def : Pat<
+    (pair[0]:$result
+      (StableHLO_DynamicBroadcastInDimOp:$output
+        $bcast_operand,
+        $output_dimensions,
+        $broadcast_dimensions,
+        $expanding_dimensions_unused,
+        $nonexpanding_dimensions_unused),
+      $r),
+    (pair[1] $bcast_operand, $r),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output),
+     (IsImplicitBroadcastSupported $result)]>;
+
+  def : Pat<
+    (pair[0]:$result
+      $l,
+      (StableHLO_DynamicBroadcastInDimOp:$output
+        $bcast_operand,
+        $output_dimensions,
+        $broadcast_dimensions,
+        $expanding_dimensions_unused,
+        $nonexpanding_dimensions_unused)),
+    (pair[1] $l, $bcast_operand),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output),
+     (IsImplicitBroadcastSupported $result)]>;
 }
 
 // Binary ops with fused activiation attr.
@@ -307,6 +344,32 @@ foreach pair = [
         $broadcast_dimensions)),
     (pair[1] $l, $bcast_operand, TFL_AF_None),
     [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
+
+  def : Pat<
+    (pair[0]:$result
+      (StableHLO_DynamicBroadcastInDimOp:$output
+        $bcast_operand,
+        $output_dimensions,
+        $broadcast_dimensions,
+        $expanding_dimensions_unused,
+        $nonexpanding_dimensions_unused),
+      $r),
+    (pair[1] $bcast_operand, $r, TFL_AF_None),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output),
+     (IsImplicitBroadcastSupported $result)]>;
+
+  def : Pat<
+    (pair[0]:$result
+      $l,
+      (StableHLO_DynamicBroadcastInDimOp:$output
+        $bcast_operand,
+        $output_dimensions,
+        $broadcast_dimensions,
+        $expanding_dimensions_unused,
+        $nonexpanding_dimensions_unused)),
+    (pair[1] $l, $bcast_operand, TFL_AF_None),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output),
+     (IsImplicitBroadcastSupported $result)]>;
 }
 
 
