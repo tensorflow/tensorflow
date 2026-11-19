@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
@@ -34,8 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
+#include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -43,6 +46,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -859,6 +867,103 @@ TEST_F(
     EXPECT_FALSE(variables[0].lock_held());
     EXPECT_TRUE(variables[0].shared_lock_held());
   }
+}
+
+class RecordingDeviceAddressAllocator
+    : public stream_executor::DeviceAddressAllocator {
+ public:
+  RecordingDeviceAddressAllocator()
+      : stream_executor::DeviceAddressAllocator(nullptr) {}
+
+  absl::StatusOr<stream_executor::ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    return absl::UnimplementedError("Not needed in test");
+  }
+
+  absl::Status Deallocate(
+      int device_ordinal,
+      stream_executor::DeviceAddressBase mem) override {
+    if (!mem.is_null()) {
+      deallocated_ptrs.push_back(mem.opaque());
+    }
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<stream_executor::Stream*> GetStream(
+      int device_ordinal) override {
+    return nullptr;
+  }
+
+  std::vector<const void*> deallocated_ptrs;
+};
+
+TEST_F(PjRtExecutionUtilTest,
+       PopulateOutputsErrorPreservesAliasedInputAndFreesCopyBuffer) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("Identity", "Identity")
+          .Input(FakeInput(DT_INT32))
+          .Attr("T", DT_INT32)
+          .Device("/job:localhost/replica:0/task:0/device:XLA_CPU:0")
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  Tensor* input = CreateHostTensor<int32_t>(TensorShape({2}), {1, 2});
+  Tensor* var_tensor =
+      CreateHostTensor<int32_t>(TensorShape({2}), {3, 4});
+  Tensor* fresh_copy_tensor =
+      CreateHostTensor<int32_t>(TensorShape({2}), {5, 6});
+  inputs_.push_back({nullptr, input});
+  CreateContext();
+
+  RecordingDeviceAddressAllocator recording_allocator;
+  xla::Shape elem_shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  xla::Shape tuple_shape =
+      xla::ShapeUtil::MakeTupleShape({elem_shape, elem_shape});
+  xla::ScopedShapedBuffer output(tuple_shape, &recording_allocator,
+                                 /*device_ordinal=*/0);
+
+  stream_executor::DeviceAddressBase aliased_mem =
+      XlaTensor::DeviceMemoryFromTensor(*input);
+  stream_executor::DeviceAddressBase copy_protected_mem =
+      XlaTensor::DeviceMemoryFromTensor(*fresh_copy_tensor);
+  output.set_buffer(
+      stream_executor::ScopedDeviceAddress<uint8_t>(
+          aliased_mem, /*device_ordinal=*/0, &recording_allocator),
+      {0});
+  output.set_buffer(
+      stream_executor::ScopedDeviceAddress<uint8_t>(
+          copy_protected_mem, /*device_ordinal=*/0,
+          &recording_allocator),
+      {1});
+
+  xla::HloInputOutputAliasConfig alias_config(tuple_shape);
+  TF_ASSERT_OK(alias_config.SetUpAlias(
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{}));
+  TF_ASSERT_OK(alias_config.SetUpAlias(
+      /*output_index=*/{1}, /*param_number=*/1, /*param_index=*/{}));
+
+  XlaCompiler::CompilationResult compilation_result;
+  compilation_result.input_mapping = {0, 1};
+  compilation_result.outputs.resize(1);
+  compilation_result.outputs[0].type = DT_VARIANT;
+  compilation_result.outputs[0].is_tensor_list = true;
+
+  absl::flat_hash_map<int, const Tensor*> resource_vars = {
+      {1, var_tensor}};
+  XlaComputationLaunchContext launch_context(
+      /*client=*/nullptr, &recording_allocator, /*device_ordinal=*/0,
+      /*allocate_xla_tensors=*/false, /*use_multiple_streams=*/false);
+
+  absl::Status status = launch_context.PopulateOutputs(
+      context_.get(), &compilation_result, std::move(output),
+      /*missing_ctx_input_prefix=*/0, /*variable_infos=*/{},
+      alias_config, resource_vars);
+  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
+
+  ASSERT_EQ(recording_allocator.deallocated_ptrs.size(), 1u);
+  EXPECT_EQ(recording_allocator.deallocated_ptrs[0],
+            copy_protected_mem.opaque());
 }
 
 }  // namespace
