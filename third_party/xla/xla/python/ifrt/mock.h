@@ -166,9 +166,6 @@ class MockClient : public RTTIExtends<MockClient, Client> {
                HostBufferSemantics semantics,
                std::shared_ptr<const void> host_buffer_hold),
               (final));
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
-
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,

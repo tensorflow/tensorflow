@@ -16,12 +16,10 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_CLIENT_H_
 #define XLA_PYTHON_IFRT_CLIENT_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -40,8 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/bundle.h"
-// TODO(b/585751512): Remove once legacy callable shims are deleted.
-#include "xla/python/ifrt/cleanup.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -152,91 +148,12 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::shared_ptr<const void> host_buffer_hold) = 0;
 
-  // Transitional overload accepting legacy zero-argument cleanup callables
-  // while callers migrate to `host_buffer_hold`.
-  // TODO(b/585751512): Remove once all callers pass `std::shared_ptr`.
-  template <
-      typename F,
-      std::enable_if_t<!std::is_convertible_v<F, std::shared_ptr<const void>> &&
-                           std::is_invocable_r_v<void, F>,
-                       int> = 0>
-  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
-      F&& on_done_with_host_buffer) {
-    return MakeArrayFromHostBuffer(
-        data, dtype, std::move(shape), byte_strides, std::move(sharding),
-        std::move(layout), semantics,
-        MakeSharedCleanup(std::forward<F>(on_done_with_host_buffer)));
-  }
-
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
   // available in IFRT.
   struct HostBuffer {
     using ByteStrides = std::vector<int64_t>;
-
-    // Transitional wrapper around `std::shared_ptr<const void>` that also
-    // accepts legacy zero-argument cleanup callables while callers migrate.
-    // TODO(b/585751512): Replace with `std::shared_ptr<const void>` once all
-    // callers are migrated.
-    class OnDone {
-     public:
-      using Hold = std::shared_ptr<const void>;
-
-      OnDone() noexcept : hold_(nullptr) {}
-      OnDone(std::nullptr_t) noexcept  // NOLINT(google-explicit-constructor)
-          : hold_(nullptr) {}
-
-      template <typename T>
-      OnDone(std::shared_ptr<T> hold)  // NOLINT(google-explicit-constructor)
-          noexcept
-          : hold_(std::move(hold)) {}
-
-      template <typename F,
-                std::enable_if_t<!std::is_same_v<std::decay_t<F>, OnDone> &&
-                                     !std::is_convertible_v<F, Hold> &&
-                                     std::is_invocable_r_v<void, F>,
-                                 int> = 0>
-      OnDone(F&& on_done)  // NOLINT(google-explicit-constructor)
-          : hold_(MakeSharedCleanup(std::forward<F>(on_done))) {}
-
-      OnDone& operator=(std::nullptr_t) noexcept {
-        hold_.reset();
-        return *this;
-      }
-
-      void reset() noexcept { hold_.reset(); }
-
-      operator Hold() const& noexcept {  // NOLINT(google-explicit-constructor)
-        return hold_;
-      }
-      operator Hold() && noexcept {  // NOLINT(google-explicit-constructor)
-        return std::move(hold_);
-      }
-
-      explicit operator bool() const noexcept { return hold_ != nullptr; }
-
-      void operator()() noexcept { hold_.reset(); }
-
-      friend bool operator==(const OnDone& lhs, std::nullptr_t) noexcept {
-        return lhs.hold_ == nullptr;
-      }
-      friend bool operator==(std::nullptr_t, const OnDone& rhs) noexcept {
-        return rhs.hold_ == nullptr;
-      }
-      friend bool operator!=(const OnDone& lhs, std::nullptr_t) noexcept {
-        return lhs.hold_ != nullptr;
-      }
-      friend bool operator!=(std::nullptr_t, const OnDone& rhs) noexcept {
-        return rhs.hold_ != nullptr;
-      }
-
-     private:
-      Hold hold_;
-    };
 
     // `data` points to the backing array of the host buffer. Caution:
     // `byte_strides` are allowed to be negative, in which case `data` may need
@@ -266,7 +183,7 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
     // should not be accessed by the user until `on_done` is released; the data
     // may be read by the runtime throughout the life of the array created with
     // the host buffer, and it may even be mutated.
-    OnDone on_done;
+    std::shared_ptr<const void> on_done;
   };
 
   // Represents the specification of creating an array following an array spec

@@ -3909,48 +3909,6 @@ TEST(ArrayImplTest, IsDeleted) {
   TF_EXPECT_OK(future.Await());
 }
 
-TEST(ArrayImplTest, LegacyCallableCleanupShims) {
-  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-
-  DType dtype(DType::kF32);
-  Shape shape({2, 3});
-  auto data = std::make_shared<std::vector<float>>(6);
-  absl::c_iota(*data, 0);
-  Device* device = client->addressable_devices().at(0);
-  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
-
-  int callback_count = 0;
-  ASSERT_OK_AND_ASSIGN(
-      ArrayRef array,
-      client->MakeArrayFromHostBuffer(
-          data->data(), dtype, shape, /*byte_strides=*/std::nullopt, sharding,
-          /*layout=*/nullptr,
-          Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-          [hold = data, &callback_count]() { ++callback_count; }));
-  EXPECT_EQ(callback_count, 1);
-  EXPECT_EQ(data.use_count(), 1);
-
-  int shard_callback_count = 0;
-  Client::MakeArraysFromHostBufferShardsSpec spec = {
-      /*buffers=*/{{{0},
-                    {data->data(), dtype, shape,
-                     /*byte_strides=*/std::nullopt,
-                     /*on_done=*/
-                     [hold = data, &shard_callback_count]() {
-                       ++shard_callback_count;
-                     }}}},
-      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
-  };
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<ArrayRef> shard_arrays,
-      client->MakeArraysFromHostBufferShards(
-          absl::MakeSpan(&spec, 1),
-          Client::HostBufferSemantics::kImmutableOnlyDuringCall));
-  ASSERT_EQ(shard_arrays.size(), 1);
-  EXPECT_EQ(shard_callback_count, 1);
-  EXPECT_EQ(data.use_count(), 1);
-}
-
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

@@ -78,8 +78,6 @@ class Client final : public RTTIExtends<Client, xla::ifrt::Client> {
       xla::ifrt::ShardingRef sharding, xla::ifrt::LayoutRef layout,
       HostBufferSemantics semantics,
       std::shared_ptr<const void> host_buffer_hold) override;
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,

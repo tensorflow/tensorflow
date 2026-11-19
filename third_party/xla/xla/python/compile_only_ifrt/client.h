@@ -204,8 +204,6 @@ class CompileOnlyIfRtClient final
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
-  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
-  using xla::ifrt::Client::MakeArrayFromHostBuffer;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
