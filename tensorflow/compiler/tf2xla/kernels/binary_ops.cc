@@ -192,7 +192,13 @@ static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
   auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
   auto do_plus = xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
                           trunc_mod_not_zero);
-  return xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
+  auto result = xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
+  if (DataTypeIsFloating(dtype)) {
+    auto zeros = xla::ZerosLike(trunc_mod);
+    auto signed_zero = xla::Select(xla::Lt(y, zero), xla::Neg(zeros), zeros);
+    result = xla::Select(trunc_mod_not_zero, result, signed_zero);
+  }
+  return result;
 }
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));

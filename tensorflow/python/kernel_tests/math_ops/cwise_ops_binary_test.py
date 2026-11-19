@@ -1069,6 +1069,30 @@ class BinaryOpTest(test.TestCase):
 
       self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
 
+  def testFloorModZeroSignMatchesNumpy(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = np.array([3, 0, -0., -3, 6, -6, -0., 5, -5, 5, -5], dtype=dtype)
+      y = np.array([-3, -3, 3, 3, -3, 3, -3, 3, 3, -3, -3], dtype=dtype)
+      expected = np.mod(x, y)
+      with test_util.force_cpu():
+        result = self.evaluate(math_ops.floormod(x, y))
+      self.assertAllEqual(result, expected)
+      self.assertAllEqual(np.signbit(result), np.signbit(expected))
+
+  def testFloorModZeroSignMatchesNumpyBfloat16(self):
+    # numpy has no bfloat16, so the expected values are computed in float32.
+    # Every remainder in this case is exact in bfloat16.
+    x = np.array([3, 0, -0., -3, 6, -6, -0., 5, -5, 5, -5], dtype=np.float32)
+    y = np.array([-3, -3, 3, 3, -3, 3, -3, 3, 3, -3, -3], dtype=np.float32)
+    expected = np.mod(x, y)
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    with test_util.force_cpu():
+      result = self.evaluate(math_ops.floormod(x.astype(bfloat16),
+                                               y.astype(bfloat16)))
+    result = result.astype(np.float32)
+    self.assertAllEqual(result, expected)
+    self.assertAllEqual(np.signbit(result), np.signbit(expected))
+
 
 class ComparisonOpTest(test.TestCase):
 
