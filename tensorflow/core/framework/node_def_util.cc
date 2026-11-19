@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -156,34 +157,13 @@ std::string FormatNodeDefForError(const NodeDef& node_def) {
 }
 
 const AttrValue* AttrSlice::Find(absl::string_view attr_name) const {
-  // Currently, the collection used for NodeDef::attr() (google::protobuf::Map)
-  // requires that the keys used for lookups have type 'const string&'. Because
-  // this method takes a StringPiece, it is necessary to allocate a temporary
-  // string, copy attr_name to it, and then use that temporary string for the
-  // lookup. This causes an excessive number of short-lived allocations, and for
-  // large graphs, this can be a significant cost.
-  //
-  // Because most nodes have a small number of attributes, a simple linear scan
-  // is generally more efficient than a hashed lookup.  If google::protobuf::Map
-  // changes so that it supports efficient lookups using StringPiece instead of
-  // const string&, then this code could be changed to use attrs()->find()
-  // again.
-
-  for (const auto& attr : *attrs()) {
-    if (attr.first == attr_name) {
-      return &attr.second;
-    }
-  }
-  return nullptr;
+  const AttrValueMap* map = attrs();
+  auto iter = map->find(attr_name);
+  return iter != map->end() ? &iter->second : nullptr;
 }
 
 const AttrValue* AttrSlice::FindByString(const std::string& attr_name) const {
-  auto iter = attrs()->find(attr_name);
-  if (iter != attrs()->end()) {
-    return &iter->second;
-  } else {
-    return nullptr;
-  }
+  return Find(attr_name);
 }
 
 absl::Status AttrSlice::CheckFind(absl::string_view attr_name,
@@ -210,8 +190,7 @@ absl::Status AttrSlice::Find(absl::string_view attr_name,
 
 absl::Status AttrSlice::FindByString(const std::string& attr_name,
                                      const AttrValue** attr_value) const {
-  *attr_value = FindByString(attr_name);
-  return CheckFind(attr_name, *attr_value);
+  return Find(attr_name, attr_value);
 }
 
 bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
@@ -348,7 +327,7 @@ DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
 bool HasNodeAttr(const NodeDef& node_def, absl::string_view attr_name) {
-  return node_def.attr().find(std::string(attr_name)) != node_def.attr().end();
+  return node_def.attr().contains(attr_name);
 }
 
 static const std::string& kEmptyString = *new std::string();
@@ -405,6 +384,7 @@ absl::Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
   const AttrValue* attr_value;
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(type)"));
+  value->reserve(value->size() + attr_value->list().type().size());
   for (const auto& v : attr_value->list().type()) {
     value->push_back(static_cast<DataType>(v));
   }
@@ -489,27 +469,23 @@ absl::Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
       DataType dtype;
       TF_RETURN_IF_ERROR(
           GetNodeAttr(node_or_attrs, arg_def.type_attr(), &dtype));
-      for (int i = 0; i < repeats; ++i) {
-        sig->push_back(dtype);
-      }
+      sig->resize(sig->size() + repeats, dtype);
     } else if (arg_def.type() != DT_INVALID) {
-      for (int i = 0; i < repeats; ++i) {
-        sig->push_back(arg_def.type());
-      }
+      sig->resize(sig->size() + repeats, arg_def.type());
     } else {
       return absl::InvalidArgumentError(absl::StrCat(
           "Missing type or type_attr field in ", arg_def.ShortDebugString()));
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
-    TF_RETURN_IF_ERROR(AttrSlice(node_or_attrs)
-                           .FindByString(arg_def.type_attr(), &attr_value));
+    TF_RETURN_IF_ERROR(
+        AttrSlice(node_or_attrs).Find(arg_def.type_attr(), &attr_value));
     sig->push_back(attr_value->type());
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
-        AttrSlice(node_or_attrs)
-            .FindByString(arg_def.type_list_attr(), &attr_value));
+        AttrSlice(node_or_attrs).Find(arg_def.type_list_attr(), &attr_value));
+    sig->reserve(sig->size() + attr_value->list().type().size());
     for (int dtype : attr_value->list().type()) {
       sig->push_back(static_cast<DataType>(dtype));
     }
@@ -951,19 +927,19 @@ absl::Status AttachDef(const absl::Status& status, const NodeDef& node_def,
 
 void AddNodeAttr(absl::string_view name, const AttrValue& value,
                  NodeDef* node_def) {
-  node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(std::string(name), value));
+  node_def->mutable_attr()->try_emplace(name, value);
 }
 
 void AddNodeAttr(absl::string_view name, AttrValue&& value, NodeDef* node_def) {
-  (*node_def->mutable_attr())[std::string(name)] = std::move(value);
+  (*node_def->mutable_attr())[name] = std::move(value);
 }
 
-#define ADD_NODE_ATTR(T)                                           \
-  void AddNodeAttr(StringPiece name, T value, NodeDef* node_def) { \
-    AttrValue attr_value;                                          \
-    SetAttrValue(value, &attr_value);                              \
-    AddNodeAttr(name, attr_value, node_def);                       \
+#define ADD_NODE_ATTR(T)                                               \
+  void AddNodeAttr(StringPiece name, T value, NodeDef* node_def) {     \
+    auto [it, inserted] = node_def->mutable_attr()->try_emplace(name); \
+    if (inserted) {                                                    \
+      SetAttrValue(value, &it->second);                                \
+    }                                                                  \
   }
 ADD_NODE_ATTR(absl::string_view)
 ADD_NODE_ATTR(const char*)
@@ -995,14 +971,15 @@ ADD_NODE_ATTR(absl::Span<const NameAttrList>)
 
 void AddAttr(absl::string_view name, const AttrValue& value,
              AttrValueMap* map) {
-  map->insert(AttrValueMap::value_type(std::string(name), value));
+  map->try_emplace(name, value);
 }
 
 #define ADD_ATTR(T)                                            \
   void AddAttr(StringPiece name, T value, AttrValueMap* map) { \
-    AttrValue attr_value;                                      \
-    SetAttrValue(value, &attr_value);                          \
-    AddAttr(name, attr_value, map);                            \
+    auto [it, inserted] = map->try_emplace(name);              \
+    if (inserted) {                                            \
+      SetAttrValue(value, &it->second);                        \
+    }                                                          \
   }
 ADD_ATTR(bool)
 #undef ADD_ATTR

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 
 #include <limits>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {
@@ -977,6 +979,214 @@ TEST(NodeDefUtilTest, RejectsNegativePortAndInvalidNameRange) {
           .code(),
       absl::StatusCode::kInvalidArgument);
 }
+
+TEST(NodeDefUtilTest, AttrSliceFindAndHasNodeAttrStringView) {
+  NodeDef node_def;
+  node_def.set_name("n");
+  node_def.set_op("TestOp");
+  AddNodeAttr("attr_name", 42, &node_def);
+  AddNodeAttr("attr_name", 99, &node_def);
+  AddNodeAttr("other_attr", "hello", &node_def);
+  AddNodeAttr("_colocation_group_attr_long", true, &node_def);
+
+  const AttrSlice slice(node_def);
+
+  const absl::string_view non_null_terminated =
+      absl::string_view("prefix_attr_name_suffix").substr(7, 9);
+  ASSERT_EQ(non_null_terminated, "attr_name");
+  EXPECT_TRUE(HasNodeAttr(node_def, non_null_terminated));
+  const AttrValue* found = slice.Find(non_null_terminated);
+  ASSERT_NE(found, nullptr);
+  EXPECT_EQ(found->i(), 42);
+  EXPECT_EQ(slice.FindByString(std::string(non_null_terminated)), found);
+  const AttrValue* found_by_str = nullptr;
+  TF_EXPECT_OK(
+      slice.FindByString(std::string(non_null_terminated), &found_by_str));
+  EXPECT_EQ(found_by_str, found);
+  EXPECT_TRUE(
+      absl::IsNotFound(slice.FindByString("missing_attr", &found_by_str)));
+
+  const absl::string_view prefix_only =
+      absl::string_view("prefix_attr_name_suffix").substr(7, 4);
+  ASSERT_EQ(prefix_only, "attr");
+  EXPECT_FALSE(HasNodeAttr(node_def, prefix_only));
+  EXPECT_EQ(slice.Find(prefix_only), nullptr);
+  EXPECT_FALSE(HasNodeAttr(node_def, "missing_attr"));
+  EXPECT_EQ(slice.Find("missing_attr"), nullptr);
+
+  EXPECT_TRUE(HasNodeAttr(node_def, "other_attr"));
+  const AttrValue* other = slice.Find("other_attr");
+  ASSERT_NE(other, nullptr);
+  EXPECT_EQ(other->s(), "hello");
+
+  EXPECT_TRUE(HasNodeAttr(node_def, "_colocation_group_attr_long"));
+  const AttrValue* long_attr = slice.Find("_colocation_group_attr_long");
+  ASSERT_NE(long_attr, nullptr);
+  EXPECT_TRUE(long_attr->b());
+}
+
+TEST(NodeDefUtilTest, GetNodeAttrDataTypeVectorManyElements) {
+  NodeDef node_def;
+  node_def.set_name("n");
+  node_def.set_op("TestOp");
+  const DataTypeVector expected = {DT_FLOAT, DT_DOUBLE, DT_INT32,
+                                   DT_INT64, DT_STRING, DT_BOOL};
+  AddNodeAttr("types", expected, &node_def);
+
+  DataTypeVector actual;
+  TF_ASSERT_OK(GetNodeAttr(node_def, "types", &actual));
+  EXPECT_EQ(actual, expected);
+
+  DataTypeVector appended = {DT_BOOL};
+  TF_ASSERT_OK(GetNodeAttr(node_def, "types", &appended));
+  EXPECT_EQ(appended, (DataTypeVector{DT_BOOL, DT_FLOAT, DT_DOUBLE, DT_INT32,
+                                      DT_INT64, DT_STRING, DT_BOOL}));
+}
+
+TEST(NodeDefUtilTest, AddAttrInsertsIfAbsentAndRvalueOverwrites) {
+  const absl::string_view key =
+      absl::string_view("prefix_key_suffix").substr(7, 3);
+  ASSERT_EQ(key, "key");
+  AttrValue v1;
+  v1.set_i(10);
+  AttrValue v2;
+  v2.set_i(20);
+
+  NodeDef nd;
+  AddNodeAttr(key, v1, &nd);
+  AddNodeAttr(key, v2, &nd);
+  ASSERT_EQ(nd.attr().size(), 1);
+  EXPECT_EQ(nd.attr().at("key").i(), 10);
+
+  AttrValueMap map;
+  AddAttr(key, v1, &map);
+  AddAttr(key, v2, &map);
+  ASSERT_EQ(map.size(), 1);
+  EXPECT_EQ(map.at("key").i(), 10);
+
+  AttrValueMap bool_map;
+  AddAttr(key, true, &bool_map);
+  AddAttr(key, false, &bool_map);
+  ASSERT_EQ(bool_map.size(), 1);
+  EXPECT_TRUE(bool_map.at("key").b());
+
+  AddNodeAttr(key, std::move(v2), &nd);
+  ASSERT_EQ(nd.attr().size(), 1);
+  EXPECT_EQ(nd.attr().at("key").i(), 20);
+
+  const absl::string_view fresh_key =
+      absl::string_view("prefix_fresh_suffix").substr(7, 5);
+  ASSERT_EQ(fresh_key, "fresh");
+  AttrValue v3;
+  v3.set_i(30);
+  AddNodeAttr(fresh_key, std::move(v3), &nd);
+  ASSERT_EQ(nd.attr().size(), 2);
+  EXPECT_EQ(nd.attr().at("fresh").i(), 30);
+}
+
+class InOutTypesForNodeRepeatsTest : public ::testing::TestWithParam<int> {};
+
+TEST_P(InOutTypesForNodeRepeatsTest, MatchesExpectedTypes) {
+  const int n = GetParam();
+  const OpDef op_def = ToOpDef(OpDefBuilder("RepeatsTestOp")
+                                   .Input("lead: bool")
+                                   .Input("typed: N * T")
+                                   .Input("fixed: N * float")
+                                   .Input("list: Tlist")
+                                   .Output("lead_out: bool")
+                                   .Output("typed_out: N * T")
+                                   .Output("fixed_out: N * float")
+                                   .Output("list_out: Tlist")
+                                   .Attr("N: int >= 0")
+                                   .Attr("T: type")
+                                   .Attr("Tlist: list(type) >= 0"));
+  // More than the 4 inline elements of `DataTypeVector`.
+  const DataTypeVector list_types = {DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,
+                                     DT_STRING};
+  NodeDef node_def;
+  TF_ASSERT_OK(NodeDefBuilder("repeats", &op_def)
+                   .Attr("N", n)
+                   .Attr("T", DT_INT32)
+                   .Attr("Tlist", list_types)
+                   .Input(FakeInput(DT_BOOL))
+                   .Input(FakeInput(n, DT_INT32))
+                   .Input(FakeInput(n, DT_FLOAT))
+                   .Input(FakeInput(list_types))
+                   .Finalize(&node_def));
+
+  DataTypeVector expected = {DT_BOOL};
+  expected.insert(expected.end(), n, DT_INT32);
+  expected.insert(expected.end(), n, DT_FLOAT);
+  expected.insert(expected.end(), list_types.begin(), list_types.end());
+
+  DataTypeVector in_types;
+  TF_EXPECT_OK(InputTypesForNode(node_def, op_def, &in_types));
+  EXPECT_EQ(in_types, expected);
+
+  DataTypeVector out_types;
+  TF_EXPECT_OK(OutputTypesForNode(node_def, op_def, &out_types));
+  EXPECT_EQ(out_types, expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(ZeroAndNonZeroRepeats, InOutTypesForNodeRepeatsTest,
+                         ::testing::Values(0, 5));
+
+// `test_benchmark.h` provides `BENCHMARK` without re-exporting the internal
+// header that defines it (`benchmark/registration.h`), which does not exist in
+// the `@com_google_benchmark` commit that open-source TensorFlow pins.
+// NOLINTBEGIN(misc-include-cleaner)
+void BM_AttrSlice_Find(::testing::benchmark::State& state) {
+  const int num_attrs = state.range(0);
+  NodeDef node_def;
+  node_def.set_name("test_node");
+  node_def.set_op("TestOp");
+  for (int i = 0; i < num_attrs; ++i) {
+    AddNodeAttr(absl::StrCat("_colocation_group_attr_", i), i, &node_def);
+  }
+  const AttrSlice slice(node_def);
+  const std::string target_key =
+      absl::StrCat("_colocation_group_attr_", num_attrs - 1);
+  const absl::string_view key(target_key);
+  for (auto s : state) {
+    tensorflow::testing::DoNotOptimize(slice.Find(key));
+  }
+}
+BENCHMARK(BM_AttrSlice_Find)->Arg(4)->Arg(16);
+
+void BM_HasNodeAttr(::testing::benchmark::State& state) {
+  const int num_attrs = state.range(0);
+  NodeDef node_def;
+  node_def.set_name("test_node");
+  node_def.set_op("TestOp");
+  for (int i = 0; i < num_attrs; ++i) {
+    AddNodeAttr(absl::StrCat("_colocation_group_attr_", i), i, &node_def);
+  }
+  const std::string target_key =
+      absl::StrCat("_colocation_group_attr_", num_attrs - 1);
+  const absl::string_view key(target_key);
+  for (auto s : state) {
+    tensorflow::testing::DoNotOptimize(HasNodeAttr(node_def, key));
+  }
+}
+BENCHMARK(BM_HasNodeAttr)->Arg(4)->Arg(16);
+
+void BM_AddNodeAttr(::testing::benchmark::State& state) {
+  const int num_attrs = state.range(0);
+  std::vector<std::string> keys;
+  keys.reserve(num_attrs);
+  for (int i = 0; i < num_attrs; ++i) {
+    keys.push_back(absl::StrCat("_colocation_group_attr_", i));
+  }
+  for (auto s : state) {
+    NodeDef node_def;
+    for (int i = 0; i < num_attrs; ++i) {
+      AddNodeAttr(absl::string_view(keys[i]), i, &node_def);
+    }
+    tensorflow::testing::DoNotOptimize(node_def);
+  }
+}
+BENCHMARK(BM_AddNodeAttr)->Arg(4)->Arg(16);
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 }  // namespace tensorflow
