@@ -551,6 +551,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms:instruction_fusion",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:collective_ops_utils",
         "//xla/service:decision",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:hlo_fusion_analysis",

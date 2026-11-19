@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/decision.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1262,45 +1263,41 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
   return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
 }
 
-// Returns the candidate tile sizes for a single-dimension reduction `dim`,
-// pruning sequential tile sizes that are unlikely to be profitable to reduce
-// search time. This is an empirical heuristic rather than a strict
-// guarantee—the pruned tilings are not deterministically worse in all cases,
-// but the underlying intuition holds well across current benchmarks and model
-// workloads.
-absl::StatusOr<std::vector<int64_t>> PruneUnprofitableReductionTileSizes(
+// Returns the tile sizes to consider for the reduction dimension `dim`. This is
+// an opt-in strategy: the dimension stays untiled unless tiling it is expected
+// to pay off.
+absl::StatusOr<std::vector<int64_t>> SelectReductionTileSizes(
     const TilingSpace::DimensionInfo& dim) {
   const Shape& operand_shape = dim.hlo->operand(0)->shape();
   const int64_t reduction_size = dim.dimension_size;
-  const int64_t minor_dim = LayoutUtil::Minor(operand_shape.layout(), 0);
-  const bool is_contiguous = dim.hlo->dimensions(0) == minor_dim;
-
-  if (is_contiguous) {
-    // For a contiguous reduction, small power-of-two dimensions (<= 256)
-    // already have coalesced reads and no power-of-two padding waste when
-    // untiled. Non-power-of-two dimensions in (128, 256) pad to 256 when
-    // untiled (wasting up to nearly half the tile), so tiling them remains
-    // worthwhile. When tiled, tiles < 16 under-utilize a warp and add loop
-    // overhead without improving coalescing.
-    if (reduction_size > 256 ||
-        (reduction_size > 128 &&
-         !llvm::isPowerOf2_64(static_cast<uint64_t>(reduction_size)))) {
-      return GetPowerOf2TileSizesInRange(reduction_size,
-                                         /*min_tile_size=*/16);
+  int64_t minor_parallel_elements = 1;
+  for (int64_t phys_dim : LayoutUtil::MinorToMajor(operand_shape)) {
+    if (phys_dim == dim.hlo->dimensions(0)) {
+      break;
     }
-  } else {
-    // For a strided reduction, tiling the reduction dimension lowers register
-    // pressure so the minor (parallel) dimension can use a larger tile for
-    // coalesced reads. Keep reduction tilings only when the reduction
-    // dimension is large enough to constrain registers and the minor
-    // dimension is large enough to benefit from a wider tile.
-    const int64_t minor_dim_size = operand_shape.dimensions(minor_dim);
-    if (reduction_size > 256 ||
-        (reduction_size >= 64 && minor_dim_size >= 128)) {
-      return GetPowerOf2TileSizesInRange(reduction_size);
+    minor_parallel_elements *= operand_shape.dimensions(phys_dim);
+  }
+  // Strided reductions can trade a smaller sequential reduction tile for a
+  // wider coalesced parallel tile; contiguous reductions remain untiled. The
+  // `> 64`, `>= 32`, and `[2, 256]` cut-offs are empirical heuristics.
+  if (reduction_size <= 64 || minor_parallel_elements < 32) {
+    return std::vector<int64_t>{reduction_size};
+  }
+  // Tiled reduction loops accumulate across iterations in the output element
+  // type, which below 32 bits is only exact for min/max. Other reducers produce
+  // wrong results: e.g. a bf16 sum stops growing once the accumulator is much
+  // larger than the partial sum of one iteration.
+  const PrimitiveType type = dim.hlo->shape().element_type();
+  if (primitive_util::IsFloatingPointType(type) &&
+      primitive_util::BitWidth(type) <= 16) {
+    const std::optional<ReductionKind> kind =
+        MatchReductionComputation(dim.hlo->to_apply());
+    if (kind != ReductionKind::MIN && kind != ReductionKind::MAX) {
+      return std::vector<int64_t>{reduction_size};
     }
   }
-  return std::vector<int64_t>{reduction_size};
+  return GetPowerOf2TileSizesInRange(reduction_size, /*min_tile_size=*/2,
+                                     /*max_tile_size=*/256);
 }
 
 // Whether the tiling search for `fusion_adaptor` should enumerate tile sizes
@@ -1515,7 +1512,7 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
                 if (!tile_reduction_dims) {
                   return std::vector<int64_t>{dim.dimension_size};
                 }
-                return PruneUnprofitableReductionTileSizes(dim);
+                return SelectReductionTileSizes(dim);
               }
               if (dim.hlo->opcode() == HloOpcode::kScan &&
                   dim.dimension_size <= kMaxRowLocalScanDimSize) {

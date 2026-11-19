@@ -1190,6 +1190,12 @@ TEST_F(TilingSpaceTest, GetPowerOf2TileSizesInRange) {
               IsOkAndHolds(ElementsAre(16, 32, 64, 128, 192)));
   EXPECT_THAT(GetPowerOf2TileSizesInRange(192, /*min_tile_size=*/192),
               IsOkAndHolds(ElementsAre(192)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(1024, /*min_tile_size=*/2,
+                                          /*max_tile_size=*/256),
+              IsOkAndHolds(ElementsAre(2, 4, 8, 16, 32, 64, 128, 256, 1024)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(256, /*min_tile_size=*/2,
+                                          /*max_tile_size=*/256),
+              IsOkAndHolds(ElementsAre(2, 4, 8, 16, 32, 64, 128, 256)));
   EXPECT_THAT(GetPowerOf2TileSizesInRange(-5),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "Dimension size must be non-negative."));

@@ -927,7 +927,7 @@ TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
 }
 
 absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
-    int64_t dim_size, int64_t min_tile_size) {
+    int64_t dim_size, int64_t min_tile_size, int64_t max_tile_size) {
   if (dim_size < 0) {
     return absl::InvalidArgumentError("Dimension size must be non-negative.");
   }
@@ -941,7 +941,7 @@ absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
   std::vector<int64_t> result;
   result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
   for (int64_t tile_size = llvm::PowerOf2Ceil(min_tile_size);
-       tile_size < dim_size; tile_size *= 2) {
+       tile_size < dim_size && tile_size <= max_tile_size; tile_size *= 2) {
     result.push_back(tile_size);
   }
   result.push_back(dim_size);

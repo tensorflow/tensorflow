@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -371,10 +372,11 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space);
 
-// Returns the power-of-two tile sizes in `[min_tile_size, dim_size)` for one
-// dimension, plus `dim_size` itself.
+// Returns the power-of-two tile sizes in `[min_tile_size, dim_size)` that are
+// at most `max_tile_size`, plus `dim_size` itself.
 absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
-    int64_t dim_size, int64_t min_tile_size = 1);
+    int64_t dim_size, int64_t min_tile_size = 1,
+    int64_t max_tile_size = std::numeric_limits<int64_t>::max());
 
 }  // namespace xla::gpu
 

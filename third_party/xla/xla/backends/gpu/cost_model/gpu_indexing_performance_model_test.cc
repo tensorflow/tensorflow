@@ -78,8 +78,8 @@ using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::Field;
-using ::testing::Ge;
 using ::testing::IsEmpty;
+using ::testing::Le;
 using ::testing::Not;
 using ::xla::xtile::BlockLevelParameters;
 
@@ -2857,9 +2857,45 @@ TEST_F(GpuIndexingPerformanceModelTest,
     CHECK_OK(result);
     return std::get<absl::InlinedVector<TiledRunTimeData, 4>>(*result);
   };
-  auto get_top_k = [&](int64_t d0, int64_t d1, int64_t reduce_dim) {
+  auto get_top_k = [&](int64_t d0, int64_t d1, int64_t reduce_dim,
+                       absl::string_view type = "f32",
+                       absl::string_view reducer = "add") {
     return get_top_k_for_hlo(absl::Substitute(
         R"(
+HloModule m
+reducer {
+  p0 = $4[] parameter(0)
+  p1 = $4[] parameter(1)
+  ROOT r = $4[] $5(p0, p1)
+}
+fused {
+  p0 = $4[$0,$1]{1,0} parameter(0)
+  c0 = $4[] constant(0)
+  ROOT reduce = $4[$2]{0} reduce(p0, c0), dimensions={$3}, to_apply=reducer
+}
+ENTRY main {
+  p0 = $4[$0,$1]{1,0} parameter(0)
+  ROOT fusion = $4[$2]{0} fusion(p0), kind=kCustom, calls=fused
+})",
+        d0, d1, reduce_dim == 0 ? d1 : d0, reduce_dim, type, reducer));
+  };
+  auto seq_tiles_are = [](auto matcher) {
+    return Field(&TiledRunTimeData::block_level_parameters,
+                 Field(&BlockLevelParameters::sequential_tile_sizes, matcher));
+  };
+
+  // Contiguous reductions are kept untiled.
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+  EXPECT_THAT(get_top_k(128, 192, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+  EXPECT_THAT(get_top_k(16, 65536, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Strided reduction with reduction_size > 64 and minor_parallel >= 32 is
+  // tiled in [2, 256]. All the dimensions that are more minor than the
+  // reduction dimension count towards minor_parallel.
+  auto strided = get_top_k_for_hlo(R"(
 HloModule m
 add {
   p0 = f32[] parameter(0)
@@ -2867,41 +2903,31 @@ add {
   ROOT add = f32[] add(p0, p1)
 }
 fused {
-  p0 = f32[$0,$1]{1,0} parameter(0)
+  p0 = f32[1024,16,16]{2,1,0} parameter(0)
   c0 = f32[] constant(0)
-  ROOT reduce = f32[$2]{0} reduce(p0, c0), dimensions={$3}, to_apply=add
+  ROOT reduce = f32[16,16]{1,0} reduce(p0, c0), dimensions={0}, to_apply=add
 }
 ENTRY main {
-  p0 = f32[$0,$1]{1,0} parameter(0)
-  ROOT fusion = f32[$2]{0} fusion(p0), kind=kCustom, calls=fused
-})",
-        d0, d1, reduce_dim == 0 ? d1 : d0, reduce_dim));
-  };
-  auto seq_tiles_are = [](auto matcher) {
-    return Field(&TiledRunTimeData::block_level_parameters,
-                 Field(&BlockLevelParameters::sequential_tile_sizes, matcher));
-  };
+  p0 = f32[1024,16,16]{2,1,0} parameter(0)
+  ROOT fusion = f32[16,16]{1,0} fusion(p0), kind=kCustom, calls=fused
+})");
+  EXPECT_THAT(strided, Contains(seq_tiles_are(ElementsAre(2))));
+  EXPECT_THAT(strided, Each(seq_tiles_are(Each(Le(256)))));
 
-  // Power-of-two contiguous reduction <= 256 is kept untiled.
-  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/1),
+  // Tiled loops accumulate in the output type, so sub-32-bit float reductions
+  // are only tiled for exact reducers such as `maximum`. Other reducers produce
+  // wrong results: e.g. a bf16 sum stops growing once the accumulator is much
+  // larger than the partial sum of one iteration.
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0, "bf16", "add"),
               Each(seq_tiles_are(IsEmpty())));
-
-  // Non-power-of-two contiguous reduction in (128, 256) is tiled, with
-  // sequential tile sizes < 16 pruned.
-  auto non_pow2 = get_top_k(128, 192, /*reduce_dim=*/1);
-  EXPECT_THAT(non_pow2, Contains(seq_tiles_are(Not(IsEmpty()))));
-  EXPECT_THAT(non_pow2, Each(seq_tiles_are(Each(Ge(16)))));
-
-  // Strided reduction with reduction_size >= 64 and minor_dim_size >= 128
-  // is tiled and retains small sequential tile sizes (< 16).
-  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0),
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0, "bf16", "maximum"),
               Contains(seq_tiles_are(ElementsAre(2))));
 
-  // Strided reductions with reduction_size < 64 or (reduction_size <= 256 and
-  // minor_dim_size < 128) are kept untiled.
-  EXPECT_THAT(get_top_k(32, 256, /*reduce_dim=*/0),
+  // Strided reductions with reduction_size <= 64 or minor_parallel < 32 are
+  // kept untiled.
+  EXPECT_THAT(get_top_k(64, 256, /*reduce_dim=*/0),
               Each(seq_tiles_are(IsEmpty())));
-  EXPECT_THAT(get_top_k(128, 64, /*reduce_dim=*/0),
+  EXPECT_THAT(get_top_k(128, 16, /*reduce_dim=*/0),
               Each(seq_tiles_are(IsEmpty())));
 
   // Zero-sized reduction dimension is kept untiled without error.
