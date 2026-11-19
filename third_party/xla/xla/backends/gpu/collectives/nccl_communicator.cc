@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
@@ -408,6 +409,69 @@ NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr,
       });
 }
 
+absl::StatusOr<std::shared_ptr<SymmetricMemory>>
+NcclCommunicator::AcquireSymmetricMemory(se::DeviceAddressBase addr,
+                                         bool symmetric_window) {
+  // Declared before the lock so that deregistration runs after unlocking.
+  std::shared_ptr<SymmetricMemory> stale;
+  {
+    absl::MutexLock lock(cached_symmetric_memories_mu_);
+    if (cancel_->IsCancelled()) {
+      return FailedPrecondition("NcclCommunicator aborted");
+    }
+    auto it = cached_symmetric_memories_.find(addr.opaque());
+    if (it != cached_symmetric_memories_.end()) {
+      CachedSymmetricMemory& cached = it->second;
+      if (cached.memory->addr() == addr &&
+          cached.symmetric_window == symmetric_window) {
+        return cached.memory;
+      }
+      // NCCL does not allow several windows on the same address, so the stale
+      // window must be deregistered before registering the new one. It can't
+      // be while somebody else still holds it.
+      if (cached.memory.use_count() > 1) {
+        return FailedPrecondition(
+            "Symmetric memory at %p is still in use; cannot re-register it "
+            "with size %d and symmetric_window=%v",
+            addr.opaque(), addr.size(), symmetric_window);
+      }
+      stale = std::move(cached.memory);
+      cached_symmetric_memories_.erase(it);
+    }
+  }
+  stale.reset();
+
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<SymmetricMemory> symm,
+                   CreateSymmetricMemory(addr, symmetric_window));
+  // Scoped so `symm` is destroyed outside the lock if cancelled.
+  {
+    absl::MutexLock lock(cached_symmetric_memories_mu_);
+    if (cancel_->IsCancelled()) {
+      return FailedPrecondition("NcclCommunicator aborted");
+    }
+    cached_symmetric_memories_[addr.opaque()] = {symm, symmetric_window};
+  }
+  return symm;
+}
+
+void NcclCommunicator::ReleaseSymmetricMemory(se::DeviceAddressBase addr) {
+  // Declared before the lock so that deregistration runs after unlocking.
+  std::shared_ptr<SymmetricMemory> released;
+  absl::MutexLock lock(cached_symmetric_memories_mu_);
+  if (auto it = cached_symmetric_memories_.find(addr.opaque());
+      it != cached_symmetric_memories_.end()) {
+    released = std::move(it->second.memory);
+    cached_symmetric_memories_.erase(it);
+  }
+}
+
+void NcclCommunicator::ClearCachedSymmetricMemories() {
+  // Declared before the lock so that deregistration runs after unlocking.
+  absl::flat_hash_map<void*, CachedSymmetricMemory> cached;
+  absl::MutexLock lock(cached_symmetric_memories_mu_);
+  cached.swap(cached_symmetric_memories_);
+}
+
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     se::StreamExecutor* stream_executor,
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
@@ -447,6 +511,8 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
 }
 
 NcclCommunicator::~NcclCommunicator() {
+  ClearCachedSymmetricMemories();
+
   auto f = [this]() -> absl::Status {
     if (comm_ == nullptr) {
       XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
@@ -492,7 +558,7 @@ absl::Status NcclCommunicator::Abort() {
   // executor_ will cancel. This will allow the aborting lambda below to run.
   cancel_->Cancel();
 
-  return ExecuteAwait([this]() -> absl::Status {
+  absl::Status status = ExecuteAwait([this]() -> absl::Status {
     XLA_VLOG_DEVICE(1, stream_executor_->device_ordinal())
         << "Abort NCCL communicator: " << *this;
     if (aborted_) {
@@ -506,6 +572,10 @@ absl::Status NcclCommunicator::Abort() {
     comm_->num_symmetric_windows = 0;
     return XLA_NCCL_STATUS(ncclCommAbort(comm));
   });
+
+  ClearCachedSymmetricMemories();
+
+  return status;
 }
 
 absl::Status NcclCommunicator::HealthCheck() const {

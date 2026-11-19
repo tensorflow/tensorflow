@@ -240,9 +240,10 @@ class GpuCommunicator : public Communicator {
     return Unimplemented("Registered memory is not implemented");
   }
 
-  // Creates a symmetric memory from the existing device address range. This is
-  // a collective operation, and all ranks in a clique must call this operation
-  // in order to make a progress.
+  // Creates a symmetric memory from the existing device address range. The
+  // registration is not cached: destroying the returned handle deregisters
+  // `addr`. This is a collective operation, and all ranks in a clique must call
+  // this operation in order to make progress.
   virtual absl::StatusOr<std::unique_ptr<SymmetricMemory>>
   CreateSymmetricMemory(se::DeviceAddressBase addr, bool symmetric_window) {
     return Unimplemented("Symmetric memory is not implemented");
@@ -252,6 +253,26 @@ class GpuCommunicator : public Communicator {
       se::DeviceAddressBase addr) {
     return CreateSymmetricMemory(addr, /*symmetric_window=*/false);
   }
+
+  // Like `CreateSymmetricMemory`, but the registration is cached on this
+  // communicator, keyed by `addr.opaque()`, until `ReleaseSymmetricMemory` is
+  // called for that address or the communicator is destroyed or aborted. A
+  // cached registration with a different size or `symmetric_window` at the
+  // same address is replaced; that fails if the old one is still held outside
+  // the cache, so callers should not keep the returned handle beyond its use
+  // (keep a `std::weak_ptr` instead). The default implementation does not
+  // cache. This is a collective operation, and all ranks in a clique must call
+  // this operation in order to make progress. Concurrent calls on the same
+  // communicator are not supported, though `ReleaseSymmetricMemory` and
+  // `Abort` may run concurrently.
+  virtual absl::StatusOr<std::shared_ptr<SymmetricMemory>>
+  AcquireSymmetricMemory(se::DeviceAddressBase addr, bool symmetric_window) {
+    return CreateSymmetricMemory(addr, symmetric_window);
+  }
+
+  // Drops the cached symmetric memory for `addr.opaque()`, if any, regardless
+  // of its size. It is deregistered once no one else holds it.
+  virtual void ReleaseSymmetricMemory(se::DeviceAddressBase addr) {}
 
   //===--------------------------------------------------------------------===//
   // Host-side collective communication APIs

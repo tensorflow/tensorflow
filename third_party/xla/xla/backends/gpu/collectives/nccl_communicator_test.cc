@@ -904,11 +904,101 @@ TEST(NcclCommunicatorTest, AllGatherCopyEngineGuardedByIsRma) {
   }
 }
 
+// Acquires cached symmetric memory for `addrs[i]` on `comms[i]` concurrently.
+absl::StatusOr<std::vector<std::shared_ptr<SymmetricMemory>>>
+AcquireSymmetricMemory(tsl::Executor& exec,
+                       absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
+                       absl::Span<const se::DeviceAddressBase> addrs) {
+  std::vector<Future<std::shared_ptr<SymmetricMemory>>> futures;
+  futures.reserve(comms.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    futures.push_back(
+        MakeFutureOn(exec, [comm = comms[i].get(), addr = addrs[i]] {
+          return comm->AcquireSymmetricMemory(addr, /*symmetric_window=*/false);
+        }));
+  }
+  return JoinFutures(absl::MakeSpan(futures)).Await();
+}
+
+TEST(NcclCommunicatorTest, AcquireSymmetricMemoryCachesByAddress) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+  constexpr int kNumDevices = 2;
+  if (platform->VisibleDeviceCount() < kNumDevices) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, kNumDevices));
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<GpuCommunicator>> comms,
+      CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true));
+
+  constexpr size_t kSize = 1024;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocator>> allocators,
+      CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<se::MemoryAllocation>> allocs,
+      Allocate(allocators, 2 * kSize));
+  auto addrs = [&](size_t size) {
+    std::vector<se::DeviceAddressBase> result;
+    for (const std::unique_ptr<se::MemoryAllocation>& alloc : allocs) {
+      result.emplace_back(alloc->address().opaque(), size);
+    }
+    return result;
+  };
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl_test", kNumDevices);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> first,
+                       AcquireSymmetricMemory(exec, comms, addrs(kSize)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> hit,
+                       AcquireSymmetricMemory(exec, comms, addrs(kSize)));
+  EXPECT_EQ(hit, first);
+
+  // A different size at the same address can't be registered while the old
+  // window is still held. This fails before any NCCL call, so one rank is
+  // enough.
+  EXPECT_THAT(comms[0]->AcquireSymmetricMemory(addrs(2 * kSize)[0],
+                                               /*symmetric_window=*/false),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  // Once only the cache holds it, the old window is replaced.
+  first.clear();
+  hit.clear();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<SymmetricMemory>> bigger,
+                       AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)));
+  for (int i = 0; i < kNumDevices; ++i) {
+    EXPECT_EQ(bigger[i]->addr().size(), 2 * kSize);
+    comms[i]->ReleaseSymmetricMemory(bigger[i]->addr());
+    // The cache dropped its reference, `bigger` is now the only owner.
+    EXPECT_EQ(bigger[i].use_count(), 1);
+  }
+
+  // Re-populate the cache and verify Abort() clears it and rejects subsequent
+  // AcquireSymmetricMemory calls even for a previously cached address.
+  bigger.clear();
+  ASSERT_OK(AcquireSymmetricMemory(exec, comms, addrs(2 * kSize)).status());
+  for (int i = 0; i < kNumDevices; ++i) {
+    ASSERT_OK(comms[i]->Abort());
+    EXPECT_THAT(
+        comms[i]->AcquireSymmetricMemory(addrs(2 * kSize)[i],
+                                         /*symmetric_window=*/false),
+        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+  }
+}
+
 // Members are declared in creation order so that implicit destruction
 // releases child resources before their communicators and allocations.
 struct TeardownResources {
   std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
   std::vector<std::unique_ptr<se::MemoryAllocation>> allocs;
+  // Only referenced by the communicator cache, so they must outlive `comms`.
+  std::vector<std::unique_ptr<se::MemoryAllocation>> cached_allocs;
   std::vector<std::unique_ptr<GpuCommunicator>> comms;
   std::vector<std::unique_ptr<RegisteredMemory>> registered_memories;
   std::vector<std::unique_ptr<SymmetricMemory>> symmetric_memories;
@@ -944,6 +1034,17 @@ absl::StatusOr<TeardownResources> CreateTeardownResources(
                      AwaitSymmetricMemory(CreateSymmetricMemory(
                          exec, resources.comms, resources.allocs,
                          /*symmetric_window=*/false)));
+
+    // Drop the handles so that the communicator cache is the only owner, and
+    // the communicator destructor or Abort has to clear it.
+    ABSL_ASSIGN_OR_RETURN(resources.cached_allocs,
+                     Allocate(resources.allocators, 1024));
+    std::vector<se::DeviceAddressBase> cached_addrs;
+    for (const auto& alloc : resources.cached_allocs) {
+      cached_addrs.push_back(alloc->address());
+    }
+    ABSL_RETURN_IF_ERROR(
+        AcquireSymmetricMemory(exec, resources.comms, cached_addrs).status());
 
     GpuDeviceCommunicator::Requirements reqs;
     reqs.lsa_barrier_count = 8;
