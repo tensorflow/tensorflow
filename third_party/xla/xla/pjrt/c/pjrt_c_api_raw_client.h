@@ -21,6 +21,8 @@ limitations under the License.
 #include <stdint.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_device_event.h"
+#include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,13 +80,52 @@ typedef struct PJRT_RawClient_FunctionTable {
   // Clears allocator memory statistics for `local_device_id`.
   PJRT_NO_DISCARD PJRT_Error* (*clear_memory_stats)(PJRT_RawClient* client,
                                                     int32_t local_device_id);
+  // Allocates a caller-owned raw buffer in `memory_space` for execute.
+  PJRT_NO_DISCARD PJRT_Error* (*allocate_raw_buffer_for_execute)(
+      PJRT_RawClient* client, PJRT_Memory* memory_space,
+      size_t on_device_bytes_count, bool retry_on_oom,
+      PJRT_RawBuffer** out_buffer);
+  // Allocates `num_buffers` caller-owned raw buffers in `memory_space` for
+  // execute into caller-allocated `out_buffers[0..num_buffers)`.
+  PJRT_NO_DISCARD PJRT_Error* (*allocate_raw_buffers_for_execute)(
+      PJRT_RawClient* client, PJRT_Memory* memory_space,
+      const size_t* on_device_bytes_counts, size_t num_buffers,
+      bool retry_on_oom, PJRT_RawBuffer** out_buffers);
+  // Creates a caller-owned linked device event promise and device event.
+  PJRT_NO_DISCARD PJRT_Error* (*create_linked_event_promise)(
+      PJRT_RawClient* client, int32_t local_device_id, int memory_kind_id,
+      const char* debug_info, size_t debug_info_size,
+      PJRT_DeviceEventPromise** out_promise, PJRT_DeviceEvent* out_event);
+  // Creates a caller-owned device event signaling completion on `stream`.
+  PJRT_NO_DISCARD PJRT_Error* (*create_device_event_for_stream)(
+      PJRT_RawClient* client, int32_t local_device_id, intptr_t stream,
+      PJRT_DeviceEvent* out_event);
+  // Updates coordination process info across tasks.
+  void (*update_global_process_info)(PJRT_RawClient* client,
+                                     const PJRT_ProcessInfo* process_infos,
+                                     size_t num_process_infos);
+  // Poisons execution `launch_id` on `local_device_id`. Takes ownership of
+  // `error`.
+  PJRT_NO_DISCARD PJRT_Error* (*poison_execution)(PJRT_RawClient* client,
+                                                  int32_t local_device_id,
+                                                  int32_t launch_id,
+                                                  PJRT_Error* error,
+                                                  bool* out_poisoned);
+  // Returns true if buffer donation can be recovered after `error`. Takes
+  // ownership of `error`.
+  bool (*can_recover_donation)(const PJRT_RawClient* client, PJRT_Error* error);
+  // Enqueues a wait for `event` (ownership transferred) on `stream`.
+  PJRT_NO_DISCARD PJRT_Error* (*wait_on_stream)(PJRT_RawClient* client,
+                                                int32_t local_device_id,
+                                                PJRT_DeviceEvent event,
+                                                intptr_t stream);
 } PJRT_RawClient_FunctionTable;
 
 struct PJRT_RawClient {
   const PJRT_RawClient_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable, clear_memory_stats);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable, wait_on_stream);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient, vtable);
 
 #ifdef __cplusplus

@@ -507,31 +507,13 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
 
 void PjRtCApiClient::UpdateGlobalProcessInfo(
     absl::Span<xla::coordination::TaskInfo> infos) {
-  auto translate_state = [](xla::coordination::TaskState state) {
-    switch (state) {
-      case xla::coordination::TaskState::UNSPECIFIED:
-        return PJRT_ProcessState_kUnspecified;
-      case xla::coordination::TaskState::UNINITIALIZED:
-        return PJRT_ProcessState_kUninitialized;
-      case xla::coordination::TaskState::DISCONNECTED:
-        return PJRT_ProcessState_kDisconnected;
-      case xla::coordination::TaskState::CONNECTED:
-        return PJRT_ProcessState_kConnected;
-      case xla::coordination::TaskState::ERROR:
-        return PJRT_ProcessState_kError;
-      default:
-        LOG(FATAL) << "Unexpected TaskState " << state;
-        return PJRT_ProcessState_kUnspecified;
-    }
-  };
-
   std::vector<PJRT_ProcessInfo> process_infos;
   for (const xla::coordination::TaskInfo& info : infos) {
     PJRT_ProcessInfo process_info;
     process_info.struct_size = PJRT_ProcessInfo_STRUCT_SIZE;
     process_info.task_id = info.task_id();
     process_info.incarnation_id = info.incarnation();
-    process_info.state = translate_state(info.state());
+    process_info.state = pjrt::TaskStateToPjRtProcessState(info.state());
     process_info.error_code = info.error_code();
     process_info.error_message = info.error_message().data();
     process_info.error_message_size = info.error_message().size();

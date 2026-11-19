@@ -720,29 +720,13 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
       "PJRT_Client_UpdateGlobalProcessInfo_Args",
       PJRT_Client_UpdateGlobalProcessInfo_Args_STRUCT_SIZE, args->struct_size));
 
-  auto translate_state = [](PJRT_ProcessState state) {
-    switch (state) {
-      case PJRT_ProcessState_kUnspecified:
-        return xla::coordination::TaskState::UNSPECIFIED;
-      case PJRT_ProcessState_kUninitialized:
-        return xla::coordination::TaskState::UNINITIALIZED;
-      case PJRT_ProcessState_kDisconnected:
-        return xla::coordination::TaskState::DISCONNECTED;
-      case PJRT_ProcessState_kConnected:
-        return xla::coordination::TaskState::CONNECTED;
-      case PJRT_ProcessState_kError:
-        return xla::coordination::TaskState::ERROR;
-    }
-    LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
-  };
-
   std::vector<xla::coordination::TaskInfo> infos;
   for (int i = 0; i < args->num_process_infos; ++i) {
     PJRT_ProcessInfo* p = &args->process_infos[i];
     xla::coordination::TaskInfo info;
     info.set_task_id(p->task_id);
     info.set_incarnation(p->incarnation_id);
-    info.set_state(translate_state(p->state));
+    info.set_state(pjrt::PjRtProcessStateToTaskState(p->state));
     info.set_error_code(p->error_code);
     info.set_error_message(
         absl::string_view(p->error_message, p->error_message_size));

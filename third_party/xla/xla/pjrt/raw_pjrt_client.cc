@@ -36,11 +36,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_device_event.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_client.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -55,6 +57,17 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace xla {
+
+namespace {
+
+PjRtRawBufferRef RawBufferFromC(PJRT_RawBuffer* c_buffer) {
+  if (c_buffer == nullptr) {
+    return PjRtRawBufferRef();
+  }
+  return tsl::TakeRef(static_cast<PjRtRawBufferInterface*>(c_buffer));
+}
+
+}  // namespace
 
 void PjRtRawClientDeleter::operator()(PjRtRawClientInterface* client) const {
   if (client != nullptr) {
@@ -152,6 +165,110 @@ const PJRT_RawClient_FunctionTable PjRtRawClient::kRawClientVtable = {
           static_cast<PjRtRawClient*>(client)->ClearMemoryStats(
               LocalDeviceId(local_device_id)));
     },
+    /*allocate_raw_buffer_for_execute=*/
+    +[](PJRT_RawClient* client, PJRT_Memory* memory_space,
+        size_t on_device_bytes_count, bool retry_on_oom,
+        PJRT_RawBuffer** out_buffer) -> PJRT_Error* {
+      auto result =
+          static_cast<PjRtRawClient*>(client)->AllocateRawBufferForExecute(
+              memory_space, on_device_bytes_count, retry_on_oom);
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_buffer = std::move(*result).release();
+      return nullptr;
+    },
+    /*allocate_raw_buffers_for_execute=*/
+    +[](PJRT_RawClient* client, PJRT_Memory* memory_space,
+        const size_t* on_device_bytes_counts, size_t num_buffers,
+        bool retry_on_oom, PJRT_RawBuffer** out_buffers) -> PJRT_Error* {
+      auto result =
+          static_cast<PjRtRawClient*>(client)->AllocateRawBuffersForExecute(
+              memory_space,
+              absl::MakeConstSpan(on_device_bytes_counts, num_buffers),
+              retry_on_oom);
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      for (size_t i = 0; i < result->size(); ++i) {
+        out_buffers[i] = std::move((*result)[i]).release();
+      }
+      return nullptr;
+    },
+    /*create_linked_event_promise=*/
+    +[](PJRT_RawClient* client, int32_t local_device_id, int memory_kind_id,
+        const char* debug_info, size_t debug_info_size,
+        PJRT_DeviceEventPromise** out_promise,
+        PJRT_DeviceEvent* out_event) -> PJRT_Error* {
+      auto result =
+          static_cast<PjRtRawClient*>(client)->CreateLinkedEventPromise(
+              LocalDeviceId(local_device_id), memory_kind_id,
+              absl::string_view(debug_info, debug_info_size));
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_promise = std::move(result->first).release();
+      *out_event = std::move(result->second).release().ToC();
+      return nullptr;
+    },
+    /*create_device_event_for_stream=*/
+    +[](PJRT_RawClient* client, int32_t local_device_id, intptr_t stream,
+        PJRT_DeviceEvent* out_event) -> PJRT_Error* {
+      auto result =
+          static_cast<PjRtRawClient*>(client)->CreateDeviceEventForStream(
+              LocalDeviceId(local_device_id), stream);
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_event = std::move(*result).release().ToC();
+      return nullptr;
+    },
+    /*update_global_process_info=*/
+    +[](PJRT_RawClient* client, const PJRT_ProcessInfo* process_infos,
+        size_t num_process_infos) {
+      std::vector<xla::coordination::TaskInfo> infos;
+      infos.reserve(num_process_infos);
+      for (size_t i = 0; i < num_process_infos; ++i) {
+        const PJRT_ProcessInfo& p = process_infos[i];
+        xla::coordination::TaskInfo info;
+        info.set_task_id(p.task_id);
+        info.set_incarnation(p.incarnation_id);
+        info.set_state(pjrt::PjRtProcessStateToTaskState(p.state));
+        info.set_error_code(p.error_code);
+        if (p.error_message != nullptr && p.error_message_size > 0) {
+          info.set_error_message(
+              absl::string_view(p.error_message, p.error_message_size));
+        }
+        infos.push_back(std::move(info));
+      }
+      static_cast<PjRtRawClient*>(client)->UpdateGlobalProcessInfo(
+          absl::MakeSpan(infos));
+    },
+    /*poison_execution=*/
+    +[](PJRT_RawClient* client, int32_t local_device_id, int32_t launch_id,
+        PJRT_Error* error, bool* out_poisoned) -> PJRT_Error* {
+      auto result = static_cast<PjRtRawClient*>(client)->PoisonExecution(
+          LocalDeviceId(local_device_id), launch_id,
+          pjrt::PjrtErrorToStatus(error));
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_poisoned = *result;
+      return nullptr;
+    },
+    /*can_recover_donation=*/
+    +[](const PJRT_RawClient* client, PJRT_Error* error) -> bool {
+      return static_cast<const PjRtRawClient*>(client)->CanRecoverDonation(
+          pjrt::PjrtErrorToStatus(error));
+    },
+    /*wait_on_stream=*/
+    +[](PJRT_RawClient* client, int32_t local_device_id, PJRT_DeviceEvent event,
+        intptr_t stream) -> PJRT_Error* {
+      return pjrt::StatusToPjRtError(
+          static_cast<PjRtRawClient*>(client)->WaitOnStream(
+              LocalDeviceId(local_device_id),
+              PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(event)), stream));
+    },
 };
 
 PjRtRawClient::PjRtRawClient() { vtable = &kRawClientVtable; }
@@ -229,24 +346,33 @@ absl::StatusOr<PjRtRawBufferRef>
 PjRtRawClientInterface::AllocateRawBufferForExecute(
     PJRT_Memory* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->AllocateRawBufferForExecute(memory_space, on_device_bytes_count,
-                                            retry_on_oom);
+  PJRT_RawBuffer* out_buffer = nullptr;
+  PJRT_Error* error = vtable->allocate_raw_buffer_for_execute(
+      this, memory_space, on_device_bytes_count, retry_on_oom, &out_buffer);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError(
-      "AllocateRawBufferForExecute is not supported.");
+  return RawBufferFromC(out_buffer);
 }
 
 absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
 PjRtRawClientInterface::AllocateRawBuffersForExecute(
     PJRT_Memory* memory_space, absl::Span<const size_t> on_device_bytes_counts,
     bool retry_on_oom) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->AllocateRawBuffersForExecute(
-        memory_space, on_device_bytes_counts, retry_on_oom);
+  absl::InlinedVector<PJRT_RawBuffer*, 4> c_buffers(
+      on_device_bytes_counts.size(), nullptr);
+  PJRT_Error* error = vtable->allocate_raw_buffers_for_execute(
+      this, memory_space, on_device_bytes_counts.data(),
+      on_device_bytes_counts.size(), retry_on_oom, c_buffers.data());
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError(
-      "AllocateRawBuffersForExecute is not supported.");
+  absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
+  buffers.reserve(c_buffers.size());
+  for (PJRT_RawBuffer* c_buf : c_buffers) {
+    buffers.push_back(RawBufferFromC(c_buf));
+  }
+  return buffers;
 }
 
 absl::StatusOr<
@@ -264,11 +390,17 @@ absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtRawClientInterface::CreateLinkedEventPromise(LocalDeviceId local_device_id,
                                                  int memory_kind_id,
                                                  absl::string_view debug_info) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->CreateLinkedEventPromise(local_device_id, memory_kind_id,
-                                         debug_info);
+  PJRT_DeviceEventPromise* out_promise = nullptr;
+  PJRT_DeviceEvent out_event = {nullptr, nullptr};
+  PJRT_Error* error = vtable->create_linked_event_promise(
+      this, local_device_id.value(), memory_kind_id, debug_info.data(),
+      debug_info.size(), &out_promise, &out_event);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError("CreateLinkedEventPromise is not supported");
+  return std::make_pair(
+      PjRtDeviceEventPromiseRef::TakeRef(out_promise),
+      PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(out_event)));
 }
 
 absl::StatusOr<PjRtDeviceEventRef> PjRtRawClientInterface::CreateDeviceEvent(
@@ -283,19 +415,13 @@ absl::StatusOr<PjRtDeviceEventRef> PjRtRawClientInterface::CreateDeviceEvent(
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawClientInterface::CreateDeviceEventForStream(
     LocalDeviceId local_device_id, std::intptr_t stream) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->CreateDeviceEventForStream(local_device_id, stream);
+  PJRT_DeviceEvent out_event = {nullptr, nullptr};
+  PJRT_Error* error = vtable->create_device_event_for_stream(
+      this, local_device_id.value(), stream, &out_event);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError(
-      "CreateDeviceEventForStream is not supported");
-}
-
-std::optional<std::shared_ptr<KeyValueStoreInterface>>
-PjRtRawClientInterface::key_value_store() const {
-  if (const auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->key_value_store();
-  }
-  return std::nullopt;
+  return PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(out_event));
 }
 
 absl::Status PjRtRawClientInterface::DmaMap(void* data, size_t size) {
@@ -371,11 +497,20 @@ bool PjRtRawClientInterface::ShouldRetryOnOom(
 
 void PjRtRawClientInterface::UpdateGlobalProcessInfo(
     absl::Span<xla::coordination::TaskInfo> infos) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    cpp->UpdateGlobalProcessInfo(infos);
-    return;
+  std::vector<PJRT_ProcessInfo> c_infos;
+  c_infos.reserve(infos.size());
+  for (const xla::coordination::TaskInfo& info : infos) {
+    PJRT_ProcessInfo p{};
+    p.struct_size = PJRT_ProcessInfo_STRUCT_SIZE;
+    p.task_id = info.task_id();
+    p.incarnation_id = info.incarnation();
+    p.state = pjrt::TaskStateToPjRtProcessState(info.state());
+    p.error_code = info.error_code();
+    p.error_message = info.error_message().data();
+    p.error_message_size = info.error_message().size();
+    c_infos.push_back(p);
   }
-  LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
+  vtable->update_global_process_info(this, c_infos.data(), c_infos.size());
 }
 
 void PjRtRawClientInterface::RecordMemoryStats() {
@@ -455,18 +590,19 @@ PjRtRawClientInterface::CreateAsyncTrackingEvent(
 
 absl::StatusOr<bool> PjRtRawClientInterface::PoisonExecution(
     LocalDeviceId local_device_id, int32_t launch_id, absl::Status error) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->PoisonExecution(local_device_id, launch_id, std::move(error));
+  bool poisoned = false;
+  PJRT_Error* c_err = vtable->poison_execution(
+      this, local_device_id.value(), launch_id,
+      pjrt::StatusToPjRtError(std::move(error)), &poisoned);
+  if (c_err != nullptr) {
+    return pjrt::PjrtErrorToStatus(c_err);
   }
-  return absl::UnimplementedError("PoisonExecution is not supported");
+  return poisoned;
 }
 
 bool PjRtRawClientInterface::CanRecoverDonation(
     const absl::Status& status) const {
-  if (const auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->CanRecoverDonation(status);
-  }
-  return false;
+  return vtable->can_recover_donation(this, pjrt::StatusToPjRtError(status));
 }
 
 absl::Status PjRtRawClientInterface::TransferToInfeed(
@@ -488,11 +624,8 @@ absl::Status PjRtRawClientInterface::TransferFromOutfeed(
 absl::Status PjRtRawClientInterface::WaitOnStream(LocalDeviceId local_device_id,
                                                   PjRtDeviceEventRef event,
                                                   std::intptr_t stream) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->WaitOnStream(local_device_id, std::move(event), stream);
-  }
-  return absl::UnimplementedError(
-      "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+  return pjrt::PjrtErrorToStatus(vtable->wait_on_stream(
+      this, local_device_id.value(), std::move(event).release().ToC(), stream));
 }
 
 absl::StatusOr<std::intptr_t>

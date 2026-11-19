@@ -111,14 +111,6 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
         abort_collectives_on_failure_(abort_collectives_on_failure),
         memory_registration_(std::move(memory_registration)) {}
 
-  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
-      const override {
-    if (!kv_store_) {
-      return std::nullopt;
-    }
-    return kv_store_;
-  }
-
   void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
                           PjRtRawBufferRef raw_buffer,
                           PjRtDeviceEventRefVector definition_events,
@@ -139,7 +131,8 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
   void UpdateCompileOptionsTopology(const PjRtTopologyDescription& topology,
                                     CompileOptions* options) const override;
 
-  void UpdateGlobalProcessInfo(absl::Span<xla::coordination::TaskInfo> infos);
+  void UpdateGlobalProcessInfo(
+      absl::Span<xla::coordination::TaskInfo> infos) override;
 
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const override;

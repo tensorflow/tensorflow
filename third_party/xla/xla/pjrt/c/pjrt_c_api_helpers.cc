@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -1154,6 +1155,41 @@ PJRT_Error* InvokePjRtEventWhenReady(
     return api->PJRT_Event_OnReady(&event_args);
   }
   return nullptr;
+}
+
+PJRT_ProcessState TaskStateToPjRtProcessState(
+    xla::coordination::TaskState state) {
+  switch (state) {
+    case xla::coordination::TaskState::UNSPECIFIED:
+      return PJRT_ProcessState_kUnspecified;
+    case xla::coordination::TaskState::UNINITIALIZED:
+      return PJRT_ProcessState_kUninitialized;
+    case xla::coordination::TaskState::DISCONNECTED:
+      return PJRT_ProcessState_kDisconnected;
+    case xla::coordination::TaskState::CONNECTED:
+      return PJRT_ProcessState_kConnected;
+    case xla::coordination::TaskState::ERROR:
+      return PJRT_ProcessState_kError;
+    default:
+      LOG(FATAL) << "Unexpected TaskState " << state;
+  }
+}
+
+xla::coordination::TaskState PjRtProcessStateToTaskState(
+    PJRT_ProcessState state) {
+  switch (state) {
+    case PJRT_ProcessState_kUnspecified:
+      return xla::coordination::TaskState::UNSPECIFIED;
+    case PJRT_ProcessState_kUninitialized:
+      return xla::coordination::TaskState::UNINITIALIZED;
+    case PJRT_ProcessState_kDisconnected:
+      return xla::coordination::TaskState::DISCONNECTED;
+    case PJRT_ProcessState_kConnected:
+      return xla::coordination::TaskState::CONNECTED;
+    case PJRT_ProcessState_kError:
+      return xla::coordination::TaskState::ERROR;
+  }
+  LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
 }
 
 }  // namespace pjrt

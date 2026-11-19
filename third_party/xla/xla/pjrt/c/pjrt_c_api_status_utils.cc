@@ -229,6 +229,19 @@ absl::Status PjrtErrorToStatus(PJRT_Error* error) {
   PJRT_Error_Code code = error->vtable->get_code(error);
   absl::Status status(PjrtErrorCodeToStatusCode(code),
                       absl::string_view(message, message_size));
+  if (error->vtable->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_Error_FunctionTable, for_each_payload) &&
+      error->vtable->for_each_payload != nullptr) {
+    error->vtable->for_each_payload(
+        error,
+        +[](const char* key, size_t key_size, const char* value,
+            size_t value_size, void* user_arg) {
+          static_cast<absl::Status*>(user_arg)->SetPayload(
+              absl::string_view(key, key_size),
+              absl::Cord(absl::string_view(value, value_size)));
+        },
+        &status);
+  }
   error->vtable->destroy(error);
   return status;
 }
