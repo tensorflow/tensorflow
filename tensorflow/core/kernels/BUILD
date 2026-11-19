@@ -5730,6 +5730,8 @@ tf_kernel_library(
     prefix = "deserialize_sparse_variant_op",
     deps = SPARSE_DEPS + [
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
