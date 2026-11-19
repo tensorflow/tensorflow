@@ -150,7 +150,7 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
       TransferManager::GetForPlatform(local_client_->platform()).value();
 }
 
-LocalClientTestBase::~LocalClientTestBase() {}
+LocalClientTestBase::~LocalClientTestBase() = default;
 
 ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
     const Literal& literal) {

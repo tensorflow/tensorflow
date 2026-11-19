@@ -249,7 +249,7 @@ class RefSelectOp : public OpKernel {
 
   bool IsExpensive() override { return false; }
 
-  ~RefSelectOp() override {}
+  ~RefSelectOp() override = default;
 
   RefSelectOp(const RefSelectOp&) = delete;
   void operator=(const RefSelectOp&) = delete;

@@ -29,7 +29,7 @@ class RegexFullMatchOp : public OpKernel {
  public:
   explicit RegexFullMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  ~RegexFullMatchOp() override {}
+  ~RegexFullMatchOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
