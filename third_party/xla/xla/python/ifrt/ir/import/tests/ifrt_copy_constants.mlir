@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-copy-constants -split-input-file | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-copy-constants -split-input-file -verify-diagnostics | FileCheck %s
 
 !array_m1 = !ifrt.array<tensor<4x8xf32>,
                         #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
@@ -285,20 +285,45 @@ module @passthrough_call_reverse_order {
 !array_m1 = !ifrt.array<tensor<4x8xf32>,
                         #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 
-// CHECK-LABEL: module @external_declaration_skipped
-module @external_declaration_skipped {
-  func.func @main() -> (!array_m1, !array_m1) attributes {ifrt.function} {
+// `signalPassFailure()` suppresses printing the failing module to stdout.
+// CHECK-NOT: module @external_producer_fails
+module @external_producer_fails {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    // Processed in reverse order: `@defined_consumer` runs first
+    // (`FindHloProducer` skips `@external_producer`), then `GetCallee` rejects
+    // the external declaration on this call.
+    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @external_producer}}
+    %0, %ctrl_0 = ifrt.Call @external_producer() on devices [0, 1]
+        : () -> !array_m1
+    %1, %ctrl_1 = ifrt.Call @defined_consumer(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  func.func private @external_producer() -> tensor<4x8xf32>
+
+  func.func private @defined_consumer(%arg0: tensor<4x8xf32>)
+      -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// `signalPassFailure()` suppresses printing the failing module to stdout.
+// CHECK-NOT: module @external_consumer_fails
+module @external_consumer_fails {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @const_producer() on devices [0, 1]
         : () -> !array_m1
-    // CHECK: ifrt.Call @external_consumer
+    // expected-error @+1 {{'ifrt.Call' op failed to resolve defined callee @external_consumer}}
     %1, %ctrl_1 = ifrt.Call @external_consumer(%0) on devices [0, 1]
         : (!array_m1) -> !array_m1
-    %2, %ctrl_2 = ifrt.Call @external_producer() on devices [0, 1]
-        : () -> !array_m1
-    // CHECK: ifrt.Call @defined_consumer
-    %3, %ctrl_3 = ifrt.Call @defined_consumer(%2) on devices [0, 1]
-        : (!array_m1) -> !array_m1
-    return %1, %3 : !array_m1, !array_m1
+    return %1 : !array_m1
   }
 
   func.func private @const_producer() -> tensor<4x8xf32> {
@@ -306,20 +331,7 @@ module @external_declaration_skipped {
     return %c : tensor<4x8xf32>
   }
 
-  // CHECK-LABEL: func.func private @external_consumer(tensor<4x8xf32>) -> tensor<4x8xf32>
   func.func private @external_consumer(tensor<4x8xf32>) -> tensor<4x8xf32>
-
-  // CHECK-LABEL: func.func private @external_producer() -> tensor<4x8xf32>
-  func.func private @external_producer() -> tensor<4x8xf32>
-
-  // CHECK-LABEL: func.func private @defined_consumer(%arg0: tensor<4x8xf32>)
-  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
-  // CHECK-NEXT:    return %[[ADD]]
-  func.func private @defined_consumer(%arg0: tensor<4x8xf32>)
-      -> tensor<4x8xf32> {
-    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
-    return %add : tensor<4x8xf32>
-  }
 }
 
 // -----
@@ -359,3 +371,399 @@ module @multi_block_consumer {
   }
 }
 
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @public_callee_cloned
+module @public_callee_cloned {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_producer() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.Call @[[CLONED:pub_consumer_.+]](%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @pub_consumer(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  func.func private @const_producer() -> tensor<4x8xf32> {
+    %c = stablehlo.constant dense<2.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func @pub_consumer(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:    return %[[ADD]]
+  // CHECK-LABEL: func.func private @pub_consumer_
+  // CHECK-NEXT:    %[[C:.+]] = stablehlo.constant dense<2.000000e+00>
+  // CHECK-NEXT:    %[[ADD_C:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:    return %[[ADD_C]]
+  func.func @pub_consumer(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @callee_with_func_call_user_cloned
+module @callee_with_func_call_user_cloned {
+  func.func @main(%arg0: !array_m1) -> (!array_m1, !array_m1)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_producer() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %[[OUT1:.+]], %{{.+}} = ifrt.Call @[[CLONED:helper_.+]](%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @helper(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    // CHECK: %[[OUT2:.+]], %{{.+}} = ifrt.Call @other(%arg0)
+    %2, %ctrl_2 = ifrt.Call @other(%arg0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1, %2 : !array_m1, !array_m1
+  }
+
+  func.func private @const_producer() -> tensor<4x8xf32> {
+    %c = stablehlo.constant dense<5.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func private @helper(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:    return %[[ADD]]
+  // CHECK-LABEL: func.func private @helper_
+  // CHECK-NEXT:    %[[C:.+]] = stablehlo.constant dense<5.000000e+00>
+  // CHECK-NEXT:    %[[ADD_C:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:    return %[[ADD_C]]
+  func.func private @helper(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func private @other(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[CALL:.+]] = call @helper(%arg0)
+  // CHECK-NEXT:    return %[[CALL]]
+  func.func private @other(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %0 = func.call @helper(%arg0) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+    return %0 : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @recursive_outlined_callee_isolates_internal_uses
+module @recursive_outlined_callee_isolates_internal_uses {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_producer() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.Call @rec_mod::@main(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @rec_mod::@main(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  func.func private @const_producer() -> tensor<4x8xf32> {
+    %c = stablehlo.constant dense<3.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK: module @rec_mod <sym_visibility = "private">
+  // CHECK: func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[C:.+]] = stablehlo.constant dense<3.000000e+00>
+  // CHECK-NEXT:   %[[ADD:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:   %[[REC:.+]] = call @[[HELPER:main_.+]](%[[ADD]])
+  // CHECK-NEXT:   return %[[REC]]
+  // CHECK: func.func private @[[HELPER]](%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[HADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:   %[[HREC:.+]] = call @[[HELPER]](%[[HADD]])
+  // CHECK-NEXT:   return %[[HREC]]
+  // CHECK-NOT: module @rec_mod_
+  module @rec_mod <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+      %0 = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+      %1 = func.call @main(%0) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+      return %1 : tensor<4x8xf32>
+    }
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @outlined_sdy_sharding_skipped_for_top_level_consumer
+module @outlined_sdy_sharding_skipped_for_top_level_consumer {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod_mod::@main() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @consumer(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @consumer(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  module @prod_mod <sym_visibility = "private"> {
+    sdy.mesh @mesh = <["x"=2]>
+    func.func @main() -> tensor<4x8xf32> {
+      %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<1.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+  }
+
+  // CHECK-LABEL: func.func private @consumer(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:    return %[[ADD]]
+  func.func private @consumer(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @outlined_symbol_ref_does_not_pollute_root_counts
+module @outlined_symbol_ref_does_not_pollute_root_counts {
+  func.func @main() -> (!array_m1, !array_m1) attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod_mod::@main() on devices [0, 1]
+        : () -> !array_m1
+    %1, %ctrl_1 = ifrt.Call @plain_const() on devices [0, 1]
+        : () -> !array_m1
+    // Processed in reverse order: `@consumer` runs before `@helper`.
+    // Skipping `@prod_mod`'s constant avoids cloning `{test.sym_ref = @helper}`
+    // into root scope, which would otherwise falsely bump `CalleeSymbolManager`
+    // root-scope use count for `@helper` and force cloning `@helper` to
+    // `@helper_0`.
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @helper(%{{.+}})
+    %2, %ctrl_2 = ifrt.Call @helper(%1) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @consumer(%{{.+}})
+    %3, %ctrl_3 = ifrt.Call @consumer(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %2, %3 : !array_m1, !array_m1
+  }
+
+  module @prod_mod <sym_visibility = "private"> {
+    func.func private @helper() -> tensor<4x8xf32> {
+      %c = stablehlo.constant dense<0.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+    func.func @main() -> tensor<4x8xf32> {
+      %c = stablehlo.constant {test.sym_ref = @helper} dense<1.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+  }
+
+  func.func private @plain_const() -> tensor<4x8xf32> {
+    %c = stablehlo.constant dense<2.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func private @helper(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[C:.+]] = stablehlo.constant dense<2.000000e+00>
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:    return %[[ADD]]
+  // CHECK-NOT: func.func private @helper_
+  func.func private @helper(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func private @consumer(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:    return %[[ADD]]
+  func.func private @consumer(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @outlined_sdy_sharding_skipped_across_outlined_modules
+module @outlined_sdy_sharding_skipped_across_outlined_modules {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod_mod::@main() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @cons_mod::@main(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @cons_mod::@main(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  module @prod_mod <sym_visibility = "private"> {
+    sdy.mesh @mesh = <["x"=2]>
+    func.func @main() -> tensor<4x8xf32> {
+      %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<1.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+  }
+
+  // CHECK: module @cons_mod <sym_visibility = "private">
+  // CHECK: func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:   return %[[ADD]]
+  // CHECK-NOT: module @cons_mod_
+  module @cons_mod <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+      %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+      return %add : tensor<4x8xf32>
+    }
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @top_level_sdy_sharding_skipped_for_outlined_consumer
+module @top_level_sdy_sharding_skipped_for_outlined_consumer {
+  sdy.mesh @mesh = <["x"=2]>
+
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod() on devices [0, 1] : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @cons_mod::@main(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @cons_mod::@main(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  func.func private @prod() -> tensor<4x8xf32> {
+    %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<1.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK: module @cons_mod <sym_visibility = "private">
+  // CHECK: func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:   return %[[ADD]]
+  // CHECK-NOT: module @cons_mod_
+  module @cons_mod <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+      %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+      return %add : tensor<4x8xf32>
+    }
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @same_outlined_module_sdy_sharding_copied
+module @same_outlined_module_sdy_sharding_copied {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    // CHECK: %[[OUT0:.+]], %{{.+}} = ifrt.Call @same_mod::@prod()
+    %0, %ctrl_0 = ifrt.Call @same_mod::@prod() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @[[CLONED:same_mod_.+]]::@cons(%[[OUT0]])
+    %1, %ctrl_1 = ifrt.Call @same_mod::@cons(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  // CHECK: module @same_mod <sym_visibility = "private">
+  // CHECK: sdy.mesh @mesh = <["x"=2]>
+  // CHECK: func.func @cons(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[ORIG_ADD:.+]] = stablehlo.add %arg0, %arg0
+  // CHECK-NEXT:   return %[[ORIG_ADD]]
+  // CHECK: module @[[CLONED]] <sym_visibility = "private">
+  // CHECK: sdy.mesh @mesh = <["x"=2]>
+  // CHECK: func.func @cons(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[C:.+]] = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<4.000000e+00>
+  // CHECK-NEXT:   %[[ADD:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:   return %[[ADD]]
+  module @same_mod <sym_visibility = "private"> {
+    sdy.mesh @mesh = <["x"=2]>
+    func.func @prod() -> tensor<4x8xf32> {
+      %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<4.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+    func.func @cons(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+      %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+      return %add : tensor<4x8xf32>
+    }
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @same_top_level_sdy_sharding_copied
+module @same_top_level_sdy_sharding_copied {
+  sdy.mesh @mesh = <["x"=2]>
+
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod() on devices [0, 1] : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @cons(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @cons(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  func.func private @prod() -> tensor<4x8xf32> {
+    %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<5.000000e+00> : tensor<4x8xf32>
+    return %c : tensor<4x8xf32>
+  }
+
+  // CHECK-LABEL: func.func private @cons(%arg0: tensor<4x8xf32>)
+  // CHECK-NEXT:    %[[C:.+]] = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<5.000000e+00>
+  // CHECK-NEXT:    %[[ADD:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:    return %[[ADD]]
+  // CHECK-NOT: func.func private @cons_
+  func.func private @cons(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+    %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+    return %add : tensor<4x8xf32>
+  }
+}
+
+// -----
+
+!array_m1 = !ifrt.array<tensor<4x8xf32>,
+                        #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+
+// CHECK-LABEL: module @inline_mesh_sdy_sharding_copied_across_modules
+module @inline_mesh_sdy_sharding_copied_across_modules {
+  func.func @main() -> !array_m1 attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @prod_mod::@main() on devices [0, 1]
+        : () -> !array_m1
+    // CHECK: %{{.+}}, %{{.+}} = ifrt.Call @cons_mod::@main(%{{.+}})
+    %1, %ctrl_1 = ifrt.Call @cons_mod::@main(%0) on devices [0, 1]
+        : (!array_m1) -> !array_m1
+    return %1 : !array_m1
+  }
+
+  module @prod_mod <sym_visibility = "private"> {
+    func.func @main() -> tensor<4x8xf32> {
+      %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}, {}]>]>} dense<6.000000e+00> : tensor<4x8xf32>
+      return %c : tensor<4x8xf32>
+    }
+  }
+
+  // CHECK: module @cons_mod <sym_visibility = "private">
+  // CHECK: func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT:   %[[C:.+]] = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<mesh<["x"=2]>, [{"x"}, {}]>]>} dense<6.000000e+00>
+  // CHECK-NEXT:   %[[ADD:.+]] = stablehlo.add %[[C]], %[[C]]
+  // CHECK-NEXT:   return %[[ADD]]
+  module @cons_mod <sym_visibility = "private"> {
+    func.func @main(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+      %add = stablehlo.add %arg0, %arg0 : tensor<4x8xf32>
+      return %add : tensor<4x8xf32>
+    }
+  }
+}

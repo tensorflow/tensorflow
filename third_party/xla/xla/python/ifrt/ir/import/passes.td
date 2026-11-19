@@ -295,9 +295,30 @@ def IfrtCopyConstantsPass :
     Pass<"ifrt-copy-constants", "mlir::ModuleOp"> {
   let summary = "Copies constants produced in one atom program to their consumers.";
   let description = [{
-Copies `ConstantLike` ops returned by producer `ifrt.Call` atom programs into
-consumer `ifrt.Call` atom programs, tracing across zero or more `ifrt.Reshard`
-or `ifrt.CopyArrays` ops.
+Visits IFRT functions in reverse program order and copies zero-operand,
+single-result `ConstantLike` ops returned by single-block producer `ifrt.Call`
+atom programs into consumer `ifrt.Call` atom programs when the constant's type
+matches a used consumer entry-block argument, tracing across zero or more
+`ifrt.Reshard` or `ifrt.CopyArrays` ops. `ifrt.local_view` calls are skipped
+(both as producers and consumers), and multi-block producer callees are
+skipped. Constants carrying symbol references (e.g., `sdy.sharding` referencing
+a module-local `sdy.mesh`) or whose symbol uses cannot be determined are skipped
+when copying across `SymbolTable` boundaries.
+
+Before mutating a consumer callee, if its root symbol (a top-level `func.func`
+or enclosing outlined `ModuleOp`) is non-private or has other root-scope symbol
+uses (e.g., another `ifrt.Call` or a top-level `func.call`), it is cloned into
+a private copy and the call is redirected. For outlined callees with internal
+symbol references inside the enclosing `ModuleOp` (such as recursive calls), the
+unmutated body is split into a private helper so internal callers are
+unaffected.
+
+The pass fails with an op error if root-scope symbol uses cannot be determined
+(e.g., an unregistered region-bearing op in the root module), if any
+non-`ifrt.local_view` `ifrt.Call` in a single-block IFRT function cannot
+resolve a defined callee nested at most one `ModuleOp` deep (including external
+declarations), or if internal symbol uses cannot be determined inside a mutated
+outlined `ModuleOp`.
 
 Note: this pass does not clean up dead arguments, results, or transfers left
 behind after copying constants.
