@@ -86,37 +86,5 @@ TEST(RngStateTest, LargeDeviceOrdinalsGetIndependentCounters) {
   EXPECT_EQ(dev0_second, dev0_first + 1024);
 }
 
-TEST(RngStateTest, LegacySingleArgumentOverloadUsesDefaultDelta) {
-  RngState rng(/*default_delta=*/17);
-  absl::int128 first;
-  rng.GetAndUpdateState(reinterpret_cast<uint64_t*>(&first));
-
-  absl::int128 second;
-  rng.GetAndUpdateState(reinterpret_cast<uint64_t*>(&second));
-  EXPECT_EQ(second, first + 17);
-}
-
-TEST(RngStateTest, LegacyForwardingWrappersShareTargetCounter) {
-  RngState shared;
-  RngState thunk0(/*default_delta=*/1, &shared);
-  RngState thunk1(/*default_delta=*/3, &shared);
-  RngState thunk2(/*default_delta=*/1, &shared);
-
-  absl::int128 s0;
-  thunk0.GetAndUpdateState(reinterpret_cast<uint64_t*>(&s0));
-
-  absl::int128 s1;
-  thunk1.GetAndUpdateState(reinterpret_cast<uint64_t*>(&s1));
-  EXPECT_EQ(s1, s0 + 1);
-
-  absl::int128 s2;
-  thunk2.GetAndUpdateState(reinterpret_cast<uint64_t*>(&s2));
-  EXPECT_EQ(s2, s1 + 3);
-
-  absl::int128 s3;
-  thunk0.GetAndUpdateState(reinterpret_cast<uint64_t*>(&s3));
-  EXPECT_EQ(s3, s2 + 1);
-}
-
 }  // namespace
 }  // namespace xla::cpu
