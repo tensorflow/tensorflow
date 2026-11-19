@@ -999,6 +999,22 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0))
     run_test(
         np.arange(8).reshape((2, 2, 2)).tolist(), axis=(2, 0), keepdims=True)
+    # `ddof` matches `var` and NumPy.
+    run_test([1.0, 2.0, 3.0], ddof=1)
+    run_test([1.0, 2.0, 3.0], ddof=1.5)
+    run_test([[1.0, 2.0], [3.0, 4.0]], axis=-1, ddof=1, keepdims=True)
+    run_test([1.0j, 2.0, 3.0j], ddof=1)
+    run_test([[1.0j, 2.0], [3.0j, 4.0]], axis=0, ddof=1)
+    run_test(np.arange(8.0).reshape((2, 2, 2)).tolist(), axis=(0, 2), ddof=1)
+
+    # A tensor `ddof` must not be compared in Python while tracing.
+    @def_function.function
+    def std_with_tensor_ddof(x):
+      return np_array_ops.std(x, ddof=constant_op.constant(1.0))
+
+    self.match(
+        std_with_tensor_ddof(np.array([1.0, 2.0, 3.0])),
+        np.std([1.0, 2.0, 3.0], ddof=1))
 
   def testVar(self):
 

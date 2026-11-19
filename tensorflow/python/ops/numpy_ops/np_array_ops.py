@@ -832,7 +832,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
     working_dtype = None
   if out is not None:
     raise ValueError('Setting out is not supported.')
-  if ddof != 0:
+  # Only a Python scalar can be compared here; a symbolic `ddof` would raise
+  # `OperatorNotAllowedInGraphError` from this `if` while tracing.
+  if not isinstance(ddof, (int, float, np.integer, np.floating)) or ddof != 0:
     # TF reduce_variance doesn't support ddof, so calculate it using raw ops.
     def reduce_fn(input_tensor, axis, keepdims):
       means = math_ops.reduce_mean(input_tensor, axis=axis, keepdims=True)
@@ -911,15 +913,23 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
 
 @tf_export.tf_export('experimental.numpy.std', v1=[])
 @np_utils.np_doc('std')
-def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
-  return _reduce(
-      math_ops.reduce_std,
-      a,
-      axis=axis,
-      dtype=None,
-      keepdims=keepdims,
-      promote_int=_TO_FLOAT,
-  )
+def std(a, axis=None, keepdims=None, ddof=0):  # pylint: disable=missing-function-docstring
+  # Compare only Python scalars here: a symbolic `ddof` would raise
+  # `OperatorNotAllowedInGraphError` from the `if` during graph tracing. Any
+  # other value takes the `var` path, which accepts a tensor `ddof`.
+  if isinstance(ddof, (int, float, np.integer, np.floating)) and ddof == 0:
+    return _reduce(
+        math_ops.reduce_std,
+        a,
+        axis=axis,
+        dtype=None,
+        keepdims=keepdims,
+        promote_int=_TO_FLOAT,
+    )
+  # `math_ops.reduce_std` has no `ddof`, so handle a non-zero `ddof` as NumPy
+  # does: `std` is the square root of `var`, whose implementation already
+  # supports arbitrary degrees of freedom.
+  return math_ops.sqrt(var(a, axis=axis, ddof=ddof, keepdims=keepdims))
 
 
 @tf_export.tf_export('experimental.numpy.ravel', v1=[])
