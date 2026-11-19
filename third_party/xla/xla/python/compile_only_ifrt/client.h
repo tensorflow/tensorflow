@@ -210,7 +210,7 @@ class CompileOnlyIfRtClient final
       HostBufferSemantics semantics) override {
     for (MakeArraysFromHostBufferShardsSpec& spec : specs) {
       for (auto& [shard_indices, host_buffer] : spec.buffers) {
-        host_buffer.on_done.reset();
+        host_buffer.hold.reset();
       }
     }
     return Unimplemented(

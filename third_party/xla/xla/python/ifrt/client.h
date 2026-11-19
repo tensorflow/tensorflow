@@ -173,17 +173,17 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
     // layout representation.
     std::optional<ByteStrides> byte_strides;
 
-    // `on_done` is optional and may be null. APIs that consume `HostBuffer`
-    // take ownership of `on_done` unconditionally and release it once the host
-    // buffer is no longer used by the runtime on both success and failure. See
+    // `hold` is optional and may be null. APIs that consume `HostBuffer` take
+    // ownership of `hold` unconditionally and release it once the host buffer
+    // is no longer used by the runtime on both success and failure. See
     // `MakeSharedCleanup` in `cleanup.h` to wrap a zero-argument cleanup
     // callback when needed.
     //
     // If a host buffer is used with zero-copy semantics, the host buffer data
-    // should not be accessed by the user until `on_done` is released; the data
+    // should not be accessed by the user until `hold` is released; the data
     // may be read by the runtime throughout the life of the array created with
     // the host buffer, and it may even be mutated.
-    std::shared_ptr<const void> on_done;
+    std::shared_ptr<const void> hold;
   };
 
   // Represents the specification of creating an array following an array spec

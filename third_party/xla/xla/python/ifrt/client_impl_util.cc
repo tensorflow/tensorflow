@@ -109,7 +109,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
   absl::Cleanup release_host_buffers = [&]() {
     for (Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
       for (auto& [shard_indices, host_buffer] : spec.buffers) {
-        host_buffer.on_done.reset();
+        host_buffer.hold.reset();
       }
     }
   };
@@ -154,7 +154,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
               host_buffer.byte_strides, std::move(spec.array_spec.sharding),
-              std::move(layout), semantics, std::move(host_buffer.on_done)));
+              std::move(layout), semantics, std::move(host_buffer.hold)));
       arrays.push_back(std::move(array));
       continue;
     }
@@ -169,7 +169,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     for (auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
       ABSL_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      std::shared_ptr<const void> on_done = std::move(host_buffer.on_done);
+      std::shared_ptr<const void> hold = std::move(host_buffer.hold);
       for (int64_t i = 0; i < addressable_shard_indices.size(); ++i) {
         const int64_t addressable_shard_index = addressable_shard_indices[i];
         if (addressable_shard_index < 0 ||
@@ -190,14 +190,14 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         if (spec.array_spec.layout != nullptr) {
           layout = PjRtLayout::Create(spec.array_spec.layout);  // NOLINT
         }
-        std::shared_ptr<const void> per_shard_on_done =
-            (i + 1 == addressable_shard_indices.size()) ? std::move(on_done)
-                                                        : on_done;
+        std::shared_ptr<const void> per_shard_hold =
+            (i + 1 == addressable_shard_indices.size()) ? std::move(hold)
+                                                        : hold;
         ABSL_ASSIGN_OR_RETURN(shard, client->MakeArrayFromHostBuffer(
                                     host_buffer.data, host_buffer.dtype,
                                     host_buffer.shape, host_buffer.byte_strides,
                                     std::move(sharding), std::move(layout),
-                                    semantics, std::move(per_shard_on_done)));
+                                    semantics, std::move(per_shard_hold)));
       }
       num_processed_shards += addressable_shard_indices.size();
     }

@@ -209,7 +209,7 @@ Array::MakeArraysFromHostBufferShards(
   absl::Cleanup release_host_buffers = [&]() {
     for (xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {
       for (auto& [shard_indices, host_buffer] : spec.buffers) {
-        host_buffer.on_done.reset();
+        host_buffer.hold.reset();
       }
     }
   };
@@ -238,7 +238,7 @@ Array::MakeArraysFromHostBufferShards(
           MakeHostBuffer(client, rpc_helper, host_buffer.data,
                          host_buffer.dtype, host_buffer.shape,
                          host_buffer.byte_strides, semantics,
-                         /*host_buffer_hold=*/std::move(host_buffer.on_done)));
+                         /*host_buffer_hold=*/std::move(host_buffer.hold)));
       host_buffer_handles.push_back(host_buffer_handle);
     }
   }
