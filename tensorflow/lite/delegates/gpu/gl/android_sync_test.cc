@@ -28,11 +28,18 @@ TEST(AsyncBufferTest, FenceTest) {
   // Check falseness first
   EXPECT_EQ(CreateFdGpu(), -1);
   EXPECT_FALSE(WaitFdGpu(1));  // False because EGL isn't set up
-  std::unique_ptr<EglEnvironment> env;
-  EXPECT_OK(EglEnvironment::NewEglEnvironment(&env));
-  int gpu_fd = CreateFdGpu();
-  EXPECT_GE(gpu_fd, 0);
-  EXPECT_TRUE(WaitFdGpu(gpu_fd));
+
+  {
+    std::unique_ptr<EglEnvironment> env;
+    EXPECT_OK(EglEnvironment::NewEglEnvironment(&env));
+    int gpu_fd = CreateFdGpu();
+    EXPECT_GE(gpu_fd, 0);
+    EXPECT_TRUE(WaitFdGpu(gpu_fd));
+  }
+
+  // Check falseness again after EglEnvironment has been destroyed.
+  EXPECT_EQ(CreateFdGpu(), -1);
+  EXPECT_FALSE(WaitFdGpu(1));  // False because EGL isn't set up
 }
 
 }  // namespace tflite::gpu::gl
