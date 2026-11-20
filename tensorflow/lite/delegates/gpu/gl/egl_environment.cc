@@ -35,7 +35,7 @@ absl::Status InitDisplay(EGLDisplay* egl_display) {
   if (*egl_display == EGL_NO_DISPLAY) {
     return absl::UnavailableError("eglGetDisplay returned nullptr");
   }
-  bool is_initialized;
+  bool is_initialized = false;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglInitialize, &is_initialized,
                                       *egl_display, nullptr, nullptr));
   if (!is_initialized) {
@@ -60,6 +60,18 @@ EglEnvironment::~EglEnvironment() {
   if (dummy_texture_ != GL_INVALID_INDEX) {
     glDeleteTextures(1, &dummy_texture_);
   }
+  // The EGL default display is a global resource, so in general
+  // it is not safe to call eglTerminate on it, since there might be other
+  // components in the current process that are using still it.
+  // But on Android, eglInitialize/eglTerminate uses reference counting,
+  // so eglTerminateDisplay won't terminate the display if there
+  // was more than one previous call to eglInitialize for it, and so on
+  // Android it is safe to terminate it.
+#ifdef __ANDROID__
+  if (display_owned_ && display_ != EGL_NO_DISPLAY) {
+    eglTerminate(display_);
+  }
+#endif
 }
 
 absl::Status EglEnvironment::Init() {
@@ -77,6 +89,7 @@ absl::Status EglEnvironment::Init() {
         EglContext(eglGetCurrentContext(), display_, EGL_NO_CONFIG_KHR, false);
   } else {
     RETURN_IF_ERROR(InitDisplay(&display_));
+    display_owned_ = true;
 
     absl::Status status = InitConfiglessContext();
     if (!status.ok()) {
