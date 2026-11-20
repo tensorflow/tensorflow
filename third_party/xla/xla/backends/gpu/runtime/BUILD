@@ -6186,6 +6186,7 @@ xla_test(
     ),
     backends = ["gpu"],
     deps = [
+        ":ffi_kernel_registry",
         ":multi_gpu_barrier",
         ":record_ffi",
         "//xla:status_macros",

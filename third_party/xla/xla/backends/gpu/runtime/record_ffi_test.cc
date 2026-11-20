@@ -32,10 +32,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/ffi_kernel_registry.h"
 #include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/kernel_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -261,6 +263,39 @@ TEST(RecordFfiTest, KernelLaunchWithCuFunc) {
   RunRecordFfiTest(executor, *handler);
 }
 
+TEST(RecordFfiTest, KernelLaunchWithRegisteredKernel) {
+  ASSERT_OK_AND_ASSIGN(auto platform,
+                       stream_executor::PlatformManager::PlatformWithName(
+                           stream_executor::GpuPlatformName()));
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  const auto* cuda_cc = executor->GetDeviceDescription()
+                            .gpu_compute_capability()
+                            .cuda_compute_capability();
+  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(KernelBinary binary, GetKernelSpec());
+  FfiKernelRegistry registry(platform->VisibleDeviceCount());
+  ASSERT_OK_AND_ASSIGN(
+      const XLA_FFI_Kernel* kernel,
+      registry.Register(executor, "AddI32", binary.data(), binary.size(),
+                        XLA_FFI_SourceFormat_CUBIN, /*use_pdl=*/false));
+
+  std::unique_ptr<ffi::Ffi> handler =
+      MakeAddI32RecordHandler([kernel](ffi::RecordContext& record_ctx,
+                                       const std::vector<ffi::KernelArg>& args,
+                                       const XLA_FFI_Command* memcpy_d2d) {
+        return record_ctx
+            .CreateLaunch(kernel,
+                          /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
+                          /*shared_mem_bytes=*/1024, args,
+                          /*dependencies=*/{memcpy_d2d})
+            .status();
+      });
+  RunRecordFfiTest(executor, *handler);
+}
+
 class FakeSymmetricMemory : public xla::SymmetricMemory {
  public:
   se::DeviceAddressBase addr() const override {
@@ -354,7 +389,7 @@ TEST(RecordFfiTest, RecordMultiGpuBarrierWithNccl) {
   EXPECT_EQ(host_counter, 1);
 }
 
-TEST(RecordFfiTest, KernelLaunchRejectsInvalidOrUnimplementedRecordKernel) {
+TEST(RecordFfiTest, KernelLaunchRejectsInvalidRecordKernel) {
   ASSERT_OK_AND_ASSIGN(auto platform,
                        stream_executor::PlatformManager::PlatformWithName(
                            stream_executor::GpuPlatformName()));
@@ -414,13 +449,20 @@ TEST(RecordFfiTest, KernelLaunchRejectsInvalidOrUnimplementedRecordKernel) {
   EXPECT_THAT(call(&record_ctx, null_name_ptr, &out_cmd),
               StatusIs(absl::StatusCode::kInvalidArgument));
 
-  XLA_FFI_RecordKernel registered_kernel = {XLA_FFI_RecordKernel_STRUCT_SIZE,
-                                            nullptr,
-                                            dummy_kernel,
-                                            nullptr,
-                                            {nullptr, 0}};
-  EXPECT_THAT(call(&record_ctx, registered_kernel, &out_cmd),
-              StatusIs(absl::StatusCode::kUnimplemented));
+  XLA_FFI_RecordKernel valid_fn = {XLA_FFI_RecordKernel_STRUCT_SIZE,
+                                   nullptr,
+                                   nullptr,
+                                   dummy_fn,
+                                   {nullptr, 0}};
+  EXPECT_THAT(
+      ffi::TakeError(ffi_api->create_launch(
+          &record_ctx, &valid_fn, &launch_params, nullptr, 1, &out_cmd)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  const XLA_FFI_Command* null_dep = nullptr;
+  EXPECT_THAT(
+      ffi::TakeError(ffi_api->create_launch(
+          &record_ctx, &valid_fn, &launch_params, &null_dep, 1, &out_cmd)),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

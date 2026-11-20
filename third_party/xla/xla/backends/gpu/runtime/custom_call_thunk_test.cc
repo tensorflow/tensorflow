@@ -1316,7 +1316,7 @@ TEST(CustomCallThunkTest, PrepareSetsCommandBufferRequiresWarmup) {
   }
 }
 
-TEST(CustomCallThunkTest, KernelRegistryInitializeAndExecute) {
+TEST(CustomCallThunkTest, KernelRegistryInitializeExecuteAndRecord) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
 
   const XLA_FFI_Kernel* registered_kernel = nullptr;
@@ -1351,6 +1351,27 @@ TEST(CustomCallThunkTest, KernelRegistryInitializeAndExecute) {
                                    /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
                                    args);
           });
+  bundle.record =
+      ffi::Ffi::BindRecord()
+          .Ctx<ffi::Extension<ffi::RecordExtension>>()
+          .Arg<ffi::AnyBuffer>()
+          .Arg<ffi::AnyBuffer>()
+          .Ret<ffi::AnyBuffer>()
+          .To([&](ffi::RecordExtension::Type record_ctx, ffi::AnyBuffer input_0,
+                  ffi::AnyBuffer input_1,
+                  ffi::Result<ffi::AnyBuffer> result) -> absl::Status {
+            const std::vector<void*> args = {input_0.untyped_data(),
+                                             input_1.untyped_data(),
+                                             (*result).untyped_data()};
+            if (record_ctx.action() == ffi::RecordAction::kCreate) {
+              return record_ctx
+                  .CreateLaunch(registered_kernel,
+                                /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
+                                /*shared_mem_bytes=*/0, args)
+                  .status();
+            }
+            return record_ctx.UpdateLaunch(record_ctx.commands()[0], args);
+          });
 
   ASSERT_OK_AND_ASSIGN(
       auto setup,
@@ -1358,12 +1379,19 @@ TEST(CustomCallThunkTest, KernelRegistryInitializeAndExecute) {
                                  "add_i32_kernel_registry", {10, 20}, {0}));
   ASSERT_NE(registered_kernel, nullptr);
 
+  // 1. Test ExecuteOnStream using the registered kernel.
   ASSERT_OK(setup->thunk->ExecuteOnStream(*setup->execute_params));
   ASSERT_OK(setup->stream->BlockHostUntilDone());
   int32_t host_exec = 0;
   ASSERT_OK(setup->stream->Memcpy(&host_exec, setup->alloc->result_dev_ptrs[0],
                                   sizeof(int32_t)));
   EXPECT_EQ(host_exec, 30);
+
+  // 2. Test Record (Create + Update) using the registered kernel.
+  ASSERT_OK(setup->stream->MemZero(&setup->alloc->result_dev_ptrs[0],
+                                   sizeof(int32_t)));
+  EXPECT_THAT(setup->RunRecordCreateAndUpdate(executor),
+              IsOkAndHolds(Pair(30, 90)));
 }
 
 TEST(CustomCallThunkTest, KernelRegistryPrepareAndExecute) {

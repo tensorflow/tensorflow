@@ -76,22 +76,31 @@ struct FfiLaunchParams {
 
   std::variant<se::Kernel*, se::NativeKernel> kernel;
   uint32_t shared_mem_bytes;
+
+  absl::string_view kernel_name() const {
+    return std::visit(absl::Overload{[](se::Kernel* k) { return k->name(); },
+                                     [](const se::NativeKernel& nk) {
+                                       return absl::string_view(nk.name());
+                                     }},
+                      kernel);
+  }
+
+  bool use_pdl() const {
+    return std::visit(
+        absl::Overload{[](se::Kernel* k) { return k->use_pdl(); },
+                       [](const se::NativeKernel& nk) { return nk.use_pdl(); }},
+        kernel);
+  }
 };
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const FfiLaunchParams& params) {
-  absl::string_view kernel_name =
-      std::visit(absl::Overload{[](se::Kernel* k) { return k->name(); },
-                                [](const se::NativeKernel& nk) {
-                                  return absl::string_view(nk.name());
-                                }},
-                 params.kernel);
   absl::Format(&sink,
                "FfiLaunchParams(launch_dimensions=%s, cluster_dims=%s, "
                "kernel=%s, shared_mem_bytes=%u)",
                params.launch_dimensions.ToString(),
                params.cluster_dims.value_or(se::ClusterDim{0, 0, 0}).ToString(),
-               kernel_name, params.shared_mem_bytes);
+               params.kernel_name(), params.shared_mem_bytes);
 }
 
 class FfiKernelCache : public se::CommandBuffer::Resource {
@@ -124,6 +133,121 @@ class FfiKernelCache : public se::CommandBuffer::Resource {
       launch_params_;
 };
 
+XLA_FFI_Error* RecordKernelLaunch(
+    XLA_FFI_RecordContext* ctx,
+    std::variant<se::Kernel*, se::NativeKernel> kernel_target,
+    const XLA_FFI_KernelLaunchParams* launch_params,
+    const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
+    const XLA_FFI_Command** out_command) {
+  if (num_dependencies > 0 && dependencies == nullptr) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        "dependencies must not be null when num_dependencies > 0"));
+  }
+  const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
+  absl::StatusOr<FfiLaunchDims> dims =
+      ConvertFfiLaunchDims(launch_params->launch_dims);
+  if (!dims.ok()) {
+    return xla::ffi::CreateError(dims.status());
+  }
+  absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArray>> packed_args =
+      PackKernelArgs(launch_params->args, shared_mem_bytes);
+  if (!packed_args.ok()) {
+    return xla::ffi::CreateError(packed_args.status());
+  }
+
+  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
+  auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
+  // Map dependencies
+  std::vector<const se::CommandBuffer::Command*> deps;
+  deps.reserve(num_dependencies + ctx->dependencies.size());
+  for (const se::CommandBuffer::Command* dep : ctx->dependencies) {
+    deps.push_back(dep);
+  }
+  for (uint32_t i = 0; i < num_dependencies; ++i) {
+    if (dependencies[i] == nullptr) {
+      return xla::ffi::CreateError(
+          absl::InvalidArgumentError("dependency command must not be null"));
+    }
+    deps.push_back(AsStreamExecutorCommand(dependencies[i]));
+  }
+
+  const se::ThreadDim& threads = dims->threads;
+  const se::BlockDim& blocks = dims->blocks;
+  const std::optional<se::ClusterDim>& cluster_dims = dims->cluster;
+
+  FfiLaunchParams params{
+      /*.launch_dimensions = */ LaunchDimensions(blocks, threads),
+      /*.cluster_dims =*/cluster_dims,
+      /*.kernel =*/std::move(kernel_target),
+      /*.shared_mem_bytes = */ shared_mem_bytes,
+  };
+  XLA_VLOG_DEVICE(3, ctx->executor->device_ordinal())
+      << "FfiCreateLaunch for kernel: " << params.kernel_name()
+      << ", use_pdl: " << params.use_pdl()
+      << ", num_dependencies passed: " << num_dependencies
+      << ", resolved deps size: " << deps.size()
+      << ", launch_params: " << params;
+
+  const se::KernelArgsPackedArray& kernel_args = **packed_args;
+  auto status_or_cmd = std::visit(
+      absl::Overload{
+          [&](se::Kernel* k) {
+            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, *k,
+                                            kernel_args, deps);
+          },
+          [&](const se::NativeKernel& nk) {
+            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, nk,
+                                            kernel_args, deps);
+          }},
+      params.kernel);
+
+  if (!status_or_cmd.ok()) {
+    return xla::ffi::CreateError(status_or_cmd.status());
+  }
+
+  const se::CommandBuffer::Command* cmd = *status_or_cmd;
+  XLA_VLOG_DEVICE(3, ctx->executor->device_ordinal())
+      << "FfiCreateLaunch: created command ptr: " << cmd;
+  cache->SaveLaunchParams(cmd, std::move(params));
+
+  *out_command = AsXlaFfiCommand(cmd);
+  return nullptr;
+}
+
+// Records a launch of a kernel registered through the KernelRegistry
+// extension. PDL was fixed on the kernel when it was registered.
+XLA_FFI_Error* CreateRegisteredKernelLaunch(
+    XLA_FFI_RecordContext* ctx, const XLA_FFI_Kernel* kernel,
+    const XLA_FFI_KernelLaunchParams* launch_params,
+    const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
+    const XLA_FFI_Command** out_command) {
+  absl::StatusOr<se::Kernel*> se_kernel =
+      FindDeviceKernel(kernel, ctx->executor->device_ordinal());
+  if (!se_kernel.ok()) {
+    return xla::ffi::CreateError(se_kernel.status());
+  }
+  return RecordKernelLaunch(ctx, *se_kernel, launch_params, dependencies,
+                            num_dependencies, out_command);
+}
+
+// Records a launch of a device function handle loaded by the caller.
+XLA_FFI_Error* CreateFunctionLaunch(
+    XLA_FFI_RecordContext* ctx, const XLA_FFI_RecordKernel* kernel,
+    const XLA_FFI_KernelLaunchParams* launch_params,
+    const XLA_FFI_Command* const* dependencies, uint32_t num_dependencies,
+    const XLA_FFI_Command** out_command) {
+  if (kernel->function_name.ptr == nullptr && kernel->function_name.len > 0) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        "XLA_FFI_RecordKernel::function_name.ptr is null with non-zero len"));
+  }
+  const absl::string_view name(kernel->function_name.ptr,
+                               kernel->function_name.len);
+  const bool pdl = ctx->pdl_enabled && (launch_params->uses_pdl != 0);
+  se::NativeKernel native_kernel{kernel->function, std::string(name), pdl};
+  return RecordKernelLaunch(ctx, std::move(native_kernel), launch_params,
+                            dependencies, num_dependencies, out_command);
+}
+
 XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
                                const XLA_FFI_RecordKernel* kernel,
                                const XLA_FFI_KernelLaunchParams* launch_params,
@@ -150,87 +274,12 @@ XLA_FFI_Error* FfiCreateLaunch(XLA_FFI_RecordContext* ctx,
         "set"));
   }
   if (kernel->kernel != nullptr) {
-    return xla::ffi::CreateError(absl::UnimplementedError(
-        "Registered kernels are not supported in create_launch yet"));
+    return CreateRegisteredKernelLaunch(ctx, kernel->kernel, launch_params,
+                                        dependencies, num_dependencies,
+                                        out_command);
   }
-  if (kernel->function_name.ptr == nullptr && kernel->function_name.len > 0) {
-    return xla::ffi::CreateError(absl::InvalidArgumentError(
-        "XLA_FFI_RecordKernel::function_name.ptr is null with non-zero len"));
-  }
-  const absl::string_view kernel_name(kernel->function_name.ptr,
-                                      kernel->function_name.len);
-  void* function = kernel->function;
-  const uint32_t shared_mem_bytes = launch_params->shared_mem_bytes;
-  const int32_t use_pdl = launch_params->uses_pdl;
-  absl::StatusOr<FfiLaunchDims> dims =
-      ConvertFfiLaunchDims(launch_params->launch_dims);
-  if (!dims.ok()) {
-    return xla::ffi::CreateError(dims.status());
-  }
-  absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArray>> packed_args =
-      PackKernelArgs(launch_params->args, shared_mem_bytes);
-  if (!packed_args.ok()) {
-    return xla::ffi::CreateError(packed_args.status());
-  }
-
-  se::CommandBuffer* cmd_buffer = ctx->command_buffer;
-  const bool pdl = ctx->pdl_enabled && (use_pdl != 0);
-
-  auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
-  std::variant<se::Kernel*, se::NativeKernel> kernel_target =
-      se::NativeKernel{function, std::string(kernel_name), pdl};
-
-  // Map dependencies
-  std::vector<const se::CommandBuffer::Command*> deps;
-  deps.reserve(num_dependencies + ctx->dependencies.size());
-  for (const se::CommandBuffer::Command* dep : ctx->dependencies) {
-    deps.push_back(dep);
-  }
-  for (uint32_t i = 0; i < num_dependencies; ++i) {
-    deps.push_back(AsStreamExecutorCommand(dependencies[i]));
-  }
-
-  const se::ThreadDim& threads = dims->threads;
-  const se::BlockDim& blocks = dims->blocks;
-  const std::optional<se::ClusterDim>& cluster_dims = dims->cluster;
-
-  FfiLaunchParams params{
-      /*.launch_dimensions = */ LaunchDimensions(blocks, threads),
-      /*.cluster_dims =*/cluster_dims,
-      /*.kernel =*/std::move(kernel_target),
-      /*.shared_mem_bytes = */ shared_mem_bytes,
-  };
-  const int32_t device_ordinal = ctx->executor->device_ordinal();
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "FfiCreateLaunch for kernel: " << kernel_name << ", use_pdl: " << pdl
-      << ", num_dependencies passed: " << num_dependencies
-      << ", resolved deps size: " << deps.size()
-      << ", launch_params: " << params;
-
-  const se::KernelArgsPackedArray& kernel_args = **packed_args;
-  auto status_or_cmd = std::visit(
-      absl::Overload{
-          [&](se::Kernel* k) {
-            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, *k,
-                                            kernel_args, deps);
-          },
-          [&](const se::NativeKernel& nk) {
-            return cmd_buffer->CreateLaunch(threads, blocks, cluster_dims, nk,
-                                            kernel_args, deps);
-          }},
-      params.kernel);
-
-  if (!status_or_cmd.ok()) {
-    return xla::ffi::CreateError(status_or_cmd.status());
-  }
-
-  const se::CommandBuffer::Command* cmd = *status_or_cmd;
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "FfiCreateLaunch: created command ptr: " << cmd;
-  cache->SaveLaunchParams(cmd, std::move(params));
-
-  *out_command = AsXlaFfiCommand(cmd);
-  return nullptr;
+  return CreateFunctionLaunch(ctx, kernel, launch_params, dependencies,
+                              num_dependencies, out_command);
 }
 
 XLA_FFI_Error* FfiUpdateLaunch(XLA_FFI_RecordContext* ctx,
