@@ -150,6 +150,22 @@ TensorValue ReshapeTo(mlir::ImplicitLocOpBuilder& b, TensorValue input,
       stablehlo::ReshapeOp::create(b, result_type, input).getResult());
 }
 
+std::optional<CollectiveStrategy> GetCollectiveStrategy(
+    const HloCollectiveInstruction& instr) {
+  auto gpu_config = instr.backend_config<xla::gpu::GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return std::nullopt;
+  }
+  switch (gpu_config->collective_backend_config().kernel_strategy()) {
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
+      return CollectiveStrategy::kOneShot;
+    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
+      return CollectiveStrategy::kTwoShot;
+    default:
+      return std::nullopt;
+  }
+}
+
 // Emits a (possibly variadic) all-gather and returns one tensor per output.
 absl::StatusOr<EmittedResults> EmitAllGather(
     EmitterContext& emitter_ctx, const HloAllGatherInstruction* all_gather,
@@ -206,28 +222,16 @@ absl::StatusOr<EmittedResults> EmitAllGather(
       b, mlir::TypeRange{output_types}, operands,
       all_gather->all_gather_dimension(), replica_groups_attr,
       channel_handle_attr, use_global_device_ids);
+  if (std::optional<CollectiveStrategy> strategy =
+          GetCollectiveStrategy(*all_gather)) {
+    SetCollectiveStrategy(all_gather_op, *strategy);
+  }
   EmittedResults results;
   results.reserve(num_outputs);
   for (Value result : all_gather_op.getResults()) {
     results.push_back(mlir::cast<TensorValue>(result));
   }
   return results;
-}
-
-std::optional<CollectiveStrategy> GetCollectiveStrategy(
-    const HloCollectiveInstruction& instr) {
-  auto gpu_config = instr.backend_config<xla::gpu::GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return std::nullopt;
-  }
-  switch (gpu_config->collective_backend_config().kernel_strategy()) {
-    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT:
-      return CollectiveStrategy::kOneShot;
-    case xla::gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT:
-      return CollectiveStrategy::kTwoShot;
-    default:
-      return std::nullopt;
-  }
 }
 
 absl::StatusOr<TensorValue> EmitAllToAll(
@@ -3014,6 +3018,53 @@ Value ApplyGroupSizeTileIdRemapping(ImplicitLocOpBuilder& b,
   return arith::IndexCastOp::create(b, b.getIndexType(), remapped);
 }
 
+struct RootInsertTarget {
+  Value buffer;
+  SmallVector<Value> offsets;
+};
+
+// Selects the peer output buffer from output_arg and shifts collective_dim by
+// rank * shard_size when root_hlo uses per-peer buffers.
+absl::StatusOr<RootInsertTarget> EmitRootInsertTarget(
+    EmitterContext& emitter_ctx, const HloInstruction& root_hlo,
+    const TileInfo& tile_info, Value output_arg) {
+  SmallVector<Value> offsets = llvm::to_vector(tile_info.offsets());
+  std::optional<RootPeerBufferInfo> peer_buf = GetRootPeerBufferInfo(
+      emitter_ctx.tiled_computation().tiling_space(), root_hlo);
+  if (!peer_buf.has_value()) {
+    return RootInsertTarget{output_arg, std::move(offsets)};
+  }
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  xtile::EntryFuncOp fn = emitter_ctx.entry_func();
+  TF_RET_CHECK(fn.getHasRank());
+  auto dest_memref = mlir::dyn_cast<mlir::MemRefType>(output_arg.getType());
+  TF_RET_CHECK(dest_memref != nullptr && dest_memref.getRank() == 1 &&
+               dest_memref.getElementType().isInteger(64) &&
+               dest_memref.getDimSize(0) == peer_buf->world_size);
+  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> peer_ids,
+                   emitter_ctx.EvaluateTilingParameters({CreateDimExpr(
+                       peer_buf->replica_dim_id.value(), b.getContext())}));
+  ABSL_ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
+                   GetMemRefType(root_hlo.shape(), tile_info.storage_type()));
+  Value dest_buffer =
+      xtile::SelectBufferOp::create(b, spatial_memref_type, output_arg,
+                                    peer_ids[0], /*offset=*/mlir::Value());
+  TF_RET_CHECK(tile_info.storage_shape()[peer_buf->collective_dim] %
+                   peer_buf->world_size ==
+               0);
+  int64_t shard_size = tile_info.storage_shape()[peer_buf->collective_dim] /
+                       peer_buf->world_size;
+  TF_RET_CHECK(shard_size %
+                   tile_info.padded_tile_sizes()[peer_buf->collective_dim] ==
+               0);
+  Value rank_offset =
+      arith::MulIOp::create(b, fn.getRank(), MakeIndex(b, shard_size));
+  offsets[peer_buf->collective_dim] =
+      arith::AddIOp::create(b, offsets[peer_buf->collective_dim], rank_offset);
+  return RootInsertTarget{dest_buffer, std::move(offsets)};
+}
+
 absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                          const HloFusionInstruction& fusion,
                          const gpu::TiledHloComputation& tiled_computation,
@@ -3095,8 +3146,10 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
                  fn.getInputOutputBuffers().drop_front(
                      computation->num_parameters()))) {
     ABSL_ASSIGN_OR_RETURN(auto tile_info, TileInfo::Construct(emitter_ctx, *root));
-
-    xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),
+    ABSL_ASSIGN_OR_RETURN(
+        RootInsertTarget target,
+        EmitRootInsertTarget(emitter_ctx, *root->hlo(), tile_info, arg));
+    xtile::InsertTileOp::create(b, result, target.buffer, target.offsets,
                                 tile_info.padded_tile_sizes(),
                                 tile_info.tile_strides());
   }
@@ -3138,7 +3191,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   // Compute function argument types.
   ABSL_ASSIGN_OR_RETURN(SmallVector<Type> io_buffer_types,
-                   GetFnArgTypes(b, fusion, gpu_cc));
+                   GetFnArgTypes(b, fusion, collective_spec, gpu_cc));
   SmallVector<Type> scratch_buffer_types;
   Type signal_buffer_type;
   if (collective_spec.has_signal_and_rank) {

@@ -253,16 +253,6 @@ class TileInfo {
     return minor_to_major_layout_;
   }
 
-  // The replica id offsets if the tensor has a replica dimension.
-  llvm::ArrayRef<mlir::Value> replica_id_offsets() const {
-    return replica_id_offsets_;
-  }
-
-  // The replica id bounds if the tensor has a replica dimension.
-  llvm::ArrayRef<mlir::Value> replica_id_bounds() const {
-    return replica_id_bounds_;
-  }
-
   // Element type of the tensor in XTile SSA tiles.
   mlir::Type storage_type() const { return storage_type_; }
 
@@ -273,26 +263,19 @@ class TileInfo {
   llvm::SmallVector<int64_t> padded_tile_sizes_;
   llvm::SmallVector<int64_t> minor_to_major_layout_;
   mlir::Type storage_type_;
-  llvm::SmallVector<mlir::Value> replica_id_offsets_;
-  llvm::SmallVector<mlir::Value> replica_id_bounds_;
 
-  TileInfo(llvm::SmallVector<mlir::Value> offsets,             //
-           llvm::SmallVector<int64_t> tile_strides,            //
-           llvm::SmallVector<int64_t> storage_shape,           //
-           llvm::SmallVector<int64_t> padded_tile_sizes,       //
-           llvm::SmallVector<int64_t> minor_to_major_layout,   //
-           mlir::Type storage_type,                            //
-           llvm::SmallVector<mlir::Value> replica_id_offsets,  //
-           llvm::SmallVector<mlir::Value> replica_id_bounds    //
-           )
+  TileInfo(llvm::SmallVector<mlir::Value> offsets,            //
+           llvm::SmallVector<int64_t> tile_strides,           //
+           llvm::SmallVector<int64_t> storage_shape,          //
+           llvm::SmallVector<int64_t> padded_tile_sizes,      //
+           llvm::SmallVector<int64_t> minor_to_major_layout,  //
+           mlir::Type storage_type)
       : offsets_(std::move(offsets)),
         tile_strides_(std::move(tile_strides)),
         storage_shape_(std::move(storage_shape)),
         padded_tile_sizes_(std::move(padded_tile_sizes)),
         minor_to_major_layout_(std::move(minor_to_major_layout)),
-        storage_type_(std::move(storage_type)),
-        replica_id_offsets_(std::move(replica_id_offsets)),
-        replica_id_bounds_(std::move(replica_id_bounds)) {}
+        storage_type_(std::move(storage_type)) {}
 };
 
 // Triton requires that all block dimensions are a power of 2.
@@ -553,8 +536,38 @@ absl::StatusOr<mlir::Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
+// Per-peer output buffer indexing info for a root HLO instruction.
+//
+// Example:
+//   ag = f32[4,32] all-gather(p0 /*f32[4,8]*/), dimensions={1},
+//     replica_groups={{0,1,2,3},{4,5,6,7}}
+//   ROOT out = f32[4,32] negate(ag)
+//
+//   Tiling space for out: d0 (axis 0), d1 (axis 1), d2 (kReplica, size 4).
+//   Result for out: {collective_dim=1, replica_dim_id=d2, world_size=4}.
+//   Note: collective_dim is the axis in out's shape (where xtile.insert
+//   writes), which matches dimensions={1} through elementwise/GTE ops.
+//   Rank r in its group writes columns [r*8, r*8+8) of axis 1 into every
+//   peer's buffer (peer p = d2).
+struct RootPeerBufferInfo {
+  // Axis of root_hlo.shape() split across ranks (e.g. the gather dimension).
+  int64_t collective_dim;
+  // kReplica tiled dimension; its value selects the peer's output buffer.
+  gpu::TiledDimId replica_dim_id;
+  // Number of peers in one replica group (not the total device count).
+  int64_t world_size;
+};
+
+// Returns per-peer output buffer info if `root_hlo` has a dimension with
+// `PeerIndexing::kPerPeerBuffer` in `tiling_space`.
+std::optional<RootPeerBufferInfo> GetRootPeerBufferInfo(
+    const gpu::TilingSpace& tiling_space, const HloInstruction& root_hlo);
+
 // Collective signature configuration for `xtile::EntryFuncOp`.
 struct CollectiveEntrySpec {
+  // Per-leaf-result mask: true when the result argument is a peer pointer
+  // table (`memref<world_size x i64>`) rather than a local tensor memref.
+  llvm::SmallVector<bool> peer_table_results;
   int32_t num_scratch_buffers = 0;
   bool has_signal_and_rank = false;
   int64_t world_size = 0;
@@ -564,6 +577,7 @@ struct CollectiveEntrySpec {
 // `fusion`.
 absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
+    const CollectiveEntrySpec& collective_spec,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
 // Function to check if the operands of a concatenation are valid for tiling.
