@@ -604,6 +604,10 @@ class HloModule {
       BufferAssignmentProto* buffer_assignment_proto,
       bool preserve_instruction_ids = true);
 
+  // Replaces the contents of this module in place with the HloModule described
+  // by `proto`.
+  absl::Status UpdateFromProto(const HloModuleProto& proto);
+
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static absl::StatusOr<HloModuleConfig> CreateModuleConfigFromProto(

@@ -1373,6 +1373,55 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
       std::move(comp_envs), preserve_instruction_ids, buffer_assignment_proto);
 }
 
+absl::Status HloModule::UpdateFromProto(const HloModuleProto& proto) {
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> temp_module,
+                   CreateFromProto(proto, config()));
+  // MoveComputationsFrom assigns fresh computation unique_ids, whereas
+  // HloSchedule keys sequences by computation unique_id.
+  absl::flat_hash_map<const HloComputation*, int64_t> old_comp_ids;
+  if (temp_module->has_schedule()) {
+    for (const HloComputation* comp : temp_module->computations()) {
+      old_comp_ids[comp] = comp->unique_id();
+    }
+  }
+
+  clear_schedule();
+  HloComputation* new_entry = temp_module->entry_computation();
+  MoveComputationsFrom(temp_module.get());
+  ReplaceEntryComputation(new_entry);
+  mutable_config().SetComputationLayoutIfExists(
+      new_entry->ComputeProgramShape());
+  set_input_output_alias_config(temp_module->input_output_alias_config());
+  set_buffer_donor_config(temp_module->buffer_donor_config());
+  stack_frames_ = std::move(temp_module->stack_frames_);
+  is_dynamic_ = temp_module->is_dynamic_;
+  frontend_attributes_ = std::move(temp_module->frontend_attributes_);
+  backend_config_ = std::move(temp_module->backend_config_);
+  spmd_output_sharding_ = std::move(temp_module->spmd_output_sharding_);
+  spmd_parameters_shardings_ =
+      std::move(temp_module->spmd_parameters_shardings_);
+  use_auto_spmd_partitioning_ = temp_module->use_auto_spmd_partitioning_;
+  cross_program_prefetches_ = std::move(temp_module->cross_program_prefetches_);
+  profile_info_list_ = std::move(temp_module->profile_info_list_);
+  original_value_recovery_table_ =
+      std::move(temp_module->original_value_recovery_table_);
+  debug_attributes_ = std::move(temp_module->debug_attributes_);
+  ABSL_RETURN_IF_ERROR(RemoveUnusedComputations());
+
+  if (temp_module->has_schedule()) {
+    HloSchedule new_schedule(this);
+    const auto& old_sequences = temp_module->schedule().sequences();
+    for (const HloComputation* comp : computations()) {
+      if (auto it = old_sequences.find(old_comp_ids.at(comp));
+          it != old_sequences.end()) {
+        new_schedule.set_sequence(comp, it->second.instructions());
+      }
+    }
+    ABSL_RETURN_IF_ERROR(set_schedule(std::move(new_schedule)));
+  }
+  return absl::OkStatus();
+}
+
 namespace {
 // Returns whether `hlo` is used outside the given subcomputation.
 // `instructions_in_subcomputation` is the instruction set of the given

@@ -102,7 +102,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
                                 args.transformed_hlo_module.size))) {
         status = absl::InternalError("Failed to parse transformed HLO module");
       } else {
-        status = UpdateHloModuleFromProto(module, transformed_proto);
+        status = module->UpdateFromProto(transformed_proto);
         changed = status.ok();
       }
     }
