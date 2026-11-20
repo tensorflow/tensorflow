@@ -2213,6 +2213,10 @@ absl::StatusOr<xtile::CollectiveEntrySpec> BuildCollectiveEntrySpec(
   TF_RET_CHECK(collective != nullptr)
       << "Collective fusion requires a collective hero instruction.";
   xtile::CollectiveEntrySpec spec;
+  if (IsTritonTwoShotAllGather(*collective)) {
+    spec.peer_table_results.assign(
+        ShapeUtil::GetLeafShapes(fusion.shape()).size(), true);
+  }
   spec.num_scratch_buffers = hlo_computation->num_parameters();
   spec.has_signal_and_rank = true;
   spec.world_size = collective->device_list()->num_devices_per_group();
@@ -2314,6 +2318,10 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
 
 mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
                                      mlir::PatternRewriter& rewriter) {
+  if (xtile::GetCollectiveStrategy(op) == xtile::CollectiveStrategy::kTwoShot) {
+    return rewriter.notifyMatchFailure(
+        op, "Two-shot AllGather lowering is not yet implemented.");
+  }
   absl::StatusOr<AllGatherRewriteContext> maybe_ctx = BuildAllGatherContext(op);
   if (!maybe_ctx.ok()) {
     return rewriter.notifyMatchFailure(op, maybe_ctx.status().message());

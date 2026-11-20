@@ -546,6 +546,7 @@ cc_library(
     srcs = ["xtile_test_base.cc"],
     hdrs = ["xtile_test_base.h"],
     deps = [
+        ":collective_emitter",
         ":xtile_compiler",
         "//xla:status_macros",
         "//xla:util",
@@ -564,6 +565,7 @@ cc_library(
         "//xla/service:decision",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
