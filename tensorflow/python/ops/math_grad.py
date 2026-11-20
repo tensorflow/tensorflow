@@ -247,7 +247,7 @@ def _MinOrMaxGrad(op: ops.Operation, grad):
   num_selected = array_ops.reshape(
       math_ops.reduce_sum(indicators, op.inputs[1]), output_shape_kept_dims)
 
-  return [math_ops.divide(indicators, num_selected) * grad, None]
+  return [math_ops.div_no_nan(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")
@@ -465,7 +465,7 @@ def _SegmentMinOrMaxGrad(op: ops.Operation, grad):
       math_ops.cast(is_selected, grad.dtype), op.inputs[1])
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
-  weighted_grads = math_ops.divide(grad, num_selected)
+  weighted_grads = math_ops.div_no_nan(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
   return array_ops.where_v2(is_selected, gathered_grads, zeros), None
 
@@ -577,7 +577,7 @@ def _UnsortedSegmentMinOrMaxGrad(op: ops.Operation, grad):
   )
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
-  weighted_grads = math_ops.divide(grad, num_selected)
+  weighted_grads = math_ops.div_no_nan(grad, num_selected)
   gathered_grads, _, _ = _GatherDropNegatives(
       weighted_grads, None, zero_clipped_indices, is_positive
   )
