@@ -403,6 +403,19 @@ class TensorListGetItemOp : public XlaOpKernel {
 
     OP_REQUIRES_OK(ctx, VerifyBufferDataType(list, dtype_));
 
+    xla::Shape buffer_shape;
+    OP_REQUIRES_OK(ctx, GetTensorListBufferShape(list, &buffer_shape));
+    int64_t constant_index;
+    if (buffer_shape.dimensions_size() > 0 &&
+        buffer_shape.dimensions(0) > 0 &&
+        ctx->ConstantInputAsIntScalar(1, &constant_index).ok()) {
+      OP_REQUIRES(
+          ctx, constant_index >= 0 && constant_index < buffer_shape.dimensions(0),
+          errors::InvalidArgument("Trying to access element ", constant_index,
+                                  " in a list with ", buffer_shape.dimensions(0),
+                                  " elements."));
+    }
+
     xla::XlaOp result;
     OP_REQUIRES_OK(ctx, ExecuteTensorListGetItem(list, index, &result));
 
