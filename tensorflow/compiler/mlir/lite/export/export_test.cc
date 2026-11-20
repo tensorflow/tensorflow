@@ -36,13 +36,16 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
@@ -379,6 +382,130 @@ TEST_F(ExportTest, ExportsBlockwiseQuantizationParametersAsTensors) {
   EXPECT_EQ(scales->name()->str(), weight->name()->str() + "_scales");
   EXPECT_THAT(GetValues<float>(GetData(file, model, scales)),
               ElementsAre(0.5f, 0.25f));
+}
+
+TEST_F(ExportTest, SharesBlockwiseQuantizationParameters) {
+  // `prefill` has two weights with the same parameters, and `decode` one of
+  // them again.
+  OwningOpRef<ModuleOp> module = Parse(R"mlir(
+    func.func @prefill() -> (tensor<2x4xf32>, tensor<2x4xf32>)
+        attributes {tf.entry_function = {outputs = "prefill_y,prefill_z"}} {
+      %w = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>, value = dense<1> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>
+      %v = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>, value = dense<2> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>
+      %0 = "tfl.dequantize"(%w) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      %1 = "tfl.dequantize"(%v) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      func.return %0, %1 : tensor<2x4xf32>, tensor<2x4xf32>
+    }
+    func.func @decode() -> tensor<2x4xf32>
+        attributes {tf.entry_function = {outputs = "decode_y"}} {
+      %w = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>, value = dense<1> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>
+      %0 = "tfl.dequantize"(%w) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [1, 4], scales = dense<[[0.5], [0.25]]> : tensor<2x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      func.return %0 : tensor<2x4xf32>
+    }
+  )mlir");
+  Type quantized_type;
+  module->walk([&](QConstOp op) { quantized_type = op.getType(); });
+  std::string file;
+  ASSERT_TRUE(Export(*module, file).ok());
+  const tflite::Model* model = tflite::GetModel(file.data());
+
+  ASSERT_EQ(model->subgraphs()->size(), 2);
+  auto get_blockwise = [&](const tflite::SubGraph* subgraph, int index) {
+    return subgraph->tensors()
+        ->Get(index)
+        ->quantization()
+        ->details_as_BlockwiseQuantization();
+  };
+  // Within a subgraph, the weights share their parameter tensors.
+  const tflite::SubGraph* prefill = model->subgraphs()->Get(0);
+  const tflite::BlockwiseQuantization* w = get_blockwise(prefill, 0);
+  ASSERT_NE(w, nullptr);
+  EXPECT_EQ(w->scales(), 1);
+  EXPECT_EQ(w->zero_points(), 2);
+  const tflite::BlockwiseQuantization* v = get_blockwise(prefill, 3);
+  ASSERT_NE(v, nullptr);
+  EXPECT_EQ(v->scales(), w->scales());
+  EXPECT_EQ(v->zero_points(), w->zero_points());
+  // `prefill` has the two weights, their parameters and the two dequantized
+  // values.
+  EXPECT_EQ(prefill->tensors()->size(), 6);
+
+  // Across subgraphs, the parameter tensors share their buffers.
+  const tflite::SubGraph* decode = model->subgraphs()->Get(1);
+  const tflite::BlockwiseQuantization* decode_w = get_blockwise(decode, 0);
+  ASSERT_NE(decode_w, nullptr);
+  const auto buffer = [](const tflite::SubGraph* subgraph, int index) {
+    return subgraph->tensors()->Get(index)->buffer();
+  };
+  EXPECT_EQ(buffer(decode, decode_w->scales()), buffer(prefill, w->scales()));
+  EXPECT_EQ(buffer(decode, decode_w->zero_points()),
+            buffer(prefill, w->zero_points()));
+  EXPECT_NE(buffer(prefill, w->scales()), buffer(prefill, w->zero_points()));
+  EXPECT_THAT(GetValues<float>(GetData(
+                  file, model, prefill->tensors()->Get(w->zero_points()))),
+              ElementsAre(-0.5f));
+
+  // The shared parameters are imported back into every weight.
+  OwningOpRef<ModuleOp> imported =
+      tflite::FlatBufferToMlir(file, &context_, UnknownLoc::get(&context_));
+  ASSERT_TRUE(imported);
+  int num_weights = 0;
+  imported->walk([&](QConstOp op) {
+    EXPECT_EQ(op.getType(), quantized_type);
+    ++num_weights;
+  });
+  EXPECT_EQ(num_weights, 3);
+}
+
+TEST_F(ExportTest, SharesBlockwiseQuantizationParametersSeparately) {
+  // The weights have the same scales, but different zero points. Those of `w`
+  // are equal to its scales.
+  const std::string file = ExportOrDie(R"mlir(
+    func.func @main() -> (tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>) {
+      %w = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<0.5> : tensor<1x1xf32>>>, value = dense<1> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<0.5> : tensor<1x1xf32>>>
+      %v = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>>>, value = dense<2> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>>>
+      %u = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>, value = dense<3> : tensor<2x4xi8>} : () -> tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>
+      %0 = "tfl.dequantize"(%w) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      %1 = "tfl.dequantize"(%v) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      %2 = "tfl.dequantize"(%u) : (tensor<2x4x!tfl.blockwise_quant<i8 -> f32, block_shape = [2, 4], scales = dense<0.5> : tensor<1x1xf32>, zero_points = dense<-0.5> : tensor<1x1xf32>>>) -> tensor<2x4xf32>
+      func.return %0, %1, %2 : tensor<2x4xf32>, tensor<2x4xf32>, tensor<2x4xf32>
+    }
+  )mlir");
+  const tflite::Model* model = tflite::GetModel(file.data());
+
+  const tflite::SubGraph* subgraph = model->subgraphs()->Get(0);
+  const auto* tensors = subgraph->tensors();
+  auto get_blockwise = [&](int index) {
+    return tensors->Get(index)
+        ->quantization()
+        ->details_as_BlockwiseQuantization();
+  };
+  // Equal scales and zero points share their buffer, not their tensor.
+  const tflite::BlockwiseQuantization* w = get_blockwise(0);
+  ASSERT_NE(w, nullptr);
+  EXPECT_EQ(w->scales(), 1);
+  EXPECT_EQ(w->zero_points(), 2);
+  EXPECT_EQ(tensors->Get(1)->buffer(), tensors->Get(2)->buffer());
+  EXPECT_EQ(tensors->Get(2)->name()->str(),
+            tensors->Get(0)->name()->str() + "_zero_points");
+
+  // `v` only uses the scales of `w`.
+  const tflite::BlockwiseQuantization* v = get_blockwise(3);
+  ASSERT_NE(v, nullptr);
+  EXPECT_EQ(v->scales(), 1);
+  EXPECT_EQ(v->zero_points(), -1);
+
+  // `u` uses the scales of `w` and adds its zero points right after itself.
+  const tflite::BlockwiseQuantization* u = get_blockwise(4);
+  ASSERT_NE(u, nullptr);
+  EXPECT_EQ(u->scales(), 1);
+  EXPECT_EQ(u->zero_points(), 5);
+  EXPECT_EQ(tensors->Get(5)->name()->str(),
+            tensors->Get(4)->name()->str() + "_zero_points");
+  EXPECT_THAT(GetValues<float>(GetData(file, model, tensors->Get(5))),
+              ElementsAre(-0.5f));
+  // The weights, three parameter tensors and the dequantized values.
+  EXPECT_EQ(tensors->size(), 9);
 }
 
 TEST_F(ExportTest, ExportsCompositeWithDecompositionSubgraph) {
