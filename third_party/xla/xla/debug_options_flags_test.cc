@@ -644,5 +644,42 @@ TEST(DebugOptions, ExecutionWarnStuckTimeoutFlagsParsing) {
     EXPECT_FALSE(tsl::Flags::Parse(invalid_terminate_args, flags)) << invalid;
   }
 }
+
+TEST(DebugOptions, DefaultToAlgDotBf16ExplicitlySetIndicator) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  tsl::unsetenv("XLA_FLAGS");
+
+  DebugOptions default_opts = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_FALSE(default_opts.xla_gpu_default_to_alg_dot_bf16_bf16_f32());
+  EXPECT_FALSE(default_opts.has_xla_gpu_unsupported_explicit_bf16_default());
+  EXPECT_FALSE(default_opts.xla_gpu_unsupported_explicit_bf16_default());
+
+  {
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    tsl::setenv("XLA_FLAGS", "--xla_gpu_default_to_alg_dot_bf16_bf16_f32=true",
+                1);
+    DebugOptions proto_opts = DefaultDebugOptionsIgnoringFlags();
+    DebugOptions opts = GetDebugOptionsFromProtoAndFlags(&proto_opts);
+    EXPECT_TRUE(opts.xla_gpu_default_to_alg_dot_bf16_bf16_f32());
+    EXPECT_TRUE(opts.has_xla_gpu_unsupported_explicit_bf16_default());
+    EXPECT_TRUE(opts.xla_gpu_unsupported_explicit_bf16_default());
+  }
+
+  {
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    tsl::setenv("XLA_FLAGS", "--xla_gpu_default_to_alg_dot_bf16_bf16_f32=false",
+                1);
+    DebugOptions proto_opts = DefaultDebugOptionsIgnoringFlags();
+    DebugOptions opts = GetDebugOptionsFromProtoAndFlags(&proto_opts);
+    EXPECT_FALSE(opts.xla_gpu_default_to_alg_dot_bf16_bf16_f32());
+    EXPECT_TRUE(opts.has_xla_gpu_unsupported_explicit_bf16_default());
+    EXPECT_TRUE(opts.xla_gpu_unsupported_explicit_bf16_default());
+  }
+
+  tsl::unsetenv("XLA_FLAGS");
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+}
 }  // namespace
 }  // namespace xla

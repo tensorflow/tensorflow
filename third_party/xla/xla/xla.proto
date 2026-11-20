@@ -776,6 +776,11 @@ message DebugOptions {
   // we expect this to change at a later point.
   optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
 
+  // Internal indicator set to true when
+  // --xla_gpu_default_to_alg_dot_bf16_bf16_f32 is explicitly passed via XLA
+  // flags.
+  optional bool xla_gpu_unsupported_explicit_bf16_default = 589;
+
   // Guarantees run-to-run determinism.
   // This flag disables autotuning and selects the first __valid__ autotune
   // config.
@@ -2102,7 +2107,7 @@ message DebugOptions {
 
   optional string xla_gpu_compileiq_db_path = 588;
 
-  // Next id: 589
+  // Next id: 590
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
