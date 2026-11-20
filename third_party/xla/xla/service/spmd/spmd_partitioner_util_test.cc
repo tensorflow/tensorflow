@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/spmd/spmd_partitioner_util_internal.h"
 
 namespace xla {
@@ -1029,6 +1030,44 @@ INSTANTIATE_TEST_SUITE_P(
             HloSharding::SingleDevice(1), false}),
     [](const testing::TestParamInfo<CanReshardWithCollectivePermuteTestCase>&
            info) { return info.param.name; });
+
+TEST(SPMDPartitionerUtilTest, AlignGroupsWithIfCompatibleIgnoreGroupOrder) {
+  // Reference groups along dim 1: [[0, 4, 1, 5], [2, 6, 3, 7]].
+  HloSharding ref_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 1, 0}));
+  auto ref_grouped = hlo_sharding_util::GroupShardingOnDims(ref_sharding, {1});
+
+  // Same groups in reversed group order with uniform within group permutation
+  // [0, 2, 1, 3]: groups [[2, 3, 6, 7], [0, 1, 4, 5]].
+  Array<int64_t> reversed_groups_tiles({4, 2});
+  reversed_groups_tiles.SetValues({2, 0, 3, 1, 6, 4, 7, 5});
+  auto src_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(reversed_groups_tiles), {1});
+
+  EXPECT_FALSE(AlignGroupsWithIfCompatible(src_grouped, ref_grouped,
+                                           /*ignore_group_order=*/false)
+                   .has_value());
+  auto aligned = AlignGroupsWithIfCompatible(src_grouped, ref_grouped,
+                                             /*ignore_group_order=*/true);
+  ASSERT_TRUE(aligned.has_value());
+  Array<int64_t> expected_inner({4, 1});
+  expected_inner.SetValues({0, 2, 1, 3});
+  EXPECT_EQ(aligned->sharding, HloSharding::Tile(expected_inner));
+
+  // Inconsistent within group permutation across groups: [[0, 2], [1, 3]] vs
+  // [[0, 2], [3, 1]] must return nullopt even with ignore_group_order=true.
+  Array<int64_t> ref_non_uniform({2, 2});
+  ref_non_uniform.SetValues({0, 3, 2, 1});
+  auto ref_nu_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(ref_non_uniform), {1});
+  Array<int64_t> src_non_uniform({2, 2});
+  src_non_uniform.SetValues({0, 1, 2, 3});
+  auto src_nu_grouped = hlo_sharding_util::GroupShardingOnDims(
+      HloSharding::Tile(src_non_uniform), {1});
+  EXPECT_FALSE(AlignGroupsWithIfCompatible(src_nu_grouped, ref_nu_grouped,
+                                           /*ignore_group_order=*/true)
+                   .has_value());
+}
 
 }  // namespace
 }  // namespace spmd

@@ -2532,10 +2532,11 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
 }
 
 std::optional<GroupedSharding> AlignGroupsWithIfCompatible(
-    GroupedSharding grouped_sharding, const GroupedSharding& reference) {
+    GroupedSharding grouped_sharding, const GroupedSharding& reference,
+    bool ignore_group_order) {
   return AlignGroupsWithInternal(std::move(grouped_sharding), reference,
                                  /*requires_compatibility=*/true,
-                                 /*ignore_group_order=*/false);
+                                 ignore_group_order);
 }
 
 HloSharding AlignShardingOnDims(const HloSharding& sharding,

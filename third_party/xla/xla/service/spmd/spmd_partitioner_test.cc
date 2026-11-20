@@ -13386,12 +13386,104 @@ ENTRY entry {
   const auto rhs = AllOf(op::Shape("f32[12,16]"), op::Parameter(1));
   auto masked_rhs = op::Select(_, rhs, op::Broadcast(op::Constant()));
   const auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
+  EXPECT_THAT(
+      root,
               AllOf(op::Shape("f32[12,16]"),
                     op::DynamicSlice(
                         AllOf(op::Shape("f32[24,16]"),
-                              op::AllReduce(op::Dot(masked_lhs, masked_rhs))),
+                      op::AllReduce(op::Dot(
+                          masked_lhs, op::CollectivePermute(masked_rhs)))),
                         _, _)));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DotGroupOnContractingWithPermutedWithinGroupOutputOrder) {
+  {
+    SCOPED_TRACE("compatible_3d_subslice_lhs_larger");
+    constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = bf16[128,256] parameter(0),
+    sharding={devices=[2,2,2]<=[2,2,2]T(2,1,0) last_tile_dim_replicate}
+  %rhs = bf16[256,16] parameter(1),
+    sharding={devices=[2,4]<=[2,2,2]T(1,0,2)}
+  ROOT %dot = f32[128,16] dot(%lhs, %rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[4,2]<=[2,2,2]T(0,2,1)}
+})";
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(kHlo, /*num_devices=*/8));
+    auto lhs_resharded =
+        AllOf(op::Shape("bf16[32,128]"),
+              op::CollectivePermute(op::DynamicSlice(op::Parameter(0), _, _)));
+    auto rhs_replicated =
+        AllOf(op::Shape("bf16[128,16]"), op::AllGather(op::Parameter(1)));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    EXPECT_THAT(
+        root,
+        AllOf(op::Shape("f32[32,8]"),
+              op::DynamicSlice(
+                  AllOf(op::Shape("f32[32,16]"),
+                        op::AllReduce(op::Dot(lhs_resharded, rhs_replicated))),
+                  _, _)));
+  }
+  {
+    SCOPED_TRACE("compatible_3d_subslice_rhs_larger");
+    constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,256] parameter(0),
+    sharding={devices=[4,2]<=[2,2,2]T(0,2,1)}
+  %rhs = f32[256,128] parameter(1),
+    sharding={devices=[2,2,2]<=[2,2,2]T(1,2,0) last_tile_dim_replicate}
+  ROOT %dot = f32[16,128] dot(%lhs, %rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[2,4]<=[2,2,2]T(1,0,2)}
+})";
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(kHlo, /*num_devices=*/8));
+    auto rhs_resharded =
+        AllOf(op::Shape("f32[128,32]"),
+              op::CollectivePermute(op::DynamicSlice(op::Parameter(1), _, _)));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, AllOf(op::Shape("f32[8,32]"),
+                            op::DynamicSlice(
+                                AllOf(op::Shape("f32[16,32]"),
+                                      op::AllReduce(op::Dot(_, rhs_resharded))),
+                                _, _)));
+  }
+  {
+    SCOPED_TRACE("incompatible_across_groups_fallback");
+    constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,32] parameter(0), sharding={devices=[2,2]0,3,2,1}
+  %rhs = f32[32,16] parameter(1), sharding={devices=[2,2]0,2,3,1}
+  ROOT %dot = f32[16,16] dot(%lhs, %rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sharding={devices=[2,2]<=[4]}
+})";
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(kHlo, /*num_devices=*/4));
+    auto rhs_replicated =
+        AllOf(op::Shape("f32[16,16]"), op::AllGather(op::Parameter(1)));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, AllOf(op::Shape("f32[8,8]"),
+                            op::CollectivePermute(op::DynamicSlice(
+                                AllOf(op::Shape("f32[8,16]"),
+                                      op::AllReduce(op::Dot(op::Parameter(0),
+                                                            rhs_replicated))),
+                                _, _))));
+  }
 }
 
 TEST_P(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {

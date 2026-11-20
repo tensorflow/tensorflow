@@ -2749,15 +2749,20 @@ GetDotGroupPartitionContractingOutputShardings(
                  output_sharding, lhs_grouped.device_groups)) {
     output_slice_dims = std::move(*found_dims);
     if (!output_slice_dims.empty()) {
-      // FindMatchingPartitionedDimsForGrouping already makes sure the groups
-      // are compatible with LHS/RHS. We avoid AlignGroupsWith/UngroupSharding
-      // because that could change the group order causing a reshard with
-      // collective-permute, which is unnecessary since these groups will be
-      // all-reduced upon anyway for contracting-dim sharding.
+      // Align within group device order to lhs_grouped while preserving group
+      // order when all groups share a single within group permutation.
       auto grouped = hlo_sharding_util::GroupShardingOnDims(output_sharding,
                                                             output_slice_dims);
-      inner_output_sharding = grouped.sharding;
+      if (auto aligned = AlignGroupsWithIfCompatible(
+              grouped, lhs_grouped, /*ignore_group_order=*/true)) {
+        inner_output_sharding = std::move(aligned->sharding);
       outer_output_tmp_sharding = output_sharding;
+      } else {
+        grouped = AlignGroupsWith(std::move(grouped), lhs_grouped,
+                                  /*ignore_group_order=*/true);
+        outer_output_tmp_sharding = UngroupSharding(grouped);
+        inner_output_sharding = std::move(grouped.sharding);
+      }
     }
   } else if (!output_sharding.IsReplicated()) {
     if (output_lhs_non_contracting_partitions == group_count) {

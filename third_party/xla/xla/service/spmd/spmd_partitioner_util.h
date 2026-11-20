@@ -484,10 +484,14 @@ HloSharding AlignShardingOnDims(const HloSharding& sharding,
                                 const HloSharding& reference,
                                 absl::Span<const int64_t> reference_dims);
 
-// AlignShardingOnDims only if it doesn't change the sharding when ungrouped.
+// Aligns device groups with `reference` only if all groups share a single
+// within group device permutation. When `ignore_group_order` is false, group
+// order must also match `reference` (preserving the ungrouped sharding); when
+// true, groups may be reordered if each matches a `reference` group.
 std::optional<hlo_sharding_util::GroupedSharding> AlignGroupsWithIfCompatible(
     hlo_sharding_util::GroupedSharding grouped_sharding,
-    const hlo_sharding_util::GroupedSharding& reference);
+    const hlo_sharding_util::GroupedSharding& reference,
+    bool ignore_group_order = false);
 
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.
