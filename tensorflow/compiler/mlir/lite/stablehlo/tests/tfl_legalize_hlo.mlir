@@ -2058,6 +2058,30 @@ func.func @avgpool_valid_broadcasted_divisor(%arg0: tensor<4x16x16x8xf32>) -> te
 
 // -----
 
+// CHECK-LABEL: avgpool_valid_dynamic_broadcasted_divisor
+func.func @avgpool_valid_dynamic_broadcasted_divisor(%arg0: tensor<?x16x16x8xf32>, %arg1: tensor<4xi32>) -> tensor<?x7x7x8xf32> {
+  %0 = stablehlo.constant dense<0.0> : tensor<f32>
+  %1 = stablehlo.constant dense<9.0> : tensor<f32>
+  %2 = stablehlo.dynamic_broadcast_in_dim %1, %arg1, dims = [] : (tensor<f32>, tensor<4xi32>) -> tensor<?x7x7x8xf32>
+  %3 = "stablehlo.reduce_window"(%arg0, %0) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %5 = stablehlo.add %arg2, %arg3 : tensor<f32>
+      "stablehlo.return"(%5) : (tensor<f32>) -> ()
+    }) {
+    base_dilations = array<i64: 1, 1, 1, 1>,
+    padding = dense<0> : tensor<4x2xi64>,
+    window_dilations = array<i64: 1, 1, 1, 1>,
+    window_dimensions = array<i64: 1, 3, 3, 1>,
+    window_strides = array<i64: 1, 2, 2, 1>} : (tensor<?x16x16x8xf32>, tensor<f32>) -> tensor<?x7x7x8xf32>
+  %4 = stablehlo.divide %3, %2 : tensor<?x7x7x8xf32>
+  func.return %4 : tensor<?x7x7x8xf32>
+}
+
+// CHECK: %[[POOL_OUT:.*]] = "tfl.average_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<?x16x16x8xf32>) -> tensor<?x7x7x8xf32>
+// CHECK: return %[[POOL_OUT]]
+
+// -----
+
 // CHECK-LABEL: avgpool_valid_rw
 func.func @avgpool_valid_rw(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
   %0 = stablehlo.constant dense<1.0> : tensor<4x16x16x8xf32>
@@ -2154,6 +2178,40 @@ func.func @avgpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> {
 }
 
 // CHECK: %[[POOL_OUT:.*]] = "tfl.average_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32>
+// CHECK: return %[[POOL_OUT]]
+
+// -----
+
+// CHECK-LABEL: avgpool_same_dynamic
+func.func @avgpool_same_dynamic(%arg0: tensor<?x16x16x8xf32>, %arg1: tensor<4xi32>) -> tensor<?x8x8x8xf32> {
+  %cst = stablehlo.constant dense<1.0> : tensor<f32>
+  %0 = stablehlo.dynamic_broadcast_in_dim %cst, %arg1, dims = [] : (tensor<f32>, tensor<4xi32>) -> tensor<?x16x16x8xf32>
+  %1 = stablehlo.constant dense<0.0> : tensor<f32>
+  %2 = "stablehlo.reduce_window"(%arg0, %1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %6 = stablehlo.add %arg2, %arg3 : tensor<f32>
+      "stablehlo.return"(%6) : (tensor<f32>) -> ()
+    }) {
+    base_dilations = array<i64: 1, 1, 1, 1>,
+    padding = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]> : tensor<4x2xi64>,
+    window_dilations = array<i64: 1, 1, 1, 1>,
+    window_dimensions = array<i64: 1, 3, 3, 1>,
+    window_strides = array<i64: 1, 2, 2, 1>} : (tensor<?x16x16x8xf32>, tensor<f32>) -> tensor<?x8x8x8xf32>
+  %3 = "stablehlo.reduce_window"(%0, %1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %6 = stablehlo.add %arg2, %arg3 : tensor<f32>
+      "stablehlo.return"(%6) : (tensor<f32>) -> ()
+    }) {
+    base_dilations = array<i64: 1, 1, 1, 1>,
+    padding = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]> : tensor<4x2xi64>,
+    window_dilations = array<i64: 1, 1, 1, 1>,
+    window_dimensions = array<i64: 1, 3, 3, 1>,
+    window_strides = array<i64: 1, 2, 2, 1>} : (tensor<?x16x16x8xf32>, tensor<f32>) -> tensor<?x8x8x8xf32>
+  %4 = stablehlo.divide %2, %3 : tensor<?x8x8x8xf32>
+  func.return %4 : tensor<?x8x8x8xf32>
+}
+
+// CHECK: %[[POOL_OUT:.*]] = "tfl.average_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<?x16x16x8xf32>) -> tensor<?x8x8x8xf32>
 // CHECK: return %[[POOL_OUT]]
 
 // -----
@@ -3665,6 +3723,93 @@ func.func @broadcast_pow(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (tensor<
 
 // CHECK: tfl.pow(%arg0, %arg1) : (tensor<1xi32>, tensor<4xi32>) -> tensor<4xi32>
 // CHECK: tfl.pow(%arg1, %arg0) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_add
+func.func @dynamic_broadcast_add(%arg0: tensor<1x1x1x8xf32>, %arg1: tensor<?x16x16x8xf32>, %arg2: tensor<4xi32>) -> (tensor<?x16x16x8xf32>, tensor<?x16x16x8xf32>) {
+  %0 = stablehlo.dynamic_broadcast_in_dim %arg0, %arg2, dims = [0, 1, 2, 3] : (tensor<1x1x1x8xf32>, tensor<4xi32>) -> tensor<?x16x16x8xf32>
+  %1 = stablehlo.add %0, %arg1 : tensor<?x16x16x8xf32>
+  %2 = stablehlo.add %arg1, %0 : tensor<?x16x16x8xf32>
+  func.return %1, %2 : tensor<?x16x16x8xf32>, tensor<?x16x16x8xf32>
+}
+
+// CHECK: tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1x1x8xf32>, tensor<?x16x16x8xf32>) -> tensor<?x16x16x8xf32>
+// CHECK: tfl.add(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<?x16x16x8xf32>, tensor<1x1x1x8xf32>) -> tensor<?x16x16x8xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_mul_prefix_dims
+func.func @dynamic_broadcast_mul_prefix_dims(%arg0: tensor<8xf32>, %arg1: tensor<?x16x8xf32>, %arg2: tensor<3xi32>) -> tensor<?x16x8xf32> {
+  %0 = stablehlo.dynamic_broadcast_in_dim %arg0, %arg2, dims = [2] : (tensor<8xf32>, tensor<3xi32>) -> tensor<?x16x8xf32>
+  %1 = stablehlo.multiply %arg1, %0 : tensor<?x16x8xf32>
+  func.return %1 : tensor<?x16x8xf32>
+}
+
+// CHECK: tfl.mul(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<?x16x8xf32>, tensor<8xf32>) -> tensor<?x16x8xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_maximum_scalar_cst
+func.func @dynamic_broadcast_maximum_scalar_cst(%arg0: tensor<?x16x16x8xf32>, %arg1: tensor<4xi32>) -> tensor<?x16x16x8xf32> {
+  %cst = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %0 = stablehlo.dynamic_broadcast_in_dim %cst, %arg1, dims = [] : (tensor<f32>, tensor<4xi32>) -> tensor<?x16x16x8xf32>
+  %1 = stablehlo.maximum %arg0, %0 : tensor<?x16x16x8xf32>
+  func.return %1 : tensor<?x16x16x8xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: "tfl.maximum"(%arg0, %[[CST]]) : (tensor<?x16x16x8xf32>, tensor<f32>) -> tensor<?x16x16x8xf32>
+
+// -----
+
+// The non-prefix broadcast is not fused: TFL broadcasting aligns the trailing
+// dimensions.
+// CHECK-LABEL: dynamic_broadcast_sub_non_prefix_dims
+func.func @dynamic_broadcast_sub_non_prefix_dims(%arg0: tensor<16xf32>, %arg1: tensor<?x16x8xf32>, %arg2: tensor<3xi32>) -> tensor<?x16x8xf32> {
+  %0 = stablehlo.dynamic_broadcast_in_dim %arg0, %arg2, dims = [1] : (tensor<16xf32>, tensor<3xi32>) -> tensor<?x16x8xf32>
+  %1 = stablehlo.subtract %arg1, %0 : tensor<?x16x8xf32>
+  func.return %1 : tensor<?x16x8xf32>
+}
+
+// CHECK: %[[BCAST:.*]] = "tfl.broadcast_to"
+// CHECK: tfl.sub %arg1, %[[BCAST]]
+
+// -----
+
+// Broadcasts with non-increasing dimensions transpose, so they are not fused.
+// CHECK-LABEL: broadcast_mul_unsorted_dims
+func.func @broadcast_mul_unsorted_dims(%arg0: tensor<8x16xf32>, %arg1: tensor<4x16x8xf32>) -> tensor<4x16x8xf32> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = array<i64: 2, 1>}> : (tensor<8x16xf32>) -> tensor<4x16x8xf32>
+  %1 = stablehlo.multiply %arg1, %0 : tensor<4x16x8xf32>
+  func.return %1 : tensor<4x16x8xf32>
+}
+
+// CHECK: tfl.mul %arg1, %{{[0-9]+}}
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_mul_unsorted_dims
+func.func @dynamic_broadcast_mul_unsorted_dims(%arg0: tensor<8x16xf32>, %arg1: tensor<?x16x8xf32>, %arg2: tensor<3xi32>) -> tensor<?x16x8xf32> {
+  %0 = stablehlo.dynamic_broadcast_in_dim %arg0, %arg2, dims = [2, 1] : (tensor<8x16xf32>, tensor<3xi32>) -> tensor<?x16x8xf32>
+  %1 = stablehlo.multiply %arg1, %0 : tensor<?x16x8xf32>
+  func.return %1 : tensor<?x16x8xf32>
+}
+
+// CHECK: tfl.mul %arg1, %{{[0-9]+}}
+
+// -----
+
+// tfl.maximum broadcasts up to rank 5 only.
+// CHECK-LABEL: dynamic_broadcast_maximum_rank_6
+func.func @dynamic_broadcast_maximum_rank_6(%arg0: tensor<f32>, %arg1: tensor<?x2x2x2x2x2xf32>, %arg2: tensor<6xi32>) -> tensor<?x2x2x2x2x2xf32> {
+  %0 = stablehlo.dynamic_broadcast_in_dim %arg0, %arg2, dims = [] : (tensor<f32>, tensor<6xi32>) -> tensor<?x2x2x2x2x2xf32>
+  %1 = stablehlo.maximum %arg1, %0 : tensor<?x2x2x2x2x2xf32>
+  func.return %1 : tensor<?x2x2x2x2x2xf32>
+}
+
+// CHECK: %[[BCAST:.*]] = "tfl.broadcast_to"(%arg0, %arg2)
+// CHECK: "tfl.maximum"(%arg1, %[[BCAST]])
 
 // -----
 

@@ -105,12 +105,35 @@ Value CreateI32ConstFromI64Array(ArrayRef<int64_t> array, Location loc,
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFLStyleBroadcast(ArrayRef<int64_t> broadcast_dimensions, Value output) {
-  // broadcast_dimensions is an increasing list by definition, thus it suffices
-  // to check the first element.
+  // StableHLO only requires broadcast_dimensions to be unique, not sorted, so
+  // check every element: a broadcast with non-increasing dimensions also
+  // transposes, and cannot be expressed as an implicit TFL broadcast.
   int64_t input_rank = broadcast_dimensions.size();
   int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
-  return input_rank == 0 ||
-         (broadcast_dimensions[0] == output_rank - input_rank);
+  for (auto [i, dim] : llvm::enumerate(broadcast_dimensions)) {
+    if (dim != output_rank - input_rank + static_cast<int64_t>(i)) return false;
+  }
+  return true;
+}
+
+// Returns true if the TFL counterpart of the StableHLO elementwise binary op
+// producing `result` can implicitly broadcast its operands. The rank limits
+// follow the TFL kernels (see also `IsRankSupported` in
+// optimize_broadcast_like_pass.cc). Quantized types are excluded: some TFL ops
+// (e.g. 16-bit quantized add) require operands of the same shape.
+bool IsImplicitBroadcastSupported(Value result) {
+  auto type = mlir::dyn_cast<RankedTensorType>(result.getType());
+  if (!type || !type.getElementType().isIntOrFloat()) return false;
+  Operation* op = result.getDefiningOp();
+  int64_t max_rank = 4;
+  if (llvm::isa<stablehlo::AddOp, stablehlo::SubtractOp, stablehlo::MulOp>(
+          op)) {
+    max_rank = 6;
+  } else if (llvm::isa<stablehlo::DivOp, stablehlo::MaxOp, stablehlo::MinOp>(
+                 op)) {
+    max_rank = 5;
+  }
+  return type.getRank() <= max_rank;
 }
 
 // Returns the intermediate shape that input tensor should be reshaped to during
