@@ -298,6 +298,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, operand->type, output->type);
 
   const TfLiteStablehloGatherParams* data =
       reinterpret_cast<TfLiteStablehloGatherParams*>(node->builtin_data);

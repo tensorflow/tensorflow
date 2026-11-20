@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -39,11 +40,13 @@ class StablehloScatterOpModel : public SingleOpModel {
   StablehloScatterOpModel(const TensorData& input, const TensorData& indices,
                           const TensorData& updates,
                           const TfLiteStablehloScatterParams& params,
-                          StablehloScatterOpType op_type) {
+                          StablehloScatterOpType op_type,
+                          std::optional<TensorType> output_type = std::nullopt,
+                          bool allocate_and_delegate = true) {
     input_ = AddInput(input);
     indices_ = AddInput(indices);
     updates_ = AddInput(updates);
-    output_ = AddOutput(input.type);
+    output_ = AddOutput(output_type.value_or(input.type));
     SetBuiltinOp(
         BuiltinOperator_STABLEHLO_SCATTER,
         BuiltinOptions2_StablehloScatterOptions,
@@ -84,7 +87,9 @@ class StablehloScatterOpModel : public SingleOpModel {
 
     // This calls Prepare on ops, so it's important to call this *after*
     // all the subgraphs are added.
-    AllocateAndDelegate(true);
+    if (allocate_and_delegate) {
+      AllocateAndDelegate(true);
+    }
   }
 
   template <typename T>
@@ -268,6 +273,33 @@ TEST(StablehloScatterOpTest, PerformsUpdate) {
   std::vector<float> expected_values = {1, 2, 2, 2, 2, 2, 7, 8, 2,  2,  2,  2,
                                         2, 2, 2, 2, 2, 2, 2, 2, 21, 22, 23, 24};
   EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray(expected_values));
+}
+
+TEST(StablehloScatterOpTest, RejectsMismatchedTypes) {
+  TfLiteStablehloScatterParams params = {
+      false,   // indices_are_sorted
+      {2, 3},  // std::vector<update_window_dims>
+      2,       // num_update_window_dims
+      {0},     // std::vector<inserted_window_dims>
+      1,       // num_inserted_window_dims
+      {1, 0},  // std::vector<scatter_dims_to_operand_dims>
+      2,       // num_scatter_dims_to_operand_dims
+      2,       // index_vector_dim
+      false,   // unique_indices
+      1        // update_computation_subgraph_index
+  };
+  StablehloScatterOpModel narrow_updates(
+      {TensorType_FLOAT32, {3, 4, 2}}, {TensorType_INT64, {2, 3, 2}},
+      {TensorType_INT8, {2, 3, 2, 2}}, params, StablehloScatterOpType::kUpdate,
+      /*output_type=*/std::nullopt, /*allocate_and_delegate=*/false);
+  EXPECT_EQ(narrow_updates.AllocateTensors(), kTfLiteError);
+
+  StablehloScatterOpModel narrow_output(
+      {TensorType_FLOAT32, {3, 4, 2}}, {TensorType_INT64, {2, 3, 2}},
+      {TensorType_FLOAT32, {2, 3, 2, 2}}, params,
+      StablehloScatterOpType::kUpdate, /*output_type=*/TensorType_INT8,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(narrow_output.AllocateTensors(), kTfLiteError);
 }
 
 }  // namespace
