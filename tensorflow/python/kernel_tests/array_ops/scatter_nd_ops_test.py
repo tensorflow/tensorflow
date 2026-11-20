@@ -961,7 +961,12 @@ class ScatterNdTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testScalarUpdate(self):
-    for dtype in (dtypes.int32, dtypes.float32):
+    for dtype in (
+        dtypes.int32,
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+    ):
       indices = constant_op.constant([[4], [3], [1], [7]])
       updates = constant_op.constant(9, dtype=dtype)
       t = array_ops.ones([8], dtype=dtype)
@@ -1025,6 +1030,26 @@ class ScatterNdTensorTest(test.TestCase):
           ),
       )
 
+      # Test a 45-element slice updated at row 1 to cover vectorized SIMD
+      # packet loops and scalar tail at an unaligned row offset.
+      t_wide = array_ops.ones([3, 45], dtype=dtype)
+      indices_wide = constant_op.constant([[1]])
+      row_one = [1] * 45
+      for op, expected_val in (
+          (array_ops.tensor_scatter_update, 7),
+          (array_ops.tensor_scatter_add, 8),
+          (array_ops.tensor_scatter_sub, -6),
+          (array_ops.tensor_scatter_min, 1),
+          (array_ops.tensor_scatter_max, 7),
+      ):
+        with self.subTest(dtype=dtype, op=op.__name__, slice_size=45):
+          self.assertAllEqual(
+              op(t_wide, indices_wide, updates_2d),
+              constant_op.constant(
+                  [row_one, [expected_val] * 45, row_one], dtype=dtype
+              ),
+          )
+
       # Test 1D indices (outer_dims == 0) with a scalar update.
       t_2d_zeros = array_ops.zeros([3, 4], dtype=dtype)
       indices_1d = constant_op.constant([1, 2])
@@ -1050,26 +1075,47 @@ class ScatterNdTensorTest(test.TestCase):
         with self.subTest(dtype=dtype, op=op.__name__):
           self.assertAllEqual(op(t, empty_indices, updates), t)
 
+    # Test 2D slice (slice_size > 1) scalar updates on string and bool dtypes.
+    t_str = constant_op.constant([["a", "b"], ["c", "d"]], dtype=dtypes.string)
+    self.assertAllEqual(
+        array_ops.tensor_scatter_update(
+            t_str, constant_op.constant([[1]]), constant_op.constant("z")
+        ),
+        constant_op.constant([["a", "b"], ["z", "z"]], dtype=dtypes.string),
+    )
+    t_bool = constant_op.constant(
+        [[False, False], [False, True]], dtype=dtypes.bool
+    )
+    self.assertAllEqual(
+        array_ops.tensor_scatter_update(
+            t_bool, constant_op.constant([[0]]), constant_op.constant(True)
+        ),
+        constant_op.constant([[True, True], [False, True]], dtype=dtypes.bool),
+    )
+
   @test_util.run_in_graph_and_eager_modes
   def testScalarUpdateInvalidIndexDepth(self):
     t = array_ops.ones([4], dtype=dtypes.float32)
-    # indices.shape[-1] == 2 > t.shape.rank == 1
-    invalid_indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
     scalar_update = constant_op.constant(9.0, dtype=dtypes.float32)
-    for op in (
-        array_ops.tensor_scatter_update,
-        array_ops.tensor_scatter_add,
-        array_ops.tensor_scatter_sub,
-        array_ops.tensor_scatter_min,
-        array_ops.tensor_scatter_max,
+    # indices.shape[-1] == 2 > t.shape.rank == 1, and indices.shape[-1] == 0 < 1
+    for invalid_indices in (
+        constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32),
+        array_ops.zeros([2, 0], dtype=dtypes.int32),
     ):
-      with self.subTest(op=op.__name__):
-        with self.assertRaisesRegex(
-            (errors.InvalidArgumentError, ValueError),
-            r"Inner dimensions of output shape must match|"
-            r"Must have updates\.shape",
-        ):
-          self.evaluate(op(t, invalid_indices, scalar_update))
+      for op in (
+          array_ops.tensor_scatter_update,
+          array_ops.tensor_scatter_add,
+          array_ops.tensor_scatter_sub,
+          array_ops.tensor_scatter_min,
+          array_ops.tensor_scatter_max,
+      ):
+        with self.subTest(op=op.__name__, indices_shape=invalid_indices.shape):
+          with self.assertRaisesRegex(
+              (errors.InvalidArgumentError, ValueError),
+              r"Inner dimensions of output shape must match|"
+              r"Must have updates\.shape",
+          ):
+            self.evaluate(op(t, invalid_indices, scalar_update))
 
   @test_util.run_in_graph_and_eager_modes
   def testScalarUpdateEmptyInput(self):
@@ -1084,6 +1130,29 @@ class ScatterNdTensorTest(test.TestCase):
               t, empty_indices, constant_op.constant(1.0)
           )
       )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRankZeroIndicesInvalid(self):
+    t = array_ops.ones([4], dtype=dtypes.float32)
+    scalar_indices = constant_op.constant(0, dtype=dtypes.int32)
+    updates = constant_op.constant([1.0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Indices shape must have rank at least one|"
+        r"Shape must be at least rank 1",
+    ):
+      self.evaluate(array_ops.tensor_scatter_update(t, scalar_indices, updates))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNonScalarUpdateEmptyInput(self):
+    t = array_ops.zeros([0], dtype=dtypes.float32)
+    indices = constant_op.constant([[0]], dtype=dtypes.int32)
+    updates = constant_op.constant([1.0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Indices and updates specified for empty (input|output)",
+    ):
+      self.evaluate(array_ops.tensor_scatter_update(t, indices, updates))
 
   def testUpdateAddSubGradients(self):
     with self.cached_session():
