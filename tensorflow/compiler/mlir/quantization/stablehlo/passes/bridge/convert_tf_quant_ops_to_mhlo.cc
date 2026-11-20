@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -34,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -56,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
-#include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -175,12 +178,187 @@ DenseIntElementsAttr ConvertToDenseElementsAttr(ArrayAttr array_attr,
       array);
 }
 
+LogicalResult ValidateDimensionNumbersPermutation(
+    Operation* op, int64_t rank, int64_t dim0, int64_t dim1,
+    llvm::ArrayRef<int64_t> spatial_dims, llvm::StringRef tensor_name) {
+  const int64_t num_spatial_dims = rank - 2;
+  if (static_cast<int64_t>(spatial_dims.size()) != num_spatial_dims) {
+    return op->emitError() << tensor_name
+                           << " spatial dimensions size must be rank - 2 ("
+                           << num_spatial_dims << "), got "
+                           << spatial_dims.size() << ".";
+  }
+  SmallVector<bool, 8> seen(static_cast<size_t>(rank), false);
+  auto mark = [&](int64_t dim) -> LogicalResult {
+    if (dim < 0 || dim >= rank || seen[static_cast<size_t>(dim)]) {
+      return op->emitError()
+             << tensor_name
+             << " dimension numbers must be a permutation of [0, " << rank
+             << "), got invalid or duplicate dimension " << dim << ".";
+    }
+    seen[static_cast<size_t>(dim)] = true;
+    return success();
+  };
+  if (failed(mark(dim0)) || failed(mark(dim1))) {
+    return failure();
+  }
+  for (int64_t dim : spatial_dims) {
+    if (failed(mark(dim))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult ValidateConvolutionDimensionNumbers(
+    Operation* op, const xla::ConvolutionDimensionNumbers& dnums,
+    int64_t rank) {
+  if (failed(ValidateDimensionNumbersPermutation(
+          op, rank, dnums.input_batch_dimension(),
+          dnums.input_feature_dimension(), dnums.input_spatial_dimensions(),
+          "input"))) {
+    return failure();
+  }
+  if (failed(ValidateDimensionNumbersPermutation(
+          op, rank, dnums.kernel_input_feature_dimension(),
+          dnums.kernel_output_feature_dimension(),
+          dnums.kernel_spatial_dimensions(), "kernel"))) {
+    return failure();
+  }
+  if (failed(ValidateDimensionNumbersPermutation(
+          op, rank, dnums.output_batch_dimension(),
+          dnums.output_feature_dimension(), dnums.output_spatial_dimensions(),
+          "output"))) {
+    return failure();
+  }
+  return success();
+}
+
+// Returns per-spatial-dim stride or dilation values. An omitted or empty
+// attribute means 1 for every spatial dim, matching the TF kernel and the
+// mhlo default.
+FailureOr<SmallVector<int64_t>> GetSpatialAttrOrOnes(Operation* op,
+                                                     ArrayAttr attr,
+                                                     int64_t num_spatial_dims,
+                                                     llvm::StringRef name) {
+  SmallVector<int64_t> values(static_cast<size_t>(num_spatial_dims), 1);
+  if (!attr || attr.empty()) {
+    return values;
+  }
+  if (static_cast<int64_t>(attr.size()) != num_spatial_dims) {
+    return op->emitError() << name << " must have size " << num_spatial_dims
+                           << ", got " << attr.size() << ".";
+  }
+  for (size_t i = 0; i < attr.size(); ++i) {
+    const int64_t value = mlir::cast<IntegerAttr>(attr[i]).getInt();
+    if (value < 1) {
+      return op->emitError()
+             << name << " elements must be >= 1, got " << value << ".";
+    }
+    values[i] = value;
+  }
+  return values;
+}
+
+// Requires size >= 0 and dilation >= 1.
+FailureOr<int64_t> ComputeDilatedSize(Operation* op, int64_t size,
+                                      int64_t dilation,
+                                      llvm::StringRef attr_name) {
+  if (size <= 1) {
+    return size;
+  }
+  if (dilation - 1 >
+      (std::numeric_limits<int64_t>::max() - size) / (size - 1)) {
+    return op->emitError() << "dilated size overflow for " << attr_name << ".";
+  }
+  return size + (dilation - 1) * (size - 1);
+}
+
 template <typename UniformQuantizedConvolutionOp>
 FailureOr<ElementsAttr> ConvertPaddingAttr(
-    UniformQuantizedConvolutionOp op,
-    const xla::ConvolutionDimensionNumbers &dnums, PatternRewriter &rewriter) {
-  StringAttr conv_padding = op.getPaddingAttr();
+    UniformQuantizedConvolutionOp op, llvm::ArrayRef<int64_t> window_strides,
+    llvm::ArrayRef<int64_t> lhs_dilated, llvm::ArrayRef<int64_t> rhs_dilated,
+    PatternRewriter& rewriter) {
+  // window_strides, lhs_dilated, and rhs_dilated have one entry per spatial
+  // dim; the caller builds all three with the same size.
+  const int64_t num_spatial_dims = static_cast<int64_t>(lhs_dilated.size());
+  const int64_t padding_nums_size = 2 * num_spatial_dims;
   SmallVector<int64_t> padding_nums;
+  const llvm::StringRef padding_str = op.getPaddingAttr().getValue();
+  if (padding_str != "EXPLICIT" && padding_str != "VALID" &&
+      padding_str != "SAME") {
+    return op.emitError(
+               "padding must be one of EXPLICIT, VALID, or SAME, got '")
+           << padding_str << "'.";
+  }
+  ArrayAttr explicit_padding = op.getExplicitPaddingAttr();
+  if (padding_str != "EXPLICIT" && explicit_padding &&
+      !explicit_padding.empty()) {
+    return op.emitError("explicit_padding must be empty unless padding is ")
+           << "EXPLICIT, got size " << explicit_padding.size() << ".";
+  }
+  if (padding_str == "EXPLICIT") {
+    const size_t explicit_padding_size =
+        explicit_padding ? explicit_padding.size() : 0;
+    if (explicit_padding_size != static_cast<size_t>(padding_nums_size)) {
+      return op.emitError("explicit_padding must have size ")
+             << padding_nums_size << ", got " << explicit_padding_size << ".";
+    }
+    padding_nums.reserve(explicit_padding_size);
+    for (auto padding_elem : explicit_padding.getAsRange<IntegerAttr>()) {
+      const int64_t value = padding_elem.getInt();
+      if (value < 0) {
+        return op.emitError("explicit_padding elements must be >= 0, got ")
+               << value << ".";
+      }
+      padding_nums.push_back(value);
+    }
+  } else if (padding_str == "VALID") {
+    padding_nums.assign(static_cast<size_t>(padding_nums_size), 0);
+  } else {
+    padding_nums.resize(static_cast<size_t>(padding_nums_size));
+    for (size_t i = 0; i < static_cast<size_t>(num_spatial_dims); ++i) {
+      const int64_t stride = window_strides[i];
+      // Compute max((ceil(lhs / stride) - 1) * stride + rhs - lhs, 0) without
+      // intermediate signed integer overflow.
+      const int64_t lhs_offset =
+          lhs_dilated[i] == 0 ? stride : ((lhs_dilated[i] - 1) % stride) + 1;
+      const int64_t total_padding =
+          std::max(rhs_dilated[i] - lhs_offset, static_cast<int64_t>(0));
+      const int64_t padding_begin = total_padding / 2;
+      const int64_t padding_end = total_padding - padding_begin;
+      padding_nums[2 * i] = padding_begin;
+      padding_nums[2 * i + 1] = padding_end;
+    }
+  }
+
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  for (size_t i = 0; i < static_cast<size_t>(num_spatial_dims); ++i) {
+    const int64_t low = padding_nums[2 * i];
+    const int64_t high = padding_nums[2 * i + 1];
+    if (low > kMax - lhs_dilated[i] || high > kMax - lhs_dilated[i] - low) {
+      return op.emitError("padded lhs size overflow.");
+    }
+  }
+
+  ElementsAttr padding_attr = DenseIntElementsAttr::get(
+      RankedTensorType::get({num_spatial_dims, 2}, rewriter.getIntegerType(64)),
+      padding_nums);
+  return padding_attr;
+}
+
+template <typename UniformQuantizedConvolutionOp>
+FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
+    UniformQuantizedConvolutionOp op, PatternRewriter& rewriter) {
+  // TODO(b/261005147): Update the lowering logic after migration to mhlo
+  // ConvolutionDimensionNumbers.
+  ::tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
+  if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
+    return op->emitError("Parse dimension_numbers failed.");
+  }
+  xla::ConvolutionDimensionNumbers dnums =
+      ConvertConvolutionDimensionNumbers(dnums_input);
+
   ShapedType lhs_shape = mlir::cast<ShapedType>(op.getLhs().getType());
   ShapedType rhs_shape = mlir::cast<ShapedType>(op.getRhs().getType());
 
@@ -192,70 +370,94 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
   if (!rhs_shape.hasStaticShape()) {
     return op.emitError("rhs must have static shape.");
   }
-
-  const int64_t padding_nums_size = 2 * (rhs_shape.getRank() - 2);
-  padding_nums.reserve(padding_nums_size);
-  if (conv_padding.strref() == "EXPLICIT") {
-    for (auto padding_elem :
-         op.getExplicitPaddingAttr().template getAsRange<IntegerAttr>()) {
-      padding_nums.push_back(padding_elem.getInt());
-    }
-  } else if (conv_padding.strref() == "VALID") {
-    padding_nums.resize(padding_nums_size, 0);
-  } else {
-    padding_nums.resize(padding_nums_size);
-    for (int i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-      const int64_t stride =
-          mlir::cast<IntegerAttr>(op.getWindowStridesAttr()[i]).getInt();
-      const int64_t lhs_size_dilated =
-          ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
-              lhs_shape.getDimSize(dnums.input_spatial_dimensions(i)),
-              mlir::cast<IntegerAttr>(op.getLhsDilationAttr()[i]).getInt());
-      const int64_t rhs_size_dilated =
-          ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
-              rhs_shape.getDimSize(dnums.kernel_spatial_dimensions(i)),
-              mlir::cast<IntegerAttr>(op.getRhsDilationAttr()[i]).getInt());
-
-      const int64_t output_size = (lhs_size_dilated + stride - 1) / stride;
-      const int64_t total_padding = std::max(
-          (output_size - 1) * stride + rhs_size_dilated - lhs_size_dilated,
-          static_cast<int64_t>(0));
-      const int64_t padding_begin = total_padding / 2;
-      const int64_t padding_end = total_padding - padding_begin;
-      padding_nums[2 * i] = padding_begin;
-      padding_nums[2 * i + 1] = padding_end;
-    }
+  const int64_t lhs_rank = lhs_shape.getRank();
+  const int64_t rhs_rank = rhs_shape.getRank();
+  if (lhs_rank != rhs_rank) {
+    return op.emitError("lhs and rhs must have the same rank, got ")
+           << lhs_rank << " and " << rhs_rank << ".";
+  }
+  if (rhs_rank < 3) {
+    return op.emitError("lhs and rhs rank must be at least 3, got ")
+           << rhs_rank << ".";
+  }
+  // TODO(b/261005147): Empty dimension_numbers means the default
+  // NCHW/OIHW/NCHW layout in the TF kernel; this lowering rejects it.
+  if (failed(ValidateConvolutionDimensionNumbers(op, dnums, rhs_rank))) {
+    return failure();
   }
 
-  ElementsAttr padding_attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({static_cast<int32_t>(padding_nums.size() / 2), 2},
-                            rewriter.getIntegerType(64)),
-      padding_nums);
-  return padding_attr;
-}
-
-template <typename UniformQuantizedConvolutionOp>
-FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
-    UniformQuantizedConvolutionOp op, PatternRewriter &rewriter) {
-  // TODO(b/261005147): Update the lowering logic after migration to mhlo
-  // ConvolutionDimensionNumbers.
-  ::tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
-  if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
-    return op->emitError("Parse dimension_numbers failed.");
+  const int64_t num_spatial_dims = rhs_rank - 2;
+  const FailureOr<SmallVector<int64_t>> window_strides = GetSpatialAttrOrOnes(
+      op, op.getWindowStridesAttr(), num_spatial_dims, "window_strides");
+  if (failed(window_strides)) {
+    return failure();
   }
-  xla::ConvolutionDimensionNumbers dnums =
-      ConvertConvolutionDimensionNumbers(dnums_input);
+  const FailureOr<SmallVector<int64_t>> lhs_dilation = GetSpatialAttrOrOnes(
+      op, op.getLhsDilationAttr(), num_spatial_dims, "lhs_dilation");
+  if (failed(lhs_dilation)) {
+    return failure();
+  }
+  const FailureOr<SmallVector<int64_t>> rhs_dilation = GetSpatialAttrOrOnes(
+      op, op.getRhsDilationAttr(), num_spatial_dims, "rhs_dilation");
+  if (failed(rhs_dilation)) {
+    return failure();
+  }
+
+  SmallVector<int64_t> lhs_dilated;
+  SmallVector<int64_t> rhs_dilated;
+  lhs_dilated.reserve(static_cast<size_t>(num_spatial_dims));
+  rhs_dilated.reserve(static_cast<size_t>(num_spatial_dims));
+  for (int64_t i = 0; i < num_spatial_dims; ++i) {
+    const size_t idx = static_cast<size_t>(i);
+    const FailureOr<int64_t> lhs_size = ComputeDilatedSize(
+        op,
+        lhs_shape.getDimSize(
+            dnums.input_spatial_dimensions(static_cast<int>(i))),
+        (*lhs_dilation)[idx], "lhs_dilation");
+    if (failed(lhs_size)) {
+      return failure();
+    }
+    const FailureOr<int64_t> rhs_size = ComputeDilatedSize(
+        op,
+        rhs_shape.getDimSize(
+            dnums.kernel_spatial_dimensions(static_cast<int>(i))),
+        (*rhs_dilation)[idx], "rhs_dilation");
+    if (failed(rhs_size)) {
+      return failure();
+    }
+    lhs_dilated.push_back(*lhs_size);
+    rhs_dilated.push_back(*rhs_size);
+  }
+
+  // Read IntegerAttr::getInt() directly: the ODS getters return uint64_t
+  // via getZExtValue(), so negative values would pass the < 1 check.
+  auto group_count_or_one = [](IntegerAttr attr) -> int64_t {
+    return attr ? attr.getInt() : 1;
+  };
+  const int64_t feature_group_count =
+      group_count_or_one(op.getFeatureGroupCountAttr());
+  const int64_t batch_group_count =
+      group_count_or_one(op.getBatchGroupCountAttr());
+  if (feature_group_count < 1 || batch_group_count < 1) {
+    return op.emitError("feature_group_count and batch_group_count must be ")
+           << ">= 1, got " << feature_group_count << " and "
+           << batch_group_count << ".";
+  }
 
   SmallVector<NamedAttribute> converted_attrs;
+  converted_attrs.push_back(
+      rewriter.getNamedAttr(op.getFeatureGroupCountAttrName(),
+                            rewriter.getI64IntegerAttr(feature_group_count)));
+  converted_attrs.push_back(
+      rewriter.getNamedAttr(op.getBatchGroupCountAttrName(),
+                            rewriter.getI64IntegerAttr(batch_group_count)));
   for (auto attr : op->getAttrs()) {
-    if (attr.getName() == op.getFeatureGroupCountAttrName() ||
-        attr.getName() == op.getBatchGroupCountAttrName()) {
-      converted_attrs.push_back(attr);
-    } else if (attr.getName() == op.getDimensionNumbersAttrName()) {
+    if (attr.getName() == op.getDimensionNumbersAttrName()) {
       attr.setValue(xla::ConvertConvDimensionNumbers(dnums, &rewriter));
       converted_attrs.push_back(attr);
     } else if (attr.getName() == op.getPaddingAttrName()) {
-      auto value_or = ConvertPaddingAttr(op, dnums, rewriter);
+      auto value_or = ConvertPaddingAttr(op, *window_strides, lhs_dilated,
+                                         rhs_dilated, rewriter);
       if (failed(value_or)) {
         return failure();
       }
@@ -264,9 +466,11 @@ FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
     } else if (attr.getName() == op.getWindowStridesAttrName() ||
                attr.getName() == op.getLhsDilationAttrName() ||
                attr.getName() == op.getRhsDilationAttrName()) {
-      attr.setValue(ConvertToDenseElementsAttr(
-          mlir::cast<ArrayAttr>(attr.getValue()), rewriter));
-      converted_attrs.push_back(attr);
+      auto array_attr = mlir::cast<ArrayAttr>(attr.getValue());
+      if (!array_attr.empty()) {
+        attr.setValue(ConvertToDenseElementsAttr(array_attr, rewriter));
+        converted_attrs.push_back(attr);
+      }
     }
   }
   return converted_attrs;
@@ -319,7 +523,12 @@ class ConvertUniformQuantizedConvolutionHybridOp
   LogicalResult matchAndRewrite(
       TF::UniformQuantizedConvolutionHybridOp op,
       TF::UniformQuantizedConvolutionHybridOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
+      ConversionPatternRewriter& rewriter) const override {
+    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
+    if (failed(converted_attrs_or)) {
+      return failure();
+    }
+
     // Uniform Quantized type for the rhs.
     auto rhs_type = GetUniformQuantizedType(
         op, op.getRhs().getType(), op.getRhsScales(), op.getRhsZeroPoints(),
@@ -335,10 +544,6 @@ class ConvertUniformQuantizedConvolutionHybridOp
       return failure();
     }
 
-    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
-    if (failed(converted_attrs_or)) {
-      return failure();
-    }
     SmallVector<Value, 2> operands{op.getLhs(), *rhs_or};
     rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
                                                      *converted_attrs_or);
@@ -521,8 +726,11 @@ class ConvertUniformQuantizedConvolutionOp
   LogicalResult matchAndRewrite(
       TF::UniformQuantizedConvolutionOp op,
       TF::UniformQuantizedConvolutionOpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    Value lhs = adaptor.getLhs();
+      ConversionPatternRewriter& rewriter) const override {
+    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
+    if (failed(converted_attrs_or)) {
+      return failure();
+    }
 
     auto lhs_quant_type = GetUniformQuantizedType(
         op, op.getLhs().getType(), op.getLhsScales(), op.getLhsZeroPoints(),
@@ -531,20 +739,12 @@ class ConvertUniformQuantizedConvolutionOp
     if (failed(lhs_quant_type)) {
       return failure();
     }
-    lhs = mhlo::BitcastConvertOp::create(rewriter, op->getLoc(),
-                                         *lhs_quant_type, adaptor.getLhs());
 
     auto rhs_type = GetUniformQuantizedType(
         op, op.getRhs().getType(), op.getRhsScales(), op.getRhsZeroPoints(),
         /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
         op.getRhsQuantizationMaxVal(), op.getRhsQuantizationAxis(), rewriter);
     if (failed(rhs_type)) {
-      return failure();
-    }
-
-    auto rhs_or =
-        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
-    if (failed(rhs_or)) {
       return failure();
     }
 
@@ -558,10 +758,15 @@ class ConvertUniformQuantizedConvolutionOp
       return failure();
     }
 
-    auto converted_attrs_or = ConvertToMhloConvolutionOpAttrs(op, rewriter);
-    if (failed(converted_attrs_or)) {
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
+    if (failed(rhs_or)) {
       return failure();
     }
+
+    Value lhs = mhlo::BitcastConvertOp::create(
+        rewriter, op->getLoc(), *lhs_quant_type, adaptor.getLhs());
+
     SmallVector<Value, 2> operands{lhs, *rhs_or};
     auto result = mhlo::ConvolutionOp::create(
         rewriter, op->getLoc(), *output_type, operands, *converted_attrs_or);
