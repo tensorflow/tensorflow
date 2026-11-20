@@ -82,6 +82,8 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   debug_options.set_xla_gpu_force_compilation_parallelism(4);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   debug_options.set_xla_gpu_async_dot(true);
+  debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
+  debug_options.set_xla_gpu_collect_cost_model_stats(true);
   debug_options.set_xla_embed_ir_in_executable(true);
   debug_options.set_xla_gpu_kernel_cache_file("foo.txt");
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
@@ -94,9 +96,20 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   EXPECT_EQ(debug_options.xla_gpu_force_compilation_parallelism(), 1);
   EXPECT_TRUE(debug_options.xla_gpu_enable_command_buffer().empty());
   EXPECT_FALSE(debug_options.xla_gpu_async_dot());
+  EXPECT_TRUE(debug_options.has_xla_gpu_enable_latency_hiding_scheduler());
+  EXPECT_FALSE(debug_options.xla_gpu_enable_latency_hiding_scheduler());
+  EXPECT_FALSE(debug_options.xla_gpu_collect_cost_model_stats());
   EXPECT_FALSE(debug_options.xla_embed_ir_in_executable());
   EXPECT_EQ(debug_options.xla_gpu_kernel_cache_file(), "");
   EXPECT_EQ(debug_options.xla_run_hlo_passes_starting_from(), "");
+
+  // Also explicitly disable LHS when the optional flag was unset, so
+  // IsLHSEnabled cannot turn it back on via the SoL estimator.
+  DebugOptions unset_options;
+  unset_options.clear_xla_gpu_enable_latency_hiding_scheduler();
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(unset_options);
+  EXPECT_TRUE(unset_options.has_xla_gpu_enable_latency_hiding_scheduler());
+  EXPECT_FALSE(unset_options.xla_gpu_enable_latency_hiding_scheduler());
 }
 
 TEST_F(GpuCodegenBackendTest, GetSupportedConfigsWithEstimates) {

@@ -171,6 +171,11 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.clear_xla_gpu_enable_command_buffer();
     // Avoid using async dot as we don't want to measure event overheads.
     debug_options.set_xla_gpu_async_dot(false);
+    // Extracted autotuning modules are single instructions, so skip latency
+    // hiding and cost-model stats collection instead of rebuilding the SoL
+    // latency estimator for every candidate.
+    debug_options.set_xla_gpu_enable_latency_hiding_scheduler(false);
+    debug_options.set_xla_gpu_collect_cost_model_stats(false);
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
     debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
