@@ -87,7 +87,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/cost_model/triton_emitter_constraints.h"
-#include "xla/backends/gpu/target_lowering/nvptx_libdevice_path.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
@@ -249,8 +248,7 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.appendDialectRegistry(registry);
 }
 
-// Simplified copy of translateLLVMToLLVMIR which in addition takes
-// path to libdevice directly as an argument.
+// Translates an MLIR LLVM dialect module to an LLVM IR module.
 absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
     llvm::LLVMContext* llvmContext, mlir::ModuleOp module) {
   mlir::DialectRegistry registry;
@@ -653,15 +651,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   return result;
 }
 
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
-                             const se::DeviceDescription& device_info) {
-  if (device_info.gpu_compute_capability().IsCuda()) {
-    return nvptx::LibDevicePath(
-        hlo_config.debug_options().xla_gpu_cuda_data_dir());
-  }
-  return "";
-}
-
 namespace ir_emitter_triton_internal {
 absl::Status LowerXTileToTriton(
     mlir::ModuleOp xtile_dialect_module, mlir::MLIRContext& mlir_context,
@@ -692,13 +681,10 @@ absl::Status LowerXTileToTriton(
     pm.addPass(
         mlir::triton::xla::createTritonXLAFoldReshapeAroundForLoopPass());
 
-    std::string libdevice_path =
-        GetLibdevicePath(fusion.GetModule()->config(), device_info);
     absl::string_view triple = device_info.gpu_compute_capability().IsRocm()
                                    ? "amdgcn-unknown-unknown"
                                    : "nvptx64-unknown-unknown";
     mlir::triton::xla::TritonXLAMathToLibdevicePassOptions math_options;
-    math_options.libdevice_path_ = libdevice_path;
     math_options.triple_string_ = std::string(triple);
     pm.addPass(
         mlir::triton::xla::createTritonXLAMathToLibdevicePass(math_options));

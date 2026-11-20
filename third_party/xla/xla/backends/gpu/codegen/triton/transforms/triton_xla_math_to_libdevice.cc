@@ -16,7 +16,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -171,12 +170,8 @@ struct OpInfo<mlir::math::CbrtOp> {
 template <typename OpTy>
 class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
  public:
-  ConvertToLibdevice(mlir::MLIRContext* context,
-                     absl::string_view libdevice_path,
-                     const llvm::Triple& triple)
-      : mlir::OpRewritePattern<OpTy>(context),
-        libdevice_path_(libdevice_path),
-        triple_(triple) {}
+  ConvertToLibdevice(mlir::MLIRContext* context, const llvm::Triple& triple)
+      : mlir::OpRewritePattern<OpTy>(context), triple_(triple) {}
 
   mlir::LogicalResult matchAndRewrite(
       OpTy op, mlir::PatternRewriter& rewriter) const override {
@@ -219,8 +214,8 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
     }
 
     Value res = mlir::triton::ExternElementwiseOp::create(
-        builder, casted_inputs[0].getType(), casted_inputs, "libdevice",
-        libdevice_path_,
+        builder, casted_inputs[0].getType(), casted_inputs,
+        /*libname=*/"libdevice", /*libpath=*/"",
         ObtainDeviceFunctionName(OpInfo<OpTy>::kFunctionID, *primitive_type_or,
                                  triple_),
         /*pure=*/true);
@@ -242,17 +237,14 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
   }
 
  private:
-  // These are both owned by the parent pass (TritonXLAMathToLibdevicePass), so
-  // it is safe to store references here.
-  absl::string_view libdevice_path_;
+  // Owned by the parent pass (TritonXLAMathToLibdevicePass), so it is safe to
+  // store a reference here.
   const llvm::Triple& triple_;
 };
 
 template <typename... OpTypes>
-void AddPattens(mlir::RewritePatternSet& patterns,
-                absl::string_view libdevice_path, const llvm::Triple& triple) {
-  patterns.add<ConvertToLibdevice<OpTypes>...>(patterns.getContext(),
-                                               libdevice_path, triple);
+void AddPattens(mlir::RewritePatternSet& patterns, const llvm::Triple& triple) {
+  patterns.add<ConvertToLibdevice<OpTypes>...>(patterns.getContext(), triple);
 }
 
 class TritonXLAMathToLibdevicePass
@@ -278,7 +270,7 @@ class TritonXLAMathToLibdevicePass
                mlir::arith::RemFOp, mlir::math::RoundEvenOp,
                mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
                mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
-               mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
+               mlir::math::CbrtOp>(patterns, triple);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {

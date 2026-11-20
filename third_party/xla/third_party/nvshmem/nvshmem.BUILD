@@ -102,6 +102,10 @@ cc_library(
     include_prefix = "third_party/nvshmem",
     includes = ["src/include"],
     strip_include_prefix = "src/include",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@xla//xla/tsl/cuda:nvshmem_stub",

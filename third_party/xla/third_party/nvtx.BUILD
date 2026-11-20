@@ -34,4 +34,8 @@ cc_library(
     name = "nvtx",
     hdrs = [":nvtx_header_files"],
     include_prefix = "third_party",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
