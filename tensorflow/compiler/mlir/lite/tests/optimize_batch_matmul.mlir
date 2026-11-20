@@ -198,6 +198,67 @@ func.func @BatchmatmulToReduceSumF32(%arg0: tensor<1x16384x257xf32>) -> (tensor<
   // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) <{keep_dims = true}> : (tensor<1x16384x257xf32>, tensor<1xi32>) -> tensor<1x1x257xf32>
 }
 
+// A constant single-row LHS becomes a broadcast multiply and a sum over the
+// contracting axis (the shape of a SigLIP2 attention-pooling probe,
+// [12, 1, 64] x [12, 64, 196], with small dims).
+// CHECK-LABEL: ConstantRowLhsBatchmatmulToMulSumSimple
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @ConstantRowLhsBatchmatmulToMulSumSimple(%arg0: tensor<2x3x5xf32>) -> tensor<2x1x5xf32> {
+  %0 = arith.constant dense<[[[1.0, 2.0, 3.0]], [[4.0, 5.0, 6.0]]]> : tensor<2x1x3xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<2x1x3xf32>, tensor<2x3x5xf32>) -> tensor<2x1x5xf32>
+  func.return %1 : tensor<2x1x5xf32>
+  // CHECK-DAG: %[[ROW:.*]] = "tfl.pseudo_const"() <{value = dense<{{\[\[\[}}1.000000e+00], [2.000000e+00], [3.000000e+00]], {{\[\[}}4.000000e+00], [5.000000e+00], [6.000000e+00]]]> : tensor<2x3x1xf32>}>
+  // CHECK-DAG: %[[AXIS:.*]] = "tfl.pseudo_const"() <{value = dense<1> : tensor<1xi32>}>
+  // CHECK: %[[MUL:.*]] = tfl.mul(%arg0, %[[ROW]]) <{fused_activation_function = "NONE"}> : (tensor<2x3x5xf32>, tensor<2x3x1xf32>) -> tensor<2x3x5xf32>
+  // CHECK: %[[SUM:.*]] = "tfl.sum"(%[[MUL]], %[[AXIS]]) <{keep_dims = true}> : (tensor<2x3x5xf32>, tensor<1xi32>) -> tensor<2x1x5xf32>
+  // CHECK: return %[[SUM]]
+}
+
+// adj_y: the row runs along the last axis of Y and the sum is reshaped back.
+// CHECK-LABEL: ConstantRowLhsBatchmatmulToMulSumAdjY
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @ConstantRowLhsBatchmatmulToMulSumAdjY(%arg0: tensor<2x5x3xf32>) -> tensor<2x1x5xf32> {
+  %0 = arith.constant dense<[[[1.0, 2.0, 3.0]], [[4.0, 5.0, 6.0]]]> : tensor<2x1x3xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = true} : (tensor<2x1x3xf32>, tensor<2x5x3xf32>) -> tensor<2x1x5xf32>
+  func.return %1 : tensor<2x1x5xf32>
+  // CHECK-DAG: %[[ROW:.*]] = "tfl.pseudo_const"() <{value = dense<{{\[\[\[}}1.000000e+00, 2.000000e+00, 3.000000e+00]], {{\[\[}}4.000000e+00, 5.000000e+00, 6.000000e+00]]]> : tensor<2x1x3xf32>}>
+  // CHECK-DAG: %[[AXIS:.*]] = "tfl.pseudo_const"() <{value = dense<2> : tensor<1xi32>}>
+  // CHECK: %[[MUL:.*]] = tfl.mul(%arg0, %[[ROW]]) <{fused_activation_function = "NONE"}> : (tensor<2x5x3xf32>, tensor<2x1x3xf32>) -> tensor<2x5x3xf32>
+  // CHECK: %[[SUM:.*]] = "tfl.sum"(%[[MUL]], %[[AXIS]]) <{keep_dims = true}> : (tensor<2x5x3xf32>, tensor<1xi32>) -> tensor<2x5x1xf32>
+  // CHECK: %[[OUT:.*]] = "tfl.reshape"(%[[SUM]], %{{.*}}) : (tensor<2x5x1xf32>, tensor<3xi32>) -> tensor<2x1x5xf32>
+  // CHECK: return %[[OUT]]
+}
+
+// adj_x: the constant is stored as a column, which is the same single row.
+// CHECK-LABEL: ConstantRowLhsBatchmatmulToMulSumAdjX
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @ConstantRowLhsBatchmatmulToMulSumAdjX(%arg0: tensor<2x3x5xf32>) -> tensor<2x1x5xf32> {
+  %0 = arith.constant dense<[[[1.0], [2.0], [3.0]], [[4.0], [5.0], [6.0]]]> : tensor<2x3x1xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = true, adj_y = false} : (tensor<2x3x1xf32>, tensor<2x3x5xf32>) -> tensor<2x1x5xf32>
+  func.return %1 : tensor<2x1x5xf32>
+  // CHECK: tfl.mul(%arg0, %{{.*}}) <{fused_activation_function = "NONE"}> : (tensor<2x3x5xf32>, tensor<2x3x1xf32>) -> tensor<2x3x5xf32>
+  // CHECK: "tfl.sum"
+}
+
+// A constant LHS with more than one row is left alone.
+// CHECK-LABEL: ConstantMultiRowLhsBatchmatmulUnchanged
+func.func @ConstantMultiRowLhsBatchmatmulUnchanged(%arg0: tensor<2x3x5xf32>) -> tensor<2x2x5xf32> {
+  %0 = arith.constant dense<[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]> : tensor<2x2x3xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<2x2x3xf32>, tensor<2x3x5xf32>) -> tensor<2x2x5xf32>
+  func.return %1 : tensor<2x2x5xf32>
+  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: tfl.mul
+}
+
+// A runtime single-row LHS is left alone.
+// CHECK-LABEL: RuntimeRowLhsBatchmatmulUnchanged
+func.func @RuntimeRowLhsBatchmatmulUnchanged(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x1x5xf32> {
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x1x3xf32>, tensor<2x3x5xf32>) -> tensor<2x1x5xf32>
+  func.return %0 : tensor<2x1x5xf32>
+  // CHECK: "tfl.batch_matmul"
+  // CHECK-NOT: tfl.mul
+}
+
 // CHECK-LABEL: FuseBatchMatmulToTransposeNoBatchDims
 func.func @FuseBatchMatmulToTransposeNoBatchDims(%arg0: tensor<2048x32x128xf32>, %arg1: tensor<4x128xf32>) -> tensor<4x65536xf32> {
   %36 = "tfl.pseudo_const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}> : () -> tensor<3xi32>
