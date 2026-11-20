@@ -100,8 +100,8 @@ __global__ void S2B(const int32_t nthreads, T* __restrict__ space_tensor_ptr,
 namespace functor {
 template <typename T, int NUM_BLOCK_DIMS, bool B2S>
 struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
-  using SpaceT = typename std::conditional<B2S, T, const T>::type;
-  using BatchT = typename std::conditional<B2S, const T, T>::type;
+  using SpaceT = std::conditional_t<B2S, T, const T>;
+  using BatchT = std::conditional_t<B2S, const T, T>;
   absl::Status operator()(
       const GPUDevice& d,
       typename TTypes<SpaceT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
