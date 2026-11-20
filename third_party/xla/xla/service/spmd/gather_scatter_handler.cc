@@ -838,6 +838,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         ShapeUtil::ChangeElementType(pgather->shape(), PRED), filter,
         gather_batch_dims));
 
+    const PrimitiveType type = pgather->shape().element_type();
+    pgather = BitcastTo(b, pgather, type == F8E8M0FNU ? U8 : type);
     auto filtered = b->AddInstruction(HloInstruction::CreateTernary(
         pgather->shape(), HloOpcode::kSelect, broadcast_filter,
         CreateZero(pgather->shape(), b), pgather));
@@ -850,6 +852,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         *trivial_slice_dims, operand.state().collective_ops_creator,
         MakeBinaryAdd(filtered->shape().element_type(),
                       operand.state().module));
+    ar = BitcastTo(b, ar, type);
     if (allow_recursive) {
       VLOG(5) << "[Gather partitioning]: Partitioned as trivial operand "
                  "batch_dim slice";
@@ -1286,6 +1289,8 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
           ShapeUtil::ChangeElementType(pgather->shape(), PRED), filter,
           gather_batch_dims));
 
+  const PrimitiveType type = pgather->shape().element_type();
+  pgather = BitcastTo(b, pgather, type == F8E8M0FNU ? U8 : type);
   HloInstruction* filtered = b->AddInstruction(HloInstruction::CreateTernary(
       pgather->shape(), HloOpcode::kSelect, broadcast_filter,
       CreateZero(pgather->shape(), b), pgather));
@@ -1298,7 +1303,7 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
       trivial_slice_dims, operand.state().collective_ops_creator,
       MakeBinaryAdd(filtered->shape().element_type(), hlo->GetModule()));
 
-  SetPartitionedHlo(hlo, ar);
+  SetPartitionedHlo(hlo, BitcastTo(b, ar, type));
   return absl::OkStatus();
 }
 

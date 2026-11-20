@@ -11875,6 +11875,102 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest,
+       GatherPartitionedOnTrivialSliceDimsZerolessFloatBitcastsViaU8) {
+  auto verify_zero_masked_u8_all_reduce = [](const HloInstruction* ar,
+                                             const Literal& zero_lit,
+                                             int num_remote_shards) {
+    ASSERT_NE(ar, nullptr);
+    ASSERT_EQ(ar->opcode(), HloOpcode::kAllReduce);
+    EXPECT_THAT(
+        ar->to_apply()->root_instruction(),
+        AllOf(op::Shape("u8[]"), op::Add(op::Parameter(0), op::Parameter(1))));
+    HloEvaluator evaluator;
+    for (uint8_t raw_byte : {uint8_t{0x00}, uint8_t{0x7E}, uint8_t{0x7F},
+                             uint8_t{0x80}, uint8_t{0xFE}, uint8_t{0xFF}}) {
+      SCOPED_TRACE(static_cast<int>(raw_byte));
+      Literal acc = LiteralUtil::CreateR0<uint8_t>(raw_byte);
+      for (int remote = 0; remote < num_remote_shards; ++remote) {
+        evaluator.ResetVisitStates();
+        ASSERT_OK_AND_ASSIGN(
+            acc, evaluator.Evaluate(*ar->to_apply(), {&acc, &zero_lit}));
+      }
+      const auto out_e8m0 =
+          absl::bit_cast<tsl::float8_e8m0fnu>(acc.GetFirstElement<uint8_t>());
+      EXPECT_EQ(absl::bit_cast<uint8_t>(out_e8m0), raw_byte);
+    }
+  };
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    SCOPED_TRACE(need_resolve_conflicts);
+    {
+      constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f8e8m0fnu[17,9] parameter(0), sharding={devices=[4,1]<=[4]}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f8e8m0fnu[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={replicated}
+})";
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<HloModule> module,
+          PartitionComputation(kHlo, /*num_devices=*/4, options));
+      const HloInstruction* root =
+          module->entry_computation()->root_instruction();
+      ASSERT_THAT(
+          root,
+          AllOf(op::Shape("f8e8m0fnu[2,3,9]"),
+                op::BitcastConvert(AllOf(
+                    op::Shape("u8[2,3,9]"),
+                    op::AllReduce(op::Select(
+                        _, op::Broadcast(op::Constant(LiteralUtil::Zero(U8))),
+                        AllOf(op::Shape("u8[2,3,9]"),
+                              op::BitcastConvert(op::Gather(_, _)))))))));
+      const HloInstruction* ar = root->operand(0);
+      const Literal& zero_lit =
+          ar->operand(0)->operand(1)->operand(0)->literal();
+      verify_zero_masked_u8_all_reduce(ar, zero_lit, /*num_remote_shards=*/3);
+    }
+    {
+      constexpr absl::string_view kPartialHlo = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f8e8m0fnu[8,4] parameter(0),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %indices = s32[4,1] parameter(1),
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  ROOT %gather = f8e8m0fnu[4,4] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,4},
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+})";
+      ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<HloModule> partial_module,
+          PartitionComputation(kPartialHlo, /*num_devices=*/4, options));
+      const HloInstruction* root =
+          partial_module->entry_computation()->root_instruction();
+      ASSERT_THAT(
+          root,
+          AllOf(op::Shape("f8e8m0fnu[2,4]"),
+                op::BitcastConvert(AllOf(
+                    op::Shape("u8[2,4]"),
+                    op::AllReduce(op::Select(
+                        _, op::Broadcast(op::Constant(LiteralUtil::Zero(U8))),
+                        AllOf(op::Shape("u8[2,4]"),
+                              op::BitcastConvert(op::Gather(_, _)))))))));
+      const HloInstruction* ar = root->operand(0);
+      const Literal& zero_lit =
+          ar->operand(0)->operand(1)->operand(0)->literal();
+      verify_zero_masked_u8_all_reduce(ar, zero_lit, /*num_remote_shards=*/1);
+    }
+  }
+}
+
 TEST_P(SpmdPartitioningTest, UnpartitionedScatter) {
   absl::string_view hlo_string = R"(
 HloModule module

@@ -171,6 +171,16 @@ inline HloInstruction* CreateLastWithType(PrimitiveType type, T* b) {
 // Create a binary add computation of the given type and add to the module.
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module);
 
+// Bitcasts `x` to `t` when its element type differs, allowing zeroless
+// floating point types such as F8E8M0FNU to use U8 zero masked AllReduce sums.
+inline HloInstruction* BitcastTo(SpmdBuilder* b, HloInstruction* x,
+                                 PrimitiveType t) {
+  return x->shape().element_type() == t
+             ? x
+             : b->AddInstruction(HloInstruction::CreateBitcastConvert(
+                   ShapeUtil::ChangeElementType(x->shape(), t), x));
+}
+
 // Returns true if the shape can be evenly partitioned for the given sharding.
 // All tile sharded dimensions should be evenly divisible and there should be no
 // single-device sharding. Replicate sharding is considered even partition.

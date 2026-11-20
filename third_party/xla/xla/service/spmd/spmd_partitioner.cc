@@ -409,15 +409,6 @@ HloSharding GetShardingReplicatedOnWindowedDimension(
       sharding, dimensions_to_replicate);
 }
 
-// Bitcasts `x` to `t` when its element type differs, allowing zeroless
-// floating point types such as F8E8M0FNU to use U8 zero masked AllReduce sums.
-HloInstruction* BitcastTo(SpmdBuilder* b, HloInstruction* x, PrimitiveType t) {
-  return x->shape().element_type() == t
-             ? x
-             : b->AddInstruction(HloInstruction::CreateBitcastConvert(
-                   ShapeUtil::ChangeElementType(x->shape(), t), x));
-}
-
 }  // namespace
 
 HloInstruction* SpmdBuilder::AddInstruction(
