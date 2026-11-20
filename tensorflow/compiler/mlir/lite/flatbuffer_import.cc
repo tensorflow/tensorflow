@@ -1579,6 +1579,26 @@ StatusOr<FuncOp> ConvertSubgraph(
     return llvm::ArrayRef<uint8_t>(buffer.data);
   };
 
+  // Returns the type of the function argument or result `tensor`. Blockwise
+  // quantized tensors (e.g. `STABLEHLO_COMPOSITE` decomposition arguments)
+  // refer to scales and zero points tensors of the subgraph.
+  auto get_io_type = [&](const tflite::TensorT& tensor,
+                         bool is_constant) -> StatusOr<mlir::TensorType> {
+    if (!tfl::IsBlockwiseQuantizedWithBlockShape(tensor)) {
+      return tfl::GetTensorType(tensor, builder, is_constant);
+    }
+    TF_ASSIGN_OR_RETURN(mlir::TensorType type,
+                        tfl::GetTensorType(tensor, builder,
+                                           /*is_constant=*/false,
+                                           /*is_intermediate=*/false,
+                                           /*get_storage=*/true));
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type element_type,
+        tfl::GetBlockwiseQuantizedType(tensor, builder, type.getElementType(),
+                                       subgraph.tensors, get_tensor_buffer));
+    return type.clone(element_type);
+  };
+
   // Populate from metadata.
   ControlNodes control_nodes;
   for (const auto [from, to] : control_edges) {
@@ -1607,7 +1627,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       continue;
     }
     auto& tensor = *subgraph.tensors.at(input);
-    auto type_or_err = tfl::GetTensorType(tensor, builder);
+    auto type_or_err = get_io_type(tensor, /*is_constant=*/false);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading argument types")
           << type_or_err.status().ToString();
@@ -1639,8 +1659,7 @@ StatusOr<FuncOp> ConvertSubgraph(
                                          output) != func_inputs.end();
     bool is_constant = !is_op_output[output] && !is_func_input;
 
-    auto type_or_err =
-        tfl::GetTensorType(*subgraph.tensors.at(output), builder, is_constant);
+    auto type_or_err = get_io_type(*subgraph.tensors.at(output), is_constant);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading return types")
           << type_or_err.status().ToString();

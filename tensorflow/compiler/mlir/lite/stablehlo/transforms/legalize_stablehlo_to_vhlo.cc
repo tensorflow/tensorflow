@@ -171,9 +171,32 @@ void WrapOperandsInUnrealizedCastAndConvert(Operation *op,
   }
 }
 
+// Returns true if `converter` can convert all operand, result and region block
+// argument types of `op`.
+//
+// This is not the case for e.g. `vhlo.composite_v1` ops taking
+// `!tfl.blockwise_quant` constants (see
+// `SinkBlockwiseDequantizeIntoVhloComposite`): such types have no VHLO nor
+// StableHLO equivalent, so these ops are kept as VHLO ops with builtin types,
+// which is the form they are exported in.
+bool HasConvertibleTypes(Operation* op, const TypeConverter& converter) {
+  auto is_convertible = [&](Type type) {
+    return static_cast<bool>(converter.convertType(type));
+  };
+  return llvm::all_of(op->getOperandTypes(), is_convertible) &&
+         llvm::all_of(op->getResultTypes(), is_convertible) &&
+         llvm::all_of(op->getRegions(), [&](Region& region) {
+           return llvm::all_of(region, [&](Block& block) {
+             return llvm::all_of(block.getArgumentTypes(), is_convertible);
+           });
+         });
+}
+
 // vhlo.op %1 : vhlo.tensor<...>
 //   ==>
 // vhlo.op %1 : tensor<...>
+//
+// VHLO ops with types that `converter` cannot convert are left untouched.
 //
 // TODO: There's likely a way to make MLIR manage the unrealized cast
 // conversions using a specific rewriter.
@@ -182,6 +205,7 @@ LogicalResult ApplyTypeConverter(ModuleOp op, TypeConverter &converter) {
 
   op->walk([&](Operation *op) {
     if (op->getDialect()->getNamespace() != "vhlo") return;
+    if (!HasConvertibleTypes(op, converter)) return;
 
     // Convert operands
     rewriter.modifyOpInPlace(op, [&]() {
@@ -249,6 +273,13 @@ LogicalResult ApplyVhloToStablehloPatterns(ModuleOp module) {
   target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<stablehlo::StablehloDialect>();
+  // VHLO ops left untouched by `ApplyTypeConverter` (same
+  // `StablehloToOdmlTypeConverter` check as in `LegalizeVhloToStablehloPass`)
+  // have no StableHLO equivalent, keep them as is.
+  StablehloToOdmlTypeConverter to_vhlo_converter;
+  target.addDynamicallyLegalDialect<vhlo::VhloDialect>([&](Operation* op) {
+    return !HasConvertibleTypes(op, to_vhlo_converter);
+  });
 
   VhloToStablehloTypeConverter converter;
   RewritePatternSet patterns(context);
