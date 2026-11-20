@@ -18,8 +18,7 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.xla_version.
-#define JAX_XLA_VERSION_NUMBER \
-  90  // Rename xla::ifrt::Client::HostBuffer::on_done to hold
+#define JAX_XLA_VERSION_NUMBER 91  // IFRT donation recovery
 
 // TODO(phawkins): Remove JAX_IFRT_VERSION_NUMBER once JAX no longer references
 // it.

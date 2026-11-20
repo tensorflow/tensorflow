@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -32,6 +33,7 @@ namespace xla {
 namespace ifrt {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -65,6 +67,10 @@ TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
   ASSERT_TRUE(deserialized.custom_options.has_value());
   EXPECT_THAT(deserialized.custom_options->Get<std::string>("foo"),
               IsOkAndHolds("bar"));
+
+  options.fill_recovery_future = true;
+  EXPECT_THAT(options.ToProto(version()),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 INSTANTIATE_TEST_SUITE_P(

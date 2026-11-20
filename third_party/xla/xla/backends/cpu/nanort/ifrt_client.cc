@@ -946,6 +946,10 @@ class NanoExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<ifrt::DeviceListRef> devices) override {
+    if (options.fill_recovery_future) {
+      return absl::UnimplementedError(
+          "NanoExecutable does not support fill_recovery_future");
+    }
     if (devices.has_value() &&
         (*devices == nullptr || **devices != *devices_)) {
       return InvalidArgument(

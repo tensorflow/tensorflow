@@ -39,6 +39,10 @@ absl::Status ExecuteOptions::ToProto(ExecuteOptionsProto& proto,
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ExecuteOptions serialization"));
   }
+  if (fill_recovery_future) {
+    return absl::UnimplementedError(
+        "ExecuteOptions::ToProto does not support fill_recovery_future");
+  }
 
   proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());

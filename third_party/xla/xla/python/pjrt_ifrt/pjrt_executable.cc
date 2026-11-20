@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/ifrt/shape.h"
@@ -1138,6 +1140,74 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
+namespace {
+
+// Helper to reconstitute a recovered PjRtArray from original array metadata and
+// recovered buffers.
+absl::StatusOr<tsl::RCReference<Array>> ReconstituteRecoveredArray(
+    PjRtClient* client, const ArrayRef& orig_array,
+    PjRtArray::PjRtBuffers buffers) {
+  auto* orig_pjrt_array = cast<PjRtArray>(orig_array.get());
+  auto layout = orig_pjrt_array->pjrt_layout().value_or(nullptr);
+  UserContextScope user_context_scope(orig_pjrt_array->user_context());
+  if (orig_pjrt_array->has_dynamic_shape()) {
+    return PjRtArray::Create(client, orig_pjrt_array->dtype(),
+                             orig_pjrt_array->dynamic_shape(),
+                             orig_pjrt_array->shared_ptr_sharding(),
+                             std::move(buffers), std::move(layout));
+  }
+  return PjRtArray::Create(client, orig_pjrt_array->dtype(),
+                           orig_pjrt_array->shape(),
+                           orig_pjrt_array->shared_ptr_sharding(),
+                           std::move(buffers), std::move(layout));
+}
+
+// Collates recovered buffers from per-device futures into a single future of
+// recovered Arrays.
+tsl::Future<std::vector<ArrayRef>> CollateRecoveryFutures(
+    PjRtClient* client, absl::Span<ArrayRef> args, tsl::Future<> status,
+    std::vector<tsl::Future<std::vector<std::unique_ptr<PjRtBuffer>>>>
+        pjrt_recovery_futures) {
+  std::vector<ArrayRef> captured_args(args.begin(), args.end());
+  return JoinFutures(absl::MakeSpan(pjrt_recovery_futures))
+      .Map([client, captured_args = std::move(captured_args),
+            status = std::move(status)](
+               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+                   per_device_recovered) -> tsl::Future<std::vector<ArrayRef>> {
+        const int num_computations = per_device_recovered.size();
+        std::vector<ArrayRef> recovered_arrays;
+        for (size_t i = 0; i < captured_args.size(); ++i) {
+          PjRtArray::PjRtBuffers buffers;
+          for (int d = 0; d < num_computations; ++d) {
+            if (i < per_device_recovered[d].size() &&
+                per_device_recovered[d][i] != nullptr) {
+              buffers.push_back(std::move(per_device_recovered[d][i]));
+            }
+          }
+          if (!buffers.empty()) {
+            if (buffers.size() != num_computations) {
+              return absl::InternalError(absl::StrFormat(
+                  "Inconsistent donation recovery for argument %d: recovered "
+                  "on %d of %d addressable devices",
+                  i, buffers.size(), num_computations));
+            }
+            if (recovered_arrays.empty()) {
+              recovered_arrays.resize(captured_args.size());
+            }
+            ABSL_ASSIGN_OR_RETURN(recovered_arrays[i],
+                             ReconstituteRecoveredArray(
+                                 client, captured_args[i], std::move(buffers)));
+          }
+        }
+        if (recovered_arrays.empty()) {
+          return status.MapTo(std::vector<ArrayRef>{});
+        }
+        return recovered_arrays;
+      });
+}
+
+}  // namespace
+
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
 PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
                               const ExecuteOptions& options,
@@ -1311,7 +1381,44 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
   tsl::Future<> status;
-  if (portable_execution) {
+  tsl::Future<std::vector<ArrayRef>> recovery_future;
+  if (options.fill_recovery_future) {
+    pjrt_outputs.reserve(num_computations);
+    std::vector<tsl::Future<std::vector<std::unique_ptr<PjRtBuffer>>>>
+        pjrt_recovery_futures;
+    pjrt_recovery_futures.reserve(num_computations);
+    if (portable_execution) {
+      std::optional<tsl::Future<>> returned_pjrt_future;
+      TF_RET_CHECK(portable_execution_device->IsAddressable());
+      ABSL_ASSIGN_OR_RETURN(
+          auto res,
+          pjrt_loaded_executable_->ExecutePortableWithDonationRecovery(
+              argument_handles.front(),
+              portable_execution_device->pjrt_device(), opts,
+              returned_pjrt_future));
+      pjrt_outputs.push_back(std::move(res.output_buffers));
+      status = *std::move(returned_pjrt_future);
+      pjrt_recovery_futures.push_back(std::move(res.recovery_future));
+    } else {
+      std::vector<tsl::Future<>> returned_futures;
+      returned_futures.reserve(num_computations);
+      for (int i = 0; i < num_computations; ++i) {
+        std::optional<tsl::Future<>> ret_fut;
+        xla::PjRtDevice* pjrt_device =
+            static_cast<PjRtDevice*>(addressable_devices_[i])->pjrt_device();
+        ABSL_ASSIGN_OR_RETURN(
+            auto res,
+            pjrt_loaded_executable_->ExecuteShardedWithDonationRecovery(
+                argument_handles[i], pjrt_device, opts, ret_fut));
+        pjrt_outputs.push_back(std::move(res.output_buffers));
+        returned_futures.push_back(*std::move(ret_fut));
+        pjrt_recovery_futures.push_back(std::move(res.recovery_future));
+      }
+      status = JoinFutures(absl::MakeSpan(returned_futures));
+    }
+    recovery_future = CollateRecoveryFutures(client_, args, status,
+                                             std::move(pjrt_recovery_futures));
+  } else if (portable_execution) {
     std::optional<tsl::Future<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
     ABSL_ASSIGN_OR_RETURN(
@@ -1437,6 +1544,9 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   ExecuteResult result;
   if (options.fill_status) {
     result.status = status;
+  }
+  if (options.fill_recovery_future) {
+    result.recovery_future = std::move(recovery_future);
   }
   result.outputs = std::move(outputs);
   return result;

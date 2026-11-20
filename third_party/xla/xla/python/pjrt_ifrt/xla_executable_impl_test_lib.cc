@@ -696,29 +696,42 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
 
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList({device}));
-  ExecuteOptions execute_options;
-  execute_options.fill_status = true;
-  LoadedExecutable::ExecuteResult result;
-  {
-    UserContextScope user_context_scope(test_util::MakeUserContext(100));
-    TF_ASSERT_OK_AND_ASSIGN(
-        result,
-        loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
-                                   /*devices=*/std::move(device_list)));
+  for (bool fill_recovery_future : {false, true}) {
+    ExecuteOptions execute_options;
+    execute_options.fill_status = true;
+    execute_options.fill_recovery_future = fill_recovery_future;
+    absl::StatusOr<LoadedExecutable::ExecuteResult> result_or;
+    {
+      UserContextScope user_context_scope(test_util::MakeUserContext(100));
+      result_or = loaded_executable->Execute(
+          absl::MakeSpan(&array, 1), execute_options, /*devices=*/device_list);
+    }
+    if (fill_recovery_future && absl::IsUnimplemented(result_or.status())) {
+      continue;
+    }
+    TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                            std::move(result_or));
+    TF_ASSERT_OK(result.status.Await());
+    ASSERT_THAT(result.outputs, SizeIs(1));
+    EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
+    if (fill_recovery_future) {
+      ASSERT_TRUE(result.recovery_future.IsValid());
+      TF_ASSERT_OK_AND_ASSIGN(auto rec_arrays, result.recovery_future.Await());
+      EXPECT_TRUE(rec_arrays.empty());
+    } else {
+      EXPECT_FALSE(result.recovery_future.IsValid());
+    }
+
+    std::vector<float> out_data(6);
+    auto future = result.outputs[0]->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+
+    std::vector<float> expected_out_data(6);
+    absl::c_iota(expected_out_data, 1);
+    EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
   }
-  TF_ASSERT_OK(result.status.Await());
-  ASSERT_THAT(result.outputs, SizeIs(1));
-  EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
-
-  std::vector<float> out_data(6);
-  auto future = result.outputs[0]->CopyToHostBuffer(
-      out_data.data(), /*byte_strides=*/std::nullopt,
-      ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
-
-  std::vector<float> expected_out_data(6);
-  absl::c_iota(expected_out_data, 1);
-  EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
 TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {

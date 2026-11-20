@@ -374,6 +374,10 @@ IfrtIrLoadedExecutable::IfrtIrLoadedExecutable(
 absl::StatusOr<LoadedExecutable::ExecuteResult> IfrtIrLoadedExecutable::Execute(
     absl::Span<ArrayRef> args, const ExecuteOptions& options,
     std::optional<DeviceListRef> devices) {
+  if (options.fill_recovery_future) {
+    return absl::UnimplementedError(
+        "IfrtIrLoadedExecutable does not support fill_recovery_future");
+  }
   return program_->execute_fn(args, options, std::move(devices));
 }
 

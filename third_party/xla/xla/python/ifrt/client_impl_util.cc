@@ -339,6 +339,10 @@ LoadedExecutableExecuteBundle(
     LoadedExecutable* absl_nonnull executable, absl::Span<BundleRef> args,
     const ExecuteOptions& options,
     const std::optional<std::vector<int>>& outputs_bundle_slice_sizes) {
+  if (options.fill_recovery_future) {
+    return absl::UnimplementedError(
+        "LoadedExecutableExecuteBundle does not support fill_recovery_future");
+  }
   int64_t expected_total_output_size = 0;
   if (outputs_bundle_slice_sizes.has_value()) {
     for (int size : *outputs_bundle_slice_sizes) {
