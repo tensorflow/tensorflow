@@ -270,6 +270,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
   }
 
   if (output->type == kTfLiteString) {
+    // GetString() does not bounds-check the string index, and the string
+    // tiling path below indexes the input by its declared shape
+    // (NumElements(input)). The flatbuffer verifier validates a string
+    // buffer's internal layout but never cross-checks the tensor shape against
+    // the number of strings the buffer actually contains, so a model whose
+    // string-tensor shape claims more elements than the buffer holds would read
+    // out of bounds. Reject such inputs (mirrors the gather.cc string guard).
+    TF_LITE_ENSURE(context, input->bytes >= sizeof(int32_t));
+    TF_LITE_ENSURE(context, GetStringCount(input) >= NumElements(input));
     DynamicBuffer buffer;
     TileString(*(input->dims), input, multipliers, &buffer, output);
     buffer.WriteToTensor(output, /*new_shape=*/nullptr);
