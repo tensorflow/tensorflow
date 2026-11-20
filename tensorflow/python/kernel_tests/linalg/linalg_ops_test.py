@@ -375,7 +375,10 @@ class _MatrixRankTest(object):
     self.assertAllEqual([2, 1, 3], self.evaluate(linalg.matrix_rank(x)))
 
   def test_custom_tolerance_broadcasts(self):
-    q = linalg.qr(random_ops.random_uniform([3, 3], dtype=self.dtype))[0]
+    real_dtype = np.empty(0, dtype=self.dtype).real.dtype
+    q = linalg.qr(
+        math_ops.cast(
+            random_ops.random_uniform([3, 3], dtype=real_dtype), self.dtype))[0]
     e = constant_op.constant([0.1, 0.2, 0.3], dtype=self.dtype)
     a = linalg.solve(q, linalg.transpose(a=e * q), adjoint=True)
     self.assertAllEqual([3, 2, 1, 0],
@@ -416,6 +419,18 @@ class MatrixRankDynamic64Test(test.TestCase, _MatrixRankTest):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class MatrixRankStaticComplex64Test(test.TestCase, _MatrixRankTest):
+  dtype = np.complex64
+  use_static_shape = True
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MatrixRankDynamicComplex128Test(test.TestCase, _MatrixRankTest):
+  dtype = np.complex128
+  use_static_shape = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class MatrixRankNumpyInputTest(test.TestCase):
 
   def test_float64_numpy_input_keeps_precision(self):
@@ -423,12 +438,13 @@ class MatrixRankNumpyInputTest(test.TestCase):
     x_ = np.diag([1.0, 1e-9])
     self.assertAllEqual(2, self.evaluate(linalg.matrix_rank(x_)))
 
-  def test_complex_numpy_input_raises(self):
-    # Same as for a complex Tensor, instead of using only the real part.
+  def test_complex_numpy_input(self):
     for dtype in (np.complex64, np.complex128):
-      x_ = np.array([[1.0, 1j], [1j, -1.0]], dtype=dtype)
-      with self.assertRaisesRegex(TypeError, "float"):
-        linalg.matrix_rank(x_)
+      x_ = np.array([[1.0 + 1j, 0.0], [0.0, 2.0 - 1j]], dtype=dtype)
+      self.assertAllEqual(2, self.evaluate(linalg.matrix_rank(x_)))
+      # Rank-deficient complex matrix
+      y_ = np.array([[1.0 + 1j, 2.0 + 2j], [2.0 + 2j, 4.0 + 4j]], dtype=dtype)
+      self.assertAllEqual(1, self.evaluate(linalg.matrix_rank(y_)))
 
 
 class _PinvTest(object):
@@ -437,8 +453,9 @@ class _PinvTest(object):
     """Calls `np.linalg.pinv` but corrects its broken batch semantics."""
     if a.ndim < 3:
       return np.linalg.pinv(a, rcond)
+    real_dtype = np.empty(0, dtype=a.dtype).real.dtype
     if rcond is None:
-      rcond = 10. * max(a.shape[-2], a.shape[-1]) * np.finfo(a.dtype).eps
+      rcond = 10. * max(a.shape[-2], a.shape[-1]) * np.finfo(real_dtype).eps
     s = np.concatenate([a.shape[:-2], [a.shape[-1], a.shape[-2]]])
     a_pinv = np.zeros(s, dtype=a.dtype)
     for i in np.ndindex(a.shape[:(a.ndim - 2)]):
@@ -447,6 +464,7 @@ class _PinvTest(object):
     return a_pinv
 
   def test_symmetric(self):
+    real_dtype = np.empty(0, dtype=self.dtype).real.dtype
     a_ = self.dtype([[1., .4, .5], [.4, .2, .25], [.5, .25, .35]])
     a_ = np.stack([a_ + 1., a_], axis=0)  # Batch of matrices.
     a = array_ops.placeholder_with_default(
@@ -454,7 +472,8 @@ class _PinvTest(object):
     if self.use_default_rcond:
       rcond = None
     else:
-      rcond = self.dtype([0., 0.01])  # Smallest 1 component is forced to zero.
+      # Smallest 1 component is forced to zero.
+      rcond = real_dtype.type([0., 0.01])
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
@@ -467,6 +486,7 @@ class _PinvTest(object):
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
 
   def test_nonsquare(self):
+    real_dtype = np.empty(0, dtype=self.dtype).real.dtype
     a_ = self.dtype([[1., .4, .5, 1.], [.4, .2, .25, 2.], [.5, .25, .35, 3.]])
     a_ = np.stack([a_ + 0.5, a_], axis=0)  # Batch of matrices.
     a = array_ops.placeholder_with_default(
@@ -475,7 +495,7 @@ class _PinvTest(object):
       rcond = None
     else:
       # Smallest 2 components are forced to zero.
-      rcond = self.dtype([0., 0.25])
+      rcond = real_dtype.type([0., 0.25])
     expected_a_pinv_ = self.expected_pinv(a_, rcond)
     a_pinv = linalg.pinv(a, rcond, validate_args=True)
     a_pinv_ = self.evaluate(a_pinv)
@@ -486,6 +506,20 @@ class _PinvTest(object):
     if not self.use_static_shape:
       return
     self.assertAllEqual(expected_a_pinv_.shape, a_pinv.shape)
+
+  def test_complex_with_imaginary(self):
+    if not np.iscomplexobj(self.dtype(0)):
+      return
+    a_ = np.array(
+        [[[1.0 + 2.0j, 0.4 - 1.0j], [0.5 + 0.1j, 2.0 + 3.0j]],
+         [[2.0 - 0.5j, 1.0 + 1.0j], [0.2 + 0.8j, 0.5 - 0.2j]]],
+        dtype=self.dtype)
+    a = array_ops.placeholder_with_default(
+        a_, shape=a_.shape if self.use_static_shape else None)
+    expected_pinv_ = self.expected_pinv(a_, None)
+    a_pinv = linalg.pinv(a, validate_args=True)
+    a_pinv_ = self.evaluate(a_pinv)
+    self.assertAllClose(expected_pinv_, a_pinv_, atol=1e-5, rtol=1e-4)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -512,6 +546,34 @@ class PinvTestDynamic32CustomtRcond(test.TestCase, _PinvTest):
 @test_util.run_all_in_graph_and_eager_modes
 class PinvTestStatic64CustomRcond(test.TestCase, _PinvTest):
   dtype = np.float64
+  use_static_shape = True
+  use_default_rcond = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PinvTestDynamicComplex64DefaultRcond(test.TestCase, _PinvTest):
+  dtype = np.complex64
+  use_static_shape = False
+  use_default_rcond = True
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PinvTestStaticComplex128DefaultRcond(test.TestCase, _PinvTest):
+  dtype = np.complex128
+  use_static_shape = True
+  use_default_rcond = True
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PinvTestDynamicComplex64CustomRcond(test.TestCase, _PinvTest):
+  dtype = np.complex64
+  use_static_shape = False
+  use_default_rcond = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PinvTestStaticComplex128CustomRcond(test.TestCase, _PinvTest):
+  dtype = np.complex128
   use_static_shape = True
   use_default_rcond = False
 
