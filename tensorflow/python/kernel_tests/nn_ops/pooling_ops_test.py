@@ -821,6 +821,50 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters((1, 2, 1), (1, 4, 2), (0, 1, 1), (20, 21, 1))
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolValidEmptyOutput(self, rows, window, stride):
+    value = array_ops.zeros([1, rows, 10, 3])
+    output = nn_ops.max_pool(
+        value,
+        ksize=[1, window, 2, 1],
+        strides=[1, stride, 1, 1],
+        padding="VALID",
+    )
+    self.assertEqual(output.shape.as_list(), [1, 0, 9, 3])
+    self.assertEqual(self.evaluate(output).shape, (1, 0, 9, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolValidEmptyOutputNCHW(self):
+    if not test.is_gpu_available(cuda_only=True):
+      self.skipTest("NCHW MaxPool is only supported on GPU.")
+    value = array_ops.zeros([1, 4, 4, 1])
+    output = nn_ops.max_pool(
+        value,
+        ksize=[1, 1, 2, 2],
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format="NCHW",
+    )
+    self.assertEqual(output.shape.as_list(), [1, 4, 3, 0])
+    self.assertEqual(self.evaluate(output).shape, (1, 4, 3, 0))
+
+  @parameterized.parameters((1, 3), (0, 2))
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolNegativeOutput(self, rows, window):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative",
+    ):
+      self.evaluate(
+          nn_ops.max_pool(
+              array_ops.zeros([1, rows, 10, 3]),
+              ksize=[1, window, 2, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+          )
+      )
+
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
@@ -829,9 +873,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
       with self.assertRaisesRegex(
           (errors_impl.InvalidArgumentError, ValueError),
-          "Negative dimension size"):
+          "Negative dimension size|Computed output size would be negative"):
         t = self.evaluate(
-            nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
+            nn_ops.max_pool(t, ksize=[1, 1, 3, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
@@ -2564,21 +2608,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
-        # AvgPool accepts zero-sized outputs; MaxPool keeps its existing check.
-        if pool_func == nn_ops.avg_pool:
-          continue
-        # Filter too large.
+        # Filter too large (with stride=1, ksize=22 gives output size -1).
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1],
+                  ksize=[1, 20, 22, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-              ksize=[1, 21, 20, 1],
+              ksize=[1, 22, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
 
