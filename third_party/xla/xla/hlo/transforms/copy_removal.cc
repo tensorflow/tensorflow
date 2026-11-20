@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout.h"
@@ -60,6 +62,9 @@ namespace {
 struct InstructionInfo {
   HloInstruction* value_definition = nullptr;
   bool is_definition = false;
+  // True if this entry represents a computation root position, whose live range
+  // extends until the computation exits.
+  bool is_root_position = false;
 };
 
 using InstructionEntry = std::pair<HloInstruction*, InstructionInfo>;
@@ -68,7 +73,7 @@ using LiveRangeRegions =
     std::vector<std::pair<const HloComputation*, ComputationRegion>>;
 
 const InstructionInfo* FindInstruction(const LiveRangeRegions& regions,
-                                       HloInstruction* instr) {
+                                       const HloInstruction* instr) {
   const int64_t comp_id = instr->parent()->unique_id();
   auto comp_it = std::lower_bound(regions.begin(), regions.end(), comp_id,
                                   [](const auto& entry, int64_t id) {
@@ -142,17 +147,23 @@ struct RegionRelation {
 // overlapping.
 class RelativeLocationAnalysis {
  public:
-  RelativeLocationAnalysis(HloOrdering* ordering, const AliasInfo* alias_info)
+  RelativeLocationAnalysis(HloOrdering* ordering, const AliasInfo* alias_info,
+                           const HloDataflowAnalysis* dataflow)
       : ordering_(ordering),
         pred_ordering_(dynamic_cast<PredecessorHloOrdering*>(ordering)),
-        alias_info_(alias_info) {}
+        alias_info_(alias_info),
+        dataflow_(dataflow) {
+    CHECK_NE(dataflow_, nullptr);
+  }
 
   // Returns whether `range2` overlaps or intercepts `range1`. Stops early once
   // `stop_if` returns true; callers use this once interference is decided and
   // discard any uncommitted entries in `ctrl_deps_`.
-  RegionRelation Analyze(const LiveRangeRegions& range1,
-                         const LiveRangeRegions& range2,
-                         absl::FunctionRef<bool(RegionRelation)> stop_if) {
+  RegionRelation Analyze(
+      const LiveRangeRegions& range1, const LiveRangeRegions& range2,
+      const HloValue* range1_value,
+      absl::FunctionRef<bool(const HloValue*, const HloValue*)> same_buffer,
+      absl::FunctionRef<bool(RegionRelation)> stop_if) {
     struct RegionPair {
       const HloComputation* comp1;
       const ComputationRegion* instrs1;
@@ -184,7 +195,8 @@ class RelativeLocationAnalysis {
     std::vector<HloInstruction*> unordered_ops;
     for (const RegionPair& pair : pairs) {
       for (const InstructionEntry& entry2 : *pair.instrs2) {
-        const bool can_modify = CanIntercept(entry2, range1);
+        const bool can_modify =
+            CanIntercept(entry2, range1, range1_value, same_buffer);
         uint8_t ordered_mask = kNoOverlap;
         bool ordered_intercept = false;
         bool unordered_intercept = false;
@@ -192,7 +204,18 @@ class RelativeLocationAnalysis {
 
         for (const InstructionEntry& entry1 : *pair.instrs1) {
           auto [order, intercept] = CompareEntries(entry1, entry2, can_modify);
-          if (order == kUnordered && entry1.first != entry2.first) {
+          // A computation root stays live until its computation exits, even
+          // after `entry2.first` executes. Mark the overlap directly here
+          // when `entry2.first` is nested inside `entry1.first->parent()`
+          // rather than pushing an already-ordered root into `unordered_ops`.
+          if (entry1.second.is_root_position && entry1.first != entry2.first &&
+              order == kAfterEnd &&
+              ordering_->call_graph().InstructionIsNestedIn(
+                  entry2.first, entry1.first->parent())) {
+            ordered_mask |= kUnordered;
+            ordered_intercept |=
+                AlwaysForceIntercept(entry2.first) || can_modify;
+          } else if (order == kUnordered && entry1.first != entry2.first) {
             unordered_ops.push_back(entry1.first);
             unordered_intercept |= intercept;
           } else {
@@ -206,7 +229,8 @@ class RelativeLocationAnalysis {
           }
         }
 
-        if (!ForceRuntimeOrder(unordered_ops, entry2.first, ordered_mask)) {
+        if (!ForceRuntimeOrder(unordered_ops, entry2.first, ordered_mask,
+                               same_buffer)) {
           result.overlap = true;
           result.intercept |= unordered_intercept;
         } else {
@@ -258,6 +282,15 @@ class RelativeLocationAnalysis {
  private:
   using InstructionPair = std::pair<HloInstruction*, HloInstruction*>;
 
+  // Returns whether `instr` must always be treated as an intercepting
+  // instruction when its live range overlaps another value.
+  static bool AlwaysForceIntercept(const HloInstruction* instr) {
+    const HloOpcode op = instr->opcode();
+    return HloDataflowAnalysis::IsAsynchronousOperationStart(op) ||
+           HloDataflowAnalysis::IsAsynchronousOperationDone(op) ||
+           op == HloOpcode::kCollectivePermute;
+  }
+
   std::pair<RuntimeOrder, bool> CompareEntries(const InstructionEntry& entry1,
                                                const InstructionEntry& entry2,
                                                bool instr2_can_modify) {
@@ -283,12 +316,8 @@ class RelativeLocationAnalysis {
         order = entry1.second.is_definition ? kBeforeStart : kAfterEnd;
       }
     }
-    const HloOpcode op2 = instr2->opcode();
-    const bool forced_intercept =
-        order != kAfterEnd && order != kNoOverlap &&
-        (HloDataflowAnalysis::IsAsynchronousOperationStart(op2) ||
-         HloDataflowAnalysis::IsAsynchronousOperationDone(op2) ||
-         op2 == HloOpcode::kCollectivePermute);
+    const bool forced_intercept = order != kAfterEnd && order != kNoOverlap &&
+                                  AlwaysForceIntercept(instr2);
     if (def == nullptr || !instr2_can_modify) {
       return {order, forced_intercept};
     }
@@ -314,8 +343,10 @@ class RelativeLocationAnalysis {
     return {order, forced_intercept};
   }
 
-  bool ForceRuntimeOrder(absl::Span<HloInstruction* const> unordered_ops,
-                         HloInstruction* instr2, uint8_t desired) {
+  bool ForceRuntimeOrder(
+      absl::Span<HloInstruction* const> unordered_ops, HloInstruction* instr2,
+      uint8_t desired,
+      absl::FunctionRef<bool(const HloValue*, const HloValue*)> same_buffer) {
     if (unordered_ops.empty()) {
       return true;
     }
@@ -325,15 +356,28 @@ class RelativeLocationAnalysis {
       return false;
     }
     const bool instr2_first = (desired == kBeforeStart);
-    auto can_order = [this](HloInstruction* pred, HloInstruction* succ) {
-      return pred != pred->parent()->root_instruction() &&
-             !(succ->opcode() == HloOpcode::kCopy &&
-               absl::c_any_of(alias_info_->GetInPlaceInputOutputPairs(pred),
-                              [&](const auto& pair) {
-                                return pred->operand(
-                                           pair.first.operand_number) ==
-                                       succ->operand(0);
-                              }));
+    auto can_order = [this, same_buffer](HloInstruction* pred,
+                                         HloInstruction* succ) {
+      if (pred == pred->parent()->root_instruction()) {
+        return false;
+      }
+      if (succ->opcode() != HloOpcode::kCopy) {
+        return true;
+      }
+      const HloValueSet& copy_src_values =
+          dataflow_->GetValueSet(succ->operand(0));
+      return !absl::c_any_of(
+          alias_info_->GetInPlaceInputOutputPairs(pred), [&](const auto& pair) {
+            for (const HloValue* out_val :
+                 dataflow_->GetValueSet(pred, pair.second).values()) {
+              for (const HloValue* copy_val : copy_src_values.values()) {
+                if (same_buffer(out_val, copy_val)) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          });
     };
     for (HloInstruction* instr1 : unordered_ops) {
       if (!can_order(instr2_first ? instr2 : instr1,
@@ -349,16 +393,21 @@ class RelativeLocationAnalysis {
   }
 
   bool CanIntercept(const InstructionEntry& entry,
-                    const LiveRangeRegions& region) const {
+                    const LiveRangeRegions& region,
+                    const HloValue* region_value,
+                    absl::FunctionRef<bool(const HloValue*, const HloValue*)>
+                        same_buffer) const {
     HloInstruction* instr = entry.first;
     if (!entry.second.is_definition) {
-      return absl::c_any_of(
-          alias_info_->GetInPlaceInputOutputPairs(instr),
-          [&](const auto& pair) {
-            return FindInstruction(region, instr->mutable_operand(
-                                               pair.first.operand_number)) !=
-                   nullptr;
-          });
+      for (const auto& pair : alias_info_->GetInPlaceInputOutputPairs(instr)) {
+        for (const HloValue* out_val :
+             dataflow_->GetValueSet(instr, pair.second).values()) {
+          if (same_buffer(out_val, region_value)) {
+            return true;
+          }
+        }
+      }
+      return false;
     }
     if (instr->opcode() == HloOpcode::kCopy) {
       const InstructionInfo* info = FindInstruction(region, instr);
@@ -481,6 +530,9 @@ class RelativeLocationAnalysis {
   HloOrdering* ordering_;
   PredecessorHloOrdering* pred_ordering_;
   const AliasInfo* alias_info_;
+  // Non-owning, non-null pointer to the dataflow analysis used to resolve value
+  // sets for passthrough and in-place instructions.
+  const HloDataflowAnalysis* dataflow_;
   absl::flat_hash_map<InstructionPair, RuntimeOrder> saved_relations_;
   HloInstructionMap<std::vector<HloInstruction*>> ctrl_deps_;
   absl::flat_hash_map<const HloComputation*, std::vector<ForcedTarget>>
@@ -497,6 +549,7 @@ CopyRemover::CopyRemover(
     : dataflow_(alias_analysis.dataflow_analysis()),
       alias_info_(alias_info),
       ordering_(ordering),
+      buffer_union_find_(alias_analysis.buffers().size()),
       view_color_(view_color) {
   // Assign postorder instruction ids (parameters first, callees before callers)
   // as a strict weak ordering tie breaker for sorting buffer values.
@@ -544,6 +597,7 @@ CopyRemover::CopyRemover(
   };
 
   absl::flat_hash_map<const HloValue*, ValueNode*> value_to_node;
+  int next_buf_id = 0;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     if (buffer.values().at(0)->defining_instruction()->IsFused()) {
       continue;
@@ -588,6 +642,10 @@ CopyRemover::CopyRemover(
     if (head == nullptr || tail == nullptr) {
       continue;
     }
+    const int buf_id = next_buf_id++;
+    for (const HloValue* value : values) {
+      value_to_buffer_[value] = buf_id;
+    }
     tail->next = head;
     head->prev = tail;
     value_lists_.insert(head);
@@ -631,8 +689,9 @@ void CopyRemover::AddViewUses(const HloValue* value, ValueNode* node) {
     const HloInstruction* view = worklist.back();
     worklist.pop_back();
     for (HloInstruction* user : view->users()) {
-      if (is_view(user) && (user->opcode() == HloOpcode::kBitcast ||
-                            user->opcode() == HloOpcode::kCopy)) {
+      if ((is_view(user) && (user->opcode() == HloOpcode::kBitcast ||
+                             user->opcode() == HloOpcode::kCopy)) ||
+          dataflow_.IsPassthrough(user)) {
         if (visited.insert(user).second) {
           worklist.push_back(user);
         }
@@ -730,7 +789,8 @@ bool CopyRemover::TryElideCopy(
       }
       return true;
     }
-    if (copy->operand(0)->opcode() == HloOpcode::kBroadcast) {
+    if (dataflow_.UnwrapPassthrough(copy->operand(0))->opcode() ==
+        HloOpcode::kBroadcast) {
       VLOG(2) << copy->name() << " copies a broadcast and is not ordered.";
       return false;
     }
@@ -793,7 +853,10 @@ bool CopyRemover::TryElideCopy(
       return false;
     }
     ValueNode merged(src->value);
+    merged.prev = &merged;
+    merged.next = &merged;
     merged.uses = dest->uses;
+    merged.root_positions = dest->root_positions;
     for (n = src->next; n != dest; n = n->next) {
       if (!LiveRangeBefore(merged, *n)) {
         VLOG(2) << copy->name()
@@ -816,6 +879,16 @@ void CopyRemover::RemoveCopyValue(ValueNode* copy_node,
   CHECK_NE(operand_node, copy_node);
   if (value_lists_.erase(copy_node) > 0) {
     value_lists_.insert(copy_node->next);
+  }
+  // Transfer computation root positions (remapping the elided ROOT copy itself
+  // to its operand, which becomes the new ROOT after ReplaceAllUsesWith) to
+  // `operand_node` so LiveRangeBefore and ForceRuntimeOrder see the live root.
+  for (HloInstruction* root_instr : copy_node->root_positions) {
+    HloInstruction* next_root =
+        (root_instr == copy) ? copy->mutable_operand(0) : root_instr;
+    if (!absl::c_linear_search(operand_node->root_positions, next_root)) {
+      operand_node->root_positions.push_back(next_root);
+    }
   }
 
   copy_node->prev->next = copy_node->next;
@@ -840,20 +913,35 @@ void CopyRemover::RemoveCopyValue(ValueNode* copy_node,
 }
 
 bool CopyRemover::LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
+  for (const HloInstruction* root_instr : a.root_positions) {
+    if (ordering_->call_graph().InstructionIsNestedIn(
+            b.value->defining_instruction(), root_instr->parent())) {
+      return false;
+    }
+  }
   if (a.uses.empty()) {
     return ordering_->IsDefinedBefore(*a.value, *b.value);
-  }
-  if (a.value->IsRootOf(b.value->defining_instruction()->parent())) {
-    return false;
   }
   return ordering_->UsesBeforeValueDefinition(
       a.uses, *b.value, dataflow_, alias_info_,
       /*use_is_always_before_def_in_same_instr=*/false);
 }
 
+bool CopyRemover::SameBuffer(const HloValue* a, const HloValue* b) const {
+  auto it_a = value_to_buffer_.find(a);
+  auto it_b = value_to_buffer_.find(b);
+  if (it_a == value_to_buffer_.end() || it_b == value_to_buffer_.end()) {
+    return false;
+  }
+  return buffer_union_find_.Find(it_a->second) ==
+         buffer_union_find_.Find(it_b->second);
+}
+
 void CopyRemover::SpliceAfter(ValueNode* head, ValueNode* insert_after) {
   DCHECK(IsHead(*head));
   value_lists_.erase(head);
+  buffer_union_find_.Merge(value_to_buffer_.at(head->value),
+                           value_to_buffer_.at(insert_after->value));
 
   ValueNode* tail = head->prev;
   tail->next = insert_after->next;
@@ -884,6 +972,12 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
         find_or_add_comp(use->instruction->parent())
             .push_back({use->instruction, {def, false}});
       }
+      for (HloInstruction* root_instr : node->root_positions) {
+        find_or_add_comp(root_instr->parent())
+            .push_back({root_instr,
+                        {root_instr != def ? def : nullptr, false,
+                         /*is_root_position=*/true}});
+      }
     });
     absl::c_sort(regions, [](const auto& a, const auto& b) {
       return a.first->unique_id() < b.first->unique_id();
@@ -898,6 +992,8 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
         if (out > 0 && instrs[out - 1].first == instrs[i].first) {
           instrs[out - 1].second.is_definition |=
               instrs[i].second.is_definition;
+          instrs[out - 1].second.is_root_position |=
+              instrs[i].second.is_root_position;
           if (instrs[i].second.value_definition != nullptr) {
             instrs[out - 1].second.value_definition =
                 instrs[i].second.value_definition;
@@ -928,15 +1024,18 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
             (dest_spliced_into_src ? any_intercept : r2.intercept));
   };
 
-  RelativeLocationAnalysis analysis(ordering_, alias_info_);
+  auto same_buffer = [this](const HloValue* a, const HloValue* b) {
+    return SameBuffer(a, b);
+  };
+  RelativeLocationAnalysis analysis(ordering_, alias_info_, &dataflow_);
   RegionRelation r1 =
-      analysis.Analyze(src_regions, dest_regions,
+      analysis.Analyze(src_regions, dest_regions, src->value, same_buffer,
                        [&](RegionRelation r) { return interferes(r, {}); });
   if (interferes(r1, {})) {
     return true;
   }
   RegionRelation r2 =
-      analysis.Analyze(dest_regions, src_regions,
+      analysis.Analyze(dest_regions, src_regions, dest->value, same_buffer,
                        [&](RegionRelation r) { return interferes(r1, r); });
   if (interferes(r1, r2)) {
     return true;

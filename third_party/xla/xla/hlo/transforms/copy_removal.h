@@ -23,9 +23,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_value.h"
+#include "xla/union_find.h"
 
 namespace xla {
 
@@ -65,10 +69,22 @@ class CopyRemover {
 
  private:
   struct ValueNode {
-    explicit ValueNode(const HloValue* v) : value(v) {}
+    explicit ValueNode(const HloValue* v) : value(v) {
+      CHECK_NE(v, nullptr);
+      for (const HloPosition& pos : v->positions()) {
+        if (pos.instruction->IsRoot() &&
+            !absl::c_linear_search(root_positions, pos.instruction)) {
+          root_positions.push_back(pos.instruction);
+        }
+      }
+    }
 
     const HloValue* value;
     std::vector<const HloUse*> uses;
+    // Computation root instructions where this value (or any elided copy
+    // merged into this node) appears, updated as copies are removed so
+    // computation root checks continue to see forwarded root positions.
+    absl::InlinedVector<HloInstruction*, 1> root_positions;
     ValueNode* prev = nullptr;
     ValueNode* next = nullptr;
   };
@@ -106,6 +122,9 @@ class CopyRemover {
   ValueNode* Prev(const ValueNode& node) const {
     return IsHead(node) ? nullptr : node.prev;
   }
+  // Returns whether `a` and `b` currently belong to the same buffer after
+  // accounting for any live ranges spliced together via `SpliceAfter`.
+  bool SameBuffer(const HloValue* a, const HloValue* b) const;
 
   const HloDataflowAnalysis& dataflow_;
   const AliasInfo* alias_info_;
@@ -114,6 +133,12 @@ class CopyRemover {
   std::deque<ValueNode> nodes_;
   absl::flat_hash_set<const ValueNode*> value_lists_;
   absl::flat_hash_map<const HloInstruction*, CopyNodes> copy_map_;
+  // Tracks equivalence classes of buffers merged via `SpliceAfter`, indexed by
+  // the integer buffer IDs in `value_to_buffer_`.
+  mutable DenseUnionFind buffer_union_find_;
+  // Maps each tracked `HloValue` to its initial buffer ID in
+  // `buffer_union_find_`.
+  absl::flat_hash_map<const HloValue*, int> value_to_buffer_;
 
   std::optional<int64_t> view_color_;
   std::deque<HloUse> view_uses_;

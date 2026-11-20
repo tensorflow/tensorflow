@@ -1228,6 +1228,7 @@ cc_library(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:union_find",
         "//xla:util",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",

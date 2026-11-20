@@ -6695,5 +6695,575 @@ ENTRY main {
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Bool());
 
+// Test-only predicate matching custom-call target "passthrough" for
+// readability; production code has no special handling for this target name.
+bool IsTestPassthroughCustomCall(const HloInstruction* inst) {
+  return inst->IsCustomCall("passthrough");
+}
+
+// Verifies that copy removal keeps copies whose source is read or modified in
+// place through array and tuple passthroughs (`a_copy`, `ic_copy`, and
+// `ic_tup_copy`).
+TEST_F(CopyInsertionTest,
+       CopyRemoverKeepsCopiesReadOrModifiedThroughPassthroughs) {
+  absl::string_view hlo_string = R"(
+HloModule PassthroughInterference, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,16]{1,0} parameter(0)
+  p1 = f32[8,16]{1,0} parameter(1)
+  u = f32[2,16]{1,0} parameter(2)
+  z = s32[] constant(0)
+  tok = token[] after-all()
+  a = f32[8,16]{1,0} add(p0, p1)
+  a_pass = f32[8,16]{1,0} custom-call(a), custom_call_target="passthrough"
+  a_copy = f32[8,16]{1,0} copy(a)
+  dus_a = f32[8,16]{1,0} dynamic-update-slice(a_copy, u, z, z)
+  tanh_a = f32[8,16]{1,0} tanh(a_pass)
+  outf = token[] outfeed(dus_a, tok)
+  ic_base = f32[2,16]{1,0} add(u, u)
+  ic_pass = f32[2,16]{1,0} custom-call(ic_base),
+      custom_call_target="passthrough"
+  ic_copy = f32[2,16]{1,0} copy(ic_base)
+  dus_ic = f32[2,16]{1,0} dynamic-update-slice(ic_pass, ic_copy, z, z)
+  ic_tup_base = f32[2,16]{1,0} add(u, dus_ic)
+  ic_tup = (f32[2,16]{1,0}, f32[2,16]{1,0}) tuple(ic_tup_base, u)
+  m_tup_ic = (f32[2,16]{1,0}, f32[2,16]{1,0}) custom-call(ic_tup),
+      custom_call_target="passthrough"
+  gte_ic = f32[2,16]{1,0} get-tuple-element(m_tup_ic), index=0
+  ic_tup_copy = f32[2,16]{1,0} copy(ic_tup_base)
+  dus_tup_ic = f32[2,16]{1,0} dynamic-update-slice(gte_ic, ic_tup_copy, z, z)
+  ROOT root = (f32[8,16]{1,0}, f32[2,16]{1,0}, f32[2,16]{1,0})
+      tuple(tanh_a, dus_ic, dus_tup_ic)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering ordering(module->schedule());
+  CopyRemover copy_remover(*module, *alias_analysis, &alias_info_, &ordering,
+                           /*execution_threads=*/{});
+  EXPECT_FALSE(
+      copy_remover.TryElideCopy(FindInstruction(module.get(), "a_copy")));
+  EXPECT_FALSE(
+      copy_remover.TryElideCopy(FindInstruction(module.get(), "ic_copy")));
+  EXPECT_FALSE(
+      copy_remover.TryElideCopy(FindInstruction(module.get(), "ic_tup_copy")));
+}
+
+// Verifies that copy removal keeps copies modified in place through
+// passthroughs inside `kCall` and `async-start` callees.
+TEST_F(CopyInsertionTest,
+       CopyRemoverKeepsCopiesModifiedInCalleesThroughPassthroughs) {
+  absl::string_view cross_comp_hlo = R"(
+HloModule CrossComputationPassthroughTest, is_scheduled=true
+
+ic_callee {
+  ic_p0 = f32[8]{0} parameter(0)
+  ic_u = f32[2]{0} parameter(1)
+  cz = s32[] constant(0)
+  m_inner = f32[8]{0} custom-call(ic_p0), custom_call_target="passthrough"
+  ic_sub_copy = f32[8]{0} copy(ic_p0)
+  ROOT dus_inner = f32[8]{0} dynamic-update-slice(m_inner, ic_sub_copy, cz)
+}
+
+async_ic_callee {
+  aic_p0 = f32[8]{0} parameter(0)
+  aic_u = f32[2]{0} parameter(1)
+  acz = s32[] constant(0)
+  m_ainner = f32[8]{0} custom-call(aic_p0), custom_call_target="passthrough"
+  aic_sub_copy = f32[8]{0} copy(aic_p0)
+  ROOT adus_inner = f32[8]{0} dynamic-update-slice(m_ainner, aic_sub_copy, acz)
+}, execution_thread="parallel"
+
+async_wrap_ic {
+  awp0 = f32[8]{0} parameter(0)
+  awp1 = f32[2]{0} parameter(1)
+  ROOT acall_ic = f32[8]{0} call(awp0, awp1), to_apply=async_ic_callee
+}, execution_thread="parallel"
+
+ENTRY main {
+  p_plain = f32[8]{0} parameter(0)
+  u = f32[2]{0} parameter(1)
+  ic_src = f32[8]{0} add(p_plain, p_plain)
+  call_ic = f32[8]{0} call(ic_src, u), to_apply=ic_callee
+  aic_src = f32[8]{0} add(p_plain, call_ic)
+  astart_ic = ((f32[8]{0}, f32[2]{0}), f32[8]{0}, u32[])
+      async-start(aic_src, u), async_execution_thread="parallel",
+      calls=async_wrap_ic
+  ROOT adone_ic = f32[8]{0} async-done(astart_ic)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cc_mod,
+                       ParseAndReturnVerifiedModule(cross_comp_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> cc_alias,
+                       HloAliasAnalysis::Run(cc_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering cc_ordering(cc_mod->schedule());
+  CopyRemover cc_remover(*cc_mod, *cc_alias, &alias_info_, &cc_ordering,
+                         /*execution_threads=*/{});
+  EXPECT_FALSE(
+      cc_remover.TryElideCopy(FindInstruction(cc_mod.get(), "ic_sub_copy")));
+  EXPECT_FALSE(
+      cc_remover.TryElideCopy(FindInstruction(cc_mod.get(), "aic_sub_copy")));
+}
+
+// Verifies that AddViewUses forwards a view read through a passthrough, so
+// `v_copy` is kept because `v_reader` reads view `v_view` through `v_pass`
+// after `dus_v` updates the copy in place.
+TEST_F(CopyInsertionTest, CopyRemoverForwardsViewUsesThroughPassthroughs) {
+  absl::string_view hlo_string = R"(
+HloModule PassthroughViewUses, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,16]{1,0} parameter(0)
+  p1 = f32[8,16]{1,0} parameter(1)
+  u = f32[2,16]{1,0} parameter(2)
+  z = s32[] constant(0)
+  tok = token[] after-all()
+  v_src = f32[8,16]{1,0} add(p0, p1)
+  v_view = f32[2,16]{1,0:S(7)} dynamic-slice(v_src, z, z),
+      dynamic_slice_sizes={2,16}
+  v_pass = f32[2,16]{1,0:S(7)} custom-call(v_view),
+      custom_call_target="passthrough"
+  v_copy = f32[8,16]{1,0} copy(v_src)
+  dus_v = f32[8,16]{1,0} dynamic-update-slice(v_copy, u, z, z)
+  v_reader = f32[2,16]{1,0} negate(v_pass)
+  outf_v = token[] outfeed(dus_v, tok)
+  ROOT root = f32[2,16]{1,0} add(v_reader, u)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering ordering(module->schedule());
+  CopyRemover copy_remover(*module, *alias_analysis, &alias_info_, &ordering,
+                           /*execution_threads=*/{}, /*view_color=*/7);
+  EXPECT_FALSE(
+      copy_remover.TryElideCopy(FindInstruction(module.get(), "v_copy")));
+}
+
+// Verifies that a passthrough computation root stays live until its
+// computation exits when the root is scheduled after an in-place update.
+TEST_F(CopyInsertionTest, CopyRemoverKeepsPassthroughRootLiveUntilExit) {
+  absl::string_view root_hlo = R"(
+HloModule RootPassthroughElisionTest, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  u = f32[2]{0} parameter(2)
+  z = s32[] constant(0)
+  tok = token[] after-all()
+  x = f32[8]{0} add(p0, p1)
+  c1 = f32[8]{0} copy(x)
+  c_dus = f32[8]{0} copy(x)
+  dus = f32[8]{0} dynamic-update-slice(c_dus, u, z)
+  outf = token[] outfeed(dus, tok)
+  m_root = f32[8]{0} custom-call(c1), custom_call_target="passthrough"
+  ROOT c2 = f32[8]{0} copy(m_root)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> root_mod,
+                       ParseAndReturnVerifiedModule(root_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> root_alias,
+                       HloAliasAnalysis::Run(root_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering root_ordering(root_mod->schedule());
+  CopyRemover root_remover(*root_mod, *root_alias, &alias_info_, &root_ordering,
+                           /*execution_threads=*/{});
+  EXPECT_TRUE(root_remover.TryElideCopy(FindInstruction(root_mod.get(), "c1")));
+  ASSERT_OK(FindInstruction(root_mod.get(), "c1")
+                ->ReplaceAllUsesWith(FindInstruction(root_mod.get(), "x")));
+  EXPECT_TRUE(root_remover.TryElideCopy(FindInstruction(root_mod.get(), "c2")));
+  root_mod->entry_computation()->set_root_instruction(
+      FindInstruction(root_mod.get(), "m_root"));
+  EXPECT_FALSE(
+      root_remover.TryElideCopy(FindInstruction(root_mod.get(), "c_dus")));
+}
+
+// Verifies that `LiveRangeBefore` keeps a passthrough computation root live
+// when an in-place update runs in a called subcomputation.
+TEST_F(CopyInsertionTest,
+       CopyRemoverKeepsPassthroughRootLiveAcrossCalleeUpdate) {
+  absl::string_view root_call_hlo = R"(
+HloModule RootPassthroughCallSubcompTest, is_scheduled=true
+
+callee {
+  cp0 = f32[8]{0} parameter(0)
+  cp1 = f32[2]{0} parameter(1)
+  cz = s32[] constant(0)
+  ROOT cdus = f32[8]{0} dynamic-update-slice(cp0, cp1, cz)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  u = f32[2]{0} parameter(2)
+  tok = token[] after-all()
+  x = f32[8]{0} add(p0, p1)
+  c1 = f32[8]{0} copy(x)
+  m_root = f32[8]{0} custom-call(c1), custom_call_target="passthrough"
+  c_call = f32[8]{0} copy(x)
+  call_op = f32[8]{0} call(c_call, u), to_apply=callee
+  outf_call = token[] outfeed(call_op, tok)
+  ROOT c2 = f32[8]{0} copy(m_root)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> root_call_mod,
+                       ParseAndReturnVerifiedModule(root_call_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> root_call_alias,
+                       HloAliasAnalysis::Run(root_call_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering root_call_ordering(root_call_mod->schedule());
+  CopyRemover root_call_remover(*root_call_mod, *root_call_alias, &alias_info_,
+                                &root_call_ordering, /*execution_threads=*/{});
+  EXPECT_TRUE(root_call_remover.TryElideCopy(
+      FindInstruction(root_call_mod.get(), "c1")));
+  ASSERT_OK(
+      FindInstruction(root_call_mod.get(), "c1")
+          ->ReplaceAllUsesWith(FindInstruction(root_call_mod.get(), "x")));
+  EXPECT_TRUE(root_call_remover.TryElideCopy(
+      FindInstruction(root_call_mod.get(), "c2")));
+  root_call_mod->entry_computation()->set_root_instruction(
+      FindInstruction(root_call_mod.get(), "m_root"));
+  EXPECT_FALSE(root_call_remover.TryElideCopy(
+      FindInstruction(root_call_mod.get(), "c_call")));
+}
+
+// Verifies `same_list` copy elision (`merged.root_positions`) when an
+// intervening conditional branch value lies between `src` and `dest` and `dest`
+// holds a passthrough computation root whose root copy was already elided.
+TEST_F(CopyInsertionTest,
+       CopyRemoverKeepsPassthroughRootLiveInSameListElision) {
+  absl::string_view same_list_hlo = R"(
+HloModule SameListPassthroughRootTest, is_scheduled=true,
+    input_output_alias={ {}: (1, {}) }
+
+b0 {
+  ROOT bp0 = f32[8]{0} parameter(0)
+}
+
+b1 {
+  bp1 = f32[8]{0} parameter(0)
+  ROOT b1_neg = f32[8]{0} negate(bp1)
+}
+
+ENTRY main {
+  pred1 = pred[] parameter(0)
+  p0 = f32[8]{0} parameter(1)
+  p1 = f32[8]{0} parameter(2)
+  tok = token[] after-all()
+  cond0 = f32[8]{0} conditional(pred1, p0, p1),
+      true_computation=b0, false_computation=b1
+  outf = token[] outfeed(cond0, tok)
+  c_mid = f32[8]{0} copy(p0)
+  m_root = f32[8]{0} custom-call(c_mid), custom_call_target="passthrough"
+  ROOT c_root = f32[8]{0} copy(m_root)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> same_mod,
+                       ParseAndReturnVerifiedModule(same_list_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> same_alias,
+                       HloAliasAnalysis::Run(same_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  SequentialHloOrdering same_ordering(same_mod->schedule());
+  CopyRemover same_remover(*same_mod, *same_alias, &alias_info_, &same_ordering,
+                           /*execution_threads=*/{});
+  EXPECT_TRUE(
+      same_remover.TryElideCopy(FindInstruction(same_mod.get(), "c_root")));
+  same_mod->entry_computation()->set_root_instruction(
+      FindInstruction(same_mod.get(), "m_root"));
+  EXPECT_FALSE(
+      same_remover.TryElideCopy(FindInstruction(same_mod.get(), "c_mid")));
+}
+
+// Verifies `ForceRuntimeOrder`'s `can_order` through array and tuple
+// passthroughs and unordered root passthrough ordering on unscheduled modules.
+TEST_F(CopyInsertionTest,
+       CopyRemoverOrdersUnscheduledPassthroughsAndUnorderedRoot) {
+  absl::string_view unscheduled_hlo = R"(
+HloModule UnscheduledModifiesNonCopyTest
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  u = f32[2]{0} parameter(2)
+  z = s32[] constant(0)
+  tok = token[] after-all()
+  x = f32[8]{0} add(p0, p1)
+  x_pass = f32[8]{0} custom-call(x), custom_call_target="passthrough"
+  dus = f32[8]{0} dynamic-update-slice(x_pass, u, z)
+  c_save = f32[8]{0} copy(x)
+  dus2 = f32[8]{0} dynamic-update-slice(c_save, u, z)
+  outf = token[] outfeed(dus, tok)
+  outf2 = token[] outfeed(dus2, outf)
+  xt = f32[8]{0} subtract(p0, p1)
+  tup_xt = (f32[8]{0}, f32[8]{0}) tuple(xt, p1)
+  m_xt = (f32[8]{0}, f32[8]{0}) custom-call(tup_xt),
+      custom_call_target="passthrough"
+  gte_xt = f32[8]{0} get-tuple-element(m_xt), index=0
+  dus_xt = f32[8]{0} dynamic-update-slice(gte_xt, u, z)
+  c_save_tup = f32[8]{0} copy(xt)
+  dus_xt2 = f32[8]{0} dynamic-update-slice(c_save_tup, u, z)
+  outf_xt = token[] outfeed(dus_xt, outf2)
+  outf_xt2 = token[] outfeed(dus_xt2, outf_xt)
+  y = f32[8]{0} multiply(p0, p1)
+  m_root = f32[8]{0} custom-call(y), custom_call_target="passthrough"
+  c_dus_root = f32[8]{0} copy(y)
+  dus_root = f32[8]{0} dynamic-update-slice(c_dus_root, u, z)
+  outf3 = token[] outfeed(dus_root, outf_xt2)
+  ROOT c_root = f32[8]{0} copy(m_root)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unsch_mod,
+                       ParseAndReturnVerifiedModule(unscheduled_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> unsch_alias,
+                       HloAliasAnalysis::Run(unsch_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  DependencyHloOrdering dep_ordering(unsch_mod.get());
+  CopyRemover unsch_remover(*unsch_mod, *unsch_alias, &alias_info_,
+                            &dep_ordering, /*execution_threads=*/{});
+  EXPECT_FALSE(
+      unsch_remover.TryElideCopy(FindInstruction(unsch_mod.get(), "c_save")));
+  EXPECT_FALSE(unsch_remover.TryElideCopy(
+      FindInstruction(unsch_mod.get(), "c_save_tup")));
+  EXPECT_TRUE(
+      unsch_remover.TryElideCopy(FindInstruction(unsch_mod.get(), "c_root")));
+  unsch_mod->entry_computation()->set_root_instruction(
+      FindInstruction(unsch_mod.get(), "m_root"));
+  EXPECT_FALSE(unsch_remover.TryElideCopy(
+      FindInstruction(unsch_mod.get(), "c_dus_root")));
+}
+
+// Verifies overlap reporting without pushing an already ordered root
+// definition into `unordered_ops` when another `src` use follows `dest`.
+TEST_F(CopyInsertionTest, CopyRemoverReportsOverlapForFollowedRootDefinition) {
+  absl::string_view root_def_hlo = R"(
+HloModule RootDefinitionOverlapTest
+
+branch_0 {
+  ROOT p_b0 = f32[8]{0} parameter(0)
+}
+
+branch_1 {
+  ROOT p_b1 = f32[8]{0} parameter(0)
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  p0 = f32[8]{0} parameter(1)
+  ROOT r = (f32[8]{0}, f32[8]{0}) custom-call(p0), custom_call_target="two_out"
+  gte0 = f32[8]{0} get-tuple-element(r), index=0
+  gte1 = f32[8]{0} get-tuple-element(r), index=1
+  instr2 = f32[8]{0} negate(gte1)
+  idx = s32[] custom-call(instr2), custom_call_target="to_idx"
+  u_use = f32[2]{0} dynamic-slice(gte0, idx), dynamic_slice_sizes={2}
+  c = f32[8]{0} copy(gte0)
+  cond = f32[8]{0} conditional(pred_param, instr2, c),
+      true_computation=branch_0, false_computation=branch_1
+  tok = token[] after-all()
+  outf1 = token[] outfeed(u_use, tok)
+  outf2 = token[] outfeed(cond, outf1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> root_def_mod,
+                       ParseAndReturnVerifiedModule(root_def_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> root_def_alias,
+                       HloAliasAnalysis::Run(root_def_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  DependencyHloOrdering root_def_ordering(root_def_mod.get());
+  CopyRemover root_def_remover(*root_def_mod, *root_def_alias, &alias_info_,
+                               &root_def_ordering, /*execution_threads=*/{});
+  EXPECT_FALSE(
+      root_def_remover.TryElideCopy(FindInstruction(root_def_mod.get(), "c")));
+}
+
+// Verifies pure root definitions (`root_instr != def`) leave
+// `value_definition` null so an unordered definition inside a called
+// subcomputation does not set `r2.intercept` against an aliased
+// entry root on modules without passthroughs.
+TEST_F(CopyInsertionTest, CopyRemoverAllowsPureRootDefInSubcomputation) {
+  absl::string_view aliased_root_hlo = R"(
+HloModule PureRootDefNoSelfUseTest, input_output_alias={ {}: (1, {}) }
+
+b0 {
+  ROOT bp0 = f32[8]{0} parameter(0)
+}
+
+callee {
+  cp1 = f32[8]{0} parameter(0)
+  x = f32[8]{0} add(cp1, cp1)
+  ROOT c_alias = f32[8]{0} copy(x)
+}
+
+b1 {
+  bp1 = f32[8]{0} parameter(0)
+  ROOT call_op = f32[8]{0} call(bp1), to_apply=callee
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  p0 = f32[8]{0} parameter(1)
+  p1 = f32[8]{0} parameter(2)
+  p2 = f32[8]{0} parameter(3)
+  tok = token[] after-all()
+  cond0 = f32[8]{0} conditional(pred_param, p0, p1),
+      true_computation=b0, false_computation=b1
+  outf = token[] outfeed(cond0, tok)
+  ROOT r = f32[8]{0} negate(p2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> aliased_mod,
+                       ParseAndReturnVerifiedModule(aliased_root_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aliased_alias,
+                       HloAliasAnalysis::Run(aliased_mod.get(), &alias_info_));
+  DependencyHloOrdering aliased_ordering(aliased_mod.get());
+  CopyRemover aliased_remover(*aliased_mod, *aliased_alias, &alias_info_,
+                              &aliased_ordering, /*execution_threads=*/{});
+  EXPECT_TRUE(aliased_remover.TryElideCopy(
+      FindInstruction(aliased_mod.get(), "c_alias")));
+}
+
+// Verifies `ForceRuntimeOrder`'s `can_order` through an SSA phi
+// `kConditional` on an unscheduled module.
+TEST_F(CopyInsertionTest, CopyRemoverOrdersUnscheduledPhiModifiesNonCopy) {
+  absl::string_view phi_modifies_hlo = R"(
+HloModule UnscheduledPhiModifiesNonCopyTest
+
+b0 {
+  ROOT bp0 = f32[8]{0} parameter(0)
+}
+
+b1 {
+  ROOT bp1 = f32[8]{0} parameter(0)
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  p0 = f32[8]{0} parameter(1)
+  p1 = f32[8]{0} parameter(2)
+  u = f32[2]{0} parameter(3)
+  z = s32[] constant(0)
+  tok = token[] after-all()
+  x = f32[8]{0} add(p0, p1)
+  y = f32[8]{0} multiply(p0, p1)
+  cond_phi = f32[8]{0} conditional(pred_param, x, y),
+      true_computation=b0, false_computation=b1
+  dus_phi = f32[8]{0} dynamic-update-slice(cond_phi, u, z)
+  c_save_phi = f32[8]{0} copy(x)
+  dus_save_phi = f32[8]{0} dynamic-update-slice(c_save_phi, u, z)
+  outf1 = token[] outfeed(dus_phi, tok)
+  ROOT outf2 = token[] outfeed(dus_save_phi, outf1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> phi_mod,
+                       ParseAndReturnVerifiedModule(phi_modifies_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> phi_alias,
+                       HloAliasAnalysis::Run(phi_mod.get(), &alias_info_,
+                                             IsTestPassthroughCustomCall));
+  DependencyHloOrdering phi_ordering(phi_mod.get());
+  CopyRemover phi_remover(*phi_mod, *phi_alias, &alias_info_, &phi_ordering,
+                          /*execution_threads=*/{});
+  EXPECT_FALSE(
+      phi_remover.TryElideCopy(FindInstruction(phi_mod.get(), "c_save_phi")));
+}
+
+TEST_F(CopyInsertionTest, ElidesCopyAfterConditionalRoot) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule ConditionalRootFalseInterference, is_scheduled=true
+
+b0 {
+  bp0 = f32[8]{0} parameter(0)
+  ROOT r0 = f32[8]{0} negate(bp0)
+}
+
+b1 {
+  bp1 = f32[8]{0} parameter(0)
+  ROOT r1 = f32[8]{0} add(bp1, bp1)
+}
+
+ENTRY main {
+  pred_param = pred[] parameter(0)
+  p0 = f32[8]{0} parameter(1)
+  p1 = f32[8]{0} parameter(2)
+  u = f32[2]{0} parameter(3)
+  z = s32[] constant(0)
+  cond = f32[8]{0} conditional(pred_param, p0, p1), true_computation=b0,
+      false_computation=b1
+  c = f32[8]{0} copy(cond)
+  dus = f32[8]{0} dynamic-update-slice(c, u, z)
+  ROOT out = f32[8]{0} negate(dus)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  SequentialHloOrdering ordering(module->schedule());
+  CopyRemover copy_remover(*module, *alias_analysis, &alias_info_, &ordering,
+                           /*execution_threads=*/{});
+  EXPECT_TRUE(copy_remover.TryElideCopy(FindInstruction(module.get(), "c")));
+}
+
+TEST_F(CopyInsertionTest, RootAfterEndDoesNotForceBackwardControlOrder) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule RootAfterEndForcedOrderCycle
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  u = f32[2]{0} parameter(1)
+  z = s32[] constant(0)
+  ROOT r = f32[8]{0} add(p0, p0)
+  c = f32[8]{0} copy(r)
+  dus = f32[8]{0} dynamic-update-slice(c, u, z)
+  tok = token[] after-all()
+  outf = token[] outfeed(dus, tok)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  DependencyHloOrdering ordering(module.get());
+  CopyRemover copy_remover(*module, *alias_analysis, &alias_info_, &ordering,
+                           /*execution_threads=*/{});
+  EXPECT_FALSE(copy_remover.TryElideCopy(FindInstruction(module.get(), "c")));
+}
+
+TEST_F(CopyInsertionTest, PreservesSecondCopyWhenRootCopyIsElidedFirst) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule ElidedRootCopyLosesRootPosition, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  u = f32[2]{0} parameter(2)
+  z = s32[] constant(0)
+  t = token[] after-all()
+  x = f32[8]{0} add(p0, p1)
+  ROOT c_root = f32[8]{0} copy(x)
+  c2 = f32[8]{0} copy(x)
+  dus = f32[8]{0} dynamic-update-slice(c2, u, z)
+  outf = token[] outfeed(dus, t)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  SequentialHloOrdering ordering(module->schedule());
+  CopyRemover copy_remover(*module, *alias_analysis, &alias_info_, &ordering,
+                           /*execution_threads=*/{});
+  HloInstruction* c_root = FindInstruction(module.get(), "c_root");
+  EXPECT_TRUE(copy_remover.TryElideCopy(c_root));
+  ASSERT_OK(c_root->ReplaceAllUsesWith(c_root->mutable_operand(0)));
+  EXPECT_FALSE(copy_remover.TryElideCopy(FindInstruction(module.get(), "c2")));
+}
+
 }  // namespace
 }  // namespace xla
