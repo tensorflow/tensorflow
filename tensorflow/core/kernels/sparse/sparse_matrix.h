@@ -23,7 +23,6 @@ limitations under the License.
 #endif
 
 #include <cstdint>
-#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -169,6 +168,15 @@ class CSRSparseMatrix {
                                   batch_pointers_, row_pointers_, col_indices_,
                                   values_);
   }
+
+  // Validates that `dense_shape` describes a (batched) CSR matrix whose
+  // components can be indexed with int32: it must be an int64 vector of size
+  // 2 or 3 with non-negative dimensions, each less than Int32Max, and the
+  // implied row_pointers size batch_size * (num_rows + 1) must be at most
+  // Int32Max. Each dimension is bounded before multiplying, so the check itself
+  // cannot overflow. Ops should call this before allocating batch or row
+  // pointers from a dense shape.
+  static absl::Status ValidateDenseShape(const Tensor& dense_shape);
 
   void Clear() {
     metadata_ = {false, DT_INVALID};
@@ -488,41 +496,11 @@ class CSRSparseMatrix {
           "CSRSparseMatrix::Validate: dtype = ", DataTypeString(dtype),
           " not in {float32, float64, complex64, complex128}"));
     }
-    // dense_shape checks
-    if (dense_shape.dtype() != DT_INT64) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("CSRSparseMatrix::Validate: dense_shape.dtype() = ",
-                       DataTypeString(dense_shape.dtype()), " != int64"));
-    }
-    if (dense_shape.dims() != 1) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "CSRSparseMatrix::Validate: dense_shape should be a vector, but saw "
-          "tensor: ",
-          dense_shape.DebugString()));
-    }
-    int rank = dense_shape.dim_size(0);
-    if (rank < 2 || rank > 3) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "CSRSparseMatrix::Validate: dense_shape should be a 2- or 3- vector, "
-          "but saw: ",
-          dense_shape.SummarizeValue(5)));
-    }
+    TF_RETURN_IF_ERROR(ValidateDenseShape(dense_shape));
+    const int rank = dense_shape.dim_size(0);
     auto dense_shape_t = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
     const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
-    const int64_t num_cols = (rank == 2) ? dense_shape_t(1) : dense_shape_t(2);
-    if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
-          dense_shape.SummarizeValue(5)));
-    }
-    if (num_rows == std::numeric_limits<int64_t>::max() ||
-        (batch_size > 0 &&
-         (num_rows + 1) > std::numeric_limits<int64_t>::max() / batch_size)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "CSRSparseMatrix::Validate: dense_shape dimensions overflow int64: ",
-          dense_shape.SummarizeValue(5)));
-    }
 
     if (batch_pointers.dtype() != DT_INT32) {
       return absl::InvalidArgumentError(

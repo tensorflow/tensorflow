@@ -22,15 +22,70 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
 #include <cstdint>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
 constexpr const char CSRSparseMatrix::kTypeName[];
+
+absl::Status CSRSparseMatrix::ValidateDenseShape(const Tensor& dense_shape) {
+  if (dense_shape.dtype() != DT_INT64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("CSRSparseMatrix::Validate: dense_shape.dtype() = ",
+                     DataTypeString(dense_shape.dtype()), " != int64"));
+  }
+  if (dense_shape.dims() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape should be a vector, but saw "
+        "tensor: ",
+        dense_shape.DebugString()));
+  }
+  const int64_t rank = dense_shape.dim_size(0);
+  if (rank < 2 || rank > 3) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape should be a 2- or 3- vector, "
+        "but saw: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  const auto dense_shape_vec = dense_shape.vec<int64_t>();
+  const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
+  const int64_t num_rows =
+      (rank == 2) ? dense_shape_vec(0) : dense_shape_vec(1);
+  const int64_t num_cols =
+      (rank == 2) ? dense_shape_vec(1) : dense_shape_vec(2);
+  if (batch_size < 0 || num_rows < 0 || num_cols < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape has a negative dimension: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  // The batch, row and column offsets are stored and computed as int32, so
+  // bound every dimension first. This also keeps the row pointers size below
+  // from overflowing int64.
+  constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
+  if (batch_size >= kInt32Max || num_rows >= kInt32Max ||
+      num_cols >= kInt32Max) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CSRSparseMatrix::Validate: dense_shape dimensions must be < "
+        "Int32Max, but saw: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  const int64_t row_pointers_size = batch_size * (num_rows + 1);
+  if (row_pointers_size > kInt32Max) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CSRSparseMatrix::Validate: row_pointers size batch_size * (num_rows "
+        "+ 1) = ",
+        row_pointers_size, " must be <= Int32Max for dense_shape: ",
+        dense_shape.SummarizeValue(5)));
+  }
+  return absl::OkStatus();
+}
 
 absl::Status CSRSparseMatrix::ValidateComponentValues(
     const Tensor& dense_shape, const Tensor& batch_pointers,

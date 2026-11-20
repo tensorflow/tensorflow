@@ -185,6 +185,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     if (rank == 3) output_shape_vec(0) = batch_size;
     output_shape_vec(row_dim) = a_shape.dim_size(row_dim);
     output_shape_vec(row_dim + 1) = b_shape.dim_size(row_dim + 1);
+    OP_REQUIRES_OK(ctx, CSRSparseMatrix::ValidateDenseShape(output_shape));
 
     // Set batch pointers.
     Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
@@ -403,6 +404,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
         a_tensor_shape.dim_size(transpose_a_ ? row_dim + 1 : row_dim);
     c_dense_shape(row_dim + 1) =
         b_tensor_shape.dim_size(transpose_b_ ? row_dim : row_dim + 1);
+    OP_REQUIRES_OK(ctx, CSRSparseMatrix::ValidateDenseShape(c_dense_shape_t));
 
     const int64_t rows = c_dense_shape((rank == 2) ? 0 : 1);
 

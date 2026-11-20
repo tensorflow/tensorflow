@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <limits>
+#include <utility>
 
 #define EIGEN_USE_THREADS
 
@@ -20,13 +22,16 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -36,6 +41,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif
@@ -69,6 +75,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("SparseTensor must have rank 2 or 3; ",
                                  "but indices has rank: ", rank)));
+    // Bound the dense_shape dimensions before allocating the batch and row
+    // pointers from them.
+    OP_REQUIRES_OK(ctx, CSRSparseMatrix::ValidateDenseShape(dense_shape));
     auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
@@ -76,22 +85,12 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = values.NumElements();
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
-    OP_REQUIRES(ctx, batch_size < kInt32Max,
-                absl::InvalidArgumentError(
-                    absl::StrCat("dense_shape batch_size must be < Int32Max,"
-                                 " but the input value is ",
-                                 batch_size)));
     OP_REQUIRES(ctx, total_nnz <= kInt32Max,
                 absl::InvalidArgumentError(
                     absl::StrCat("values number of elements must be <="
                                  " Int32Max, but the input value is ",
                                  total_nnz)));
-    OP_REQUIRES(ctx, (num_rows + 1) * batch_size <= kInt32Max,
-                absl::InvalidArgumentError(
-                    absl::StrCat("The csr row index size, computed based on the"
-                                 " dense_shape, must be <= Int32Max, but is too"
-                                 " large. Current value is ",
-                                 (num_rows + 1) * batch_size)));
+    const int64_t csr_row_ind_size = batch_size * (num_rows + 1);
 
     // Allocate output Tensors.
     TensorShape batch_ptr_shape;
@@ -103,8 +102,8 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
         ctx, TensorShape::BuildTensorShape({total_nnz}, &csr_col_ind_shape));
     Tensor csr_col_ind(cpu_allocator(), DT_INT32, csr_col_ind_shape);
     TensorShape csr_row_ind_shape;
-    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
-                            {(num_rows + 1) * batch_size}, &csr_row_ind_shape));
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape({csr_row_ind_size},
+                                                      &csr_row_ind_shape));
     Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
@@ -163,31 +162,23 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                           absl::StrCat("SparseTensor must have rank 2 or 3; ",
                                        "but indices has rank:", rank)),
                       done);
+    // Bound the dense_shape dimensions before allocating the batch and row
+    // pointers from them.
+    OP_REQUIRES_OK_ASYNC(c, CSRSparseMatrix::ValidateDenseShape(dense_shape_t),
+                         done);
     auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
 
     static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
-    OP_REQUIRES_ASYNC(c, batch_size < kInt32Max,
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "dense_shape batch_size must be < Int32Max,"
-                          " but the input value is ",
-                          batch_size)),
-                      done);
     OP_REQUIRES_ASYNC(c, values_t.NumElements() <= kInt32Max,
                       absl::InvalidArgumentError(
                           absl::StrCat("values number of elements must be <="
                                        " Int32Max, but the input value is ",
                                        values_t.NumElements())),
                       done);
-    OP_REQUIRES_ASYNC(c, (rows + 1) * batch_size <= kInt32Max,
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "The csr row index size, computed based on the"
-                          " dense_shape, must be <= Int32Max, but is too"
-                          " large. Current value is ",
-                          (rows + 1) * batch_size)),
-                      done);
+    const int64_t csr_row_ind_size = batch_size * (rows + 1);
 
     ScratchSpace<int32_t> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 
@@ -221,10 +212,10 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     }
 
     TensorReference nnz_per_batch_device_ref(nnz_per_batch_device_t);
-    auto convert_to_csr = [this, c, batch_size, nnz_per_batch_host,
-                           nnz_per_batch_device_ref, stream, &d, &values_t,
-                           &indices_t, &dense_shape_t, dense_shape, rows, cols,
-                           rank, done]() {
+    auto convert_to_csr = [this, c, batch_size, csr_row_ind_size,
+                           nnz_per_batch_host, nnz_per_batch_device_ref, stream,
+                           &d, &values_t, &indices_t, &dense_shape_t,
+                           dense_shape, rows, cols, rank, done]() {
       // The data has been copied out of the nnz_per_batch_device
       // tensor by the time we get here; we can unreference it.
       nnz_per_batch_device_ref.Unref();
@@ -272,7 +263,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             done);
         OP_REQUIRES_OK_ASYNC(
             c,
-            c->allocate_temp(DT_INT32, TensorShape({batch_size * (rows + 1)}),
+            c->allocate_temp(DT_INT32, TensorShape({csr_row_ind_size}),
                              &csr_row_ptr_t),
             done);
 
