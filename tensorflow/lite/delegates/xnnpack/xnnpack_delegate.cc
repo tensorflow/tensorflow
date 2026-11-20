@@ -137,7 +137,10 @@ bool CheckFp16Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
   DequantizeFloat16(reinterpret_cast<uint16_t*>(scale.data.data),
                     dequantized_scale.data(), num_scales);
   for (int i = 0; i < num_scales; i++) {
-    if (!std::isnormal(dequantized_scale[i]) || dequantized_scale[i] <= 0.0f) {
+    // Allow 0.0 for all-zero/near-zero blocks; non-zero FP16 subnormals are
+    // normal in FP32, while negative/Inf/NaN remain rejected.
+    const float s = dequantized_scale[i];
+    if (s < 0.0f || (s != 0.0f && !std::isnormal(s))) {
       TF_LITE_KERNEL_LOG(context,
                          "unsupported scale value (%f) in channel %d for "
                          "%s tensor %d in XNNPACK delegate",
