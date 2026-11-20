@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -562,6 +563,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
       std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
+      params.expose_buffer_assignment_proto,
       std::move(params.buffer_allocations_debug_summary),
       collective_use_minimal_resource, std::move(params.gpu_topology),
       *std::move(module_config_metadata)));
@@ -583,11 +585,12 @@ GpuExecutable::GpuExecutable(
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
+    bool expose_buffer_assignment_proto,
     std::string buffer_allocations_debug_summary,
     bool collective_use_minimal_resource,
     std::optional<GpuTopology> gpu_topology,
     ModuleConfigMetadata module_config_metadata)
-    : Executable(std::move(debug_module)),
+    : HloModuleExecutable(std::move(debug_module)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
@@ -604,6 +607,7 @@ GpuExecutable::GpuExecutable(
           GatherAllocationPtrs(allocations, thunk_pass_allocations)),
       allocations_(std::move(allocations)),
       buffer_assignment_proto_(std::move(buffer_assignment_proto)),
+      expose_buffer_assignment_proto_(expose_buffer_assignment_proto),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(alias_info)),
       runtime_debug_options_(std::move(module_config_metadata.debug_options)),
@@ -1616,9 +1620,15 @@ void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
   }
 }
 
-const BufferAssignmentProto& GpuExecutable::buffer_assignment_proto() const {
+const BufferAssignmentProto& GpuExecutable::owned_buffer_assignment_proto()
+    const {
   return buffer_assignment_proto_;
 }
+
+const BufferAssignmentProto* GpuExecutable::buffer_assignment_proto() const {
+  return expose_buffer_assignment_proto_ ? &buffer_assignment_proto_ : nullptr;
+}
+
 absl::Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations,
     const ServiceExecutableRunOptions* run_options,

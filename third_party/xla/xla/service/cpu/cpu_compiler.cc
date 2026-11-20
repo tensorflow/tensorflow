@@ -204,7 +204,6 @@ limitations under the License.
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/executable.h"
 #include "xla/service/float_support.h"
-#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
@@ -1494,19 +1493,15 @@ CpuCompiler::CompileCpuExecutable(
   DumpHloModuleIfEnabled(*module, *assignment,
                          absl::StrCat("cpu_", kAfterOptimizationsDumpName));
 
-  // Dump computation proto state and buffer assignment for
-  // GetCompiledMemoryStats results.
-  auto with_hlo_proto = [&](std::unique_ptr<CpuExecutable> cpu_executable) {
-    if (embed_ir_in_executable) {
-      auto hlo_proto = std::make_unique<HloProto>();
-      *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
-      *hlo_proto->mutable_buffer_assignment() =
-          cpu_executable->buffer_assignment().ToProto();
-      StripPayloadFromLiteralProto(*hlo_proto);
-      cpu_executable->set_hlo_proto(std::move(hlo_proto));
-    }
-    return cpu_executable;
-  };
+  // Expose the buffer assignment for GetCompiledMemoryStats results.
+  auto with_buffer_assignment_proto =
+      [&](std::unique_ptr<CpuExecutable> cpu_executable) {
+        if (embed_ir_in_executable) {
+          cpu_executable->set_buffer_assignment_proto(
+              cpu_executable->buffer_assignment().ToProto());
+        }
+        return cpu_executable;
+      };
 
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolve kernels in the compiled LLVM modules and execute them together
@@ -1636,7 +1631,7 @@ CpuCompiler::CompileCpuExecutable(
     cpu_executable->set_ir_module_string(ir_module_string);
   }
 
-  return with_hlo_proto(std::move(cpu_executable));
+  return with_buffer_assignment_proto(std::move(cpu_executable));
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
