@@ -156,48 +156,59 @@ bool ArenaPlanner::InputTensorCanBeShared(const TfLiteTensor& input_tensor,
 // Subgraph inputs and outputs cannot be shared.
 void ArenaPlanner::IdentifyInPlaceTensors() {
   actual_tensor_id_.clear();
+  std::vector<int> remaining_refcounts = refcounts_;
   const int num_execution_nodes = graph_info_->num_execution_nodes();
   TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < num_execution_nodes; ++i) {
     const TfLiteRegistration& registration = graph_info_->registration(i);
     const TfLiteNode& node = graph_info_->node(i);
-    if (node.outputs->size < 1) continue;
-    bool tensor_changed =
-        !(registration.inplace_operator & kTfLiteInplaceOpDataUnmodified);
-    if (registration.inplace_operator == kTfLiteInplaceOpNone) {
-      continue;
-    }
-    int32_t input_id = -1;
-    int32_t output_id = node.outputs->data[0];
-    const TfLiteTensor& output_tensor = tensors[output_id];
-    const int loop_end =
-        std::min(kTfLiteMaxSharableOpInputs, node.inputs->size);
-    for (int i = 0; i < loop_end; ++i) {
-      if (node.inputs->data[i] == kTfLiteOptionalTensor) {
-        continue;
-      }
-      const bool input_shareable =
-          registration.inplace_operator & (kTfLiteInplaceOpInput0Shared << i);
-      if (input_shareable) {
-        const TfLiteTensor& input_tensor = tensors[node.inputs->data[i]];
-        if (InputTensorCanBeShared(input_tensor, output_tensor,
-                                   node.inputs->data[i], output_id,
-                                   tensor_changed)) {
-          input_id = node.inputs->data[i];
+    if (node.outputs->size >= 1 &&
+        registration.inplace_operator != kTfLiteInplaceOpNone) {
+      const bool tensor_changed =
+          !(registration.inplace_operator & kTfLiteInplaceOpDataUnmodified);
+      const int32_t output_id = node.outputs->data[0];
+      if (output_id != kTfLiteOptionalTensor) {
+        const TfLiteTensor& output_tensor = tensors[output_id];
+        const int loop_end =
+            std::min(kTfLiteMaxSharableOpInputs, node.inputs->size);
+        for (int j = 0; j < loop_end; ++j) {
+          const int32_t candidate_input_id = node.inputs->data[j];
+          if (candidate_input_id == kTfLiteOptionalTensor) {
+            continue;
+          }
+          const bool input_shareable = registration.inplace_operator &
+                                       (kTfLiteInplaceOpInput0Shared << j);
+          if (!input_shareable) {
+            continue;
+          }
+          const TfLiteTensor& input_tensor = tensors[candidate_input_id];
+          if (!InputTensorCanBeShared(input_tensor, output_tensor,
+                                      candidate_input_id, output_id,
+                                      tensor_changed)) {
+            continue;
+          }
+          const int32_t actual_output_tensor_id =
+              FindSharedTensor(candidate_input_id);
+          if (actual_output_tensor_id == output_id) {
+            continue;
+          }
+          if (tensor_changed &&
+              remaining_refcounts[actual_output_tensor_id] > 1) {
+            continue;
+          }
+          actual_tensor_id_[output_id] = actual_output_tensor_id;
+          remaining_refcounts[actual_output_tensor_id] +=
+              remaining_refcounts[output_id];
           break;
         }
       }
     }
-    if (input_id == -1) {
-      continue;
-    }
-    int32_t actual_output_tensor_id = FindSharedTensor(input_id);
-    if (tensor_changed) {
-      if (refcounts_[actual_output_tensor_id] > 1) {
-        continue;
+    for (int j = 0; j < node.inputs->size; ++j) {
+      const int32_t tensor_index = node.inputs->data[j];
+      if (tensor_index != kTfLiteOptionalTensor) {
+        --remaining_refcounts[FindSharedTensor(tensor_index)];
       }
     }
-    actual_tensor_id_[output_id] = actual_output_tensor_id;
   }
 }
 

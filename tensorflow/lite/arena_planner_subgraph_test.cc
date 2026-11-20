@@ -156,5 +156,45 @@ TEST(ArenaPlannerSubgraphTest, HWTensor) {
   EXPECT_NE(reshape_output->data.data, nullptr);
 }
 
+TEST(ArenaPlannerSubgraphTest,
+     TransitiveInPlaceSharingPreservesLiveTensorValues) {
+  Interpreter interpreter;
+  subgraph_test_util::SubgraphBuilder builder;
+  builder.BuildTransitiveInplaceOpSubgraph(&interpreter.primary_subgraph());
+  ASSERT_EQ(interpreter.ResizeInputTensor(interpreter.inputs()[0], {2}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.ResizeInputTensor(interpreter.inputs()[1], {2}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.ResizeInputTensor(interpreter.inputs()[2], {2}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  const TfLiteTensor* t0 = interpreter.tensor(3);
+  const TfLiteTensor* t1 = interpreter.tensor(4);
+  const TfLiteTensor* t2 = interpreter.tensor(5);
+  const TfLiteTensor* t3 = interpreter.tensor(6);
+  // t1 (MUL) shares t0, and t2 (RESHAPE) shares t1, while t3 (MUL(t1, t2))
+  // must NOT overwrite t1's buffer because t1 is still read by a later ADD op.
+  EXPECT_EQ(t0->data.data, t1->data.data);
+  EXPECT_EQ(t1->data.data, t2->data.data);
+  EXPECT_NE(t1->data.data, t3->data.data);
+
+  subgraph_test_util::FillIntTensor(interpreter.tensor(interpreter.inputs()[0]),
+                                    {2, 3});
+  subgraph_test_util::FillIntTensor(interpreter.tensor(interpreter.inputs()[1]),
+                                    {4, 5});
+  subgraph_test_util::FillIntTensor(interpreter.tensor(interpreter.inputs()[2]),
+                                    {10, 20});
+
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  // t0 = [6, 8], t1 = [18, 24], t2 = [18, 24], t3 = [324, 576],
+  // t4 = t1 + [10, 20] = [28, 44],
+  // out0 = t4 + [2, 3] = [30, 47], out1 = t3 + [2, 3] = [326, 579].
+  subgraph_test_util::CheckIntTensor(
+      interpreter.tensor(interpreter.outputs()[0]), {2}, {30, 47});
+  subgraph_test_util::CheckIntTensor(
+      interpreter.tensor(interpreter.outputs()[1]), {2}, {326, 579});
+}
+
 }  // namespace
 }  // namespace tflite
