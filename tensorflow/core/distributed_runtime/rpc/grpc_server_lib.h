@@ -97,6 +97,10 @@ class GrpcServer : public ServerInterface {
                              DeviceMgr* local_device_mgr,
                              std::unique_ptr<ServerInterface>* out_server);
 
+  // For testing only. Parses env vars and creates MaxPendingRequestsOption.
+  static std::unique_ptr<::grpc::ServerBuilderOption>
+  MaybeCreateMaxPendingRequestsOption();
+
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
   virtual ~GrpcServer();
