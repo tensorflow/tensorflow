@@ -948,6 +948,68 @@ class BinaryOpTest(test.TestCase):
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
+  def testAtan2SubnormalInputs(self):
+    # Tests that atan2 preserves finite results without producing NaN for
+    # subnormal inputs across quadrants and SIMD packet widths (#118643).
+    tolerances = {
+        np.float64: 1e-6,
+        np.float32: 1e-5,
+        np.float16: 5e-3,
+        dtypes_lib.bfloat16.as_numpy_dtype: 2e-2,
+    }
+    for dtype, tol in tolerances.items():
+      finfo = np.finfo(dtype)
+      s = finfo.smallest_subnormal
+      s2 = dtype(2) * s
+      n = finfo.tiny
+      big = finfo.max
+      inf = dtype(np.inf)
+      pairs = [
+          (s, s),
+          (s, -s),
+          (-s, s),
+          (-s, -s),
+          (s, s2),
+          (s2, s),
+          (-s, s2),
+          (s, -s2),
+          (s, n),
+          (n, s),
+          (s, -n),
+          (-s, -n),
+          (n, -n),
+          (s, big),
+          (big, s),
+          (s, -inf),
+          (-s, -big),
+      ] * 3  # 51 elements: 2/4/8/16-lane packets + 3-element scalar tail
+      y = np.array([p[0] for p in pairs], dtype=dtype)
+      x = np.array([p[1] for p in pairs], dtype=dtype)
+      expected = np.arctan2(
+          y.astype(np.float64), x.astype(np.float64)
+      ).astype(dtype)
+      expected_scalar = np.arctan2(
+          np.float64(s), np.float64(-s)
+      ).astype(dtype)
+      with test_util.force_cpu():
+        result = self.evaluate(math_ops.atan2(y, x))
+        scalar_res = self.evaluate(
+            math_ops.atan2(
+                constant_op.constant(s, dtype=dtype),
+                constant_op.constant(-s, dtype=dtype),
+            )
+        )
+      self.assertFalse(np.any(np.isnan(result)))
+      self.assertFalse(np.isnan(scalar_res))
+      self.assertAllClose(result, expected, rtol=tol, atol=tol)
+      self.assertAllClose(scalar_res, expected_scalar, rtol=tol, atol=tol)
+      if test_util.is_gpu_available():
+        with test_util.use_gpu():
+          gpu_result = self.evaluate(math_ops.atan2(y, x))
+        self.assertFalse(np.any(np.isnan(gpu_result)))
+        if dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+          self.assertAllClose(gpu_result, expected, rtol=tol, atol=tol)
+
   def testPowNegativeExponentCpu(self):
     for dtype in [np.int8, np.int16, np.int32, np.int64]:
       with test_util.force_cpu():
