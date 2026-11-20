@@ -75,6 +75,13 @@ class StridedGather {
 
     bool operator!=(const Spec& other) const { return !(*this == other); }
 
+    template <typename H>
+    friend H AbslHashValue(H h, const Spec& spec) {
+      return H::combine(std::move(h), spec.element_size, spec.counts,
+                        spec.src_byte_offset, spec.src_byte_size,
+                        spec.src_byte_strides);
+    }
+
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const Spec& spec) {
       absl::Format(&sink,
@@ -148,6 +155,19 @@ class StridedGather {
           result.emplace(std::forward<CreateFn>(create_fn)(options));
         }));
     return *std::move(result);
+  }
+
+  friend bool operator==(const StridedGather& lhs, const StridedGather& rhs) {
+    return lhs.spec_ == rhs.spec_;
+  }
+
+  friend bool operator!=(const StridedGather& lhs, const StridedGather& rhs) {
+    return !(lhs == rhs);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const StridedGather& gather) {
+    return H::combine(std::move(h), gather.spec_);
   }
 
  private:

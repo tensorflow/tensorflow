@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
@@ -379,6 +380,54 @@ TEST(StridedGatherBoundsTest, NegativeStride) {
   EXPECT_THAT(
       gather.ValidateBounds(16),
       StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("byte stride")));
+}
+
+TEST(StridedGatherEqualityAndHashTest, SupportsEqualityAndAbslHash) {
+  // Two raw specs that canonicalize to the same StridedGather.
+  const StridedGather::Spec unmerged_spec = {
+      /*element_size=*/4,
+      /*counts=*/{1, 2, 2, 3},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{200, 40, 12, 4},
+  };
+  const StridedGather::Spec canonical_spec = {
+      /*element_size=*/24,
+      /*counts=*/{2},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{40},
+  };
+  const StridedGather::Spec different_offset_spec = {
+      /*element_size=*/24,
+      /*counts=*/{2},
+      /*src_byte_offset=*/16,
+      /*src_byte_size=*/200,
+      /*src_byte_strides=*/{40},
+  };
+  const StridedGather::Spec empty_spec = {
+      /*element_size=*/0,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/-1,
+      /*src_byte_strides=*/{0},
+  };
+
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      unmerged_spec,
+      canonical_spec,
+      different_offset_spec,
+      empty_spec,
+  }));
+  EXPECT_EQ(StridedGather(unmerged_spec), StridedGather(canonical_spec));
+  EXPECT_NE(StridedGather(canonical_spec),
+            StridedGather(different_offset_spec));
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      StridedGather(unmerged_spec),
+      StridedGather(canonical_spec),
+      StridedGather(different_offset_spec),
+      StridedGather(empty_spec),
+  }));
 }
 
 }  // namespace
