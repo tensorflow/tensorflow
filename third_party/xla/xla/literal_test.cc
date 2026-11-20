@@ -4259,6 +4259,27 @@ TEST_F(LiteralUtilTest, MakeFakeLiteralWideF64BoundsDoNotOverflow) {
   EXPECT_LT(clamped_max_count, 64);
 }
 
+TEST_F(LiteralUtilTest, IsLosslesslyConvertibleTo) {
+  EXPECT_TRUE(
+      LiteralUtil::CreateR0<float>(1.0f).IsLosslesslyConvertibleTo(F32));
+  EXPECT_TRUE(
+      LiteralUtil::CreateR0<float>(1.0f).IsLosslesslyConvertibleTo(BF16));
+  EXPECT_TRUE(
+      LiteralUtil::CreateR0<float>(-std::numeric_limits<float>::infinity())
+          .IsLosslesslyConvertibleTo(BF16));
+  EXPECT_FALSE(LiteralUtil::CreateR0<float>(-std::numeric_limits<float>::max())
+                   .IsLosslesslyConvertibleTo(BF16));
+  EXPECT_FALSE(
+      LiteralUtil::CreateR0<float>(0.1f).IsLosslesslyConvertibleTo(BF16));
+  EXPECT_TRUE(
+      LiteralUtil::CreateR0<int32_t>(127).IsLosslesslyConvertibleTo(S8));
+  EXPECT_FALSE(
+      LiteralUtil::CreateR0<int32_t>(128).IsLosslesslyConvertibleTo(S8));
+  Literal scalar = LiteralUtil::CreateR0<float>(1.0f);
+  Literal tuple = LiteralUtil::MakeTuple({&scalar});
+  EXPECT_FALSE(tuple.IsLosslesslyConvertibleTo(BF16));
+}
+
 }  // namespace
 
 }  // namespace xla

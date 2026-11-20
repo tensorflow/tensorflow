@@ -476,6 +476,11 @@ class LiteralBase {
   // conversion is not possible. This literal must be array-shaped.
   absl::StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
 
+  // Returns whether this literal can be converted to `primitive_dest_type` and
+  // back to its original type without losing any information. Returns false for
+  // non-array literals.
+  bool IsLosslesslyConvertibleTo(PrimitiveType primitive_dest_type) const;
+
   // Clones the underlying buffers into a new Literal.
   Literal Clone() const;
   std::unique_ptr<Literal> CloneToUnique() const;

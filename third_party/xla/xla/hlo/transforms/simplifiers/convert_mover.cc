@@ -40,26 +40,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Checks that the literal roundtrips to dst_ty and back to its original type
-// without modification.
-static bool IsLosslesslyConvertibleTo(const Literal& literal,
-                                      PrimitiveType dst_ty) {
-  PrimitiveType orig_ty = literal.shape().element_type();
-
-  // The only reason Convert() should fail is if we don't support converting
-  // from x to y, which indeed means it's not losslessly-convertible.
-  absl::StatusOr<Literal> converted1 = literal.Convert(dst_ty);
-  if (!converted1.ok()) {
-    return false;
-  }
-  absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
-  if (!converted2.ok()) {
-    return false;
-  }
-
-  return literal == *converted2;
-}
-
 // Opcodes for which convert(op(x)) == op(convert(x)).
 //
 // TODO(jlebar): This is not a complete list.  For example, we're missing:
@@ -127,7 +107,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     // precision.
     if (absl::c_any_of(instr->operands(), [&](const HloInstruction* operand) {
           return operand->opcode() == HloOpcode::kConstant &&
-                 !IsLosslesslyConvertibleTo(operand->literal(), src_ty);
+                 !operand->literal().IsLosslesslyConvertibleTo(src_ty);
         })) {
       continue;
     }

@@ -1961,6 +1961,26 @@ absl::StatusOr<Literal> LiteralBase::Convert(
   return ConvertSwitch(*this, primitive_dest_type);
 }
 
+bool LiteralBase::IsLosslesslyConvertibleTo(
+    PrimitiveType primitive_dest_type) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType orig_type = shape().element_type();
+  if (orig_type == primitive_dest_type) {
+    return true;
+  }
+  absl::StatusOr<Literal> converted = Convert(primitive_dest_type);
+  if (!converted.ok()) {
+    return false;
+  }
+  absl::StatusOr<Literal> roundtripped = converted->Convert(orig_type);
+  if (!roundtripped.ok()) {
+    return false;
+  }
+  return *this == *roundtripped;
+}
+
 absl::StatusOr<Literal> LiteralBase::BitcastConvert(
     const Shape& dest_shape) const {
   if (dest_shape.IsTuple() || shape().IsTuple()) {

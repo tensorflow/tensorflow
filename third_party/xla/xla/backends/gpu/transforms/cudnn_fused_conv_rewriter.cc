@@ -164,25 +164,7 @@ bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
   }
 
   if (HloPredicateIsOp<HloOpcode::kConstant>(instr)) {
-    if (!instr->shape().IsArray()) {
-      return false;
-    }
-    // Check if instr's literal roundtrips to ty and back to its original type
-    // without modification.
-    PrimitiveType orig_ty = instr->shape().element_type();
-
-    // The only reason Convert() should fail is if we don't support converting
-    // from x to y, which indeed means it's not losslessly-convertible.
-    absl::StatusOr<Literal> converted1 = instr->literal().Convert(dst_ty);
-    if (!converted1.ok()) {
-      return false;
-    }
-    absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
-    if (!converted2.ok()) {
-      return false;
-    }
-
-    return instr->literal() == *converted2;
+    return instr->literal().IsLosslesslyConvertibleTo(dst_ty);
   }
 
   if (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kReshape,
