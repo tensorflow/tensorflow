@@ -1954,7 +1954,6 @@ cc_library(
         ":cudnn_support_utils",
         ":dense_data_intermediate",
         ":early_exit_compilation_result",
-        ":export_hlo",
         ":flag_utils",
         ":fusion_pipeline",
         ":gpu_aot_compilation_result",
@@ -1989,6 +1988,7 @@ cc_library(
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/nanort:nanort_client",
         "//xla/backends/cpu/nanort:nanort_executable",
+        "//xla/backends/gpu:export_hlo",
         "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/backends/gpu/codegen:cubin_custom_kernel_compiler",
         "//xla/backends/gpu/codegen:gpu_kernel_spec",
@@ -2271,7 +2271,7 @@ cc_library(
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
-    ] + xla_internal(["//xla/service/gpu/google:export_hlo"]),
+    ] + xla_internal(["//xla/backends/gpu/google:export_hlo"]),
 )
 
 xla_test(
@@ -2305,7 +2305,6 @@ xla_test(
     shard_count = 2,
     deps = [
         ":backend_configs_cc",
-        ":export_hlo",
         ":gpu_compiler",
         ":gpu_executable",
         ":metrics",
@@ -2322,6 +2321,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:in_memory_store",
+        "//xla/backends/gpu:export_hlo",
         "//xla/backends/gpu:ffi",
         "//xla/backends/gpu/autotuner:autotuner_cache",
         "//xla/backends/gpu/runtime:async_thunk",
@@ -4106,13 +4106,8 @@ cc_library(
     name = "export_hlo",
     hdrs = ["export_hlo.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_proto_cc",
-        "//xla/service:hlo_proto_util",
-        "//xla/stream_executor:device_description_proto_cc",
-        "@com_google_absl//absl/strings",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/backends/gpu:export_hlo"],
 )
 
 cc_library(

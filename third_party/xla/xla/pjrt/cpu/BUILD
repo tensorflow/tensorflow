@@ -281,7 +281,7 @@ cc_library(
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_include_google_deps(
-        xla_internal(["//xla/service/cpu/google:export_hlo"]),
+        xla_internal(["//xla/backends/cpu/google:export_hlo"]),
     ),
     alwayslink = True,
 )

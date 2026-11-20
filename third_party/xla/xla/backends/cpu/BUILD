@@ -83,6 +83,17 @@ cc_library(
 )
 
 cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/cpu:executable_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "ffi",
     hdrs = ["ffi.h"],
     visibility = ["//visibility:public"],

@@ -19,7 +19,7 @@ load(
     "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "if_include_google_deps")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 load("//xla/tsl/mkl:graph.bzl", "onednn_cc_library")
@@ -155,7 +155,6 @@ cc_library(
         ":cpu_options",
         ":dot_op_emitter",
         ":executable_proto_cc",
-        ":export_hlo",
         ":metrics",
         ":parallel_task_assignment",
         ":thunk_emitter",
@@ -169,6 +168,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
+        "//xla/backends/cpu:export_hlo",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
@@ -393,11 +393,8 @@ cc_library(
     name = "export_hlo",
     hdrs = ["export_hlo.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":executable_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/strings",
-    ],
+    tags = if_google(["avoid_dep"]),
+    deps = ["//xla/backends/cpu:export_hlo"],
 )
 
 cc_library(
@@ -435,7 +432,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
     ] + if_include_google_deps(
-        xla_internal(["//xla/service/cpu/google:export_hlo"]),
+        xla_internal(["//xla/backends/cpu/google:export_hlo"]),
     ),
     alwayslink = True,  # Contains compiler registration
 )
