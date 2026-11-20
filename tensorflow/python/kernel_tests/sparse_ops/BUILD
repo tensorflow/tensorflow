@@ -168,7 +168,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "sparse_reshape_op_test",
     size = "small",
     srcs = ["sparse_reshape_op_test.py"],

@@ -121,6 +121,36 @@ class SparseReshapeTest(test.TestCase):
 
         self.evaluate(sp_output)
 
+  def testReshapeOutOfBoundsIndices(self):
+    for bad_indices in (
+        [[1 << 62, 0]],
+        [[-1, 0]],
+        [[0, 6]],
+        [[5, 0]],
+        [[0, 0], [4, 5], [5, 0]],
+    ):
+      with self.subTest(bad_indices=bad_indices):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "out of bounds"
+        ):
+          self.evaluate(
+              sparse_ops.gen_sparse_ops.sparse_reshape(
+                  input_indices=bad_indices,
+                  input_shape=[5, 6],
+                  new_shape=[30],
+              )
+          )
+
+  def testReshapeTargetShapeOverflow(self):
+    for new_shape in ([2**62, 2], [2**62, 2, -1]):
+      with self.subTest(new_shape=new_shape):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, "overflow"):
+          self.evaluate(
+              sparse_ops.gen_sparse_ops.sparse_reshape(
+                  input_indices=[[0]], input_shape=[1], new_shape=new_shape
+              )
+          )
+
   @test_util.run_deprecated_v1
   def testFeedSameShape(self):
     with self.session() as sess:

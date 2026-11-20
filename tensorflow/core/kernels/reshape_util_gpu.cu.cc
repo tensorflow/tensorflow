@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -32,14 +33,26 @@ __global__ void ReshapeSparseTensorKernel(
     const Tindex* __restrict__ input_shape,
     const Tindex* __restrict__ output_shape,
     const Tindex* __restrict__ input_indices,
-    Tindex* __restrict__ output_indices) {
+    Tindex* __restrict__ output_indices,
+    Tindex* __restrict__ first_invalid_row) {
   GPU_1D_KERNEL_LOOP(sparse_index, nnz) {
     const Tindex* input_index = &input_indices[sparse_index * input_rank];
     Tindex* output_index = &output_indices[sparse_index * output_rank];
     int64_t dense_index = 0;  // int64 to avoid overflow if Tindex is int32
+    bool valid = true;
     // Flatten input index from slowest- to fastest-changing dimension.
     for (int i = 0; i < input_rank; ++i) {
-      dense_index = dense_index * input_shape[i] + input_index[i];
+      const Tindex index = input_index[i];
+      if (!FastBoundsCheck(index, input_shape[i])) {
+        valid = false;
+        break;
+      }
+      dense_index = dense_index * input_shape[i] + index;
+    }
+    if (!valid) {
+      // Report the invalid row instead of computing an overflowing dense index.
+      GpuAtomicMin(first_invalid_row, static_cast<Tindex>(sparse_index));
+      continue;
     }
     // Compute output index from fastest- to slowest-changing dimension.
     for (int i = output_rank - 1; i >= 0; --i) {
@@ -54,12 +67,12 @@ __global__ void ReshapeSparseTensorKernel(
 
 namespace functor {
 
-template <>
 absl::Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
     OpKernelContext* context, const TensorShape& input_shape,
     const TensorShape& output_shape,
     typename TTypes<int64_t>::ConstMatrix input_indices,
-    typename TTypes<int64_t>::Matrix output_indices) const {
+    typename TTypes<int64_t>::Matrix output_indices,
+    typename TTypes<int64_t>::Scalar first_invalid_row) const {
   const int64_t input_rank = input_shape.dims();
   const int64_t output_rank = output_shape.dims();
   const int64_t nnz = input_indices.dimension(0);
@@ -86,6 +99,10 @@ absl::Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
                                     output_shape.dim_sizes().data(),
                                     output_rank * sizeof(int64_t)));
   const GPUDevice& device = context->template eigen_device<GPUDevice>();
+  // All rows are valid until the kernel finds an invalid one.
+  TF_RETURN_IF_ERROR(GpuLaunchKernel(SetToValue<int64_t>, 1, 1, 0,
+                                     device.stream(), /*count=*/1,
+                                     first_invalid_row.data(), nnz));
   auto config = GetGpuLaunchConfig(nnz, device);
   return GpuLaunchKernel(ReshapeSparseTensorKernel<int64_t>, config.block_count,
                          config.thread_per_block, 0, device.stream(), nnz,
@@ -94,7 +111,8 @@ absl::Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
                          /*input_shape=*/input_shape_gpu.data(),
                          /*output_shape=*/output_shape_gpu.data(),
                          /*input_indices=*/input_indices.data(),
-                         /*output_indices=*/output_indices.data());
+                         /*output_indices=*/output_indices.data(),
+                         /*first_invalid_row=*/first_invalid_row.data());
 }
 
 }  // namespace functor

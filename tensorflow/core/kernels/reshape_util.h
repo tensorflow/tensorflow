@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESHAPE_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_RESHAPE_UTIL_H_
 
+#include <functional>
+
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,7 +28,8 @@ class OpKernelContext;
 class Tensor;
 
 // Reshapes the input indices and input shape to the target shape.
-// Note: This template is explicitly instantiated for CPU and GPU devices.
+// Note: This template is explicitly instantiated for CPU devices only. Use
+// ReshapeSparseTensorGpuAsync for GPU devices.
 template <typename Device>
 void ReshapeSparseTensor(OpKernelContext *context,
                          const Tensor &input_indices_in,
@@ -34,8 +37,22 @@ void ReshapeSparseTensor(OpKernelContext *context,
                          const Tensor &target_shape_in, int output_indices_idx,
                          int output_shape_idx);
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// GPU version of ReshapeSparseTensor, for use in an AsyncOpKernel. The input
+// indices are in device memory and are validated on the device, so any error
+// is reported asynchronously. `done` is called once the op has completed.
+void ReshapeSparseTensorGpuAsync(OpKernelContext* context,
+                                 const Tensor& input_indices_in,
+                                 const Tensor& input_shape_in,
+                                 const Tensor& target_shape_in,
+                                 int output_indices_idx, int output_shape_idx,
+                                 std::function<void()> done);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace functor {
 
+// Computes `output_indices` from `input_indices`. Returns an error if any input
+// index is out of bounds for `input_shape`.
 template <typename Device>
 struct ReshapeSparseTensorFunctor {
   absl::Status operator()(
@@ -44,6 +61,23 @@ struct ReshapeSparseTensorFunctor {
       typename TTypes<int64_t>::ConstMatrix input_indices,
       typename TTypes<int64_t>::Matrix output_indices) const;
 };
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// A GPU kernel cannot return an error, so the GPU functor takes an extra
+// device scalar `first_invalid_row`. It is set to the smallest row of
+// `input_indices` that is out of bounds for `input_shape`, or to the number of
+// rows if all of them are valid. Output rows for invalid input rows are not
+// written.
+template <>
+struct ReshapeSparseTensorFunctor<Eigen::GpuDevice> {
+  absl::Status operator()(
+      OpKernelContext* context, const TensorShape& input_shape,
+      const TensorShape& output_shape,
+      typename TTypes<int64_t>::ConstMatrix input_indices,
+      typename TTypes<int64_t>::Matrix output_indices,
+      typename TTypes<int64_t>::Scalar first_invalid_row) const;
+};
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace functor
 
