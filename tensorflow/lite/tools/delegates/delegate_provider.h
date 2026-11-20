@@ -36,7 +36,7 @@ using TfLiteDelegatePtr =
 
 class DelegateProvider {
  public:
-  virtual ~DelegateProvider() {}
+  virtual ~DelegateProvider() = default;
 
   // Create a list of command-line parsable flags based on tool params inside
   // 'params' whose value will be set to the corresponding runtime flag value.
@@ -94,7 +94,7 @@ class DelegateProviderRegistrar {
   }
 
  private:
-  DelegateProviderRegistrar() {}
+  DelegateProviderRegistrar() = default;
   DelegateProviderRegistrar(const DelegateProviderRegistrar&) = delete;
   DelegateProviderRegistrar& operator=(const DelegateProviderRegistrar&) =
       delete;
