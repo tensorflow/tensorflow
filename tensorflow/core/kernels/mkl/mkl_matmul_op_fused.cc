@@ -19,6 +19,10 @@ limitations under the License.
 // Multiplication (MatMul) with bias (BiasAdd) operations.
 #if defined(INTEL_MKL)
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <string>
 #include <type_traits>
 
 #include "oneapi/dnnl/dnnl.hpp"
@@ -123,6 +127,171 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel)));
 
+    const TensorShape output_tf_shape({batch, channel});
+    const Tensor* add_tensor_ptr = nullptr;
+    MklDnnShape add_mkl_shape;
+    if (this->fuse_add_) {
+      const int min_num_inputs =
+          native_format ? (this->input_idx_add_ + 1)
+                        : (this->input_idx_add_ + 1) * 2;
+      OP_REQUIRES(
+          ctx, ctx->num_inputs() >= min_num_inputs,
+          absl::InvalidArgumentError(
+              "Missing addend input tensor for MklFusedMatMul with Add."));
+      add_tensor_ptr = &MklGetInput(ctx, this->input_idx_add_);
+      GetMklShape(ctx, this->input_idx_add_, &add_mkl_shape, native_format);
+      const TensorShape add_tf_shape = add_mkl_shape.IsMklTensor()
+                                           ? add_mkl_shape.GetTfShape()
+                                           : add_tensor_ptr->shape();
+      OP_REQUIRES(
+          ctx, add_tf_shape == output_tf_shape,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Add tensor shape must match output shape ",
+              output_tf_shape.DebugString(), ", got ",
+              add_tf_shape.DebugString())));
+    }
+
+    enum class PostAct {
+      kNone,
+      kRelu,
+      kRelu6,
+      kLeakyRelu,
+      kElu,
+      kTanh,
+      kSigmoid,
+      kGeluApproximate,
+      kGeluExact,
+    };
+    PostAct post_act = PostAct::kNone;
+    if constexpr (!std::is_same_v<T2, qint8>) {
+      if (this->fused_ops_.size() == 2) {
+        const std::string& post_op = this->fused_ops_[1];
+        if (post_op == "Relu") {
+          post_act = PostAct::kRelu;
+        } else if (post_op == "Relu6") {
+          post_act = PostAct::kRelu6;
+        } else if (post_op == "LeakyRelu") {
+          post_act = PostAct::kLeakyRelu;
+        } else if (post_op == "Elu") {
+          post_act = PostAct::kElu;
+        } else if (post_op == "Tanh") {
+          post_act = PostAct::kTanh;
+        } else if (post_op == "Sigmoid") {
+          post_act = PostAct::kSigmoid;
+        } else if (post_op == "GeluApproximate") {
+          post_act = PostAct::kGeluApproximate;
+        } else if (post_op == "GeluExact") {
+          post_act = PostAct::kGeluExact;
+        } else if (post_op != "Add") {
+          OP_REQUIRES(
+              ctx, false,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Unsupported post-argument in MklFusedMatMul: ", post_op)));
+        }
+      }
+    }
+
+    if (batch == 0 || channel == 0) {
+      MklDnnShape output_mkl_shape;
+      output_mkl_shape.SetMklTensor(false);
+      Tensor* dst_tensor = nullptr;
+      AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
+                                output_tf_shape, output_mkl_shape,
+                                native_format);
+      return;
+    }
+
+    if (k == 0) {
+      if constexpr (std::is_same_v<T2, qint8>) {
+        OP_REQUIRES(
+            ctx, false,
+            absl::UnimplementedError(
+                "QuantizedFusedMatMulOp does not support zero reduction "
+                "dimension (k == 0)."));
+        return;
+      } else {
+        Tensor add_tf_tensor;
+        const U* add_data = nullptr;
+        if (this->fuse_add_) {
+          if (add_mkl_shape.IsMklTensor()) {
+            OP_REQUIRES_OK(ctx,
+                           ConvertMklToTF<U>(ctx, *add_tensor_ptr,
+                                             add_mkl_shape, &add_tf_tensor));
+          } else {
+            add_tf_tensor = *add_tensor_ptr;
+          }
+          add_data = add_tf_tensor.flat<U>().data();
+        }
+
+        MklDnnShape output_mkl_shape;
+        output_mkl_shape.SetMklTensor(false);
+        Tensor* dst_tensor = nullptr;
+        AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
+                                  output_tf_shape, output_mkl_shape,
+                                  native_format);
+        if (!ctx->status().ok() || dst_tensor == nullptr) return;
+
+        Toutput* dst_data = dst_tensor->flat<Toutput>().data();
+        const Tbias* bias_data = bias_tensor.flat<Tbias>().data();
+        const float alpha = this->leakyrelu_alpha_;
+
+        auto fill_output = [&](auto act_fn) {
+          for (int64_t b = 0; b < batch; ++b) {
+            for (int64_t c = 0; c < channel; ++c) {
+              float val = static_cast<float>(bias_data[c]);
+              if (add_data != nullptr) {
+                val += static_cast<float>(add_data[b * channel + c]);
+              }
+              if (!std::isnan(val)) {
+                val = act_fn(val);
+              }
+              dst_data[b * channel + c] = static_cast<Toutput>(val);
+            }
+          }
+        };
+
+        switch (post_act) {
+          case PostAct::kNone:
+            fill_output([](float v) { return v; });
+            break;
+          case PostAct::kRelu:
+            fill_output([](float v) { return std::max(0.0f, v); });
+            break;
+          case PostAct::kRelu6:
+            fill_output(
+                [](float v) { return std::min(6.0f, std::max(0.0f, v)); });
+            break;
+          case PostAct::kLeakyRelu:
+            fill_output([alpha](float v) { return v < 0.0f ? alpha * v : v; });
+            break;
+          case PostAct::kElu:
+            fill_output([](float v) { return v < 0.0f ? std::expm1(v) : v; });
+            break;
+          case PostAct::kTanh:
+            fill_output([](float v) { return std::tanh(v); });
+            break;
+          case PostAct::kSigmoid:
+            fill_output([](float v) { return 1.0f / (1.0f + std::exp(-v)); });
+            break;
+          case PostAct::kGeluApproximate:
+            fill_output([](float v) {
+              constexpr float kSqrt2OverPi = 0.7978845608028654f;
+              return 0.5f * v *
+                     (1.0f + std::tanh(kSqrt2OverPi *
+                                       (v + 0.044715f * v * v * v)));
+            });
+            break;
+          case PostAct::kGeluExact:
+            fill_output([](float v) {
+              constexpr float kInvSqrt2 = 0.7071067811865475f;
+              return 0.5f * v * (1.0f + std::erf(v * kInvSqrt2));
+            });
+            break;
+        }
+        return;
+      }
+    }
+
     // For inputs s[batch, k], w[k, channel] and b[channel], the primitive
     // dims should be described like this:
     //   s[batch, k] * w^T[channel, k] + b[channel] = dst[batch, channel]
@@ -165,12 +334,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
 
-    TensorShape output_tf_shape({batch, channel});
-
     if (fuse_add_) {
-      const Tensor& add_tensor = MklGetInput(ctx, input_idx_add_);
-      MklDnnShape add_mkl_shape;
-      GetMklShape(ctx, input_idx_add_, &add_mkl_shape, native_format);
+      const Tensor& add_tensor = *add_tensor_ptr;
 
       // For native format, we need not to set metadata.
       if (native_format &&
@@ -220,11 +385,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
     } else {
       AllocateOutputSetMklShape(ctx, 0, &dst_tensor, output_tf_shape,
                                 output_mkl_shape, native_format);
-    }
-
-    // if there's nothing to compute, just return.
-    if (batch == 0 || channel == 0) {
-      return;
     }
 
     try {
@@ -549,6 +709,7 @@ class QuantizedFusedMatMulOp
 
   void Compute(OpKernelContext* ctx) override {
     MklFusedMatMulOp<Device, T1, T2, Tbias, Toutput, U, true>::Compute(ctx);
+    if (!ctx->status().ok()) return;
     // Compute additional outputs
     if (std::is_same<Toutput, qint8>::value ||
         std::is_same<Toutput, quint8>::value ||
