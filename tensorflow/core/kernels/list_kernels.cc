@@ -202,7 +202,7 @@ class TensorListPushBack : public OpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
   }
 
-  ~TensorListPushBack() override {}
+  ~TensorListPushBack() override = default;
 
   void Compute(OpKernelContext* c) override {
     const Tensor& input = c->input(1);
@@ -259,7 +259,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_DEFAULT),
 class TensorListLength : public OpKernel {
  public:
   explicit TensorListLength(OpKernelConstruction* c) : OpKernel(c) {}
-  ~TensorListLength() override {}
+  ~TensorListLength() override = default;
 
   void Compute(OpKernelContext* c) override {
     const TensorList* l = nullptr;

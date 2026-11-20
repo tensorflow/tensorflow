@@ -59,7 +59,7 @@ class TensorCord {
  public:
   static constexpr const char kTypeName[] = "tensorflow::TensorCord";
 
-  TensorCord() : chunks_() {}
+  TensorCord() : = default;
 
   ~TensorCord();
 
