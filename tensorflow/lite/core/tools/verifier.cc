@@ -136,9 +136,18 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   // the shape declares produces an out of bounds read. Require the buffer to
   // hold at least that many strings. The element count is accumulated the same
   // way as in VerifyNumericTensorBuffer, with the same 32-bit overflow guard.
+  // A constant string tensor must have fully defined, non-negative dimensions;
+  // a negative dimension would otherwise leave num_elements at 0 (once any
+  // dimension is 0) and silently skip the check.
   if (tensor.shape()) {
     uint64_t num_elements = 1;
     for (int dim : *tensor.shape()) {
+      if (dim < 0) {
+        ReportError(error_reporter,
+                    "String tensor %s has invalid negative dimension",
+                    NameOrEmptyString(tensor.name()));
+        return false;
+      }
       num_elements *= dim;
       if (num_elements > UINT_MAX) {
         ReportError(error_reporter, "String tensor %s dimension overflow",
