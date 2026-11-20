@@ -166,6 +166,8 @@ class MockGpuCommunicator : public GpuCommunicator {
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<SymmetricMemory>>,
               AcquireSymmetricMemory,
               (se::DeviceAddressBase addr, bool symmetric_window), (override));
+  MOCK_METHOD(void, ReleaseSymmetricMemory, (se::DeviceAddressBase addr),
+              (override));
   MOCK_METHOD(Future<>, GroupExecute,
               (absl::AnyInvocable<absl::Status() &&> group), (override));
   MOCK_METHOD(absl::Status, LaunchAllReduce,

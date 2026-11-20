@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,11 +31,15 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/collectives/mock_gpu_collectives.h"
+#include "xla/backends/gpu/collectives/mock_gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
@@ -43,6 +48,8 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -87,7 +94,8 @@ AcquireCliquesWithCollectives(
     GpuCollectives* collectives, tsl::Executor& exec,
     absl::Span<se::StreamExecutor* const> executors, const GpuCliqueKey& clique,
     DeviceGroups device_groups,
-    absl::Span<const AcquiredCliquesMap> acquired_cliques) {
+    absl::Span<const AcquiredCliquesMap> acquired_cliques,
+    GpuCollectives::CliqueIdCallback clique_id_callback = DefaultCliqueId()) {
   CHECK_EQ(executors.size(), acquired_cliques.size());
 
   RunId run_id(0);
@@ -97,7 +105,7 @@ AcquireCliquesWithCollectives(
   for (size_t i = 0; i < n; ++i) {
     futures[i] = MakeFutureOn(exec, [=] {
       return AcquireClique(collectives, executors.at(i), run_id, clique,
-                           device_groups, DefaultCliqueId(), RankId(i),
+                           device_groups, clique_id_callback, RankId(i),
                            acquired_cliques.at(i));
     });
   }
@@ -684,5 +692,118 @@ TEST(GpuCliquesTest, AbandonStaleChildrenOfDestroyedParent) {
                          {key46, {4, 6}, group_02_13_46_57},
                          {key57, {5, 7}, group_02_13_46_57}}));
 }
+
+namespace {
+
+using ::testing::_;
+using ::testing::Mock;
+using ::testing::NiceMock;
+using ::testing::Return;
+
+TEST(GpuCliquesTest, ReleaseSymmetricMemory) {
+  auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
+
+  NiceMock<se::MockStreamExecutor> executor0;
+  NiceMock<se::MockStreamExecutor> executor1;
+  ON_CALL(executor0, device_ordinal()).WillByDefault(Return(0));
+  ON_CALL(executor1, device_ordinal()).WillByDefault(Return(1));
+  ON_CALL(executor0, SynchronizeAllActivity()).WillByDefault(Return(true));
+  ON_CALL(executor1, SynchronizeAllActivity()).WillByDefault(Return(true));
+  ON_CALL(executor0, EnablePeerAccessTo(_))
+      .WillByDefault(Return(absl::OkStatus()));
+  ON_CALL(executor1, EnablePeerAccessTo(_))
+      .WillByDefault(Return(absl::OkStatus()));
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  std::vector<se::StreamExecutor*> executors = {&executor0, &executor1};
+  GpuCliqueKey key01({kD0, kD1}, 2);
+  DeviceGroups group01 = {{kD0, kD1}};
+  std::vector<AcquiredCliquesMap> acquired_cliques(2);
+  GpuCollectives::CliqueIdCallback clique_id_callback =
+      [](const CliqueKey&) -> absl::StatusOr<CliqueIds> {
+    return CliqueIds(CliqueId("test_clique_id"));
+  };
+
+  se::DeviceAddressBase addr(reinterpret_cast<void*>(0x1000), 1024);
+  MockGpuCollectives collectives;
+
+  // Acquire a live clique and verify `ReleaseSymmetricMemory` forwards only to
+  // the communicator on the matching device, even while the clique is locked.
+  EXPECT_CALL(collectives, CreateCommunicatorsWithCancel(_, _, _, _, _))
+      .WillOnce([&](const CliqueKey& clique_key,
+                    const std::optional<CliqueIds>&,
+                    absl::Span<const Collectives::DeviceRank>,
+                    const Collectives::Config&,
+                    std::shared_ptr<CancellationToken>) {
+        EXPECT_EQ(absl::down_cast<const GpuCliqueKey&>(clique_key), key01);
+        auto comm0 = std::make_unique<NiceMock<MockGpuCommunicator>>();
+        auto comm1 = std::make_unique<NiceMock<MockGpuCommunicator>>();
+        ON_CALL(*comm0, stream_executor()).WillByDefault(Return(&executor0));
+        ON_CALL(*comm1, stream_executor()).WillByDefault(Return(&executor1));
+        EXPECT_CALL(*comm0, ReleaseSymmetricMemory(_)).Times(0);
+        EXPECT_CALL(*comm1, ReleaseSymmetricMemory(addr)).Times(1);
+
+        std::vector<std::unique_ptr<Communicator>> comms;
+        comms.push_back(std::move(comm0));
+        comms.push_back(std::move(comm1));
+        return comms;
+      });
+
+  {
+    std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> futures =
+        AcquireCliquesWithCollectives(&collectives, exec, executors, key01,
+                                      group01, acquired_cliques,
+                                      clique_id_callback);
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::shared_ptr<LockableGpuClique::Lock>> cliques,
+        WaitCliques(std::move(futures)));
+
+    ReleaseSymmetricMemory(LocalDeviceId(1), addr);
+  }
+  Mock::VerifyAndClearExpectations(&collectives);
+
+  // Destroy the clique, which clears its entry in `SymmetricMemoryCliques`;
+  // `ReleaseSymmetricMemory` must skip the cleared entry.
+  internal::DestroyAcquiredCliques();
+  ReleaseSymmetricMemory(LocalDeviceId(1), addr);
+
+  // Acquiring a new clique prunes expired entries in `AddSymmetricMemoryClique`
+  // and registers the new clique.
+  EXPECT_CALL(collectives, CreateCommunicatorsWithCancel(_, _, _, _, _))
+      .WillOnce([&](const CliqueKey& clique_key,
+                    const std::optional<CliqueIds>&,
+                    absl::Span<const Collectives::DeviceRank>,
+                    const Collectives::Config&,
+                    std::shared_ptr<CancellationToken>) {
+        EXPECT_EQ(absl::down_cast<const GpuCliqueKey&>(clique_key), key01);
+        auto comm0 = std::make_unique<NiceMock<MockGpuCommunicator>>();
+        auto comm1 = std::make_unique<NiceMock<MockGpuCommunicator>>();
+        ON_CALL(*comm0, stream_executor()).WillByDefault(Return(&executor0));
+        ON_CALL(*comm1, stream_executor()).WillByDefault(Return(&executor1));
+        EXPECT_CALL(*comm0, ReleaseSymmetricMemory(addr)).Times(1);
+        EXPECT_CALL(*comm1, ReleaseSymmetricMemory(_)).Times(0);
+
+        std::vector<std::unique_ptr<Communicator>> comms;
+        comms.push_back(std::move(comm0));
+        comms.push_back(std::move(comm1));
+        return comms;
+      });
+
+  {
+    std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> futures =
+        AcquireCliquesWithCollectives(&collectives, exec, executors, key01,
+                                      group01, acquired_cliques,
+                                      clique_id_callback);
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::shared_ptr<LockableGpuClique::Lock>> cliques,
+        WaitCliques(std::move(futures)));
+
+    ReleaseSymmetricMemory(LocalDeviceId(0), addr);
+  }
+}
+
+}  // namespace
 
 }  // namespace xla::gpu

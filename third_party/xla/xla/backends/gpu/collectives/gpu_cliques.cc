@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
@@ -62,10 +65,12 @@ limitations under the License.
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/hash.h"
@@ -135,6 +140,97 @@ struct GpuCliqueCreatedCallbacks {
   absl::Mutex mu;
   std::vector<GpuCliqueCreatedCallback> callbacks ABSL_GUARDED_BY(mu);
 };
+
+class SymmetricMemoryCliqueGuard;
+
+// A clique registered in `SymmetricMemoryCliques`. It holds a raw pointer to
+// a clique so a release never extends the lifetime of a clique:
+// if it did, the release could end up destroying the
+// clique (and its communicators) on an allocator thread, possibly after the
+// parent of a split clique is already destroyed.
+//
+// Instead, `SymmetricMemoryCliqueGuard` clears `clique` when the clique is
+// destroyed.
+struct SymmetricMemoryCliqueEntry {
+  explicit SymmetricMemoryCliqueEntry(GpuClique* clique) : clique(clique) {}
+
+  absl::Mutex mu;
+  GpuClique* clique ABSL_GUARDED_BY(mu);
+
+  // Keeps the guard tied to `clique`. Expires when `clique` is destroyed.
+  tsl::TiedRef<SymmetricMemoryCliqueGuard> guard;
+};
+
+// Tied to a registered clique. `~GpuClique` destroys tied objects before the
+// communicators, so this clears `entry->clique` while the communicators are
+// still alive, and waits for a release in flight on the clique to finish.
+class SymmetricMemoryCliqueGuard {
+ public:
+  explicit SymmetricMemoryCliqueGuard(
+      std::shared_ptr<SymmetricMemoryCliqueEntry> entry)
+      : entry_(std::move(entry)) {}
+
+  ~SymmetricMemoryCliqueGuard() {
+    absl::MutexLock lock(entry_->mu);
+    entry_->clique = nullptr;
+  }
+
+ private:
+  std::shared_ptr<SymmetricMemoryCliqueEntry> entry_;
+};
+
+// Cliques to forward `ReleaseSymmetricMemory` to, keyed by the local devices
+// they run on. Kept apart from `ProcessGpuCliques` because releases come from
+// allocator free paths, which must not wait for `ProcessGpuCliques::mu`: it can
+// be held for a whole run while abandoning a clique.
+struct SymmetricMemoryCliques {
+  absl::Mutex mu;
+  absl::flat_hash_map<LocalDeviceId,
+                      std::vector<std::shared_ptr<SymmetricMemoryCliqueEntry>>>
+      cliques ABSL_GUARDED_BY(mu);
+};
+
+SymmetricMemoryCliques& GetSymmetricMemoryCliques() {
+  static absl::NoDestructor<SymmetricMemoryCliques> cliques;
+  return *cliques;
+}
+
+// Registers `clique` for `ReleaseSymmetricMemory` on each local device it runs
+// on. The registration is dropped when the clique is destroyed.
+absl::Status AddSymmetricMemoryClique(GpuClique& clique) {
+  absl::InlinedVector<LocalDeviceId, 8> devices;
+  clique.ForEachComm([&](RankId rank, Communicator* comm) {
+    auto* gpu_comm = dynamic_cast<GpuCommunicator*>(comm);
+    if (gpu_comm == nullptr) {
+      return;
+    }
+    se::StreamExecutor* executor = gpu_comm->stream_executor();
+    if (executor == nullptr) {
+      return;
+    }
+    devices.push_back(LocalDeviceId(executor->device_ordinal()));
+  });
+
+  auto entry = std::make_shared<SymmetricMemoryCliqueEntry>(&clique);
+  ABSL_ASSIGN_OR_RETURN(
+      entry->guard,
+      clique.Tie(std::make_unique<SymmetricMemoryCliqueGuard>(entry)));
+
+  SymmetricMemoryCliques& registry = GetSymmetricMemoryCliques();
+  absl::MutexLock lock(registry.mu);
+  for (LocalDeviceId device : devices) {
+    std::vector<std::shared_ptr<SymmetricMemoryCliqueEntry>>& entries =
+        registry.cliques[device];
+    entries.erase(std::remove_if(
+                      entries.begin(), entries.end(),
+                      [](const std::shared_ptr<SymmetricMemoryCliqueEntry>& e) {
+                        return e->guard.Expired();
+                      }),
+                  entries.end());
+    entries.push_back(entry);
+  }
+  return absl::OkStatus();
+}
 }  // namespace
 
 // Returns process-local GPU cliques.
@@ -483,7 +579,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     // Create a new clique before inserting it into the process state, so
     // callbacks observe every constructed clique, including cliques that lose
-    // an insertion race and will be destroyed.
+    // an insertion race and will be destroyed. Such cliques are also briefly
+    // registered for `ReleaseSymmetricMemory` until they are destroyed.
     auto lockable_clique = std::make_shared<LockableGpuClique>(
         clique_key, clique_ids, std::move(comms), peer_access_enabled,
         std::move(cancel));
@@ -491,6 +588,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     {  // Cannot contend: this LockableGpuClique is not published yet.
       LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
       NotifyOnGpuCliqueCreated(*clique_lock);
+      ABSL_RETURN_IF_ERROR(AddSymmetricMemoryClique(*clique_lock));
     }
 
     // Add the clique to the process state for a given cache key.
@@ -745,7 +843,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     // Create a new clique before inserting it into the process state, so
     // callbacks observe every constructed clique, including cliques that lose
-    // an insertion race and will be destroyed.
+    // an insertion race and will be destroyed. Such cliques are also briefly
+    // registered for `ReleaseSymmetricMemory` until they are destroyed.
     auto lockable_clique = std::make_shared<LockableGpuClique>(
         clique_key, std::nullopt, std::move(comms), peer_access_enabled,
         std::move(cancel), /*parent_key=*/parent_clique_key);
@@ -753,6 +852,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     {  // Cannot contend: this LockableGpuClique is not published yet.
       LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
       NotifyOnGpuCliqueCreated(*clique_lock);
+      ABSL_RETURN_IF_ERROR(AddSymmetricMemoryClique(*clique_lock));
     }
 
     // Add the clique to the process state for a given cache key.
@@ -1235,6 +1335,29 @@ absl::Status AbortTaskCliques(int failed_task_id, absl::Status error) {
   absl::Status s = AbortOnFailure(state, updated);
   state.task_state_infos = std::move(updated);
   return s;
+}
+
+void ReleaseSymmetricMemory(LocalDeviceId device_id,
+                            se::DeviceAddressBase addr) {
+  absl::InlinedVector<std::shared_ptr<SymmetricMemoryCliqueEntry>, 8> entries;
+  {
+    SymmetricMemoryCliques& registry = GetSymmetricMemoryCliques();
+    absl::MutexLock lock(registry.mu);
+    auto it = registry.cliques.find(device_id);
+    if (it == registry.cliques.end()) {
+      return;
+    }
+    entries.assign(it->second.begin(), it->second.end());
+  }
+  // Release outside of `registry.mu`: dropping a window can block on the
+  // communicator executor. `entry->mu` keeps the clique from being destroyed
+  // while its communicators are in use.
+  for (const std::shared_ptr<SymmetricMemoryCliqueEntry>& entry : entries) {
+    absl::MutexLock lock(entry->mu);
+    if (entry->clique != nullptr) {
+      entry->clique->ReleaseSymmetricMemory(device_id, addr);
+    }
+  }
 }
 
 }  // namespace xla::gpu

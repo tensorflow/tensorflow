@@ -34,7 +34,10 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/lockable.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
@@ -121,6 +124,21 @@ void GpuClique::Cancel() {
 }
 
 bool GpuClique::IsCancelled() const { return cancel_->IsCancelled(); }
+
+void GpuClique::ReleaseSymmetricMemory(LocalDeviceId device_id,
+                                       se::DeviceAddressBase addr) {
+  ForEachComm([&](RankId rank, Communicator* comm) {
+    auto* gpu_comm = dynamic_cast<GpuCommunicator*>(comm);
+    if (gpu_comm == nullptr) {
+      return;
+    }
+    se::StreamExecutor* executor = gpu_comm->stream_executor();
+    if (executor != nullptr &&
+        executor->device_ordinal() == device_id.value()) {
+      gpu_comm->ReleaseSymmetricMemory(addr);
+    }
+  });
+}
 
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %v", clique.key());

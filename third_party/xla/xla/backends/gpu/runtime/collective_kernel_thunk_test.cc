@@ -1015,6 +1015,10 @@ StrictMock<MockGpuCollectives>* CreateMockCollectives(
                   .Times(AnyNumber())
                   .WillRepeatedly(
                       [inner_ptr]() { return inner_ptr->HealthCheck(); });
+              EXPECT_CALL(*mock_comm, stream_executor())
+                  .Times(AnyNumber())
+                  .WillRepeatedly(
+                      [inner_ptr]() { return inner_ptr->stream_executor(); });
               wrapped_comms.push_back({std::move(inner_comm), mock_comm.get()});
               result.push_back(std::move(mock_comm));
             }
@@ -1034,6 +1038,9 @@ void VerifyAndLeakMockCollectives(StrictMock<MockGpuCollectives>* collectives,
     EXPECT_CALL(*comm.mock, HealthCheck())
         .Times(AnyNumber())
         .WillRepeatedly([inner_ptr]() { return inner_ptr->HealthCheck(); });
+    EXPECT_CALL(*comm.mock, stream_executor())
+        .Times(AnyNumber())
+        .WillRepeatedly([inner_ptr]() { return inner_ptr->stream_executor(); });
     GetLeakedMocks().comms.push_back(std::move(comm));
   }
 }
