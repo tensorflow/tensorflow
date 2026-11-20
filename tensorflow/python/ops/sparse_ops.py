@@ -640,8 +640,8 @@ def sparse_cross(inputs, name=None, separator=None):
 
 
   Args:
-    inputs: An iterable of `Tensor` or `SparseTensor`. All input tensors must
-      have an integer or `string` dtype.
+    inputs: An iterable of `Tensor`, `SparseTensor`, or `SparseTensorValue`.
+      All input tensors must have an integer or `string` dtype.
     name: Optional name for the op.
     separator: A string added between each string being joined. Defaults to
       '_X_'.
@@ -651,8 +651,9 @@ def sparse_cross(inputs, name=None, separator=None):
 
   Raises:
     TypeError: If `inputs` is not a list or tuple, if any element in `inputs`
-      is not a `Tensor` or `SparseTensor`, or if any input has a dtype other
-      than integer or `string` (such as `float` or `bool`).
+      is not a `Tensor`, `SparseTensor`, or `SparseTensorValue`, or if any
+      input has a dtype other than integer or `string` (such as `float` or
+      `bool`).
   """
   if separator is None:
     separator = "_X_"
@@ -702,8 +703,8 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
                       Fingerprint64("e"), Fingerprint64("c")))
 
   Args:
-    inputs: An iterable of `Tensor` or `SparseTensor`. All input tensors must
-      have an integer or `string` dtype.
+    inputs: An iterable of `Tensor`, `SparseTensor`, or `SparseTensorValue`.
+      All input tensors must have an integer or `string` dtype.
     num_buckets: An `int` that is `>= 0`. output = hashed_value%num_buckets if
       num_buckets > 0 else hashed_value.
     hash_key: Integer hash_key that will be used by the `FingerprintCat64`
@@ -715,8 +716,9 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
 
   Raises:
     TypeError: If `inputs` is not a list or tuple, if any element in `inputs`
-      is not a `Tensor` or `SparseTensor`, or if any input has a dtype other
-      than integer or `string` (such as `float` or `bool`).
+      is not a `Tensor`, `SparseTensor`, or `SparseTensorValue`, or if any
+      input has a dtype other than integer or `string` (such as `float` or
+      `bool`).
   """
   return _sparse_cross_internal(
       inputs=inputs,
@@ -757,6 +759,13 @@ def _validate_sparse_cross_inputs(inputs, op_name="tf.sparse.cross"):
 
 def _sparse_cross_internal_v2(inputs, op_name="tf.sparse.cross"):
   """See gen_sparse_ops.sparse_cross_v2."""
+  if isinstance(inputs, (tuple, list)):
+    inputs = [
+        _convert_to_sparse_tensor(i)
+        if isinstance(i, sparse_tensor.SparseTensorValue)
+        else i
+        for i in inputs
+    ]
   _validate_sparse_cross_inputs(inputs, op_name=op_name)
   sparse_inputs = [
       i for i in inputs if isinstance(i, sparse_tensor.SparseTensor)
@@ -785,6 +794,13 @@ def _sparse_cross_internal(
     op_name="tf.sparse.cross",
 ):
   """See gen_sparse_ops.sparse_cross."""
+  if isinstance(inputs, (tuple, list)):
+    inputs = [
+        _convert_to_sparse_tensor(i)
+        if isinstance(i, sparse_tensor.SparseTensorValue)
+        else i
+        for i in inputs
+    ]
   _validate_sparse_cross_inputs(inputs, op_name=op_name)
 
   sparse_inputs = [
