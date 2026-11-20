@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -143,28 +142,6 @@ absl::Status MatMulShape(shape_inference::InferenceContext* c) {
   return absl::OkStatus();
 }
 
-namespace {
-
-// Validate that an Einsum subscript contains exactly one or zero ellipsis; and
-// that periods (.) occur only within an ellipses (...).
-absl::Status ValidateEinsumEllipsis(absl::string_view subscript,
-                                    bool* found_ellipsis) {
-  const int num_periods = absl::c_count(subscript, '.');
-  if (num_periods != 0 && num_periods != 3) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Expected at most one ellipsis (...), but found ", num_periods,
-        " periods (.) in the input subscript: ", subscript));
-  }
-  if (num_periods == 3 && !absl::StrContains(subscript, "...")) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Periods found outside of ellipsis in subscript: ", subscript));
-  }
-  *found_ellipsis = num_periods > 0;
-  return absl::OkStatus();
-}
-
-}  // namespace
-
 absl::Status EinsumShape(shape_inference::InferenceContext* c) {
   // We assume that the equation has a valid format. Either (x),(y)->(z)
   // or (x)->(z), where each of (x), (y) and (z) are concatenation of zero or
@@ -192,8 +169,8 @@ absl::Status EinsumShape(shape_inference::InferenceContext* c) {
   absl::flat_hash_map<char, DimensionHandle> label_to_dimension;
   absl::InlinedVector<ShapeHandle, 2> input_bcast_shapes(c->num_inputs());
   for (int i = 0, end = c->num_inputs(); i < end; ++i) {
-    bool has_ellipsis = false;
-    TF_RETURN_IF_ERROR(ValidateEinsumEllipsis(input_labels[i], &has_ellipsis));
+    // ValidateEinsumEquation guarantees at most one ellipsis per subscript.
+    const bool has_ellipsis = absl::StrContains(input_labels[i], "...");
     ShapeHandle input_shape = c->input(i);
     // Validate that the input rank is sufficient for the given number of named
     // labels.
@@ -273,9 +250,7 @@ absl::Status EinsumShape(shape_inference::InferenceContext* c) {
         &output_bcast_shape));
   }
 
-  bool output_has_ellipsis = false;
-  TF_RETURN_IF_ERROR(
-      ValidateEinsumEllipsis(output_labels, &output_has_ellipsis));
+  const bool output_has_ellipsis = absl::StrContains(output_labels, "...");
   if (output_has_ellipsis) {
     // If the output subscript has ellipsis and the output broadcast rank is
     // unknown, then the output shape should have unknown rank.
