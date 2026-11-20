@@ -12388,7 +12388,8 @@ ENTRY entry {
   auto masked_operand =
       op::Select(op::Broadcast(op::Convert(in_group_partition_id)),
                  op::Broadcast(op::Constant()), op::Parameter(0));
-  auto adjusted_indices = op::Subtract(op::DynamicSlice(), op::Broadcast());
+  auto adjusted_indices = op::Subtract(
+      op::Maximum(op::DynamicSlice(), op::Broadcast()), op::Broadcast());
   EXPECT_THAT(root,
               AllOf(op::AllReduce(op::Scatter(masked_operand, adjusted_indices,
                                               op::Parameter(1))),
@@ -17162,6 +17163,109 @@ ENTRY %module {
   auto scatter =
       AllOf(op::Shape("s32[2,4,1,2]"), op::Scatter(operand, indices, update));
   EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
+}
+
+TEST_P(SpmdPartitioningTest,
+       SortedScatterPartitionOffsetPreservesSortedIndices) {
+  static constexpr std::tuple<absl::string_view, absl::string_view, int64_t>
+      kCases[] = {
+          {"u32_f32_2dev", R"hlo(HloModule sorted_scatter_u32_f32_2dev
+add { %a = f32[] parameter(0)  %b = f32[] parameter(1)  ROOT %s = f32[] add(%a, %b) }  ENTRY e { %op = f32[8,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = u32[5,1] constant({{0}, {1}, {4}, {5}, {4294967295}}), sharding={replicated}  %upd = f32[5,4] parameter(1), sharding={replicated}  ROOT %r = f32[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo",
+           2},
+          {"u16_bf16_2dev", R"hlo(HloModule sorted_scatter_u16_bf16_2dev
+add { %a = bf16[] parameter(0)  %b = bf16[] parameter(1)  ROOT %s = bf16[] add(%a, %b) }  ENTRY e { %op = bf16[8,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = u16[4,1] constant({{0}, {2}, {4}, {7}}), sharding={replicated}  %upd = bf16[4,4] parameter(1), sharding={replicated}  ROOT %r = bf16[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo",
+           2},
+          {"u8_s32_4dev", R"hlo(HloModule sorted_scatter_u8_s32_4dev
+add { %a = s32[] parameter(0)  %b = s32[] parameter(1)  ROOT %s = s32[] add(%a, %b) }  ENTRY e { %op = s32[8,4] parameter(0), sharding={devices=[4,1]<=[4]}  %idx = u8[4,1] constant({{0}, {1}, {4}, {6}}), sharding={replicated}  %upd = s32[4,4] parameter(1), sharding={replicated}  ROOT %r = s32[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[4,1]<=[4]} })hlo",
+           4},
+          {"u64_f32_2dev", R"hlo(HloModule sorted_scatter_u64_f32_2dev
+add { %a = f32[] parameter(0)  %b = f32[] parameter(1)  ROOT %s = f32[] add(%a, %b) }  ENTRY e { %op = f32[8,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = u64[4,1] constant({{0}, {2}, {4}, {9223372036854775808}}), sharding={replicated}  %upd = f32[4,4] parameter(1), sharding={replicated}  ROOT %r = f32[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo",
+           2},
+          {"s32_int_min_2dev", R"hlo(HloModule sorted_scatter_s32_int_min_2dev
+add { %a = f32[] parameter(0)  %b = f32[] parameter(1)  ROOT %s = f32[] add(%a, %b) }  ENTRY e { %op = f32[8,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = s32[4,1] constant({{-2147483648}, {-1}, {4}, {5}}), sharding={replicated}  %upd = f32[4,4] parameter(1), sharding={replicated}  ROOT %r = f32[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo",
+           2},
+          {"s8_int_min_2dev", R"hlo(HloModule sorted_scatter_s8_int_min_2dev
+add { %a = f32[] parameter(0)  %b = f32[] parameter(1)  ROOT %s = f32[] add(%a, %b) }  ENTRY e { %op = f32[8,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = s8[4,1] constant({{-128}, {0}, {4}, {6}}), sharding={replicated}  %upd = f32[4,4] parameter(1), sharding={replicated}  ROOT %r = f32[8,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo",
+           2},
+      };
+  const auto make_lit = [](const Shape& s, int64_t bias) {
+    Literal f = Literal::CreateFromShape(ShapeUtil::ChangeElementType(s, F32));
+    for (int64_t i = 0; i < f.element_count(); ++i) {
+      f.data<float>()[i] = static_cast<float>((i % 11) + bias);
+    }
+    return f.Convert(s.element_type());
+  };
+  for (const auto& [name, hlo, nd] : kCases) {
+    for (bool resolve_conflicts : {true, false}) {
+      SCOPED_TRACE(absl::StrCat(name, "_", resolve_conflicts));
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_mod,
+                           ParseAndReturnVerifiedModule(hlo));
+      HloComputation* ref_e = ref_mod->entry_computation();
+      ASSERT_OK_AND_ASSIGN(
+          Literal op_full,
+          make_lit(ref_e->parameter_instruction(0)->shape(), 1));
+      ASSERT_OK_AND_ASSIGN(
+          Literal upd_full,
+          make_lit(ref_e->parameter_instruction(1)->shape(), 10));
+      ASSERT_OK_AND_ASSIGN(
+          Literal expected,
+          HloEvaluator().Evaluate(*ref_mod, {&op_full, &upd_full}));
+      SpmdPartitionerOptions options;
+      options.need_resolve_conflicts = resolve_conflicts;
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           PartitionComputation(hlo, nd, options));
+      const int64_t sz = 8 / nd;
+      for (int64_t d = 0; d < nd; ++d) {
+        std::unique_ptr<HloModule> dev_mod = module->Clone();
+        HloComputation* e = dev_mod->entry_computation();
+        for (HloInstruction* i : e->MakeInstructionPostOrder()) {
+          if (i->opcode() == HloOpcode::kPartitionId) {
+            ASSERT_OK(e->ReplaceWithNewInstruction(
+                i, HloInstruction::CreateConstant(
+                       LiteralUtil::CreateR0<uint32_t>(d))));
+          }
+        }
+        HloInstruction* sc =
+            FindInstruction(dev_mod.get(), HloOpcode::kScatter);
+        ASSERT_NE(sc, nullptr);
+        EXPECT_TRUE(Cast<HloScatterInstruction>(sc)->indices_are_sorted());
+        Literal op_shard = op_full.Slice({d * sz, 0}, {(d + 1) * sz, 4});
+        ASSERT_OK_AND_ASSIGN(
+            Literal idx_lit,
+            HloEvaluator().Evaluate(
+                Cast<HloScatterInstruction>(sc)->scatter_indices(), {}, true,
+                {{e->parameter_instruction(0), &op_shard},
+                 {e->parameter_instruction(1), &upd_full}}));
+        if (ShapeUtil::ElementIsSigned(idx_lit.shape())) {
+          ASSERT_OK_AND_ASSIGN(Literal s64_idx, idx_lit.Convert(S64));
+          EXPECT_TRUE(absl::c_is_sorted(s64_idx.data<int64_t>()));
+        } else {
+          ASSERT_OK_AND_ASSIGN(Literal u64_idx, idx_lit.Convert(U64));
+          EXPECT_TRUE(absl::c_is_sorted(u64_idx.data<uint64_t>()));
+        }
+        ASSERT_OK_AND_ASSIGN(
+            Literal actual,
+            HloEvaluator().Evaluate(*dev_mod, {&op_shard, &upd_full}));
+        EXPECT_EQ(actual, expected.Slice({d * sz, 0}, {(d + 1) * sz, 4}));
+      }
+    }
+  }
+  constexpr absl::string_view kLargeU32Hlo =
+      R"hlo(HloModule sorted_scatter_large_u32
+add { %a = f32[] parameter(0)  %b = f32[] parameter(1)  ROOT %s = f32[] add(%a, %b) }  ENTRY e { %op = f32[3000000000,4] parameter(0), sharding={devices=[2,1]<=[2]}  %idx = u32[4,1] parameter(1), sharding={replicated}  %upd = f32[4,4] parameter(2), sharding={replicated}  ROOT %r = f32[3000000000,4] scatter(%op, %idx, %upd), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, indices_are_sorted=true, to_apply=add, sharding={devices=[2,1]<=[2]} })hlo";
+  for (bool resolve_conflicts : {true, false}) {
+    SpmdPartitionerOptions options;
+    options.need_resolve_conflicts = resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> large_mod,
+                         PartitionComputation(kLargeU32Hlo, 2, options));
+    HloInstruction* sc = FindInstruction(large_mod.get(), HloOpcode::kScatter);
+    ASSERT_NE(sc, nullptr);
+    EXPECT_EQ(Cast<HloScatterInstruction>(sc)
+                  ->scatter_indices()
+                  ->shape()
+                  .element_type(),
+              S64);
+  }
 }
 
 TEST_P(SpmdPartitioningTest,

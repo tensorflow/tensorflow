@@ -1626,6 +1626,26 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
   return nullptr;
 }
 
+// Clamps negative signed indices to -1 and converts unsigned indices to signed
+// (capping same width values at signed max) so subtracting shard offsets cannot
+// wrap and break sortedness when `indices_are_sorted` is true.
+PartitionedHlo ClampSorted(const PartitionedHlo& o, const PartitionedHlo& i) {
+  HloInstruction* h = i.hlo();
+  SpmdBuilder* b = i.state().b;
+  PrimitiveType t = h->shape().element_type(), st = t == U64 ? S64 : S32;
+  st = GetOffsetType(o.base_shape(), o.sharding()) == S64 ? S64 : st;
+  st = ShapeUtil::ElementIsSigned(h->shape()) ? t : st;
+  int64_t m = st == t ? -1 : MaxIndexValue(t == U32 && st == S32 ? S32 : t);
+  HloInstruction* c = CreateR0WithType(t, m, b);
+  c = b->AddInstruction(HloInstruction::CreateBroadcast(h->shape(), c, {}));
+  h = b->AddInstruction(HloInstruction::CreateBinary(
+      h->shape(), st == t ? HloOpcode::kMaximum : HloOpcode::kMinimum, h, c));
+  Shape sh = ShapeUtil::ChangeElementType(h->shape(), st);
+  h = st == t ? h : b->AddInstruction(HloInstruction::CreateConvert(sh, h));
+  Shape bs = ShapeUtil::ChangeElementType(i.base_shape(), st);
+  return PartitionedHlo(i.CloneWithNewHlo(h).hlo(), bs, i.state());
+}
+
 HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
     const HloScatterInstruction* scatter, const PartitionedHlo& indices,
     const PartitionedHlo& per_group_operand,
@@ -1962,6 +1982,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
         indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped),
                         /*pad_value=*/LiteralUtil::CreateR0(
                             indices.base_shape().element_type(), -1));
+    indices = scatter->indices_are_sorted() ? ClampSorted(operands[0], indices)
+                                            : indices;
     HloInstruction* indices_min;
     std::tie(indices_min, std::ignore) =
         IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
@@ -2213,6 +2235,8 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
     }
   }
   if (!partitioned_inserted_window_dims.empty()) {
+    indices = scatter->indices_are_sorted() ? ClampSorted(operands[0], indices)
+                                            : indices;
     HloInstruction* indices_min;
     std::tie(indices_min, std::ignore) =
         IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
