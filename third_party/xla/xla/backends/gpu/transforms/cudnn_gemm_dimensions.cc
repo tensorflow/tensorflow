@@ -20,11 +20,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 namespace {
@@ -122,15 +125,23 @@ absl::StatusOr<PortToCanonicalDims> GetCanonicalDimensions(
   return result;
 }
 
+// Ranges of the dimensions of a port of the dot that a parameter is sliced to.
+struct SliceRanges {
+  std::vector<int64_t> starts;
+  std::vector<int64_t> sizes;
+
+  bool operator==(const SliceRanges& other) const = default;
+};
+
 // How the shape of an instruction gets to a port of the dot.
 struct PortPath {
   DotPort port;
-  // Maps the logical shape of the instruction to the shape of `port`.
+  // Maps the shape of the instruction to the shape of `port` before `slices`.
   ShapeTracker to_port;
+  // Slices between the instruction and `port`, if any.
+  std::optional<SliceRanges> slices;
 
-  bool operator==(const PortPath& other) const {
-    return port == other.port && to_port == other.to_port;
-  }
+  bool operator==(const PortPath& other) const = default;
 };
 
 // How each instruction relates to the dot.
@@ -165,6 +176,142 @@ absl::StatusOr<ShapeTracker> TrackFromDot(const HloInstruction& dot,
   return tracker;
 }
 
+// The `starts` and `sizes` of a slice of a shape with dimensions `unsliced`.
+struct SlicedShape {
+  std::vector<int64_t> unsliced;
+  std::vector<int64_t> starts;
+  std::vector<int64_t> sizes;
+};
+
+// Returns slice dimensions to represent slice(reshape(..)) rather than
+// reshape(slice(..)). Fails if the slice cannot be represented by a single
+// start/size pair per dimension.
+absl::StatusOr<SlicedShape> ReshapeSlicedDimensions(
+    const SlicedShape& slice, absl::Span<const int64_t> target_dims) {
+  SlicedShape result = {
+      .unsliced = SpanToVector(target_dims),
+      .starts = std::vector<int64_t>(target_dims.size(), 0),
+      .sizes = SpanToVector(target_dims),
+  };
+  // Groups of source and target dimensions with the same number of elements.
+  const absl::InlinedVector<std::pair<int64_t, int64_t>, 8> groups =
+      CommonFactors(slice.sizes, target_dims);
+  int64_t src_begin = 0;
+  for (int64_t group = 0; group < groups.size() - 1; ++group) {
+    const int64_t dst_begin = groups[group].second;
+    const auto [src_end, dst_end] = groups[group + 1];
+    // Removed size-1 dimensions join the next group, e.g. [1,K,N] -> [K,N].
+    if (dst_begin == dst_end && group < groups.size() - 2) {
+      continue;
+    }
+    absl::Span<const int64_t> src_sizes =
+        absl::MakeConstSpan(slice.sizes)
+            .subspan(src_begin, src_end - src_begin);
+    absl::Span<const int64_t> dst_sizes =
+        target_dims.subspan(dst_begin, dst_end - dst_begin);
+    for (int64_t i = 0; i < src_sizes.size(); ++i) {
+      const int64_t src = src_begin + i;
+      if (slice.unsliced[src] == slice.sizes[src]) {
+        continue;
+      }
+      // Only the major-most dimension of a group can be sliced.
+      if (Product(src_sizes.first(i)) != 1 || dst_sizes.empty()) {
+        return absl::UnimplementedError(
+            "The slice is not a range of a dimension after a reshape.");
+      }
+      // The major-most target dimension of the group that is not of size 1.
+      const auto it =
+          absl::c_find_if(dst_sizes, [](int64_t size) { return size != 1; });
+      const int64_t major_dst_offset =
+          it == dst_sizes.end() ? 0 : it - dst_sizes.begin();
+      const int64_t dst = dst_begin + major_dst_offset;
+      const int64_t minor_src = Product(src_sizes.subspan(i + 1));
+      const int64_t minor_dst =
+          Product(dst_sizes.subspan(major_dst_offset + 1));
+      if (result.unsliced[dst] != target_dims[dst] ||
+          (slice.starts[src] * minor_src) % minor_dst != 0 ||
+          (slice.unsliced[src] * minor_src) % minor_dst != 0) {
+        return absl::UnimplementedError(
+            "The slice is not a range of a dimension after a reshape.");
+      }
+      result.unsliced[dst] = slice.unsliced[src] * minor_src / minor_dst;
+      result.starts[dst] = slice.starts[src] * minor_src / minor_dst;
+    }
+    src_begin = src_end;
+  }
+  return result;
+}
+
+// Returns a new PortPath for `slice`. Recreates the ShapeTracker for the
+// unsliced shape and transforms the slice dimensions to represent a slice of
+// the dot operand: turns dot(bitcast(slice(p))) into dot(slice(bitcast(p))).
+absl::StatusOr<PortPath> PropagateSlice(const HloInstruction& slice,
+                                        const PortPath& path) {
+  if (!absl::c_all_of(slice.slice_strides(),
+                      [](int64_t stride) { return stride == 1; })) {
+    return absl::UnimplementedError("Only unit-stride slices are supported.");
+  }
+  if (path.port == DotPort::kOutput) {
+    // cuDNN builds plans for these graphs but fails to execute them.
+    return absl::UnimplementedError("Slices are not supported after the dot.");
+  }
+  const Shape& operand_shape = slice.operand(0)->shape();
+  SlicedShape sliced = {
+      .unsliced = SpanToVector(operand_shape.dimensions()),
+      .starts = slice.slice_starts(),
+      .sizes = SpanToVector(slice.shape().dimensions()),
+  };
+  ShapeTracker unsliced_to_port(operand_shape);
+  for (const ShapeTracker::Step& step : path.to_port.GetSteps()) {
+    if (const auto* transpose = std::get_if<ShapeTracker::Transpose>(&step)) {
+      sliced = {
+          .unsliced = Permute(sliced.unsliced, transpose->permutation),
+          .starts = Permute(sliced.starts, transpose->permutation),
+          .sizes = Permute(sliced.sizes, transpose->permutation),
+      };
+      ABSL_RETURN_IF_ERROR(unsliced_to_port.AppendTranspose(transpose->permutation));
+    } else if (const auto* reshape =
+                   std::get_if<ShapeTracker::Reshape>(&step)) {
+      ABSL_ASSIGN_OR_RETURN(sliced,
+                       ReshapeSlicedDimensions(sliced, reshape->dimensions));
+      ABSL_RETURN_IF_ERROR(unsliced_to_port.AppendReshape(sliced.unsliced));
+    } else if (const auto* broadcast =
+                   std::get_if<ShapeTracker::Broadcast>(&step)) {
+      // Broadcasted dimensions are not sliced.
+      SlicedShape broadcasted = {
+          .unsliced = broadcast->dimensions,
+          .starts = std::vector<int64_t>(broadcast->dimensions.size(), 0),
+          .sizes = broadcast->dimensions,
+      };
+      for (int64_t i = 0; i < broadcast->broadcast_dimensions.size(); ++i) {
+        broadcasted.unsliced[broadcast->broadcast_dimensions[i]] =
+            sliced.unsliced[i];
+        broadcasted.starts[broadcast->broadcast_dimensions[i]] =
+            sliced.starts[i];
+      }
+      sliced = std::move(broadcasted);
+      ABSL_RETURN_IF_ERROR(unsliced_to_port.AppendBroadcast(
+          sliced.unsliced, broadcast->broadcast_dimensions));
+    } else {
+      return absl::UnimplementedError("Cannot slice a reduced tensor.");
+    }
+  }
+  PortPath result = {
+      .port = path.port,
+      .to_port = std::move(unsliced_to_port),
+      .slices = SliceRanges{.starts = std::move(sliced.starts),
+                            .sizes = std::move(sliced.sizes)},
+  };
+  if (path.slices.has_value()) {
+    // Slicing an already sliced port adds offsets.
+    for (int64_t dim = 0; dim < result.slices->starts.size(); ++dim) {
+      result.slices->starts[dim] += path.slices->starts[dim];
+    }
+    result.slices->sizes = path.slices->sizes;
+  }
+  return result;
+}
+
 // Records `path` for `hlo` and walks towards the parameters, stopping at
 // the dot. Instructions that cannot be walked through have to be parameters or
 // constants.
@@ -187,6 +334,11 @@ absl::Status TraceToPort(const HloInstruction& hlo, PortPath path,
   if (IsShapeOp(hlo)) {
     ABSL_RETURN_IF_ERROR(path.to_port.PrependInstruction(&hlo));
     return TraceToPort(*hlo.operand(0), std::move(path), dot, paths);
+  }
+  if (hlo.opcode() == HloOpcode::kSlice) {
+    ABSL_ASSIGN_OR_RETURN(PortPath operand_path, PropagateSlice(hlo, path),
+                     _ << "Unsupported slice: " << hlo.ToString());
+    return TraceToPort(*hlo.operand(0), std::move(operand_path), dot, paths);
   }
   if (IsElementwiseOrCopy(hlo)) {
     for (const HloInstruction* operand : hlo.operands()) {
@@ -331,6 +483,34 @@ absl::StatusOr<CudnnTensorLayout> ComputeTensorLayout(
       return absl::UnimplementedError(absl::StrCat(
           "Canonical dimension ", layout.sizes.size(),
           " is not a single strided dimension: ", path.to_port.DebugString()));
+    }
+  }
+  if (path.slices.has_value()) {
+    absl::Span<const int64_t> unsliced =
+        path.to_port.output_shape().dimensions();
+    std::vector<std::pair<int64_t, int64_t>> ranges;
+    ranges.reserve(canonical.size());
+    bool is_sliced = false;
+    for (int position = 0; position < canonical.size(); ++position) {
+      ranges.push_back({0, layout.sizes[position]});
+      for (int64_t dim : canonical[position]) {
+        const int64_t start = path.slices->starts[dim];
+        const int64_t size = path.slices->sizes[dim];
+        // Unsliced and broadcasted dimensions do not restrict the tensor.
+        if (layout.sizes[position] == 1 || size == unsliced[dim]) {
+          continue;
+        }
+        if (unsliced[dim] != layout.sizes[position]) {
+          return absl::UnimplementedError(
+              "Cannot slice a dimension that is not a whole canonical "
+              "dimension.");
+        }
+        ranges.back() = {start, start + size};
+        is_sliced = true;
+      }
+    }
+    if (is_sliced) {
+      layout.slices = std::move(ranges);
     }
   }
   NormalizeStrides(/*has_batch_dimensions=*/!canonical[0].empty(), layout);
