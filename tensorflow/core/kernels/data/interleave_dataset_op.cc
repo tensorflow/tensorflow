@@ -335,6 +335,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       int64_t cycle_index;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kCycleIndex, &cycle_index));
+      if (cycle_index < 0 || cycle_index >= dataset()->cycle_length_) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Invalid cycle_index in checkpoint: ", cycle_index,
+            ", expected a value in [0, ", dataset()->cycle_length_, ")."));
+      }
       cycle_index_ = size_t(cycle_index);
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kBlockIndex, &block_index_));

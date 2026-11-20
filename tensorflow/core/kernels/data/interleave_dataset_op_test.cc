@@ -18,7 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -121,6 +123,47 @@ class InterleaveDatasetParams : public DatasetParams {
 class InterleaveDatasetOpTest : public DatasetOpsTestBase {
  protected:
   void TestBody() override {}
+
+  // Saves `iterator_`, then restores a new iterator from a copy of that
+  // checkpoint in which the saved "cycle_index" is replaced by `cycle_index`.
+  absl::Status RestoreWithCycleIndex(const std::string& iterator_prefix,
+                                     int64_t cycle_index) {
+    std::unique_ptr<SerializationContext> serialization_ctx;
+    TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
+    VariantTensorDataWriter writer;
+    TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx.get(), &writer));
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+
+    VariantTensorDataWriter modified_writer;
+    bool replaced = false;
+    for (const VariantTensorData* d : data) {
+      std::vector<std::string> keys =
+          absl::StrSplit(d->metadata_string(), "@@");
+      if (keys.size() != static_cast<size_t>(d->tensors_size()) + 1) {
+        return absl::InternalError("Unexpected checkpoint metadata.");
+      }
+      for (int i = 0; i < d->tensors_size(); ++i) {
+        if (keys[0] == iterator_->prefix() && keys[i + 1] == "cycle_index") {
+          TF_RETURN_IF_ERROR(
+              modified_writer.WriteScalar(keys[0], keys[i + 1], cycle_index));
+          replaced = true;
+        } else {
+          TF_RETURN_IF_ERROR(
+              modified_writer.WriteTensor(keys[0], keys[i + 1], d->tensors(i)));
+        }
+      }
+    }
+    if (!replaced) {
+      return absl::NotFoundError("cycle_index not found in checkpoint.");
+    }
+    std::vector<const VariantTensorData*> modified_data;
+    modified_writer.GetData(&modified_data);
+    VariantTensorDataReader reader(modified_data);
+    std::unique_ptr<IteratorBase> restored_iterator;
+    return RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
+                           *dataset_, &restored_iterator);
+  }
 };
 
 FunctionDefHelper::AttrValueWrapper MakeTensorSliceDatasetFunc(
@@ -753,6 +796,27 @@ TEST_F(InterleaveDatasetOpTest, SymbolicCheckpointSkip) {
   TF_EXPECT_OK(
       CheckIteratorGetNext(CreateTensors<int64_t>(TensorShape({1}), {{8}}),
                            /*compare_order=*/true));
+}
+
+// The interleave cycle has `cycle_length` = 2 slots, so a restored
+// `cycle_index` outside [0, 2) would index past `current_elements_`.
+TEST_F(InterleaveDatasetOpTest, RestoreInvalidCycleIndex) {
+  auto dataset_params = InterleaveDatasetParams2();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+
+  TF_EXPECT_OK(RestoreWithCycleIndex(dataset_params.iterator_prefix(),
+                                     /*cycle_index=*/1));
+  for (int64_t cycle_index : {int64_t{2}, int64_t{100}, int64_t{-1}}) {
+    EXPECT_THAT(
+        RestoreWithCycleIndex(dataset_params.iterator_prefix(), cycle_index),
+        absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               ::testing::HasSubstr("Invalid cycle_index")))
+        << "cycle_index=" << cycle_index;
+  }
 }
 
 InterleaveDatasetParams InterleaveBenchmarkDatasetParams() {

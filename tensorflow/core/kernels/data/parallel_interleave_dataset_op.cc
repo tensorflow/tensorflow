@@ -544,6 +544,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(prefix(), kBlockIndex, &block_index_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(prefix(), kCycleIndex, &cycle_index_));
+        if (cycle_index_ < 0 || cycle_index_ >= dataset()->cycle_length_) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid cycle_index in checkpoint: ", cycle_index_,
+              ", expected a value in [0, ", dataset()->cycle_length_, ")."));
+        }
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kElementIdCounter,
                                               &element_id_counter_));
         int64_t end_of_input;
