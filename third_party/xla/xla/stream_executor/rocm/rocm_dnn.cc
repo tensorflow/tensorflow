@@ -2249,7 +2249,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   // workaround for missing initialization support in MIOpen.
   // TODO: remove this when MIOpen is ready.
-  auto type_size = std::is_same<T, Eigen::half>::value ? 2 : sizeof(T);
+  auto type_size = std::is_same_v<T, Eigen::half> ? 2 : sizeof(T);
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))

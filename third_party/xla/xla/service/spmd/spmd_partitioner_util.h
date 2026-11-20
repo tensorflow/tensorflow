@@ -72,9 +72,9 @@ ConvolutionDimensionNumbers GenNewConvDNums(
 
 template <typename T>
 using IsCompOrCompBuilder =
-    typename std::enable_if_t<std::is_same<HloComputation, T>::value ||
-                              std::is_same<HloComputation::Builder, T>::value ||
-                              std::is_same<SpmdBuilder, T>::value>;
+    typename std::enable_if_t<std::is_same_v<HloComputation, T> ||
+                              std::is_same_v<HloComputation::Builder, T> ||
+                              std::is_same_v<SpmdBuilder, T>>;
 
 struct GatherScatterParallelDimSharding {
   HloSharding indices_sharding;

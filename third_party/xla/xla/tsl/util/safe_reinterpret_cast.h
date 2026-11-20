@@ -70,15 +70,14 @@ struct IsSafeCast : std::false_type {};
 // 3.  It's safe to cast a pointer or to/from the same type.
 template <typename From, typename To>
 struct IsSafeCast<From*, To*>
-    : std::integral_constant<
-          bool,
-          // To/from a pointer to a byte-like type.
-          (IsByteLike<typename std::remove_cv<From>::type>::value ||
-           IsByteLike<typename std::remove_cv<To>::type>::value) ||
-              // To/from void pointer.
-              (std::is_void_v<From> || std::is_void_v<To>) ||
-              // Between the same type.
-              std::is_same_v<From, To>> {};
+    : std::integral_constant<bool,
+                             // To/from a pointer to a byte-like type.
+                             (IsByteLike<std::remove_cv_t<From>>::value ||
+                              IsByteLike<std::remove_cv_t<To>>::value) ||
+                                 // To/from void pointer.
+                                 (std::is_void_v<From> || std::is_void_v<To>) ||
+                                 // Between the same type.
+                                 std::is_same_v<From, To>> {};
 
 // If __restrict is a macro, we assume that the compiler doesn't support
 // the __restrict keyword (e.g. when the code is compiled for iOS). Otherwsie,

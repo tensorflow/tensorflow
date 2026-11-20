@@ -435,7 +435,7 @@ class StablehloToHloOpConverter : public ConversionPattern {
     // Extensibility protocol for public MHLO features that are not yet
     // supported in StableHLO. See hlo_legalize_to_stablehlo.cc for details.
     constexpr bool isCustomCall =
-        std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value;
+        std::is_same_v<StablehloOpTy, stablehlo::CustomCallOp>;
     if constexpr (isCustomCall) {
       auto stablehloOp = llvm::cast<stablehlo::CustomCallOp>(op);
       if (stablehloOp.getCallTargetName().starts_with("mhlo.")) {
