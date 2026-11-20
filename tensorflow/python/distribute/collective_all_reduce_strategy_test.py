@@ -16,6 +16,8 @@
 
 import copy
 import functools
+from typing import Any
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -45,6 +47,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
@@ -738,6 +741,51 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
           copy.deepcopy(strategy)
     finally:
       strategy.extended._stop_check_health_thread()
+
+  def test_variable_creator_initial_value_returns_broadcast_send(
+      self, strategy: CollectiveAllReduceStrategy
+  ) -> None:
+    device = strategy.extended.worker_devices[0]
+    local_initial_value = (
+        [1.0, 2.0] if strategy.extended._is_chief else [0.0, 0.0]
+    )
+    initial_value_fn = strategy.extended._get_variable_creator_initial_value(
+        replica_id=0,
+        device=device,
+        primary_var=None,
+        initial_value=local_initial_value,
+    )
+    if strategy.extended._is_chief:
+      bcast_results = []
+      orig_broadcast_send = collective_ops.broadcast_send
+
+      def recording_broadcast_send(*args: Any, **kwargs: Any) -> Any:
+        result = orig_broadcast_send(*args, **kwargs)
+        bcast_results.append(result)
+        return result
+
+      with mock.patch.object(
+          collective_ops,
+          'broadcast_send',
+          autospec=True,
+          side_effect=recording_broadcast_send,
+      ):
+        result = initial_value_fn()
+      self.assertLen(bcast_results, 1)
+      self.assertIs(result, bcast_results[0])
+      self.assertAllClose([1.0, 2.0], result)
+    else:
+      result = initial_value_fn()
+      self.assertAllClose([1.0, 2.0], result)
+
+    with ops.Graph().as_default():
+      graph_result = initial_value_fn()
+      expected_op_type = (
+          'CollectiveBcastSend'
+          if strategy.extended._is_chief
+          else 'CollectiveBcastRecv'
+      )
+      self.assertEqual(graph_result.op.type, expected_op_type)
 
 
 class ExperimentalCompatibilityTest(test.TestCase):
