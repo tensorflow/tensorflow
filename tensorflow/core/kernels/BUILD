@@ -2183,6 +2183,23 @@ tf_cuda_cc_test(
 )
 
 tf_cc_test(
+    name = "bucketize_op_test",
+    size = "small",
+    srcs = ["bucketize_op_test.cc"],
+    deps = [
+        ":bucketize_op",
+        ":ops_testutil",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "in_topk_op_test",
     size = "small",
     srcs = ["in_topk_op_test.cc"],
@@ -8694,6 +8711,8 @@ test_suite(
         ":split_op_test",
         ":split_v_op_test_cpu",
         ":strided_slice_op_test",
+        ":bucketize_op_test",
+        ":in_topk_op_test",
         ":unique_op_test",
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",

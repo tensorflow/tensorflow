@@ -20,11 +20,17 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace functor {
@@ -68,20 +74,29 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
       }
     }
 
-    for (Eigen::Index batch_idx = 0; batch_idx < num_targets; batch_idx++) {
-      auto target = internal::SubtleMustCopy(targets(batch_idx));
+    // Raw pointers keep the hot loop free of reloads through the captured
+    // TensorMaps (the bool output store may otherwise alias them).
+    const T* const predictions_data = predictions.data();
+    const TargetT* const targets_data = targets.data();
+    bool* const output_data = output.data();
+
+    // Returns the number of predictions read, which is the row's actual cost:
+    // rows usually stop early once more than k larger predictions are seen.
+    auto process_row = [predictions_data, targets_data, output_data,
+                        num_classes, k_val](Eigen::Index batch_idx) -> int64_t {
+      const T* const row = predictions_data + batch_idx * num_classes;
+      auto target = internal::SubtleMustCopy(targets_data[batch_idx]);
 
       bool cannot_say = !FastBoundsCheck(target, num_classes) ||
-                        !std::isfinite(predictions(
-                            batch_idx, static_cast<Eigen::Index>(target)));
+                        !std::isfinite(row[static_cast<Eigen::Index>(target)]);
 
       int64_t more_probable_classes = 0;
+      Eigen::Index class_idx = 0;
       if (!cannot_say) {
-        const T target_prediction =
-            predictions(batch_idx, static_cast<Eigen::Index>(target));
+        const T target_prediction = row[static_cast<Eigen::Index>(target)];
 
-        for (Eigen::Index class_idx = 0; class_idx < num_classes; ++class_idx) {
-          T pred = predictions(batch_idx, class_idx);
+        for (; class_idx < num_classes; ++class_idx) {
+          const T pred = row[class_idx];
           if (!std::isfinite(pred)) {
             cannot_say = true;
             break;
@@ -91,8 +106,43 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
           }
         }
       }
-      output(batch_idx) = cannot_say ? false : (more_probable_classes < k_val);
+      output_data[batch_idx] =
+          cannot_say ? false : (more_probable_classes < k_val);
+      // On a full scan class_idx == num_classes; on an early exit it indexes
+      // the last element read, so the read count is class_idx + 1.
+      return class_idx == num_classes ? class_idx : class_idx + 1;
+    };
+
+    // Rows are independent, so they can be sharded across the CPU worker
+    // threads. How much of each row is scanned depends on the data, so first
+    // sample a few rows spread across the batch and use the observed average
+    // to decide whether the rest are worth dispatching.
+    constexpr Eigen::Index kSampleRows = 32;
+    constexpr int64_t kMinParallelPredictions = 16 * 1024;
+    const Eigen::Index sample = std::min(num_targets, kSampleRows);
+    std::vector<char> sampled_row(num_targets, 0);
+    int64_t sampled = 0;
+    for (Eigen::Index s = 0; s < sample; ++s) {
+      // Stride across the batch so a cheap prefix cannot hide expensive rows.
+      const Eigen::Index batch_idx = (s * num_targets) / sample;
+      sampled_row[batch_idx] = 1;
+      sampled += process_row(batch_idx);
     }
+    if (sample == num_targets) return;
+    const int64_t avg_scanned = std::max<int64_t>(1, sampled / sample);
+    auto work = [&](int64_t start, int64_t limit) {
+      for (int64_t batch_idx = start; batch_idx < limit; ++batch_idx) {
+        if (!sampled_row[batch_idx]) process_row(batch_idx);
+      }
+    };
+    // Estimate total work from the sample; small / early-exit batches stay
+    // on this thread where ParallelFor dispatch would dominate.
+    if (num_targets * avg_scanned < kMinParallelPredictions) {
+      work(0, num_targets);
+      return;
+    }
+    context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
+        num_targets, 2 * avg_scanned + 10, work);
   }
 };
 
