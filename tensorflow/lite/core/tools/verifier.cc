@@ -22,10 +22,12 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/c/common.h"
@@ -120,6 +122,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                   NameOrEmptyString(tensor.name()), i);
       return false;
     }
+    prev_ptr = string_offset;
   }
   if (GetIntPtr(buffer_ptr + offset - sizeof(int32_t)) != buffer_size) {
     ReportError(error_reporter,
@@ -238,9 +241,19 @@ absl::optional<uint64_t> VerifyAndCountElements(
   uint64_t num_elements = 1;
   for (int i = 0; i < total_level; i++) {
     const int original_dim = sparsity.traversal_order()->Get(i);
+    if (original_dim < 0 ||
+        original_dim >= static_cast<int>(dim_sizes.size()) ||
+        dim_sizes[original_dim] <= 0) {
+      return std::nullopt;
+    }
     const auto* dim_metadata = sparsity.dim_metadata()->Get(i);
     if (dim_metadata->format() == DimensionType_DENSE) {
-      if (dim_metadata->dense_size() != dim_sizes[original_dim]) {
+      if (dim_metadata->dense_size() <= 0 ||
+          dim_metadata->dense_size() != dim_sizes[original_dim]) {
+        return std::nullopt;
+      }
+      if (num_elements >
+          UINT_MAX / static_cast<uint64_t>(dim_metadata->dense_size())) {
         return std::nullopt;
       }
 
@@ -254,6 +267,9 @@ absl::optional<uint64_t> VerifyAndCountElements(
 
       int array_segments_size = GetSizeOfSegments(dim_metadata);
       int array_indices_size = GetSizeOfIndices(dim_metadata);
+      if (array_segments_size <= 0 || array_indices_size < 0) {
+        return std::nullopt;
+      }
 
       for (int j = 0; j < array_segments_size - 1; j++) {
         if (GetValueOfSegmentsAt(dim_metadata, j) < 0 ||
@@ -264,7 +280,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
         }
       }
 
-      if (static_cast<int>(num_elements) != array_segments_size - 1) {
+      if (num_elements != static_cast<uint64_t>(array_segments_size - 1)) {
         return std::nullopt;
       }
 
