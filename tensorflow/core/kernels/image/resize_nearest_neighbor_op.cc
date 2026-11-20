@@ -252,7 +252,7 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
                 absl::InvalidArgumentError(
                     "shape_t's elements must be positive for non-empty grads"));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
