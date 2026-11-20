@@ -94,6 +94,9 @@ constexpr uint64_t kPlaceholder = 1;
 // Domains of payload fingerprints.
 enum class PayloadKind { kConstant, kBytes, kCustomOptions };
 
+// The parameter tensors of a blockwise quantized tensor.
+enum class BlockwiseParameterKind { kScales, kZeroPoints };
+
 // Returns the `tf.entry_function` attribute of `function`, or null if it isn't
 // an entry function.
 DictionaryAttr GetEntryFunctionAttr(FuncOp function) {
@@ -156,6 +159,10 @@ class ModelBuilder : public ModelContext {
     std::vector<Offset<tflite::Operator>> operators;
     std::vector<int32_t> inputs;
     std::vector<int32_t> outputs;
+    // Blockwise quantization parameter tensors, by buffer and kind (scales or
+    // zero points), shared by the quantized tensors with equal parameters.
+    absl::flat_hash_map<std::pair<int, BlockwiseParameterKind>, int32_t>
+        parameter_tensors;
   };
 
   // A function with a signature.
@@ -187,9 +194,13 @@ class ModelBuilder : public ModelContext {
   bool NameEntryFunctionTensors(FuncOp function);
 
   bool AddTensor(Value value, StringRef name, Subgraph& subgraph);
+  // Builds the quantization parameters of a tensor of `element_type` about to
+  // be added at `tensor_index`. Blockwise parameter tensors that `subgraph`
+  // doesn't have yet are appended to `side_tensors`, to be added right after.
   std::optional<Offset<tflite::QuantizationParameters>> BuildQuantization(
       Type element_type, Location loc, StringRef tensor_name,
-      int32_t tensor_index, std::vector<Offset<tflite::Tensor>>& side_tensors);
+      int32_t tensor_index, Subgraph& subgraph,
+      std::vector<Offset<tflite::Tensor>>& side_tensors);
 
   bool AddOperator(Operation* op, Subgraph& subgraph);
   std::optional<Offset<tflite::Operator>> BuildTflOperator(
@@ -202,6 +213,9 @@ class ModelBuilder : public ModelContext {
   // Buffers. Each returns the index of the buffer.
   int AddConstantBuffer(const Constant& constant, Type type, bool shareable);
   int AddBytesBuffer(std::string bytes);
+  // Shared by the blockwise quantization parameters with equal type, shape
+  // and data, within and across subgraphs.
+  int AddParameterBuffer(BlockwiseParameter parameter);
   int AddPayloadBuffer(int payload);
   int AddInlineBuffer(StringRef bytes);
 
@@ -228,6 +242,9 @@ class ModelBuilder : public ModelContext {
   };
   llvm::DenseMap<std::pair<Attribute, int>, int> buffer_by_attr_;
   absl::flat_hash_map<uint64_t, SharedBuffer> buffer_by_fingerprint_;
+  // Buffers of blockwise quantization parameters, by fingerprint of their
+  // type, shape and data.
+  absl::flat_hash_map<uint64_t, int> parameter_buffers_;
 
   std::vector<Offset<tflite::OperatorCode>> opcodes_;
   std::map<std::pair<tflite::BuiltinOperator, std::string>, uint32_t>
@@ -442,12 +459,6 @@ bool ModelBuilder::AddTensor(Value value, StringRef name, Subgraph& subgraph) {
   const bool has_dynamic_dim = llvm::any_of(
       dims, [](int64_t dim) { return ShapedType::isDynamic(dim); });
 
-  const int32_t index = subgraph.tensors.size();
-  std::vector<Offset<tflite::Tensor>> side_tensors;
-  const auto quantization = BuildQuantization(
-      type.getElementType(), value.getLoc(), name, index, side_tensors);
-  if (!quantization.has_value()) return false;
-
   // The subtype of a TFLite variant (at most one, like the TF exporter). The
   // subtypes of a `tf_type` variant aren't accessible here and are not
   // exported.
@@ -486,6 +497,15 @@ bool ModelBuilder::AddTensor(Value value, StringRef name, Subgraph& subgraph) {
     }
   }
 
+  // Built last: the parameter tensors it registers in `subgraph` are only
+  // added below, so nothing may fail (or add tensors) in between.
+  const int32_t index = subgraph.tensors.size();
+  std::vector<Offset<tflite::Tensor>> side_tensors;
+  const auto quantization =
+      BuildQuantization(type.getElementType(), value.getLoc(), name, index,
+                        subgraph, side_tensors);
+  if (!quantization.has_value()) return false;
+
   subgraph.tensor_indices[value] = index;
   subgraph.tensors.push_back(tflite::CreateTensor(
       fbb_, fbb_.CreateVector(shape), *tflite_type, buffer,
@@ -500,7 +520,8 @@ bool ModelBuilder::AddTensor(Value value, StringRef name, Subgraph& subgraph) {
 std::optional<Offset<tflite::QuantizationParameters>>
 ModelBuilder::BuildQuantization(
     Type element_type, Location loc, StringRef tensor_name,
-    int32_t tensor_index, std::vector<Offset<tflite::Tensor>>& side_tensors) {
+    int32_t tensor_index, Subgraph& subgraph,
+    std::vector<Offset<tflite::Tensor>>& side_tensors) {
   if (auto type = dyn_cast<quant::UniformQuantizedType>(element_type)) {
     // min and max aren't known, so they are left as 0.
     return tflite::CreateQuantizationParameters(
@@ -521,38 +542,57 @@ ModelBuilder::BuildQuantization(
   if (!blockwise) return tflite::CreateQuantizationParameters(fbb_);
 
   // Blockwise scales and zero points are tensors of their own, placed right
-  // after the quantized tensor.
-  auto add_parameter_tensor = [&](const BlockwiseParameter& parameter,
-                                  absl::string_view suffix) {
-    const int32_t index = tensor_index + 1 + side_tensors.size();
-    const int buffer = AddBytesBuffer(parameter.data);
+  // after, and named after, the first quantized tensor using them. Equal
+  // parameters (e.g. of a weight used by several ops or materialized in several
+  // subgraphs) share their tensor within a subgraph and their buffer across
+  // subgraphs.
+  auto get_or_add_parameter_tensor = [&](BlockwiseParameter parameter,
+                                         BlockwiseParameterKind kind) {
+    const tflite::TensorType type = parameter.type;
+    const std::vector<int32_t> shape = parameter.shape;
+    const int buffer = AddParameterBuffer(std::move(parameter));
+    auto [it, inserted] = subgraph.parameter_tensors.try_emplace(
+        std::make_pair(buffer, kind),
+        tensor_index + 1 + static_cast<int32_t>(side_tensors.size()));
+    if (!inserted) return it->second;
+    const absl::string_view suffix =
+        kind == BlockwiseParameterKind::kScales ? "_scales" : "_zero_points";
     side_tensors.push_back(tflite::CreateTensor(
-        fbb_, fbb_.CreateVector(parameter.shape), parameter.type, buffer,
+        fbb_, fbb_.CreateVector(shape), type, buffer,
         fbb_.CreateString(absl::StrCat(tensor_name.str(), suffix)),
         /*quantization=*/0, /*is_variable=*/false, /*sparsity=*/0,
         /*shape_signature=*/0, /*has_rank=*/true));
-    return index;
+    return it->second;
   };
 
-  const absl::StatusOr<BlockwiseParameter> scales =
+  absl::StatusOr<BlockwiseParameter> scales =
       SerializeBlockwiseScales(blockwise.getScales());
   if (!scales.ok()) {
     emitError(loc, scales.status().message()) << ": " << blockwise;
     return std::nullopt;
   }
-  const int32_t scales_index = add_parameter_tensor(*scales, "_scales");
 
-  // -1 means no zero points, i.e. zero points of 0.
-  int32_t zero_points_index = -1;
+  std::optional<BlockwiseParameter> zero_points;
   if (ElementsAttr zero_points_attr = blockwise.getZeroPoints()) {
-    const absl::StatusOr<BlockwiseParameter> zero_points =
+    absl::StatusOr<BlockwiseParameter> serialized =
         SerializeBlockwiseZeroPoints(zero_points_attr);
-    if (!zero_points.ok()) {
-      emitError(loc, zero_points.status().message()) << ": " << blockwise;
+    if (!serialized.ok()) {
+      emitError(loc, serialized.status().message()) << ": " << blockwise;
       return std::nullopt;
     }
-    zero_points_index = add_parameter_tensor(*zero_points, "_zero_points");
+    zero_points = *std::move(serialized);
   }
+
+  // Registered once all parameters are serialized, so that a failure doesn't
+  // leave a registered tensor that is never added.
+  const int32_t scales_index = get_or_add_parameter_tensor(
+      *std::move(scales), BlockwiseParameterKind::kScales);
+  // -1 means no zero points, i.e. zero points of 0.
+  const int32_t zero_points_index =
+      zero_points.has_value()
+          ? get_or_add_parameter_tensor(*std::move(zero_points),
+                                        BlockwiseParameterKind::kZeroPoints)
+          : -1;
 
   const std::vector<int32_t> block_shape(blockwise.getBlockShape().begin(),
                                          blockwise.getBlockShape().end());
@@ -740,6 +780,17 @@ int ModelBuilder::AddBytesBuffer(std::string bytes) {
       fingerprint, size,
       [bytes = std::move(bytes)](ByteSink sink) { return sink(bytes); });
   return AddPayloadBuffer(payload);
+}
+
+int ModelBuilder::AddParameterBuffer(BlockwiseParameter parameter) {
+  // Like payloads, parameters with equal fingerprints are taken as equal.
+  const uint64_t fingerprint = llvm::hash_combine(
+      static_cast<int>(parameter.type),
+      llvm::hash_combine_range(parameter.shape.begin(), parameter.shape.end()),
+      StringRef(parameter.data));
+  auto [it, inserted] = parameter_buffers_.try_emplace(fingerprint, 0);
+  if (inserted) it->second = AddBytesBuffer(std::move(parameter.data));
+  return it->second;
 }
 
 int ModelBuilder::AddPayloadBuffer(int payload) {
