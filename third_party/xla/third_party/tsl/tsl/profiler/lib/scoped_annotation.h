@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <atomic>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -84,10 +83,6 @@ inline void PushAnnotation(const std::string& name) {
 }
 
 inline void PopAnnotation() {
-  // TODO(b/137971921): without this memory fence, two presubmit tests will
-  // fail probably due to compiler in that presubmit config.
-  std::atomic_thread_fence(std::memory_order_acquire);
-
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
     AnnotationStack::PopAnnotation();
