@@ -317,7 +317,7 @@ class CommonPjRtClient : public PjRtClient {
       bool is_mutable) {
     return raw_client()->ImportForeignMemory(
         memory_space->ToCApiPtr(), device_ptr, on_device_bytes_count,
-        std::move(on_delete_callback), is_mutable);
+        MakeOnceCallback(std::move(on_delete_callback)), is_mutable);
   }
 
   // Linearizes a literal into a raw buffer and returns a DeviceEvent

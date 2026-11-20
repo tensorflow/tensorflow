@@ -163,6 +163,25 @@ class PjRtExecutableLoadState
                     int attempt) = 0;
 };
 
+class PjRtOnceCallbackInterface;
+
+struct PjRtOnceCallbackDeleter {
+  PjRtOnceCallbackDeleter() = default;
+  template <typename T>
+  PjRtOnceCallbackDeleter(std::default_delete<T>) {}
+  void operator()(PjRtOnceCallbackInterface* cb) const;
+};
+using PjRtOnceCallbackRef =
+    std::unique_ptr<PjRtOnceCallbackInterface, PjRtOnceCallbackDeleter>;
+
+class PjRtOnceCallbackInterface : public PJRT_OnceCallback {
+ public:
+  static void Invoke(PjRtOnceCallbackRef cb);
+};
+
+PjRtOnceCallbackRef MakeOnceCallback(absl::AnyInvocable<void() &&> cb);
+absl::AnyInvocable<void() &&> ToAnyInvocable(PjRtOnceCallbackRef cb);
+
 class PjRtRawClientInterface;
 
 struct PjRtRawClientDeleter {
@@ -261,7 +280,7 @@ class PjRtRawClientInterface : public PJRT_RawClient {
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PJRT_Memory* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable);
+      PjRtOnceCallbackRef on_delete_callback, bool is_mutable);
 
   absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
       const;
@@ -483,7 +502,7 @@ class PjRtRawClient : public PjRtRawClientInterface {
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PJRT_Memory* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) = 0;
+      PjRtOnceCallbackRef on_delete_callback, bool is_mutable) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
   RuntimeAbiVersion() const {

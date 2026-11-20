@@ -28,6 +28,25 @@ limitations under the License.
 extern "C" {
 #endif
 
+typedef struct PJRT_OnceCallback PJRT_OnceCallback;
+
+typedef struct PJRT_OnceCallback_FunctionTable {
+  size_t struct_size;
+  size_t instance_size;
+  PJRT_Extension_Base* extension_start;
+  // Invokes and frees `callback`.
+  void (*invoke)(PJRT_OnceCallback* callback);
+  // Frees `callback` without invoking it.
+  void (*destroy)(PJRT_OnceCallback* callback);
+} PJRT_OnceCallback_FunctionTable;
+
+struct PJRT_OnceCallback {
+  const PJRT_OnceCallback_FunctionTable* vtable;
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_OnceCallback_FunctionTable, destroy);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_OnceCallback, vtable);
+
 typedef struct PJRT_RawClient PJRT_RawClient;
 
 typedef struct PJRT_RawClient_FunctionTable {
@@ -119,13 +138,25 @@ typedef struct PJRT_RawClient_FunctionTable {
                                                 int32_t local_device_id,
                                                 PJRT_DeviceEvent event,
                                                 intptr_t stream);
+  // Populates `out_stats` (`device` field unused) with allocator statistics for
+  // `local_device_id`.
+  PJRT_NO_DISCARD PJRT_Error* (*get_allocator_stats)(
+      const PJRT_RawClient* client, int32_t local_device_id,
+      PJRT_Device_MemoryStats_Args* out_stats);
+  // Imports foreign memory as a caller-owned raw buffer. Takes ownership of
+  // `on_delete_callback` (may be nullptr): on success, invokes it when done
+  // with `device_ptr`; on error, destroys it without invoking.
+  PJRT_NO_DISCARD PJRT_Error* (*import_foreign_memory)(
+      PJRT_RawClient* client, PJRT_Memory* memory_space, void* device_ptr,
+      size_t size, PJRT_OnceCallback* on_delete_callback, bool is_mutable,
+      PJRT_RawBuffer** out_buffer);
 } PJRT_RawClient_FunctionTable;
 
 struct PJRT_RawClient {
   const PJRT_RawClient_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable, wait_on_stream);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient_FunctionTable, import_foreign_memory);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawClient, vtable);
 
 #ifdef __cplusplus

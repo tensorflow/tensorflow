@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1190,6 +1191,93 @@ xla::coordination::TaskState PjRtProcessStateToTaskState(
       return xla::coordination::TaskState::ERROR;
   }
   LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
+}
+
+void PopulatePjRtDeviceMemoryStats(const tsl::AllocatorStats& stats,
+                                   PJRT_Device_MemoryStats_Args* args) {
+  args->bytes_in_use = stats.bytes_in_use;
+
+  args->peak_bytes_in_use_is_set = true;
+  args->peak_bytes_in_use = stats.peak_bytes_in_use;
+  args->num_allocs_is_set = true;
+  args->num_allocs = stats.num_allocs;
+  args->largest_alloc_size_is_set = true;
+  args->largest_alloc_size = stats.largest_alloc_size;
+
+  args->bytes_limit_is_set = stats.bytes_limit.has_value();
+  if (stats.bytes_limit) {
+    args->bytes_limit = *stats.bytes_limit;
+  }
+
+  args->bytes_reserved_is_set = true;
+  args->bytes_reserved = stats.bytes_reserved;
+  args->peak_bytes_reserved_is_set = true;
+  args->peak_bytes_reserved = stats.peak_bytes_reserved;
+
+  args->bytes_reservable_limit_is_set =
+      stats.bytes_reservable_limit.has_value();
+  if (stats.bytes_reservable_limit) {
+    args->bytes_reservable_limit = *stats.bytes_reservable_limit;
+  }
+
+  args->largest_free_block_bytes_is_set = true;
+  args->largest_free_block_bytes = stats.largest_free_block_bytes;
+
+  args->pool_bytes_is_set = stats.pool_bytes.has_value();
+  if (stats.pool_bytes) {
+    args->pool_bytes = *stats.pool_bytes;
+  }
+
+  args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
+  if (stats.peak_pool_bytes) {
+    args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
+  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
+                                            peak_allocated_bytes_is_set)) {
+    args->peak_allocated_bytes_is_set = true;
+    args->peak_allocated_bytes = stats.peak_allocated_bytes;
+  }
+}
+
+tsl::AllocatorStats ConvertFromPjRtDeviceMemoryStats(
+    const PJRT_Device_MemoryStats_Args& args) {
+  tsl::AllocatorStats result;
+  result.bytes_in_use = args.bytes_in_use;
+
+  // The PJRT C API supports optionally returning most fields, but only some
+  // fields in tsl::AllocatorStats are optional. Return -1 for unset,
+  // non-optional fields.
+  result.peak_bytes_in_use =
+      args.peak_bytes_in_use_is_set ? args.peak_bytes_in_use : -1;
+  result.num_allocs = args.num_allocs_is_set ? args.num_allocs : -1;
+  result.largest_alloc_size =
+      args.largest_alloc_size_is_set ? args.largest_alloc_size : -1;
+  if (args.bytes_limit_is_set) {
+    result.bytes_limit = args.bytes_limit;
+  }
+  result.bytes_reserved = args.bytes_reserved_is_set ? args.bytes_reserved : -1;
+  result.peak_bytes_reserved =
+      args.peak_bytes_reserved_is_set ? args.peak_bytes_reserved : -1;
+  if (args.struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
+                                           peak_allocated_bytes_is_set) &&
+      args.peak_allocated_bytes_is_set) {
+    result.peak_allocated_bytes = args.peak_allocated_bytes;
+  } else {
+    result.peak_allocated_bytes = -1;
+  }
+  if (args.bytes_reservable_limit_is_set) {
+    result.bytes_reservable_limit = args.bytes_reservable_limit;
+  }
+  result.largest_free_block_bytes =
+      args.largest_free_block_bytes_is_set ? args.largest_free_block_bytes : -1;
+  if (args.pool_bytes_is_set) {
+    result.pool_bytes = args.pool_bytes;
+  }
+  if (args.peak_pool_bytes_is_set) {
+    result.peak_pool_bytes = args.peak_pool_bytes;
+  }
+  return result;
 }
 
 }  // namespace pjrt

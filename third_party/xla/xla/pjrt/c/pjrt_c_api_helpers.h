@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {
@@ -350,6 +351,12 @@ PJRT_ProcessState TaskStateToPjRtProcessState(
 
 xla::coordination::TaskState PjRtProcessStateToTaskState(
     PJRT_ProcessState state);
+
+void PopulatePjRtDeviceMemoryStats(const tsl::AllocatorStats& stats,
+                                   PJRT_Device_MemoryStats_Args* args);
+
+tsl::AllocatorStats ConvertFromPjRtDeviceMemoryStats(
+    const PJRT_Device_MemoryStats_Args& args);
 
 }  // namespace pjrt
 

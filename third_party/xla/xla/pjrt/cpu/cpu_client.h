@@ -165,8 +165,7 @@ class PjRtCpuRawClient : public PjRtRawClient {
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PJRT_Memory* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback,
-      bool is_mutable) override;
+      PjRtOnceCallbackRef on_delete_callback, bool is_mutable) override;
 
   // TODO(b/403584258): PJRT wants to have just one simple Compile API. When the
   // CPU runtime stops supporting the legacy runtime we will unify our compile

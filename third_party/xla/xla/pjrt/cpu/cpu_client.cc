@@ -1058,10 +1058,10 @@ PjRtCpuRawClient::CreateLinkedEventPromise(LocalDeviceId local_device_id,
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::ImportForeignMemory(
     PJRT_Memory* memory_space, void* device_ptr, size_t size,
-    absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
+    PjRtOnceCallbackRef on_delete_callback, bool is_mutable) {
   return CpuRawBuffer::ImportForeignMemory(
-      device_ptr, std::move(on_delete_callback), size, memory_space, is_mutable,
-      async_work_runner());
+      device_ptr, ToAnyInvocable(std::move(on_delete_callback)), size,
+      memory_space, is_mutable, async_work_runner());
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuRawClient::AllocateRawBuffer(

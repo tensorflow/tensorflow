@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape.h"
@@ -482,6 +485,54 @@ void BM_DelinearizeInt4(benchmark::State& state) {
 
 BENCHMARK(BM_DelinearizeInt4)->Arg(4096)->Arg(1 << 20)->Arg(64 << 20);
 // NOLINTEND(misc-include-cleaner)
+
+TEST(PjRtOnceCallbackTest, InvokesAndDestroysAcrossCApi) {
+  int invoked_count = 0;
+  auto token = std::make_shared<int>(42);
+  std::weak_ptr<int> weak_token = token;
+
+  PjRtOnceCallbackRef cb =
+      MakeOnceCallback([&invoked_count, token = std::move(token)]() {
+        EXPECT_EQ(*token, 42);
+        ++invoked_count;
+      });
+  ASSERT_NE(cb, nullptr);
+
+  PJRT_OnceCallback* raw = cb.release();
+  EXPECT_EQ(cb, nullptr);
+  ASSERT_NE(raw, nullptr);
+  EXPECT_FALSE(weak_token.expired());
+
+  PjRtOnceCallbackRef restored(static_cast<PjRtOnceCallbackInterface*>(raw));
+  PjRtOnceCallbackInterface::Invoke(std::move(restored));
+  EXPECT_EQ(restored, nullptr);
+  EXPECT_EQ(invoked_count, 1);
+  EXPECT_TRUE(weak_token.expired());
+}
+
+TEST(PjRtOnceCallbackTest, DestroysWithoutInvokingWhenDropped) {
+  bool invoked = false;
+  auto token = std::make_shared<int>(7);
+  std::weak_ptr<int> weak_token = token;
+
+  {
+    PjRtOnceCallbackRef cb = MakeOnceCallback(
+        [&invoked, token = std::move(token)]() { invoked = true; });
+    PJRT_OnceCallback* raw = cb.release();
+    PjRtOnceCallbackRef restored(static_cast<PjRtOnceCallbackInterface*>(raw));
+    EXPECT_FALSE(weak_token.expired());
+  }
+
+  EXPECT_FALSE(invoked);
+  EXPECT_TRUE(weak_token.expired());
+}
+
+TEST(PjRtOnceCallbackTest, EmptyCallablesProduceNullHandle) {
+  void (*null_fn)() = nullptr;
+  EXPECT_EQ(MakeOnceCallback(nullptr), nullptr);
+  EXPECT_EQ(MakeOnceCallback(absl::AnyInvocable<void() &&>{}), nullptr);
+  EXPECT_EQ(MakeOnceCallback(null_fn), nullptr);
+}
 
 }  // namespace
 }  // namespace xla

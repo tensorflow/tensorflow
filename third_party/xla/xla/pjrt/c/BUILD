@@ -565,6 +565,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
+        "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -898,7 +899,9 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@stablehlo//:version",
-    ],
+    ] + if_google([
+        "//xla/tsl/framework:allocator",
+    ]),
 )
 
 xla_cc_test(

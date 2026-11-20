@@ -632,18 +632,19 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
     PJRT_Memory* memory_space, void* device_ptr, size_t size,
-    absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
+    PjRtOnceCallbackRef on_delete_callback, bool is_mutable) {
   if (memory_space->memory_kind_id == UnpinnedHostMemorySpace::kKindId) {
     return CpuRawBuffer::ImportForeignMemory(
-        device_ptr, std::move(on_delete_callback), size, memory_space,
-        is_mutable, async_work_runner());
+        device_ptr, ToAnyInvocable(std::move(on_delete_callback)), size,
+        memory_space, is_mutable, async_work_runner());
   }
   ABSL_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
       GetLocalDeviceState(LocalDeviceId(memory_space->local_device_id)));
 
   auto buffer = RawSEDeviceMemory::CreateForeign(
-      se::DeviceAddressBase(device_ptr, size), std::move(on_delete_callback));
+      se::DeviceAddressBase(device_ptr, size),
+      ToAnyInvocable(std::move(on_delete_callback)));
 
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       this, memory_space, local_device, std::move(buffer), size);

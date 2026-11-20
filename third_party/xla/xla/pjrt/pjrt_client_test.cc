@@ -618,12 +618,19 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
   // 'unaligned_ptr' points to the second element.
   Shape shape = ShapeUtil::MakeShape(S32, {4});
 
-  // Attempt to create a view of the unaligned buffer. Expect an error.
+  // Attempt to create a view of the unaligned buffer. Expect an error and that
+  // `on_delete_callback` is destroyed without being invoked.
+  bool deleted = false;
+  auto destroyed = std::make_shared<int>(0);
+  std::weak_ptr<int> weak_destroyed = destroyed;
   auto result = client->CreateViewOfDeviceBuffer(
       unaligned_ptr, shape, client->memory_spaces()[0],
-      /*on_delete_callback=*/std::function<void()>());
+      /*on_delete_callback=*/
+      [&deleted, destroyed = std::move(destroyed)]() { deleted = true; });
 
   ASSERT_FALSE(result.ok());
+  EXPECT_FALSE(deleted);
+  EXPECT_TRUE(weak_destroyed.expired());
   EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr("unaligned data"));
 }

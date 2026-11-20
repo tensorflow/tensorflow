@@ -369,8 +369,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PJRT_Memory* memory_space, void* device_ptr, size_t size,
-      absl::AnyInvocable<void() &&> on_delete_callback,
-      bool is_mutable) override;
+      PjRtOnceCallbackRef on_delete_callback, bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
       LocalDeviceId local_device_id, std::intptr_t stream) override;

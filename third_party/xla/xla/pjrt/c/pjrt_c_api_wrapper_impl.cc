@@ -1745,51 +1745,7 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
                         args->device->device->GetAllocatorStats());
-
-  args->bytes_in_use = stats.bytes_in_use;
-
-  args->peak_bytes_in_use_is_set = true;
-  args->peak_bytes_in_use = stats.peak_bytes_in_use;
-  args->num_allocs_is_set = true;
-  args->num_allocs = stats.num_allocs;
-  args->largest_alloc_size_is_set = true;
-  args->largest_alloc_size = stats.largest_alloc_size;
-
-  args->bytes_limit_is_set = stats.bytes_limit.has_value();
-  if (stats.bytes_limit) {
-    args->bytes_limit = *stats.bytes_limit;
-  }
-
-  args->bytes_reserved_is_set = true;
-  args->bytes_reserved = stats.bytes_reserved;
-  args->peak_bytes_reserved_is_set = true;
-  args->peak_bytes_reserved = stats.peak_bytes_reserved;
-
-  args->bytes_reservable_limit_is_set =
-      stats.bytes_reservable_limit.has_value();
-  if (stats.bytes_reservable_limit) {
-    args->bytes_reservable_limit = *stats.bytes_reservable_limit;
-  }
-
-  args->largest_free_block_bytes_is_set = true;
-  args->largest_free_block_bytes = stats.largest_free_block_bytes;
-
-  args->pool_bytes_is_set = stats.pool_bytes.has_value();
-  if (stats.pool_bytes) {
-    args->pool_bytes = *stats.pool_bytes;
-  }
-
-  args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
-  if (stats.peak_pool_bytes) {
-    args->peak_pool_bytes = *stats.peak_pool_bytes;
-  }
-
-  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args,
-                                            peak_allocated_bytes_is_set)) {
-    args->peak_allocated_bytes_is_set = true;
-    args->peak_allocated_bytes = stats.peak_allocated_bytes;
-  }
-
+  pjrt::PopulatePjRtDeviceMemoryStats(stats, args);
   return nullptr;
 }
 

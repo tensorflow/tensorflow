@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -251,6 +252,63 @@ TEST(PjRtCApiHelperTest, BuildXlaShapeFromCWithNullptrLayout) {
       BuildXlaShapeFromC(PJRT_Buffer_Type::PJRT_Buffer_Type_F32, dims, 2,
                          nullptr));
   EXPECT_FALSE(shape.has_layout());
+}
+
+TEST(PjRtCApiHelperTest, PopulateAndConvertDeviceMemoryStats) {
+  tsl::AllocatorStats stats;
+  stats.num_allocs = 7;
+  stats.bytes_in_use = 1024;
+  stats.peak_bytes_in_use = 4096;
+  stats.largest_alloc_size = 512;
+  stats.bytes_limit = 8192;
+  stats.bytes_reserved = 256;
+  stats.peak_bytes_reserved = 512;
+  stats.bytes_reservable_limit = std::nullopt;
+  stats.largest_free_block_bytes = 2048;
+  stats.pool_bytes = 16384;
+  stats.peak_pool_bytes = std::nullopt;
+  stats.peak_allocated_bytes = 3072;
+
+  PJRT_Device_MemoryStats_Args args{};
+  args.struct_size = PJRT_Device_MemoryStats_Args_STRUCT_SIZE;
+  PopulatePjRtDeviceMemoryStats(stats, &args);
+
+  tsl::AllocatorStats round_trip = ConvertFromPjRtDeviceMemoryStats(args);
+  EXPECT_EQ(round_trip.num_allocs, 7);
+  EXPECT_EQ(round_trip.bytes_in_use, 1024);
+  EXPECT_EQ(round_trip.peak_bytes_in_use, 4096);
+  EXPECT_EQ(round_trip.largest_alloc_size, 512);
+  EXPECT_EQ(round_trip.bytes_limit, 8192);
+  EXPECT_EQ(round_trip.bytes_reserved, 256);
+  EXPECT_EQ(round_trip.peak_bytes_reserved, 512);
+  EXPECT_EQ(round_trip.bytes_reservable_limit, std::nullopt);
+  EXPECT_EQ(round_trip.largest_free_block_bytes, 2048);
+  EXPECT_EQ(round_trip.pool_bytes, 16384);
+  EXPECT_EQ(round_trip.peak_pool_bytes, std::nullopt);
+  EXPECT_EQ(round_trip.peak_allocated_bytes, 3072);
+}
+
+TEST(PjRtCApiHelperTest, ConvertFromUnsetDeviceMemoryStats) {
+  PJRT_Device_MemoryStats_Args args{};
+  args.struct_size =
+      PJRT_STRUCT_SIZE(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+  args.bytes_in_use = 64;
+  args.peak_allocated_bytes_is_set = true;
+  args.peak_allocated_bytes = 999;
+
+  tsl::AllocatorStats stats = ConvertFromPjRtDeviceMemoryStats(args);
+  EXPECT_EQ(stats.bytes_in_use, 64);
+  EXPECT_EQ(stats.peak_bytes_in_use, -1);
+  EXPECT_EQ(stats.num_allocs, -1);
+  EXPECT_EQ(stats.largest_alloc_size, -1);
+  EXPECT_EQ(stats.bytes_limit, std::nullopt);
+  EXPECT_EQ(stats.bytes_reserved, -1);
+  EXPECT_EQ(stats.peak_bytes_reserved, -1);
+  EXPECT_EQ(stats.peak_allocated_bytes, -1);
+  EXPECT_EQ(stats.bytes_reservable_limit, std::nullopt);
+  EXPECT_EQ(stats.largest_free_block_bytes, -1);
+  EXPECT_EQ(stats.pool_bytes, std::nullopt);
+  EXPECT_EQ(stats.peak_pool_bytes, std::nullopt);
 }
 
 }  // namespace

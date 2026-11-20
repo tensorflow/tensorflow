@@ -69,6 +69,54 @@ PjRtRawBufferRef RawBufferFromC(PJRT_RawBuffer* c_buffer) {
 
 }  // namespace
 
+void PjRtOnceCallbackDeleter::operator()(PjRtOnceCallbackInterface* cb) const {
+  if (cb != nullptr) {
+    cb->vtable->destroy(cb);
+  }
+}
+
+PjRtOnceCallbackRef MakeOnceCallback(absl::AnyInvocable<void() &&> cb) {
+  if (!cb) {
+    return nullptr;
+  }
+  struct Holder : PjRtOnceCallbackInterface {
+    explicit Holder(absl::AnyInvocable<void() &&> fn) : fn(std::move(fn)) {}
+    absl::AnyInvocable<void() &&> fn;
+  };
+  static constexpr PJRT_OnceCallback_FunctionTable kVtable = {
+      /*struct_size=*/PJRT_OnceCallback_FunctionTable_STRUCT_SIZE,
+      /*instance_size=*/sizeof(Holder),
+      /*extension_start=*/nullptr,
+      /*invoke=*/
+      +[](PJRT_OnceCallback* callback) {
+        std::unique_ptr<Holder> holder(static_cast<Holder*>(callback));
+        std::move(holder->fn)();
+      },
+      /*destroy=*/
+      +[](PJRT_OnceCallback* callback) {
+        delete static_cast<Holder*>(callback);
+      },
+  };
+  auto holder = std::make_unique<Holder>(std::move(cb));
+  holder->vtable = &kVtable;
+  return holder;
+}
+
+void PjRtOnceCallbackInterface::Invoke(PjRtOnceCallbackRef cb) {
+  if (PJRT_OnceCallback* raw = cb.release()) {
+    raw->vtable->invoke(raw);
+  }
+}
+
+absl::AnyInvocable<void() &&> ToAnyInvocable(PjRtOnceCallbackRef cb) {
+  if (!cb) {
+    return nullptr;
+  }
+  return [cb = std::move(cb)]() mutable {
+    PjRtOnceCallbackInterface::Invoke(std::move(cb));
+  };
+}
+
 void PjRtRawClientDeleter::operator()(PjRtRawClientInterface* client) const {
   if (client != nullptr) {
     client->vtable->destroy(client);
@@ -268,6 +316,33 @@ const PJRT_RawClient_FunctionTable PjRtRawClient::kRawClientVtable = {
           static_cast<PjRtRawClient*>(client)->WaitOnStream(
               LocalDeviceId(local_device_id),
               PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(event)), stream));
+    },
+    /*get_allocator_stats=*/
+    +[](const PJRT_RawClient* client, int32_t local_device_id,
+        PJRT_Device_MemoryStats_Args* out_stats) -> PJRT_Error* {
+      auto result =
+          static_cast<const PjRtRawClient*>(client)->GetAllocatorStats(
+              LocalDeviceId(local_device_id));
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      pjrt::PopulatePjRtDeviceMemoryStats(*result, out_stats);
+      return nullptr;
+    },
+    /*import_foreign_memory=*/
+    +[](PJRT_RawClient* client, PJRT_Memory* memory_space, void* device_ptr,
+        size_t size, PJRT_OnceCallback* on_delete_callback, bool is_mutable,
+        PJRT_RawBuffer** out_buffer) -> PJRT_Error* {
+      auto result = static_cast<PjRtRawClient*>(client)->ImportForeignMemory(
+          memory_space, device_ptr, size,
+          PjRtOnceCallbackRef(
+              static_cast<PjRtOnceCallbackInterface*>(on_delete_callback)),
+          is_mutable);
+      if (!result.ok()) {
+        return pjrt::StatusToPjRtError(result.status());
+      }
+      *out_buffer = std::move(*result).release();
+      return nullptr;
     },
 };
 
@@ -523,12 +598,15 @@ void PjRtRawClientInterface::RecordLinearizeBytes(bool is_h2d, size_t bytes) {
 
 absl::StatusOr<PjRtRawBufferRef> PjRtRawClientInterface::ImportForeignMemory(
     PJRT_Memory* memory_space, void* device_ptr, size_t size,
-    absl::AnyInvocable<void() &&> on_delete_callback, bool is_mutable) {
-  if (auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->ImportForeignMemory(memory_space, device_ptr, size,
-                                    std::move(on_delete_callback), is_mutable);
+    PjRtOnceCallbackRef on_delete_callback, bool is_mutable) {
+  PJRT_RawBuffer* out_buffer = nullptr;
+  PJRT_Error* error = vtable->import_foreign_memory(
+      this, memory_space, device_ptr, size, on_delete_callback.release(),
+      is_mutable, &out_buffer);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError("ImportForeignMemory is not supported.");
+  return RawBufferFromC(out_buffer);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
@@ -642,10 +720,14 @@ PjRtRawClientInterface::GetStreamForExternalReadyEvents(
 
 absl::StatusOr<tsl::AllocatorStats> PjRtRawClientInterface::GetAllocatorStats(
     LocalDeviceId local_device_id) const {
-  if (const auto* cpp = down_cast<PjRtRawClient>()) {
-    return cpp->GetAllocatorStats(local_device_id);
+  PJRT_Device_MemoryStats_Args args{};
+  args.struct_size = PJRT_Device_MemoryStats_Args_STRUCT_SIZE;
+  PJRT_Error* error =
+      vtable->get_allocator_stats(this, local_device_id.value(), &args);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
   }
-  return absl::UnimplementedError("GetAllocatorStats is not supported.");
+  return pjrt::ConvertFromPjRtDeviceMemoryStats(args);
 }
 
 absl::Status PjRtRawClientInterface::ClearMemoryStats(
