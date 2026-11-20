@@ -711,7 +711,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
           if self._num_workers > 1:
             if self._is_chief:
-              bcast_send = collective_ops.broadcast_send(
+              # Return the broadcast_send output itself. It holds the same
+              # value as initial_value, drops a redundant Identity, and makes
+              # the send a data dependency of the initial value, so graph
+              # rewrites of the initializer cannot drop it.
+              return collective_ops.broadcast_send(
                   initial_value,
                   initial_value.shape,
                   initial_value.dtype,
@@ -719,8 +723,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                   group_key,
                   collective_instance_key,
               )
-              with ops.control_dependencies([bcast_send]):
-                return array_ops.identity(initial_value)
             else:
               return collective_ops.broadcast_recv(
                   initial_value.shape,
