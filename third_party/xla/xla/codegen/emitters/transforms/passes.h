@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 
 namespace stream_executor {
@@ -36,10 +35,6 @@ std::unique_ptr<mlir::Pass> createLowerTensorsPass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> createVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
-
-// Traces `dest` backward through tensor update and control flow forwarding
-// operations to find the underlying destination buffer SSA value.
-mlir::Value TraceDestinationBuffer(mlir::Value dest, bool emit_error = false);
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

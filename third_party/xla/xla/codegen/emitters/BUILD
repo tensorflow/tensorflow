@@ -343,6 +343,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_spec",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/analysis:indexing_analysis",

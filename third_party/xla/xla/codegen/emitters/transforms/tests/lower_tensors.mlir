@@ -247,19 +247,19 @@ func.func @transpose_shared(%in: tensor<1024xf32>,
 
   return %written_tile : tensor<1024xf32>
 }
-// CHECK:      llvm.mlir.global private @[[SHARED:shared_.*]]()
-// CHECK-SAME:     {addr_space = 3 : i32} : !llvm.array<1024 x f32>
-// CHECK:      @transpose_shared
-// CHECK:        %[[ADDR:.*]] = llvm.mlir.addressof @[[SHARED]] : !llvm.ptr<3>
-// CHECK:        %[[CAST:.*]] = llvm.addrspacecast %[[ADDR]]
-// CHECK-SAME:       : !llvm.ptr<3> to !llvm.ptr
-// CHECK:        scf.for
-// CHECK:          %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
-// CHECK:          llvm.store {{.*}} %[[ELEM_ADDR]]
-// CHECK:        gpu.barrier
-// CHECK:        scf.for
-// CHECK:          %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
-// CHECK:          llvm.load %[[ELEM_ADDR]]
+// CHECK-GPU:      llvm.mlir.global private @[[SHARED:shared_.*]]()
+// CHECK-GPU-SAME:     {addr_space = 3 : i32} : !llvm.array<1024 x f32>
+// CHECK-GPU:      @transpose_shared
+// CHECK-GPU:        %[[ADDR:.*]] = llvm.mlir.addressof @[[SHARED]] : !llvm.ptr<3>
+// CHECK-GPU:        %[[CAST:.*]] = llvm.addrspacecast %[[ADDR]]
+// CHECK-GPU-SAME:       : !llvm.ptr<3> to !llvm.ptr
+// CHECK-GPU:        scf.for
+// CHECK-GPU:          %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
+// CHECK-GPU:          llvm.store {{.*}} %[[ELEM_ADDR]]
+// CHECK-GPU:        gpu.barrier
+// CHECK-GPU:        scf.for
+// CHECK-GPU:          %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
+// CHECK-GPU:          llvm.load %[[ELEM_ADDR]]
 
 // -----
 
@@ -552,7 +552,7 @@ func.func @shared_complex() -> tensor<10xcomplex<f32>> {
   %shared = xla_gpu.allocate_shared : tensor<10xcomplex<f32>>
   return %shared : tensor<10xcomplex<f32>>
 }
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
+// CHECK-GPU: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
 // CHECK-LABEL: @shared_complex
 
 // -----
@@ -562,7 +562,7 @@ func.func @shared_i4() -> tensor<10xi4> {
   return %shared : tensor<10xi4>
 }
 // Five packed bytes are padded to two whole words.
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
+// CHECK-GPU: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
 // CHECK-LABEL: @shared_i4
 
 // -----
@@ -574,7 +574,7 @@ func.func @shared_i4_store(%v: i4, %i: index) -> tensor<10xi4> {
 }
 // A 4 bit store is a 32 bit CAS on the containing word, so the shared
 // allocation must be word aligned and a whole number of words.
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
+// CHECK-GPU: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<8 x i8>
 // CHECK-LABEL: @shared_i4_store
 // CHECK-GPU: %[[BASE:.*]] = llvm.intr.ptrmask
 // CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] atomic unordered <alignment = 4> : !llvm.ptr -> i32
@@ -661,7 +661,7 @@ func.func @shared_f64() -> tensor<16xf64> {
   return %shared : tensor<16xf64>
 }
 // Wide element types keep their natural alignment.
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<16 x f64>
+// CHECK-GPU: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<16 x f64>
 // CHECK-LABEL: @shared_f64
 
 // -----
@@ -671,7 +671,7 @@ func.func @shared_f16() -> tensor<3xf16> {
   return %shared : tensor<3xf16>
 }
 // Six bytes of f16 are padded to eight.
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<4 x f16>
+// CHECK-GPU: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32, alignment = 4 : i64} : !llvm.array<4 x f16>
 // CHECK-LABEL: @shared_f16
 
 // -----
@@ -692,9 +692,9 @@ func.func @shared_reinterpreted_transfer_alignment(%v: vector<2xf64>)
 }
 // Shared buffer alignment follows the allocation element type, not a cast view.
 // CHECK-LABEL: @shared_reinterpreted_transfer_alignment
-// CHECK:         llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<2xf64>
-// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 4> : vector<2xf64>, !llvm.ptr
-// CHECK:         llvm.load %{{.*}} <alignment = 8> : !llvm.ptr -> vector<8xi8>
+// CHECK-GPU:     llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<2xf64>
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 4> : vector<2xf64>, !llvm.ptr
+// CHECK-GPU:     llvm.load %{{.*}} <alignment = 8> : !llvm.ptr -> vector<8xi8>
 
 // -----
 
@@ -2369,10 +2369,10 @@ func.func @transfer_alignment_subbyte_shared_and_global(
 }
 // CHECK-LABEL: @transfer_alignment_subbyte_shared_and_global(
 // CHECK:           %[[LD0:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
-// CHECK:           llvm.store %[[LD0]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
-// CHECK:           gpu.barrier
-// CHECK:           %[[LD1:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
-// CHECK:           llvm.store %[[LD1]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
+// CHECK-GPU:       llvm.store %[[LD0]], %{{.*}} <alignment = 4> : i32, !llvm.ptr
+// CHECK-GPU:       gpu.barrier
+// CHECK-GPU:       %[[LD1:.*]] = llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> i32
+// CHECK:           llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
 
 // -----
 

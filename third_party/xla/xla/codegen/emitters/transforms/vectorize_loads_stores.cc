@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
+#include "xla/codegen/emitters/transforms/lower_tensors_common.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"

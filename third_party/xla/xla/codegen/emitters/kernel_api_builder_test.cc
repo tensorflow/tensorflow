@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"

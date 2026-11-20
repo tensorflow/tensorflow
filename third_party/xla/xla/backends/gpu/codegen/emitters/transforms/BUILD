@@ -15,6 +15,7 @@
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -39,6 +40,34 @@ gentbl_cc_library(
     td_file = "passes.td",
     visibility = ["//visibility:private"],
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "lower_tensors_patterns",
+    srcs = ["lower_tensors_patterns.cc"],
+    hdrs = ["lower_tensors_patterns.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:util",
+        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:atomic_rmw_utils",
+        "//xla/codegen/emitters/transforms:lower_tensors_common",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:ROCDLDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
+    ],
 )
 
 cc_library(

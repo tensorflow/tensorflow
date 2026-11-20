@@ -147,9 +147,9 @@ bazel_dep(name = "libpfm", version = "4.13.0", repo_name = None)
 bazel_dep(name = "rules_ml_toolchain")
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-7eqXGrr59MzfuhUzAwznbG/NDe51oyNMSlxRQZgSQ64=",
-    strip_prefix = "rules_ml_toolchain-9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3.tar.gz"],
+    integrity = "sha256-DyPpivV94o/rvCzthoVGLPacEFAnC3V4ryqqE/6Qdks=",
+    strip_prefix = "rules_ml_toolchain-c3a7158891712f5dba4a431b435f29f18df3fc67",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/c3a7158891712f5dba4a431b435f29f18df3fc67.tar.gz"],
 )
 
 bazel_dep(name = "xla", repo_name = "xla")

@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
 #include "mlir/IR/ValueRange.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/LoopLikeInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
@@ -88,6 +90,11 @@ void ReplaceApplyIndexingOp(mlir::PatternRewriter& rewriter,
                             ApplyIndexingOp indexing_op,
                             mlir::ValueRange operands,
                             const IndexingMap& indexing_map);
+
+namespace emitters {
+inline constexpr absl::string_view kXlaInvariantAttr = "xla.invariant";
+inline constexpr absl::string_view kXlaAliasedAttr = "xla.aliased";
+}  // namespace emitters
 
 }  // namespace xla
 
