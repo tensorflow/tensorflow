@@ -23,12 +23,33 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include <utility>
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
-template <typename Device>
+namespace {
+
+absl::Status ValidateSparseReshapeInputs(const Tensor& input_indices_in,
+                                         const Tensor& input_shape_in) {
+  if (!TensorShapeUtils::IsMatrix(input_indices_in.shape())) {
+    return absl::InvalidArgumentError("Input must be a matrix.");
+  }
+  if (!TensorShapeUtils::IsVector(input_shape_in.shape())) {
+    return absl::InvalidArgumentError("Input shape must be a vector.");
+  }
+  if (input_indices_in.dim_size(1) != input_shape_in.dim_size(0)) {
+    return absl::InvalidArgumentError(
+        "Input tensor rank must match input shape length.");
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 class SparseReshapeOp : public OpKernel {
  public:
   explicit SparseReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -38,30 +59,45 @@ class SparseReshapeOp : public OpKernel {
     const Tensor& input_shape_in = context->input(1);
     const Tensor& target_shape_in = context->input(2);
 
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices_in.shape()),
-                absl::InvalidArgumentError("Input must be a matrix."));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
-                absl::InvalidArgumentError("Input shape must be a vector."));
-    OP_REQUIRES(context,
-                input_indices_in.dim_size(1) == input_shape_in.dim_size(0),
-                absl::InvalidArgumentError(
-                    "Input tensor rank must match input shape length."));
-    ReshapeSparseTensor<Device>(context, input_indices_in, input_shape_in,
-                                target_shape_in, 0 /* output indices index */,
-                                1 /* output shape index */);
+    OP_REQUIRES_OK(
+        context, ValidateSparseReshapeInputs(input_indices_in, input_shape_in));
+    ReshapeSparseTensor<CPUDevice>(
+        context, input_indices_in, input_shape_in, target_shape_in,
+        0 /* output indices index */, 1 /* output shape index */);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("SparseReshape").Device(DEVICE_CPU),
-                        SparseReshapeOp<CPUDevice>)
+                        SparseReshapeOp)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// The GPU kernel validates the input indices on the device, so it is
+// asynchronous to report any error without blocking the host.
+class SparseReshapeGpuOp : public AsyncOpKernel {
+ public:
+  explicit SparseReshapeGpuOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& input_indices_in = context->input(0);
+    const Tensor& input_shape_in = context->input(1);
+    const Tensor& target_shape_in = context->input(2);
+
+    OP_REQUIRES_OK_ASYNC(
+        context, ValidateSparseReshapeInputs(input_indices_in, input_shape_in),
+        done);
+    ReshapeSparseTensorGpuAsync(context, input_indices_in, input_shape_in,
+                                target_shape_in, 0 /* output indices index */,
+                                1 /* output shape index */, std::move(done));
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("SparseReshape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input_shape")
                             .HostMemory("new_shape")
                             .HostMemory("output_shape"),
-                        SparseReshapeOp<GPUDevice>)
+                        SparseReshapeGpuOp)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
