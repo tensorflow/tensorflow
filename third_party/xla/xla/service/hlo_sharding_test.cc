@@ -1820,5 +1820,30 @@ TEST_F(HloShardingTest, FallibleTiledFactoriesEnforceInvariants) {
   EXPECT_OK(HloSharding::TryIotaTile({1, 1}));
 }
 
+TEST_F(HloShardingTest, GetSubShardingNestedAndEmptyTuples) {
+  const Shape empty_tuple = ShapeUtil::MakeTupleShape({});
+  const Shape inner_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {2, 2})});
+  const Shape shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {4}), inner_tuple, empty_tuple});
+
+  const HloSharding s0 = HloSharding::Replicate();
+  const HloSharding s1 = HloSharding::SingleDevice(0);
+  const HloSharding s2 = HloSharding::IotaTile({2, 2});
+  const HloSharding tuple_sharding = HloSharding::Tuple(shape, {s0, s1, s2});
+
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {}), tuple_sharding);
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {0}), s0);
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {1}),
+            HloSharding::Tuple(inner_tuple, {s1, s2}));
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {1, 0}), s1);
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {1, 1}), s2);
+  EXPECT_EQ(tuple_sharding.GetSubSharding(shape, {2}),
+            HloSharding::Tuple(empty_tuple, {}));
+
+  const HloSharding empty_sharding = HloSharding::Tuple(empty_tuple, {});
+  EXPECT_EQ(empty_sharding.GetSubSharding(empty_tuple, {}), empty_sharding);
+}
+
 }  // namespace
 }  // namespace xla

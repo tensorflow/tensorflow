@@ -1788,12 +1788,12 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
     sub_shape = &sub_shape->tuple_shapes(idx);
   }
   if (sub_shape->IsTuple()) {
-    auto begin_it = tuple_elements_.begin() + sharding_index;
-    return HloSharding::Tuple(
-        *sub_shape,
-        absl::MakeConstSpan(
-            &*begin_it,
-            &*(begin_it + ShapeUtil::GetLeafCountTuple(*sub_shape))));
+    const int64_t leaf_count = ShapeUtil::GetLeafCountTuple(*sub_shape);
+    CHECK_LE(sharding_index + leaf_count,
+             static_cast<int64_t>(tuple_elements_.size()));
+    return HloSharding::Tuple(*sub_shape,
+                              absl::MakeConstSpan(tuple_elements_)
+                                  .subspan(sharding_index, leaf_count));
   }
   return tuple_elements_[sharding_index];
 }
