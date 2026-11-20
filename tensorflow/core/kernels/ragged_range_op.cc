@@ -95,7 +95,7 @@ class RaggedRangeOp : public OpKernel {
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
         size = 0;
-      } else if constexpr (std::is_integral<T>::value) {
+      } else if constexpr (std::is_integral_v<T>) {
         // The following is copied from tensorflow::RangeOp::Compute().
         uint64_t range;
         if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {

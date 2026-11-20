@@ -74,9 +74,9 @@ absl::Status CheckState(const Tensor& state) {
 }
 
 absl::Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
-  static_assert(std::is_same<StateElementType, int64_t>::value,
+  static_assert(std::is_same_v<StateElementType, int64_t>,
                 "StateElementType must be int64");
-  static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32_t>::value,
+  static_assert(std::is_same_v<PhiloxRandom::ResultElementType, uint32_t>,
                 "PhiloxRandom::ResultElementType must be uint32");
   auto min_size = alg_tag_skip + PHILOX_MIN_STATE_SIZE;
   if (state.NumElements() < min_size) {

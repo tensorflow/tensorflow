@@ -211,8 +211,7 @@ class LinSpaceOp : public OpKernel {
       // Interpolate in a higher precision type to avoid overflow for
       // half/bfloat16, while preserving native performance and numerical
       // semantics for float/double.
-      using ComputeT =
-          typename std::conditional<sizeof(T) >= sizeof(float), T, float>::type;
+      using ComputeT = std::conditional_t<sizeof(T) >= sizeof(float), T, float>;
       const ComputeT start_c = static_cast<ComputeT>(start);
       const ComputeT stop_c = static_cast<ComputeT>(stop);
       const ComputeT step = (stop_c - start_c) / static_cast<ComputeT>(num - 1);

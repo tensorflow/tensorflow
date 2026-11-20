@@ -98,7 +98,7 @@ class SparseTensorDenseMatMulOp : public OpKernel {
             a_shape_t(0), ", ", a_shape_t(1),
             ").  Dimensions of B: ", b->shape().DebugString())));
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       // The GPU implementation is optimized to use 32 bit indexing, so
       // give a friendly error to the programmer early on if they
       // exceed.
@@ -338,7 +338,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
                               typename TTypes<T>::ConstMatrix b) {
     using Tsum = typename SumType<T>::type;
     Tensor temp_out_t;
-    if (!std::is_same<T, Tsum>::value) {
+    if (!std::is_same_v<T, Tsum>) {
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           DataTypeToEnum<Tsum>::value,
           TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
