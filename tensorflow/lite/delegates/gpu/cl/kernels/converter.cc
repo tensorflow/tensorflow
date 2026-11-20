@@ -107,7 +107,8 @@ bool IsOpenCLTensor(const ObjectDef& def) {
       def.data_layout == DataLayout::DHWC4;
   const bool is_single_image_tensor =
       def.object_type == ObjectType::OPENCL_TEXTURE &&
-      def.data_layout == DataLayout::BHWC;
+      (def.data_layout == DataLayout::HWBC ||
+       def.data_layout == DataLayout::BHWC);
   return IsSupportedDataType(def.data_type) &&
          (is_buffer_tensor || is_image2d_tensor || is_image2d_array_tensor ||
           is_single_image_tensor);
@@ -387,14 +388,28 @@ bool IsOpenClTextureOrBuffer(ObjectType type) {
          type == ObjectType::OPENCL_TEXTURE;
 }
 
+bool AreLayoutsEquivalent(DataLayout a, DataLayout b, const Dimensions& dims) {
+  if (a == b) return true;
+  const bool bhwc_vs_hwbc = (a == DataLayout::BHWC && b == DataLayout::HWBC) ||
+                            (a == DataLayout::HWBC && b == DataLayout::BHWC);
+  // BHWC offset ((b * H + h) * W + w) * C + c equals HWBC offset
+  // ((h * W + w) * B + b) * C + c exactly when either the batch axis or the
+  // spatial axes are trivial.
+  return bhwc_vs_hwbc && (dims.b == 1 || (dims.h == 1 && dims.w == 1));
+}
+
 // Copies data from one object of the same type and layout to another object.
 class TrivialCopier : public OpenClConverterImpl {
  public:
-  static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
-    return IsOpenClTextureOrBuffer(input.object_type) &&
-           input.data_type == output.data_type &&
-           input.object_type == output.object_type &&
-           input.data_layout == output.data_layout;
+  static bool IsSupported(const TensorObjectDef& input,
+                          const TensorObjectDef& output) {
+    const ObjectDef& input_def = input.object_def;
+    const ObjectDef& output_def = output.object_def;
+    return IsOpenClTextureOrBuffer(input_def.object_type) &&
+           input_def.data_type == output_def.data_type &&
+           input_def.object_type == output_def.object_type &&
+           AreLayoutsEquivalent(input_def.data_layout, output_def.data_layout,
+                                input.dimensions);
   }
 
   absl::Status Init(const TensorObjectDef& input_def,
@@ -456,13 +471,17 @@ class TrivialCopier : public OpenClConverterImpl {
 class CpuCopier : public OpenClConverterImpl {
  public:
   explicit CpuCopier(bool asynchronous = false) : async_(asynchronous) {}
-  static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
-    return input.data_type == output.data_type &&
-           input.data_layout == output.data_layout &&
-           ((input.object_type == ObjectType::CPU_MEMORY &&
-             IsOpenClTextureOrBuffer(output.object_type)) ||
-            (output.object_type == ObjectType::CPU_MEMORY &&
-             IsOpenClTextureOrBuffer(input.object_type)));
+  static bool IsSupported(const TensorObjectDef& input,
+                          const TensorObjectDef& output) {
+    const ObjectDef& input_def = input.object_def;
+    const ObjectDef& output_def = output.object_def;
+    return input_def.data_type == output_def.data_type &&
+           AreLayoutsEquivalent(input_def.data_layout, output_def.data_layout,
+                                input.dimensions) &&
+           ((input_def.object_type == ObjectType::CPU_MEMORY &&
+             IsOpenClTextureOrBuffer(output_def.object_type)) ||
+            (output_def.object_type == ObjectType::CPU_MEMORY &&
+             IsOpenClTextureOrBuffer(input_def.object_type)));
   }
 
   absl::Status Init(const TensorObjectDef& input_def,
@@ -594,9 +613,9 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     return input.dimensions == output.dimensions &&
-           (TrivialCopier::IsSupported(input_def, output_def) ||
+           (TrivialCopier::IsSupported(input, output) ||
             TensorToTensorConverter::IsSupported(input_def, output_def) ||
-            CpuCopier::IsSupported(input_def, output_def) ||
+            CpuCopier::IsSupported(input, output) ||
             TensorToBHWCBufferConverter::IsSupported(input_def, output_def) ||
             BHWCBufferToTensorConverter::IsSupported(input_def, output_def));
   }
@@ -607,11 +626,11 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     std::unique_ptr<OpenClConverterImpl> impl;
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
-    if (TrivialCopier::IsSupported(input_def, output_def)) {
+    if (TrivialCopier::IsSupported(input, output)) {
       impl = std::make_unique<TrivialCopier>();
     } else if (TensorToTensorConverter::IsSupported(input_def, output_def)) {
       impl = std::make_unique<TensorToTensorConverter>();
-    } else if (CpuCopier::IsSupported(input_def, output_def)) {
+    } else if (CpuCopier::IsSupported(input, output)) {
       impl = std::make_unique<CpuCopier>(/*asynchronous*/ true);
     } else if (TensorToBHWCBufferConverter::IsSupported(input_def,
                                                         output_def)) {
