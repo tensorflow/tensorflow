@@ -11843,6 +11843,38 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, GatherPartitionedOnUnindexedTrivialSliceDim) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[8,16] parameter(0), sharding={devices=[2,1]<=[2]}
+  %indices = s32[4,1] parameter(1), sharding={replicated}
+  ROOT %gather = f32[4,1] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={1}, index_vector_dim=1,
+    slice_sizes={1,1}, sharding={replicated}
+})";
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    SCOPED_TRACE(need_resolve_conflicts ? "need_resolve_conflicts=true"
+                                        : "need_resolve_conflicts=false");
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        PartitionComputation(kHloString, /*num_devices=*/2, options));
+    VLOG(1) << module->ToString();
+    auto offset =
+        op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+    auto unindexed_oob = op::Ne(offset, op::Constant());
+    auto mask = op::Or(_, op::Broadcast(unindexed_oob));
+    auto masked = op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()),
+                             op::Gather(op::Parameter(0), _));
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[4,1]")));
+  }
+}
+
 TEST_P(SpmdPartitioningTest, UnpartitionedScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -23188,6 +23220,45 @@ TEST(SpmdPartitionerOptionsFromHloPassOptionsTest,
       SpmdPartitionerOptionsFromHloPassOptions(options);
   EXPECT_OK(options.CheckAllConsumed());
   EXPECT_EQ(spmd_options.total_bytes_windowed_einsum_threshold, std::nullopt);
+}
+
+TEST_P(SpmdPartitioningTest,
+       GatherUnindexedTrivialSliceDimEmptyStartIndexMapAndLargeS64Dim) {
+  constexpr absl::string_view kEmptyHlo = R"(
+HloModule empty_start_index_map_gather
+ENTRY entry {
+  operand = f32[2,16]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  indices = s32[4,0]{1,0} parameter(1), sharding={replicated}
+  ROOT gather = f32[4,16]{1,0} gather(operand, indices), offset_dims={1},
+      collapsed_slice_dims={0}, start_index_map={}, index_vector_dim=1,
+      slice_sizes={1,16}, sharding={replicated}
+})";
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    SCOPED_TRACE(need_resolve_conflicts);
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> mod,
+                         PartitionComputation(kEmptyHlo, 2, options));
+    EXPECT_THAT(mod->entry_computation()->root_instruction(),
+                op::AllReduce(op::Select(
+                    _, _, op::Gather(op::Parameter(0), op::Parameter(1)))));
+    EXPECT_EQ(FindInstruction(mod.get(), HloOpcode::kReduce), nullptr);
+    EXPECT_EQ(FindInstruction(mod.get(), HloOpcode::kSubtract), nullptr);
+  }
+
+  constexpr absl::string_view kLargeS64Hlo = R"(
+HloModule large_s64_unindexed_gather
+ENTRY entry {
+  operand = f32[3000000000,4]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  indices = s32[3,1]{1,0} parameter(1), sharding={replicated}
+  ROOT gather = f32[3,4]{1,0} gather(operand, indices), offset_dims={1},
+      collapsed_slice_dims={0}, start_index_map={1}, index_vector_dim=1,
+      slice_sizes={1,4}, sharding={replicated}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> large_s64_module,
+                       PartitionComputation(kLargeS64Hlo, 2));
+  EXPECT_THAT(large_s64_module->entry_computation()->root_instruction(),
+              op::AllReduce(op::Select()));
 }
 
 }  // namespace
