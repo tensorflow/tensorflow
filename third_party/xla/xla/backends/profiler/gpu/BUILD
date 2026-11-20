@@ -565,6 +565,44 @@ xla_cc_test(
     ],
 )
 
+# No ROCm dependency and no rocm-only tag, so the test runs on any machine.
+cc_library(
+    name = "rocm_tracer_options_utils",
+    srcs = ["rocm_tracer_options_utils.cc"],
+    hdrs = ["rocm_tracer_options_utils.h"],
+    deps = [
+        ":rocm_tracer_utils",
+        "//xla/tsl/profiler/utils:profiler_options_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "rocm_tracer_options_utils_test",
+    size = "small",
+    srcs = ["rocm_tracer_options_utils_test.cc"],
+    # Read by EveryCuptiKeyIsRecognized.
+    data = ["cupti_tracer_options_utils.cc"],
+    deps = [
+        ":rocm_tracer_options_utils",
+        ":rocm_tracer_utils",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "rocm_collector",
     srcs = ["rocm_collector.cc"],

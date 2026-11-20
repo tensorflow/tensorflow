@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_ROCM_COLLECTOR_H_
 #define XLA_BACKENDS_PROFILER_GPU_ROCM_COLLECTOR_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -217,8 +216,8 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   }
 
  private:
-  std::atomic<int> num_callback_events_;
-  std::atomic<int> num_activity_events_;
+  uint64_t num_callback_events_ ABSL_GUARDED_BY(event_maps_mutex_);
+  uint64_t num_activity_events_ ABSL_GUARDED_BY(event_maps_mutex_);
   uint64_t start_walltime_ns_;
   uint64_t start_gputime_ns_;
   int num_gpus_;

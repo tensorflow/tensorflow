@@ -192,11 +192,13 @@ struct RoctxFrame {
 // Callers set every field. The defaults only keep a forgotten field from being
 // indeterminate.
 struct RocmTraceCollectorOptions {
-  // Maximum number of events to collect from callback API; if -1, no limit.
-  // if 0, the callback API is enabled to build a correlation map, but no
-  // events are collected.
+  // Maximum number of events to collect from the callback API. 0 empties the
+  // whole trace, because activity events are dropped unless they match a
+  // recorded API event.
   uint64_t max_callback_api_events = 0;
-  // Maximum number of events to collect from activity API; if -1, no limit.
+  // Maximum number of events to collect from the activity API. Not enforced
+  // yet: RocmTraceCollectorImpl only counts HIP_API-domain activity events, and
+  // every activity record is HIP_OPS.
   uint64_t max_activity_api_events = 0;
   // Maximum number of distinct annotation strings the tracer's AnnotationMap
   // retains per session. 0 retains none; it does not mean "unlimited".
