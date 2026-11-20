@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/log_severity.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -104,6 +105,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/env.h"
 #if GOOGLE_CUDA
@@ -142,10 +144,12 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
+using ::testing::Field;
 using ::testing::FloatEq;
 using ::testing::Ge;
 using ::testing::Gt;
@@ -153,6 +157,7 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
+using ::testing::Truly;
 using ::testing::VariantWith;
 
 absl::StatusOr<PjRtDeviceEventPtr::DefinitionStreamInfo>
@@ -3595,6 +3600,99 @@ TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
                         ->down_cast<PjRtStreamExecutorRawClient>();
   EXPECT_NE(dynamic_cast<se::MultiDeviceAdapter*>(raw_client->allocator()),
             nullptr);
+}
+
+// Creates GPU clients on device 0 whose sub-allocator free visitors record
+// every device allocation returned by an allocator.
+class FreeVisitorTest : public ::testing::Test {
+ protected:
+  struct FreedMemory {
+    void* ptr;
+    int device_ordinal;
+    size_t num_bytes;
+  };
+
+  // Creates a client with `allocator_config` plus a free visitor that appends
+  // to `freed()`. The client must not outlive the fixture.
+  absl::StatusOr<std::unique_ptr<PjRtClient>> CreateClient(
+      GpuAllocatorConfig allocator_config) {
+    allocator_config.sub_allocator_free_visitors.push_back(
+        [this](void* ptr, int device_ordinal, size_t num_bytes) {
+          absl::MutexLock lock(mu_);
+          freed_.push_back({ptr, device_ordinal, num_bytes});
+        });
+    GpuClientOptions options;
+    options.allocator_config = std::move(allocator_config);
+    options.allowed_devices = {0};
+    return GetStreamExecutorGpuClient(options);
+  }
+
+  // Allocates 1 MiB in `memory_space` on device 0 with the client allocator.
+  static absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
+      PjRtClient& client, gpu::MemorySpaceColor memory_space) {
+    auto* raw_client = absl::down_cast<CommonPjRtClient*>(&client)
+                           ->raw_client()
+                           ->down_cast<PjRtStreamExecutorRawClient>();
+    return raw_client->allocator()->Allocate(
+        /*device_ordinal=*/0, uint64_t{1} << 20, /*retry_on_failure=*/false,
+        static_cast<int>(memory_space));
+  }
+
+  std::vector<FreedMemory> freed() {
+    absl::MutexLock lock(mu_);
+    return freed_;
+  }
+
+ private:
+  absl::Mutex mu_;
+  std::vector<FreedMemory> freed_ ABSL_GUARDED_BY(mu_);
+};
+
+// The "platform" allocator runs the sub-allocator free visitors when a
+// collective memory buffer is freed (GetStreamExecutorGpuClient appends
+// gpu::ReleaseSymmetricMemory to them). Default memory buffers do not run them.
+TEST_F(FreeVisitorTest, PlatformAllocatorRunsFreeVisitorsForCollectiveMemory) {
+  GpuAllocatorConfig allocator_config;
+  allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       CreateClient(std::move(allocator_config)));
+
+  ASSERT_OK_AND_ASSIGN(se::ScopedDeviceAddress<uint8_t> default_memory,
+                       Allocate(*client, gpu::MemorySpaceColor::kDefault));
+  ASSERT_OK(default_memory.Free());
+  EXPECT_THAT(freed(), IsEmpty());
+
+  ASSERT_OK_AND_ASSIGN(se::ScopedDeviceAddress<uint8_t> collective_memory,
+                       Allocate(*client, gpu::MemorySpaceColor::kCollective));
+  void* collective_ptr = collective_memory->opaque();
+  ASSERT_OK(collective_memory.Free());
+  EXPECT_THAT(freed(),
+              ElementsAre(AllOf(Field(&FreedMemory::ptr, collective_ptr),
+                                Field(&FreedMemory::device_ordinal, 0))));
+}
+
+// Without preallocation there is no shared spatially partitioned pool, so a
+// separate collective BFC allocator is created. It returns its regions to the
+// device through the sub-allocator, which runs the free visitors.
+TEST_F(FreeVisitorTest, CollectiveBfcAllocatorRunsFreeVisitors) {
+  GpuAllocatorConfig allocator_config;
+  allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  allocator_config.memory_fraction = 0.05;
+  allocator_config.preallocate = false;
+  allocator_config.collective_memory_size = 64 << 20;
+  uintptr_t collective_address = 0;
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                         CreateClient(std::move(allocator_config)));
+    ASSERT_OK_AND_ASSIGN(se::ScopedDeviceAddress<uint8_t> collective,
+                         Allocate(*client, gpu::MemorySpaceColor::kCollective));
+    collective_address = reinterpret_cast<uintptr_t>(collective->opaque());
+  }
+  EXPECT_THAT(freed(), Contains(Truly([&](const FreedMemory& m) {
+                uintptr_t base = reinterpret_cast<uintptr_t>(m.ptr);
+                return base <= collective_address &&
+                       collective_address < base + m.num_bytes;
+              })));
 }
 
 // With a preallocated, spatially partitioned BFC allocator, one shared arena

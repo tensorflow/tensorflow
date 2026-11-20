@@ -92,7 +92,9 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
-    size_t collective_memory_size);
+    size_t collective_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors =
+        {});
 
 // Builds a growing BFCAllocator for temp buffers on a device whose default pool
 // was created with `memory_fraction`, `preallocate` and

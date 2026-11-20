@@ -1592,7 +1592,8 @@ GetStreamExecutorGpuDeviceAllocator(
         // MemorySpace::kCollective = 2)
         auto collective_allocator =
             std::make_shared<se::StreamExecutorMemoryAllocator>(
-                executor, static_cast<int64_t>(se::MemorySpace::kCollective));
+                executor, static_cast<int64_t>(se::MemorySpace::kCollective),
+                allocator_config.sub_allocator_free_visitors);
         allocators.push_back(
             {std::move(collective_allocator), stream,
              /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective});
@@ -1654,7 +1655,8 @@ GetStreamExecutorGpuDeviceAllocator(
                        CreateCollectiveBFCAllocator(
                            ordinal_and_device.second->executor(),
                            /*memory_fraction=*/MemFractionLeft(memory_fraction),
-                           allocator_config.collective_memory_size));
+                           allocator_config.collective_memory_size,
+                           allocator_config.sub_allocator_free_visitors));
       allocators.push_back(
           {std::move(collective_bfc_allocator),
            ordinal_and_device.second->compute_stream(),
@@ -2205,6 +2207,13 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   bool preallocate_device_memory = allocator_config.preallocate;
   auto memory_registration =
       CreateAllocatorMemoryRegistration(&allocator_config);
+  // Drops symmetric memory cached on communicators when the collective memory
+  // it was registered for is returned to the device.
+  allocator_config.sub_allocator_free_visitors.push_back(
+      [](void* ptr, int device_ordinal, size_t num_bytes) {
+        gpu::ReleaseSymmetricMemory(LocalDeviceId(device_ordinal),
+                                    se::DeviceAddressBase(ptr, num_bytes));
+      });
 
   bool preallocate_host_memory;
   ABSL_RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar(

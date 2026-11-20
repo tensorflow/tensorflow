@@ -322,15 +322,18 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
-    size_t collective_memory_size) {
+    size_t collective_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>&
+        sub_allocator_free_visitors) {
   int device_ordinal = executor->device_ordinal();
   ABSL_ASSIGN_OR_RETURN(auto collective_memory_allocator,
                    executor->CreateMemoryAllocator(
                        stream_executor::MemorySpace::kCollective));
   auto sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
       std::move(collective_memory_allocator),
-      /*memory_type=*/stream_executor::MemorySpace::kCollective,
-      device_ordinal);
+      /*memory_type=*/stream_executor::MemorySpace::kCollective, device_ordinal,
+      /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>{},
+      sub_allocator_free_visitors);
 
   int64_t free_memory;
   int64_t total_memory;
