@@ -127,6 +127,14 @@ static void rgb_to_hsv(float r, float g, float b, float* h, float* s,
 // Algorithm from wikipedia, https://en.wikipedia.org/wiki/HSL_and_HSV#From_HSV
 static void hsv_to_rgb(float h, float s, float v, float* r, float* g,
                        float* b) {
+  if (Eigen::numext::isnan(h) || Eigen::numext::isnan(s) ||
+      Eigen::numext::isnan(v)) {
+    const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+    *r = nan_val;
+    *g = nan_val;
+    *b = nan_val;
+    return;
+  }
   float c = s * v;
   float m = v - c;
   float dh = h * 6;
@@ -208,11 +216,33 @@ class AdjustSaturationOp<CPUDevice, float> : public AdjustSaturationOpBase {
                                                int64_t end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
-            for (int i = start_channel; i < end_channel; i++) {
+            const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+            if (Eigen::numext::isnan(scale_h)) {
+              for (int64_t i = start_channel; i < end_channel; ++i) {
+                q[0] = nan_val;
+                q[1] = nan_val;
+                q[2] = nan_val;
+                q += kChannelSize;
+              }
+              return;
+            }
+            for (int64_t i = start_channel; i < end_channel; ++i) {
+              if (Eigen::numext::isnan(p[0]) || Eigen::numext::isnan(p[1]) ||
+                  Eigen::numext::isnan(p[2])) {
+                q[0] = nan_val;
+                q[1] = nan_val;
+                q[2] = nan_val;
+                p += kChannelSize;
+                q += kChannelSize;
+                continue;
+              }
               float h, s, v;
               // Convert the RGB color to Hue/V-range.
               internal::rgb_to_hsv(p[0], p[1], p[2], &h, &s, &v);
-              s = std::min(1.0f, std::max(0.0f, s * scale_h));
+              s *= scale_h;
+              if (!Eigen::numext::isnan(s)) {
+                s = std::min(1.0f, std::max(0.0f, s));
+              }
               // Convert the hue and v-range back into RGB.
               internal::hsv_to_rgb(h, s, v, q, q + 1, q + 2);
               p += kChannelSize;
