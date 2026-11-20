@@ -1107,15 +1107,22 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   return HloSharding::PartialTile(tile_assignment, sharding.metadata());
 }
 
-std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
-                                           const Shape& target_shape,
-                                           const HloSharding& source_sharding) {
+namespace {
+
+std::optional<HloSharding> ReshapeShardingImpl(
+    const Shape& source_shape, const Shape& target_shape,
+    const HloSharding& source_sharding,
+    std::vector<int64_t>* source_dims_to_replicate = nullptr) {
   // NamedSharding is not supported. There are various behavioral differences
   // between Tiled and potential NamedSharding implementations. See b/485792142
   // for details.
   // Instead of doing sharding conversions here, we convert at call site to
   // avoid multiple conversions.
   CHECK(!source_sharding.UseNamedShardingLeaf());
+
+  if (source_dims_to_replicate != nullptr) {
+    source_dims_to_replicate->clear();
+  }
 
   if (source_sharding.IsReplicatedOrSingleDevice() ||
       source_sharding.IsManual()) {
@@ -1149,7 +1156,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   int64_t target_size;
   int64_t source_tile_dim;
   DimensionVector target_tile_dims(target_rank, 1);
-  std::vector<int64_t> source_dims_to_replicate;
+  std::vector<int64_t> local_source_dims_to_replicate;
 
   auto advance_source = [&]() {
     source_index++;
@@ -1204,7 +1211,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       advance_target();
     } else if (source_size == 1) {
       if (source_tile_dim > 1) {
-        source_dims_to_replicate.push_back(source_index);
+        local_source_dims_to_replicate.push_back(source_index);
       }
       advance_source();
     } else if (source_size % source_tile_dim != 0) {
@@ -1234,7 +1241,10 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   // sharding along this dimension since the source sharding cannot be
   // propagated along this dimension.
   const HloSharding sharding = PartiallyReplicateTiledShardingOnDims(
-      source_sharding, source_dims_to_replicate);
+      source_sharding, local_source_dims_to_replicate);
+  if (source_dims_to_replicate != nullptr) {
+    *source_dims_to_replicate = std::move(local_source_dims_to_replicate);
+  }
 
   for (int64_t i = sharding.TiledDataRank(); i < sharding.num_dimensions();
        ++i) {
@@ -1264,6 +1274,14 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   return HloSharding::Subgroup(
       sharding.tile_assignment().Reshape(target_tile_dims), subgroup_types,
       sharding.metadata());
+}
+
+}  // namespace
+
+std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
+                                           const Shape& target_shape,
+                                           const HloSharding& source_sharding) {
+  return ReshapeShardingImpl(source_shape, target_shape, source_sharding);
 }
 
 HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
@@ -1307,13 +1325,19 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
       }
       HloSharding grouped_sharding =
           HloSharding::Tile(TileAssignment(grouped_tiling_dims));
-      if (auto reshaped =
-              ReshapeSharding(source_shape, target_shape, grouped_sharding)) {
+      std::vector<int64_t> replicated_dims;
+      if (auto reshaped = ReshapeShardingImpl(
+              source_shape, target_shape, grouped_sharding, &replicated_dims)) {
+        // Place dimensions replicated inside ReshapeSharding after the kept
+        // dimensions of [start_dim, end_dim) to match reshaped's tile order.
         std::vector<int> perm;
         perm.reserve(sharding.num_dimensions());
         for (int64_t i = start_dim; i < end_dim; i++) {
-          perm.push_back(i);
+          if (!absl::c_linear_search(replicated_dims, i)) {
+            perm.push_back(i);
+          }
         }
+        absl::c_copy(replicated_dims, std::back_inserter(perm));
         for (int64_t i = 0; i < start_dim; i++) {
           perm.push_back(i);
         }

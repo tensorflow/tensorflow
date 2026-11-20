@@ -10585,7 +10585,7 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       FindInstruction(module.get(), "c"),
-      op::Sharding("{devices=[1,4,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+      op::Sharding("{devices=[1,4,2]0,4,1,5,2,6,3,7 last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardingPropagationTest, EmptyTupleWithinTuple) {
