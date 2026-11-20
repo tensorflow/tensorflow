@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -68,6 +69,16 @@ CollectiveMemory::CollectiveMemory(
   // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
   for (const auto& [key, sym] : sym_memories_) {
     symmetric_memory_ids_.emplace_back(key, sym->id());
+    // A symmetric window may cover more than its allocation, but must always
+    // contain it, otherwise window offsets would wrap around.
+    se::DeviceAddressBase alloc = buffers_.GetDeviceAddress(key.second);
+    uintptr_t alloc_begin =
+        tsl::safe_reinterpret_cast<uintptr_t>(alloc.opaque());
+    uintptr_t window_begin =
+        tsl::safe_reinterpret_cast<uintptr_t>(sym->addr().opaque());
+    DCHECK(alloc_begin >= window_begin &&
+           alloc_begin + alloc.size() <= window_begin + sym->addr().size())
+        << "Allocation " << key.second << " is outside its symmetric window";
   }
   absl::c_sort(symmetric_memory_ids_,
                [](const SymmetricMemoryId& a, const SymmetricMemoryId& b) {
@@ -100,7 +111,14 @@ CollectiveMemory::FindWeakSymmetricMemory(
   if (it == sym_memories_.end()) {
     return std::make_pair(std::weak_ptr<SymmetricMemory>(), 0);
   }
-  return std::make_pair(it->second, 0);
+  // The symmetric window may start before the allocation, e.g. when it covers
+  // a whole collective memory arena.
+  const std::shared_ptr<SymmetricMemory>& sym = it->second;
+  se::DeviceAddressBase alloc_base = buffers_.GetDeviceAddress(allocation);
+  size_t alloc_offset =
+      tsl::safe_reinterpret_cast<uintptr_t>(alloc_base.opaque()) -
+      tsl::safe_reinterpret_cast<uintptr_t>(sym->addr().opaque());
+  return std::make_pair(sym, alloc_offset);
 }
 
 std::pair<std::weak_ptr<SymmetricMemory>, size_t>

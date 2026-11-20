@@ -443,7 +443,7 @@ absl::StatusOr<std::pair<std::vector<ResolvedSymmetricMemory>, bool>>
 ResolveIoSymmetricMemories(
     const KernelSpecLayout& layout, const GpuCliqueKey& clique_key,
     const CollectiveMemory& collective_memory,
-    absl::Span<const std::weak_ptr<SymmetricMemory>> cached_memories) {
+    absl::Span<const CachedIoSymmetricMemory> cached_memories) {
   const int64_t num_io_params = layout.num_symmetric_io_params;
   std::vector<ResolvedSymmetricMemory> resolved(num_io_params);
   bool all_cached = cached_memories.size() == num_io_params;
@@ -459,7 +459,8 @@ ResolveIoSymmetricMemories(
     auto [weak_sym_mem, offset] =
         collective_memory.FindWeakSymmetricMemory(clique_key, *param.io_slice);
     all_cached = all_cached && !weak_sym_mem.expired() &&
-                 SameOwner(weak_sym_mem, cached_memories[i]);
+                 SameOwner(weak_sym_mem, cached_memories[i].memory) &&
+                 offset == cached_memories[i].offset;
     std::shared_ptr<SymmetricMemory> sym_mem = weak_sym_mem.lock();
     TF_RET_CHECK(sym_mem != nullptr)
         << "Symmetric memory is null for parameter " << i;
@@ -804,7 +805,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
     SymmetricMemory* symmetric_memory = nullptr;
     int64_t offset = 0;
     if (i < layout.num_symmetric_io_params) {
-      state->io_symmetric_memories[i] = io_symmetric_memories[i].memory;
+      state->io_symmetric_memories[i] = {io_symmetric_memories[i].memory,
+                                         io_symmetric_memories[i].offset};
       symmetric_memory = io_symmetric_memories[i].memory.get();
       offset = io_symmetric_memories[i].offset;
     } else {

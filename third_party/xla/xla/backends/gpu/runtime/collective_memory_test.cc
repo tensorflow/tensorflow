@@ -83,5 +83,31 @@ TEST(CollectiveMemoryTest, FindWeakSymmetricMemory) {
   EXPECT_TRUE(weak_by_addr.expired());
 }
 
+TEST(CollectiveMemoryTest,
+     FindWeakSymmetricMemoryWindowStartsBeforeAllocation) {
+  GpuCliqueKey clique({GlobalDeviceId(0), GlobalDeviceId(1)}, 2);
+  std::array<char, 128> arena{};
+  se::DeviceAddressBase window(arena.data(), arena.size());
+  se::DeviceAddressBase alloc_addr = window.GetByteSlice(32, 64);
+  BufferAllocations buffers({alloc_addr}, /*device_ordinal=*/0, nullptr);
+  BufferAllocation alloc(/*index=*/0, /*size=*/64, /*color=*/0);
+  auto sym = std::make_shared<FakeSymmetricMemory>(window);
+  CollectiveMemory memory(buffers, {{{clique, 0}, sym}}, /*peer_memories=*/{});
+
+  EXPECT_EQ(
+      memory.FindWeakSymmetricMemory(clique, BufferAllocation::Index(0)).second,
+      32);
+  EXPECT_EQ(memory
+                .FindWeakSymmetricMemory(
+                    clique, BufferAllocation::Slice(&alloc, /*offset=*/16,
+                                                    /*size=*/16))
+                .second,
+            48);
+  EXPECT_EQ(
+      memory.FindWeakSymmetricMemory(clique, alloc_addr.GetByteSlice(8, 8))
+          .second,
+      40);
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -15,6 +15,7 @@ limitations under the License.*/
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -48,6 +49,13 @@ limitations under the License.*/
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
+
+// Symmetric memory of a kLoadStoreAccessible IO parameter and the parameter's
+// byte offset inside it, cached from the last initialization.
+struct CachedIoSymmetricMemory {
+  std::weak_ptr<SymmetricMemory> memory;
+  size_t offset = 0;
+};
 
 // A thunk that runs single-host collective operations in a single shot.
 // Assumes multiple devices are present, but all on the same host.
@@ -167,10 +175,10 @@ class CollectiveKernelThunk : public TracedCommand {
     // `kernel_spec_.scratch_buffers` entry.
     std::vector<se::DeviceAddressBase> scratch_slices;
     tsl::TiedRef<SymmetricMemory> scratch_symmetric_memory;
-    // Symmetric memory of the kLoadStoreAccessible IO parameters from the last
-    // initialization, by row. Used to skip rebuilding the peer pointer table
-    // when the IO buffers did not move.
-    std::vector<std::weak_ptr<SymmetricMemory>> io_symmetric_memories;
+    // Symmetric memories of the kLoadStoreAccessible IO parameters from the
+    // last initialization, by row. Used to skip rebuilding the peer pointer
+    // table when the IO buffers did not move.
+    std::vector<CachedIoSymmetricMemory> io_symmetric_memories;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
