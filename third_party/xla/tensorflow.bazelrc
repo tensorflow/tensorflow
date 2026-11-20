@@ -479,23 +479,18 @@ test:win_clang_base --host_linkopt=/FORCE:MULTIPLE
 test:win_clang_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
 
 common:win_clang --config=win_clang_base
-common:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
 common:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 common:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 
 common:windows_x86_cpu_2022 --config=win_clang_base
-common:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
-common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 
 common:xla_windows_x86_cpu_2022 --config=win_clang_base
-common:xla_windows_x86_cpu_2022 --crosstool_top="//tools/toolchains/win2022/t20260812:toolchain"
-common:xla_windows_x86_cpu_2022 --extra_toolchains="//tools/toolchains/win2022/t20260812:cc-toolchain-x64_windows-clang-cl"
-common:xla_windows_x86_cpu_2022 --extra_execution_platforms="//tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
-common:xla_windows_x86_cpu_2022 --host_platform="//tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
-common:xla_windows_x86_cpu_2022 --platforms="//tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:xla_windows_x86_cpu_2022 --extra_execution_platforms="//tools/toolchains/win2022:windows_ltsc2022_ml_actions"
+common:xla_windows_x86_cpu_2022 --host_platform="//tools/toolchains/win2022:windows_ltsc2022_ml_actions"
+common:xla_windows_x86_cpu_2022 --platforms="//tools/toolchains/win2022:windows_ltsc2022_ml_actions"
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -588,9 +583,7 @@ common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
 common:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
-common:rbe_win_base --config=clang_local
 common:rbe_win_base --config=rbe_base
-common:rbe_win_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 common:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.

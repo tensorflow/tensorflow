@@ -87,21 +87,75 @@ filegroup(
 # Eigen BLAS Library (:blas)
 # ==============================================================================
 
+EIGEN_BLAS_HDRS = glob([
+    "blas/*.h",
+    "blas/f2c/*.h",
+    "Eigen/**",
+    "unsupported/Eigen/**",
+])
+
+EIGEN_BLAS_SRCS = [
+    "blas/complex_double.cpp",
+    "blas/complex_single.cpp",
+    "blas/double.cpp",
+    "blas/single.cpp",
+    "blas/xerbla.cpp",
+    "blas/f2c/chbmv.c",
+    "blas/f2c/chpmv.c",
+    "blas/f2c/complexdots.c",
+    "blas/f2c/ctbmv.c",
+    "blas/f2c/drotm.c",
+    "blas/f2c/drotmg.c",
+    "blas/f2c/dsbmv.c",
+    "blas/f2c/dspmv.c",
+    "blas/f2c/dtbmv.c",
+    "blas/f2c/lsame.c",
+    "blas/f2c/srotm.c",
+    "blas/f2c/srotmg.c",
+    "blas/f2c/ssbmv.c",
+    "blas/f2c/sspmv.c",
+    "blas/f2c/stbmv.c",
+    "blas/f2c/zhbmv.c",
+    "blas/f2c/zhpmv.c",
+    "blas/f2c/ztbmv.c",
+]
+
 cc_library(
     name = "blas",
-    srcs = glob([
-        "blas/*.cpp",
-        "blas/*.h",
-    ]) + [
-        "Eigen/src/Core/util/blas.h",
-    ],
-    hdrs = ["blas/blas.h"],
-    copts = ["-O3"],
+    srcs = EIGEN_BLAS_SRCS,
+    hdrs = EIGEN_BLAS_HDRS,
+    copts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-O3"],
+    }),
     includes = [
+        ".",
         "blas",
+        "blas/f2c",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":eigen3",
-    ],
+)
+
+alias(
+    name = "single",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "double",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "complex",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "complex16",
+    actual = ":blas",
+    visibility = ["//visibility:public"],
 )

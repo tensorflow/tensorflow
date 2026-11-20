@@ -75,3 +75,19 @@ platform(
         "cache-silo-key": "t20260812",
     },
 )
+
+# RBE platform for ML Actions compiler-stack image.
+platform(
+    name = "windows_ltsc2022_ml_actions",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    exec_properties = {
+        "container-image": "docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:d9849afa6a7b074be0f3663969020d53099fa082d92e4796828e1bcbdee5bd25",
+        "OSFamily": "Windows",
+        "Pool": "windows-2022-pool",
+        "dockerNetwork": "off",
+        "cache-silo-key": "t20260812",
+    },
+)
