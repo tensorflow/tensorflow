@@ -121,6 +121,107 @@ class SparseReshapeTest(test.TestCase):
 
         self.evaluate(sp_output)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeOutOfBoundsIndices(self):
+    # The error reports the first out-of-bounds row of the input indices.
+    for bad_indices, bad_row in (
+        ([[1 << 62, 0]], 0),
+        ([[-1, 0]], 0),
+        ([[0, 6]], 0),
+        ([[5, 0]], 0),
+        ([[0, 0], [4, 5], [5, 0]], 2),
+        ([[5, 0], [0, 0]], 0),
+    ):
+      with self.subTest(bad_indices=bad_indices):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            f"Input index row {bad_row} is out of bounds",
+        ):
+          self.evaluate(
+              sparse_ops.gen_sparse_ops.sparse_reshape(
+                  input_indices=bad_indices,
+                  input_shape=[5, 6],
+                  new_shape=[30],
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeNonEmptyIndicesWithEmptyShape(self):
+    for new_shape in ([0, 6], [6, 0]):
+      with self.subTest(new_shape=new_shape):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "1 non zero elements"
+        ):
+          self.evaluate(
+              sparse_ops.gen_sparse_ops.sparse_reshape(
+                  input_indices=[[0, 0]],
+                  input_shape=[0, 6],
+                  new_shape=new_shape,
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeRawOp(self):
+    input_val = self._SparseTensorValue_5x6()
+    output_indices, output_shape = self.evaluate(
+        sparse_ops.gen_sparse_ops.sparse_reshape(
+            input_indices=input_val.indices,
+            input_shape=input_val.dense_shape,
+            new_shape=[3, 10],
+        )
+    )
+    self.assertAllEqual(
+        output_indices, [[0, 0], [0, 6], [0, 9], [1, 0], [2, 0], [2, 1]]
+    )
+    self.assertAllEqual(output_shape, [3, 10])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeRankZero(self):
+    # The indices of a scalar have no columns.
+    output_indices, output_shape = self.evaluate(
+        sparse_ops.gen_sparse_ops.sparse_reshape(
+            input_indices=np.zeros([1, 0], np.int64),
+            input_shape=np.zeros([0], np.int64),
+            new_shape=[1, 1],
+        )
+    )
+    self.assertAllEqual(output_indices, [[0, 0]])
+    self.assertAllEqual(output_shape, [1, 1])
+
+    output_indices, output_shape = self.evaluate(
+        sparse_ops.gen_sparse_ops.sparse_reshape(
+            input_indices=[[0, 0]],
+            input_shape=[1, 1],
+            new_shape=np.zeros([0], np.int64),
+        )
+    )
+    self.assertAllEqual(output_indices, np.zeros([1, 0], np.int64))
+    self.assertAllEqual(output_shape, np.zeros([0], np.int64))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeTargetShapeOverflow(self):
+    for new_shape in ([2**62, 2], [2**62, 2, -1]):
+      with self.subTest(new_shape=new_shape):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, "overflow"):
+          self.evaluate(
+              sparse_ops.gen_sparse_ops.sparse_reshape(
+                  input_indices=[[0]], input_shape=[1], new_shape=new_shape
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReshapeOutputIndicesShapeOverflow(self):
+    # Indices of a scalar have no columns, so they are empty for any number of
+    # rows, but the output indices would have 2**59 * 16 = 2**63 elements.
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "overflow"):
+      self.evaluate(
+          sparse_ops.gen_sparse_ops.sparse_reshape(
+              input_indices=np.zeros([2**59, 0], np.int64),
+              input_shape=np.zeros([0], np.int64),
+              new_shape=[1] * 16,
+          )
+      )
+
   @test_util.run_deprecated_v1
   def testFeedSameShape(self):
     with self.session() as sess:

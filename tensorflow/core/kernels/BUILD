@@ -670,7 +670,15 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+        "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:errors",
+    ] + if_cuda_or_rocm([
+        "@xla//xla/tsl/platform:statusor",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core/platform:stream_executor",
+    ]),
 )
 
 tf_cc_test(
@@ -5607,7 +5615,6 @@ tf_kernel_library(
     prefix = "sparse_reshape_op",
     deps = SPARSE_DEPS + [
         ":reshape_util",
-        "@com_google_absl//absl/status",
     ],
 )
 
