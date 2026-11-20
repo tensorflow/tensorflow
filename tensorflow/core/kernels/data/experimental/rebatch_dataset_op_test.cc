@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -134,6 +135,23 @@ RebatchDatasetV2Params RebatchDatasetV2Params1() {
       /*node_name=*/kNodeName);
 }
 
+// Same input as `RebatchDatasetV2Params1()`, but with custom `batch_sizes` and
+// `output_shapes`.
+RebatchDatasetV2Params RebatchDatasetV2ParamsWithBatchSizes(
+    std::vector<int64_t> batch_sizes,
+    std::vector<PartialTensorShape> output_shapes = {
+        PartialTensorShape({-1})}) {
+  return RebatchDatasetV2Params(
+      TensorSliceDatasetParams(
+          /*components=*/{CreateTensor<int64_t>(TensorShape{2, 4},
+                                                {0, 1, 2, 3, 4, 5, 6, 7})},
+          /*node_name=*/"tensor_slice_dataset"),
+      std::move(batch_sizes),
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64}, std::move(output_shapes),
+      /*node_name=*/kNodeName);
+}
+
 std::vector<GetNextTestCase<RebatchDatasetV2Params>> GetNextTestCases() {
   return {{/*dataset_params=*/RebatchDatasetV2Params1(),
            /*expected_outputs=*/
@@ -215,6 +233,89 @@ TEST_F(RebatchDatasetV2OpTest, RestoreRejectsScalarComponent) {
                   &iterator),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("non-scalar")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsEmptyBatchSizes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes({});
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("must not be empty")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsNegativeBatchSizes) {
+  for (const auto& batch_sizes :
+       std::vector<std::vector<int64_t>>{{-1}, {2, -3}}) {
+    auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(batch_sizes);
+    EXPECT_THAT(Initialize(dataset_params),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                       ::testing::HasSubstr("non-negative")));
+  }
+}
+
+TEST_F(RebatchDatasetV2OpTest, AllowsZeroBatchSize) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes({0, 4});
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  ASSERT_EQ(out_tensors.size(), 1);
+  EXPECT_EQ(out_tensors[0].NumElements(), 0);
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors, {CreateTensor<int64_t>(TensorShape{4}, {0, 1, 2, 3})},
+      /*compare_order=*/true));
+}
+
+// Rebatched elements always have a batch dimension, so a scalar output shape
+// is invalid (and would otherwise be indexed out of bounds for empty batches).
+TEST_F(RebatchDatasetV2OpTest, RejectsScalarOutputShapes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {0}, /*output_shapes=*/{PartialTensorShape({})});
+  EXPECT_THAT(Initialize(dataset_params),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("rank >= 1")));
+}
+
+TEST_F(RebatchDatasetV2OpTest, RejectsMismatchedOutputTypesAndShapes) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {0},
+      /*output_shapes=*/{PartialTensorShape({-1}), PartialTensorShape({-1})});
+  EXPECT_THAT(Initialize(dataset_params),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("same length")));
+}
+
+// A very large batch size must not overflow when computing the slice end.
+TEST_F(RebatchDatasetV2OpTest, HandlesHugeBatchSize) {
+  auto dataset_params = RebatchDatasetV2ParamsWithBatchSizes(
+      {1, std::numeric_limits<int64_t>::max()});
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(out_tensors,
+                           {CreateTensor<int64_t>(TensorShape{1}, {0})},
+                           /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(
+      out_tensors,
+      {CreateTensor<int64_t>(TensorShape{7}, {1, 2, 3, 4, 5, 6, 7})},
+      /*compare_order=*/true));
+  out_tensors.clear();
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 }
 
 }  // namespace
