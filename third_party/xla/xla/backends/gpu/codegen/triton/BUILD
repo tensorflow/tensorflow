@@ -476,6 +476,7 @@ cc_library(
     deps = [
         ":triton_kernel_source",
         ":xtile_compiler",
+        "//xla:comparison_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",

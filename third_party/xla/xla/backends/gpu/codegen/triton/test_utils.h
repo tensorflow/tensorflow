@@ -25,12 +25,25 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 std::vector<xla::PrimitiveType> AllXlaDataTypes();
+
+// Returns true if the given `opcode` supports the given `type` with respect to
+// HLO semantics. This is completely independent of the what Triton supports or
+// what the hardware supports.
+//
+// This function is used to decide what test combinations are generated. Without
+// it we would need to generate all combinations and skip invalid ones. Because
+// there are a lot of invalid combinations the test output will be very noisy.
+// A slightly more robust alternative would be to call the HLO verifier
+// directly, but that works at the level of an HLO instruction, which we don't
+// have at the time we're deciding what tests to generate.
+bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type);
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
