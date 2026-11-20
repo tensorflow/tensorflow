@@ -924,9 +924,12 @@ def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstr
 
 @tf_export.tf_export('experimental.numpy.ravel', v1=[])
 @np_utils.np_doc('ravel')
-def ravel(a):  # pylint: disable=missing-docstring
+def ravel(a, order='C'):  # pylint: disable=missing-docstring
   a = asarray(a)
-  return array_ops.reshape(a, [-1])
+  # NumPy accepts the same `order` values as `reshape`, so flattening is just a
+  # reshape to a single dimension. 'A' and 'K' read the elements in memory
+  # order, which for a Tensor is always the C order.
+  return reshape(a, [-1], order='C' if order in ('A', 'K') else order)
 
 
 @tf_export.tf_export('experimental.numpy.real', v1=[])
@@ -1062,9 +1065,23 @@ setattr(np_arrays.ndarray, '__round__', around)
 
 @tf_export.tf_export('experimental.numpy.reshape', v1=[])
 @np_utils.np_doc('reshape')
-def reshape(a, newshape, order='C'):
+def reshape(a, newshape=None, order='C', **kwargs):
   """order argument can only b 'C' or 'F'."""
-  if order not in {'C', 'F'}:
+  # NumPy names the second parameter `shape`, so accept it as a keyword too.
+  if 'shape' in kwargs:
+    if newshape is not None:
+      raise TypeError("reshape() got multiple values for argument 'shape'")
+    newshape = kwargs.pop('shape')
+  elif newshape is None:
+    raise TypeError("reshape() missing 1 required argument: 'shape'")
+  if kwargs:
+    raise TypeError(
+        'reshape() got unexpected keyword arguments: {}'.format(
+            ', '.join(sorted(kwargs))
+        )
+    )
+
+  if not isinstance(order, str) or order not in {'C', 'F'}:
     raise ValueError('Unsupported order argument {}'.format(order))
 
   a = asarray(a)

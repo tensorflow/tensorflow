@@ -1234,6 +1234,16 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]])
     run_test(np.arange(8).reshape((2, 2, 2)).tolist())
 
+    # `order` is passed through to `reshape`, so all four NumPy values are
+    # accepted; 'A' and 'K' both read the elements in memory order.
+    for order in ('C', 'F', 'A', 'K'):
+      self.assertAllEqual(
+          np_array_ops.ravel([[1, 2], [3, 4]], order=order),
+          np.ravel([[1, 2], [3, 4]], order=order),
+      )
+    with self.assertRaisesRegex(ValueError, 'Unsupported order'):
+      np_array_ops.ravel([1, 2, 3], order='X')
+
   def testReal(self):
 
     def run_test(arr, *args, **kwargs):
@@ -1405,6 +1415,23 @@ class ArrayMethodsTest(test.TestCase):
     run_test([1, 2, 3], [3, 1])
     run_test([1, 2, 3, 4], [2, 2])
     run_test([1, 2, 3, 4], [2, 1, 2])
+
+    # NumPy names the second parameter `shape`, so it is also accepted as a
+    # keyword argument. The expected value is built with a positional argument
+    # because `shape=` only exists from NumPy 2.1 onwards, while TensorFlow
+    # supports NumPy 1.26 and later.
+    self.assertAllEqual(
+        np_array_ops.reshape([1, 2, 3, 4], shape=[2, 2]),
+        np.reshape([1, 2, 3, 4], [2, 2]),
+    )
+    self.assertAllEqual(
+        np_array_ops.reshape([1, 2, 3, 4], shape=-1),
+        np.reshape([1, 2, 3, 4], -1),
+    )
+    with self.assertRaisesRegex(TypeError, 'multiple values'):
+      np_array_ops.reshape([1, 2, 3, 4], [2, 2], shape=[2, 2])
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument'):
+      np_array_ops.reshape([1, 2, 3, 4])
 
   def testExpandDims(self):
 
