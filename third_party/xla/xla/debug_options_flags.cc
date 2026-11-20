@@ -3285,6 +3285,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         "are compiled as usual and get appended to the cache file "
         "whenever possible."));
     flag_list->push_back(tsl::Flag(
+        "xla_gpu_compileiq_db_path",
+        string_setter_for(&DebugOptions::set_xla_gpu_compileiq_db_path),
+        debug_options->xla_gpu_compileiq_db_path(),
+        "Path to a CompileIqDb proto file with per-kernel ptxas "
+        "advanced control files."));
+    flag_list->push_back(tsl::Flag(
         "xla_gpu_per_fusion_autotune_cache_dir",
         string_setter_for(
             &DebugOptions::set_xla_gpu_per_fusion_autotune_cache_dir),

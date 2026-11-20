@@ -34,6 +34,7 @@ stream_executor::cuda::CompilationOptions PtxCompileOptionsFromDebugOptions(
   compilation_options.additional_ptxas_flags = {
       debug_options.xla_gpu_ptx_compiler_extra_flags().begin(),
       debug_options.xla_gpu_ptx_compiler_extra_flags().end()};
+  compilation_options.compileiq_db = debug_options.xla_gpu_compileiq_db_path();
   return compilation_options;
 }
 }  // namespace xla::gpu

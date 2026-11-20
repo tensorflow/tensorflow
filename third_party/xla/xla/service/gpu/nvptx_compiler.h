@@ -109,6 +109,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      absl::string_view kernel_fingerprint,
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
       std::optional<int> shard_number) override;

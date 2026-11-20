@@ -114,6 +114,13 @@ class CompilationProvider {
       const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const = 0;
 
+  virtual absl::StatusOr<Assembly> Compile(
+      const CudaComputeCapability& cc, absl::string_view ptx,
+      absl::string_view kernel_fingerprint,
+      const CompilationOptions& options) const {
+    return Compile(cc, ptx, options);
+  }
+
   // Compiles the given PTX string into relocatable CUBIN for the given
   // architecture `cc`. This method is not supported by all compilation
   // providers. `SupportsCompileToRelocatableModule` can be used to check if

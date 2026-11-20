@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace stream_executor::cuda {
 
@@ -52,6 +52,10 @@ class CompositeCompilationProvider : public CompilationProvider {
 
   absl::StatusOr<Assembly> Compile(
       const CudaComputeCapability& cc, absl::string_view ptx,
+      const CompilationOptions& options) const override;
+  absl::StatusOr<Assembly> Compile(
+      const CudaComputeCapability& cc, absl::string_view ptx,
+      absl::string_view fingerprint,
       const CompilationOptions& options) const override;
   absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
       const CudaComputeCapability& cc, absl::string_view ptx,

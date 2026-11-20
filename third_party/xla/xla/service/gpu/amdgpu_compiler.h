@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
@@ -59,6 +60,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      absl::string_view kernel_fingerprint,
       const se::DeviceDescription& device_description, bool relocatable,
       const HloModule* debug_module, std::optional<int> shard_number) override;
 

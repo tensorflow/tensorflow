@@ -2592,8 +2592,9 @@ GpuCompiler::CompileSingleModule(
 
   ABSL_ASSIGN_OR_RETURN(
       BackendCompileResult result,
-      CompileTargetBinary(module_config, llvm_module, device_description,
-                          relocatable, debug_module, shard_number));
+      CompileTargetBinary(module_config, llvm_module, kernel_fingerprint,
+                          device_description, relocatable, debug_module,
+                          shard_number));
 
   bool dumping_enabled = DumpingEnabledForHloModule(
       debug_module ? debug_module->name() : "", debug_options);

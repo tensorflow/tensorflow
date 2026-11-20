@@ -112,7 +112,7 @@ TEST_P(NVPTXCompilerTargetTest, CompilationAndLinkingUseSameTarget) {
         .WillOnce(Return(se::cuda::Assembly{}));
   }
   EXPECT_OK(compiler_->CompileTargetBinary(
-      module_config_, &module, device_description_,
+      module_config_, &module, "fingerprint", device_description_,
       relocatable == Relocatable::kEnabled, nullptr, std::nullopt));
 }
 

@@ -2100,7 +2100,9 @@ message DebugOptions {
   // AOT forward-compatibility window for U64 segmented radix sort has elapsed.
   optional bool xla_gpu_experimental_enable_raft_u64_radix = 584;
 
-  // Next id: 588
+  optional string xla_gpu_compileiq_db_path = 588;
+
+  // Next id: 589
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

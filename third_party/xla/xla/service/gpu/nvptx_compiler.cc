@@ -548,6 +548,7 @@ absl::StatusOr<absl::string_view> NVPTXCompiler::AsmFileExtension() const {
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    absl::string_view kernel_fingerprint,
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
     std::optional<int> shard_number) {
@@ -560,16 +561,18 @@ NVPTXCompiler::CompileTargetBinary(
     selected_module = llvm_module;
   }
   const DebugOptions& debug_options = module_config.debug_options();
-  const se::cuda::CompilationProvider* compilation_provider = nullptr;
-  std::optional<se::SemanticVersion> ptx_version;
+
+  ABSL_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+                   GetCompilationProvider(debug_options, nullptr));
+  ABSL_ASSIGN_OR_RETURN(std::optional<se::SemanticVersion> ptx_version,
+                   GetPtxVersionForCompilation(*compilation_provider));
+
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     if (selected_module->empty() && selected_module->global_empty()) {
       return BackendCompileResult{};
     }
-    ABSL_ASSIGN_OR_RETURN(compilation_provider,
-                     GetCompilationProvider(debug_options, nullptr));
 
     // This may print multiple lines per HLO compilation because of the
     // parallelized compilation of LLVM modules.
@@ -580,8 +583,6 @@ NVPTXCompiler::CompileTargetBinary(
         debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-    ABSL_ASSIGN_OR_RETURN(ptx_version,
-                     GetPtxVersionForCompilation(*compilation_provider));
     ABSL_ASSIGN_OR_RETURN(
         ptx,
         nvptx::CompileToPtx(
@@ -597,13 +598,6 @@ NVPTXCompiler::CompileTargetBinary(
 
   if (ptx.empty()) {
     return BackendCompileResult{};
-  }
-
-  if (compilation_provider == nullptr) {
-    ABSL_ASSIGN_OR_RETURN(compilation_provider,
-                     GetCompilationProvider(debug_options, nullptr));
-    ABSL_ASSIGN_OR_RETURN(ptx_version,
-                     GetPtxVersionForCompilation(*compilation_provider));
   }
 
   se::cuda::CompilationOptions compilation_options =
@@ -647,7 +641,8 @@ NVPTXCompiler::CompileTargetBinary(
   }
 
   ABSL_ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
-                   compilation_provider->Compile(cc, ptx, compilation_options));
+                   compilation_provider->Compile(cc, ptx, kernel_fingerprint,
+                                                 compilation_options));
   record_ptx_to_cubin_metric();
   return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
                               std::move(assembly.module_stats)};

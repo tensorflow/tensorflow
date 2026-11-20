@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+message AdvancedControlFile {
+  bytes content = 1;
+  string gpu_arch = 2;
+  string cuda_version = 3;
+}
+
+message AdvancedControlFiles {
+  repeated AdvancedControlFile files = 1;
+}
+
+message CompileIqDb {
+  int32 format_version = 1;
+
+  // fingerprint -> AdvancedControlFiles
+  map<string, AdvancedControlFiles> control_files = 3;
+}

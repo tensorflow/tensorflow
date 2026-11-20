@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/target_lowering/amdgpu_backend.h"
@@ -206,6 +207,7 @@ AMDGPUCompiler::AMDGPUCompiler()
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 AMDGPUCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    absl::string_view kernel_fingerprint,
     const se::DeviceDescription& device_description, bool relocatable,
     const HloModule* debug_module, std::optional<int> shard_number) {
   if (relocatable) {

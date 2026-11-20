@@ -46,6 +46,9 @@ struct CompilationOptions {
   // returned in the compilation result.
   bool dump_compilation_log = false;
 
+  // Optional path to a CompileIqDb with ptxas advanced control files.
+  std::string compileiq_db;
+
   // Additional flags to pass to ptxas.
   std::vector<std::string> additional_ptxas_flags;
 
@@ -56,7 +59,8 @@ struct CompilationOptions {
            lhs.generate_line_info == rhs.generate_line_info &&
            lhs.generate_debug_info == rhs.generate_debug_info &&
            lhs.dump_compilation_log == rhs.dump_compilation_log &&
-           lhs.additional_ptxas_flags == rhs.additional_ptxas_flags;
+           lhs.additional_ptxas_flags == rhs.additional_ptxas_flags &&
+           lhs.compileiq_db == rhs.compileiq_db;
   }
 
   friend bool operator!=(const CompilationOptions& lhs,
@@ -69,7 +73,7 @@ struct CompilationOptions {
     return H::combine(std::move(h), options.disable_optimizations,
                       options.cancel_if_reg_spill, options.generate_line_info,
                       options.generate_debug_info, options.dump_compilation_log,
-                      options.additional_ptxas_flags);
+                      options.additional_ptxas_flags, options.compileiq_db);
   }
 
   template <typename Sink>
