@@ -34,6 +34,10 @@ cc_library(
     linkopts = [
         "-ldl",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     deps = [
         "@roc_mori//src/application:mori_application",
         "@roc_mori//:mori_application_headers",
