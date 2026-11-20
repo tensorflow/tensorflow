@@ -160,7 +160,8 @@ GetDTypesAndShapes(absl::Span<const xla::Shape> mlir_module_xla_shapes) {
       // Token uses a scalar shape by convention.
       shapes.push_back(Shape({}));
     } else {
-      shapes.push_back(Shape(xla_shape.dimensions()));
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::Create(xla_shape.dimensions()));
+      shapes.push_back(std::move(shape));
     }
   }
   return std::make_pair(std::move(dtypes), std::move(shapes));
@@ -460,7 +461,9 @@ xla::CustomOptions::Map ToCustomOptionsMap(const AttributeMap& attribute_map) {
   return custom_options;
 }
 
-std::vector<Shape> ComputeUnshardedShapes(
+// Computes unsharded IFRT `Shape`s from per-shard XLA dimensions and optional
+// HLO shardings.
+absl::StatusOr<std::vector<Shape>> ComputeUnshardedShapes(
     absl::Span<const DType> dtypes,
     absl::Span<const xla::PrimitiveType> element_types,
     absl::Span<const xla::DimensionVector> shard_dimensions,
@@ -475,9 +478,12 @@ std::vector<Shape> ComputeUnshardedShapes(
       xla::Shape shard_xla_shape(element_types[i], shard_dimensions[i]);
       xla::Shape global_xla_shape = xla::hlo_sharding_util::UntileShape(
           (*hlo_shardings)[i], shard_xla_shape);
-      shapes.push_back(Shape(global_xla_shape.dimensions()));
+      ABSL_ASSIGN_OR_RETURN(Shape shape,
+                       Shape::Create(global_xla_shape.dimensions()));
+      shapes.push_back(std::move(shape));
     } else {
-      shapes.push_back(Shape(shard_dimensions[i]));
+      ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::Create(shard_dimensions[i]));
+      shapes.push_back(std::move(shape));
     }
   }
   return shapes;
@@ -609,13 +615,13 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
       std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
       GetHloShardings(pjrt_executable->GetOutputShardings(), output_dtypes,
                       /*is_output=*/true));
-  std::vector<Shape> output_shapes =
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<Shape> output_shapes,
       ComputeUnshardedShapes(output_dtypes, output_types, output_dims,
-                             output_hlo_shardings, is_portable);
+                             output_hlo_shardings, is_portable));
 
   // Construct unsharded parameter shapes and dtypes for metadata.
   std::vector<DType> param_dtypes;
-  std::vector<Shape> param_shapes;
   param_dtypes.reserve(param_types.size());
   for (xla::PrimitiveType elem_type : param_types) {
     ABSL_ASSIGN_OR_RETURN(DType dtype, ToDType(elem_type));
@@ -625,8 +631,9 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
       std::optional<std::vector<xla::HloSharding>> param_hlo_shardings,
       GetHloShardings(pjrt_executable->GetParameterShardings(), param_dtypes,
                       /*is_output=*/false));
-  param_shapes = ComputeUnshardedShapes(param_dtypes, param_types, param_dims,
-                                        param_hlo_shardings, is_portable);
+  ABSL_ASSIGN_OR_RETURN(std::vector<Shape> param_shapes,
+                   ComputeUnshardedShapes(param_dtypes, param_types, param_dims,
+                                          param_hlo_shardings, is_portable));
 
   ABSL_ASSIGN_OR_RETURN(
       std::vector<MemoryKind> output_memory_kinds,
@@ -715,7 +722,8 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
         shard_shape = output_shapes[i];
       } else if (output_dimensions.ok() && !output_dimensions->empty() &&
                  (*output_dimensions)[0].size() == output_dtypes.size()) {
-        shard_shape = Shape((*output_dimensions)[0][i]);
+        ABSL_ASSIGN_OR_RETURN(shard_shape,
+                         Shape::Create((*output_dimensions)[0][i]));
       } else if (!output_hlo_shardings.has_value()) {
         shard_shape = output_shapes[i];
       } else {
@@ -724,7 +732,8 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
         xla::Shape xla_shape(element_type, output_shapes[i].dims());
         xla::Shape xla_shard_shape = xla::hlo_sharding_util::TileShape(
             (*output_hlo_shardings)[i], xla_shape);
-        shard_shape = Shape(xla_shard_shape.dimensions());
+        ABSL_ASSIGN_OR_RETURN(shard_shape,
+                         Shape::Create(xla_shard_shape.dimensions()));
       }
     }
     *output_spec.mutable_shard_shape() = shard_shape->ToProto(serdes_version);

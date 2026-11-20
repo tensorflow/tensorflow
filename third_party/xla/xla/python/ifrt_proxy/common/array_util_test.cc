@@ -141,7 +141,6 @@ INSTANTIATE_TEST_SUITE_P(
         TC{"SmallerByteStrideThanDataType", kS32, {5, 5}, Strides({1, 1})},
         TC{"ByteStrideIndivisibleByDataType", kS32, {5, 5}, Strides({7, 7})},
         // Bad arguments
-        TC{"NegativeShapeDimension", kS32, {-5, -5}, Strides({20, 4})},
         // Stride * (dim - 1) overflows int64_t — must be rejected, not silently
         // wrap to zero (which would bypass the size check in
         // FromMinimalMemRegion).

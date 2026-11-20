@@ -169,9 +169,27 @@ func.func @array_v1_unsupported_element_type() {
 // -----
 
 func.func @array_v1_shape_element_count_overflow() {
-  // expected-error@+2 {{Array shape element count overflows 64-bit signed integer}}
+  // expected-error@+2 {{Array shape element count exceeds maximum supported elements (72057594037927935)}}
   %0 = builtin.unrealized_conversion_cast to
-      !vifrt.array_v1<tensor<4611686018427387904x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
+      !vifrt.array_v1<tensor<65536x281474976710656xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
+  return
+}
+
+// -----
+
+func.func @array_v1_shape_exceeds_max_num_elements() {
+  // expected-error@+2 {{Array shape element count exceeds maximum supported elements (72057594037927935)}}
+  %0 = builtin.unrealized_conversion_cast to
+      !vifrt.array_v1<tensor<72057594037927936xi8>, #vifrt.sharding_param_v2<1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">
+  return
+}
+
+// -----
+
+func.func @array_v1_shape_zero_dim_exceeds_max_num_elements() {
+  // expected-error@+2 {{Array shape element count exceeds maximum supported elements (72057594037927935)}}
+  %0 = builtin.unrealized_conversion_cast to
+      !vifrt.array_v1<tensor<0x72057594037927936xi8>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">
   return
 }
 

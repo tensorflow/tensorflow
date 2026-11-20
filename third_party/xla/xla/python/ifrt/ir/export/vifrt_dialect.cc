@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/export/vifrt_bytecode.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/shape.h"
 
 namespace xla {
 namespace ifrt {
@@ -291,10 +292,14 @@ mlir::LogicalResult VifrtArrayV1Type::verify(
   }
   int64_t num_elements = 1;
   for (int64_t dim : shape.getShape()) {
-    if (__builtin_mul_overflow(num_elements, dim, &num_elements)) {
+    if (dim == 0) {
+      continue;
+    }
+    if (__builtin_mul_overflow(num_elements, dim, &num_elements) ||
+        num_elements > Shape::kMaxNumElements) {
       return emitError()
-             << "Array shape element count overflows 64-bit signed integer: "
-             << shape;
+             << "Array shape element count exceeds maximum supported elements ("
+             << Shape::kMaxNumElements << "): " << shape;
     }
   }
   if (llvm::isa<VifrtTokenV1Type>(shape.getElementType())) {

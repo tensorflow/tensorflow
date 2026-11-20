@@ -120,6 +120,7 @@ cc_library(
         ":vifrt_interfaces_inc_gen",
         ":vifrt_ops_inc_gen",
         "//xla/pjrt:layout_mode",
+        "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/ir:version",

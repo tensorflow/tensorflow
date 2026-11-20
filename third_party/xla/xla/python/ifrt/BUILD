@@ -521,7 +521,6 @@ xla_cc_test(
         ":serdes_version",
         ":shape_proto_cc",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

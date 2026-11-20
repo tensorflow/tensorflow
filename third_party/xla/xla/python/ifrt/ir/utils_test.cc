@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
+#include "xla/python/ifrt/shape.h"
 
 namespace xla {
 namespace ifrt {
@@ -475,6 +476,51 @@ module {
   EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 0), std::nullopt);
   EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 1), 0u);
   EXPECT_EQ(GetArrayInputIndex(shifted_inputs, 2), std::nullopt);
+}
+
+TEST(UtilsTest, IfrtArrayTypeEnforcesShapeMaxNumElements) {
+  mlir::MLIRContext context;
+  support::RegisterMlirDialects(context);
+  mlir::OpBuilder builder(&context);
+  auto emit_error = [&]() {
+    return mlir::emitError(mlir::UnknownLoc::get(&context));
+  };
+  IfrtShardingAttrInterface sharding =
+      IfrtUnspecifiedShardingAttr::get(&context);
+  IfrtDevicesAttr devices =
+      IfrtDevicesAttr::get(&context, /*ids=*/llvm::ArrayRef<int>({0}));
+
+  IfrtArrayType max_allowed = IfrtArrayType::getChecked(
+      emit_error, &context,
+      mlir::RankedTensorType::get({Shape::kMaxNumElements},
+                                  builder.getI8Type()),
+      sharding, devices, /*memory_kind_attr=*/mlir::StringAttr(),
+      /*layout_attr=*/mlir::StringAttr());
+  EXPECT_NE(max_allowed, nullptr);
+
+  IfrtArrayType zero_with_max_allowed = IfrtArrayType::getChecked(
+      emit_error, &context,
+      mlir::RankedTensorType::get({0, Shape::kMaxNumElements},
+                                  builder.getI8Type()),
+      sharding, devices, /*memory_kind_attr=*/mlir::StringAttr(),
+      /*layout_attr=*/mlir::StringAttr());
+  EXPECT_NE(zero_with_max_allowed, nullptr);
+
+  for (mlir::RankedTensorType bad_tensor_type :
+       {mlir::RankedTensorType::get({Shape::kMaxNumElements + 1},
+                                    builder.getI8Type()),
+        mlir::RankedTensorType::get({0, Shape::kMaxNumElements + 1},
+                                    builder.getI8Type())}) {
+    mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
+    IfrtArrayType oversized = IfrtArrayType::getChecked(
+        emit_error, &context, bad_tensor_type, sharding, devices,
+        /*memory_kind_attr=*/mlir::StringAttr(),
+        /*layout_attr=*/mlir::StringAttr());
+    EXPECT_EQ(oversized, nullptr);
+    EXPECT_THAT(diagnostic_handler.ConsumeStatus(),
+                StatusIs(absl::StatusCode::kUnknown,
+                         HasSubstr("exceeds maximum supported elements")));
+  }
 }
 
 }  // namespace

@@ -800,6 +800,7 @@ xla_cc_test(
         ":ir",
         ":utils",
         "//xla/mlir/utils:error_util",
+        "//xla/python/ifrt",
         "//xla/python/ifrt/ir/support:module_parsing",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

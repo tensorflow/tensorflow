@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -853,6 +854,35 @@ TEST(PjRtExecutableImplTest, InternalCustomOptionsRegistered) {
       PjRtCompatibleLoadedExecutable::kUseOutputArena));
   EXPECT_FALSE(IsIfrtInternalCustomOption("non_internal_option"));
 }
+
+TEST(PjRtExecutableImplTest, CompileRejectsOversizedParameterShape) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+  Device* const device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList({device}));
+
+  for (const std::string& tensor_type :
+       {absl::StrCat("tensor<", Shape::kMaxNumElements + 1, "xi8>"),
+        absl::StrCat("tensor<", Shape::kMaxNumElements + 1, "x0xi8>")}) {
+    const std::string module_str = absl::StrCat(
+        "module @oversized_param {\n", "  func.func @main(%arg0: ", tensor_type,
+        ") {\n", "    return\n", "  }\n", "}\n");
+    mlir::MLIRContext context;
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         xla::ParseMlirModuleString(module_str, context));
+
+    xla::CompileOptions compile_options;
+    EXPECT_THAT(compiler
+                    ->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                                     std::make_unique<XlaCompileOptions>(
+                                         compile_options, device_list))
+                    .Await(),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         ::testing::HasSubstr("is too large")));
+  }
+}
+
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

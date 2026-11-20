@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 
 #include <cstdint>
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <variant>
@@ -26,7 +27,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
@@ -48,21 +49,41 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 }  // namespace
 
+absl::StatusOr<Shape> Shape::Create(absl::Span<const int64_t> dims) {
+  int64_t count = 1;
+  for (int64_t d : dims) {
+    if (d < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape expects non-negative dimension sizes, but got ",
+                       d, " in [", absl::StrJoin(dims, ","), "]"));
+    }
+    if (d == 0) {
+      continue;
+    }
+    if (__builtin_mul_overflow(count, d, &count) || count > kMaxNumElements) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Number of elements in shape [",
+                       absl::StrJoin(dims, ","), "] is too large"));
+    }
+  }
+  return Shape(UncheckedTag{},
+               std::make_shared<Dimensions>(dims.begin(), dims.end()));
+}
+
+Shape::Shape(absl::Span<const int64_t> dims)
+    : Shape([](absl::Span<const int64_t> d) {
+        absl::StatusOr<Shape> shape = Create(d);
+        CHECK_OK(shape);
+        return *std::move(shape);
+      }(dims)) {}
+
 absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
   if (version_number != SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for Shape deserialization"));
   }
-
-  Shape::Dimensions dims;
-  dims.reserve(proto.dims_size());
-  for (int64_t dim : proto.dims()) {
-    dims.push_back(dim);
-  }
-  Shape shape(std::move(dims));
-  ABSL_RETURN_IF_ERROR(shape.NumElements().status());
-  return shape;
+  return Create(proto.dims());
 }
 
 void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
@@ -82,29 +103,9 @@ void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
 }
 
 int64_t Shape::num_elements() const {
-  absl::StatusOr<int64_t> count = NumElements();
-  CHECK_OK(count);
-  return *count;
-}
-
-absl::StatusOr<int64_t> Shape::NumElements() const {
   int64_t count = 1;
-  bool overflow = false;
   for (int64_t d : *dims_) {
-    if (d < 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Shape expects non-negative dimension sizes, but got %d", d));
-    }
-    if (d == 0) {
-      count = 0;
-      overflow = false;
-    } else if (count != 0) {
-      overflow |= __builtin_mul_overflow(count, d, &count);
-    }
-  }
-  if (overflow) {
-    return absl::InvalidArgumentError(
-        "Too large number of elements in a shape");
+    count *= d;
   }
   return count;
 }

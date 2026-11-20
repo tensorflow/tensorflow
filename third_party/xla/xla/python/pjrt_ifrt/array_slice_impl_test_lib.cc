@@ -383,14 +383,6 @@ TEST_F(ArraySliceTest, CopySliceInvalidArguments) {
                 StatusIs(absl::StatusCode::kInvalidArgument));
   }
 
-  // Negative extent
-  {
-    IndexDomain domain(Index({0, 0}), Shape({-8, 128}));
-    EXPECT_THAT(client_->CopyArraySlices(absl::MakeSpan(&array, 1),
-                                         absl::MakeSpan(&domain, 1)),
-                StatusIs(absl::StatusCode::kInvalidArgument));
-  }
-
   if (client_->addressable_devices().size() >= 2) {
     std::vector<xla::ifrt::Device*> devices = {
         client_->addressable_devices()[0],

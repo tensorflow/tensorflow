@@ -172,14 +172,6 @@ TEST(IndexDomainTest, Contains) {
     EXPECT_THAT(a.Contains(zero), IsOkAndHolds(true));
   }
 
-  // Negative shape dimensions.
-  {
-    IndexDomain a(Index({0, 0}), Shape({-1, 4}));
-    IndexDomain b(Index({0, 0}), Shape({2, 4}));
-    EXPECT_THAT(a.Contains(b), StatusIs(absl::StatusCode::kInvalidArgument));
-    EXPECT_THAT(b.Contains(a), StatusIs(absl::StatusCode::kInvalidArgument));
-  }
-
   // Mismatched rank.
   {
     IndexDomain a(Index({1, 2}), Shape({3, 4}));

@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -36,21 +35,20 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 
 TEST(ShapeTest, LargeDim) {
-  Shape shape({std::numeric_limits<int64_t>::max()});
-  EXPECT_THAT(shape.dims(), ElementsAre(std::numeric_limits<int64_t>::max()));
+  Shape shape({Shape::kMaxNumElements});
+  EXPECT_THAT(shape.dims(), ElementsAre(Shape::kMaxNumElements));
+  EXPECT_EQ(shape.num_elements(), Shape::kMaxNumElements);
 }
 
 TEST(ShapeTest, ManyDims) {
   const int kNumDims = 65536;  // Arbitrarily large number.
-  std::vector<int64_t> dims(kNumDims);
-  absl::c_iota(dims, 0);
+  std::vector<int64_t> dims(kNumDims, 1);
   Shape shape(dims);
   EXPECT_THAT(shape.dims(), ElementsAreArray(dims));
 }
@@ -77,6 +75,14 @@ TEST(ShapeTest, ZeroDimNumElements) {
     Shape shape({0, 0});
     EXPECT_EQ(shape.num_elements(), 0);
   }
+  {
+    Shape shape({0, Shape::kMaxNumElements});
+    EXPECT_EQ(shape.num_elements(), 0);
+  }
+  {
+    Shape shape({Shape::kMaxNumElements, 0});
+    EXPECT_EQ(shape.num_elements(), 0);
+  }
 }
 
 TEST(ShapeTest, NonZeroDimsNumElements) {
@@ -90,38 +96,96 @@ TEST(ShapeTest, NonZeroDimsNumElements) {
   }
 }
 
-TEST(ShapeTest, NumElementsValidatesDimensionsAndOverflow) {
-  EXPECT_THAT(Shape({}).NumElements(), IsOkAndHolds(1));
-  EXPECT_THAT(Shape({100, 200}).NumElements(), IsOkAndHolds(20000));
-
-  constexpr int64_t kOverflowSide = int64_t{1} << 32;
-  EXPECT_THAT(Shape({0, kOverflowSide, kOverflowSide}).NumElements(),
-              IsOkAndHolds(0));
-  EXPECT_THAT(Shape({kOverflowSide, kOverflowSide, 0}).NumElements(),
-              IsOkAndHolds(0));
-
-  EXPECT_THAT(
-      Shape({4, -1}).NumElements(),
-      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("non-negative")));
-  EXPECT_THAT(
-      Shape({0, -1}).NumElements(),
-      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("non-negative")));
-  EXPECT_THAT(
-      Shape({-2, -3}).NumElements(),
-      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("non-negative")));
-  EXPECT_THAT(Shape({kOverflowSide, kOverflowSide}).NumElements(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Too large number of elements")));
+TEST(ShapeTest, CreateValidDimensions) {
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape, Shape::Create({}));
+    EXPECT_THAT(shape.dims(), ElementsAre());
+    EXPECT_EQ(shape.num_elements(), 1);
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape, Shape::Create({2, 3}));
+    EXPECT_THAT(shape.dims(), ElementsAre(2, 3));
+    EXPECT_EQ(shape.num_elements(), 6);
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape, Shape::Create({Shape::kMaxNumElements}));
+    EXPECT_THAT(shape.dims(), ElementsAre(Shape::kMaxNumElements));
+    EXPECT_EQ(shape.num_elements(), Shape::kMaxNumElements);
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape,
+                         Shape::Create({0, Shape::kMaxNumElements}));
+    EXPECT_EQ(shape.num_elements(), 0);
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(Shape shape,
+                         Shape::Create({Shape::kMaxNumElements, 0}));
+    EXPECT_EQ(shape.num_elements(), 0);
+  }
 }
 
-TEST(ShapeDeathTest, NumElementsFailsOnNegativeOrOverflowingDimensions) {
-  EXPECT_DEATH((void)Shape({4, -1}).num_elements(),
-               "Shape expects non-negative dimension sizes");
-  EXPECT_DEATH((void)Shape({-2, -3}).num_elements(),
-               "Shape expects non-negative dimension sizes");
+TEST(ShapeTest, CreateRejectsInvalidDimensions) {
   constexpr int64_t kOverflowSide = int64_t{1} << 32;
-  EXPECT_DEATH((void)Shape({kOverflowSide, kOverflowSide}).num_elements(),
-               "Too large number of elements");
+  EXPECT_THAT(
+      Shape::Create({Shape::kMaxNumElements + 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({0, Shape::kMaxNumElements + 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({Shape::kMaxNumElements + 1, 0}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({Shape::kMaxNumElements / 2 + 1, 2}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({(1LL << 60) + 1}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({kOverflowSide, kOverflowSide}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({0, kOverflowSide, kOverflowSide}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({kOverflowSide, kOverflowSide, 0}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("is too large")));
+  EXPECT_THAT(
+      Shape::Create({4, -1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Shape expects non-negative dimension sizes")));
+  EXPECT_THAT(
+      Shape::Create({0, -1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Shape expects non-negative dimension sizes")));
+  EXPECT_THAT(
+      Shape::Create({std::numeric_limits<int64_t>::min(), -1}),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Shape expects non-negative dimension sizes")));
+}
+
+TEST(ShapeDeathTest, ConstructorFailsOnOverflowingElementCount) {
+  constexpr int64_t kOverflowSide = int64_t{1} << 32;
+  EXPECT_DEATH((void)Shape({Shape::kMaxNumElements + 1}), "is too large");
+  EXPECT_DEATH((void)Shape({0, Shape::kMaxNumElements + 1}), "is too large");
+  EXPECT_DEATH((void)Shape({Shape::kMaxNumElements / 2 + 1, 2}),
+               "is too large");
+  EXPECT_DEATH((void)Shape({(1LL << 60) + 1}), "is too large");
+  EXPECT_DEATH((void)Shape({kOverflowSide, kOverflowSide}), "is too large");
+  EXPECT_DEATH((void)Shape({0, kOverflowSide, kOverflowSide}), "is too large");
+  EXPECT_DEATH((void)Shape({kOverflowSide, kOverflowSide, 0}), "is too large");
+  EXPECT_DEATH((void)Shape({kOverflowSide, kOverflowSide, 5}), "is too large");
+}
+
+TEST(ShapeDeathTest, ConstructorFailsOnNegativeDimensions) {
+  EXPECT_DEATH((void)Shape({4, -1}),
+               "Shape expects non-negative dimension sizes");
+  EXPECT_DEATH((void)Shape({0, -1}),
+               "Shape expects non-negative dimension sizes");
+  EXPECT_DEATH((void)Shape({-2, -3}),
+               "Shape expects non-negative dimension sizes");
+  EXPECT_DEATH((void)Shape({std::numeric_limits<int64_t>::min(), -1}),
+               "Shape expects non-negative dimension sizes");
 }
 
 class ShapeSerDesTest : public testing::TestWithParam<SerDesVersion> {
@@ -156,21 +220,41 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat(info.param.version_number().value());
     });
 
-TEST(ShapeTest, FromProtoRejectsDimensionProductOverflow) {
-  // Individually plausible dimensions whose product overflows int64_t.
-  // Simulates a crafted ShapeProto reaching Shape::FromProto via a
-  // deserialized RPC request (e.g. ifrt_proxy), independent of any
-  // downstream bounds check that might otherwise assume num_elements() is
-  // accurate.
-  ShapeProto proto;
-  proto.set_version_number(SerDesVersionNumber(0).value());
-  proto.add_dims(3037000500LL);
-  proto.add_dims(3037000500LL);
-  proto.add_dims(4LL);
+TEST(ShapeTest, FromProtoRejectsInvalidDimensions) {
+  {
+    // Individually plausible dimensions whose product overflows int64_t.
+    ShapeProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.add_dims(3037000500LL);
+    proto.add_dims(3037000500LL);
+    proto.add_dims(4LL);
 
-  absl::StatusOr<Shape> shape = Shape::FromProto(proto);
-  EXPECT_THAT(shape.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(Shape::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("is too large")));
+  }
+  {
+    // Product fits in int64_t, but exceeds kMaxNumElements (so 128-bit bit-size
+    // calculation would overflow int64_t).
+    ShapeProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.add_dims(Shape::kMaxNumElements + 1);
+
+    EXPECT_THAT(Shape::FromProto(proto),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("is too large")));
+  }
+  {
+    ShapeProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
+    proto.add_dims(4);
+    proto.add_dims(-1);
+
+    EXPECT_THAT(
+        Shape::FromProto(proto),
+        StatusIs(absl::StatusCode::kInvalidArgument,
+                 HasSubstr("Shape expects non-negative dimension sizes")));
+  }
 }
 
 TEST(ShapeTest, FromProtoAcceptsNonOverflowingDimensions) {
@@ -179,7 +263,7 @@ TEST(ShapeTest, FromProtoAcceptsNonOverflowingDimensions) {
   proto.add_dims(100);
   proto.add_dims(200);
 
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_EQ(shape, Shape({100, 200}));
 }
 

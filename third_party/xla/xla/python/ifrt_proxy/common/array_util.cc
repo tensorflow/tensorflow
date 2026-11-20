@@ -82,16 +82,10 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
   // is different from mem_region_start.
   void* const mem_region_start = const_cast<void*>(zeroth_element);
 
-  ABSL_ASSIGN_OR_RETURN(const int64_t num_elements, shape.NumElements());
+  const int64_t num_elements = shape.num_elements();
   if (!byte_strides.has_value() ||
       (byte_strides->empty() && shape.dims().empty())) {
-    size_t mem_region_size = 0;
-    if (__builtin_mul_overflow(byte_size, num_elements, &mem_region_size)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Byte size overflows size_t for dtype ", dtype,
-                       " and shape ", shape));
-    }
-    return ArrayMemRegion(mem_region_start, mem_region_size);
+    return ArrayMemRegion(mem_region_start, byte_size * num_elements);
   }
   if (num_elements == 0) {
     return ArrayMemRegion(mem_region_start, 0);
@@ -127,8 +121,8 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
           "byte_stride[", i, "] is not a multiple of the data-type's size: ",
           StridesAsStr(byte_strides), ", dtype=", dtype));
     } else {
-      // `shape.dims()[i]` cannot be negative (rejected by `shape.NumElements()`
-      // above) or zero (we return early for `num_elements == 0`).
+      // `shape.dims()[i]` cannot be negative (`Shape` enforces non-negative
+      // dimensions) or zero (we return early for `num_elements == 0`).
       DCHECK_GT(shape.dims()[i], 0);
       int64_t product;
       if (__builtin_mul_overflow(stride, shape.dims()[i] - 1, &product)) {
