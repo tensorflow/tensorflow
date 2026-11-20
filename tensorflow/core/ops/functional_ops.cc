@@ -29,7 +29,7 @@ REGISTER_OP("SymbolicGradient")
     .Attr("f: func")
     .SetShapeFn([](InferenceContext* c) {
       if (c->num_inputs() < c->num_outputs()) {
-        return errors::InvalidArgument("len(inputs) < len(outputs)");
+        return absl::InvalidArgumentError("len(inputs) < len(outputs)");
       }
       std::vector<DataType> types;
       TF_RETURN_IF_ERROR(c->GetAttr("Tin", &types));
@@ -97,9 +97,9 @@ absl::Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
   // else return unknown shapes.
   if (output_shapes.empty()) return shape_inference::UnknownShape(c);
   if (output_shapes.size() != c->num_outputs()) {
-    return errors::InvalidArgument(
-        "`output_shapes` must be the same length as num outputs (",
-        output_shapes.size(), " vs. ", c->num_outputs());
+    return absl::InvalidArgumentError(
+        absl::StrCat("`output_shapes` must be the same length as num outputs (",
+                     output_shapes.size(), " vs. ", c->num_outputs()));
   }
   for (size_t i = 0; i < output_shapes.size(); ++i) {
     shape_inference::ShapeHandle output_shape_handle;
@@ -142,9 +142,9 @@ absl::Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
   // else return unknown shapes.
   if (output_shapes.empty()) return shape_inference::UnknownShape(c);
   if (output_shapes.size() != c->num_outputs()) {
-    return errors::InvalidArgument(
-        "`output_shapes` must be the same length as num outputs (",
-        output_shapes.size(), " vs. ", c->num_outputs());
+    return absl::InvalidArgumentError(
+        absl::StrCat("`output_shapes` must be the same length as num outputs (",
+                     output_shapes.size(), " vs. ", c->num_outputs()));
   }
   for (size_t i = 0; i < output_shapes.size(); ++i) {
     shape_inference::ShapeHandle output_shape_handle;
@@ -214,9 +214,9 @@ absl::Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
   // else use the input shapes.
   if (!output_shapes.empty()) {
     if (output_shapes.size() != c->num_outputs()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "`output_shapes` must be the same length as num outputs (",
-          output_shapes.size(), " vs. ", c->num_outputs());
+          output_shapes.size(), " vs. ", c->num_outputs()));
     }
     for (size_t i = 0; i < output_shapes.size(); ++i) {
       shape_inference::ShapeHandle output_shape_handle;
