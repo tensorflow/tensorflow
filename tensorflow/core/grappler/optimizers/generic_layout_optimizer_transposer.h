@@ -211,8 +211,7 @@ class LayoutSensitiveOpTransposer : public Transposer {
 
 class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit DefaultLayoutSensitiveOpTransposer()
-      : LayoutSensitiveOpTransposer() {}
+  explicit DefaultLayoutSensitiveOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -220,7 +219,7 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
 
 class BiasAddTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit BiasAddTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit BiasAddTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -228,7 +227,7 @@ class BiasAddTransposer : public LayoutSensitiveOpTransposer {
 
 class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit AvgPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit AvgPoolGradTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -236,7 +235,7 @@ class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
 
 class BiasAddGradTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit BiasAddGradTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit BiasAddGradTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -244,7 +243,7 @@ class BiasAddGradTransposer : public LayoutSensitiveOpTransposer {
 
 class Conv2DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit Conv2DBackpropFilterTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit Conv2DBackpropFilterTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -252,7 +251,7 @@ class Conv2DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
 
 class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit Conv2DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit Conv2DBackpropInputTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -260,7 +259,7 @@ class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
 
 class Conv3DTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit Conv3DTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit Conv3DTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -268,7 +267,7 @@ class Conv3DTransposer : public LayoutSensitiveOpTransposer {
 
 class Conv3DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit Conv3DBackpropFilterTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit Conv3DBackpropFilterTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -276,7 +275,7 @@ class Conv3DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
 
 class Conv3DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit Conv3DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit Conv3DBackpropInputTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -284,7 +283,7 @@ class Conv3DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
 
 class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit FusedBatchNormExTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -292,7 +291,7 @@ class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
 
 class FusedBatchNormGradTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit FusedBatchNormGradTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit FusedBatchNormGradTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -303,7 +302,7 @@ class FusedBatchNormGradTransposer : public LayoutSensitiveOpTransposer {
 
 class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit MaxPoolV2Transposer() : LayoutSensitiveOpTransposer() {}
+  explicit MaxPoolV2Transposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -311,7 +310,7 @@ class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
 
 class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit MaxPool3DTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit MaxPool3DTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -319,7 +318,7 @@ class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
 
 class MaxPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit MaxPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
+  explicit MaxPoolGradTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -327,7 +326,7 @@ class MaxPoolGradTransposer : public LayoutSensitiveOpTransposer {
 
 class MaxPoolGradV2Transposer : public LayoutSensitiveOpTransposer {
  public:
-  explicit MaxPoolGradV2Transposer() : LayoutSensitiveOpTransposer() {}
+  explicit MaxPoolGradV2Transposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -350,7 +349,7 @@ class LayoutAgnosticOpTransposer : public Transposer {
 
 class DefaultLayoutAgnosticOpTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit DefaultLayoutAgnosticOpTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit DefaultLayoutAgnosticOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -358,7 +357,7 @@ class DefaultLayoutAgnosticOpTransposer : public LayoutAgnosticOpTransposer {
 
 class AddNTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit AddNTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit AddNTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -366,7 +365,7 @@ class AddNTransposer : public LayoutAgnosticOpTransposer {
 
 class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit BinaryOpTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit BinaryOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -393,7 +392,7 @@ class BinaryOpTransposer : public LayoutAgnosticOpTransposer {
 
 class ConcatOpTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit ConcatOpTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit ConcatOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -401,7 +400,7 @@ class ConcatOpTransposer : public LayoutAgnosticOpTransposer {
 
 class FillOpTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit FillOpTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit FillOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -409,7 +408,7 @@ class FillOpTransposer : public LayoutAgnosticOpTransposer {
 
 class IdentityNTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit IdentityNTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit IdentityNTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -417,7 +416,7 @@ class IdentityNTransposer : public LayoutAgnosticOpTransposer {
 
 class MergeTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit MergeTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit MergeTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -430,7 +429,7 @@ class MergeTransposer : public LayoutAgnosticOpTransposer {
 
 class PadTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit PadTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit PadTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -438,7 +437,7 @@ class PadTransposer : public LayoutAgnosticOpTransposer {
 
 class ReduceTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit ReduceTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit ReduceTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -452,7 +451,7 @@ class ReduceTransposer : public LayoutAgnosticOpTransposer {
 
 class ReverseV2Transposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit ReverseV2Transposer() : LayoutAgnosticOpTransposer() {}
+  explicit ReverseV2Transposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -460,7 +459,7 @@ class ReverseV2Transposer : public LayoutAgnosticOpTransposer {
 
 class SelectTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SelectTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SelectTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -472,7 +471,7 @@ class SelectTransposer : public LayoutAgnosticOpTransposer {
 
 class ShapeTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit ShapeTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit ShapeTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -480,7 +479,7 @@ class ShapeTransposer : public LayoutAgnosticOpTransposer {
 
 class ShapeNTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit ShapeNTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit ShapeNTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -488,7 +487,7 @@ class ShapeNTransposer : public LayoutAgnosticOpTransposer {
 
 class SliceTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SliceTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SliceTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -496,7 +495,7 @@ class SliceTransposer : public LayoutAgnosticOpTransposer {
 
 class SplitTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SplitTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SplitTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -504,7 +503,7 @@ class SplitTransposer : public LayoutAgnosticOpTransposer {
 
 class SplitVTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SplitVTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SplitVTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -512,7 +511,7 @@ class SplitVTransposer : public LayoutAgnosticOpTransposer {
 
 class SqueezeTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SqueezeTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SqueezeTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -530,7 +529,7 @@ class SqueezeTransposer : public LayoutAgnosticOpTransposer {
 
 class StridedSliceTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit StridedSliceTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit StridedSliceTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -545,7 +544,7 @@ class StridedSliceTransposer : public LayoutAgnosticOpTransposer {
 
 class SwitchTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit SwitchTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit SwitchTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -553,7 +552,7 @@ class SwitchTransposer : public LayoutAgnosticOpTransposer {
 
 class TernaryOpTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit TernaryOpTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit TernaryOpTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -561,7 +560,7 @@ class TernaryOpTransposer : public LayoutAgnosticOpTransposer {
 
 class TileTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit TileTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit TileTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
@@ -569,7 +568,7 @@ class TileTransposer : public LayoutAgnosticOpTransposer {
 
 class UnaryGradTransposer : public LayoutAgnosticOpTransposer {
  public:
-  explicit UnaryGradTransposer() : LayoutAgnosticOpTransposer() {}
+  explicit UnaryGradTransposer() : = default;
 
   absl::Status TransposeNode(TransposeContext* context,
                              utils::MutableNodeView* node) override;
