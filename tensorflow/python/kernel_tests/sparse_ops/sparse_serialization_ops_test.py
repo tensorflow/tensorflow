@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -474,6 +475,40 @@ class SerializeSparseTest(test.TestCase):
 
     with self.assertRaisesRegex(ValueError, r"Shape must be at least rank 1"):
       f()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeserializeInvalidVariantValues(self):
+    # Use a dedicated mutex: in eager mode an unnamed mutex is shared with
+    # testDeserializeInvalidVariant, whose lock may still be held.
+    mu = gen_resource_variable_ops.mutex_v2(
+        shared_name="testDeserializeInvalidVariantValues"
+    )
+    mu_lock = gen_resource_variable_ops.mutex_lock(mutex=mu)
+    sp = sparse_tensor_lib.SparseTensor(
+        indices=[[0, 0]], values=[1.0], dense_shape=[1, 1]
+    )
+    serialized = sparse_ops.serialize_sparse(sp, out_type=dtypes.variant)
+    bad_serialized = array_ops_stack.stack(
+        [serialized[0], mu_lock, serialized[2]]
+    )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Could not get a tensor from serialized_sparse\[0, 1\]",
+    ):
+      self.evaluate(
+          sparse_ops.deserialize_sparse(bad_serialized, dtype=dtypes.float32)
+      )
+
+    # A batch whose second element has a non-Tensor values variant.
+    bad_batch = array_ops_stack.stack([serialized, bad_serialized])
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Could not get a tensor from serialized_sparse\[1, 1\]",
+    ):
+      self.evaluate(
+          sparse_ops.deserialize_sparse(bad_batch, dtype=dtypes.float32)
+      )
 
 
 if __name__ == "__main__":
