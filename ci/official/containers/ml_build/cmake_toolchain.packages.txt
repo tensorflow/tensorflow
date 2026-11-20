@@ -1,4 +1,3 @@
-cmake
 ninja-build
 ccache
 clang-18
