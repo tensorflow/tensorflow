@@ -15,15 +15,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/lib/svd.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +39,34 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// xla::SVD compares entries against absolute thresholds (epsilon), so tiny or
+// huge inputs are mishandled. SVD is homogeneous: normalize each matrix by its
+// largest absolute entry, run the SVD, and rescale the singular values.
+xla::SVDResult ScaleInvariantSVD(xla::XlaOp a, xla::PrimitiveType type,
+                                 int rank, int32_t max_iter, float epsilon,
+                                 xla::PrecisionConfig::Precision precision) {
+  xla::XlaBuilder* builder = a.builder();
+  std::vector<int64_t> scale_dims(rank - 2);
+  std::iota(scale_dims.begin(), scale_dims.end(), 0);
+  xla::XlaOp amax = xla::Reduce(xla::Abs(a), xla::Zero(builder, type),
+                                xla::CreateScalarMaxComputation(type, builder),
+                                {rank - 2, rank - 1});
+  xla::XlaOp zero = xla::ZerosLike(amax);
+  // Zero / inf / nan matrices keep scale 1, so their behavior is unchanged.
+  xla::XlaOp scale =
+      xla::Select(xla::And(xla::Gt(amax, zero), xla::IsFinite(amax)), amax,
+                  zero + xla::ScalarLike(amax, 1.0));
+                  
+  // Prevent division by subnormal values which can trigger division-by-zero
+  // on platforms with Flush-to-Zero (FTZ) enabled.
+  scale = xla::Max(scale, xla::MinPositiveNormalValue(builder, type));
+  
+  xla::SVDResult result =
+      xla::SVD(xla::Div(a, scale, scale_dims), max_iter, epsilon, precision);
+  result.d = xla::Mul(result.d, scale, scale_dims);
+  return result;
+}
 
 class XlaSvdOp : public XlaOpKernel {
  public:
@@ -58,8 +90,9 @@ class XlaSvdOp : public XlaOpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank >= 2, got shape ",
                                  input_shape.DebugString())));
-    auto result = xla::SVD(ctx->Input(0), max_iter_, epsilon_,
-                           precision_config_.operand_precision(0));
+    auto result = ScaleInvariantSVD(
+        ctx->Input(0), ctx->input_xla_type(0), input_shape.dims(), max_iter_,
+        epsilon_, precision_config_.operand_precision(0));
     ctx->SetOutput(0, result.d);
     ctx->SetOutput(1, result.u);
     ctx->SetOutput(2, result.v);
@@ -92,7 +125,9 @@ class SvdOp : public XlaOpKernel {
     // Note: the heuristics provides no theoretical guarantee, max_iter=100 and
     // epsilon should be used to determine exit condition.
     int max_iter = 2 * tensorflow::Log2Ceiling(std::max(m, n));
-    auto result = xla::SVD(ctx->Input(0), max_iter, 1e-6);
+    auto result = ScaleInvariantSVD(
+        ctx->Input(0), ctx->input_xla_type(0), input_shape.dims(), max_iter,
+        1e-6, xla::PrecisionConfig::HIGHEST);
     ctx->SetOutput(0, result.d);
     if (compute_uv_) {
       int p = std::min(m, n);

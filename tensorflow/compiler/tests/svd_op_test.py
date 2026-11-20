@@ -98,6 +98,41 @@ class SvdOpTest(xla_test.XLATestCase, parameterized.TestCase):
         s, u, v = linalg_ops.svd(x_tf, full_matrices=True)
       with self.assertRaisesRegex(errors.InvalidArgumentError, "rank >= 2"):
         sess.run([s, u, v], feed_dict={x_tf: np.zeros([8], np.float32)})
+  
+  def testScaleInvarianceAndSubnormals(self):
+    # Test that SVD is scale-invariant and handles subnormal inputs correctly.
+    # The test uses a matrix with known singular values, scales it down to
+    # subnormal values, and checks that the singular values are computed correctly.
+    a0_np = np.array([[1.0, 2.0], [3.0, 4.0]])
+    test_cases = [
+      # dtype, scale, expected_s, max_allowed_residual
+      (np.float32, 1e-20, [5.4649852e-20, 3.6596615e-21], 1e-5),
+      (np.float32, 1e-40, [5.4649852e-40, 3.6596615e-41], 1e-4),
+      (np.float64, 1e-20, [5.4649857e-20, 3.6596619e-21], 1e-13),
+      (np.float64, 1e-300, [5.4649857e-300, 3.6596619e-301], 1e-13),
+    ]
+    for dtype, scale, expected_s, max_allowed_residual in test_cases:
+      a_scaled = (a0_np * scale).astype(dtype)
+      expected_s_np = np.array(expected_s, dtype=dtype)
+
+      with self.session() as sess:
+        x_tf = array_ops.placeholder(dtype)
+        with self.test_scope():
+          # Compute full matrices to reuse the _compute_usvt class helper
+          s, u, v = linalg_ops.svd(x_tf, full_matrices=True)
+        
+        # sess.run must remain indented exactly here, inside the session block
+        s_val, u_val, v_val = sess.run([s, u, v], feed_dict={x_tf: a_scaled})
+        recon_val = self._compute_usvt(s_val, u_val, v_val)
+
+        # 1. Verify singular values directly
+        self.assertAllClose(s_val, expected_s_np, rtol=1e-4, atol=scale * 1e-5)
+
+        # Relative construction residual
+        norm_a = np.linalg.norm(a_scaled)
+        if norm_a > 0.0:
+          resid = np.linalg.norm(recon_val - a_scaled) / norm_a
+          self.assertLess(resid, max_allowed_residual)
 
 
 if __name__ == "__main__":
