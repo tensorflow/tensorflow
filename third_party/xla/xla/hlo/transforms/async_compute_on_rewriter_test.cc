@@ -576,5 +576,210 @@ TEST_F(AsyncComputeOnRewriterTest,
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
+TEST_F(AsyncComputeOnRewriterTest, SharedOffloadComputationFromEntry) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule SharedOffloadComputationFromEntry
+
+    // CHECK-LABEL: %offload_comp (p: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[P:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} negate(%[[P]])
+    // CHECK-NEXT:  }
+    %offload_comp (p: f32[8]) -> f32[8] {
+      %p = f32[8] parameter(0)
+      ROOT %neg = f32[8] negate(%p)
+    }
+
+    // CHECK:       %[[ASYNC0:async_computation.*]] (param_0: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[P0:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} call(%[[P0]]), to_apply=%offload_comp
+    // CHECK-NEXT:  }
+
+    // CHECK:       %[[ASYNC1:async_computation.*]] (param_0{{.*}}: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[P1:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} call(%[[P1]]), to_apply=%offload_comp
+    // CHECK-NEXT:  }
+
+    // CHECK-NOT:   async_computation
+
+    // CHECK-LABEL: ENTRY %main (x: f32[8], y: f32[8]) -> (f32[8], f32[8]) {
+    // CHECK-DAG:     %[[X:.*]] = f32[8]{0} parameter(0)
+    // CHECK-DAG:     %[[Y:.*]] = f32[8]{0} parameter(1)
+    // CHECK-DAG:     %[[START0:.*]] = ((f32[8]{0}), f32[8]{0}) async-start(%[[X]]), calls=%[[ASYNC0]]
+    // CHECK-DAG:     %[[DONE0:.*]] = f32[8]{0} async-done(%[[START0]])
+    // CHECK-DAG:     %[[START1:.*]] = ((f32[8]{0}), f32[8]{0}) async-start(%[[Y]]), calls=%[[ASYNC1]]
+    // CHECK-DAG:     %[[DONE1:.*]] = f32[8]{0} async-done(%[[START1]])
+    // CHECK:         ROOT %{{.*}} = (f32[8]{0}, f32[8]{0}) tuple(%[[DONE0]], %[[DONE1]])
+    ENTRY %main (x: f32[8], y: f32[8]) -> (f32[8], f32[8]) {
+      %x = f32[8] parameter(0)
+      %y = f32[8] parameter(1)
+      %start0 = f32[8] custom-call(%x), custom_call_target="compute-on-start",
+          called_computations={%offload_comp}
+      %start1 = f32[8] custom-call(%y), custom_call_target="compute-on-start",
+          called_computations={%offload_comp}
+      %done0 = f32[8] custom-call(%start0), custom_call_target="compute-on-done"
+      %done1 = f32[8] custom-call(%start1), custom_call_target="compute-on-done"
+      ROOT %result = (f32[8], f32[8]) tuple(%done0, %done1)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AsyncComputeOnRewriterTest, ComputeOnInsideSharedCalleeFromEntry) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule ComputeOnInsideSharedCalleeFromEntry
+
+    // CHECK-LABEL: %offload_comp (p: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[P:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} negate(%[[P]])
+    // CHECK-NEXT:  }
+    %offload_comp (p: f32[8]) -> f32[8] {
+      %p = f32[8] parameter(0)
+      ROOT %neg = f32[8] negate(%p)
+    }
+
+    // CHECK:       %[[ASYNC:async_computation.*]] (param_0: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[AP:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} call(%[[AP]]), to_apply=%offload_comp
+    // CHECK-NEXT:  }
+
+    // CHECK-NOT:   async_computation
+
+    // CHECK-LABEL: %foo (arg: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[ARG:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    %[[START:.*]] = ((f32[8]{0}), f32[8]{0}) async-start(%[[ARG]]), calls=%[[ASYNC]]
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} async-done(%[[START]])
+    // CHECK-NEXT:  }
+    %foo (arg: f32[8]) -> f32[8] {
+      %arg = f32[8] parameter(0)
+      %start = f32[8] custom-call(%arg), custom_call_target="compute-on-start",
+          called_computations={%offload_comp}
+      ROOT %done = f32[8] custom-call(%start), custom_call_target="compute-on-done"
+    }
+
+    // CHECK-LABEL: ENTRY %main (x: f32[8], y: f32[8]) -> (f32[8], f32[8]) {
+    // CHECK-DAG:     %[[X:.*]] = f32[8]{0} parameter(0)
+    // CHECK-DAG:     %[[Y:.*]] = f32[8]{0} parameter(1)
+    // CHECK-DAG:     %[[C0:.*]] = f32[8]{0} call(%[[X]]), to_apply=%foo
+    // CHECK-DAG:     %[[C1:.*]] = f32[8]{0} call(%[[Y]]), to_apply=%foo
+    // CHECK:         ROOT %{{.*}} = (f32[8]{0}, f32[8]{0}) tuple(%[[C0]], %[[C1]])
+    ENTRY %main (x: f32[8], y: f32[8]) -> (f32[8], f32[8]) {
+      %x = f32[8] parameter(0)
+      %y = f32[8] parameter(1)
+      %c0 = f32[8] call(%x), to_apply=%foo
+      %c1 = f32[8] call(%y), to_apply=%foo
+      ROOT %result = (f32[8], f32[8]) tuple(%c0, %c1)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AsyncComputeOnRewriterTest, IntermediaryWrappedInSharedCall) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule SharedWrapperCallee
+
+    %offload_comp (param: f32[8]) -> f32[8] {
+      %param = f32[8] parameter(0)
+      ROOT %neg = f32[8] negate(%param)
+    }
+
+    %wrapper_comp (p: f32[8]) -> f32[8] {
+      %p = f32[8] parameter(0)
+      ROOT %barrier = f32[8] opt-barrier(%p)
+    }
+
+    // CHECK:       %[[ASYNC_COMP:async_computation.*]] ({{.*}}: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[AP:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} call(%[[AP]]), to_apply=%offload_comp
+    // CHECK-NEXT:  }
+    // CHECK-NOT:   %wrapper_comp
+
+    // CHECK-LABEL: ENTRY %main
+    // CHECK-DAG:     %[[X:.*]] = f32[8]{0} parameter(0)
+    // CHECK-DAG:     %[[Y:.*]] = f32[8]{0} parameter(1)
+    // CHECK-DAG:     %[[START:.*]] = ((f32[8]{0}), f32[8]{0}) async-start(%[[X]]), calls=%[[ASYNC_COMP]]
+    // CHECK-DAG:     %[[BARRIER:.*]] = ((f32[8]{0}), f32[8]{0}) opt-barrier(%[[START]])
+    // CHECK-DAG:     %[[DONE:.*]] = f32[8]{0} async-done(%[[BARRIER]])
+    // CHECK-DAG:     %[[BARRIER_Y:.*]] = f32[8]{0} opt-barrier(%[[Y]])
+    // CHECK:         ROOT %{{.*}} = (f32[8]{0}, f32[8]{0}) tuple(%[[DONE]], %[[BARRIER_Y]])
+    ENTRY %main (x: f32[8], y: f32[8]) -> (f32[8], f32[8]) {
+      %x = f32[8] parameter(0)
+      %y = f32[8] parameter(1)
+      %start = f32[8] custom-call(%x), custom_call_target="compute-on-start",
+          called_computations={%offload_comp}
+      %wrapped_async = f32[8] call(%start), to_apply=%wrapper_comp
+      %done = f32[8] custom-call(%wrapped_async), custom_call_target="compute-on-done"
+      %untouched_call = f32[8] call(%y), to_apply=%wrapper_comp
+      ROOT %res = (f32[8], f32[8]) tuple(%done, %untouched_call)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(false));
+
+  EXPECT_THAT(CallInliner().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AsyncComputeOnRewriterTest, StartAndDoneSplitAcrossSiblingCalls) {
+  constexpr absl::string_view hlo_string = R"hlo(
+    HloModule SplitAcrossSiblingCalls
+
+    %offload_comp (param: f32[8]) -> f32[8] {
+      %param = f32[8] parameter(0)
+      ROOT %neg = f32[8] negate(%param)
+    }
+
+    %start_callee (p: f32[8]) -> f32[8] {
+      %p = f32[8] parameter(0)
+      ROOT %start = f32[8] custom-call(%p),
+          custom_call_target="compute-on-start",
+          called_computations={%offload_comp}
+    }
+
+    %done_callee (q: f32[8]) -> f32[8] {
+      %q = f32[8] parameter(0)
+      ROOT %done = f32[8] custom-call(%q), custom_call_target="compute-on-done"
+    }
+
+    // CHECK:       %[[OFFLOAD:offload_comp.*]] ({{.*}}: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[OX:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} negate(%[[OX]])
+    // CHECK-NEXT:  }
+    // CHECK:       %[[ASYNC_COMP:async_computation.*]] ({{.*}}: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[AP:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} call(%[[AP]]), to_apply=%[[OFFLOAD]]
+    // CHECK-NEXT:  }
+    // CHECK-NOT:   %start_callee
+    // CHECK-NOT:   %done_callee
+    // CHECK-LABEL: ENTRY %main (x: f32[8]) -> f32[8] {
+    // CHECK-NEXT:    %[[X:.*]] = f32[8]{0} parameter(0)
+    // CHECK-NEXT:    %[[START:.*]] = ((f32[8]{0}), f32[8]{0}) async-start(%[[X]]), calls=%[[ASYNC_COMP]]
+    // CHECK-NEXT:    ROOT %{{.*}} = f32[8]{0} async-done(%[[START]])
+    ENTRY %main (x: f32[8]) -> f32[8] {
+      %x = f32[8] parameter(0)
+      %c0 = f32[8] call(%x), to_apply=%start_callee
+      ROOT %c1 = f32[8] call(%c0), to_apply=%done_callee
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AsyncComputeOnRewriter rewriter(/*use_legacy_collectives=*/false);
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(false));
+
+  EXPECT_THAT(CallInliner().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(rewriter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace xla
