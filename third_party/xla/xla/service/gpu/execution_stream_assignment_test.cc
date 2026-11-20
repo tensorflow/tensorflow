@@ -949,5 +949,168 @@ TEST_F(ExecutionStreamAssignmentTest,
       absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
 }
 
+TEST_F(ExecutionStreamAssignmentTest,
+       MultipleD2DCopyStartsShareSingleDedicatedStream) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[16]{0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      cs0 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cs1 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p1)
+      cs2 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cd0 = f32[16]{0} copy-done(cs0)
+      cd1 = f32[16]{0} copy-done(cs1)
+      cd2 = f32[16]{0} copy-done(cs2)
+      ROOT out = (f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(cd0, cd1, cd2)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+  for (absl::string_view name : {"cs0", "cs1", "cs2"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  }
+
+  // When dedicated memcpy streams are disabled, D2D copy-start falls back to
+  // round-robin assignment across the compute stream pool.
+  ExecutionStreamAssignment round_robin(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1,
+                     /*enable_dedicated_memcpy_streams=*/false});
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  EXPECT_THAT(
+      round_robin.GetExecutionStreamId(FindInstruction(module.get(), "cs2")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       ExplicitlyAnnotatedD2DCopyAvoidsUnannotatedD2DStreamCollision) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    ENTRY main {
+      p0 = f32[16]{0} parameter(0)
+      p1 = f32[16]{0} parameter(1)
+      cs_annotated = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0),
+          frontend_attributes={_xla_stream_annotation="0"}
+      cs0 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p1)
+      cs1 = (f32[16]{0}, f32[16]{0}, u32[]) copy-start(p0)
+      cd_annotated = f32[16]{0} copy-done(cs_annotated)
+      cd0 = f32[16]{0} copy-done(cs0)
+      cd1 = f32[16]{0} copy-done(cs1)
+      ROOT out = (f32[16]{0}, f32[16]{0}, f32[16]{0}) tuple(
+          cd_annotated, cd0, cd1)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "cs_annotated")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  for (absl::string_view name : {"cs0", "cs1"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  }
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       DynamicSliceCopyFusionsShareSingleStreamDisjointFromCompute) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule m
+
+    compute_leaf0 {
+      p0 = f32[4] parameter(0)
+      ROOT add = f32[4] add(p0, p0)
+    }
+
+    compute_leaf1 {
+      p0 = f32[4] parameter(0)
+      ROOT mul = f32[4] multiply(p0, p0)
+    }
+
+    dus_copy0 {
+      base = f32[8] parameter(0)
+      upd = f32[4] parameter(1)
+      c0 = s32[] constant(0)
+      ROOT dus = f32[8] dynamic-update-slice(base, upd, c0),
+          backend_config={"dynamic_slice_config":
+              {"linear":{"byte_offset":"0","byte_stride":"0"}}}
+    }
+
+    ds_copy1 {
+      src = f32[8] parameter(0)
+      c1 = s32[] constant(4)
+      ROOT ds = f32[4] dynamic-slice(src, c1), dynamic_slice_sizes={4},
+          backend_config={"dynamic_slice_config":
+              {"linear":{"byte_offset":"16","byte_stride":"0"}}}
+    }
+
+    ENTRY main {
+      p_base = f32[8] parameter(0)
+      p_vec = f32[4] parameter(1)
+      comp0 = ((f32[4]), f32[4], u32[]) fusion-start(p_vec),
+          kind=kLoop, calls=compute_leaf0
+      dus0 = ((f32[8], f32[4]), f32[8], u32[]) fusion-start(p_base, p_vec),
+          kind=kLoop, calls=dus_copy0
+      comp1 = ((f32[4]), f32[4], u32[]) fusion-start(p_vec),
+          kind=kLoop, calls=compute_leaf1
+      ds1 = ((f32[8]), f32[4], u32[]) fusion-start(p_base),
+          kind=kLoop, calls=ds_copy1
+      cs_d2d = (f32[4], f32[4], u32[]) copy-start(p_vec)
+      comp0_done = f32[4] fusion-done(comp0)
+      dus0_done = f32[8] fusion-done(dus0)
+      comp1_done = f32[4] fusion-done(comp1)
+      ds1_done = f32[4] fusion-done(ds1)
+      cs_d2d_done = f32[4] copy-done(cs_d2d)
+      ROOT out = (f32[4], f32[8], f32[4], f32[4], f32[4]) tuple(
+          comp0_done, dus0_done, comp1_done, ds1_done, cs_d2d_done)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  // Compute fusions use streams 0 and 1 without being shifted by interleaved
+  // D2D copies; all D2D copy fusions and copy-starts share stream 2.
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/1});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "comp0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "comp1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(1))));
+  for (absl::string_view name : {"dus0", "ds1", "cs_d2d"}) {
+    EXPECT_THAT(
+        assignment.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(2))));
+  }
+
+  // When all compute pool streams (0..1) are occupied, the shared D2D stream
+  // still gets a disjoint stream ID (2).
+  ExecutionStreamAssignment full_pool(
+      module.get(), {/*number_of_compute_execution_streams=*/2,
+                     /*number_of_communication_execution_streams=*/1});
+  for (absl::string_view name : {"dus0", "ds1", "cs_d2d"}) {
+    EXPECT_THAT(
+        full_pool.GetExecutionStreamId(FindInstruction(module.get(), name)),
+        absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(2))));
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu

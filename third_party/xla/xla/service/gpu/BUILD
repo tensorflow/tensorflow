@@ -3784,6 +3784,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/backends/gpu/runtime:execution_stream_id",
+        "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms/collectives:collective_domain",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
