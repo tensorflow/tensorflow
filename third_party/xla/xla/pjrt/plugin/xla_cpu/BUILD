@@ -95,6 +95,7 @@ cc_library(
     deps = [
         ":cpu_device_description",
         ":cpu_topology",
+        ":cpu_topology_proto_cc",
         "//xla:shape_util",
         "//xla:util",
         "//xla/pjrt:host_memory_spaces",
@@ -152,6 +153,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

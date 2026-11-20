@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_topology_description_registry.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
@@ -131,8 +132,14 @@ CpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
 }
 
 absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
+  CpuTopologyProto proto = cpu_topology_.ToProto();
+  // Exclude `process_index` so homogeneous workers in a multi-process CPU job
+  // compute the same topology fingerprint.
+  for (CpuTopologyProto::CpuDevice& device : *proto.mutable_cpu_devices()) {
+    device.clear_process_index();
+  }
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
     return absl::InternalError("Failed to serialize cpu_topology");
   }
   return tsl::Fingerprint64(result);
