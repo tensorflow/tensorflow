@@ -5980,7 +5980,7 @@ def non_max_suppression_padded_v1(boxes,
 
 @tf_export('image.draw_bounding_boxes', v1=[])
 @dispatch.add_dispatch_support
-def draw_bounding_boxes_v2(images, boxes, colors, name=None):
+def draw_bounding_boxes_v2(images, boxes, colors=None, name=None):
   """Draw bounding boxes on a batch of images.
 
   Outputs a copy of `images` but draws on top of the pixels zero or more
@@ -6000,8 +6000,9 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
       4-D with shape `[batch, height, width, depth]`. A batch of images.
     boxes: A `Tensor` of type `float32`. 3-D with shape `[batch,
       num_bounding_boxes, 4]` containing bounding boxes.
-    colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
-      through for the boxes.
+    colors: An optional `Tensor` of type `float32`. 2-D. A list of RGBA colors
+      to cycle through for the boxes. Defaults to `None` (built-in color
+      cycling).
     name: A name for the operation (optional).
 
   Returns:

@@ -134,6 +134,30 @@ class DrawBoundingBoxOpTest(test.TestCase):
     self._testDrawBoundingBoxColorCycling(
         image, dtype=dtypes.half, colors=colors)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testDrawBoundingBoxColorsOptional(self):
+    """Test that colors is optional and falls back to default table."""
+    image = np.zeros([10, 10, 3], "float32")
+    expected = self._fillBorder(
+        np.copy(image), np.asarray([1.0, 1.0, 0.0], "float32")
+    )
+    image_tensor = array_ops.expand_dims(ops.convert_to_tensor(image), 0)
+    bboxes = constant_op.constant(
+        [[[0.0, 0.0, 1.0, 1.0]]], dtype=dtypes.float32
+    )
+
+    result_omitted = image_ops_impl.draw_bounding_boxes_v2(
+        image_tensor, bboxes
+    )
+    result_none = image_ops_impl.draw_bounding_boxes_v2(
+        image_tensor, bboxes, colors=None
+    )
+    evaluated_omitted, evaluated_none = self.evaluate(
+        (result_omitted, result_none)
+    )
+    self.assertAllEqual(expected, np.squeeze(evaluated_omitted, 0))
+    self.assertAllEqual(evaluated_omitted, evaluated_none)
+
   # generate_bound_box_proposals is only available on GPU.
   @test_util.run_gpu_only
   def testGenerateBoundingBoxProposals(self):
