@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/execution_tracker.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
@@ -288,11 +289,17 @@ class Service {
   // If device_allocator is not null, the compiler may use it to allocate temp
   // buffers, which the compiler is responsible for freeing.  The allocator
   // given here need not match the allocator used when running the executable.
+  //
+  // If `snapshot_hlo` is not null and the module dumps HLO snapshots, it is set
+  // to the HLO before optimizations together with the buffer assignment after
+  // optimizations (if the executable exposes one). Callers that dump snapshots
+  // when running the executable should keep it.
   absl::StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       se::StreamExecutor* executor, const Compiler::CompileOptions& options,
-      bool run_backend_only = false);
+      bool run_backend_only = false,
+      std::unique_ptr<HloProto>* snapshot_hlo = nullptr);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.

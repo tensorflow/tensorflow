@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
@@ -80,7 +81,7 @@ namespace gpu {
 // Launches the given GPU kernel via the StreamExecutor.
 //
 // This is an immutable data type after initialization, and thus thread safe.
-class GpuExecutable : public Executable {
+class GpuExecutable : public HloModuleExecutable {
  public:
   struct NumAdditionalStreams {
     int compute = 0;
@@ -140,6 +141,9 @@ class GpuExecutable : public Executable {
     BufferAssignmentProto buffer_assignment_proto;
     std::string buffer_allocations_debug_summary;
     std::optional<GpuTopology> gpu_topology;
+    // Whether `buffer_assignment_proto()` returns `buffer_assignment_proto`.
+    // The compiler sets this if it embeds debug info and keeps the HloModule.
+    bool expose_buffer_assignment_proto = false;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -203,8 +207,13 @@ class GpuExecutable : public Executable {
     return buffer_allocations_debug_summary_;
   }
 
-  // Returns the stored buffer assignment proto.
-  const BufferAssignmentProto& buffer_assignment_proto() const;
+  // Returns the stored buffer assignment proto. It is always available, also
+  // for executables loaded from a proto.
+  const BufferAssignmentProto& owned_buffer_assignment_proto() const;
+
+  // Returns the stored buffer assignment proto if the compiler asked to expose
+  // it (see `Params::expose_buffer_assignment_proto`), nullptr otherwise.
+  const BufferAssignmentProto* buffer_assignment_proto() const override;
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
@@ -347,6 +356,7 @@ class GpuExecutable : public Executable {
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
       BufferAssignmentProto buffer_assignment_proto,
+      bool expose_buffer_assignment_proto,
       std::string buffer_allocations_debug_summary,
       bool collective_use_minimal_resource,
       std::optional<GpuTopology> gpu_topology,
@@ -439,6 +449,9 @@ class GpuExecutable : public Executable {
   // this executable. The actual BufferAssignment is only available during
   // compilation.
   BufferAssignmentProto buffer_assignment_proto_;
+
+  // Whether `buffer_assignment_proto()` exposes `buffer_assignment_proto_`.
+  bool expose_buffer_assignment_proto_;
 
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.

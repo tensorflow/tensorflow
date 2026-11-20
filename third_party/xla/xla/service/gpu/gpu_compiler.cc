@@ -2961,15 +2961,18 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
           /*buffer_allocations_debug_summary=*/
           std::move(buffer_allocations_debug_summary),
-          /*gpu_topology=*/gpu_topology}));
+          /*gpu_topology=*/gpu_topology,
+          /*expose_buffer_assignment_proto=*/embed_debug_info &&
+              options.embed_hlo_module}));
   IncrementCompiledProgramsCount();
 
   if (gpu_executable->has_module() && gpu_executable->module()
                                           .config()
                                           .debug_options()
                                           .xla_enable_hlo_modules_upload()) {
-    MaybeUploadOptimizedGpuSymbols(gpu_executable->module(),
-                                   gpu_executable->buffer_assignment_proto());
+    MaybeUploadOptimizedGpuSymbols(
+        gpu_executable->module(),
+        gpu_executable->owned_buffer_assignment_proto());
   }
 
   if (embed_debug_info && gpu_executable->has_module()) {
@@ -2977,7 +2980,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     // CompiledMemoryAnalysis.
     auto hlo_proto = std::make_unique<HloProto>();
     *hlo_proto->mutable_buffer_assignment() =
-        gpu_executable->buffer_assignment_proto();
+        gpu_executable->owned_buffer_assignment_proto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }
 

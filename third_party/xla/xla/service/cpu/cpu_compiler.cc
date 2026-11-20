@@ -209,6 +209,7 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -1503,6 +1504,8 @@ CpuCompiler::CompileCpuExecutable(
       *hlo_proto->mutable_buffer_assignment() =
           cpu_executable->buffer_assignment().ToProto();
       StripPayloadFromLiteralProto(*hlo_proto);
+      cpu_executable->set_buffer_assignment_proto(
+          hlo_proto->buffer_assignment());
       cpu_executable->set_hlo_proto(std::move(hlo_proto));
     }
     return cpu_executable;
