@@ -277,8 +277,24 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     // the number of strings the buffer actually contains, so a model whose
     // string-tensor shape claims more elements than the buffer holds would read
     // out of bounds. Reject such inputs (mirrors the gather.cc string guard).
+    //
+    // NumElements() multiplies the dimensions in 32-bit and can wrap for a
+    // malformed shape, which would defeat the check below. A string tensor
+    // never sizes an arena allocation from its shape, so an overflowing shape
+    // reaches this point; accumulate the element count in 64-bit with an
+    // overflow guard instead (matching the INT32_MAX idiom used above).
     TF_LITE_ENSURE(context, input->bytes >= sizeof(int32_t));
-    TF_LITE_ENSURE(context, GetStringCount(input) >= NumElements(input));
+    int64_t num_elements = 1;
+    for (int i = 0; i < input->dims->size; ++i) {
+      const int64_t dim = input->dims->data[i];
+      TF_LITE_ENSURE(context, dim >= 0);
+      if (dim > 0) {
+        TF_LITE_ENSURE(
+            context, num_elements <= std::numeric_limits<int32_t>::max() / dim);
+      }
+      num_elements *= dim;
+    }
+    TF_LITE_ENSURE(context, GetStringCount(input) >= num_elements);
     DynamicBuffer buffer;
     TileString(*(input->dims), input, multipliers, &buffer, output);
     buffer.WriteToTensor(output, /*new_shape=*/nullptr);
