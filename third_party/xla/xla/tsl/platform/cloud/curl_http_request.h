@@ -240,7 +240,7 @@ class CurlHttpRequest : public HttpRequest {
 /// This class is meant as a very thin wrapper for the libcurl C library.
 class LibCurl {
  public:
-  virtual ~LibCurl() {}
+  virtual ~LibCurl() = default;
 
   virtual CURL* curl_easy_init() = 0;
   TF_MUST_USE_RESULT virtual CURLcode curl_easy_setopt(CURL* curl,
