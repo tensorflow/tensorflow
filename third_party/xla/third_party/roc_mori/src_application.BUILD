@@ -38,6 +38,10 @@ cc_library(
         "-std=c++17",
     ],
     linkstatic = True,
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         "@roc_mori//:ibverbs",
@@ -50,6 +54,10 @@ filegroup(
     name = "mori_ibv_shim_objs",
     srcs = [":mori_ibv_shim"],
     output_group = "compilation_outputs",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     visibility = ["//visibility:private"],
 )
 
@@ -74,6 +82,10 @@ cc_library(
     linkopts = [
         "-ldl",
         "-Wl,--exclude-libs,libstdc++fs.a",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
     ],
     deps = [
         "@roc_mori//:mori_application_headers",

@@ -932,6 +932,10 @@ cc_library(
 
 cc_library(
     name = "rocm_rocdl_path",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     textual_hdrs = ["rocm_rocdl_path.h"],
     deps = tf_platform_deps("rocm_rocdl_path") + [":types"],
 )
