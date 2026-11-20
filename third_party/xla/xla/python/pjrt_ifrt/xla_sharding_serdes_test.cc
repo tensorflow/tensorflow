@@ -87,22 +87,6 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }
 
-TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Serialization) {
-  DeviceListRef device_list = GetDevices({0, 1});
-  xla::HloSharding xla_hlo_sharding =
-      xla::HloSharding::ToV3Sharding(xla::HloSharding::IotaTile({2, 1}));
-  std::unique_ptr<HloSharding> sharding = HloSharding::Create(
-      device_list, MemoryKind("abc"), /*xla_hlo_sharding=*/xla_hlo_sharding);
-
-  auto options = std::make_unique<SerializeOptions>(version());
-  EXPECT_THAT(
-      Serialize(*sharding, std::move(options)),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr(
-              "XLA HloShardingV3 format is not supported for serialization")));
-}
-
 TEST_P(XlaShardingSerDesTest, RejectHloShardingV3Deserialization) {
   DeviceListRef device_list = GetDevices({0, 1});
   xla::HloSharding xla_hlo_sharding = xla::HloSharding::IotaTile({2, 1});
@@ -296,6 +280,23 @@ TEST_P(XlaShardingSerDesTest, RejectInvalidIotaTransposePerm) {
           serialized, std::make_unique<DeserializeShardingOptions>(client())),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("transpose_perm entry 0 is not unique")));
+}
+
+TEST_P(XlaShardingSerDesTest, RejectNegativeSingleDeviceOnDeserialize) {
+  HloShardingProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  GetDevices({0, 1})->ToProto(*proto.mutable_devices(), version());
+  xla::OpSharding* op = proto.mutable_xla_op_sharding();
+  op->set_type(xla::OpSharding::MAXIMAL);
+  op->add_tile_assignment_devices(-1);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloSharding");
+  wrapper.set_data(proto.SerializeAsString());
+  EXPECT_THAT(
+      Deserialize<HloSharding>(
+          wrapper, std::make_unique<DeserializeShardingOptions>(client())),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("SingleDevice index -1 must be non-negative")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

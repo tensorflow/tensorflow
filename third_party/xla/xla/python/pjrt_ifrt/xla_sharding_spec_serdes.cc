@@ -55,11 +55,6 @@ class HloShardingSpecSerDes
     }
 
     const HloShardingSpec& sharding_spec = cast<HloShardingSpec>(serializable);
-    if (sharding_spec.xla_hlo_sharding().UseNamedShardingLeaf()) {
-      return absl::InvalidArgumentError(
-          "HloShardingSpec with XLA HloShardingV3 format is not supported for "
-          "serialization");
-    }
     HloShardingSpecProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     *proto.mutable_xla_op_sharding() =
@@ -83,6 +78,9 @@ class HloShardingSpecSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for HloShardingSpec deserialization"));
     }
+    // Reject V3 `NamedSharding` protos (including nested tuple elements) before
+    // `xla::HloSharding::FromProto`, as `xla::Mesh::FromProto` `CHECK`-fails on
+    // malformed wire meshes.
     if (ContainsNamedSharding(proto.xla_op_sharding())) {
       return absl::InvalidArgumentError(
           "HloShardingSpec with XLA HloShardingV3 format is not supported for "

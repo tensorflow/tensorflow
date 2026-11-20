@@ -58,11 +58,6 @@ class HloShardingSerDes : public RTTIExtends<HloShardingSerDes, SerDes> {
     }
 
     const HloSharding& sharding = cast<HloSharding>(serializable);
-    if (sharding.xla_hlo_sharding().UseNamedShardingLeaf()) {
-      return absl::InvalidArgumentError(
-          "HloSharding with XLA HloShardingV3 format is not supported for "
-          "serialization");
-    }
 
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
@@ -101,6 +96,9 @@ class HloShardingSerDes : public RTTIExtends<HloShardingSerDes, SerDes> {
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
     }
+    // Reject V3 `NamedSharding` protos (including nested tuple elements) before
+    // `xla::HloSharding::FromProto`, as `xla::Mesh::FromProto` `CHECK`-fails on
+    // malformed wire meshes.
     if (ContainsNamedSharding(proto.xla_op_sharding())) {
       return absl::InvalidArgumentError(
           "HloSharding with XLA HloShardingV3 format is not supported for "

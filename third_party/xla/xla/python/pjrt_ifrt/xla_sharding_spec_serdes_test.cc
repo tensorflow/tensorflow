@@ -112,20 +112,6 @@ TEST_P(ShardingSpecSerDesTest, RejectOutOfRangeOrTupleShardingOnDeserialize) {
                        HasSubstr("does not support tuple sharding")));
 }
 
-TEST_P(ShardingSpecSerDesTest, RejectHloShardingV3Serialization) {
-  ASSERT_EQ(num_shards() % 2, 0);
-  xla::HloSharding xla_hlo_sharding = xla::HloSharding::ToV3Sharding(
-      xla::HloSharding::IotaTile({2, num_shards() / 2}));
-  std::unique_ptr<HloShardingSpec> sharding_spec =
-      HloShardingSpec::Create(num_shards(), xla_hlo_sharding);
-
-  EXPECT_THAT(
-      Serialize(*sharding_spec, std::make_unique<SerializeOptions>(version())),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("XLA HloShardingV3 format is not supported for "
-                         "serialization")));
-}
-
 TEST_P(ShardingSpecSerDesTest, RejectHloShardingV3Deserialization) {
   HloShardingSpecProto v3_proto;
   v3_proto.set_version_number(SerDesVersionNumber(0).value());
@@ -189,6 +175,23 @@ TEST_P(ShardingSpecSerDesTest,
   EXPECT_THAT(Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("does not support shard-group sharding")));
+}
+
+TEST_P(ShardingSpecSerDesTest, RejectNegativeSingleDeviceOnDeserialize) {
+  HloShardingSpecProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  proto.set_num_shards(num_shards());
+  xla::OpSharding* op = proto.mutable_xla_op_sharding();
+  op->set_type(xla::OpSharding::MAXIMAL);
+  op->add_tile_assignment_devices(-1);
+  Serialized wrapper;
+  wrapper.set_type_name("xla::ifrt::HloShardingSpec");
+  wrapper.set_data(proto.SerializeAsString());
+
+  EXPECT_THAT(
+      Deserialize<HloShardingSpec>(wrapper, /*options=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("SingleDevice index -1 must be non-negative")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

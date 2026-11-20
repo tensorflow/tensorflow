@@ -408,6 +408,7 @@ xla_cc_test(
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_ifrt",
+        "//xla:array",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
@@ -433,6 +434,8 @@ xla_cc_test(
         "//xla:array",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
         "//xla/python/ifrt:device_test_util",

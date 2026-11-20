@@ -56,9 +56,9 @@ class HloShardingSpec final
     : public RTTIExtends<HloShardingSpec, XlaCompatibleShardingSpec> {
  public:
   // Creates an `HloShardingSpec` wrapper. Returns `InvalidArgumentError` if
-  // `num_shards < 1`, if `xla_hlo_sharding` is an unsupported kind (tuple,
-  // unknown, or shard-group), or if `xla_hlo_sharding` is incompatible with
-  // `num_shards`.
+  // `num_shards < 1`, if `xla_hlo_sharding` is an unsupported kind (tuple, V3
+  // `NamedSharding`, unknown, or shard-group), or if `xla_hlo_sharding` is
+  // incompatible with `num_shards`.
   static absl::StatusOr<std::unique_ptr<HloShardingSpec>> CreateIfValid(
       int num_shards, xla::HloSharding xla_hlo_sharding);
 
