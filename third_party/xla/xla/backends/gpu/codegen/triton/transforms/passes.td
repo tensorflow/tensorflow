@@ -232,8 +232,6 @@ def TritonXLAMathToLibdevicePass
     "triton::TritonDialect"
   ];
   let options = [
-    Option<"libdevice_path_", "libdevice_path", "std::string", "",
-           "Path to the libdevice library.">,
     Option<"triple_string_", "triple", "std::string", "",
            "Device triple string.">,
   ];

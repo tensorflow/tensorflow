@@ -79,6 +79,10 @@ cc_library(
     # tileiras, ptxas and libnvvm staged from the CUDA 13.4+ toolkit;
     # FindCudaExecutable("tileiras") picks them up from runfiles.
     data = if_google(if_cuda(["@local_config_cuda//cuda:runtime_tileiras"])),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",

@@ -78,9 +78,6 @@ absl::StatusOr<TritonKernelSource> LowerTritonToLlvmDialect(
     TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
     bool is_xla_fusion);
 
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
-                             const se::DeviceDescription& device_info);
-
 // TODO(b/406472229): Move the contents of this namespace to a helpers file
 // to avoid polluting `fusion_emitter.h`.
 // Exposed for testing and experimental purposes only. Do not use.

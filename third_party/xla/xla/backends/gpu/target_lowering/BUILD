@@ -244,6 +244,10 @@ cc_library(
 cc_library(
     name = "nvptx_libdevice_path",
     hdrs = ["nvptx_libdevice_path.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         "@com_google_absl//absl/strings:string_view",
     ] + if_google(
@@ -256,6 +260,10 @@ cc_library(
     name = "nvptx_utils",
     srcs = ["nvptx_utils.cc"],
     hdrs = ["nvptx_utils.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -374,6 +382,10 @@ xla_cc_test(
 xla_cc_test(
     name = "nvptx_utils_test",
     srcs = ["nvptx_utils_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":nvptx_utils",
         "//xla/tests:xla_internal_test_main",

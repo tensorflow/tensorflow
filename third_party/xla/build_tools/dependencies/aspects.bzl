@@ -47,21 +47,27 @@ DependencyViolationInfo = provider(
     },
 )
 
-def _dependency_violation_aspect_impl(_, ctx, tag):
-    if not hasattr(ctx.rule.attr, "deps"):
-        return [DependencyViolationInfo(tags = ctx.rule.attr.tags)]
+_CHECKED_ATTRS = ["deps", "data", "implementation_deps", "runtime_deps"]
 
-    for dep in ctx.rule.attr.deps:
-        if DependencyViolationInfo not in dep:
+def _dependency_violation_aspect_impl(_, ctx, tag):
+    for attr_name in _CHECKED_ATTRS:
+        if not hasattr(ctx.rule.attr, attr_name):
             continue
-        dep_tags = dep[DependencyViolationInfo].tags
-        if tag in dep_tags and tag not in ctx.rule.attr.tags:
-            print("[Violation] {} (not tagged {}) depends on {} (tagged {})".format(
-                ctx.label,
-                tag,
-                dep.label,
-                tag,
-            ))  # buildifier: disable=print
+        deps = getattr(ctx.rule.attr, attr_name)
+        if type(deps) != "list":
+            continue
+        for dep in deps:
+            if DependencyViolationInfo not in dep:
+                continue
+            dep_tags = dep[DependencyViolationInfo].tags
+            if tag in dep_tags and tag not in ctx.rule.attr.tags:
+                print("[Violation] {} (not tagged {}) depends on {} (tagged {}) via {}".format(
+                    ctx.label,
+                    tag,
+                    dep.label,
+                    tag,
+                    attr_name,
+                ))  # buildifier: disable=print
 
     return [DependencyViolationInfo(tags = ctx.rule.attr.tags)]
 
@@ -70,7 +76,7 @@ def _gpu_tag_violation_aspect_impl(target, ctx):
 
 validate_gpu_tag = aspect(
     implementation = _gpu_tag_violation_aspect_impl,
-    attr_aspects = ["deps"],
+    attr_aspects = _CHECKED_ATTRS,
 )
 
 def _cuda_only_tag_violation_aspect_impl(target, ctx):
@@ -78,7 +84,7 @@ def _cuda_only_tag_violation_aspect_impl(target, ctx):
 
 validate_cuda_only_tag = aspect(
     implementation = _cuda_only_tag_violation_aspect_impl,
-    attr_aspects = ["deps"],
+    attr_aspects = _CHECKED_ATTRS,
 )
 
 def _rocm_only_tag_violation_aspect_impl(target, ctx):
@@ -86,5 +92,5 @@ def _rocm_only_tag_violation_aspect_impl(target, ctx):
 
 validate_rocm_only_tag = aspect(
     implementation = _rocm_only_tag_violation_aspect_impl,
-    attr_aspects = ["deps"],
+    attr_aspects = _CHECKED_ATTRS,
 )

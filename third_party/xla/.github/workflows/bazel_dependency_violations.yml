@@ -39,16 +39,30 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.action != 'closed'
     strategy:
       matrix:
-        tag: [gpu, cuda-only, rocm-only]
-    name: no-${{ matrix.tag }}-targets-in-cpu-build
+        include:
+          - tag: gpu
+            build: cpu
+            config: ""
+          - tag: cuda-only
+            build: cpu
+            config: ""
+          - tag: rocm-only
+            build: cpu
+            config: ""
+          - tag: rocm-only
+            build: cuda
+            config: "cuda_clang"
+          - tag: cuda-only
+            build: rocm
+            config: "rocm_clang_hermetic"
+    name: no-${{ matrix.tag }}-targets-in-${{ matrix.build }}-build
     runs-on: "linux-x86-n4-16"
     container:
       image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest" # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
-    timeout-minutes: 10
-    continue-on-error: true
+    timeout-minutes: 15
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,11 +95,17 @@ jobs:
           fi
       - name: "Run bazel cquery ... //xla/..."
         if: github.event_name != 'pull_request' || steps.check_changes.outputs.should_run == 'true'
+        env:
+          CHECK_TAG: ${{ matrix.tag }}
+          BAZEL_CONFIG: ${{ matrix.config }}
         run: |
           set -euo pipefail
-          TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
-          TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-          if ! OUTPUT=$(bazel cquery --aspects "build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag" //xla/... 2>&1); then
+          TAG_WITH_UNDERSCORES="${CHECK_TAG/-/_}"
+          BAZEL_ARGS=()
+          if [ -n "$BAZEL_CONFIG" ]; then
+            BAZEL_ARGS+=(--config="$BAZEL_CONFIG")
+          fi
+          if ! OUTPUT=$(bazel cquery "${BAZEL_ARGS[@]}" --aspects "build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag" //xla/... 2>&1); then
             echo "Failed to run bazel cquery. Output:"
             echo "$OUTPUT"
             exit 1
@@ -106,4 +126,4 @@ jobs:
             exit 1
           fi
 
-          echo "No dependency violations found for tag '${{ matrix.tag }}'."
+          echo "No dependency violations found for tag '${CHECK_TAG}'."

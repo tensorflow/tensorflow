@@ -71,6 +71,10 @@ cc_library(
     ],
     include_prefix = "rocm",
     strip_include_prefix = "rocm_config",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -80,10 +84,18 @@ cc_library(
     ],
     include_prefix = "rocm",
     strip_include_prefix = "rocm_config_hermetic",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
     name = "rocm_config",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     visibility = ["//visibility:public"],
     deps = select({
         ":build_hermetic": [
@@ -105,6 +117,10 @@ cc_library(
         allow_empty = True,
     ),
     strip_include_prefix = rocm_path("include/hipccl"),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 # This target is required to
@@ -122,6 +138,10 @@ cc_library(
         ":rocm_libhipcxx_includes",
         "@xla//third_party/libdrm:drm_headers",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -137,6 +157,10 @@ cc_library(
     deps = [
         ":rocm_config",
         ":rocm_headers_includes",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
     ],
 )
 
@@ -160,6 +184,10 @@ cc_library(
         "//conditions:default": _ROCM_STAGED_RPATHS + ["-Wl,-rpath,/opt/rocm/lib"],
     }),
     visibility = ["//visibility:public"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 alias(
@@ -189,6 +217,10 @@ rocm_lib_import(
 filegroup(
     name = "hsa_rocr_libs_data",
     srcs = glob([rocm_path("lib/libhsa-runtime64.so*")]),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -197,6 +229,10 @@ cc_library(
     deps = [
         ":rocprofiler_register_libs",
         ":system_libs",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
     ],
 )
 
@@ -211,6 +247,10 @@ cc_library(
     deps = [
         ":amd_comgr_libs",
         ":hsa_rocr_libs",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
     ],
 )
 
@@ -227,6 +267,10 @@ cc_library(
     deps = [
         ":system_libs",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 filegroup(
@@ -236,11 +280,19 @@ filegroup(
             rocm_path("lib/librocprofiler-register.so*"),
         ],
     ),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
     name = "rocprofiler_register_libs",
     data = [":rocprofiler_register_libs_data"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 rocm_lib_import(
@@ -285,6 +337,10 @@ cc_library(
         ":hip_runtime_libs",
         ":hiprtc_libs",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 rocm_lib_import(
@@ -306,11 +362,19 @@ cc_library(
     deps = [
         ":hip_runtime_libs",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
     name = "rocm_core_libs",
     data = glob([rocm_path("lib/librocm-core.so*")]),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 rocm_lib_import(
@@ -380,6 +444,10 @@ cc_import(
     name = "hsakmt",
     static_library = rocm_path("lib/libhsakmt.a"),
     visibility = ["//visibility:public"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 rocm_lib_import(
@@ -400,6 +468,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":rocm_headers_includes",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
     ],
 )
 
@@ -428,6 +500,10 @@ cc_library(
         ":rocblas_libs",
         ":roctx_libs",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -435,6 +511,10 @@ cc_library(
     data = glob([
         rocm_path("lib/libroctx64.so*"),
     ]),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 rocm_lib_import(
@@ -556,6 +636,10 @@ filegroup(
             rocm_path("lib/rocm_sysdeps/share/terminfo/**"),
         ],
     ),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 # rocm_sysdeps only exists in TheRock-based ROCm distributions. ROCm's own
@@ -576,6 +660,10 @@ cc_library(
             "-Wl,-rpath,/opt/rocm/lib/rocm_sysdeps/lib",
         ],
     }),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 # System libraries needed by consumers like MORI's libhsakmt.a (drm/numa
@@ -595,6 +683,10 @@ cc_library(
     linkopts = ["-ldrm"] if _USE_HOST_SYSDEPS else [],
     visibility = ["//visibility:public"],
     deps = [":system_libs"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -607,6 +699,10 @@ cc_library(
     linkopts = ["-ldrm_amdgpu"] if _USE_HOST_SYSDEPS else [],
     visibility = ["//visibility:public"],
     deps = [":system_libs"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 cc_library(
@@ -619,6 +715,10 @@ cc_library(
     linkopts = ["-lnuma"] if _USE_HOST_SYSDEPS else [],
     visibility = ["//visibility:public"],
     deps = [":system_libs"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 filegroup(
@@ -637,6 +737,10 @@ filegroup(
         allow_empty = True,
     ) + [":system_libs_data"],
     visibility = ["//visibility:public"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 filegroup(
@@ -649,6 +753,10 @@ filegroup(
         ":system_libs_data",
     ],
     visibility = ["//visibility:public"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 platform(

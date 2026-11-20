@@ -56,6 +56,10 @@ cc_library(
     # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
     features = ["-supports_dynamic_linker"],
     linkstatic = 1,
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":tensorrt_headers",
         # TODO(b/174608722): fix this line.

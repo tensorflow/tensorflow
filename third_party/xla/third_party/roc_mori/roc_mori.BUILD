@@ -61,6 +61,10 @@ alias(
 # whose libhsakmt.a was built against the host libraries.
 cc_library(
     name = "libdrm",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     deps = [
         "@local_config_rocm//rocm:drm",
         "@local_config_rocm//rocm:drm_amdgpu",
@@ -87,6 +91,10 @@ cc_library(
     # through CcInfo to all dependents.
     defines = ["MORI_MULTITHREAD_SUPPORT"],
     includes = ["include"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     deps = [
         ":mori_application_headers",
         "@local_config_rocm//rocm:rocm_headers",
@@ -115,6 +123,10 @@ cc_library(
     ),
     #strip_include_prefix = "include",
     includes = ["include"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
     deps = [
         ":ibverbs",  # infiniband/verbs.h
         "@local_config_rocm//rocm:rocm_headers",  # hip/, hsa/, hsakmt/

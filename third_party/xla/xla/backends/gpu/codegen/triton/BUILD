@@ -270,7 +270,6 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/backends/gpu/cost_model:triton_emitter_constraints",
-        "//xla/backends/gpu/target_lowering:nvptx_libdevice_path",
         "//xla/codegen:ir_printing",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/emitters/ir:xla",
