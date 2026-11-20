@@ -15,6 +15,8 @@
 
 """Tests for tensorflow.python.ops.op_def_library."""
 
+from unittest import mock
+
 from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -1394,6 +1396,57 @@ class OpDefLibraryPybindTest(test_util.TensorFlowTestCase):
     self.assertEqual(inputs, [x, y])
     self.assertEqual(input_types, [dtypes.float32, dtypes.float32])
     self.assertEqual(output_structure, [None])
+
+  # pylint: disable=protected-access
+  # The tests below remove entries from `dtypes._ANY_TO_TF` to make
+  # `DataTypeToPybindObject`, which converts DataType enums to `tf.DType` via
+  # `dtypes.as_dtype`, fail. That must raise a TypeError rather than crash.
+
+  def testPybindUnconvertibleDTypeInErrorMessageRaisesTypeError(self):
+    int32_enum = dtypes.int32.as_datatype_enum
+    with mock.patch.dict(dtypes._ANY_TO_TF):
+      dtypes._ANY_TO_TF.pop(int32_enum)
+      # The disallowed value itself (int32) cannot be converted.
+      with self.assertRaisesRegex(TypeError, "to a TensorFlow DType"):
+        op_def_library_pybind.process_inputs(
+            "OutTypeListRestrict", 1, {"t": [dtypes.int32]}
+        )
+
+  def testPybindUnconvertibleAllowedDTypeRaisesTypeError(self):
+    bool_enum = dtypes.bool.as_datatype_enum
+    with mock.patch.dict(dtypes._ANY_TO_TF):
+      dtypes._ANY_TO_TF.pop(bool_enum)
+      # One of the allowed values (bool) cannot be converted.
+      with self.assertRaisesRegex(TypeError, "to a TensorFlow DType"):
+        op_def_library_pybind.process_inputs(
+            "OutTypeListRestrict", 1, {"t": [dtypes.float32]}
+        )
+
+  def testPybindUnconvertibleDefaultDTypeRaisesTypeError(self):
+    string_enum = dtypes.string.as_datatype_enum
+    with mock.patch.dict(dtypes._ANY_TO_TF):
+      dtypes._ANY_TO_TF.pop(string_enum)
+      # The attr's default value (string) cannot be converted.
+      with self.assertRaisesRegex(TypeError, "to a TensorFlow DType"):
+        op_def_library_pybind.process_inputs("PolymorphicDefaultOut", 1, {})
+
+  def testPybindUnconvertibleAllowedInputDTypeRaisesTypeError(self):
+    a = constant_op.constant(1.0, dtype=dtypes.float32)
+    bool_enum = dtypes.bool.as_datatype_enum
+    with mock.patch.dict(dtypes._ANY_TO_TF):
+      dtypes._ANY_TO_TF.pop(bool_enum)
+      # One of the input's allowed types (bool) cannot be converted.
+      with self.assertRaisesRegex(TypeError, "to a TensorFlow DType"):
+        op_def_library_pybind.process_inputs("Restrict", 1, {"a": a})
+
+  def testPybindUnconvertibleExpectedInputDTypeRaisesTypeError(self):
+    a = constant_op.constant(1.0, dtype=dtypes.float32)
+    int32_enum = dtypes.int32.as_datatype_enum
+    with mock.patch.dict(dtypes._ANY_TO_TF):
+      dtypes._ANY_TO_TF.pop(int32_enum)
+      # The input's expected type (int32) cannot be converted.
+      with self.assertRaisesRegex(TypeError, "to a TensorFlow DType"):
+        op_def_library_pybind.process_inputs("Simple", 1, {"a": a})
 
 
 if __name__ == "__main__":
