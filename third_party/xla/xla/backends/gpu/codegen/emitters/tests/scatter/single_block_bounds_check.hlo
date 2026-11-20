@@ -1,0 +1,37 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s --bijection_inputs=scatter:2
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+
+scatter {
+  %operand = f32[3,4,3,2] parameter(0)
+  %indices = s32[21,3] parameter(1)
+  %update = f32[21,1,1,1,2] parameter(2)
+
+  ROOT %scatter = f32[3,4,3,2] scatter(
+      f32[3,4,3,2] %operand,
+      s32[21,3] %indices,
+      f32[21,1,1,1,2] %update
+    ),
+    update_window_dims={1,2,3,4},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0,1,2},
+    index_vector_dim=1,
+    unique_indices=false,
+    to_apply=add
+}
+
+// A single-block launch (64 threads for 42 update elements) must not fold
+// the slice-index bounds check away using the narrowed thread range [0, 41].
+// CHECK: #[[$SLICE_MAP:.*]] = #xla.indexing_map<"(th_x) -> (th_x / 2), domain: th_x in [0, 63]">
+// CHECK-LABEL: func.func @main(
+// CHECK-DAG: %[[C21:.*]] = arith.constant 21 : index
+// CHECK: %[[TH_X:.*]] = gpu.thread_id  x
+// CHECK: %[[SLICE_ID:.*]] = xla.apply_indexing #[[$SLICE_MAP]](%[[TH_X]])
+// CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[SLICE_ID]], %[[C21]] : index
+// CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<3x4x3x2xf32>) {
+// CHECK:   xla.pure_call @scatter_indices

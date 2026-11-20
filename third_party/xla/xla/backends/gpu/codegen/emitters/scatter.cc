@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -511,18 +512,33 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
                              const ScatterDescription& description,
                              const EmitterHelper& helper,
                              const IndexingMap& updates_map,
-                             const IndexingMap& indices_map,
+                             const LaunchDimensions& launch_dimensions,
                              ValueRange thread_and_block_ids,
                              ValueRange output_tensors) {
   auto scatter_indices_to_operand_dim =
       description.scatter->scatter_dimension_numbers()
           .scatter_dims_to_operand_dims();
   MLIRContext* mlir_context = b.getContext();
-  auto thread_id_to_update_id_map = IndexingMap(
+  // Use the full launch grid bounds instead of `updates_map.GetDimVars()`:
+  // `updates_map.Simplify()` can absorb element-count constraints into the
+  // dimension bounds (e.g., tightening `th_x` in a single-block launch).
+  // Passing those tightened bounds into `ApplyIndexing` before the bounds check
+  // lets range analysis fold `index_id_in_bounds` to true, allowing out-of-
+  // range threads to read past the end of the scatter indices tensor.
+  const stream_executor::ThreadDim& thread_counts =
+      launch_dimensions.thread_counts_per_block();
+  const stream_executor::BlockDim& block_counts =
+      launch_dimensions.block_counts();
+  IndexingMap thread_id_to_update_id_map(
       SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/0,
                        {updates_map.GetSymbolicMap().GetResult(0)}),
-      updates_map.GetDimVars(),
-      /*range_vars = */ {}, /*rt vars = */ {});
+      DimVarsFromGPUGrid({static_cast<int64_t>(thread_counts.x),
+                          static_cast<int64_t>(thread_counts.y),
+                          static_cast<int64_t>(thread_counts.z),
+                          static_cast<int64_t>(block_counts.x),
+                          static_cast<int64_t>(block_counts.y),
+                          static_cast<int64_t>(block_counts.z)}),
+      /*range_vars=*/{}, /*rt_vars=*/{});
   Value thread_id_to_index_id_value =
       emitters::ApplyIndexing(thread_id_to_update_id_map, thread_and_block_ids,
                               {}, b)
@@ -582,8 +598,9 @@ absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
                  << "num_warps: " << num_warps_ << "\n"
                  << "num_blocks: " << num_blocks_ << "\n";
   }
-  EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
-                          thread_and_block_ids, output_tensors);
+  EmitNaiveImplementation(b, description_, helper, updates_map,
+                          launch_dimensions(), thread_and_block_ids,
+                          output_tensors);
   return absl::OkStatus();
 }
 
@@ -731,8 +748,9 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
                  << "indices_vector_size: " << indices_vector_size_ << "\n";
   }
   if (num_indices_per_warp_ == 1) {
-    EmitNaiveImplementation(b, description_, helper, updates_map, indices_map,
-                            thread_and_block_ids, output_tensors);
+    EmitNaiveImplementation(b, description_, helper, updates_map,
+                            launch_dimensions(), thread_and_block_ids,
+                            output_tensors);
     return absl::OkStatus();
   }
   MLIRContext* mlir_context = b.getContext();

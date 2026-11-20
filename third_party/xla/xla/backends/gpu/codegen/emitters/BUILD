@@ -397,6 +397,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
