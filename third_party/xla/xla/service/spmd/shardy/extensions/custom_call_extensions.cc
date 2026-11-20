@@ -169,7 +169,7 @@ struct CustomCallShardingRuleOpInterface
   mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
     auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
     llvm::StringRef callTargetName = customCall.getCallTargetName();
-    if (callTargetName == "compute-on-done" ||
+    if (callTargetName == "compute-on-done" || callTargetName == "X64Combine" ||
         callTargetName == "X64SplitHigh" || callTargetName == "X64SplitLow" ||
         callTargetName == "_SPMDInternalOp_MultiPad" ||
         callTargetName == "_SPMDInternalOp_RotateRight" ||
@@ -396,24 +396,6 @@ struct CustomCallShardingRuleOpInterface
     }
     if (callTargetName == kPartialReduceTargetName) {
       return createPartialReduceShardingRule(customCall);
-    }
-    if (callTargetName == "X64Combine") {
-      // Replicate and block propagation when `X64Combine` feeds
-      // `RngBitGeneratorOp`, whose 1D `ui64` initial state must stay replicated
-      // and cannot be resharded.
-      if (llvm::any_of(customCall->getUsers(), [](mlir::Operation* user) {
-            return llvm::isa<mlir::stablehlo::RngBitGeneratorOp>(user);
-          })) {
-        mlir::sdy::OpShardingRuleBuilder builder(customCall);
-        llvm::ArrayRef<int64_t> shape =
-            mlir::sdy::getTensorShape(customCall.getResult(0));
-        assert(shape.size() == 1);
-        builder.addFactor(0, shape.front(),
-                          mlir::sdy::FactorType::kNeedReplication,
-                          /*isBlocked=*/true);
-        return builder.build();
-      }
-      return mlir::sdy::OpShardingRuleBuilder::buildPointwise(customCall);
     }
     // TODO(b/327191011): output unregistered op stats instead.
     static llvm::once_flag onceFlag;
