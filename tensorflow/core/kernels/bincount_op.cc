@@ -292,7 +292,7 @@ class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           ctx, !OpDeterminismRequired(),
           absl::UnimplementedError(
