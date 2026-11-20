@@ -22,12 +22,17 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
+
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 
 #include "cub/version.cuh"
 #include "absl/algorithm/container.h"
@@ -91,6 +96,7 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/core_info.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
@@ -758,6 +764,38 @@ absl::StatusOr<bool> IsMulticastSupported(CUdevice device) {
   return is_multicast_supported;
 }
 
+absl::StatusOr<bool> IsDmaBufSupported(CUdevice device) {
+#if defined(__linux__)
+  constexpr bool kIsLinux = true;
+#else
+  constexpr bool kIsLinux = false;
+#endif
+  if constexpr (!kIsLinux) {
+    return false;
+  }
+  int is_supported = 0;
+  CUresult result = cuDeviceGetAttribute(
+      &is_supported, CU_DEVICE_ATTRIBUTE_DMA_BUF_SUPPORTED, device);
+  if (result == CUDA_ERROR_NOT_SUPPORTED ||
+      result == CUDA_ERROR_INVALID_VALUE) {
+    return false;
+  }
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
+  return is_supported != 0;
+}
+
+absl::StatusOr<uint64_t> GetHostPageSize() {
+#if defined(__linux__)
+  const int64_t page_size_raw = sysconf(_SC_PAGESIZE);
+  if (page_size_raw <= 0) {
+    return absl::InternalError("Failed to query host page size.");
+  }
+  return static_cast<uint64_t>(page_size_raw);
+#else
+  return absl::UnimplementedError("dma-buf export is only supported on Linux.");
+#endif
+}
+
 absl::StatusOr<CUmulticastObjectProp> CreateMulticastObjectProperties(
     int num_devices, size_t size) {
   CUmulticastObjectProp multicast_properties;
@@ -1140,6 +1178,48 @@ absl::StatusOr<DeviceAddressBase> CudaExecutor::ImportFabricHandle(
       handle));
 }
 
+absl::StatusOr<DmaBuf> CudaExecutor::ExportDmaBuf(
+    const DeviceAddressBase& address) const {
+  if (!is_dma_buf_supported_) {
+    return absl::UnimplementedError(
+        "dma-buf export is not supported on this CUDA device.");
+  }
+  if (address.opaque() == nullptr || address.size() == 0) {
+    return absl::InvalidArgumentError(
+        "Cannot export dma-buf for empty device address range.");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(const uint64_t page_size, GetHostPageSize());
+  const uint64_t addr =
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(address.opaque()));
+  const uint64_t aligned_addr = xla::RoundDownTo<uint64_t>(addr, page_size);
+  const uint64_t offset = addr - aligned_addr;
+  if (address.size() >
+      std::numeric_limits<uint64_t>::max() - offset - (page_size - 1)) {
+    return absl::InvalidArgumentError("Device address range size overflow.");
+  }
+  const uint64_t aligned_size =
+      xla::RoundUpTo<uint64_t>(offset + address.size(), page_size);
+
+  ScopedActivateContext activation(cuda_context_);
+  int fd = -1;
+  CUresult result = cuMemGetHandleForAddressRange(
+      &fd, static_cast<CUdeviceptr>(aligned_addr), aligned_size,
+      CU_MEM_RANGE_HANDLE_TYPE_DMA_BUF_FD, /*flags=*/0);
+  if (result == CUDA_ERROR_NOT_SUPPORTED) {
+    return absl::UnimplementedError(
+        absl::StrCat("cuMemGetHandleForAddressRange not supported: ",
+                     cuda::ToStatus(result).message()));
+  }
+  if (result == CUDA_ERROR_INVALID_VALUE) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("cuMemGetHandleForAddressRange invalid value: ",
+                     cuda::ToStatus(result).message()));
+  }
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(result));
+  return DmaBuf(fd, offset);
+}
+
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
   if (type == MemorySpace::kUnified) {
@@ -1214,6 +1294,7 @@ absl::Status CudaExecutor::Init() {
   }
 
   ABSL_ASSIGN_OR_RETURN(is_multicast_supported_, IsMulticastSupported(device_));
+  ABSL_ASSIGN_OR_RETURN(is_dma_buf_supported_, IsDmaBufSupported(device_));
   ABSL_ASSIGN_OR_RETURN(CudaContext * context,
                    CudaContext::Create(device_ordinal(), device_));
   cuda_context_ = context;

@@ -230,9 +230,16 @@ cc_library(
 )
 
 cc_library(
+    name = "dma_buf",
+    srcs = ["dma_buf.cc"],
+    hdrs = ["dma_buf.h"],
+)
+
+cc_library(
     name = "gpu_executor_header",
     hdrs = ["gpu_executor.h"],
     deps = [
+        ":dma_buf",
         ":multicast_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",

@@ -16,12 +16,20 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(__linux__)
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -29,6 +37,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/debug_options_flags.h"
 #include "xla/stream_executor/activate_context.h"
@@ -37,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -55,6 +66,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::AnyOf;
 using ::testing::Ge;
@@ -580,6 +592,75 @@ TEST(CudaExecutorTest, RetainVmmMemoryHandleForDefaultDeviceMemory) {
                        cuda_executor->RetainVmmMemoryHandle(ptr.opaque()));
   EXPECT_NE(handle.handle(), 0);
   cuda_executor->Deallocate(&ptr);
+}
+
+TEST(CudaExecutorTest, ExportDmaBuf) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  auto* cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  DeviceAddressBase ptr =
+      cuda_executor->Allocate(8192, static_cast<int>(MemorySpace::kDevice));
+  ASSERT_NE(ptr.opaque(), nullptr);
+  absl::Cleanup cleanup = [&] { cuda_executor->Deallocate(&ptr); };
+
+  if (!cuda_executor->is_dma_buf_supported()) {
+    EXPECT_THAT(cuda_executor->ExportDmaBuf(ptr),
+                StatusIs(absl::StatusCode::kUnimplemented));
+    GTEST_SKIP() << "dma-buf export not supported on this device.";
+  }
+
+  // Export a non-page-aligned sub-slice and verify the returned offset and fd
+  // lifecycle.
+  constexpr uint64_t kSubOffset = 256;
+  constexpr uint64_t kSubSize = 512;
+  DeviceAddressBase sub(static_cast<char*>(ptr.opaque()) + kSubOffset,
+                        kSubSize);
+  int sub_fd = -1;
+  {
+    ASSERT_OK_AND_ASSIGN(DmaBuf sub_buf, cuda_executor->ExportDmaBuf(sub));
+    sub_fd = sub_buf.fd();
+    EXPECT_GE(sub_fd, 0);
+#if defined(__linux__)
+    const int64_t page_size = sysconf(_SC_PAGESIZE);
+    ASSERT_GT(page_size, 0);
+    EXPECT_EQ(sub_buf.offset(), reinterpret_cast<uintptr_t>(sub.opaque()) %
+                                    static_cast<uint64_t>(page_size));
+    char link_target[64] = {};
+    const ssize_t link_len =
+        readlink(absl::StrCat("/proc/self/fd/", sub_fd).c_str(), link_target,
+                 sizeof(link_target) - 1);
+    ASSERT_GT(link_len, 0);
+    EXPECT_THAT(absl::string_view(link_target, link_len), HasSubstr("dmabuf"));
+    const off_t dmabuf_size = lseek(sub_fd, 0, SEEK_END);
+    ASSERT_NE(dmabuf_size, static_cast<off_t>(-1));
+    EXPECT_GE(static_cast<uint64_t>(dmabuf_size), sub_buf.offset() + kSubSize);
+#endif
+  }
+#if defined(__linux__)
+  EXPECT_EQ(fcntl(sub_fd, F_GETFD), -1);
+  EXPECT_EQ(errno, EBADF);
+#endif
+}
+
+TEST(CudaExecutorTest, ExportDmaBufRejectsEmptyRange) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  auto* cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  const absl::StatusCode expected_code =
+      cuda_executor->is_dma_buf_supported() ? absl::StatusCode::kInvalidArgument
+                                            : absl::StatusCode::kUnimplemented;
+  EXPECT_THAT(cuda_executor->ExportDmaBuf(DeviceAddressBase()),
+              StatusIs(expected_code));
 }
 }  // namespace
 }  // namespace stream_executor::gpu

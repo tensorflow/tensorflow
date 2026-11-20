@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/dma_buf.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -78,6 +79,8 @@ class CudaExecutor : public GpuExecutor {
   CudaExecutor(Platform* platform, int device_ordinal,
                absl::Duration monitor_poll_interval = absl::Seconds(5))
       : GpuExecutor(platform, device_ordinal),
+        is_multicast_supported_(false),
+        is_dma_buf_supported_(false),
         host_callback_registry_(std::make_unique<HostCallbackRegistry>(
             device_ordinal, monitor_poll_interval)) {}
 
@@ -281,6 +284,11 @@ class CudaExecutor : public GpuExecutor {
     return is_multicast_supported_;
   }
 
+  bool is_dma_buf_supported() const override { return is_dma_buf_supported_; }
+
+  absl::StatusOr<DmaBuf> ExportDmaBuf(
+      const DeviceAddressBase& address) const override;
+
   bool is_fabric_supported() const {
     return device_allocator_options_.enable_fabric_handle;
   }
@@ -314,7 +322,10 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<bool> DelayKernelIsSupported();
 
   // Whether multicast objects are supported by this device.
-  bool is_multicast_supported_ = false;
+  bool is_multicast_supported_;
+
+  // Whether exporting device memory as a Linux dma-buf is supported.
+  bool is_dma_buf_supported_;
 
   // Device allocator options, probed during Init() with fallback. The
   // handle-type flags may differ from device-reported caps (e.g. in MIG or
