@@ -883,6 +883,70 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       self._testRemainder(dtype)
 
+  def testFloorDivModIdentityLargeMagnitudes(self):
+    """Regression test for #118642: floordiv(x, y) * y + floormod(x, y) == x."""
+    for dtype in self.float_types:
+      if dtype in (np.float32, np.float64):
+        test_cases = [
+            (1e8, 7.0),
+            (1e10, 3.0),
+            (1e10, 7.0),
+            (1e10, 0.007),
+            (-1e10, 3.0),
+            (1e10, -3.0),
+            (-1e10, -3.0),
+            (55.0, 55.0),
+            (49.0, 49.0),
+        ]
+      else:
+        test_cases = [
+            (55.0, 55.0),
+            (49.0, 49.0),
+            (100.0, 3.0),
+            (1000.0, 7.0),
+            (-1000.0, 7.0),
+            (1000.0, -7.0),
+            (-1000.0, -7.0),
+        ]
+      for x_val, y_val in test_cases:
+        x_np = np.array([x_val], dtype=dtype)
+        y_np = np.array([y_val], dtype=dtype)
+        with self.session() as session:
+          with self.test_scope():
+            x_tf = array_ops.placeholder(dtype, shape=[1])
+            y_tf = constant_op.constant(y_np)
+            div_tf = math_ops.floordiv(x_tf, y_tf)
+            mod_tf = math_ops.floormod(x_tf, y_tf)
+            recon_tf = div_tf * y_tf + mod_tf
+          recon_val = session.run(recon_tf, {x_tf: x_np})
+          self.assertAllEqual(recon_val, x_np)
+
+      if dtype == np.float32:
+        direct_cases = [
+            (49.0, 49.0, 1.0),
+            (55.0, 55.0, 1.0),
+            (8388611.0, 1.5, 5592407.0),
+            (16777222.0, 3.0, 5592407.0),
+            (1.0e38, 0.1, np.inf),
+            (-3.0e38, 2.5e38, -2.0),
+            (1.0, np.inf, 0.0),
+            (-5.0, np.inf, -0.0),
+            (1.0, 0.0, np.inf),
+            (0.0, -1.0, -0.0),
+        ]
+        for x_val, y_val, expected_q in direct_cases:
+          x_np = np.array([x_val], dtype=dtype)
+          y_np = np.array([y_val], dtype=dtype)
+          with self.session() as session:
+            with self.test_scope():
+              x_tf = array_ops.placeholder(dtype, shape=[1])
+              y_tf = constant_op.constant(y_np)
+              div_tf = math_ops.floordiv(x_tf, y_tf)
+            div_val = session.run(div_tf, {x_tf: x_np})
+            self.assertAllEqual(div_val, np.array([expected_q], dtype=dtype))
+            if expected_q == 0.0 and np.signbit(expected_q):
+              self.assertTrue(np.signbit(div_val[0]))
+
   def testLogicalOps(self):
     self._testBinary(
         math_ops.logical_and,
