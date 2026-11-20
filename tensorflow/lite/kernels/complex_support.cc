@@ -69,15 +69,15 @@ TfLiteStatus EvalReal(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteComplex64: {
       ExtractData<float>(
           input,
-          static_cast<float (*)(const std::complex<float>&)>(std::real<float>),
+          [](const std::complex<float>& z) -> float { return std::real(z); },
           output);
       break;
     }
     case kTfLiteComplex128: {
-      ExtractData<double>(input,
-                          static_cast<double (*)(const std::complex<double>&)>(
-                              std::real<double>),
-                          output);
+      ExtractData<double>(
+          input,
+          [](const std::complex<double>& z) -> double { return std::real(z); },
+          output);
       break;
     }
     default: {
@@ -101,15 +101,15 @@ TfLiteStatus EvalImag(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteComplex64: {
       ExtractData<float>(
           input,
-          static_cast<float (*)(const std::complex<float>&)>(std::imag<float>),
+          [](const std::complex<float>& z) -> float { return std::imag(z); },
           output);
       break;
     }
     case kTfLiteComplex128: {
-      ExtractData<double>(input,
-                          static_cast<double (*)(const std::complex<double>&)>(
-                              std::imag<double>),
-                          output);
+      ExtractData<double>(
+          input,
+          [](const std::complex<double>& z) -> double { return std::imag(z); },
+          output);
       break;
     }
     default: {
@@ -132,15 +132,15 @@ TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteComplex64: {
       ExtractData<float>(
           input,
-          static_cast<float (*)(const std::complex<float>&)>(std::abs<float>),
+          [](const std::complex<float>& z) -> float { return std::abs(z); },
           output);
       break;
     }
     case kTfLiteComplex128: {
-      ExtractData<double>(input,
-                          static_cast<double (*)(const std::complex<double>&)>(
-                              std::abs<double>),
-                          output);
+      ExtractData<double>(
+          input,
+          [](const std::complex<double>& z) -> double { return std::abs(z); },
+          output);
       break;
     }
     default: {
