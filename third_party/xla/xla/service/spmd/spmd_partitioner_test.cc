@@ -2080,6 +2080,116 @@ ENTRY entry {
                           op::ReduceWindow(dim1_resharded, op::Constant())));
 }
 
+TEST_P(SpmdPartitioningTest, VariadicReduceWindowMismatchedTupleSharding) {
+  {
+    SCOPED_TRACE("permuted_2d_tuple_sharding");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule module
+
+argmax {
+  v0 = f32[] parameter(0)
+  i0 = s32[] parameter(1)
+  v1 = f32[] parameter(2)
+  i1 = s32[] parameter(3)
+  cmp = pred[] compare(v0, v1), direction=GE
+  v = f32[] select(cmp, v0, v1)
+  i = s32[] select(cmp, i0, i1)
+  ROOT out = (f32[], s32[]) tuple(v, i)
+}
+
+ENTRY entry {
+  p0 = f32[8,8] parameter(0), sharding={devices=[2,2]<=[4]}
+  p1 = s32[8,8] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0)}
+  init0 = f32[] constant(-inf)
+  init1 = s32[] constant(-1)
+  ROOT rw = (f32[4,4], s32[4,4]) reduce-window(p0, p1, init0, init1),
+    window={size=2x2 stride=2x2}, to_apply=argmax,
+    sharding={{devices=[2,2]<=[4]}, {devices=[2,2]<=[2,2]T(1,0)}}
+})hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(kHlo, /*num_devices=*/4));
+    const HloComputation* entry = module->entry_computation();
+    EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 2);
+    auto rw = AllOf(op::Shape("(f32[2,2], s32[2,2])"),
+                    op::ReduceWindow(op::Parameter(0),
+                                     op::CollectivePermute(op::Parameter(1)),
+                                     op::Constant(), op::Constant()));
+    EXPECT_THAT(
+        entry->root_instruction(),
+        AllOf(op::Shape("(f32[2,2], s32[2,2])"),
+              op::Tuple(op::GetTupleElement(rw, 0),
+                        op::CollectivePermute(op::GetTupleElement(rw, 1)))));
+  }
+  {
+    SCOPED_TRACE("mixed_replicated_and_partially_tiled_tuple_sharding");
+    constexpr absl::string_view kHlo = R"hlo(
+HloModule module
+
+argmax {
+  v0 = f32[] parameter(0)
+  i0 = s32[] parameter(1)
+  v1 = f32[] parameter(2)
+  i1 = s32[] parameter(3)
+  cmp = pred[] compare(v0, v1), direction=GE
+  v = f32[] select(cmp, v0, v1)
+  i = s32[] select(cmp, i0, i1)
+  ROOT out = (f32[], s32[]) tuple(v, i)
+}
+
+ENTRY entry {
+  p0 = f32[8,8] parameter(0),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  p1 = s32[8,8] parameter(1), sharding={devices=[2,2]<=[4]}
+  init0 = f32[] constant(-inf)
+  init1 = s32[] constant(-1)
+  ROOT rw = (f32[4,4], s32[4,4]) reduce-window(p0, p1, init0, init1),
+    window={size=2x2 stride=2x2}, to_apply=argmax,
+    sharding={{replicated}, {devices=[2,2]<=[4]}}
+})hlo";
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(kHlo, /*num_devices=*/4));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    EXPECT_THAT(root,
+                AllOf(op::Shape("(f32[4,4], s32[2,2])"),
+                      op::Tuple(_, op::GetTupleElement(
+                                       op::ReduceWindow(_, _, _, _), 1))));
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       VariadicReduceWindowBaseDilationDynamicSliceOnOutput) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule module
+
+add_pair {
+  v0 = f32[] parameter(0)
+  i0 = s32[] parameter(1)
+  v1 = f32[] parameter(2)
+  i1 = s32[] parameter(3)
+  ROOT out = (f32[], s32[]) tuple(f32[] add(v0, v1), s32[] add(i0, i1))
+}
+
+ENTRY entry {
+  p0 = f32[6] parameter(0), sharding={devices=[2]<=[2]}
+  p1 = s32[6] parameter(1), sharding={replicated}
+  init0 = f32[] constant(0)
+  init1 = s32[] constant(0)
+  ROOT rw = (f32[10], s32[10]) reduce-window(p0, p1, init0, init1),
+    window={size=2 lhs_dilate=2}, to_apply=add_pair,
+    sharding={{devices=[2]<=[2]}, {replicated}}
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(kHlo, /*num_devices=*/2));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto rw = op::ReduceWindow(_, _, op::Constant(), op::Constant());
+  EXPECT_THAT(root,
+              AllOf(op::Shape("(f32[5], s32[10])"),
+                    op::Tuple(op::DynamicSlice(op::GetTupleElement(rw, 0), _),
+                              op::AllGather(op::DynamicSlice(
+                                  op::GetTupleElement(rw, 1), _)))));
+}
+
 TEST_P(SpmdPartitioningTest, ConvolutionLhsTiledRhsReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module

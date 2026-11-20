@@ -6913,7 +6913,16 @@ absl::Status SpmdPartitioningVisitor::HandleRngGetAndUpdateState(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
-  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
+  // Align all variadic inputs onto a single common tiled sharding before
+  // `reduce-window`, then reshard the output to `hlo->sharding()`.
+  auto tiles = [](const auto& s) { return s.IsTiled() ? s.NumTiles() : 0; };
+  const HloSharding& sharding =
+      hlo->sharding().IsTuple()
+          ? *absl::c_max_element(
+                hlo->sharding().tuple_elements(),
+                [&](auto& a, auto& b) { return tiles(a) < tiles(b); })
+          : hlo->sharding();
+  if (!sharding.IsTiled()) {
     return DefaultAction(hlo);
   }
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
@@ -6927,14 +6936,12 @@ absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
 
   int64_t input_idx = 0;
   for (const HloInstruction* input_array : input_arrays) {
-    PartitionedHlo& operand = GetPartitionedHlo(input_array);
+    PartitionedHlo operand = GetPartitionedHlo(input_array);
+    operand = input_arrays.size() > 1 ? operand.Reshard(sharding) : operand;
     // Replicate init
     PartitionedHlo replicated_init =
         GetPartitionedHlo(init_values[input_idx]).Replicate();
 
-    const HloSharding& sharding =
-        hlo->sharding().IsTuple() ? hlo->sharding().tuple_elements()[input_idx]
-                                  : hlo->sharding();
     auto resharded_operand_and_window = operand.ReshardAsWindowedInput(
         hlo->window(), sharding, replicated_init.hlo());
     if (!resharded_operand_and_window.has_value()) {
@@ -6952,11 +6959,11 @@ absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
                        sharded_input_shapes, replicated_init_shapes,
                        sharded_results[0].shard_window,
                        hlo->to_apply()->ComputeProgramShape()));
-  Shape shard_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
-  if (shard_shape.has_layout()) {
-    *sharded_rw_shape.mutable_layout() = shard_shape.layout();
-  }
-  SetPartitionedHlo(hlo, [&]() {
+  HloSharding out = HloSharding::Single(hlo->shape(), sharding);
+  Shape shard_shape = MakePartitionedShape(hlo->shape(), out);
+  ABSL_RETURN_IF_ERROR(
+      LayoutUtil::CopyLayoutBetweenShapes(shard_shape, &sharded_rw_shape));
+  HloInstruction* rw = [&]() {
     HloInstruction* sharded_rw =
         b_.AddInstruction(HloInstruction::CreateReduceWindow(
             sharded_rw_shape, sharded_inputs, replicated_inits,
@@ -6966,11 +6973,26 @@ absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
           << shard_shape << " vs " << sharded_rw->shape() << "\n";
       return sharded_rw;
     }
+    if (shard_shape.IsTuple()) {
+      const auto& idx = *sharded_results[0].dynamic_slice_index_on_output;
+      std::vector<HloInstruction*> elems(input_arrays.size());
+      for (int64_t i = 0; i < input_arrays.size(); ++i) {
+        const Shape& s = shard_shape.tuple_shapes(i);
+        auto* g = b_.AddInstruction(
+            HloInstruction::CreateGetTupleElement(sharded_rw, i));
+        elems[i] = b_.AddInstruction(
+            HloInstruction::CreateDynamicSlice(s, g, idx, s.dimensions()));
+      }
+      return b_.AddInstruction(HloInstruction::CreateTuple(elems));
+    }
     return b_.AddInstruction(HloInstruction::CreateDynamicSlice(
         shard_shape, sharded_rw,
         *sharded_results[0].dynamic_slice_index_on_output,
         shard_shape.dimensions()));
-  });
+  }();
+  rw->set_sharding(out);
+  PartitionedHlo phlo(rw, hlo->shape(), MakePartitioningState());
+  SetPartitionedHlo(hlo, phlo.Reshard(hlo->sharding()));
   return absl::OkStatus();
 }
 
