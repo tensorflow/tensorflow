@@ -917,12 +917,12 @@ TEST_F(CollectiveEmitterTest,
       module_with_fusion.module->entry_computation();
 
   // Operand 0 (12288/rank, non-pow2):
-  //   f32[2,24576] -> f32[4,32,384] -> f32[2,32,384].
+  //   f32[2,24576] -> f32[4,64,192] -> f32[2,64,192].
   // Operand 1 (2/rank, pow2):
   //   f32[4,2] -> f32[4,2] -> f32[2,2].
-  const Shape param_0 = ShapeUtil::MakeShape(F32, {4, 32, 384});
+  const Shape param_0 = ShapeUtil::MakeShape(F32, {4, 64, 192});
   const Shape param_1 = ShapeUtil::MakeShape(F32, {4, 2});
-  const Shape new_output_0 = ShapeUtil::MakeShape(F32, {2, 32, 384});
+  const Shape new_output_0 = ShapeUtil::MakeShape(F32, {2, 64, 192});
   const Shape new_output_1 = ShapeUtil::MakeShape(F32, {2, 2});
   const Shape new_fusion_shape =
       ShapeUtil::MakeTupleShape({new_output_0, new_output_1});
@@ -962,12 +962,12 @@ TEST_F(CollectiveBlockLevelConfigTest,
                            *gpu_topology_, module_with_fusion.FusionInstr()));
 
   // 4 blocks/rank:
-  // - Output 0 (f32[2,32,384]) -> 4 tiles of [1,8,512].
+  // - Output 0 (f32[2,64,192]) -> 4 tiles of [1,16,256].
   // - Output 1 (f32[2,2])      -> 2 tiles of [1,1].
   EXPECT_EQ(block_level_config.num_warps(), 16);
   ASSERT_EQ(block_level_config.output_tiles_size(), 2);
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
-              ElementsAre(1, 8, 512));
+              ElementsAre(1, 16, 256));
   EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 1));
 }
 
@@ -1152,19 +1152,19 @@ TEST_F(CollectiveEmitterTest,
                                              /*replica_count=*/16));
 
   // Root is now a bitcast back to bf16[8,24576]; operand(0) is the 3D fusion
-  // with shape bf16[16,4,3072].
+  // with shape bf16[16,8,1536].
   HloInstruction* root =
       module_with_fusion.module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kBitcast);
   HloFusionInstruction* flat_fusion = module_with_fusion.MutableFusionInstr();
   EXPECT_EQ(flat_fusion, root->operand(0));
-  EXPECT_EQ(flat_fusion->shape(), ShapeUtil::MakeShape(BF16, {16, 4, 3072}));
+  EXPECT_EQ(flat_fusion->shape(), ShapeUtil::MakeShape(BF16, {16, 8, 1536}));
 
   ASSERT_OK_AND_ASSIGN(
       BlockLevelFusionConfig block_level_config,
       GetCollectiveBlockLevelFusionConfig(topology_16, flat_fusion));
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
-              ElementsAre(1, 1, 4096));
+              ElementsAre(1, 2, 2048));
 
   HloFusionAnalysis analysis =
       HloFusionAnalysis::Create(*flat_fusion, device_info_);

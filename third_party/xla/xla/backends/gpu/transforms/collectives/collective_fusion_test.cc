@@ -376,17 +376,17 @@ TEST_F(CollectiveFusionTest,
     }
   )";
   static constexpr absl::string_view kExpected = R"(
-    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[64,8,192]) -> f32[8,8,192] {
-    // CHECK:   %[[P0:.*]] = f32[64,8,192]{2,1,0} parameter(0)
-    // CHECK:   ROOT {{.*}} = f32[8,8,192]{2,1,0} reduce-scatter(%[[P0]]),
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[64,16,96]) -> f32[8,16,96] {
+    // CHECK:   %[[P0:.*]] = f32[64,16,96]{2,1,0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[8,16,96]{2,1,0} reduce-scatter(%[[P0]]),
     // CHECK-SAME: dimensions={0},
     // CHECK-SAME: to_apply=%add
     // CHECK: }
     //
     // CHECK: ENTRY %e (p0.1: f32[98304]) -> f32[12288] {
     // CHECK:   %[[P0:.*]] = f32[98304]{0} parameter(0)
-    // CHECK:   %[[BITCAST_IN:.*]] = f32[64,8,192]{2,1,0} bitcast(%[[P0]])
-    // CHECK:   %[[FUSION:.*]] = f32[8,8,192]{2,1,0} fusion(%[[BITCAST_IN]]),
+    // CHECK:   %[[BITCAST_IN:.*]] = f32[64,16,96]{2,1,0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[8,16,96]{2,1,0} fusion(%[[BITCAST_IN]]),
     // CHECK-SAME: kind=kCustom,
     // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
     // CHECK-SAME: backend_config={
