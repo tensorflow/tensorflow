@@ -168,7 +168,7 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
   } else if (require_exact_algorithm_) {
     return absl::FailedPreconditionError(
         "Exact BlasLt algorithm is required, but no algorithm descriptor "
-        "proto was provided.");
+        "this build supports was provided.");
   }
 
   // Always request the full algorithm list: plans are shared across thunks by

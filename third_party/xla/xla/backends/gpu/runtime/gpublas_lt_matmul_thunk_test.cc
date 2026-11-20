@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
+#include "google/protobuf/unknown_field_set.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -1163,6 +1164,43 @@ TEST_F(CublasLtMatmulThunkCmdBufTest,
       CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), invalid_proto,
                                      allocations, fallback_options));
   EXPECT_OK(fallback_thunk->ExecuteOnStream(*params_));
+}
+
+// An algorithm_proto whose algorithm kind this build does not know (added by a
+// newer XLA, so it parses as an unknown field) loads like a missing one: the
+// heuristic algorithm index runs, or require-exact reports it.
+TEST_F(CublasLtMatmulThunkCmdBufTest, UnknownAlgorithmProtoKindFallsBack) {
+  ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, thunk_->ToProto());
+  std::vector<BufferAllocation> allocations = {alloc_a_, alloc_b_, alloc_c_,
+                                               alloc_d_, alloc_workspace_};
+  CublasLtMatmulThunkProto proto = thunk_proto.cublas_lt_matmul_thunk();
+  se::gpu::BlasLtMatmulAlgorithmProto* algorithm_proto =
+      proto.mutable_algorithm_proto();
+  algorithm_proto->set_library_version(1);
+  algorithm_proto->GetReflection()
+      ->MutableUnknownFields(algorithm_proto)
+      ->AddLengthDelimited(/*number=*/15, /*value=*/"\x08\x05");
+
+  DebugOptions exact_options;
+  exact_options.set_xla_gpu_require_exact_blas_lt_algorithm(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> exact_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), proto, allocations,
+                                     exact_options));
+  EXPECT_THAT(exact_thunk->ExecuteOnStream(*params_),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+
+  DebugOptions fallback_options;
+  fallback_options.set_xla_gpu_require_exact_blas_lt_algorithm(false);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> fallback_thunk,
+      CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo(), proto, allocations,
+                                     fallback_options));
+  ASSERT_OK(fallback_thunk->ExecuteOnStream(*params_));
+  ASSERT_OK(stream_->BlockHostUntilDone());
+  std::vector<float> dst(6, 0);
+  ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
+  EXPECT_EQ(dst, std::vector<float>({11, 11, 11, 27, 27, 27}));
 }
 
 }  // namespace

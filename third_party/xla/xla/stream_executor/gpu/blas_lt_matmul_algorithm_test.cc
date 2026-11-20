@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "google/protobuf/unknown_field_set.h"
 #include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -26,7 +28,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 namespace {
 
-using ::absl_testing::StatusIs;
+using ::absl_testing::IsOkAndHolds;
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(BlasLtMatmulAlgorithmTest, ProtoConversionAndEquality) {
@@ -48,21 +50,41 @@ TEST(BlasLtMatmulAlgorithmTest, ProtoConversionAndEquality) {
   };
 
   BlasLtMatmulAlgorithmProto proto = original.ToProto();
-  ASSERT_OK_AND_ASSIGN(BlasLtMatmulAlgorithm round_tripped,
+  ASSERT_OK_AND_ASSIGN(std::optional<BlasLtMatmulAlgorithm> round_tripped,
                        BlasLtMatmulAlgorithm::FromProto(proto));
-  EXPECT_EQ(original, round_tripped);
-  EXPECT_THAT(round_tripped.ToProto(), EqualsProto(proto));
+  ASSERT_TRUE(round_tripped.has_value());
+  EXPECT_EQ(original, *round_tripped);
+  EXPECT_THAT(round_tripped->ToProto(), EqualsProto(proto));
 
-  BlasLtMatmulAlgorithm modified = round_tripped;
+  BlasLtMatmulAlgorithm modified = *round_tripped;
   modified.library_version = 120900;
   EXPECT_NE(original, modified);
 }
 
-TEST(BlasLtMatmulAlgorithmTest, EmptyAlgorithmOneofRejected) {
+TEST(BlasLtMatmulAlgorithmTest, EmptyAlgorithmOneofIsNoAlgorithm) {
   BlasLtMatmulAlgorithmProto empty_proto;
   empty_proto.set_library_version(120800);
   EXPECT_THAT(BlasLtMatmulAlgorithm::FromProto(empty_proto),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              IsOkAndHolds(std::nullopt));
+}
+
+// An algorithm kind added to the oneof by a newer XLA reaches this reader as an
+// unknown field. It must not fail the load: the caller falls back to the
+// heuristic algorithm index or, under require-exact, reports the missing
+// algorithm.
+TEST(BlasLtMatmulAlgorithmTest, UnknownAlgorithmOneofIsNoAlgorithm) {
+  BlasLtMatmulAlgorithmProto writer_proto;
+  writer_proto.set_library_version(120800);
+  writer_proto.GetReflection()
+      ->MutableUnknownFields(&writer_proto)
+      ->AddLengthDelimited(/*number=*/15, /*value=*/"\x08\x05");
+
+  BlasLtMatmulAlgorithmProto reader_proto;
+  ASSERT_TRUE(reader_proto.ParseFromString(writer_proto.SerializeAsString()));
+  ASSERT_EQ(reader_proto.algorithm_case(),
+            BlasLtMatmulAlgorithmProto::ALGORITHM_NOT_SET);
+  EXPECT_THAT(BlasLtMatmulAlgorithm::FromProto(reader_proto),
+              IsOkAndHolds(std::nullopt));
 }
 
 }  // namespace

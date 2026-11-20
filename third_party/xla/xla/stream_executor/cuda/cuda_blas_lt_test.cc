@@ -41,6 +41,7 @@ limitations under the License.
 namespace stream_executor::cuda {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -198,12 +199,13 @@ TEST_F(CudaBlasLtTest, AlgorithmProtoRoundTripAndValidation) {
 
   gpu::BlasLtMatmulAlgorithmProto algorithm_proto = blas_lt_algorithm.ToProto();
   EXPECT_TRUE(algorithm_proto.has_cublaslt());
-  ASSERT_OK_AND_ASSIGN(gpu::BlasLtMatmulAlgorithm from_proto,
+  ASSERT_OK_AND_ASSIGN(std::optional<gpu::BlasLtMatmulAlgorithm> from_proto,
                        gpu::BlasLtMatmulAlgorithm::FromProto(algorithm_proto));
-  EXPECT_EQ(from_proto, blas_lt_algorithm);
+  ASSERT_TRUE(from_proto.has_value());
+  EXPECT_EQ(*from_proto, blas_lt_algorithm);
 
   ASSERT_OK_AND_ASSIGN(gpu::BlasLt::MatmulAlgorithm reconstructed,
-                       plan->GetMatmulAlgorithm(from_proto, workspace_size));
+                       plan->GetMatmulAlgorithm(*from_proto, workspace_size));
   ASSERT_OK_AND_ASSIGN(gpu::BlasLtMatmulAlgorithm reconstructed_algorithm,
                        plan->GetBlasLtMatmulAlgorithm(reconstructed));
   EXPECT_EQ(reconstructed_algorithm, blas_lt_algorithm);
@@ -212,10 +214,10 @@ TEST_F(CudaBlasLtTest, AlgorithmProtoRoundTripAndValidation) {
   EXPECT_OK(plan->SetAlgorithm(reconstructed));
   EXPECT_OK(plan->SetCachedAlgorithm(blas_lt_algorithm, workspace_size));
 
-  // Missing cublaslt field in proto must return InvalidArgument.
+  // A proto without an algorithm yields no algorithm.
   gpu::BlasLtMatmulAlgorithmProto empty_proto;
   EXPECT_THAT(gpu::BlasLtMatmulAlgorithm::FromProto(empty_proto),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              IsOkAndHolds(std::nullopt));
 
   // Negative unsigned-attribute fields must return InvalidArgument.
   gpu::BlasLtMatmulAlgorithmProto negative_tile_proto = algorithm_proto;

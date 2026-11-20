@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_BLAS_LT_MATMUL_ALGORITHM_H_
 
 #include <cstdint>
+#include <optional>
 #include <tuple>
 #include <variant>
 
@@ -43,7 +44,11 @@ struct BlasLtMatmulAlgorithm {
     return !(*this == other);
   }
 
-  static absl::StatusOr<BlasLtMatmulAlgorithm> FromProto(
+  // Returns std::nullopt if `proto` holds no algorithm this build knows: none
+  // is set, or it is a kind added by a newer XLA. Callers then use the
+  // heuristic algorithm index, or fail if
+  // `xla_gpu_require_exact_blas_lt_algorithm` is set.
+  static absl::StatusOr<std::optional<BlasLtMatmulAlgorithm>> FromProto(
       const BlasLtMatmulAlgorithmProto& proto);
   BlasLtMatmulAlgorithmProto ToProto() const;
 };

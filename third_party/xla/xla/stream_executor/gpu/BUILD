@@ -518,7 +518,6 @@ cc_library(
     deps = [
         ":blas_lt_matmul_algorithm_proto_cc",
         "//xla/stream_executor/cuda:cublas_lt_matmul_algorithm",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -532,9 +531,9 @@ xla_cc_test(
         ":blas_lt_matmul_algorithm_proto_cc",
         "//xla/stream_executor/cuda:cublas_lt_matmul_algorithm",
         "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

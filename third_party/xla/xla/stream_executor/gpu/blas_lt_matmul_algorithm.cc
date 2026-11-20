@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 
+#include <optional>
 #include <variant>
 
-#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/cublas_lt_matmul_algorithm.h"
@@ -25,8 +25,8 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-absl::StatusOr<BlasLtMatmulAlgorithm> BlasLtMatmulAlgorithm::FromProto(
-    const BlasLtMatmulAlgorithmProto& proto) {
+absl::StatusOr<std::optional<BlasLtMatmulAlgorithm>>
+BlasLtMatmulAlgorithm::FromProto(const BlasLtMatmulAlgorithmProto& proto) {
   switch (proto.algorithm_case()) {
     case BlasLtMatmulAlgorithmProto::kCublaslt: {
       ABSL_ASSIGN_OR_RETURN(
@@ -38,11 +38,11 @@ absl::StatusOr<BlasLtMatmulAlgorithm> BlasLtMatmulAlgorithm::FromProto(
       };
     }
     case BlasLtMatmulAlgorithmProto::ALGORITHM_NOT_SET:
-      return absl::InvalidArgumentError(
-          "BlasLtMatmulAlgorithmProto does not have an algorithm set.");
+      // Also the case for an algorithm written by a newer XLA: its oneof field
+      // is unknown here and parses into the unknown fields.
+      break;
   }
-  return absl::InvalidArgumentError(
-      "Unrecognized BlasLtMatmulAlgorithmProto algorithm case.");
+  return std::nullopt;
 }
 
 BlasLtMatmulAlgorithmProto BlasLtMatmulAlgorithm::ToProto() const {
