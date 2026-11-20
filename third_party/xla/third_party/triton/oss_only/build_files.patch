@@ -1637,7 +1637,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,441 @@
+@@ -0,0 +1,442 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1695,9 +1695,6 @@ new file mode 100644
 +
 +EXCLUDE_TESTS = [
 +    # failing tests
-+    "unit/language/test_subprocess.py",  # TODO(b/320224484): fix failing test
-+    "unit/tools/test_aot.py",  # TODO(b/320224484): fix failing test
-+    "unit/tools/test_disasm.py",  # TODO(b/320224484): fix failing test
 +    "unit/runtime/test_blaslt.py",  # TODO(b/346755023): fix failing test
 +    "unit/test_debug.py",  # TODO(b/374733875): fix failing test. Also see b/374733872.
 +    # As of Feb 2026, there is no plan to support Gluon in g3. There is no harm in running them,
@@ -1714,6 +1711,7 @@ new file mode 100644
 +    "unit/test_perf_warning.py",  # No backtraces in non-debug builds.
 +    "unit/runtime/test_build.py",  # this tests OSS launcher, we implement this differently in g3
 +    "unit/runtime/test_no_torch_dispatch.py",  # we run tests differently in g3 & we only use torch in g3 for testing, see third_party/py/triton/google/BUILD
++    "unit/tools/test_aot.py",  # tests OSS runtime gcc AOT compilation, unused in g3
 +
 +    # requires 2 GPUs to run
 +    "unit/runtime/test_peer_access.py",  # this requires 2 GPUs to run, we have a separate target for it
@@ -1774,6 +1772,7 @@ new file mode 100644
 +    srcs = _conftest + [
 +        "gsan/test_gsan.py",
 +        "gsan/test_gsan_failures.py",
++        "unit/language/print_helper.py",
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1802,6 +1801,7 @@ new file mode 100644
 +    srcs = _conftest + [
 +        "gsan/test_gsan.py",
 +        "gsan/test_gsan_failures.py",
++        "unit/language/print_helper.py",
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
@@ -1975,6 +1975,7 @@ new file mode 100644
 +    srcs = _conftest + [
 +        "gsan/test_gsan.py",
 +        "gsan/test_gsan_failures.py",
++        "unit/language/print_helper.py",
 +        "unit/language/test_core.py",
 +        "unit/language/test_mxfp.py",
 +    ],
