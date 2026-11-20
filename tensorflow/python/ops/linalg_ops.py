@@ -763,10 +763,19 @@ def norm(tensor,
   if keepdims is None:
     keepdims = False
 
+  # Accept NumPy integer scalars and normalize them to Python ints, so that
+  # `axis=np.int64(1)` behaves like `axis=1` (as np.linalg.norm does).
+  if isinstance(axis, np.integer):
+    axis = int(axis)
+
   is_matrix_norm = ((isinstance(axis, tuple) or isinstance(axis, list)) and
                     len(axis) == 2)
   if is_matrix_norm:
     axis = tuple(axis)
+    # Only normalize entries that actually are NumPy integers, so that invalid
+    # non-integer entries (e.g. 2.5) are still rejected by the check below
+    # instead of being silently truncated by int().
+    axis = tuple(int(a) if isinstance(a, np.integer) else a for a in axis)
     if (not isinstance(axis[0], int) or not isinstance(axis[1], int) or
         axis[0] == axis[1]):
       raise ValueError(
