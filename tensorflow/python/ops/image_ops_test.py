@@ -6839,8 +6839,52 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
   def testImageGradientsBadShape(self):
     # [2 x 4] image but missing batch and depth dimensions.
     img = constant_op.constant([[1, 3, 4, 2], [8, 7, 5, 6]])
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(
+        ValueError, r'image_gradients expects a 4D tensor'
+    ):
       image_ops.image_gradients(img)
+
+  def testImageGradientsUnknownRank(self):
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def compute_grad(x):
+      return image_ops.image_gradients(x)
+
+    shape = [1, 2, 4, 1]
+    img = constant_op.constant(
+        [[1.0, 3.0, 4.0, 2.0], [8.0, 7.0, 5.0, 6.0]], dtype=dtypes.float32
+    )
+    img = array_ops.reshape(img, shape)
+
+    expected_dy = np.reshape(
+        [[7.0, 4.0, 1.0, 4.0], [0.0, 0.0, 0.0, 0.0]], shape
+    )
+    expected_dx = np.reshape(
+        [[2.0, 1.0, -2.0, 0.0], [-1.0, -2.0, 1.0, 0.0]], shape
+    )
+
+    dy, dx = compute_grad(img)
+    self.assertAllClose(expected_dy, self.evaluate(dy))
+    self.assertAllClose(expected_dx, self.evaluate(dx))
+
+  def testImageGradientsUnknownRankInvalidShape(self):
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def compute_grad(x):
+      return image_ops.image_gradients(x)
+
+    img_3d = constant_op.constant(
+        [[[1.0, 3.0], [4.0, 2.0]], [[8.0, 7.0], [5.0, 6.0]]],
+        dtype=dtypes.float32,
+    )
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      compute_grad(img_3d)
 
 
 class SobelEdgesTest(test_util.TensorFlowTestCase):
