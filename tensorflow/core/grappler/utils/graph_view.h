@@ -245,7 +245,7 @@ class MutableNodeView
 
 class MutationNewNode {
  public:
-  MutationNewNode() {}
+  MutationNewNode() = default;
 
  private:
   explicit MutationNewNode(Mutation* mutation, int mutation_counter, int index)

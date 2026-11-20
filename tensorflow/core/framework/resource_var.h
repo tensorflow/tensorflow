@@ -115,7 +115,7 @@ class Var : public ResourceBase {
   Tensor tensor_;
   std::string debug_name_;
 
-  ~Var() override {}
+  ~Var() override = default;
   Var(const Var&) = delete;
   void operator=(const Var&) = delete;
 };
