@@ -1249,7 +1249,8 @@ struct ScanPartitioningOpInterface
           ScanPartitioningOpInterface, mhlo::ScanOp> {
   std::optional<mlir::LogicalResult> resolvePermutationFactors(
       mlir::Operation* op, mlir::sdy::OpShardingRuleAttr shardingRule,
-      mlir::IRRewriter& rewriter, const mlir::SymbolTable& symbolTable) const {
+      mlir::IRRewriter& rewriter, mlir::SymbolTable& symbolTable,
+      int64_t& /*nextChannelId*/) const {
     rewriter.setInsertionPoint(op);
     auto scan = llvm::cast<mhlo::ScanOp>(op);
     if (scan.getInputs().empty() || !isScanDimSharded(scan)) {

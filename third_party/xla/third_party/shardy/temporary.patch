@@ -1085,3 +1085,69 @@ index fb9f31bb..0dd9c715 100644
  )
  
  write_file(
+diff --git a/shardy/dialect/sdy/ir/op_interface.td b/shardy/dialect/sdy/ir/op_interface.td
+index bf1c5a9f..df38294c 100644
+--- a/shardy/dialect/sdy/ir/op_interface.td
++++ b/shardy/dialect/sdy/ir/op_interface.td
+@@ -274,14 +274,17 @@ def Sdy_PartitioningOpInterface : OpInterface<"PartitioningOpInterface"> {
+   let methods = [
+     InterfaceMethod<
+       /*desc=*/[{
+-        Resolves ops with permutation factors. Returning `std::nullopt` falls
+-        back to generic op handling.
++        Resolves ops with permutation factors or custom partitioning
++        (`shardingRule` may be null or custom), updating `nextChannelId` and
++        `symbolTable` if needed. Returning `std::nullopt` falls back to generic
++        op handling.
+       }],
+       /*retType=*/"std::optional<mlir::LogicalResult>",
+       /*methodName=*/"resolvePermutationFactors",
+       /*args=*/(ins "mlir::sdy::OpShardingRuleAttr":$shardingRule,
+                     "mlir::IRRewriter&":$rewriter,
+-                    "const mlir::SymbolTable&":$symbolTable),
++                    "mlir::SymbolTable&":$symbolTable,
++                    "int64_t&":$nextChannelId),
+       /*methodBody=*/"",
+       /*defaultImplementation=*/[{
+         return std::nullopt;
+diff --git a/shardy/dialect/sdy/transforms/export/resolve_permutation_factors.cc b/shardy/dialect/sdy/transforms/export/resolve_permutation_factors.cc
+index ccc21d72..96530eca 100644
+--- a/shardy/dialect/sdy/transforms/export/resolve_permutation_factors.cc
++++ b/shardy/dialect/sdy/transforms/export/resolve_permutation_factors.cc
+@@ -3642,6 +3642,17 @@ struct ShardyResolvePermutationFactorsPass
+       OpShardingRuleAttr rule = getOrCreateShardingRule(
+           op, /*conservativePropagation=*/false,
+           /*setShardingRuleOnOp=*/false, shardyGeneratesDeviceCode);
++      if (externalOp) {
++        rewriter.setInsertionPoint(op);
++        if (std::optional<LogicalResult> res =
++                externalOp.resolvePermutationFactors(
++                    rule, rewriter, state.symbolTable, state.nextChannelId)) {
++          if (failed(*res)) {
++            signalPassFailure();
++          }
++          return;
++        }
++      }
+       if (!rule || rule.isCustom()) {
+         return;
+       }
+@@ -3670,18 +3681,6 @@ struct ShardyResolvePermutationFactorsPass
+         return;
+       }
+ 
+-      if (externalOp) {
+-        rewriter.setInsertionPoint(op);
+-        if (std::optional<LogicalResult> res =
+-                externalOp.resolvePermutationFactors(rule, rewriter,
+-                                                     state.symbolTable)) {
+-          if (failed(*res)) {
+-            signalPassFailure();
+-          }
+-          return;
+-        }
+-      }
+-
+       // Dispatch to HALO exchange if enabled and implemented for the op.
+       if (enableHaloExchange) {
+         if (auto sliceOp = dyn_cast<stablehlo::SliceOp>(op);
