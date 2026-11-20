@@ -317,6 +317,7 @@ tf_py_strict_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:lookup_ops",
         "//tensorflow/python/ops:string_ops",

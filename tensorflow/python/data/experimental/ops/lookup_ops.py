@@ -15,9 +15,12 @@
 """Lookup operations."""
 
 from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -49,6 +52,41 @@ def _check_table_initializer_element_spec(element_spec):
     raise ValueError(
         base_error + "However, the given dataset produces "
         f"non-scalar value Tensors of rank {element_spec[1].shape.rank}.")
+
+
+def _check_vocab_size_against_cardinality(dataset, vocab_size):
+  """Validates `vocab_size` against `dataset`'s known finite cardinality."""
+  dataset_cardinality = dataset.cardinality()
+  if context.executing_eagerly():
+    if isinstance(vocab_size, tensor.Tensor) and vocab_size.shape.rank != 0:
+      return None
+    card_val = int(dataset_cardinality)
+    vocab_val = int(vocab_size)
+    if card_val >= 0 and vocab_val > card_val:
+      expected_str = f"{vocab_val} element" + ("" if vocab_val == 1 else "s")
+      actual_str = f"{card_val} element" + ("" if card_val == 1 else "s")
+      raise errors.FailedPreconditionError(
+          None,
+          None,
+          f"Input dataset was expected to contain {expected_str} "
+          f"but contained only {actual_str}.",
+      )
+    return None
+  vocab_size_tensor = ops.convert_to_tensor(vocab_size, dtype=dtypes.int64)
+  is_valid = math_ops.logical_or(
+      math_ops.less(dataset_cardinality, 0),
+      math_ops.less_equal(vocab_size_tensor, dataset_cardinality),
+  )
+  return control_flow_assert.Assert(
+      is_valid,
+      [
+          "Input dataset was expected to contain",
+          vocab_size_tensor,
+          "elements but contained only",
+          dataset_cardinality,
+          "elements.",
+      ],
+  )
 
 
 @tf_export("data.experimental.DatasetInitializer")
@@ -172,7 +210,19 @@ def table_from_dataset(dataset=None,
   if vocab_size is not None:
     if isinstance(vocab_size, tensor.Tensor):
       vocab_size = math_ops.cast(vocab_size, dtypes.int64)
-    dataset = dataset.take(vocab_size)
+    elif vocab_size > dtypes.int64.max:
+      raise ValueError(
+          f"`vocab_size` must not exceed {dtypes.int64.max}, "
+          f"got {vocab_size}."
+      )
+    cardinality_check = _check_vocab_size_against_cardinality(
+        dataset, vocab_size
+    )
+    if cardinality_check is not None:
+      with ops.control_dependencies([cardinality_check]):
+        dataset = dataset.take(vocab_size)
+    else:
+      dataset = dataset.take(vocab_size)
     dataset = dataset.apply(assert_cardinality(vocab_size))
   with ops.name_scope(name, "string_to_index"):
     initializer = DatasetInitializer(dataset)

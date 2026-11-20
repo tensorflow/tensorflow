@@ -326,9 +326,12 @@ py_library(
     strict_deps = True,
     deps = [
         ":cardinality",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:control_flow_assert",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/ops:lookup_ops",
         "//tensorflow/python/ops:math_ops",
