@@ -7613,9 +7613,10 @@ ENTRY main {
 }
 )hlo";
 
-  // 1 KiB pages: `hbm_a` and `hbm_b` (600B each, live together) split across
-  // two Color(0) pages, while `vmem_big` (1600B > 1024B) is in Color(1) and
-  // must neither fail the page size check nor drop custom buffer ordering.
+  // 1 KiB pages: `hbm_a` and `hbm_b` (600B each, live together) split
+  // across two Color(0) pages, while `vmem_big` (1600B > 1024B) is in
+  // Color(1) and must neither fail the page size check nor drop custom
+  // buffer ordering.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
   module->mutable_config().set_page_size_kib(1);
@@ -7664,6 +7665,188 @@ ENTRY main {
       assignment->GetUniqueTopLevelSlice(
           module->entry_computation()->GetInstructionWithName("vmem_second")));
   EXPECT_EQ(vmem_second_slice.offset(), 0);
+}
+
+TEST_F(BufferAssignmentTest, MultiPageCombineTempAllocationsRespectsPageSize) {
+  Shape f32vec700 = ShapeUtil::MakeShape(F32, {700});  // 2800 bytes
+  Shape f32vec100 = ShapeUtil::MakeShape(F32, {100});  // 400 bytes
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec700, "p0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100, "p1"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec700, HloOpcode::kNegate, param0));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100, HloOpcode::kExp, param1));
+  // `a` (2800 bytes, page 0) and `b` (400 bytes, page 1) live concurrently and
+  // cannot fit in a single 3 KiB (3072 byte) page. `tup` (16 bytes, default
+  // page_id=0) does not fit in page 0 (2800 + 16 > 3072 when aligned to 512),
+  // so CombineTempAllocations packs `tup` into page 1 at disjoint offset 512
+  // (total size 528 <= 3072) without allocating a third page.
+  auto tup = builder.AddInstruction(HloInstruction::CreateTuple({a, b}));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec700, tup, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec100, tup, 1));
+  auto slice0 = builder.AddInstruction(
+      HloInstruction::CreateSlice(f32vec4_, gte0, {0}, {4}, {1}));
+  auto slice1 = builder.AddInstruction(
+      HloInstruction::CreateSlice(f32vec4_, gte1, {0}, {4}, {1}));
+  auto out = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, slice0, slice1));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  module->mutable_config().set_page_size_kib(3);  // 3072 bytes
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param0, param1, a, b, tup, gte0, gte1,
+                                      slice0, slice1, out});
+  CHECK_OK(module->set_schedule(std::move(schedule)));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = BufferAssigner::DefaultColorer();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 512; }, std::move(opts)));
+
+  std::vector<std::pair<int64_t, int64_t>> pages_and_sizes;
+  for (const BufferAllocation& alloc : buffers->Allocations()) {
+    if (alloc.IsPreallocatedTempBuffer()) {
+      EXPECT_LE(alloc.size(), 3 * 1024);
+      pages_and_sizes.push_back({alloc.page_id(), alloc.size()});
+    }
+  }
+  EXPECT_THAT(pages_and_sizes,
+              UnorderedElementsAre(Pair(0, 2800), Pair(1, 528)));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice tup_slice,
+                       buffers->GetUniqueTopLevelSlice(tup));
+  EXPECT_EQ(tup_slice.allocation()->page_id(), 1);
+  EXPECT_EQ(tup_slice.offset(), 512);
+}
+
+TEST_F(BufferAssignmentTest,
+       MultiPageCombineTempAllocationsSplitsWhenNoExistingPageFits) {
+  Shape f32vec700 = ShapeUtil::MakeShape(F32, {700});  // 2800 bytes
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec700, "p"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec700, HloOpcode::kNegate, param0));
+  // Only page 0 (2800 bytes) exists from the heap simulator. With alignment=512
+  // and page_size=3072, `tup` (16 bytes) cannot fit in page 0 (3072 + 16 >
+  // 3072), so it is assigned a new page_id (1).
+  auto tup = builder.AddInstruction(HloInstruction::CreateTuple({a, param0}));
+  auto gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec700, tup, 0));
+  auto out = builder.AddInstruction(
+      HloInstruction::CreateSlice(f32vec4_, gte, {0}, {4}, {1}));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  module->mutable_config().set_page_size_kib(3);  // 3072 bytes
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param0, a, tup, gte, out});
+  CHECK_OK(module->set_schedule(std::move(schedule)));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = BufferAssigner::DefaultColorer();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 512; }, std::move(opts)));
+
+  std::vector<std::pair<int64_t, int64_t>> pages_and_sizes;
+  for (const BufferAllocation& alloc : buffers->Allocations()) {
+    if (alloc.IsPreallocatedTempBuffer()) {
+      EXPECT_LE(alloc.size(), 3 * 1024);
+      pages_and_sizes.push_back({alloc.page_id(), alloc.size()});
+    }
+  }
+  EXPECT_THAT(pages_and_sizes,
+              UnorderedElementsAre(Pair(0, 2800), Pair(1, 16)));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice tup_slice,
+                       buffers->GetUniqueTopLevelSlice(tup));
+  EXPECT_EQ(tup_slice.allocation()->page_id(), 1);
+  EXPECT_EQ(tup_slice.offset(), 0);
+}
+
+TEST_F(BufferAssignmentTest,
+       MultiPageCombineTempAllocationsAssignsUniquePageIdForFixedOffset) {
+  Shape f32vec700 = ShapeUtil::MakeShape(F32, {700});  // 2800 bytes
+  Shape f32vec100 = ShapeUtil::MakeShape(F32, {100});  // 400 bytes
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec700, "p0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100, "p1"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec700, HloOpcode::kNegate, param0));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100, HloOpcode::kExp, param1));
+  auto slice0 = builder.AddInstruction(
+      HloInstruction::CreateSlice(f32vec4_, a, {0}, {4}, {1}));
+  auto slice1 = builder.AddInstruction(
+      HloInstruction::CreateSlice(f32vec4_, b, {0}, {4}, {1}));
+  auto out = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, slice0, slice1));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  module->mutable_config().set_page_size_kib(3);  // 3072 bytes
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {param0, param1, a, b, slice0, slice1, out});
+  CHECK_OK(module->set_schedule(std::move(schedule)));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = BufferAssigner::DefaultColorer();
+  // `b` requires fixed offset 512, so it bypasses the heap simulator with
+  // default page_id 0 and must not keep page_id 0 alongside `a`.
+  opts.fixed_offset = [b](const HloAliasAnalysis&, const HloInstruction* inst,
+                          const ShapeIndex& index) -> std::optional<int64_t> {
+    if (inst == b && index.empty()) {
+      return 512;
+    }
+    return std::nullopt;
+  };
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 512; }, std::move(opts)));
+
+  std::vector<std::pair<int64_t, int64_t>> pages_and_sizes;
+  for (const BufferAllocation& alloc : buffers->Allocations()) {
+    if (alloc.IsPreallocatedTempBuffer()) {
+      EXPECT_LE(alloc.size(), 3 * 1024);
+      pages_and_sizes.push_back({alloc.page_id(), alloc.size()});
+    }
+  }
+  EXPECT_THAT(pages_and_sizes,
+              UnorderedElementsAre(Pair(0, 2800), Pair(1, 912)));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       buffers->GetUniqueTopLevelSlice(b));
+  EXPECT_EQ(b_slice.allocation()->page_id(), 1);
+  EXPECT_EQ(b_slice.offset(), 512);
 }
 
 // Verifies that BufferAssignment builds successfully when using a dependency
