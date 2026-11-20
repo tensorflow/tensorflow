@@ -210,6 +210,7 @@ def cc_ir_header(name, src, deps = [], copts = [], x86_64_copts = [], **kwargs):
     # Prefix features with '-'
     features = ["-" + f for f in disabled_features] + kwargs.pop("features", [])
     features.append("cfi_opt_out")
+    features.append("kcfi_opt_out")
 
     cc_library(
         name = lib_name,
