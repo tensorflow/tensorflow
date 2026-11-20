@@ -15,6 +15,7 @@
 
 # XLA Ops for TPUs
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -85,7 +86,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu/kernels:cross_replica_ops",
         "@com_google_absl//absl/status",
@@ -101,4 +101,23 @@ cc_library(
         "@xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "infeed_op_test",
+    srcs = ["infeed_op_test.cc"],
+    deps = [
+        ":xla_ops",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:errors",
+    ],
 )

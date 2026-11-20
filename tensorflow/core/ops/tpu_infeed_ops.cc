@@ -13,9 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -55,6 +62,11 @@ REGISTER_OP("InfeedDequeueTuple")
     .SetShapeFn([](InferenceContext* c) {
       std::vector<PartialTensorShape> shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      if (shapes.size() != static_cast<size_t>(c->num_outputs())) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "The length of shapes (", shapes.size(),
+            ") must match the length of dtypes (", c->num_outputs(), ")."));
+      }
       for (int i = 0; i < shapes.size(); ++i) {
         ShapeHandle out;
         TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));
