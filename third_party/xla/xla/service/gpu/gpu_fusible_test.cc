@@ -1766,16 +1766,21 @@ TEST_F(GpuFusibleTest, ComputeLoopFusionConfigSmallInputs) {
 HloModule m
 
 ENTRY main {
-  s8_neg = s8[2048] negate(s8[2048] parameter(0))
-  f16_neg = f16[2048] negate(f16[2048] parameter(1))
-  f32_neg = f32[2048] negate(f32[2048] parameter(2))
-  ROOT t = (s8[2048], f16[2048], f32[2048]) tuple(s8_neg, f16_neg, f32_neg)
+  s8_tiny = s8[128] negate(s8[128] parameter(0))
+  s32_single_block = s32[296] negate(s32[296] parameter(1))
+  s8_neg = s8[2048] negate(s8[2048] parameter(2))
+  f16_neg = f16[2048] negate(f16[2048] parameter(3))
+  f32_neg = f32[2048] negate(f32[2048] parameter(4))
+  ROOT t = (s8[128], s32[296], s8[2048], f16[2048], f32[2048])
+      tuple(s8_tiny, s32_single_block, s8_neg, f16_neg, f32_neg)
 }
 )"));
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  const HloInstruction& s8_op = *root->operand(0);
-  const HloInstruction& f16_op = *root->operand(1);
-  const HloInstruction& f32_op = *root->operand(2);
+  const HloInstruction& s8_tiny = *root->operand(0);
+  const HloInstruction& s32_single_block = *root->operand(1);
+  const HloInstruction& s8_op = *root->operand(2);
+  const HloInstruction& f16_op = *root->operand(3);
+  const HloInstruction& f32_op = *root->operand(4);
   se::DeviceDescription b200 = B200WithCUDA129();
   se::DeviceDescription h100 = TestGpuDeviceInfo::H100SXMDeviceInfo();
 
@@ -1785,9 +1790,20 @@ ENTRY main {
   EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f32_op, b200)),
             1);
 
+  // Already fits in 1 block (128 threads) without unrolling.
+  EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(s8_tiny, b200),
+                                    /*unroll_small_inputs=*/true),
+            1);
+  // Needs 4x unrolling (74 threads) to fit in 1 block; stops at 4 instead of 8.
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(HloFusionAnalysis::Create(s32_single_block, b200),
+                              /*unroll_small_inputs=*/true),
+      4);
+  // Needs 16x unrolling (128 threads) to fit in 1 block; stops at 16 instead
+  // of 32.
   EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(s8_op, b200),
                                     /*unroll_small_inputs=*/true),
-            32);
+            16);
   EXPECT_EQ(ComputeLoopFusionConfig(HloFusionAnalysis::Create(f16_op, b200),
                                     /*unroll_small_inputs=*/true),
             16);

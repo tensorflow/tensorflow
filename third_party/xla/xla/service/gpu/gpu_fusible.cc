@@ -1114,18 +1114,30 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
   // thread has to produce multiple output elements.
-  // Therefore for fusions with small outputs prefer to use one thread
-  // per output element = no unroll, unless `unroll_small_inputs` opts in
-  // (e.g. for block specialized fusions where packing more work per thread
-  // reduces block count).
-  // Call 'small' fusions that use less threads than the GPU has.
+  // Fusions are called 'small' here when they use fewer threads than the GPU
+  // has (i.e. number of SMs * threads per SM):
+  // * If `unroll_small_inputs` is false, small fusions use one thread per
+  //   output element (i.e. no unroll).
+  // * If `unroll_small_inputs` is true, small fusions are unrolled. This allows
+  //   thread block specialized kernels to fit more work into a thread block (or
+  //   thread block cluster). However, once a fusion fits into a single GPU
+  //   thread block, it is not unrolled any further. Doing so would increase
+  //   register pressure for no additional gains.
   int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
   if (!MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    if ((unroll_small_inputs && num_elements > 0) ||
-        num_elements >= n_threads_max) {
+    if (num_elements >= n_threads_max) {
       unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
+    } else if (unroll_small_inputs) {
+      uint64_t num_blocks =
+          CalculateLaunchDimensions(element_shape, analysis.device_info())
+              .num_blocks();
+      if (num_blocks > 1) {
+        int64_t max_unroll = std::min<int64_t>(MaxUnrollFactor(&analysis),
+                                               absl::bit_ceil(num_blocks));
+        unroll_factor = std::gcd(num_elements, max_unroll);
+      }
     } else {
       int64_t max_reduce_input_elements =
           GetMaxReduceInputElements(analysis.fusion()).value_or(0);

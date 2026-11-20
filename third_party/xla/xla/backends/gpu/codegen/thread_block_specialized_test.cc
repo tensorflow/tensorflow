@@ -1637,9 +1637,9 @@ TEST_F(ThreadBlockSpecializedFusionTest,
   // Without small-input vectorization (`A100SXMDeviceInfo`), `s8[1024]` uses 8
   // blocks x 128 threads (`unroll_factor = 1`). On Hopper
   // (`H100SXMDeviceInfo`), 4x unrolling shrinks it to a 2-block cluster with
-  // `vector<4xi8>` accesses; on Blackwell (`B200SXMDeviceInfo`), 16x unrolling
-  // shrinks it to a single 64-thread block
-  // (`launch_dimensions().cluster_dims() == nullopt`) with `vector<16xi8>`
+  // `vector<4xi8>` accesses; on Blackwell (`B200SXMDeviceInfo`), 8x unrolling
+  // shrinks it to a single 128-thread block
+  // (`launch_dimensions().cluster_dims() == nullopt`) with `vector<8xi8>`
   // accesses synchronized by a block barrier.
   constexpr absl::string_view kPhasedHlo = R"hlo(
 phase_0 { ROOT neg = s8[1024] negate(s8[1024] parameter(0)) }
@@ -1713,7 +1713,7 @@ ENTRY main {
   ThreadBlockSpecializedFusion b200_emitter(
       HloFusionAnalysis::Create(*fusion, b200));
   EXPECT_EQ(b200_emitter.launch_dimensions().num_blocks(), 1);
-  EXPECT_EQ(b200_emitter.launch_dimensions().num_threads_per_block(), 64);
+  EXPECT_EQ(b200_emitter.launch_dimensions().num_threads_per_block(), 128);
   EXPECT_EQ(b200_emitter.launch_dimensions().cluster_dims(), std::nullopt);
   ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> b200_mlir_module,
@@ -1730,9 +1730,9 @@ ENTRY main {
     // CHECK:         nvvm.barrier
     // CHECK:         llvm.call @fusion_nested_1(
     // CHECK-LABEL: llvm.func internal @fusion_nested_0(
-    // CHECK:         vector<16xi8>
+    // CHECK:         vector<8xi8>
     // CHECK-LABEL: llvm.func internal @fusion_nested_1(
-    // CHECK:         vector<16xi8>
+    // CHECK:         vector<8xi8>
   )"));
   EXPECT_TRUE(b200_check) << b200_mlir_str;
 
