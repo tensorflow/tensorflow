@@ -41,7 +41,7 @@ namespace sql {
 // `SqlDatasetOp::Dataset::Iterator`.
 class QueryConnection {
  public:
-  virtual ~QueryConnection() {}
+  virtual ~QueryConnection() = default;
   // Opens a connection to the database named by `data_source_name`. Prepares to
   // execute `query` against the database.
   //
