@@ -51,4 +51,8 @@ cc_library(
         "include",
         "tools/util/include",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )

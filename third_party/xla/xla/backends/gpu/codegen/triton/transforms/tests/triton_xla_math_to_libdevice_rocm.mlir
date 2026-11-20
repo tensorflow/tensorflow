@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: xla-opt %s -split-input-file -triton-xla-math-to-libdevice=' \
-// RUN: libdevice_path=/path/to/libdevice triple=amdgcn-amd-amdhsa' \
+// RUN: xla-opt %s -split-input-file \
+// RUN:   -triton-xla-math-to-libdevice='triple=amdgcn-amd-amdhsa' \
 // RUN: | FileCheck %s
 
 // -----
@@ -25,7 +25,7 @@ func.func @cos(%arg0: tensor<1024xf32>) -> tensor<1024xf32> {
 }
 
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_cos_f32"}
 
 // -----
@@ -38,7 +38,7 @@ func.func @cos_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
 
 // CHECK-NOT:   arith.extf
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_cos_f16"}
 // CHECK-NOT:   arith.truncf
 
@@ -52,7 +52,7 @@ func.func @roundeven_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
 
 // CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xf16> to tensor<1024xf32>
 // CHECK:       tt.extern_elementwise %[[CAST]]
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_rint_f32"}
 // CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xf16>
 
@@ -66,7 +66,7 @@ func.func @exp_bf16(%arg0: tensor<1024xbf16>) -> tensor<1024xbf16> {
 
 // CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xbf16> to tensor<1024xf32>
 // CHECK:       tt.extern_elementwise %[[CAST]]
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_exp_f32"}
 // CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xbf16>
 
@@ -80,7 +80,7 @@ func.func @exp_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
 
 // CHECK-NOT:   arith.extf
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_exp_f16"}
 // CHECK-NOT:   arith.truncf
 
@@ -92,7 +92,7 @@ func.func @atan(%arg0: tensor<1024xf32>) -> tensor<1024xf32> {
 }
 
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_atan_f32"}
 
 // -----
@@ -104,7 +104,7 @@ func.func @atan_f16(%arg0: tensor<1024xf16>) -> tensor<1024xf16> {
 
 // CHECK-NOT:   arith.extf
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_atan_f16"}
 // CHECK-NOT:   arith.truncf
 
@@ -117,7 +117,7 @@ func.func @atan_bf16(%arg0: tensor<1024xbf16>) -> tensor<1024xbf16> {
 
 // CHECK:       %[[CAST:.*]] = arith.extf %arg0 : tensor<1024xbf16> to tensor<1024xf32>
 // CHECK:       tt.extern_elementwise %[[CAST]]
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_atan_f32"}
 // CHECK:       arith.truncf {{.*}} : tensor<1024xf32> to tensor<1024xbf16>
 
@@ -129,6 +129,6 @@ func.func @atan_f64(%arg0: tensor<1024xf64>) -> tensor<1024xf64> {
 }
 
 // CHECK:       tt.extern_elementwise %arg0
-// CHECK-SAME:    {libname = "libdevice", libpath = "/path/to/libdevice",
+// CHECK-SAME:    {libname = "libdevice", libpath = "",
 // CHECK-SAME:    pure = true, symbol = "__ocml_atan_f64"}
 

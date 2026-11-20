@@ -1037,6 +1037,10 @@ tsl_cc_test(
 cc_library(
     name = "cuda_root_path",
     compatible_with = get_compatible_with_portable(),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = ["cuda_root_path.h"],
     deps = tf_cuda_root_path_deps(),
 )

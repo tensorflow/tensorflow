@@ -1154,7 +1154,11 @@ cc_library(
         "ptx_compiler.h",
         "ptx_compiler_impl.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":compilation_provider",
         ":cuda_compute_capability",
@@ -1220,6 +1224,7 @@ xla_cc_test(
     srcs = ["ptx_compiler_test.cc"],
     tags = [
         "cuda-only",
+        "gpu",
         "nomsan",
     ],
     deps = [
@@ -2466,6 +2471,10 @@ cc_library(
         ),
     ),
     local_defines = if_windows(["PLATFORM_WINDOWS"]),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         ":friends",
@@ -2564,6 +2573,10 @@ xla_cc_test(
         ":nvlink",
         ":ptxas",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":subprocess_compilation",
         "//xla/stream_executor:semantic_version",
@@ -2658,6 +2671,10 @@ cc_library(
     name = "subprocess_compilation_provider",
     srcs = ["subprocess_compilation_provider.cc"],
     hdrs = ["subprocess_compilation_provider.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":compilation_options",
         ":compilation_provider",
@@ -2683,6 +2700,10 @@ cc_library(
 xla_cc_test(
     name = "subprocess_compilation_provider_test",
     srcs = ["subprocess_compilation_provider_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":compilation_options",
         ":cuda_compute_capability",
