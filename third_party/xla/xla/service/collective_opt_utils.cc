@@ -314,7 +314,7 @@ std::optional<int64_t> EvaluateOffset(
     if (!lower || !upper) {
       return std::nullopt;
     }
-    return std::max(*lower, std::min(*inner, *upper));
+    return std::min(*upper, std::max(*inner, *lower));
   }
 
   if (expr->opcode() == HloOpcode::kSubtract) {

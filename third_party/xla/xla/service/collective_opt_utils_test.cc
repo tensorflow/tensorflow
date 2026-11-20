@@ -822,6 +822,30 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, TableIndexOutOfBounds) {
   EXPECT_FALSE(indices_spec.has_value());
 }
 
+using EvaluateOffsetClampOrderTest = HloHardwareIndependentTestBase;
+
+TEST_F(EvaluateOffsetClampOrderTest, InvertedClampBoundsFollowHloOrder) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule test
+    ENTRY main {
+      param = f32[1] parameter(0)
+      ag = f32[2] all-gather(param), dimensions={0}, replica_groups={{0,1}}
+      rid = s32[] convert(u32[] replica-id())
+      clamp = s32[] clamp(s32[] constant(0), rid, s32[] constant(-1))
+      offset = s32[] subtract(rid, clamp)
+      ROOT ds = f32[1] dynamic-slice(ag, offset), dynamic_slice_sizes={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloString, /*replica_count=*/2));
+  const auto* ag = Cast<HloAllGatherInstruction>(
+      module->entry_computation()->GetInstructionWithName("ag"));
+  EXPECT_FALSE(AllGatherDynamicSliceCancellation(ag, /*num_partitions=*/1,
+                                                 /*num_replicas=*/2)
+                   .has_value());
+}
+
 class MatchPermutedSliceAndPartitionOffsetTest
     : public HloHardwareIndependentTestBase {};
 
