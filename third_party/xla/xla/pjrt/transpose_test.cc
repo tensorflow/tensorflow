@@ -47,7 +47,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "hwy/targets.h"
 #include "xla/array.h"
 #include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"
@@ -73,172 +72,6 @@ namespace xla {
 template <typename T, int bs>
 constexpr int BenchmarkOuterBlockSize() {
   return std::max<int>(1, kMaxOuterBlockSizeBytes / (bs * sizeof(T)));
-}
-
-// Checks that `kernel(a, lda, b, ldb)` transposes an n x n matrix of T, where
-// n = outer_bs * bs.
-template <typename T, int bs, typename Kernel>
-void CheckTransposeKernel(int outer_bs, Kernel kernel) {
-  // Test both tightly-packed rows (0 padding) and rows with 64 bytes of
-  // padding (which exercises wide-stride / rectangular kernels).
-  static_assert(64 % sizeof(T) == 0);
-  const int n = outer_bs * bs;
-
-  for (int input_stride : {n, n + static_cast<int>(64 / sizeof(T))}) {
-    for (int output_stride : {n, n + static_cast<int>(64 / sizeof(T))}) {
-      std::vector<T> input(n * input_stride);
-      std::vector<T> expected_output(n * output_stride);
-      std::vector<T> actual_output(n * output_stride);
-
-      // Initialize input
-      for (int i = 0; i < n * input_stride; ++i) {
-        input[i] = static_cast<T>(static_cast<float>(i % 100));
-      }
-
-      // Compute reference
-      for (int row = 0; row < n; ++row) {
-        for (int col = 0; col < n; ++col) {
-          expected_output[col * output_stride + row] =
-              input[row * input_stride + col];
-        }
-      }
-
-      const int64_t lda = input_stride * sizeof(T);
-      const int64_t ldb = output_stride * sizeof(T);
-      kernel(reinterpret_cast<const char*>(input.data()), lda,
-             reinterpret_cast<char*>(actual_output.data()), ldb);
-
-      EXPECT_EQ(
-          0, std::memcmp(expected_output.data(), actual_output.data(), n * ldb))
-          << "Mismatch for sizeof(T)=" << sizeof(T) << " bs=" << bs
-          << " outer_bs=" << outer_bs << " lda=" << lda << " ldb=" << ldb;
-    }
-  }
-}
-
-template <typename T, int bs>
-void TestMicroKernelEquivalence() {
-  CheckTransposeKernel<T, bs>(
-      /*outer_bs=*/1, [](const char* a, int64_t lda, char* b, int64_t ldb) {
-        TransposeMicroKernelDispatch<T, bs>(a, lda, b, ldb);
-      });
-}
-
-template <typename T, int bs>
-void TestMacroKernelEquivalence() {
-  constexpr int kOuterBs = BenchmarkOuterBlockSize<T, bs>();
-  CheckTransposeKernel<T, bs>(
-      kOuterBs, [](const char* a, int64_t lda, char* b, int64_t ldb) {
-        TransposeMacroKernelDispatch<T, bs>(a, lda, kOuterBs, b, ldb, kOuterBs);
-      });
-}
-
-TEST(TransposeMicroKernelTest, ExactEquivalence) {
-  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
-    hwy::SetSupportedTargetsForTest(target);
-
-    // TransposeMicroKernel256Square is triggered when a logical row of the tile
-    // (bs * sizeof(T)) is 256 bits (32 bytes).
-    TestMicroKernelEquivalence<int8_t, 32>();
-    TestMicroKernelEquivalence<int16_t, 16>();
-    TestMicroKernelEquivalence<float, 8>();
-    TestMicroKernelEquivalence<int64_t, 4>();
-    TestMicroKernelEquivalence<absl::uint128, 2>();
-
-    // TransposeMicroKernel128 or TransposeMicroKernel256Rect is triggered when
-    // a logical row of the tile (bs * sizeof(T)) is 128 bits (16 bytes).
-    // TransposeMicroKernel128 operates on 128-bit blocks when gathering from
-    // memory (lda >= ldb && lda <= 64B) while TransposeMicroKernel256Rect packs
-    // two rows into 256-bit vectors when scattering to memory (ldb > lda) or
-    // for large strides.
-    TestMicroKernelEquivalence<int8_t, 16>();
-    TestMicroKernelEquivalence<int16_t, 8>();
-    TestMicroKernelEquivalence<bfloat16, 8>();
-    TestMicroKernelEquivalence<float, 4>();
-    TestMicroKernelEquivalence<int64_t, 2>();
-
-    // Smaller or larger cases fall back to TransposeMicroKernel128 or scalar
-    // loop.
-    TestMicroKernelEquivalence<int8_t, 8>();
-    TestMicroKernelEquivalence<int16_t, 4>();
-    TestMicroKernelEquivalence<bfloat16, 4>();
-    TestMicroKernelEquivalence<float, 2>();
-    TestMicroKernelEquivalence<int8_t, 4>();
-    TestMicroKernelEquivalence<int16_t, 2>();
-    TestMicroKernelEquivalence<int8_t, 2>();
-    TestMicroKernelEquivalence<int8_t, 64>();
-  }
-  hwy::SetSupportedTargetsForTest(0);
-}
-
-// Same tile shapes as above, but transposing a macroblock of
-// BenchmarkOuterBlockSize() x BenchmarkOuterBlockSize() tiles.
-TEST(TransposeMacroKernelTest, ExactEquivalence) {
-  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
-    hwy::SetSupportedTargetsForTest(target);
-
-    TestMacroKernelEquivalence<int8_t, 32>();
-    TestMacroKernelEquivalence<int16_t, 16>();
-    TestMacroKernelEquivalence<float, 8>();
-    TestMacroKernelEquivalence<int64_t, 4>();
-    TestMacroKernelEquivalence<absl::uint128, 2>();
-
-    TestMacroKernelEquivalence<int8_t, 16>();
-    TestMacroKernelEquivalence<int16_t, 8>();
-    TestMacroKernelEquivalence<bfloat16, 8>();
-    TestMacroKernelEquivalence<float, 4>();
-    TestMacroKernelEquivalence<int64_t, 2>();
-
-    TestMacroKernelEquivalence<int8_t, 8>();
-    TestMacroKernelEquivalence<int16_t, 4>();
-    TestMacroKernelEquivalence<bfloat16, 4>();
-    TestMacroKernelEquivalence<float, 2>();
-    TestMacroKernelEquivalence<int8_t, 4>();
-    TestMacroKernelEquivalence<int16_t, 2>();
-    TestMacroKernelEquivalence<int8_t, 2>();
-    TestMacroKernelEquivalence<int8_t, 64>();
-  }
-  hwy::SetSupportedTargetsForTest(0);
-}
-
-TEST(TransposeMacroKernelTest, InitializesHighwayTargetEagerly) {
-  // Guard against returning Highway's lazy-init ChooseAndCall trampoline when
-  // `HWY_DYNAMIC_POINTER_T` is queried before any Highway dispatch has run (or
-  // after `DeInit()`). Because `TransposePlan` caches the returned function
-  // pointer in `chunk_ops_`, storing the trampoline causes every subsequent
-  // execution to re-run CPUID target detection.
-  hwy::GetChosenTarget().DeInit();
-  ASSERT_FALSE(hwy::GetChosenTarget().IsInitialized());
-  const TransposeOp::Fn transpose_fn =
-      GetTransposeMacroKernelOp<sizeof(uint16_t) | (8 << 16)>();
-  EXPECT_TRUE(hwy::GetChosenTarget().IsInitialized());
-  EXPECT_EQ(transpose_fn,
-            (GetTransposeMacroKernelOp<sizeof(uint16_t) | (8 << 16)>()));
-
-  hwy::GetChosenTarget().DeInit();
-  ASSERT_FALSE(hwy::GetChosenTarget().IsInitialized());
-  const TransposeOp::Fn pack_fn = GetPackSubbyteOp<4>();
-  EXPECT_TRUE(hwy::GetChosenTarget().IsInitialized());
-  EXPECT_EQ(pack_fn, GetPackSubbyteOp<4>());
-
-  // Also verify that calling the returned pointer does not change what a
-  // subsequent lookup returns (i.e. it was not the ChooseAndCall trampoline).
-  hwy::GetChosenTarget().DeInit();
-  const TransposeOp::Fn fn_before_call =
-      GetTransposeMacroKernelOp<sizeof(uint32_t) | (4 << 16)>();
-  alignas(64) std::array<uint32_t, 16> src{};
-  alignas(64) std::array<uint32_t, 16> dst{};
-  TransposeOp op;
-  op.count = 1;
-  op.lda = 4 * sizeof(uint32_t);
-  op.ldb = 4 * sizeof(uint32_t);
-  op.a_elems = 4;
-  op.b_elems = 4;
-  fn_before_call(&op, reinterpret_cast<const char*>(src.data()),
-                 reinterpret_cast<char*>(dst.data()), /*scratch=*/nullptr);
-  const TransposeOp::Fn fn_after_call =
-      GetTransposeMacroKernelOp<sizeof(uint32_t) | (4 << 16)>();
-  EXPECT_EQ(fn_before_call, fn_after_call);
 }
 
 class TestTransposePlan : public TransposePlan {
@@ -1565,6 +1398,16 @@ static void* small_dim_benchmarks = []() {
   cases.push_back(
       {"CHW_3x256x4_interleave", TransposeTestCase(/*dims=*/{3, 256, 4},
                                                    /*permutation=*/{1, 2, 0})});
+  // Uncoalesced short rows (outer loop over 4096 slices).
+  cases.push_back({"Short_4096x8x4_deinterleave",
+                   TransposeTestCase(/*dims=*/{4096, 8, 4},
+                                     /*permutation=*/{0, 2, 1})});
+  cases.push_back({"Short_4096x12x3_deinterleave",
+                   TransposeTestCase(/*dims=*/{4096, 12, 3},
+                                     /*permutation=*/{0, 2, 1})});
+  cases.push_back({"Short_4096x24x4_deinterleave",
+                   TransposeTestCase(/*dims=*/{4096, 24, 4},
+                                     /*permutation=*/{0, 2, 1})});
   for (const auto& [type_name, fn] : variants) {
     for (const auto& [suffix, testcase] : cases) {
       const std::string name =
@@ -2273,8 +2116,18 @@ TEST(TransposeTest, InterleaveAndDeinterleaveSelection) {
       {{8, 6}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
       {{8, 7}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(7)"},
       {{8, 7}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
-      {{8, 4}, {1, 0}, 1, {}, {}, {}, "inner_kernel=default"},
-      {{8, 4}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
+      {{8, 4}, {1, 0}, 1, {}, {}, {}, "inner_kernel=deinterleave(4)"},
+      {{8, 4}, {1, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(4)"},
+      {{8, 4}, {1, 0}, 4, {}, {}, {}, "inner_kernel=deinterleave(4)"},
+      {{8, 4}, {1, 0}, 8, {}, {}, {}, "inner_kernel=deinterleave(4)"},
+      {{8, 4}, {1, 0}, 16, {}, {}, {}, "inner_kernel=default"},
+      {{8, (int64_t{1} << 32) + 3},
+       {1, 0},
+       1,
+       {},
+       {},
+       {},
+       "inner_kernel=default"},
       {{16, 8}, {1, 0}, 4, {}, {}, {}, "inner_kernel=default"},
       {{2, 3, 8}, {2, 0, 1}, 4, {}, {}, {}, "inner_kernel=interleave(6)"},
       {{8, 2, 3}, {1, 2, 0}, 2, {}, {}, {}, "inner_kernel=deinterleave(6)"},

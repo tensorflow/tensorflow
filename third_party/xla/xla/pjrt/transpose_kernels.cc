@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "xla/pjrt/transpose_kernels_internal.h"
 
 // clang-format off
 #undef HWY_TARGET_INCLUDE
@@ -594,18 +595,6 @@ HWY_FLATTEN void TransposeMacroKernel(const char* HWY_RESTRICT a, int64_t lda,
   }
 }
 
-// Prevents LLVM's loop strength reduction from hoisting `bs` separate row base
-// pointers (`a + r * lda`, `b + r * ldb`) across the outer `k` loop of
-// `OpFullTranspose2DHwy`, which exhausts x86-64 integer registers and spills
-// loop state to the stack. Unlike `hwy::PreventElision`, this has no `"memory"`
-// clobber (so loop-invariant stride multiples are still hoisted) and no MSVC
-// global atomic sink (which would contend across threads).
-#if defined(__GNUC__) || defined(__clang__)
-#define XLA_HIDE_POINTER_FROM_OPTIMIZER(ptr) asm("" : "+r"(ptr))
-#else
-#define XLA_HIDE_POINTER_FROM_OPTIMIZER(ptr) ((void)(ptr))
-#endif
-
 // Transposes `op->count` `[op->b_elems, op->a_elems]` tiles from `a + k*op->da`
 // (row stride `op->lda` bytes) to `[op->a_elems, op->b_elems]` in
 // `b + k*op->db` (row stride `op->ldb` bytes), where both `op->a_elems` and
@@ -645,8 +634,6 @@ HWY_FLATTEN
     b += db;
   }
 }
-
-#undef XLA_HIDE_POINTER_FROM_OPTIMIZER
 
 template <int kBits, class D>
 HWY_INLINE void PackSubbyteLoop(D d8, const uint8_t* HWY_RESTRICT in,
@@ -742,22 +729,13 @@ HWY_AFTER_NAMESPACE();
 
 #if HWY_ONCE
 namespace xla {
-namespace {
 
-// `HWY_DYNAMIC_POINTER_T` reads the dispatch table without initializing
-// Highway's global target cache (`g_chosen_target`). Before the first dispatch
-// in a process (or after `SetSupportedTargetsForTest` / `DeInit`), slot 0 is
-// `hwy::FunctionCache::ChooseAndCall`, which runs CPUID detection on every
-// invocation. Initialize the cache eagerly so callers that save the returned
-// pointer inside a cached `TransposePlan` always store the target function.
 void EnsureHighwayTargetInitialized() {
   hwy::ChosenTarget& chosen_target = hwy::GetChosenTarget();
   if (!chosen_target.IsInitialized()) {
     chosen_target.Update(hwy::SupportedTargets());
   }
 }
-
-}  // namespace
 
 template <int packed>
 TransposeOp::Fn GetTransposeMacroKernelOp() {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_TRANSPOSE_KERNELS_H_
 #define XLA_PJRT_TRANSPOSE_KERNELS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -91,14 +92,38 @@ struct TransposeOp {
 };
 static_assert(sizeof(TransposeOp) == 56);
 
-// Defined in transpose_kernels.cc (where foreach_target.h generates per-target
-// kernels); called once at plan creation time so `op.fn` points directly to the
-// target-specific Highway kernel (`packed` is `sizeof(T) | (bs << 16)`).
+// Defined in transpose_kernels.cc. Called once when building a transpose plan
+// so `op.fn` points directly to the right CPU-specific function (`packed` is
+// `sizeof(T) | (bs << 16)`).
 template <int packed>
 TransposeOp::Fn GetTransposeMacroKernelOp();
 
 template <int kBits>
 TransposeOp::Fn GetPackSubbyteOp();
+
+// Returns whether deinterleaving `k` rows of `elem_size`-byte elements is
+// faster than the default 2D transpose, based on the BM_TransposeSmallDim_*
+// benchmarks in transpose_test.cc across Arm and x86 CPUs:
+// - k = 2, 3, and 4 are vectorized with Highway for 1- to 8-byte elements.
+// - Larger k up to the limits below use a plain loop; beyond those limits
+//   (and for all 16-byte elements), deinterleave is slower on at least one CPU.
+constexpr bool DeinterleaveKernelIsFaster(size_t elem_size, int64_t k) {
+  switch (elem_size) {
+    case 1:
+    case 2:
+      return k >= 2 && k <= 7;
+    case 4:
+      return k >= 2 && k <= 5;
+    case 8:
+      return k >= 2 && k <= 4;
+  }
+  return false;
+}
+
+// Returns the deinterleave function for `k` rows of `elem_size`-byte elements
+// (matching `DeinterleaveKernelIsFaster`), or nullptr if unsupported. Defined
+// in transpose_kernels_interleave.cc.
+TransposeOp::Fn GetDeinterleaveOp(size_t elem_size, int64_t k);
 
 template <typename T, int bs>
 void TransposeMacroKernelDispatch(const char* a, int64_t lda, int outer_bs_a,
@@ -120,10 +145,7 @@ void TransposeMicroKernelDispatch(const char* a, int64_t lda, char* b,
                                       /*outer_bs_b=*/1);
 }
 
-// Kernels for InnerKernelKind::kInterleave and kDeinterleave over `n` elements
-// of each of the K rows. They are written as scalar loops with a compile-time
-// K for clang to vectorize, e.g. with NEON structured loads/stores (ld2/ld3,
-// st2/st3) for K = 2, 3 and shuffles on x86.
+// Plain loop that zips (interleaves) `n` elements across `K` rows.
 template <typename T, int K>
 void InterleaveKernel(const char* __restrict a, int64_t lda, char* __restrict b,
                       int64_t n) {
@@ -132,17 +154,6 @@ void InterleaveKernel(const char* __restrict a, int64_t lda, char* __restrict b,
       std::memcpy(b + k * sizeof(T), a + k * lda + i * sizeof(T), sizeof(T));
     }
     b += K * sizeof(T);
-  }
-}
-
-template <typename T, int K>
-void DeinterleaveKernel(const char* __restrict a, char* __restrict b,
-                        int64_t ldb, int64_t n) {
-  for (int64_t i = 0; i < n; ++i) {
-    for (int k = 0; k < K; ++k) {
-      std::memcpy(b + k * ldb + i * sizeof(T), a + k * sizeof(T), sizeof(T));
-    }
-    a += K * sizeof(T);
   }
 }
 

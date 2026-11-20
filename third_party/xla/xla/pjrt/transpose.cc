@@ -123,35 +123,21 @@ struct uint128 {
 };
 static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
-// Returns whether to use the `kind` interleave kernel for K = `k` and
-// `elem_size`-byte elements.
-//
-// Measured against the default kernel on 2026-10-11 with the
-// BM_TransposeSmallDim_* benchmarks in transpose_test.cc on AMD Milan, Intel
-// Sapphire Rapids and Arm Neoverse V2. K >= 8 was much slower on some of these.
-// K = 4 was faster only for interleave of 1- and 2-byte elements. Deinterleave
-// beyond the per-size K limits was slower on at least one platform. Among the
-// selected cases, the only slowdown was 16-byte interleave at K = 6 and 7 on
-// Sapphire Rapids (up to 6%).
+// Returns whether to use the `kind` interleave/deinterleave kernel for `k` and
+// `elem_size`-byte elements instead of the default 2D transpose, based on the
+// BM_TransposeSmallDim_* benchmarks in transpose_test.cc across Arm and x86
+// CPUs:
+// - k >= 8 is slower on some CPUs.
+// - Interleave: k = 4 is only faster for 1- and 2-byte elements. Among the
+//   selected cases, 16-byte interleave at k = 6 and 7 is up to 6% slower on
+//   some x86 CPUs.
+// - Deinterleave: see `DeinterleaveKernelIsFaster` in transpose_kernels.h.
 constexpr bool InterleaveKernelIsFaster(TransposePlan::InnerKernelKind kind,
                                         int64_t k, int64_t elem_size) {
   if (kind == TransposePlan::InnerKernelKind::kInterleave) {
     return k >= 2 && k < 8 && (k != 4 || elem_size <= 2);
   }
-  int64_t max_k = 0;
-  switch (elem_size) {
-    case 1:
-    case 2:
-      max_k = 7;
-      break;
-    case 4:
-      max_k = 5;
-      break;
-    case 8:
-      max_k = 3;
-      break;
-  }
-  return k >= 2 && k != 4 && k <= max_k;
+  return DeinterleaveKernelIsFaster(elem_size, k);
 }
 
 // Maps a runtime K to a compile-time constant for `fn`, instantiating `fn` only
@@ -318,23 +304,6 @@ void OpInterleave(const TransposeOp* __restrict op, const char* __restrict a,
   }
 }
 
-// Splits `op->count` contiguous runs of `op->b_elems * K` elements of `T` in
-// `a + i*op->da` into `K` rows of `op->b_elems` elements spaced `op->ldb` bytes
-// apart in `b + i*op->db`, computing `b[k][j] = a[K * j + k]`.
-template <typename T, int K>
-ABSL_ATTRIBUTE_FUNC_ALIGN(64)
-void OpDeinterleave(const TransposeOp* __restrict op, const char* __restrict a,
-                    char* __restrict b, char* __restrict /*scratch*/) {
-  const int64_t count = op->count;
-  const int64_t da = op->da;
-  const int64_t db = op->db;
-  const int64_t ldb = op->ldb;
-  const int b_elems = op->b_elems;
-  for (int64_t i = 0; i < count; ++i) {
-    DeinterleaveKernel<T, K>(a + i * da, b + i * db, ldb, b_elems);
-  }
-}
-
 // Copies `op->count` contiguous runs of `op->lda` bytes from `a + i*op->da` to
 // `b + i*op->db`.
 ABSL_ATTRIBUTE_FUNC_ALIGN(64)
@@ -441,7 +410,7 @@ void OpConvertEf57(const TransposeOp* __restrict op, const char* __restrict a,
 //   - `kind = kInterleave, interleave_size = 3`:
 //     - `(64, 3)`  -> `OpInterleave<uint32_t, 3>`
 //   - `kind = kDeinterleave, interleave_size = 3`:
-//     - `(3, 64)`  -> `OpDeinterleave<uint32_t, 3>`
+//     - `(3, 64)`  -> `GetDeinterleaveOp(4, 3)`
 template <typename T>
 TransposeOp::Fn SelectTranspose2DOpTyped(TransposePlan::InnerKernelKind kind,
                                          int inner_block_elems,
@@ -456,10 +425,10 @@ TransposeOp::Fn SelectTranspose2DOpTyped(TransposePlan::InnerKernelKind kind,
   }
   if (kind == TransposePlan::InnerKernelKind::kDeinterleave) {
     DCHECK_EQ(a_elems, interleave_size);
-    return WithInterleaveSize<T, TransposePlan::InnerKernelKind::kDeinterleave>(
-        interleave_size, [](auto const_k) -> TransposeOp::Fn {
-          return &OpDeinterleave<T, const_k>;
-        });
+    TransposeOp::Fn fn = GetDeinterleaveOp(sizeof(T), interleave_size);
+    CHECK(fn != nullptr) << "Unsupported deinterleave kernel: elem_size="
+                         << sizeof(T) << " k=" << interleave_size;
+    return fn;
   }
   DCHECK(kind == TransposePlan::InnerKernelKind::kDefault);
   if (inner_block_elems == 1 || a_elems < inner_block_elems ||
