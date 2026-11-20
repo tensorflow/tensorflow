@@ -1135,12 +1135,21 @@ struct DirectEvalFixture {
     context.ReportError = SilentReportError;
     context.tensors = tensors;
     context.tensors_size = 3;
+    context.ResizeTensor = [](TfLiteContext*, TfLiteTensor*,
+                              TfLiteIntArray* new_size) {
+      TfLiteIntArrayFree(new_size);
+      return kTfLiteOk;
+    };
     node.inputs = node_inputs.get();
     node.outputs = node_outputs.get();
   }
 
   TfLiteStatus Invoke() {
     return ops::builtin::Register_EMBEDDING_LOOKUP()->invoke(&context, &node);
+  }
+
+  TfLiteStatus Prepare() {
+    return ops::builtin::Register_EMBEDDING_LOOKUP()->prepare(&context, &node);
   }
 };
 
@@ -1251,6 +1260,84 @@ TEST(EmbeddingLookupKernelSanitizationTest,
       EXPECT_FLOAT_EQ(output_data[c], -1.0f);
     }
   }
+}
+
+TEST(EmbeddingLookupKernelSanitizationTest,
+     BlockwiseV1PrepareRejectsZeroBlocksize) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({3, 8});
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[1].dims = value_dims.get();
+  f.tensors[1].type = kTfLiteInt4;
+  f.tensors[2].type = kTfLiteFloat32;
+
+  TfLiteBlockwiseQuantization params{};
+  params.scale = 2;
+  params.zero_point = kTfLiteOptionalTensor;
+  params.quantized_dimension = 0;
+  f.tensors[1].quantization.type = kTfLiteBlockwiseQuantization;
+  f.tensors[1].quantization.params = &params;
+
+  // A block size of 0, reachable since the flatbuffer field defaults to 0
+  // when omitted, must be rejected here rather than causing a division by
+  // zero in EvalBlockwise's `col_size % blocksize`.
+  params.blocksize = 0;
+  EXPECT_EQ(f.Prepare(), kTfLiteError);
+}
+
+TEST(EmbeddingLookupKernelSanitizationTest,
+     BlockwiseV1PrepareRejectsOutOfRangeOrWrongTypeScale) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({3, 8});
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[1].dims = value_dims.get();
+  f.tensors[1].type = kTfLiteInt4;
+  f.tensors[2].type = kTfLiteFloat32;  // Not Float16: wrong type for a scale.
+
+  TfLiteBlockwiseQuantization params{};
+  params.blocksize = 4;
+  params.zero_point = kTfLiteOptionalTensor;
+  params.quantized_dimension = 0;
+  f.tensors[1].quantization.type = kTfLiteBlockwiseQuantization;
+  f.tensors[1].quantization.params = &params;
+
+  // f.context.tensors_size == 3, so index 3 is one past the last valid
+  // tensor and must be rejected before EvalBlockwise dereferences
+  // context->tensors[scale].
+  params.scale = 3;
+  EXPECT_EQ(f.Prepare(), kTfLiteError);
+
+  // The last in-range index is accepted by the bounds check, but the tensor
+  // it points at is Float32, not the Float16 type EvalBlockwise reads scales
+  // as, so it must still be rejected.
+  params.scale = 2;
+  EXPECT_EQ(f.Prepare(), kTfLiteError);
+}
+
+TEST(EmbeddingLookupKernelSanitizationTest,
+     BlockwiseV1PrepareAcceptsValidBlocksizeAndScale) {
+  DirectEvalFixture f;
+  IntArrayUniquePtr lookup_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr value_dims = BuildTfLiteArray<int>({3, 8});
+  f.tensors[0].dims = lookup_dims.get();
+  f.tensors[0].type = kTfLiteInt32;
+  f.tensors[1].dims = value_dims.get();
+  f.tensors[1].type = kTfLiteInt4;
+  f.tensors[2].type = kTfLiteFloat16;  // Valid scale tensor type.
+
+  TfLiteBlockwiseQuantization params{};
+  params.blocksize = 4;
+  params.scale = 2;  // Last valid index: f.context.tensors_size == 3.
+  params.zero_point = kTfLiteOptionalTensor;
+  params.quantized_dimension = 0;
+  f.tensors[1].quantization.type = kTfLiteBlockwiseQuantization;
+  f.tensors[1].quantization.params = &params;
+
+  EXPECT_EQ(f.Prepare(), kTfLiteOk);
 }
 
 TEST(EmbeddingLookupOpTest, EmptyTensorBoundaryCases) {
