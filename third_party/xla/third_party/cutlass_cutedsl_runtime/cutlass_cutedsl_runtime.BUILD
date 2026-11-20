@@ -23,16 +23,28 @@ package(default_visibility = ["//visibility:public"])
 cc_import(
     name = "runtime_shared_object",
     shared_library = "lib/libcute_dsl_runtime.so",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 cc_library(
     name = "headers",
     hdrs = ["include/CuteDSLRuntime.h"],
     includes = ["include"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 cc_library(
     name = "runtime",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":headers",
         ":runtime_shared_object",

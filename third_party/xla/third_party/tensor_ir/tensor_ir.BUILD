@@ -371,6 +371,10 @@ cc_library(
     srcs = ["lib/Support/CudaApi.cpp"],
     hdrs = ["include/tensor_ir/Support/CudaApi.h"],
     includes = ["include"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":NVTensorIRSupport",
@@ -798,6 +802,10 @@ cc_library(
         "include",
         "lib/Runtime",
     ],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":NVTensorIRArtifact",
@@ -898,6 +906,10 @@ cc_library(
         "include/tensor_ir/Compiler/CudaTile/KernelMetadataExtraction.h",
     ],
     includes = ["include"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":NVTensorIRAnalysis",
