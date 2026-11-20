@@ -4103,14 +4103,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "export_hlo",
-    hdrs = ["export_hlo.h"],
-    compatible_with = get_compatible_with_portable(),
-    tags = if_google(["avoid_dep"]),
-    deps = ["//xla/backends/gpu:export_hlo"],
-)
-
-cc_library(
     name = "mlir_context_pool",
     srcs = ["mlir_context_pool.cc"],
     hdrs = ["mlir_context_pool.h"],
