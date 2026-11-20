@@ -34,6 +34,27 @@ inline int64_t CeilDiv(int64_t dividend, int64_t divisor) {
 constexpr const char* const kDatasetTypeV1 = "Rebatch";
 constexpr const char* const kDatasetTypeV2 = "RebatchV2";
 
+// Rebatching only changes the batch dimension, so the declared output
+// signature must describe the same components as the input dataset. The
+// iterators index per-component state by the declared count.
+absl::Status ValidateOutputSignature(
+    const DatasetBase* input, const DataTypeVector& output_types,
+    const std::vector<PartialTensorShape>& output_shapes) {
+  if (output_types != input->output_dtypes()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("output_types ", DataTypeVectorString(output_types),
+                     " do not match the input dataset's types ",
+                     DataTypeVectorString(input->output_dtypes())));
+  }
+  if (output_shapes.size() != input->output_shapes().size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected ", input->output_shapes().size(),
+                     " output_shapes to match the input dataset, but got ",
+                     output_shapes.size()));
+  }
+  return absl::OkStatus();
+}
+
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit RebatchDatasetOp(OpKernelConstruction* ctx)
@@ -51,6 +72,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(
         ctx, num_replicas > 0,
         absl::InvalidArgumentError("num_replicas must be greater than zero."));
+    OP_REQUIRES_OK(
+        ctx, ValidateOutputSignature(input, output_types_, output_shapes_));
     *output =
         new Dataset(ctx, input, num_replicas, output_types_, output_shapes_);
   }
@@ -312,6 +335,8 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
     bool drop_remainder;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<bool>(ctx, "drop_remainder", &drop_remainder));
+    OP_REQUIRES_OK(
+        ctx, ValidateOutputSignature(input, output_types_, output_shapes_));
 
     *output = new Dataset(ctx, input, std::move(batch_sizes), drop_remainder,
                           output_types_, output_shapes_);
