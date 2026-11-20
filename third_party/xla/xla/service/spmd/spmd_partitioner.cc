@@ -8332,14 +8332,26 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           // Since the concat requires that the size of all operands along the
           // non-concat dimension is the same, it implies that the lhs/rhs slice
           // is slicing along the concat dims.
+          const int64_t low_pad = lhs->shape().dimensions(dim);
+          const int64_t high_pad = rhs->shape().dimensions(dim);
+          const int64_t padded_size = hlo->shape().dimensions(dim);
+          const int64_t shard_count = hlo->sharding().dimension(dim);
+          const int64_t shard_size = CeilOfRatio(padded_size, shard_count);
+          if (padded_size > std::numeric_limits<int32_t>::max() &&
+              (!mid->has_sharding() || mid->sharding() != hlo->sharding() ||
+               !EvenlyPartitions(hlo->shape(), hlo->sharding()) ||
+               !EvenlyPartitions(mid->shape(), mid->sharding()) ||
+               low_pad + high_pad >
+                   std::min<int64_t>(std::numeric_limits<int32_t>::max(),
+                                     shard_size))) {
+            continue;
+          }
 
           // Step 1: Pad the mid operand to the final size. The low padding is
           // the size of the lhs shape, and high padding is size of rhs shape.
           PaddingConfig padding_config =
               MakeNoPaddingConfig(hlo->shape().dimensions().size());
           auto* padding_config_dim = padding_config.mutable_dimensions(dim);
-          const int64_t low_pad = lhs->shape().dimensions(dim);
-          const int64_t high_pad = rhs->shape().dimensions(dim);
           padding_config_dim->set_edge_padding_low(low_pad);
           padding_config_dim->set_edge_padding_high(high_pad);
           HloInstruction* zero =
@@ -8358,8 +8370,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           //  slice_start in padded_operand = lhs->slice_start + low_pad.
           //  Rotate left by (lhs->slice_start + low_pad)
           //  i.e., rotate right = padded_size - (lhs_slice_start + low_pad).
-          const int64_t padded_size = hlo->shape().dimensions(dim);
-          const int rotate_lhs_amount =
+          const int64_t rotate_lhs_amount =
               padded_size - (pad_pattern->lhs_slice_start + low_pad);
           HloInstruction* rotate_lhs = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(pad, dim,

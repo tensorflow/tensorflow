@@ -18430,6 +18430,147 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, PadWithWrapPatternRotateAmountExceedingInt32) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[2147483648,4] parameter(0), sharding={devices=[4,1]<=[4]}
+  left = f32[2,4] slice(p0), slice={[0:2], [0:4]}, sharding={devices=[4,1]<=[4]}
+  right = f32[2,4] slice(p0), slice={[2147483646:2147483648], [0:4]}, sharding={devices=[4,1]<=[4]}
+  ROOT concat = f32[2147483652,4] concatenate(left, p0, right), dimensions={0}, sharding={devices=[4,1]<=[4]}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  std::vector<std::vector<std::pair<int64_t, int64_t>>> permute_pairs;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+      EXPECT_NE(hlo->opcode(), HloOpcode::kAllReduce) << hlo->ToString();
+      if (hlo->opcode() == HloOpcode::kCollectivePermute) {
+        permute_pairs.push_back(hlo->source_target_pairs());
+      }
+    }
+  }
+  EXPECT_THAT(
+      permute_pairs,
+      UnorderedElementsAre(ElementsAre(std::pair<int64_t, int64_t>{0, 1},
+                                       std::pair<int64_t, int64_t>{1, 2},
+                                       std::pair<int64_t, int64_t>{2, 3}),
+                           ElementsAre(std::pair<int64_t, int64_t>{1, 0},
+                                       std::pair<int64_t, int64_t>{2, 1},
+                                       std::pair<int64_t, int64_t>{3, 2}),
+                           ElementsAre(std::pair<int64_t, int64_t>{0, 3},
+                                       std::pair<int64_t, int64_t>{1, 0},
+                                       std::pair<int64_t, int64_t>{2, 1},
+                                       std::pair<int64_t, int64_t>{3, 2}),
+                           ElementsAre(std::pair<int64_t, int64_t>{0, 1},
+                                       std::pair<int64_t, int64_t>{1, 2},
+                                       std::pair<int64_t, int64_t>{2, 3},
+                                       std::pair<int64_t, int64_t>{3, 0})));
+}
+
+TEST_P(SpmdPartitioningTest, PadWithWrapPatternRotateAmountExceedingUint32) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4294967296,4] parameter(0), sharding={devices=[4,1]<=[4]}
+  left = f32[2,4] slice(p0), slice={[0:2], [0:4]}, sharding={devices=[4,1]<=[4]}
+  right = f32[2,4] slice(p0), slice={[4294967294:4294967296], [0:4]}, sharding={devices=[4,1]<=[4]}
+  ROOT concat = f32[4294967300,4] concatenate(left, p0, right), dimensions={0}, sharding={devices=[4,1]<=[4]}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  std::vector<std::vector<std::pair<int64_t, int64_t>>> permute_pairs;
+  bool found_ge_compare = false;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      EXPECT_FALSE(IsTrivialCollectivePermute(hlo)) << hlo->ToString();
+      EXPECT_NE(hlo->opcode(), HloOpcode::kAllReduce) << hlo->ToString();
+      if (hlo->opcode() == HloOpcode::kCollectivePermute) {
+        permute_pairs.push_back(hlo->source_target_pairs());
+      }
+      if (hlo->opcode() == HloOpcode::kCompare &&
+          hlo->comparison_direction() == ComparisonDirection::kGe) {
+        found_ge_compare = true;
+        const HloInstruction* limit_bcast = hlo->operand(1);
+        ASSERT_EQ(limit_bcast->opcode(), HloOpcode::kBroadcast);
+        const HloInstruction* limit = limit_bcast->operand(0);
+        ASSERT_EQ(limit->opcode(), HloOpcode::kConstant);
+        ASSERT_EQ(limit->literal().shape().element_type(), U64);
+        EXPECT_EQ(limit->literal().Get<uint64_t>({}), 4294967298ULL);
+
+        const HloInstruction* partitioned_iota = hlo->operand(0);
+        EXPECT_THAT(
+            partitioned_iota,
+            AllOf(op::Add(op::Iota(),
+                          op::Broadcast(op::Reshape(op::DynamicSlice(
+                              op::Constant(LiteralUtil::CreateR1<uint64_t>(
+                                  {0ULL, 1073741825ULL, 2147483650ULL,
+                                   3221225475ULL})),
+                              op::PartitionId())))),
+                  op::Shape("u64[1073741825,4]")));
+      }
+    }
+  }
+  EXPECT_TRUE(found_ge_compare);
+  EXPECT_THAT(
+      permute_pairs,
+      UnorderedElementsAre(ElementsAre(std::pair<int64_t, int64_t>{0, 1},
+                                       std::pair<int64_t, int64_t>{1, 2},
+                                       std::pair<int64_t, int64_t>{2, 3}),
+                           ElementsAre(std::pair<int64_t, int64_t>{1, 0},
+                                       std::pair<int64_t, int64_t>{2, 1},
+                                       std::pair<int64_t, int64_t>{3, 2}),
+                           ElementsAre(std::pair<int64_t, int64_t>{0, 3},
+                                       std::pair<int64_t, int64_t>{1, 0},
+                                       std::pair<int64_t, int64_t>{2, 1},
+                                       std::pair<int64_t, int64_t>{3, 2}),
+                           ElementsAre(std::pair<int64_t, int64_t>{0, 1},
+                                       std::pair<int64_t, int64_t>{1, 2},
+                                       std::pair<int64_t, int64_t>{2, 3},
+                                       std::pair<int64_t, int64_t>{3, 0})));
+}
+
+TEST_P(SpmdPartitioningTest,
+       PadWithWrapPatternUnevenlyShardedExceedingInt32SkipsRewrite) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[2147483647,4] parameter(0), sharding={devices=[4,1]<=[4]}
+  left = f32[2,4] slice(p0), slice={[0:2], [0:4]}, sharding={devices=[4,1]<=[4]}
+  right = f32[2,4] slice(p0), slice={[2147483645:2147483647], [0:4]}, sharding={devices=[4,1]<=[4]}
+  ROOT concat = f32[2147483651,4] concatenate(left, p0, right), dimensions={0}, sharding={devices=[4,1]<=[4]}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kAllToAll), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kConcatenate), nullptr);
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->instructions()) {
+      if (hlo->opcode() == HloOpcode::kSelect &&
+          hlo->shape().dimensions().size() == 2) {
+        EXPECT_LT(hlo->shape().dimensions(0), 536870913) << hlo->ToString();
+      }
+      if (hlo->opcode() == HloOpcode::kConstant &&
+          ShapeUtil::IsScalarWithElementType(hlo->shape(), S32)) {
+        EXPECT_GE(hlo->literal().Get<int32_t>({}), -1) << hlo->ToString();
+      }
+    }
+  }
+}
+
 TEST_P(SpmdPartitioningTest, BroadcastAsReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
