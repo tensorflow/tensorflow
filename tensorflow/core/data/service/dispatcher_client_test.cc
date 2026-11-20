@@ -306,6 +306,18 @@ TEST_F(DispatcherClientTest, DatasetsDoNotMatch) {
               "Datasets with the same ID should have the same structure")));
 }
 
+TEST_F(DispatcherClientTest, RegisterDatasetWithInvalidId) {
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  DataServiceMetadata metadata = GetDefaultMetadata();
+  for (const std::string& invalid_id : std::vector<std::string>{
+           ".", "..", "../../foo", "a\\b", std::string("..\0", 3)}) {
+    EXPECT_THAT(RegisterDataset(RangeDataset(10), metadata,
+                                /*requested_dataset_id=*/invalid_id),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       HasSubstr("Invalid dataset ID")));
+  }
+}
+
 TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
   TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
   DataServiceMetadata metadata = GetDefaultMetadata();

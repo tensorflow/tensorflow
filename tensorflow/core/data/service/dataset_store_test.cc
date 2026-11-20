@@ -115,6 +115,18 @@ TEST_P(DatasetStoreTest, GetMissing) {
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
+TEST_P(DatasetStoreTest, InvalidKey) {
+  std::unique_ptr<DatasetStore> store = MakeStore(GetParam());
+  DatasetDef dataset_def = DatasetDefWithVersion(1);
+  std::shared_ptr<const DatasetDef> result;
+  for (const std::string& invalid_key : std::vector<std::string>{
+           "", ".", "..", "../../foo", "a/b", "a\\b", std::string("..\0", 3)}) {
+    EXPECT_EQ(store->Put(invalid_key, dataset_def).code(),
+              error::INVALID_ARGUMENT);
+    EXPECT_EQ(store->Get(invalid_key, result).code(), error::INVALID_ARGUMENT);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(DatasetStoreTests, DatasetStoreTest,
                          ::testing::Values(kFileSystem, kMemory));
 }  // namespace data

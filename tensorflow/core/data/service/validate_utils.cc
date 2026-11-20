@@ -16,6 +16,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
@@ -25,6 +29,40 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+absl::Status ValidateDatasetId(absl::string_view dataset_id) {
+  if (dataset_id.empty()) {
+    return absl::InvalidArgumentError("Dataset ID must not be empty.");
+  }
+  if (absl::StrContains(dataset_id, '\0')) {
+    return absl::InvalidArgumentError(
+        "Invalid dataset ID. Dataset IDs must not contain null characters.");
+  }
+  if (dataset_id == "." || dataset_id == "..") {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not be '.' or '..'."));
+  }
+  if (absl::StrContains(dataset_id, '/')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain '/'."));
+  }
+  if (absl::StrContains(dataset_id, '\\')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain '\\'."));
+  }
+#if defined(_WIN32)
+  if (absl::StrContains(dataset_id, ':')) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid dataset ID: ", dataset_id,
+                     ". Dataset IDs must not contain ':'."));
+  }
+#endif
+  return absl::OkStatus();
+}
+
 namespace {
 
 using ::tensorflow::protobuf::util::MessageDifferencer;

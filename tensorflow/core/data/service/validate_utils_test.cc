@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "absl/random/random.h"
@@ -127,6 +128,45 @@ TEST(ValidateUtilsTest, CardinalityDoesNotMatch) {
                   error::INVALID_ARGUMENT,
                   AllOf(HasSubstr("got diff for dataset ID dataset_id"),
                         HasSubstr("modified: cardinality"))));
+}
+
+TEST(ValidateUtilsTest, ValidateDatasetId) {
+  TF_EXPECT_OK(ValidateDatasetId("1000"));
+  TF_EXPECT_OK(ValidateDatasetId("dataset_id"));
+  TF_EXPECT_OK(ValidateDatasetId("my_dataset"));
+  TF_EXPECT_OK(ValidateDatasetId("dataset-1"));
+  TF_EXPECT_OK(ValidateDatasetId("dataset.1"));
+  TF_EXPECT_OK(ValidateDatasetId("a..b"));
+
+  EXPECT_THAT(ValidateDatasetId(""),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("must not be empty")));
+  for (const std::string& id_with_null :
+       {std::string("\0", 1), std::string("..\0", 3), std::string("a\0b", 3)}) {
+    EXPECT_THAT(ValidateDatasetId(id_with_null),
+                absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                       HasSubstr("null characters")));
+  }
+  EXPECT_THAT(ValidateDatasetId("."),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("'.' or '..'")));
+  EXPECT_THAT(ValidateDatasetId(".."),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("'.' or '..'")));
+  EXPECT_THAT(
+      ValidateDatasetId("../../foo"),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT, HasSubstr("'/'")));
+  EXPECT_THAT(
+      ValidateDatasetId("a/b"),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT, HasSubstr("'/'")));
+  EXPECT_THAT(
+      ValidateDatasetId("a\\b"),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT, HasSubstr("'\\'")));
+#if defined(_WIN32)
+  EXPECT_THAT(
+      ValidateDatasetId("C:foo"),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT, HasSubstr("':'")));
+#endif
 }
 
 }  // namespace

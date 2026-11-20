@@ -353,6 +353,7 @@ cc_library(
         ":common_proto_cc",
         ":dispatcher_state",
         ":utils",
+        ":validate_utils",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -1037,6 +1038,8 @@ cc_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
