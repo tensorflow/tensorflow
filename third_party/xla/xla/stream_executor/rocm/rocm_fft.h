@@ -105,7 +105,7 @@ class ROCMFftPlan : public fft::Plan {
 class ROCMFft : public fft::FftSupport {
  public:
   explicit ROCMFft(StreamExecutor *parent) : parent_(parent) {}
-  ~ROCMFft() override {}
+  ~ROCMFft() override = default;
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES
 

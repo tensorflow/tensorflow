@@ -101,7 +101,7 @@ class CUDAFftPlan : public fft::Plan {
 class CUDAFft : public fft::FftSupport {
  public:
   explicit CUDAFft(StreamExecutor* parent) : parent_(parent) {}
-  ~CUDAFft() override {}
+  ~CUDAFft() override = default;
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES
 
