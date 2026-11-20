@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -37,7 +38,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -571,6 +574,82 @@ ENTRY sub_entry {
   EXPECT_EQ(add_frame.function_name, "inner_fn");
   EXPECT_EQ(add_frame.line, 20);
   EXPECT_EQ(add_frame.parent_frame_id, StackFrameId{1});
+}
+
+TEST_F(HloModuleStitcherTest, StitcherPreservesControlDependencies) {
+  constexpr absl::string_view kMainHlo = R"hlo(
+HloModule main_module
+
+ENTRY main {
+  p0 = f32[4,8]{1,0} parameter(0)
+  pred_op = f32[4,8]{1,0} negate(p0)
+  call_same = f32[4,8]{1,0} custom-call(p0),
+      custom_call_target="_xla_multi_module_call",
+      backend_config="sub_same_layout",
+      control-predecessors={pred_op}
+  call_relayout = f32[4,8]{1,0} custom-call(p0),
+      custom_call_target="_xla_multi_module_call",
+      backend_config="sub_other_layout",
+      control-predecessors={pred_op}
+  succ_op = f32[4,8]{1,0} add(p0, p0),
+      control-predecessors={call_same, call_relayout}
+  ROOT out = (f32[4,8]{1,0}, f32[4,8]{1,0}, f32[4,8]{1,0}, f32[4,8]{1,0})
+      tuple(pred_op, call_same, call_relayout, succ_op)
+}
+)hlo";
+
+  constexpr absl::string_view kSubSameHlo = R"hlo(
+HloModule sub_same_layout
+
+ENTRY sub_entry {
+  p = f32[4,8]{1,0} parameter(0)
+  ROOT r = f32[4,8]{1,0} add(p, p)
+}
+)hlo";
+
+  constexpr absl::string_view kSubOtherHlo = R"hlo(
+HloModule sub_other_layout
+
+ENTRY sub_entry {
+  p = f32[4,8]{0,1} parameter(0)
+  ROOT r = f32[4,8]{0,1} add(p, p)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> main_module,
+                       ParseAndReturnVerifiedModule(kMainHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> sub_same,
+                       ParseAndReturnVerifiedModule(kSubSameHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> sub_other,
+                       ParseAndReturnVerifiedModule(kSubOtherHlo));
+
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules = {
+      {"sub_same_layout", sub_same.get()},
+      {"sub_other_layout", sub_other.get()},
+  };
+
+  HloModuleStitcher stitcher(optimized_modules);
+  EXPECT_THAT(stitcher.Run(main_module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* root =
+      main_module->entry_computation()->root_instruction();
+  const HloInstruction* pred_op = root->operand(0);
+  const HloInstruction* stitched_same = root->operand(1);
+  const HloInstruction* stitched_relayout_copy = root->operand(2);
+  const HloInstruction* succ_op = root->operand(3);
+
+  ASSERT_EQ(stitched_same->opcode(), HloOpcode::kCall);
+  ASSERT_EQ(stitched_relayout_copy->opcode(), HloOpcode::kCopy);
+  const HloInstruction* stitched_relayout_call =
+      stitched_relayout_copy->operand(0);
+  ASSERT_EQ(stitched_relayout_call->opcode(), HloOpcode::kCall);
+
+  EXPECT_THAT(stitched_same->control_predecessors(), ElementsAre(pred_op));
+  EXPECT_THAT(stitched_relayout_call->control_predecessors(),
+              ElementsAre(pred_op));
+  EXPECT_THAT(succ_op->control_predecessors(),
+              UnorderedElementsAre(stitched_same, stitched_relayout_copy));
 }
 
 }  // namespace
