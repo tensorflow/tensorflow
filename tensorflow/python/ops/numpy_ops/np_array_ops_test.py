@@ -1162,6 +1162,10 @@ class ArrayMethodsTest(test.TestCase):
     self.match(
         np_array_ops.prod(a, where=np.zeros_like(mask)),
         np.prod(a, where=np.zeros_like(mask)))
+    # Multiplying a bool `initial` is logical AND, as in NumPy.
+    self.match(
+        np_array_ops.prod(a, dtype=np.bool_, initial=False),
+        np.prod(a, dtype=np.bool_, initial=False))
 
   def _testReduce(self, math_fun, np_fun, name):
     axis_transforms = [
@@ -1235,6 +1239,10 @@ class ArrayMethodsTest(test.TestCase):
     a8 = np.array([1, 2], np.int8)
     self.match(np_array_ops.sum(a8, initial=1000), np.sum(a8, initial=1000))
     self.match(np_array_ops.sum(a8, initial=1.5), np.sum(a8, initial=1.5))
+    # Adding a bool `initial` is logical OR, as in NumPy.
+    self.match(
+        np_array_ops.sum(a8, dtype=np.bool_, initial=True),
+        np.sum(a8, dtype=np.bool_, initial=True))
 
   def testAmax(self):
     self._testReduce(np_array_ops.amax, np.amax, 'amax')

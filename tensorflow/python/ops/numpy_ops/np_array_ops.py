@@ -754,7 +754,7 @@ def sum(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):  # p
   if where is not None:
     # Mask before reducing so NumPy's `where` works for every axis/keepdims
     # combination without extra shape handling.
-    a = asarray(a, dtype=np_utils.result_type(dtype) if dtype else None)
+    a = asarray(a)
     where = asarray(where, dtype=bool)
     a = array_ops.where_v2(where, a, array_ops.zeros_like(a))
   result = _reduce(
@@ -766,8 +766,11 @@ def sum(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):  # p
       tf_bool_fn=math_ops.reduce_any,
   )
   if initial is not None:
-    initial = asarray(initial, dtype=result.dtype.as_numpy_dtype)
-    result = math_ops.add(result, initial)
+    initial = asarray(initial, dtype=result.dtype)
+    if result.dtype == dtypes.bool:
+      result = math_ops.logical_or(result, initial)
+    else:
+      result = math_ops.add(result, initial)
   return result
 
 
@@ -778,7 +781,7 @@ def prod(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):
     # Mask before reducing so NumPy's `where` works for every axis/keepdims
     # combination without extra shape handling. The multiplicative identity is
     # one, matching NumPy's result for an entirely masked-out input.
-    a = asarray(a, dtype=np_utils.result_type(dtype) if dtype else None)
+    a = asarray(a)
     where = asarray(where, dtype=bool)
     a = array_ops.where_v2(where, a, array_ops.ones_like(a))
   result = _reduce(
@@ -790,8 +793,11 @@ def prod(a, axis=None, dtype=None, keepdims=None, initial=None, where=None):
       tf_bool_fn=math_ops.reduce_all,
   )
   if initial is not None:
-    initial = asarray(initial, dtype=result.dtype.as_numpy_dtype)
-    result = math_ops.multiply(result, initial)
+    initial = asarray(initial, dtype=result.dtype)
+    if result.dtype == dtypes.bool:
+      result = math_ops.logical_and(result, initial)
+    else:
+      result = math_ops.multiply(result, initial)
   return result
 
 
