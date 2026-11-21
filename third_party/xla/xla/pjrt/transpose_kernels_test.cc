@@ -25,18 +25,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/numeric/int128.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "hwy/targets.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace {
 
-template <typename T, int bs>
-constexpr int OuterBlockSize() {
-  return std::max<int>(1, kMaxOuterBlockSizeBytes / (bs * sizeof(T)));
+int OuterBlockSize(size_t elem_size, int bs) {
+  return std::max<int>(
+      1, kMaxOuterBlockSizeBytes / (bs * static_cast<int>(elem_size)));
 }
 
 // Returns the byte offset of the starting element within a contiguous buffer of
@@ -47,11 +47,13 @@ int64_t StridedStart(int64_t extent, int64_t stride) {
 }
 
 // Checks that `fn` transposes `count` slices of `rows x cols` elements of size
-// `elem_size` with byte row strides `lda` and `ldb` (which may be negative).
+// `elem_size` with byte row strides `lda` and `ldb` (`lda` may be negative or
+// zero; `ldb` may be negative).
 void CheckTransposeKernel(TransposeOp::Fn fn, size_t elem_size, int64_t rows,
                           int64_t cols, int64_t lda, int64_t ldb,
                           int64_t count = 1, size_t byte_offset = 0) {
-  const int64_t slice_a = rows * std::abs(lda);
+  const int64_t slice_a =
+      lda == 0 ? cols * static_cast<int64_t>(elem_size) : rows * std::abs(lda);
   const int64_t slice_b = cols * std::abs(ldb);
 
   std::vector<uint8_t> input(byte_offset +
@@ -102,97 +104,103 @@ void CheckTransposeKernel(TransposeOp::Fn fn, size_t elem_size, int64_t rows,
       << " byte_offset=" << byte_offset;
 }
 
-template <typename T, int bs>
-void CheckSquareKernel(int outer_bs) {
-  constexpr int packed = sizeof(T) | (bs << 16);
+struct KernelShape {
+  size_t elem_size;
+  int bs;
+};
+
+// 512 bit (64 byte), 256 bit (32 byte), 128 bit (16 byte), and sub block rows.
+constexpr KernelShape kKernelShapes[] = {
+    {1, 64}, {2, 32}, {4, 16}, {8, 8}, {16, 4},  // 64 byte rows
+    {1, 32}, {2, 16}, {4, 8},  {8, 4}, {16, 2},  // 32 byte rows
+    {1, 16}, {2, 8},  {4, 4},  {8, 2},           // 16 byte rows
+    {1, 8},  {2, 4},  {4, 2},                    // 8 byte rows
+    {1, 4},  {2, 2},                             // 4 byte rows
+    {1, 2},                                      // 2 byte rows
+};
+
+void CheckSquareKernel(size_t elem_size, int bs, int outer_bs) {
+  const TransposeOp::Fn fn =
+      GetTransposeMacroKernelOp(static_cast<int>(elem_size), bs);
+  ASSERT_NE(fn, nullptr);
   const int64_t n = outer_bs * bs;
-  const int64_t row_bytes = n * static_cast<int64_t>(sizeof(T));
+  const int64_t row_bytes = n * static_cast<int64_t>(elem_size);
   // Test both tightly-packed rows (0 padding) and rows with 64 bytes of
   // padding (which exercises wide-stride / rectangular kernels).
   for (int64_t lda : {row_bytes, row_bytes + 64}) {
     for (int64_t ldb : {row_bytes, row_bytes + 64}) {
-      CheckTransposeKernel(GetTransposeMacroKernelOp<packed>(), sizeof(T), n, n,
-                           lda, ldb);
+      CheckTransposeKernel(fn, elem_size, n, n, lda, ldb);
     }
   }
 }
 
-template <typename T, int bs>
-void TestMicroKernelEquivalence() {
-  CheckSquareKernel<T, bs>(/*outer_bs=*/1);
-}
-
-template <typename T, int bs>
-void TestMacroKernelEquivalence() {
-  CheckSquareKernel<T, bs>(OuterBlockSize<T, bs>());
-}
-
 TEST(TransposeMicroKernelTest, ExactEquivalence) {
+  const absl::Cleanup reset_targets = [] {
+    hwy::SetSupportedTargetsForTest(0);
+  };
   for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    SCOPED_TRACE(hwy::TargetName(target));
     hwy::SetSupportedTargetsForTest(target);
-
-    // TransposeMicroKernel256Square is triggered when a logical row of the tile
-    // (bs * sizeof(T)) is 256 bits (32 bytes).
-    TestMicroKernelEquivalence<int8_t, 32>();
-    TestMicroKernelEquivalence<int16_t, 16>();
-    TestMicroKernelEquivalence<float, 8>();
-    TestMicroKernelEquivalence<int64_t, 4>();
-    TestMicroKernelEquivalence<absl::uint128, 2>();
-
-    // TransposeMicroKernel128 or TransposeMicroKernel256Rect is triggered when
-    // a logical row of the tile (bs * sizeof(T)) is 128 bits (16 bytes).
-    // TransposeMicroKernel128 operates on 128-bit blocks when gathering from
-    // memory (lda >= ldb && lda <= 64B) while TransposeMicroKernel256Rect packs
-    // two rows into 256-bit vectors when scattering to memory (ldb > lda) or
-    // for large strides.
-    TestMicroKernelEquivalence<int8_t, 16>();
-    TestMicroKernelEquivalence<int16_t, 8>();
-    TestMicroKernelEquivalence<bfloat16, 8>();
-    TestMicroKernelEquivalence<float, 4>();
-    TestMicroKernelEquivalence<int64_t, 2>();
-
-    // Smaller or larger cases fall back to TransposeMicroKernel128 or scalar
-    // loop.
-    TestMicroKernelEquivalence<int8_t, 8>();
-    TestMicroKernelEquivalence<int16_t, 4>();
-    TestMicroKernelEquivalence<bfloat16, 4>();
-    TestMicroKernelEquivalence<float, 2>();
-    TestMicroKernelEquivalence<int8_t, 4>();
-    TestMicroKernelEquivalence<int16_t, 2>();
-    TestMicroKernelEquivalence<int8_t, 2>();
-    TestMicroKernelEquivalence<int8_t, 64>();
+    for (const KernelShape& shape : kKernelShapes) {
+      CheckSquareKernel(shape.elem_size, shape.bs, /*outer_bs=*/1);
+    }
   }
-  hwy::SetSupportedTargetsForTest(0);
+}
+
+TEST(TransposeMicroKernelTest, StrideDispatchBoundaries) {
+  const absl::Cleanup reset_targets = [] {
+    hwy::SetSupportedTargetsForTest(0);
+  };
+  auto check_byte_strides = [](size_t elem_size, int bs,
+                               absl::Span<const int64_t> in_byte_strides,
+                               absl::Span<const int64_t> out_byte_strides) {
+    const TransposeOp::Fn fn =
+        GetTransposeMacroKernelOp(static_cast<int>(elem_size), bs);
+    ASSERT_NE(fn, nullptr);
+    for (int64_t lda : in_byte_strides) {
+      for (int64_t ldb : out_byte_strides) {
+        CheckTransposeKernel(fn, elem_size, bs, bs, lda, ldb);
+      }
+    }
+  };
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    SCOPED_TRACE(hwy::TargetName(target));
+    hwy::SetSupportedTargetsForTest(target);
+    // Exercises tight, asymmetric, negative, zero (broadcast), and 512, 1024,
+    // and 4096 byte L1D set alignment branches across all vector widths.
+    check_byte_strides(1, 64, {0, 64, -64, 128, 512, 1024, 4096, -4096},
+                       {64, -64, 128, 512, -512, 1024, -1024, 4096});
+    check_byte_strides(2, 32, {0, 64, -64, 128, 1024}, {64, -64, 128, 1024});
+    check_byte_strides(4, 16, {0, 64, -64, 128, -1024, 4096},
+                       {64, -64, 128, 1024});
+    check_byte_strides(8, 8, {0, 64, -64, 128, 1024}, {64, -64, 128, 1024});
+    check_byte_strides(16, 4, {0, 64, -64, 128, 1024}, {64, -64, 128, 1024});
+    check_byte_strides(1, 32, {0, 32, -32, 96, -1024}, {32, -32, 96, 1024});
+    check_byte_strides(2, 16, {0, 32, -32, 96, -1024}, {32, -32, 96, 1024});
+    check_byte_strides(4, 8, {0, 32, -32, 96, -1024}, {32, -32, 96, 1024});
+    check_byte_strides(8, 4, {0, 32, -32, 96, -1024}, {32, -32, 96, 1024});
+    check_byte_strides(16, 2, {0, 32, -32, 96, 1024}, {32, -32, 96, 1024});
+    check_byte_strides(1, 16, {0, 16, -16, 64, -128}, {16, -16, 64, 128});
+    check_byte_strides(2, 8, {0, 16, -16, 64, -128}, {16, -16, 64, 128});
+    check_byte_strides(4, 4, {0, 16, -16, 64, -128}, {16, -16, 64, 128});
+    check_byte_strides(1, 8, {0, 8, -8, 64}, {8, -8, 64});
+  }
 }
 
 // Same tile shapes as above, but transposing a macroblock of
 // OuterBlockSize() x OuterBlockSize() tiles.
 TEST(TransposeMacroKernelTest, ExactEquivalence) {
+  const absl::Cleanup reset_targets = [] {
+    hwy::SetSupportedTargetsForTest(0);
+  };
   for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    SCOPED_TRACE(hwy::TargetName(target));
     hwy::SetSupportedTargetsForTest(target);
-
-    TestMacroKernelEquivalence<int8_t, 32>();
-    TestMacroKernelEquivalence<int16_t, 16>();
-    TestMacroKernelEquivalence<float, 8>();
-    TestMacroKernelEquivalence<int64_t, 4>();
-    TestMacroKernelEquivalence<absl::uint128, 2>();
-
-    TestMacroKernelEquivalence<int8_t, 16>();
-    TestMacroKernelEquivalence<int16_t, 8>();
-    TestMacroKernelEquivalence<bfloat16, 8>();
-    TestMacroKernelEquivalence<float, 4>();
-    TestMacroKernelEquivalence<int64_t, 2>();
-
-    TestMacroKernelEquivalence<int8_t, 8>();
-    TestMacroKernelEquivalence<int16_t, 4>();
-    TestMacroKernelEquivalence<bfloat16, 4>();
-    TestMacroKernelEquivalence<float, 2>();
-    TestMacroKernelEquivalence<int8_t, 4>();
-    TestMacroKernelEquivalence<int16_t, 2>();
-    TestMacroKernelEquivalence<int8_t, 2>();
-    TestMacroKernelEquivalence<int8_t, 64>();
+    for (const KernelShape& shape : kKernelShapes) {
+      CheckSquareKernel(shape.elem_size, shape.bs,
+                        OuterBlockSize(shape.elem_size, shape.bs));
+    }
   }
-  hwy::SetSupportedTargetsForTest(0);
 }
 
 TEST(TransposeMacroKernelTest, InitializesHighwayTargetEagerly) {
@@ -209,9 +217,18 @@ TEST(TransposeMacroKernelTest, InitializesHighwayTargetEagerly) {
     EXPECT_EQ(fn, getter());
   };
   expect_eager_init(
-      [] { return GetTransposeMacroKernelOp<sizeof(uint16_t) | (8 << 16)>(); });
+      [] { return GetTransposeMacroKernelOp(sizeof(uint16_t), 8); });
   expect_eager_init([] { return GetPackSubbyteOp<4>(); });
   expect_eager_init([] { return GetDeinterleaveOp(sizeof(uint32_t), 2); });
+}
+
+TEST(TransposeKernelsTest, MacroKernelUnsupportedReturnsNull) {
+  EXPECT_EQ(GetTransposeMacroKernelOp(0, 4), nullptr);
+  EXPECT_EQ(GetTransposeMacroKernelOp(3, 4), nullptr);
+  EXPECT_EQ(GetTransposeMacroKernelOp(1, 1), nullptr);
+  EXPECT_EQ(GetTransposeMacroKernelOp(1, 3), nullptr);
+  EXPECT_EQ(GetTransposeMacroKernelOp(1, 128), nullptr);
+  EXPECT_EQ(GetTransposeMacroKernelOp(16, 8), nullptr);
 }
 
 struct DeinterleaveParam {

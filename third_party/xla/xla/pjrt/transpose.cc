@@ -40,9 +40,10 @@ limitations under the License.
 // "macrokernels". The outer "macrokernel" level is a block of, for example,
 // 4x4 microkernels. Macrokernels are the basic unit of work of the loop nest
 // plan. For dimensions that aren't exactly divisible by the macrokernel size,
-// we repeatedly halve the kernel size for trailing elements. For dimensions
-// that aren't exactly divisible by the microkernel size, we use a scalar
-// transpose for the trailing elements.
+// we repeatedly halve the kernel size for trailing elements. Trailing tiles
+// smaller than the primary microkernel size are recursively halved into smaller
+// power of two SIMD microkernels (down to at least 4 elements and 16 byte rows)
+// before falling back to a scalar transpose for any remaining elements.
 //
 // A transpose plan iterates over the array's index space, applying macro-kernel
 // sized blocks. Any iteration order is possible, although some orders give
@@ -111,12 +112,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-#ifdef __AVX__
-static constexpr int kMaxInnerBlockSizeBytes = 32;
-#else
-static constexpr int kMaxInnerBlockSizeBytes = 16;
-#endif
-
 struct uint128 {
   uint64_t lo;
   uint64_t hi;
@@ -397,16 +392,28 @@ void OpConvertEf57(const TransposeOp* __restrict op, const char* __restrict a,
   }
 }
 
+// Returns true if a tile or remainder strip may use a `bs x bs` SIMD kernel
+// given a plan's primary `inner_block_elems` and `elem_size_in_bytes`.
+// Secondary (halved) remainder blocks require at least 4 elements and 16 byte
+// rows so the extra kernel pass beats a single scalar loop.
+constexpr bool IsSupportedSimdBlockSize(int bs, int inner_block_elems,
+                                        int64_t elem_size_in_bytes) {
+  return bs > 1 && (bs == inner_block_elems ||
+                    (bs >= 4 && bs * elem_size_in_bytes >= 16));
+}
+
 // Picks the execution function for a 2D transpose of element type `T` with
 // extents (`a_elems`, `b_elems`), given the plan's kernel kind, vectorized
 // microkernel block size `inner_block_elems`, and interleave factor
-// `interleave_size`. Partially-divisible tiles are decomposed into full SIMD
-// blocks and scalar remainder strips by `BuildChunkPlan` before reaching here.
+// `interleave_size`. Partially divisible tiles are decomposed into power of two
+// SIMD blocks and scalar remainder strips by `BuildChunkPlan` before reaching
+// here.
 //
 // Examples (with `T = uint32_t`):
-//   - `kind = kDefault, inner_block_elems = 4`:
-//     - `(16, 16)` -> `GetTransposeMacroKernelOp<4 | (4 << 16)>()`
-//     - `(2, 16)`  -> `OpScalarTranspose2D<uint32_t>` (smaller than 4)
+//   - `kind = kDefault, inner_block_elems = 8`:
+//     - `(16, 16)` -> `GetTransposeMacroKernelOp(4, 8)`
+//     - `(16, 4)`  -> `GetTransposeMacroKernelOp(4, 4)`
+//     - `(2, 16)`  -> `OpScalarTranspose2D<uint32_t>` (below 16 byte row)
 //   - `kind = kInterleave, interleave_size = 3`:
 //     - `(64, 3)`  -> `OpInterleave<uint32_t, 3>`
 //   - `kind = kDeinterleave, interleave_size = 3`:
@@ -431,37 +438,17 @@ TransposeOp::Fn SelectTranspose2DOpTyped(TransposePlan::InnerKernelKind kind,
     return fn;
   }
   DCHECK(kind == TransposePlan::InnerKernelKind::kDefault);
-  if (inner_block_elems == 1 || a_elems < inner_block_elems ||
-      b_elems < inner_block_elems) {
+  int bs = inner_block_elems;
+  while (bs > 1 && (a_elems % bs != 0 || b_elems % bs != 0)) {
+    bs /= 2;
+  }
+  if (!IsSupportedSimdBlockSize(bs, inner_block_elems, sizeof(T))) {
     return &OpScalarTranspose2D<T>;
   }
-  auto pick = [&](auto const_bs) -> TransposeOp::Fn {
-    constexpr int kBs = decltype(const_bs)::value;
-    if constexpr (sizeof(T) < 16 &&
-                  sizeof(T) * kBs <= kMaxInnerBlockSizeBytes) {
-      DCHECK_EQ(a_elems % kBs, 0);
-      DCHECK_EQ(b_elems % kBs, 0);
-      constexpr int kPacked = static_cast<int>(sizeof(T)) | (kBs << 16);
-      return GetTransposeMacroKernelOp<kPacked>();
-    } else {
-      LOG(FATAL) << "Unreachable: inner_block_elems=" << inner_block_elems
-                 << " sizeof(T)=" << sizeof(T);
-    }
-  };
-  switch (inner_block_elems) {
-    case 2:
-      return pick(std::integral_constant<int, 2>{});
-    case 4:
-      return pick(std::integral_constant<int, 4>{});
-    case 8:
-      return pick(std::integral_constant<int, 8>{});
-    case 16:
-      return pick(std::integral_constant<int, 16>{});
-    case 32:
-      return pick(std::integral_constant<int, 32>{});
-    default:
-      LOG(FATAL) << "Invalid inner_block_elems " << inner_block_elems;
-  }
+  TransposeOp::Fn fn = GetTransposeMacroKernelOp(sizeof(T), bs);
+  CHECK(fn != nullptr) << "Invalid block size " << bs
+                       << " for sizeof(T)=" << sizeof(T);
+  return fn;
 }
 
 // Dispatches `SelectTranspose2DOpTyped` on the runtime `elem_size_in_bytes`
@@ -1311,31 +1298,36 @@ struct TransposePlan::ChunkPlanBuilder {
     return (n * l.ldb) / elements_per_byte;
   }
 
-  // Decomposes partially-divisible default-kernel tiles (both sides at least
-  // `inner_block_elems_`, not both multiples) into a full SIMD block plus 1 or
-  // 2 scalar remainder strips so every `Plan::Transpose2D` leaf maps 1-to-1 to
-  // a single `TransposeOp`.
+  // Decomposes default kernel tiles into full power of two SIMD blocks (down
+  // to 16 byte rows for remainder tiles) plus a trailing scalar remainder strip
+  // so every `Plan::Transpose2D` leaf maps directly to a single `TransposeOp`.
   Plan MakeTranspose2D(int a_elems, int b_elems, int64_t lda,
                        int64_t ldb) const {
+    if (a_elems <= 0 || b_elems <= 0) {
+      return Plan::MakeNoop();
+    }
     if (plan.inner_kernel_kind_ == InnerKernelKind::kDefault &&
-        plan.inner_block_elems_ > 1 && a_elems >= plan.inner_block_elems_ &&
-        b_elems >= plan.inner_block_elems_ &&
-        (a_elems % plan.inner_block_elems_ != 0 ||
-         b_elems % plan.inner_block_elems_ != 0)) {
-      const int done_a =
-          (a_elems / plan.inner_block_elems_) * plan.inner_block_elems_;
-      const int done_b =
-          (b_elems / plan.inner_block_elems_) * plan.inner_block_elems_;
-      std::vector<Plan> pieces;
-      pieces.reserve(3);
-      pieces.push_back(Plan::MakeTranspose2D(done_a, done_b, lda, ldb));
-      pieces.push_back(Plan::MakeOffset(
-          done_b * lda, done_b * plan.elem_size_in_bytes_,
-          Plan::MakeTranspose2D(done_a, b_elems - done_b, lda, ldb)));
-      pieces.push_back(Plan::MakeOffset(
-          done_a * plan.elem_size_in_bytes_, done_a * ldb,
-          Plan::MakeTranspose2D(a_elems - done_a, b_elems, lda, ldb)));
-      return Plan::MakeSeq(std::move(pieces));
+        plan.inner_block_elems_ > 1) {
+      int bs = plan.inner_block_elems_;
+      while (bs > 1 && (a_elems < bs || b_elems < bs)) {
+        bs /= 2;
+      }
+      if (IsSupportedSimdBlockSize(bs, plan.inner_block_elems_,
+                                   plan.elem_size_in_bytes_) &&
+          (a_elems % bs != 0 || b_elems % bs != 0)) {
+        const int done_a = (a_elems / bs) * bs;
+        const int done_b = (b_elems / bs) * bs;
+        std::vector<Plan> pieces;
+        pieces.reserve(3);
+        pieces.push_back(Plan::MakeTranspose2D(done_a, done_b, lda, ldb));
+        pieces.push_back(Plan::MakeOffset(
+            done_b * lda, done_b * plan.elem_size_in_bytes_,
+            MakeTranspose2D(done_a, b_elems - done_b, lda, ldb)));
+        pieces.push_back(Plan::MakeOffset(
+            done_a * plan.elem_size_in_bytes_, done_a * ldb,
+            MakeTranspose2D(a_elems - done_a, b_elems, lda, ldb)));
+        return Plan::MakeSeq(std::move(pieces));
+      }
     }
     return Plan::MakeTranspose2D(a_elems, b_elems, lda, ldb);
   }
@@ -2039,35 +2031,30 @@ absl::Status TransposePlan::Initialize() {
     // vectorized kernel for this element size?
     const int max_outer_block_elems =
         kMaxOuterBlockSizeBytes / elem_size_in_bytes_;
-    int min_inner_block_elems;
-    int max_inner_block_elems;
-    switch (elem_size_in_bytes_) {
-      case 1:
-      case 2:
-      case 4:
-      case 8:
-        min_inner_block_elems = 1;
-        max_inner_block_elems =
-            std::min<int>(max_outer_block_elems,
-                          kMaxInnerBlockSizeBytes / elem_size_in_bytes_);
-        break;
-      case 16:
-        min_inner_block_elems = 1;
-        max_inner_block_elems = 1;
-        break;
-      default:
-        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
-    }
-    if (inner_kernel_kind_ == InnerKernelKind::kInterleave) {
+    const int max_inner_block_bytes =
+        GetMaxTransposeInnerBlockSizeBytes(elem_size_in_bytes_);
+    const int min_inner_block_elems = 1;
+    const int max_inner_block_elems = std::min<int>(
+        max_outer_block_elems, max_inner_block_bytes / elem_size_in_bytes_);
+    if (inner_kernel_kind_ == InnerKernelKind::kInterleave ||
+        inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
+      // Cap the auto vectorized interleave strip size at the 32 byte block
+      // scale (at most 2048 elements for 1 byte types, or 28 KiB across input
+      // and output at K = 7) so strips fit in L1D and kF64ToEf57 scratch stays
+      // within kStackScratchBytes (4 KiB).
+      constexpr int kMaxInterleaveBlockBytes = 32;
+      const int max_interleave_block_elems =
+          std::min(max_inner_block_bytes, kMaxInterleaveBlockBytes) /
+          elem_size_in_bytes_;
+      const int64_t strip_elems = std::min<int64_t>(
+          large_loop_size, max_interleave_block_elems * max_outer_block_elems);
       inner_block_elems_ = 1;
-      outer_block_elems_a_ = std::min<int64_t>(
-          large_loop_size, max_inner_block_elems * max_outer_block_elems);
-      outer_block_elems_b_ = 1;
-    } else if (inner_kernel_kind_ == InnerKernelKind::kDeinterleave) {
-      inner_block_elems_ = 1;
-      outer_block_elems_a_ = 1;
-      outer_block_elems_b_ = std::min<int64_t>(
-          large_loop_size, max_inner_block_elems * max_outer_block_elems);
+      outer_block_elems_a_ =
+          (inner_kernel_kind_ == InnerKernelKind::kInterleave) ? strip_elems
+                                                               : 1;
+      outer_block_elems_b_ =
+          (inner_kernel_kind_ == InnerKernelKind::kDeinterleave) ? strip_elems
+                                                                 : 1;
     } else {
       inner_block_elems_ = max_inner_block_elems;
       while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {

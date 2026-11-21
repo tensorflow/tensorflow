@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/optimization.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -47,6 +48,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "hwy/per_target.h"
+#include "hwy/targets.h"
 #include "xla/array.h"
 #include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"
@@ -1444,18 +1447,40 @@ void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
   int64_t lda = kLda;
   int64_t ldb = kLdb;
   int outer_bs = kOuterBs;
+  const TransposeOp::Fn fn = GetTransposeMacroKernelOp(sizeof(T), bs);
   for (auto _ : state) {
     benchmark::DoNotOptimize(a);
     benchmark::DoNotOptimize(b);
     benchmark::DoNotOptimize(lda);
     benchmark::DoNotOptimize(ldb);
     benchmark::DoNotOptimize(outer_bs);
-    TransposeMacroKernelDispatch<T, bs>(a, lda, outer_bs, b, ldb, outer_bs);
+    TransposeOp op;
+    op.count = 1;
+    op.lda = lda;
+    op.ldb = ldb;
+    op.a_elems = static_cast<uint16_t>(outer_bs * bs);
+    op.b_elems = static_cast<uint16_t>(outer_bs * bs);
+    fn(&op, a, b, /*scratch=*/nullptr);
     benchmark::ClobberMemory();
   }
   state.SetBytesProcessed(state.iterations() * kOuterBs * kOuterBs * bs * bs *
                           sizeof(T));
 }
+
+#define BENCHMARK_MICROKERNEL_ALL_STRIDES(T, bs)      \
+  BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, T, bs); \
+  BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, T, bs,  \
+                     StrideMode::kWideSymmetric);     \
+  BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, T, bs, StrideMode::kWideScatter)
+
+// 512 bit (64 byte) rows:
+BENCHMARK_MICROKERNEL_ALL_STRIDES(int8_t, 64);
+BENCHMARK_MICROKERNEL_ALL_STRIDES(int16_t, 32);
+BENCHMARK_MICROKERNEL_ALL_STRIDES(float, 16);
+BENCHMARK_MICROKERNEL_ALL_STRIDES(int64_t, 8);
+BENCHMARK_MICROKERNEL_ALL_STRIDES(absl::uint128, 4);
+
+#undef BENCHMARK_MICROKERNEL_ALL_STRIDES
 
 // 256-bit (32-byte) rows:
 BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 32);
@@ -2433,6 +2458,109 @@ TEST(TransposeTest, F64ToEf57StridedDoubles1SpecialValues) {
           << "hi mismatch at r=" << r << ", c=" << c;
       EXPECT_EQ(std::memcmp(&got_lo, &expected_pair[1], sizeof(float)), 0)
           << "lo mismatch at r=" << r << ", c=" << c;
+    }
+  }
+}
+
+TEST(TransposeTest, AllSupportedHighwayTargets) {
+  const std::vector<TransposeTestCase> cases = {
+      // Full 64 byte blocks and power of two SIMD remainder decompositions.
+      TransposeTestCase({64, 64}, {1, 0}),
+      TransposeTestCase({96, 112}, {1, 0}),
+      TransposeTestCase({65, 115}, {1, 0}),
+      TransposeTestCase({28, 30}, {1, 0}),
+      TransposeTestCase({12, 15}, {1, 0}),
+      // 3D transposes covering gather, scatter, and symmetric strides.
+      TransposeTestCase({3, 68, 76}, {2, 0, 1}),
+      TransposeTestCase({3, 68, 76}, {1, 2, 0}),
+      TransposeTestCase({3, 68, 76}, {0, 2, 1}),
+      // Output tiling with partial tile padding.
+      TransposeTestCase({35, 70}, {1, 0}, /*input_tiling=*/{},
+                        /*output_tiling=*/{8, 64}, /*input_striding=*/{},
+                        /*tile_padding=*/uint8_t{0xA5}),
+  };
+
+  const absl::Cleanup reset_targets = [] {
+    hwy::SetSupportedTargetsForTest(0);
+  };
+  for (int64_t target : hwy::SupportedAndGeneratedTargets()) {
+    hwy::SetSupportedTargetsForTest(target);
+    SCOPED_TRACE(hwy::TargetName(target));
+
+    const int max_bytes = GetMaxTransposeInnerBlockSizeBytes(1);
+    EXPECT_TRUE(max_bytes == 16 || max_bytes == 32 || max_bytes == 64);
+    for (int elem_size : {2, 4, 8}) {
+      EXPECT_EQ(GetMaxTransposeInnerBlockSizeBytes(elem_size), max_bytes);
+    }
+    EXPECT_EQ(GetMaxTransposeInnerBlockSizeBytes(16), 16);
+    const int expected_cap =
+        static_cast<int>(std::clamp<size_t>(hwy::VectorBytes(), 16, 64));
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || \
+    defined(_M_IX86)
+    EXPECT_EQ(max_bytes, expected_cap);
+#else
+    EXPECT_LE(max_bytes, expected_cap);
+#endif
+
+    for (int elem_size : {1, 2, 4, 8, 16}) {
+      for (const TransposeTestCase& tc : cases) {
+        SCOPED_TRACE(absl::StrFormat("%s,elem=%d", tc.ToString(), elem_size));
+        ExecuteTest(tc, elem_size, /*parallelism=*/1,
+                    TransposePlan::Transformation::kNone,
+                    TransposePlan::ChunkContiguity::kNone,
+                    /*use_execute_chunk=*/false);
+      }
+      // Negative (reversed) and zero (broadcast) input row strides across 64
+      // byte blocks and halved remainder strips.
+      for (int64_t row_stride : {int64_t{-96} * elem_size, int64_t{0}}) {
+        TransposeTestCase strided_tc(
+            {68, 96}, {1, 0}, /*input_tiling=*/{},
+            /*output_tiling=*/{},
+            /*input_striding=*/{row_stride, elem_size});
+        SCOPED_TRACE(
+            absl::StrFormat("%s,elem=%d", strided_tc.ToString(), elem_size));
+        ExecuteTest(strided_tc, elem_size, /*parallelism=*/1,
+                    TransposePlan::Transformation::kNone,
+                    TransposePlan::ChunkContiguity::kNone,
+                    /*use_execute_chunk=*/false);
+      }
+    }
+
+    // Subbyte packing with 64 byte block and 32 byte remainder.
+    TestPackIntN(/*bits_per_element=*/4, /*dims=*/{68, 96},
+                 /*permutation=*/{1, 0}, /*input_tiling=*/{},
+                 /*output_tiling=*/{}, /*input_striding=*/{},
+                 /*num_threads=*/2, TransposePlan::ChunkContiguity::kNone,
+                 /*expected_parallelism=*/1,
+                 /*expected_inner_kernel_is_memcpy=*/false,
+                 /*tile_padding=*/std::nullopt);
+
+    // Ef57 conversion followed by 64 byte float transpose with remainders.
+    constexpr int64_t kRows = 19;
+    constexpr int64_t kCols = 18;
+    std::vector<double> ef57_in(kRows * kCols);
+    for (int64_t i = 0; i < kRows * kCols; ++i) {
+      ef57_in[i] = static_cast<double>(i) * 1.0000001234567 - 25.5;
+    }
+    const std::array<int64_t, 3> ef57_dims = {kRows, kCols, 2};
+    const std::array<int64_t, 3> ef57_perm = {1, 2, 0};
+    TransposePlan::Options ef57_opts;
+    ef57_opts.elem_size_in_bytes = sizeof(float);
+    ef57_opts.dims = ef57_dims;
+    ef57_opts.permutation = ef57_perm;
+    ef57_opts.transformation = TransposePlan::Transformation::kF64ToEf57;
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<TransposePlan> ef57_plan,
+                         TransposePlan::Create(ef57_opts));
+    std::vector<float> ef57_out(kRows * kCols * 2, -1.0f);
+    ef57_plan->Execute(ef57_in.data(), ef57_out.data());
+    for (int64_t r = 0; r < kRows; ++r) {
+      for (int64_t c = 0; c < kCols; ++c) {
+        std::array<float, 2> expected_pair = {0.0f, 0.0f};
+        ConvertF64ToEf57(absl::MakeConstSpan(ef57_in).subspan(r * kCols + c, 1),
+                         absl::MakeSpan(expected_pair));
+        EXPECT_EQ(ef57_out[(c * 2 + 0) * kRows + r], expected_pair[0]);
+        EXPECT_EQ(ef57_out[(c * 2 + 1) * kRows + r], expected_pair[1]);
+      }
     }
   }
 }

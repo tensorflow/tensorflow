@@ -1244,6 +1244,7 @@ cc_library(
     ],
     hdrs = ["transpose_kernels.h"],
     deps = [
+        "//xla:compiler_macros",
         "@com_google_absl//absl/base:core_headers",
         "@highway//:hwy",
     ],
@@ -1254,11 +1255,11 @@ xla_cc_test(
     srcs = ["transpose_kernels_test.cc"],
     deps = [
         ":transpose_kernels",
-        "//xla:types",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@highway//:hwy",
     ],
 )
@@ -1369,6 +1370,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1380,6 +1382,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
+        "@highway//:hwy",
     ],
 )
 

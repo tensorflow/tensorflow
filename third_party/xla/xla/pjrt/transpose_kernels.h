@@ -93,13 +93,16 @@ struct TransposeOp {
 static_assert(sizeof(TransposeOp) == 56);
 
 // Defined in transpose_kernels.cc. Called once when building a transpose plan
-// so `op.fn` points directly to the right CPU-specific function (`packed` is
-// `sizeof(T) | (bs << 16)`).
-template <int packed>
-TransposeOp::Fn GetTransposeMacroKernelOp();
+// so `op.fn` points directly to the right CPU specific function for
+// `elem_size_in_bytes` and `bs`.
+TransposeOp::Fn GetTransposeMacroKernelOp(int elem_size_in_bytes, int bs);
 
 template <int kBits>
 TransposeOp::Fn GetPackSubbyteOp();
+
+// Returns the maximum vectorized inner block row size in bytes (16, 32, or 64)
+// for `elem_size_in_bytes` on the active Highway target.
+int GetMaxTransposeInnerBlockSizeBytes(int elem_size_in_bytes);
 
 // Returns whether deinterleaving `k` rows of `elem_size`-byte elements is
 // faster than the default 2D transpose, based on the BM_TransposeSmallDim_*
@@ -124,18 +127,17 @@ constexpr bool DeinterleaveKernelIsFaster(size_t elem_size, int64_t k) {
 // (matching `DeinterleaveKernelIsFaster`), or nullptr if unsupported. Defined
 // in transpose_kernels_interleave.cc.
 TransposeOp::Fn GetDeinterleaveOp(size_t elem_size, int64_t k);
-
 template <typename T, int bs>
 void TransposeMacroKernelDispatch(const char* a, int64_t lda, int outer_bs_a,
                                   char* b, int64_t ldb, int outer_bs_b) {
-  constexpr int packed = sizeof(T) | (bs << 16);
+  static_assert(sizeof(T) * bs <= kMaxOuterBlockSizeBytes);
   TransposeOp op;
   op.count = 1;
   op.lda = lda;
   op.ldb = ldb;
   op.a_elems = static_cast<uint16_t>(outer_bs_a * bs);
   op.b_elems = static_cast<uint16_t>(outer_bs_b * bs);
-  GetTransposeMacroKernelOp<packed>()(&op, a, b, /*scratch=*/nullptr);
+  GetTransposeMacroKernelOp(sizeof(T), bs)(&op, a, b, /*scratch=*/nullptr);
 }
 
 template <typename T, int bs>

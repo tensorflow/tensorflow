@@ -40,11 +40,16 @@ limitations under the License.
 #endif  // defined(_M_ARM64) || defined(_M_ARM64EC)
 
 #if defined(__clang__)
+#define XLA_INTERNAL_PRAGMA(...) _Pragma(#__VA_ARGS__)
 #define XLA_UNROLL _Pragma("unroll")
+#define XLA_UNROLL_COUNT(...) \
+  XLA_INTERNAL_PRAGMA(clang loop unroll_count(__VA_ARGS__))
 #elif defined(__GNUC__)
 #define XLA_UNROLL _Pragma("GCC unroll 128")
+#define XLA_UNROLL_COUNT(...)
 #else
 #define XLA_UNROLL
+#define XLA_UNROLL_COUNT(...)
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
