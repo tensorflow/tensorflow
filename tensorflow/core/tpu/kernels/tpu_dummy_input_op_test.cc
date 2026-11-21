@@ -21,11 +21,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "benchmark/registration.h"  // from @com_google_benchmark
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+// IWYU pragma: begin_keep
 #include "xla/tsl/platform/test_benchmark.h"
+// IWYU pragma: end_keep
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -188,6 +189,11 @@ Graph* DummyInputGraph(int64_t num_elements) {
   return graph;
 }
 
+// `test_benchmark.h` provides `BENCHMARK` and `::testing::benchmark::State`
+// without re-exporting the internal headers that define them
+// (`registration.h`, `state.h`), which do not exist in the benchmark release
+// that open-source TensorFlow builds with.
+// NOLINTBEGIN(misc-include-cleaner)
 void BM_TpuDummyInput(::testing::benchmark::State& state) {
   const int64_t num_elements = state.range(0);
   test::Benchmark("cpu", DummyInputGraph(num_elements),
@@ -197,6 +203,7 @@ void BM_TpuDummyInput(::testing::benchmark::State& state) {
                           sizeof(tsl::bfloat16));
 }
 BENCHMARK(BM_TpuDummyInput)->Arg(1 << 10)->Arg(1 << 20)->Arg(1 << 24);
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 
