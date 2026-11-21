@@ -743,11 +743,27 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`.
   """
-  with ops.name_scope(name, "Pow", [x]) as name:
-    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
-      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
-    elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
-      y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+  with ops.name_scope(name, "Pow", [x, y]) as name:
+    x_is_tensor = tensor_util.is_tf_type(x) or (
+        hasattr(x, "dtype")
+        and any(
+            m in (getattr(type(x), "__module__", "") or "")
+            for m in ("tensorflow", "keras")
+        )
+    )
+    y_is_tensor = tensor_util.is_tf_type(y) or (
+        hasattr(y, "dtype")
+        and any(
+            m in (getattr(type(y), "__module__", "") or "")
+            for m in ("tensorflow", "keras")
+        )
+    )
+    if not x_is_tensor and y_is_tensor:
+      target_dtype = dtypes.as_dtype(y.dtype).base_dtype
+      x = ops.convert_to_tensor(x, dtype=target_dtype, name="x")
+    elif x_is_tensor and not y_is_tensor:
+      target_dtype = dtypes.as_dtype(x.dtype).base_dtype
+      y = ops.convert_to_tensor(y, dtype=target_dtype, name="y")
     return gen_math_ops._pow(x, y, name=name)
 
 
