@@ -372,6 +372,10 @@ absl::StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
   if (node.IsConstant()) {
     const TensorProto* proto;
     TF_RETURN_IF_ERROR(GetNodeAttr(node.def(), "value", &proto));
+    if (proto->dtype() != node.output_type(0)) {
+      return absl::InvalidArgumentError(
+          "Const node dtype does not match value dtype");
+    }
     result.emplace();
     if (TF_PREDICT_FALSE(!result->FromProto(*proto))) {
       return absl::InvalidArgumentError("Unable to evaluate a constant node");

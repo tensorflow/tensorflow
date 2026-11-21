@@ -40,7 +40,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -115,6 +118,51 @@ TEST_F(EvaluateConstantTensorTest, Constant) {
   auto expected = test::AsTensor<float>({1, 2, 3});
   auto op = ops::Const(scope_, expected);
   ExpectTensor(op, expected);
+}
+
+TEST_F(EvaluateConstantTensorTest, ValidInt32Constant) {
+  auto expected = test::AsScalar<int32_t>(1);
+  auto op = ops::Const(scope_, expected);
+  TF_ASSERT_OK_AND_ASSIGN(auto actual, Run(op));
+  ASSERT_TRUE(actual.has_value());
+  test::ExpectEqual(*actual, expected);
+}
+
+TEST_F(EvaluateConstantTensorTest, ValidInt64Constant) {
+  auto expected = test::AsScalar<int64_t>(1);
+  auto op = ops::Const(scope_, expected);
+  TF_ASSERT_OK_AND_ASSIGN(auto actual, Run(op));
+  ASSERT_TRUE(actual.has_value());
+  test::ExpectEqual(*actual, expected);
+}
+
+TEST_F(EvaluateConstantTensorTest, ConstantWithMismatchedDtype) {
+  Node* node;
+  TF_ASSERT_OK(NodeBuilder("my_const", "Const")
+                   .Attr("value", test::AsScalar<int32_t>(1))
+                   .Attr("dtype", DT_INT64)
+                   .Finalize(scope_.graph(), &node));
+
+  auto result = Run(Output(node));
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(
+      result.status(),
+      errors::InvalidArgument("Const node dtype does not match value dtype"));
+}
+
+TEST_F(EvaluateConstantTensorTest, RejectsConstantWithMismatchedTensorDtype) {
+  Node* mismatched_vector = nullptr;
+  TF_ASSERT_OK(NodeBuilder("mismatched_vector_const", "Const")
+                   .Attr("value", test::AsTensor<float>({1.0f, 2.0f}))
+                   .Attr("dtype", DT_INT32)
+                   .Finalize(scope_.graph(), &mismatched_vector));
+
+  auto result = Run(Output(mismatched_vector));
+  ASSERT_FALSE(result.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(result.status()));
+  EXPECT_EQ(
+      result.status(),
+      errors::InvalidArgument("Const node dtype does not match value dtype"));
 }
 
 TEST_F(EvaluateConstantTensorTest, Shape) {
