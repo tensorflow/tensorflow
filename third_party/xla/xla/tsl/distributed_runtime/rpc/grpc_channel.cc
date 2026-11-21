@@ -271,7 +271,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
         channel_func_(std::move(channel_func)) {
     VLOG(2) << "Initialize GrpcChannelCache for job " << ToString();
   }
-  ~SparseGrpcChannelCache() override {}
+  ~SparseGrpcChannelCache() override = default;
 
   void ListWorkers(std::vector<std::string>* workers) override {
     workers->reserve(workers->size() + host_ports_.size());
