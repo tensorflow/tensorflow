@@ -15,8 +15,11 @@
 """Tests for tensorflow.python.framework.errors."""
 
 import collections
+import importlib.util
 import os
 import re
+import site
+from unittest import mock
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -313,6 +316,20 @@ class OperationDefinedAtTraceTest(test.TestCase):
 
 
 class IsFrameworkFilenameTest(test.TestCase):
+
+  def testMissingUserSitePackages(self):
+    spec = importlib.util.spec_from_file_location(
+        "_error_interpolation_without_user_site", error_interpolation.__file__
+    )
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.object(
+        site, "getsitepackages", return_value=["/site-packages"], create=True
+    ), mock.patch.object(site, "getusersitepackages", return_value=None, create=True):
+      spec.loader.exec_module(module)
+    self.assertIn(
+        os.path.join("/site-packages", "keras") + os.sep,
+        module._FRAMEWORK_PATH_PREFIXES,
+    )
 
   def testAllowsUnitTests(self):
     self.assertFalse(
