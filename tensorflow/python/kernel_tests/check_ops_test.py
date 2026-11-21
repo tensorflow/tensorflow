@@ -509,6 +509,19 @@ class AssertAllCloseTest(test.TestCase):
         out = array_ops.identity(x)
         self.evaluate(out)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_default_tolerance_for_bfloat16_and_float16(self):
+    for dtype in (dtypes.bfloat16, dtypes.float16):
+      x = constant_op.constant([1., 2.], dtype=dtype)
+      # 1.0078125 is one bfloat16 ulp above 1.
+      self.evaluate(check_ops.assert_near(
+          x, constant_op.constant([1.0078125, 2.], dtype=dtype)))
+      self.evaluate(check_ops.assert_near(x, x, rtol=0.1, atol=0.1))
+      with self.assertRaisesOpError(  # pylint:disable=g-error-prone-assert-raises
+          "x and y not equal to tolerance"):
+        self.evaluate(check_ops.assert_near(
+            x, constant_op.constant([1., 3.], dtype=dtype)))
+
   def test_returns_none_with_eager(self):
     with context.eager_mode():
       t1 = constant_op.constant([1., 2.])
