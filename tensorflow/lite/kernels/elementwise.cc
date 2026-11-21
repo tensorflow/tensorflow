@@ -247,8 +247,8 @@ inline TfLiteStatus AbsInt16EvalImpl(TfLiteContext* context, TfLiteNode* node,
   const int16_t* in_data = GetTensorData<int16_t>(input);
   int16_t* out_data = GetTensorData<int16_t>(output);
   for (int64_t i = 0; i < num_elements; ++i) {
-    out_data[i] = static_cast<int16_t>(
-        std::abs<int32_t>(static_cast<int32_t>(in_data[i])));
+    out_data[i] =
+        static_cast<int16_t>(std::abs(static_cast<int32_t>(in_data[i])));
   }
   return kTfLiteOk;
 }
