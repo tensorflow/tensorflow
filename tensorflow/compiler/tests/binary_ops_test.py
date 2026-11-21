@@ -2091,6 +2091,53 @@ class BinaryOpsTest(xla_test.XLATestCase):
             ([9.0, 18.0, 27.0, 36.0], [-9.0, -18.0, -27.0, -36.0]),
         )
 
+  def testDynamicDimensionOfSizeOneBroadcasts(self):
+    if "GPU" in self.device or "TPU" in self.device:
+      self.skipTest(
+          "XLA:GPU's dynamic padder doesn't support the dynamic "
+          "select that boolean_mask produces."
+      )
+
+    # A dynamic dimension whose size is 1 at run time broadcasts against a
+    # static one, whether its bound is equal, larger or smaller.
+    @def_function.function(jit_compile=True)
+    def f(x, mask, y):
+      x = array_ops.boolean_mask(x, mask)
+      return (
+          math_ops.add(x, y),
+          math_ops.subtract(y, x),
+          math_ops.maximum(x, y),
+          array_ops.broadcast_to(x, array_ops.shape(y)),
+      )
+
+    y = np.array([10, 20, 30, 40, 50, 60], dtype=np.float32)
+    one_of_six = [False, True, False, False, False, False]
+    cases = [
+        (np.arange(1, 7), one_of_six, y),
+        (np.arange(1, 9), one_of_six + [False, False], y),
+        (np.arange(1, 4), [False, True, False], y),
+        (np.arange(1, 7), one_of_six, np.stack([y, -y])),
+        (np.array([[1, 2], [3, 4]]), [False, True], y[:4].reshape(2, 2)),
+        # The size matches the static one, so nothing is broadcast.
+        (np.arange(1, 7), [True] * 6, y),
+    ]
+    for x, mask, y in cases:
+      x = x.astype(np.float32)
+      mask = np.array(mask)
+      with self.subTest(x_shape=x.shape, y_shape=y.shape, mask=mask.tolist()):
+        with self.session() as session:
+          with self.test_scope():
+            px = array_ops.placeholder(dtypes.float32, shape=x.shape)
+            pmask = array_ops.placeholder(dtypes.bool, shape=mask.shape)
+            py = array_ops.placeholder(dtypes.float32, shape=y.shape)
+            output = f(px, pmask, py)
+          result = session.run(output, {px: x, pmask: mask, py: y})
+        x = x[mask]
+        self.assertAllEqual(
+            result,
+            (x + y, y - x, np.maximum(x, y), np.broadcast_to(x, y.shape)),
+        )
+
   def testMulGradientOnBoundedDynamicDimension(self):
     # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
     # output size that's bounded by x's static shape but not statically

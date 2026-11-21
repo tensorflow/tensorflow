@@ -44,6 +44,28 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   // Fetch the expressions containing the input tensors.
   auto lhs_handle = ctx->Input(0);
   auto rhs_handle = ctx->Input(1);
+  // The lower-rank input is matched against the other's trailing dimensions.
+  // When either input has a dynamic dimension, give the lower-rank one leading
+  // dimensions of size 1, so that the dimensions are reconciled below.
+  if (lhs_shape.dims() != rhs_shape.dims() &&
+      (lhs_xla_shape.is_dynamic() || rhs_xla_shape.is_dynamic())) {
+    const bool lhs_is_lower = lhs_shape.dims() < rhs_shape.dims();
+    xla::XlaOp& handle = lhs_is_lower ? lhs_handle : rhs_handle;
+    xla::Shape& xla_shape = lhs_is_lower ? lhs_xla_shape : rhs_xla_shape;
+    TensorShape& shape = lhs_is_lower ? lhs_shape : rhs_shape;
+    const int rank_difference =
+        std::max(lhs_shape.dims(), rhs_shape.dims()) - shape.dims();
+    std::vector<int64_t> dims(rank_difference, 1);
+    dims.insert(dims.end(), xla_shape.dimensions().begin(),
+                xla_shape.dimensions().end());
+    std::vector<int64_t> broadcast_dimensions(shape.dims());
+    absl::c_iota(broadcast_dimensions, rank_difference);
+    handle = xla::BroadcastInDim(handle, dims, broadcast_dimensions);
+    for (int i = 0; i < rank_difference; ++i) {
+      shape.InsertDim(0, 1);
+    }
+    OP_REQUIRES_VALUE(xla_shape, ctx, ctx->builder()->GetShape(handle));
+  }
   if (lhs_shape.dims() == rhs_shape.dims()) {
     auto reconcile_tensor_mismatched_dims = [ctx](
                                                 xla::XlaOp lhs, xla::XlaOp rhs,
@@ -73,6 +95,21 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
             size = xla::Min(size,
                             xla::ScalarLike(size, rhs_xla_shape.dimensions(i)));
             lhs = xla::SetDimensionSize(lhs, size, i);
+          }
+          if (!rhs_xla_shape.is_dynamic_dimension(i) &&
+              lhs_xla_shape.dimensions(i) > 1 &&
+              rhs_xla_shape.dimensions(i) > 1) {
+            // e.g., :
+            // lhs = [..., <=M, ...]
+            // rhs = [..., N  , ...]
+            // where M, N > 1 (a larger M was sliced to N above).
+            //
+            // A dynamic size of 1 broadcasts to N, which XLA only does between
+            // two dynamic dimensions, so broadcast it here. A smaller M is
+            // padded to N.
+            lhs = BroadcastDynamicDimension(lhs, i,
+                                            rhs_xla_shape.dimensions(i));
+            lhs_tensor_shape->set_dim(i, rhs_xla_shape.dimensions(i));
           }
           if (rhs_xla_shape.is_dynamic_dimension(i) &&
               lhs_xla_shape.dimensions(i) < rhs_xla_shape.dimensions(i) &&
