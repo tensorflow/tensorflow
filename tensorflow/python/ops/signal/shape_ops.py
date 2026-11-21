@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -116,6 +117,12 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     signal = ops.convert_to_tensor(signal, name="signal")
     frame_length = ops.convert_to_tensor(frame_length, name="frame_length")
     frame_step = ops.convert_to_tensor(frame_step, name="frame_step")
+    # The signal length is an int32 tensor when it is not static, so integer
+    # frame arguments of any other dtype (e.g. `np.int64(512)`) are cast to it.
+    if frame_length.dtype.is_integer and frame_length.dtype != dtypes.int32:
+      frame_length = math_ops.cast(frame_length, dtypes.int32)
+    if frame_step.dtype.is_integer and frame_step.dtype != dtypes.int32:
+      frame_step = math_ops.cast(frame_step, dtypes.int32)
     axis = ops.convert_to_tensor(axis, name="axis")
 
     signal.shape.with_rank_at_least(1)

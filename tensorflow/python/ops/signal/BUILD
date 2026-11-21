@@ -116,6 +116,7 @@ py_library(
     deps = [
         ":util_ops",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",

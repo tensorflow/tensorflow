@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -359,6 +360,48 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
 
     # Check that the inverse and original signal are close.
     self.assertAllClose(inverse_mdct, signal, atol=tol, rtol=tol)
+
+  def test_stft_and_inverse_stft_numpy_int64_arguments(self):
+    # NumPy int64 frame arguments, alone or mixed with Python ints.
+    signal = np.random.RandomState(0).randn(2, 128).astype(np.float32)
+    expected_stft = spectral_ops.stft(signal, 32, 8)
+    expected_signal = spectral_ops.inverse_stft(expected_stft, 32, 8)
+    for frame_length, frame_step in (
+        (np.int64(32), 8), (32, np.int64(8)), (np.int64(32), np.int64(8))):
+      stft = spectral_ops.stft(signal, frame_length, frame_step)
+      self.assertAllClose(expected_stft, stft)
+      inverse = spectral_ops.inverse_stft(
+          expected_stft, frame_length, frame_step,
+          window_fn=spectral_ops.inverse_stft_window_fn(frame_step))
+      expected = spectral_ops.inverse_stft(
+          expected_stft, 32, 8,
+          window_fn=spectral_ops.inverse_stft_window_fn(8))
+      self.assertAllClose(expected, inverse)
+    self.assertAllClose(
+        expected_signal,
+        spectral_ops.inverse_stft(expected_stft, np.int64(32), np.int64(8)))
+    self.assertAllClose(
+        spectral_ops.mdct(signal, 32), spectral_ops.mdct(signal, np.int64(32)))
+    # An int64 Tensor is cast as well.
+    self.assertAllClose(
+        expected_stft,
+        spectral_ops.stft(signal, math_ops.cast(32, dtypes.int64), 8))
+
+  def test_stft_rejects_non_integer_frame_arguments(self):
+    # Non-integer values must not be silently truncated to int32.
+    signal = np.random.RandomState(0).randn(2, 128).astype(np.float32)
+    with self.assertRaises((errors.InvalidArgumentError, TypeError)):
+      spectral_ops.stft(signal, np.float64(32.5), 8)
+    with self.assertRaises((errors.InvalidArgumentError, TypeError)):
+      spectral_ops.stft(signal, 32, np.float64(8.5))
+    stft = spectral_ops.stft(signal, 32, 8)
+    expected_errors = (errors.InvalidArgumentError, TypeError, ValueError)
+    with self.assertRaises(expected_errors):
+      spectral_ops.inverse_stft(stft, np.float64(32.5), 8)
+    with self.assertRaises(expected_errors):
+      spectral_ops.inverse_stft(stft, 32, np.float64(8.5))
+    with self.assertRaises(expected_errors):
+      spectral_ops.mdct(signal, np.float64(32.5))
 
   def test_inverse_stft_zero_frames(self):
     stfts = np.zeros((0, 5), dtype=np.complex64)

@@ -115,6 +115,20 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
         self.evaluate(reconstruction), np.zeros((3, 11), dtype=np.float32)
     )
 
+  def test_int64_frame_step(self):
+    # A non-constant int64 `frame_step` is combined with the int32 shape of
+    # the signal.
+    signature = [tensor_spec.TensorSpec([], dtypes.int64)]
+
+    @def_function.function(input_signature=signature)
+    def reconstruct(frame_step):
+      return reconstruction_ops.overlap_and_add(
+          array_ops.ones([3, 5]), frame_step)
+
+    reconstruction = reconstruct(np.int64(2))
+    expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
+    self.assertAllClose(self.evaluate(reconstruction), expected_output)
+
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():
