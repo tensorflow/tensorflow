@@ -4022,7 +4022,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if isinstance(block_shape, int):
+  if isinstance(block_shape, (int, np.integer)):
     block_shape = np.array([block_shape, block_shape], dtype=np.int64)
 
   return batch_to_space_nd(
@@ -6521,9 +6521,11 @@ def fold(
     ... )
   """
 
-  kernel_size = sizes
-  stride = strides
-  dilation = rates
+  # NumPy integer scalars take the same paths as Python ints below.
+  kernel_size, stride, dilation, padding = (
+      int(v) if isinstance(v, np.integer) else v
+      for v in (sizes, strides, rates, padding)
+  )
   # Handling inputs
   patches = ops.convert_to_tensor(patches)
   if patches.shape.ndims != 4 and patches.shape.ndims is not None:

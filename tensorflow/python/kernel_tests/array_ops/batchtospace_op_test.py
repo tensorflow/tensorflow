@@ -250,6 +250,20 @@ class BatchToSpaceNDErrorHandlingTest(test.TestCase):
     self.assertEqual([3, 2, 3, 2], t.get_shape().as_list())
 
 
+class BatchToSpaceV2ScalarBlockShapeTest(test.TestCase):
+
+  def testScalarBlockShape(self):
+    # A scalar block_shape means the same block size in both spatial
+    # dimensions; NumPy integers must be treated like Python ints.
+    x = np.arange(16, dtype=np.float32).reshape([4, 2, 2, 1])
+    crops = [[0, 0], [0, 0]]
+    expected = self.evaluate(array_ops.batch_to_space_v2(x, [2, 2], crops))
+    for block_shape in (2, np.int32(2), np.int64(2)):
+      self.assertAllEqual(
+          expected,
+          self.evaluate(array_ops.batch_to_space_v2(x, block_shape, crops)))
+
+
 class BatchToSpaceGradientTest(test.TestCase, PythonOpImpl):
 
   # Check the gradients.
