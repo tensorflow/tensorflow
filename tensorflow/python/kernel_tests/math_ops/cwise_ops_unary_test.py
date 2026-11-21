@@ -815,6 +815,17 @@ class UnaryOpTest(test.TestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  def testRealSignSubnormalFloat32(self):
+    """Regression test for #127905: sign must preserve nonzero subnormals."""
+    for device_fn in (test_util.force_cpu, test_util.use_gpu):
+      with device_fn():
+        # 1e-40 is a nonzero float32 subnormal. A comparison that flushes it to
+        # zero would make sign return zero instead of the sign of the input.
+        x = constant_op.constant([1e-40, -1e-40], dtype=dtypes_lib.float32)
+        result = self.evaluate(math_ops.sign(x))
+        self.assertAllEqual([1.0, -1.0], result)
+
+  @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
