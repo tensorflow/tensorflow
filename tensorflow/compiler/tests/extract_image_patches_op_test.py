@@ -17,7 +17,11 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -52,6 +56,133 @@ class ExtractImagePatches(xla_test.XLATestCase):
             name="im2col")
       feed_dict = {image_placeholder: image}
       self.assertAllClose(patches, out_tensor.eval(feed_dict=feed_dict))
+
+  def _NumpyPatches(self, image, ksizes, strides, rates, padding):
+    """Computes ExtractImagePatches with explicit loops, as a reference."""
+    _, rows, cols, depth = image.shape
+    eff_k = [(k - 1) * r + 1 for k, r in zip(ksizes, rates)]
+    if padding == "VALID":
+      out = [(n - e) // s + 1 for n, e, s in zip((rows, cols), eff_k, strides)]
+      pad_lo = [0, 0]
+    else:
+      out = [-(-n // s) for n, s in zip((rows, cols), strides)]
+      pad_lo = [
+          max((o - 1) * s + e - n, 0) // 2
+          for o, s, e, n in zip(out, strides, eff_k, (rows, cols))
+      ]
+    result = np.zeros(
+        (image.shape[0], out[0], out[1], ksizes[0] * ksizes[1] * depth),
+        image.dtype,
+    )
+    for oy in range(out[0]):
+      for ox in range(out[1]):
+        for ky in range(ksizes[0]):
+          for kx in range(ksizes[1]):
+            y = oy * strides[0] + ky * rates[0] - pad_lo[0]
+            x = ox * strides[1] + kx * rates[1] - pad_lo[1]
+            if 0 <= y < rows and 0 <= x < cols:
+              k = (ky * ksizes[1] + kx) * depth
+              result[:, oy, ox, k : k + depth] = image[:, y, x, :]
+    return result
+
+  def testMatchesNumpyReference(self):
+    """Compares against a loop reference, including a large text-line kernel."""
+    rng = np.random.default_rng(0)
+    for shape, ksizes, strides, rates, padding in [
+        # Same kernel as a text-line recognition model.
+        ((1, 40, 1200, 1), [40, 320], [40, 240], [1, 1], "VALID"),
+        ((2, 7, 9, 3), [3, 2], [2, 3], [2, 1], "SAME"),
+        ((1, 6, 6, 2), [2, 3], [1, 2], [2, 2], "VALID"),
+        ((1, 5, 8, 1), [4, 4], [3, 1], [1, 2], "SAME"),
+    ]:
+      image = rng.standard_normal(shape).astype(np.float32)
+      self._VerifyValues(
+          image,
+          ksizes=ksizes,
+          strides=strides,
+          rates=rates,
+          padding=padding,
+          patches=self._NumpyPatches(image, ksizes, strides, rates, padding),
+      )
+
+  def testLargeKernelHloSizeDoesNotGrowWithKernel(self):
+    """A 40x320 kernel must not lower to one slice per kernel position."""
+
+    def f(x):
+      return array_ops.extract_image_patches(
+          x,
+          ksizes=[1, 40, 320, 1],
+          strides=[1, 40, 240, 1],
+          rates=[1, 1, 1, 1],
+          padding="VALID",
+      )
+
+    with context.eager_mode(), ops.device("device:{}:0".format(self.device)):
+      x = np.zeros((1, 40, 1200, 1), dtype=np.float32)
+      hlo = def_function.function(
+          f, jit_compile=True
+      ).experimental_get_compiler_ir(x)(stage="hlo")
+    self.assertLess(hlo.count(" slice("), 10)
+
+  def testEmptyBatchAndDepth(self):
+    """Zero-sized batch and depth dimensions give an empty output."""
+    with self.session():
+      for in_shape, expected_shape in [
+          ((0, 4, 4, 2), (0, 3, 3, 8)),
+          ((1, 4, 4, 0), (1, 3, 3, 0)),
+      ]:
+        image_placeholder = array_ops.placeholder(dtypes.float32)
+        with self.test_scope():
+          out_tensor = array_ops.extract_image_patches(
+              image_placeholder,
+              ksizes=[1, 2, 2, 1],
+              strides=[1, 1, 1, 1],
+              rates=[1, 1, 1, 1],
+              padding="VALID",
+          )
+        feed_dict = {image_placeholder: np.zeros(in_shape, dtype=np.float32)}
+        self.assertEqual(
+            out_tensor.eval(feed_dict=feed_dict).shape, expected_shape
+        )
+
+  def testOutputTooLargeIsAnError(self):
+    """An output size that overflows int64 raises an error, not an abort."""
+    # Depth 4 overflows the element count. Depth 1 fits in the element count
+    # but overflows the byte size.
+    for depth in [1, 4]:
+      with self.session():
+        image_placeholder = array_ops.placeholder(dtypes.float32)
+        with self.test_scope():
+          out_tensor = array_ops.extract_image_patches(
+              image_placeholder,
+              ksizes=[1, 2**31 - 1, 2**31 - 1, 1],
+              strides=[1, 1, 1, 1],
+              rates=[1, 1, 1, 1],
+              padding="SAME",
+          )
+        feed_dict = {
+            image_placeholder: np.zeros((1, 1, 1, depth), dtype=np.float32)
+        }
+        with self.assertRaises(errors.InvalidArgumentError):
+          out_tensor.eval(feed_dict=feed_dict)
+
+  def testPaddedInputTooLargeIsAnError(self):
+    """A padded input too large in bytes raises an error, not an abort."""
+    # The output is only [1, 1, 1, 4], but SAME padding of the dilated kernel
+    # makes the padded input [1, 2**31, 2**31, 1].
+    with self.session():
+      image_placeholder = array_ops.placeholder(dtypes.float32)
+      with self.test_scope():
+        out_tensor = array_ops.extract_image_patches(
+            image_placeholder,
+            ksizes=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            rates=[1, 2**31 - 1, 2**31 - 1, 1],
+            padding="SAME",
+        )
+      feed_dict = {image_placeholder: np.zeros((1, 1, 1, 1), dtype=np.float32)}
+      with self.assertRaises(errors.InvalidArgumentError):
+        out_tensor.eval(feed_dict=feed_dict)
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""
