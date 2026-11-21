@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.core.function.trace_type import serialization
+from tensorflow.core.function.trace_type import util
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
 
@@ -78,6 +79,31 @@ class TestAttr:
 
   def __init__(self, name):
     self.name = name
+
+
+class TestFieldAttr:
+  """Mimics an `attr.Attribute` with init, kw_only and alias."""
+
+  def __init__(self, name, init=True, kw_only=False, alias=None):
+    self.name = name
+    self.init = init
+    self.kw_only = kw_only
+    self.alias = alias
+
+
+class TestKeywordOnlyAttrsClass:
+  """Has keyword-only and `init=False` fields, like an attrs class."""
+
+  __attrs_attrs__ = (
+      TestFieldAttr('a', kw_only=True),
+      TestFieldAttr('_b', kw_only=True, alias='b'),
+      TestFieldAttr('c', init=False),
+  )
+
+  def __init__(self, *, a, b):
+    self.a = a
+    self._b = b
+    self.c = None
 
 
 class TestAttrsClass:
@@ -323,6 +349,15 @@ class DefaultTypesTest(test.TestCase):
             ),
         ),
     )
+
+  def testAttrsFromValuesKeywordOnlyAndNonInitFields(self):
+    obj = util.attrs_from_values(TestKeywordOnlyAttrsClass, [1, 2, 3])
+    self.assertIsInstance(obj, TestKeywordOnlyAttrsClass)
+    self.assertEqual((obj.a, obj._b, obj.c), (1, 2, 3))
+
+  def testAttrsFromValuesPositionalFields(self):
+    obj = util.attrs_from_values(TestAttrsClass, [1, 2])
+    self.assertEqual(obj, TestAttrsClass(1, 2))
 
   def testAttrsSupertype(self):
     attrs_a = default_types.Attrs.from_type_and_attributes(
